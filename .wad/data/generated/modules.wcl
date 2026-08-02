@@ -290,7 +290,7 @@ code_item code_crate_wcl_lsp {
   code_node n_cg_wcl_lsp_walk {
     name = "walk"
     kind = "module"
-    summary = "1 file, 2 pub items"
+    summary = "1 file, 4 pub items"
     deps = [n_cg_wcl_lsp_xc_wcl_lang]
   }
   code_node n_cg_wcl_lsp_workspace {
@@ -302,7 +302,7 @@ code_item code_crate_wcl_lsp {
   code_node n_cg_wcl_lsp_xc_wcl_lang {
     name = "wcl_lang (crate)"
     kind = "extern_crate"
-    summary = "uses DeclName, Document, SymbolKind, Span, +19 more"
+    summary = "uses DeclName, Document, SymbolKind, Span, +22 more"
   }
 }
 
@@ -2300,6 +2300,10 @@ code_item code_api_wcl_lang_builtins {
       signature = "fn decls_in_namespace<'r>(&'r self, _ns: &[String]) -> Vec<Data…"
       kind = "method"
     }
+    code_member m_n_api_wcl_lang_builtins_Caller_decorator_schemas_for_kind {
+      signature = "fn decorator_schemas_for_kind<'r>(&'r self, _kind: &str) -> Vec…"
+      kind = "method"
+    }
     code_member m_n_api_wcl_lang_builtins_Caller_builtin_info {
       signature = "fn builtin_info(&self, _name: &str) -> Option<BuiltinSignature>"
       kind = "method"
@@ -2689,7 +2693,7 @@ code_item code_api_doc_view {
       kind = "method"
     }
     code_member m_n_api_doc_view_Document_more {
-      signature = "… +79 more"
+      signature = "… +80 more"
       kind = "overflow"
     }
   }
@@ -5669,6 +5673,36 @@ code_item code_api_wcl_lsp_walk {
   name      = "Public surface — walk"
   summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_lsp::walk)."
   kind      = :module_api
+  code_node n_api_wcl_lsp_walk_DecoratorTarget {
+    name = "DecoratorTarget"
+    kind = "struct"
+    summary = "src/walk.rs"
+    code_member m_n_api_wcl_lsp_walk_DecoratorTarget_position {
+      signature = "position: &'static str"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_lsp_walk_DecoratorTarget_block_kind {
+      signature = "block_kind: Option<String>"
+      kind = "field"
+    }
+  }
+  code_node n_api_wcl_lsp_walk_walk_fns {
+    name = "walk"
+    kind = "fns"
+    summary = "src/walk.rs"
+    code_member m_n_api_wcl_lsp_walk_walk_fns_decorator_target_after {
+      signature = "fn decorator_target_after(items: &[Item], marker: usize) -> Opt…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wcl_lsp_walk_DecoratorTarget]
+    }
+    code_member m_n_api_wcl_lsp_walk_walk_fns_enclosing_scopes_at {
+      signature = "fn enclosing_scopes_at<'a>(items: &'a [Item], offset: usize) ->…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wcl_lsp_walk_EnclosingScopes]
+    }
+  }
   code_node n_api_wcl_lsp_walk_EnclosingScopes {
     name = "EnclosingScopes"
     kind = "struct"
@@ -5684,17 +5718,6 @@ code_item code_api_wcl_lsp_walk {
     code_member m_n_api_wcl_lsp_walk_EnclosingScopes_bindings {
       signature = "bindings: Vec<(&'a str, Span)>"
       kind = "field"
-    }
-  }
-  code_node n_api_wcl_lsp_walk_walk_fns {
-    name = "walk"
-    kind = "fns"
-    summary = "src/walk.rs"
-    code_member m_n_api_wcl_lsp_walk_walk_fns_enclosing_scopes_at {
-      signature = "fn enclosing_scopes_at<'a>(items: &'a [Item], offset: usize) ->…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wcl_lsp_walk_EnclosingScopes]
     }
   }
 }

@@ -97,6 +97,13 @@ pub trait Caller {
         Vec::new()
     }
 
+    /// Decorator-schema declarations applicable to the named block kind,
+    /// as resolvable navigators. Backs `decorators_for_kind`; defaults to
+    /// empty for hosts without a document-backed evaluator.
+    fn decorator_schemas_for_kind<'r>(&'r self, _kind: &str) -> Vec<DataRef<'r>> {
+        Vec::new()
+    }
+
     /// Structured documentation + signature of a built-in by `name`, for
     /// the `fn_signature` reflection builtin. `None` when no built-in of
     /// that name is registered. Defaults to `None` so hosts that don't

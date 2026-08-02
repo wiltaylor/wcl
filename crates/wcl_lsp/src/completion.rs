@@ -1,7 +1,7 @@
 //! `textDocument/completion` handler. The cursor's preceding byte
 //! decides which catalogue to propose:
 //!
-//!   - `@` → every decorator declared in the document environment
+//!   - `@` → decorators declared in the document, filtered to the target
 //!   - `:` (in type-ref position) → every declared type/union + builtin types
 //!   - `&` → same list as `:`
 //!   - anything else (manual invoke / identifier letter) → locals in the
@@ -59,7 +59,24 @@ pub(crate) fn completions(
         Some(b'@') => {
             let fallback_doc = (local_doc.is_none() && root_doc.is_none())
                 .then(|| Document::open("", uri).expect("empty completion document opens"));
-            decorator_items(local_doc.as_ref(), root_doc, fallback_doc.as_ref())
+            let mut context = decorator_context(source, uri, offset);
+            if let Some(target) = &context
+                && let Some(kind) = target.block_kind.as_deref()
+                && ![root_doc, local_doc.as_ref(), fallback_doc.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .any(|doc| doc.block_schema(kind).is_some())
+            {
+                // A syntactically visible but unknown kind is still an
+                // uncertain editing context: keep the complete catalogue.
+                context = None;
+            }
+            decorator_items(
+                local_doc.as_ref(),
+                root_doc,
+                fallback_doc.as_ref(),
+                context.as_ref(),
+            )
         }
         Some(b':') | Some(b'&') => type_items(local_doc.as_ref(), root_doc),
         _ => identifier_items(local_doc.as_ref(), root_doc, source, uri, offset),
@@ -70,11 +87,17 @@ fn decorator_items(
     local_doc: Option<&Document>,
     root_doc: Option<&Document>,
     fallback_doc: Option<&Document>,
+    context: Option<&walk::DecoratorTarget>,
 ) -> Vec<CompletionItem> {
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
     for doc in [root_doc, local_doc, fallback_doc].into_iter().flatten() {
         for (label, schema) in doc.declared_decorators() {
+            if let Some(target) = context
+                && !schema.decorator_applies_to(target.position, target.block_kind.as_deref())
+            {
+                continue;
+            }
             push_unique(
                 &mut out,
                 &mut seen,
@@ -85,6 +108,21 @@ fn decorator_items(
         }
     }
     out
+}
+
+/// Parse a copy of the buffer with the trigger `@` removed. This repairs the
+/// common mid-edit shape without inventing syntax. If repair or target
+/// discovery fails, callers deliberately return the unfiltered catalogue.
+fn decorator_context(source: &str, uri: &str, offset: usize) -> Option<walk::DecoratorTarget> {
+    let prefix = source.get(..offset)?;
+    let trigger = prefix.rfind('@')?;
+    if !source.get(trigger + 1..offset)?.trim().is_empty() {
+        return None;
+    }
+    let mut repaired = source.to_string();
+    repaired.remove(trigger);
+    let ast = parse_for_edit(&repaired, uri).ok()?;
+    walk::decorator_target_after(&ast.items, trigger)
 }
 
 fn type_items(local_doc: Option<&Document>, root_doc: Option<&Document>) -> Vec<CompletionItem> {
@@ -248,6 +286,142 @@ mod tests {
         let labs = labels(completions("@", "test.wcl", 1, Some(&root)));
 
         assert!(labs.iter().any(|l| l == "fresh"), "{labs:?}");
+    }
+
+    #[test]
+    fn at_prefix_filters_decorators_by_the_following_position() {
+        let root = Document::open(
+            r#"
+            @decorator("applies_to")
+            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
+            @decorator("type_only") @applies_to(on = [:type])
+            type TypeOnly {}
+            @decorator("block_only") @applies_to(on = [:block])
+            type BlockOnly {}
+            "#,
+            "root.wcl",
+        )
+        .expect("root document opens");
+        let src = "@\ntype Target {}\n";
+        let labs = labels(completions(src, "test.wcl", 1, Some(&root)));
+
+        assert!(labs.iter().any(|l| l == "type_only"), "{labs:?}");
+        assert!(!labs.iter().any(|l| l == "block_only"), "{labs:?}");
+    }
+
+    #[test]
+    fn at_prefix_filters_a_second_decorator_by_the_following_position() {
+        let root = Document::open(
+            r#"
+            @decorator("applies_to")
+            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
+            @decorator("type_only") @applies_to(on = [:type])
+            type TypeOnly {}
+            @decorator("block_only") @applies_to(on = [:block])
+            type BlockOnly {}
+            "#,
+            "root.wcl",
+        )
+        .expect("root document opens");
+        let src = "@type_only\n@\ntype Target {}\n";
+        let cursor = src.find("\n@\n").unwrap() + 2;
+        let labs = labels(completions(src, "test.wcl", cursor, Some(&root)));
+
+        assert!(labs.iter().any(|l| l == "type_only"), "{labs:?}");
+        assert!(!labs.iter().any(|l| l == "block_only"), "{labs:?}");
+    }
+
+    #[test]
+    fn an_inapplicable_root_decorator_does_not_shadow_a_legal_local_one() {
+        let root = Document::open(
+            r#"
+            @decorator("applies_to")
+            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
+            @decorator("shared") @applies_to(on = [:block])
+            type RootShared {}
+            "#,
+            "root.wcl",
+        )
+        .expect("root document opens");
+        let src = r#"
+            @decorator("shared") @applies_to(on = [:type])
+            type LocalShared {}
+            @
+            type Target {}
+        "#;
+        let cursor = src.rfind('@').unwrap() + 1;
+        let labs = labels(completions(src, "test.wcl", cursor, Some(&root)));
+
+        assert!(labs.iter().any(|l| l == "shared"), "{labs:?}");
+    }
+
+    #[test]
+    fn a_qualified_same_name_decorator_is_not_applicability_metadata() {
+        let root = Document::open(
+            r#"
+            @decorator("applies_to")
+            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
+            @decorator("qualified") @vendor.applies_to(on = [:block])
+            type Qualified {}
+            "#,
+            "root.wcl",
+        )
+        .expect("root document opens");
+        let labs = labels(completions(
+            "@\ntype Target {}\n",
+            "test.wcl",
+            1,
+            Some(&root),
+        ));
+
+        assert!(labs.iter().any(|l| l == "qualified"), "{labs:?}");
+    }
+
+    #[test]
+    fn at_prefix_filters_block_decorators_by_kind() {
+        let root = Document::open(
+            r#"
+            @decorator("applies_to")
+            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
+            @block("vm") type Vm {}
+            @block("network") type Network {}
+            @decorator("vm_only")
+            @applies_to(on = [:block], kinds = ["vm"])
+            type VmOnly {}
+            @decorator("network_only")
+            @applies_to(on = [:block], kinds = ["network"])
+            type NetworkOnly {}
+            "#,
+            "root.wcl",
+        )
+        .expect("root document opens");
+        let labs = labels(completions("@\nvm guest {}\n", "test.wcl", 1, Some(&root)));
+
+        assert!(labs.iter().any(|l| l == "vm_only"), "{labs:?}");
+        assert!(!labs.iter().any(|l| l == "network_only"), "{labs:?}");
+    }
+
+    #[test]
+    fn at_prefix_falls_back_to_the_full_list_for_uncertain_contexts() {
+        let root = Document::open(
+            r#"
+            @decorator("applies_to")
+            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
+            @decorator("type_only") @applies_to(on = [:type])
+            type TypeOnly {}
+            @decorator("block_only") @applies_to(on = [:block])
+            type BlockOnly {}
+            "#,
+            "root.wcl",
+        )
+        .expect("root document opens");
+
+        for src in ["@\n???", "@\nunknown_kind target {}\n"] {
+            let labs = labels(completions(src, "test.wcl", 1, Some(&root)));
+            assert!(labs.iter().any(|l| l == "type_only"), "{src:?}: {labs:?}");
+            assert!(labs.iter().any(|l| l == "block_only"), "{src:?}: {labs:?}");
+            assert!(!labs.is_empty(), "{src:?}: fallback must never be empty");
+        }
     }
 
     #[test]

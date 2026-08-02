@@ -773,9 +773,10 @@ impl<'a> Decorator<'a> {
     /// declaration index — so `@block("books")` resolves the `name`
     /// slot from positional[0] when no `name = ...` was written.
     ///
-    /// Returns `None` when the decorator has no registered schema, the
-    /// schema doesn't declare a slot of this name, or neither a named
-    /// arg nor a positional arg fills it.
+    /// If neither a named nor positional argument fills the slot, its
+    /// declared default is returned. Returns `None` when the decorator has
+    /// no registered schema, the schema doesn't declare the named slot, or
+    /// the slot is absent and has no default.
     pub fn resolved_arg_value(&self, slot_name: &str) -> Option<Result<Value, EvalError>> {
         let schema_name = self.ast.name.last()?;
         let schema = self.doc.decorator_schema(schema_name)?;
@@ -794,7 +795,11 @@ impl<'a> Decorator<'a> {
             Ok(v) => v,
             Err(e) => return Some(Err(e)),
         };
-        positional.into_iter().nth(slot_idx).map(Ok)
+        positional
+            .into_iter()
+            .nth(slot_idx)
+            .map(Ok)
+            .or_else(|| slot.default_value().map(Ok))
     }
 
     /// Dispatch the decorator's positional + named args into a
@@ -1117,6 +1122,67 @@ impl<'a> TypeDecl<'a> {
     /// type declaration, or `None`.
     pub fn doc_comment(&self) -> Option<String> {
         doc_comment_from_trivia(&self.ast.leading_trivia)
+    }
+
+    /// The external decorator name declared by this schema, or `None` for
+    /// an ordinary type declaration.
+    pub fn decorator_name(&self) -> Option<String> {
+        let dec = self
+            .decorators()
+            .find(|d| d.is(BuiltinDecorator::Decorator))?;
+        match dec.resolved_arg_value("name")? {
+            Ok(Value::Utf8(name) | Value::Ascii(name)) => Some(name),
+            _ => None,
+        }
+    }
+
+    /// Whether this decorator schema is legal at `position`. For block
+    /// positions, `block_kind` narrows an authored non-empty `kinds` list.
+    /// Missing or unreadable applicability metadata is treated as
+    /// unrestricted so editor tooling never hides a valid completion due
+    /// to a half-written schema.
+    pub fn decorator_applies_to(&self, position: &str, block_kind: Option<&str>) -> bool {
+        let Some(applies_to) = self.decorators().find(|d| d.full_name() == "applies_to") else {
+            return true;
+        };
+        let read_arg = |name: &str| {
+            applies_to
+                .resolved_arg_value(name)
+                .or_else(|| applies_to.named_arg(name))
+                .and_then(Result::ok)
+        };
+        let Some(Value::List(on)) = read_arg("on") else {
+            return true;
+        };
+        let position_allowed = on.iter().any(|value| {
+            matches!(
+                value,
+                Value::Symbol(name)
+                    | Value::Identifier(name)
+                    | Value::Utf8(name)
+                    | Value::Ascii(name)
+                    if name == position
+            )
+        });
+        if !position_allowed {
+            return false;
+        }
+        if position != "block" {
+            return true;
+        }
+        let Some(kind) = block_kind else {
+            return true;
+        };
+        let Some(Value::List(kinds)) = read_arg("kinds") else {
+            return true;
+        };
+        kinds.iter().any(|value| {
+            matches!(
+                value,
+                Value::Utf8(name) | Value::Ascii(name) | Value::Identifier(name)
+                    if name == kind
+            )
+        })
     }
 
     /// `true` when this type declaration carries `@schemaless` — its

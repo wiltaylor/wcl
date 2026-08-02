@@ -10,9 +10,119 @@
 
 use wcl_lang::Span;
 use wcl_lang::ast::{
-    Expr, Field, FunctionLit, Item, LetBinding, Parameter, Pattern, TemplatePart, VariantArgs,
-    VariantPatArgs,
+    Expr, Field, FunctionLit, Item, LetBinding, Parameter, Pattern, TemplatePart, TypeField,
+    UnionVariant, VariantArgs, VariantBody, VariantPatArgs,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DecoratorTarget {
+    pub position: &'static str,
+    pub block_kind: Option<String>,
+}
+
+/// Find the declaration/data node immediately following an `@` that was
+/// removed from an otherwise parseable buffer. When the marker sits inside
+/// a declaration or block body, the search stays inside that body rather
+/// than leaking past its closing brace to an unrelated later item.
+pub(crate) fn decorator_target_after(items: &[Item], marker: usize) -> Option<DecoratorTarget> {
+    target_in_items(items, marker)
+}
+
+fn target_in_items(items: &[Item], marker: usize) -> Option<DecoratorTarget> {
+    for item in items {
+        if !contains(item_span(item), marker) {
+            continue;
+        }
+        return match item {
+            Item::Block(block) => target_in_items(&block.items, marker),
+            Item::TypeDecl(decl) => target_in_type_fields(&decl.fields, marker),
+            Item::InterfaceDecl(decl) => target_in_type_fields(&decl.fields, marker),
+            Item::UnionDecl(decl) => target_in_union(&decl.variants, marker),
+            Item::SymbolSetDecl(decl) => decl
+                .symbols
+                .iter()
+                .filter(|symbol| target_anchor(symbol.span) >= marker)
+                .min_by_key(|symbol| target_anchor(symbol.span))
+                .map(|_| target("symbol", None)),
+            _ => None,
+        };
+    }
+
+    items
+        .iter()
+        .filter_map(item_target)
+        .filter(|(anchor, _)| *anchor >= marker)
+        .min_by_key(|(anchor, _)| *anchor)
+        .map(|(_, target)| target)
+}
+
+fn target_in_type_fields(fields: &[TypeField], marker: usize) -> Option<DecoratorTarget> {
+    fields
+        .iter()
+        .filter(|field| target_anchor(field.span) >= marker)
+        .min_by_key(|field| target_anchor(field.span))
+        .map(|_| target("type_field", None))
+}
+
+fn target_in_union(variants: &[UnionVariant], marker: usize) -> Option<DecoratorTarget> {
+    for variant in variants {
+        if contains(variant.span, marker) {
+            return match &variant.body {
+                VariantBody::Record { fields, .. } => target_in_type_fields(fields, marker),
+                _ => None,
+            };
+        }
+    }
+    variants
+        .iter()
+        .filter(|variant| target_anchor(variant.span) >= marker)
+        .min_by_key(|variant| target_anchor(variant.span))
+        .map(|_| target("variant", None))
+}
+
+fn item_target(item: &Item) -> Option<(usize, DecoratorTarget)> {
+    let (span, position, block_kind) = match item {
+        Item::Field(node) => (node.span, "field", None),
+        Item::Let(node) if node.fn_syntax => (node.span, "fn", None),
+        Item::Block(node) => (node.span, "block", Some(node.kind.clone())),
+        Item::TypeDecl(node) => (node.span, "type", None),
+        Item::InterfaceDecl(node) => (node.span, "interface", None),
+        Item::UnionDecl(node) => (node.span, "union", None),
+        Item::SymbolSetDecl(node) => (node.span, "symbol_set", None),
+        Item::ConnectionDecl(node) => (node.span, "connection", None),
+        _ => return None,
+    };
+    Some((target_anchor(span), target(position, block_kind)))
+}
+
+fn target(position: &'static str, block_kind: Option<String>) -> DecoratorTarget {
+    DecoratorTarget {
+        position,
+        block_kind,
+    }
+}
+
+fn target_anchor(span: Span) -> usize {
+    span.start
+}
+
+fn item_span(item: &Item) -> Span {
+    match item {
+        Item::Field(node) => node.span,
+        Item::Let(node) => node.span,
+        Item::Block(node) => node.span,
+        Item::TypeDecl(node) => node.span,
+        Item::InterfaceDecl(node) => node.span,
+        Item::UnionDecl(node) => node.span,
+        Item::NamespaceDecl(node) => node.span,
+        Item::UseDecl(node) => node.span,
+        Item::SymbolSetDecl(node) => node.span,
+        Item::Import(node) => node.span,
+        Item::Table(node) => node.span,
+        Item::ConnectionDecl(node) => node.span,
+        Item::Connection(node) => node.span,
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct EnclosingScopes<'a> {
