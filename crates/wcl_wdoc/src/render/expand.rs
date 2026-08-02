@@ -52,7 +52,7 @@ pub(crate) fn block_tree_any<F: Fn(&Block<'_>) -> bool>(block: &Block<'_>, pred:
 /// counts as a generator.
 ///
 /// `wdoc_content` is deliberately absent: it is a placement marker, so it
-/// is `@contextual` (it may appear wherever a `WdocBlock` may) but the
+/// is `@contextual` (it may appear wherever a `ContentBlock` may) but the
 /// renderer — not an expansion — fills it with the instance's own
 /// children, and it must survive the flatten as itself.
 fn generated_children<'a>(block: &Block<'a>) -> Option<Vec<Block<'a>>> {
@@ -374,7 +374,7 @@ pub(crate) fn walk_structural<'a, E>(
         }
         // A `body` is content attached to a data record, reached only via
         // `project`; it never renders at its own definition site. (It isn't a
-        // `WdocBlock`, so it normally can't appear as page content at all —
+        // `ContentBlock`, so it normally can't appear as page content at all —
         // this arm keeps it inert if it ever does.)
         "body" => Some(Ok(())),
         "project" => {

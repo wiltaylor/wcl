@@ -21,7 +21,6 @@ use wcl_lang::{Block, Document, Value};
 
 use crate::build::BuildError;
 use crate::inline::InlinePatterns;
-use crate::kinds;
 use crate::render::{
     Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_repeater_children, field_symbol,
     field_utf8, fill_content_slot, gather_inline_text, instance_target_def, label_string,
@@ -152,10 +151,10 @@ impl Emitter<'_> {
             // in the `wcl editor` preview's edit mode, which is an HTML build.
             // Markdown renders nothing for it — stated here rather than left to
             // fall through, so the kind is honestly covered on this target.
-            kinds::EDIT_OBJECT => {}
+            "edit_object" => {}
             // A presentation fragment is a step-reveal wrapper — its children
             // render in place in static output.
-            kinds::FRAGMENT => {
+            "fragment" => {
                 for c in block.blocks() {
                     self.block(&c, out)?;
                 }
@@ -165,38 +164,38 @@ impl Emitter<'_> {
             // children render stacked in place — the same degradation `region`
             // and `fragment` take, and the reason `column` is native here at
             // all (until this arm existed it silently dropped its children).
-            kinds::COLUMN => {
+            "column" => {
                 for c in block.blocks() {
                     self.block(&c, out)?;
                 }
             }
             // An `edit_field` binds its children to a data-object field for
             // the editor's Design mode — a transparent wrapper here.
-            kinds::EDIT_FIELD => {
+            "edit_field" => {
                 for c in block.blocks() {
                     self.block(&c, out)?;
                 }
             }
             // Diagrams (and the charts / timelines / maps / tilemaps nested in
             // them) render to one self-contained static SVG.
-            kinds::DIAGRAM => {
+            "diagram" => {
                 let svg = render_diagram_static(self.doc, block, self.patterns, self.base_dir);
                 let rel = self.write_svg("diagram", &svg)?;
                 out.push(image_ref(&self.svg_alt(block, "diagram"), &rel));
             }
-            kinds::TERMINAL => {
+            "terminal" => {
                 let svg = crate::terminal::render_terminal_pdf(self.doc, block, self.base_dir);
                 let rel = self.write_svg("terminal", &svg)?;
                 out.push(image_ref(&self.svg_alt(block, "terminal"), &rel));
             }
-            kinds::LIST => out.push(self.list(block)),
-            kinds::TABLE => out.push(self.table(block)),
-            kinds::IMAGE => {
+            "list" => out.push(self.list(block)),
+            "table" => out.push(self.table(block)),
+            "image" => {
                 if let Some(s) = self.image(block) {
                     out.push(s);
                 }
             }
-            kinds::FILE => {
+            "file" => {
                 if let Some(s) = self.file(block) {
                     out.push(s);
                 }
@@ -204,7 +203,7 @@ impl Emitter<'_> {
             // A `demo` degrades to its example source (a fenced `wcl` block)
             // plus one static render of the children — Markdown has no theming,
             // so the dual light/dark preview collapses to a single pass.
-            kinds::DEMO => {
+            "demo" => {
                 let src = crate::demo::demo_source(block);
                 if !src.is_empty() {
                     out.push(format!("```wcl\n{src}\n```"));
@@ -215,7 +214,7 @@ impl Emitter<'_> {
             }
             // A repeater stamps its body once per element of `each`; expand to
             // the bound child blocks and walk them.
-            kinds::REPEATER => {
+            "wdoc_repeater" => {
                 if block.binding_scope_depth() <= MAX_LOWER_DEPTH {
                     for c in expand_repeater_children(block) {
                         self.block(&c, out)?;
@@ -224,14 +223,14 @@ impl Emitter<'_> {
             }
             // A `wdoc_instance` renders the component named by its `component`
             // value (render-by-reference); resolve the target and expand it.
-            kinds::INSTANCE => {
+            "wdoc_instance" => {
                 if block.binding_scope_depth() <= MAX_LOWER_DEPTH
                     && let Some(def) = instance_target_def(block)
                 {
                     walk_component(block, &def, &mut |child| self.block(child, out))?;
                 }
             }
-            kinds::CONTENT => fill_content_slot(block, &mut |child| self.block(child, out))?,
+            "wdoc_content" => fill_content_slot(block, &mut |child| self.block(child, out))?,
             kind => {
                 // A user-defined `wdoc_component` instance: expand its
                 // declarative body with the instance's slots bound.
@@ -413,7 +412,7 @@ impl Emitter<'_> {
                 self.li_group(&li, ordered, depth + 1, lines);
             }
             // Explicit nested `list` blocks with their own style.
-            for sub in li.blocks().filter(|b| b.kind() == kinds::LIST) {
+            for sub in li.blocks().filter(|b| b.kind() == "list") {
                 let sub_ordered = field_symbol(&sub, "style").as_deref() == Some("numbered");
                 self.li_group(&sub, sub_ordered, depth + 1, lines);
             }

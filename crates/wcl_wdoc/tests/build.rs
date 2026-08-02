@@ -239,6 +239,70 @@ page index {
 }
 
 #[test]
+fn output_interfaces_lower_to_the_ir_accepted_by_their_placement_slot() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("output_interfaces.wcl");
+    write_fixture(
+        &src,
+        r##"
+@block("content_probe")
+type ContentProbe extends ContentBlock {
+  lower = fn(p: ContentProbe) -> list<Content> [
+    Content::Paragraph { text: "content-ir" }
+  ]
+}
+
+@block("svg_probe")
+type SvgProbe extends SvgBlock {
+  lower = fn(p: SvgProbe) -> list<Svg> [
+    Svg::Rect { x: 2.0, y: 3.0, width: 12.0, height: 8.0, fill: "#abc" }
+  ]
+}
+
+@block("term_probe")
+type TermProbe extends TermPrimitive {
+  row: i64
+  col: i64
+  lower = fn(p: TermProbe) -> list<TermFundamental> [
+    TermFundamental::Text { content: "★", row: 1, col: 1 }
+  ]
+}
+
+page index {
+  content_probe
+  diagram {
+    width = 40
+    height = 30
+    svg_probe
+  }
+  terminal {
+    cols = 20
+    rows = 3
+    chrome = false
+    term_probe { row = 1 col = 1 }
+  }
+}
+"##,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("content-ir"),
+        "content lowering missing:\n{html}"
+    );
+    assert!(
+        html.contains("fill=\"#abc\""),
+        "SVG lowering missing:\n{html}"
+    );
+    assert!(
+        html.contains(">★</text>"),
+        "terminal lowering missing:\n{html}"
+    );
+}
+
+#[test]
 fn class_accent_field_themes_a_custom_callout() {
     // A `class`'s `accent` field emits the `--callout-accent` custom
     // property, so a custom callout type is themed from WCL — no
@@ -1050,7 +1114,7 @@ wdoc_repeater { each = items  as = :c
 #[test]
 fn build_projects_body_fragment_attached_to_a_data_record() {
     // A `body` rides on a plain data record (`server`) as a property — the
-    // record is NOT a WdocBlock. A `wdoc_repeater` over those records renders
+    // record is NOT a ContentBlock. A `wdoc_repeater` over those records renders
     // each one's body via `project s.overview`: the `@by_ref` body reifies to
     // a reference, so each iteration projects that server's own fragment, and
     // the body's `${region}` resolves against its host record.
@@ -2257,7 +2321,7 @@ page index {
 
 #[test]
 fn build_preserves_source_order_across_mixed_children() {
-    // With the single `@children(WdocBlock)` slot on `Page`, mixed-kind
+    // With the single `@children(ContentBlock)` slot on `Page`, mixed-kind
     // children must come out in source order (not bucketed by kind).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("order.wcl");
@@ -4845,7 +4909,7 @@ page index {
 
 #[test]
 fn custom_block_lowers_to_table_fundamental() {
-    // A custom WdocBlock whose `lower` returns an
+    // A custom ContentBlock whose `lower` returns an
     // Html::Table renders through render_table_payload.
     // `header` is the heading row; `rows` are the body. Cells on this
     // path are plain escaped text.
@@ -4855,7 +4919,7 @@ fn custom_block_lowers_to_table_fundamental() {
         &src,
         r##"
 @block("datatable")
-type DataTable extends WdocBlock {
+type DataTable extends ContentBlock {
   id: identifier?
   lower = fn(d: DataTable) -> list<Html> [
     Html::Table {
@@ -5089,7 +5153,7 @@ fn metadata_only_template_does_not_force_page_lowering() {
         &src,
         r#"
 @block("boom")
-type Boom extends WdocBlock {
+type Boom extends ContentBlock {
   lower = fn(b: Boom) -> list<Html> [ raw(no_such_helper(b)) ]
 }
 
@@ -5506,7 +5570,7 @@ fn omitted_optional_variant_field_matches_an_explicit_none() {
         format!(
             r##"
 @block("probe")
-type Probe extends WdocBlock {{
+type Probe extends ContentBlock {{
   lower = fn(p: Probe) -> list<Html> [ {el} ]
 }}
 site {{ title = "T" }}
@@ -5554,7 +5618,7 @@ fn class_and_attrs_drop_none_entries() {
         &src,
         r##"
 @block("probe")
-type Probe extends WdocBlock {
+type Probe extends ContentBlock {
   on: bool
   lower = fn(p: Probe) -> list<Html> [
     Html::Element {
@@ -7102,7 +7166,7 @@ fn terminal_tui_widgets_lower_nest_and_extend() {
     // function, which the renderer recursively draws into the grid.
     // This exercises a leaf widget (progress), a container that nests a
     // control (panel → checkbox), and a *user-defined* widget extending
-    // the `TuiWidget` base. The progress bar's filled width is exact
+    // the `TermPrimitive` base. The progress bar's filled width is exact
     // integer math (62% of 24 = 14 cells) painted in the accent colour.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("t.wcl");
@@ -7110,7 +7174,7 @@ fn terminal_tui_widgets_lower_nest_and_extend() {
         &src,
         r##"
 @block("my_badge")
-type MyBadge extends TuiWidget {
+type MyBadge extends TermPrimitive {
   @inline(0) text: utf8
   row: i64  col: i64
   lower = fn(b: MyBadge) -> list<TermFundamental> [
@@ -11163,7 +11227,7 @@ fn root_redeclaration_of_rust_dispatched_kind_is_a_schema_error() {
         &src,
         r##"
 @block("diagram")
-type MyDiagram extends WdocBlock {
+type MyDiagram extends ContentBlock {
   msg: utf8
   lower = fn(d: MyDiagram) -> list<Html> []
 }
@@ -11407,7 +11471,7 @@ fn lower_body_eval_error_fails_the_html_build() {
         &src,
         r##"
 @block("boom")
-type Boom extends WdocBlock {
+type Boom extends ContentBlock {
   id: identifier?
   lower = fn(b: Boom) -> list<Html> [
     raw(no_such_helper(b))
@@ -12423,7 +12487,7 @@ fn build_index(src: &str) -> String {
 fn a_user_block_lowering_to_the_content_ir_renders_in_html() {
     let html = build_index(
         "@block(\"gadget\")\n\
-         type Gadget extends WdocBlock {\n  \
+         type Gadget extends ContentBlock {\n  \
            @inline(0) name: utf8\n  id: identifier?\n  \
            lower = fn(g: Gadget) -> list<Content> [\n    \
              Content::Heading { level: 3, text: g.name },\n    \
@@ -12448,7 +12512,7 @@ fn a_user_block_lowering_to_the_content_ir_renders_in_html() {
 fn a_custom_content_video_gets_the_html_player() {
     let src = r#"
 @block("clip")
-type Clip extends WdocBlock {
+type Clip extends ContentBlock {
   id: identifier?
   lower = fn(c: Clip) -> list<Content> [
     Content::Video {
@@ -12479,7 +12543,7 @@ fn a_content_drawing_renders_its_shapes_as_svg() {
     // closed IR's answer to a bespoke page-level drawing.
     let html = build_index(
         "@block(\"badge\")\n\
-         type Badge extends WdocBlock {\n  \
+         type Badge extends ContentBlock {\n  \
            id: identifier?\n  \
            lower = fn(b: Badge) -> list<Content> [\n    \
              Content::Drawing {\n      \
@@ -12503,7 +12567,7 @@ fn a_malformed_content_node_fails_the_html_build() {
     write_fixture(
         &file,
         "@block(\"broken\")\n\
-         type Broken extends WdocBlock {\n  \
+         type Broken extends ContentBlock {\n  \
            id: identifier?\n  \
            lower = fn(b: Broken) -> list<Content> [Content::Heading { level: 900 }]\n\
          }\n\

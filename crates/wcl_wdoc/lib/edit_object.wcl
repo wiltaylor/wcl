@@ -24,7 +24,7 @@ namespace wdoc
 
 @block("edit_object")
 @native
-type EditObject extends WdocBlock {
+type EditObject extends ContentBlock {
   @doc("The schema object kind to edit, e.g. \"concept\".")
   kind: utf8
   @doc("Instance id/label to open (matched against the object's inline label). May be omitted only when the kind has exactly one instance.")

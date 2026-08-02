@@ -1,6 +1,6 @@
 // ── Stdlib state diagrams ──────────────────────────────────────────
 //
-// `state_diagram` is a page-level block (`extends WdocBlock`) whose
+// `state_diagram` is a page-level block (`extends ContentBlock`) whose
 // lowering returns a `Content::Drawing`. States auto-layout by
 // longest-path rank from the diagram's transition graph (back-edges and
 // self-loops route around), so an entity lifecycle is authored coordinate-free;
@@ -377,7 +377,7 @@ type Transition {
 }
 
 @block("state_diagram")
-type StateDiagram extends WdocBlock {
+type StateDiagram extends ContentBlock {
   @doc("Rendered width in pixels; the height follows the content.")
   width = 640.0
   @doc("Flow direction: `:top_to_bottom` (default) / `:left_to_right`.")

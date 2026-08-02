@@ -27,7 +27,7 @@ namespace wdoc
 
 @block("edit_field")
 @native
-type EditField extends WdocBlock {
+type EditField extends ContentBlock {
   @doc("The schema object kind that owns the field, e.g. \"concept\".")
   kind: utf8
   @doc("Instance id/label (matched against the object's inline label). May be omitted only when the kind has exactly one instance.")
@@ -36,5 +36,5 @@ type EditField extends WdocBlock {
   field: utf8
   @doc("The field is plain text — the editor suppresses its formatting toolbar.")
   plain: bool?
-  @children(WdocBlock) children: list<WdocBlock>
+  @children(ContentBlock) children: list<ContentBlock>
 }

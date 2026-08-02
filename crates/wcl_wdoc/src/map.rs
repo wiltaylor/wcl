@@ -9,7 +9,7 @@
 //! - tile / image copying → the threaded [`ImageRegistry`] (every tile is
 //!   just an image; `register()` returns a `_wdoc/…` URL + records it);
 //! - pins → the icon `<use>` sprite system ([`IconRegistry::resolve_shape`]);
-//! - card content → `render_block` over the pin's `@children(WdocBlock)`,
+//! - card content → `render_block` over the pin's `@children(ContentBlock)`,
 //!   pushed into the diagram's overlay sink so it lands as absolutely
 //!   positioned HTML *outside* the `<svg>` (inside the viewport wrapper).
 //!
@@ -213,7 +213,7 @@ fn render_pin(pin: &Block<'_>, ctx: RenderCtx<'_>, ox: f64, oy: f64) -> String {
 }
 
 /// Render a pin's card to a hidden `wdoc-map-card` `<div>` (its content is
-/// the pin's child `WdocBlock`s, rendered through the normal page path).
+/// the pin's child `ContentBlock`s, rendered through the normal page path).
 /// `None` when the pin has neither a `title` nor any content.
 fn render_pin_card(pin: &Block<'_>, ctx: RenderCtx<'_>) -> Option<String> {
     let id = label_string(pin)?;

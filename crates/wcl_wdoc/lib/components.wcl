@@ -81,14 +81,14 @@ type WdocSlot {
 // so context-free validation would reject valid bodies.
 @block("wdoc_body") @schemaless
 type WdocBody {
-  @children(WdocBlock) children: list<WdocBlock>
+  @children(ContentBlock) children: list<ContentBlock>
 }
 
 // Marks where a component instance's own nested blocks render — a layout
-// "content slot". Legal wherever a `WdocBlock` is, and `@native`.
+// "content slot". Legal wherever a `ContentBlock` is, and `@native`.
 @block("wdoc_content") @contextual
 @native
-type WdocContent extends WdocBlock {
+type WdocContent extends ContentBlock {
 }
 
 // Repeats its body once per element of `each`, binding the element to the
@@ -96,7 +96,7 @@ type WdocContent extends WdocBlock {
 // read dynamically, so the validator does not type-check its elements.
 //
 // A repeater is the single iteration concept at every level of a document:
-//   • inside a page (or a `diagram` / `container`) its body is `WdocBlock`s
+//   • inside a page (or a `diagram` / `container`) its body is `ContentBlock`s
 //     (resp. `SvgBlock`s) — repeated content / shapes;
 //   • at the document root its body is `page` blocks — one rendered page per
 //     element (the page's interpolated label becomes the route);
@@ -112,12 +112,12 @@ type WdocContent extends WdocBlock {
 // validated once expanded rather than in place.
 @block("wdoc_repeater") @contextual
 @native
-type WdocRepeater extends WdocBlock {
+type WdocRepeater extends ContentBlock {
   // `@schemaless`: the `each` elements are read dynamically at render
   // time — `list<WdocItem>` only names the list shape.
   @schemaless each: list<WdocItem>
   as: symbol
-  @children(WdocBlock)    children: list<WdocBlock>
+  @children(ContentBlock)    children: list<ContentBlock>
   @children("page")       pages:    list<Page>
   @children("chapter")    chapters: list<Chapter>
   @children("class")      classes:  list<Class>
@@ -141,11 +141,11 @@ type WdocItem {}
 // each slot's `default`). `@schemaless`, so the forwarded slot fields need
 // no static schema; `@native`. Context-polymorphic like `wdoc_repeater`
 // — legal wherever a
-// `WdocBlock` / `SvgBlock` is, expanding to whatever its component body
+// `ContentBlock` / `SvgBlock` is, expanding to whatever its component body
 // contains.
 @block("wdoc_instance") @schemaless @contextual
 @native
-type WdocInstance extends WdocBlock {
+type WdocInstance extends ContentBlock {
   component: utf8
 }
 
@@ -169,14 +169,14 @@ type WdocInstance extends WdocBlock {
 // `show_here = true`, which also renders the body at its source.
 @block("partial")
 @native
-type WdocPartial extends WdocBlock {
+type WdocPartial extends ContentBlock {
   @inline(0) tag: symbol
   show_here: bool?
-  @children(WdocBlock) children: list<WdocBlock>
+  @children(ContentBlock) children: list<ContentBlock>
 }
 
 @block("collect")
 @native
-type WdocCollect extends WdocBlock {
+type WdocCollect extends ContentBlock {
   @inline(0) tag: symbol
 }

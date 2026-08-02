@@ -1771,8 +1771,8 @@ impl Document {
     /// Resolve `path` as if it were written in a source whose namespace
     /// is `file_ns`. This makes a bare reference resolve **within its
     /// declaring file's namespace first** — e.g. a stdlib type's
-    /// `extends WdocBlock` (written in `namespace wdoc`) resolves to
-    /// `wdoc.WdocBlock`, not the root namespace. The document's
+    /// `extends ContentBlock` (written in `namespace wdoc`) resolves to
+    /// `wdoc.ContentBlock`, not the root namespace. The document's
     /// `use`-aliases/wildcards still apply (they only come from the root
     /// today).
     pub(crate) fn resolve_path_in(

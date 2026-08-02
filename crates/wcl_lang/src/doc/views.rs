@@ -547,8 +547,8 @@ fn resolve_child_kind_arg<'a>(
         Value::Identifier(name) => {
             // Resolve the referenced union/interface relative to the
             // declaring field's namespace (then aliases/absolute), so a
-            // stdlib `@children(WdocBlock)` under `namespace wdoc` finds
-            // `wdoc.WdocBlock`.
+            // stdlib `@children(ContentBlock)` under `namespace wdoc` finds
+            // `wdoc.ContentBlock`.
             let resolved = doc.resolve_path_in(std::slice::from_ref(name), file_ns);
             let key = resolved
                 .map(|p| p.join("."))

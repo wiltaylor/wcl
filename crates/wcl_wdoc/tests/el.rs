@@ -20,7 +20,7 @@ use wcl_wdoc::{BuildError, build};
 const DOC: &str = r#"import <wdoc.wcl>
 
 @block("el_form")
-type ElForm extends WdocBlock {
+type ElForm extends ContentBlock {
   id: identifier?
   lower = fn(b: ElForm) -> list<Html> [
     eli("div", b.id, ["wrap", "outer"], [
@@ -35,7 +35,7 @@ type ElForm extends WdocBlock {
 }
 
 @block("long_form")
-type LongForm extends WdocBlock {
+type LongForm extends ContentBlock {
   id: identifier?
   lower = fn(b: LongForm) -> list<Html> [
     Html::Element {

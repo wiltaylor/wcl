@@ -25,7 +25,7 @@
 namespace wdoc
 
 @block("math")
-type Math extends WdocBlock {
+type Math extends ContentBlock {
   @doc("The LaTeX source — the inline label slot. `math \"E=mc^2\"` or a raw heredoc `math <<'TEX' … TEX`.")
   @inline(0) source: utf8
   @doc("Optional explicit HTML id.")

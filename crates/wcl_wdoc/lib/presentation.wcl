@@ -77,10 +77,10 @@ type DeckSection {
 // `list`), so it is `@native`.
 @block("fragment")
 @native
-type Fragment extends WdocBlock {
+type Fragment extends ContentBlock {
   id:    identifier?
   class: list<utf8>?
-  @children(WdocBlock) body: list<WdocBlock>
+  @children(ContentBlock) body: list<ContentBlock>
 }
 
 // Speaker notes for a slide: hidden in the deck, shown in the notes
@@ -90,9 +90,9 @@ type Fragment extends WdocBlock {
 // `@native`.
 @block("notes")
 @native
-type Notes extends WdocBlock {
+type Notes extends ContentBlock {
   id:    identifier?
-  @children(WdocBlock) body: list<WdocBlock>
+  @children(ContentBlock) body: list<ContentBlock>
 }
 
 // ── The `presentation` template ─────────────────────────────────────

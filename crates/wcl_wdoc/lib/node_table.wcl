@@ -64,7 +64,7 @@ type NodeRow extends SvgBlock {
   @doc("Sides this row exposes a connection point + marker on (default `[:west, :east]`).")
   connect_points: list<AnchorSide>?
   @doc("The row's rich content (paragraphs, code, lists…).")
-  @children(WdocBlock) body: list<WdocBlock>
+  @children(ContentBlock) body: list<ContentBlock>
 
   // A row's HTML body is rendered by its parent `node_table` in Rust: the
   // row is part of the table's native subtree, not a shape of its own.

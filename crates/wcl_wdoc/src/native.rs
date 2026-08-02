@@ -38,7 +38,6 @@ use miette::Report;
 use wcl_lang::{Block, DeclName, Document, EvalError, TypeDecl, Value};
 
 use crate::inline::{Backend, InlinePatterns};
-use crate::kinds;
 use crate::render::record_lower_error;
 
 use Backend::{Html, Markdown, Pdf, Skill};
@@ -63,22 +62,19 @@ const fn every(kind: &'static str) -> NativeKind {
 
 /// The Rust dispatch registry: which kinds each backend renders itself.
 ///
-/// Page-level entries correspond to an arm in `render/html.rs`
+/// Content entries correspond to an arm in `render/html.rs`
 /// (`render_block`), `pdf/collect.rs` (`collect_block`) and
 /// `markdown/emit.rs` (`Emitter::block`) — the Markdown emitter also drives
 /// the skill target, so those two agree by construction. Diagram entries
 /// correspond to an arm in `render/svg/shapes.rs` (`render_shape`), which
 /// every backend reaches: HTML and Markdown embed the rendered SVG, and the
-/// PDF backend paints it.
+/// PDF backend paints it. Terminal primitives are read by the terminal
+/// renderer embedded by each backend.
 ///
 /// `@native` declarations are checked against this table in both
 /// directions, so an entry added here without its declaration (or the
 /// reverse) fails the build rather than becoming the next stub `lower`.
 ///
-/// Kinds that already have a [`crate::kinds`] constant are named through it,
-/// so renaming one stays a compiler-checked change across the dispatch arms
-/// and this table together. The diagram shapes have no constants — each is a
-/// literal at its one site in `render_shape` — so they are literals here too.
 const NATIVE_DISPATCH: &[NativeKind] = &[
     // ── Page-level blocks ──────────────────────────────────────────
     // Structural wrappers handled by the shared `walk_structural`.
@@ -87,28 +83,28 @@ const NATIVE_DISPATCH: &[NativeKind] = &[
     every("collect"),
     every("project"),
     // Transparent / layout wrappers with a per-backend arm.
-    every(kinds::FRAGMENT),
-    every(kinds::EDIT_FIELD),
+    every("fragment"),
+    every("edit_field"),
     // An editor affordance: it renders a button only in the `wcl editor`
     // preview's edit mode, and deliberately nothing anywhere else. Every
     // backend states that in its own dispatch, so the block is covered
     // everywhere and never has to be waived out of a published build.
-    every(kinds::EDIT_OBJECT),
-    every(kinds::TABLE),
-    every(kinds::LIST),
-    every(kinds::IMAGE),
-    every(kinds::TERMINAL),
-    every(kinds::DEMO),
-    every(kinds::DIAGRAM),
-    every(kinds::REPEATER),
-    every(kinds::INSTANCE),
-    every(kinds::CONTENT),
+    every("edit_object"),
+    every("table"),
+    every("list"),
+    every("image"),
+    every("terminal"),
+    every("demo"),
+    every("diagram"),
+    every("wdoc_repeater"),
+    every("wdoc_instance"),
+    every("wdoc_content"),
     // Side-by-side layout is a CSS grid, so only HTML reproduces it — but
     // the content is not the layout, and the static targets stack the
     // children in place rather than dropping them (the degradation `region`
     // and `fragment` already took). Covered everywhere, because every
     // backend now says what it does with one.
-    every(kinds::COLUMN),
+    every("column"),
     // Previews a page's generated Markdown by tapping the Markdown
     // emitter from inside the HTML build. Book-only by construction.
     NativeKind {
@@ -120,7 +116,7 @@ const NATIVE_DISPATCH: &[NativeKind] = &[
     // link to a file that was never shipped is worse than no link, so the
     // PDF target does not cover `file`. See `lib/file.wcl`.
     NativeKind {
-        kind: kinds::FILE,
+        kind: "file",
         backends: &[Html, Markdown, Skill],
     },
     // ── Diagram shapes (render/svg/shapes.rs) ──────────────────────
@@ -166,6 +162,8 @@ const NATIVE_DISPATCH: &[NativeKind] = &[
     every("wf_row"),
     every("wf_grid"),
     every("wf_node_graph"),
+    // ── Terminal primitives (crate::terminal) ─────────────────────
+    every("term_text"),
 ];
 
 /// The registry entry for `kind`, or `None` when the kind is not natively
@@ -298,11 +296,13 @@ pub(crate) fn native_errors(doc: &Document) -> Vec<Report> {
     for decl in doc.type_decls() {
         let native = decl.decorators().find(|d| d.full_name() == "native");
         // Only a type in the lowering contract — one that inherits `lower`
-        // from `WdocBlock` / `SvgBlock` (transitively, so `Widget` counts)
+        // from an output interface (transitively, so `Widget` counts)
         // — has a rendering to declare. Structural block types (`page`,
         // `frontmatter`, `li`) render as part of their parent and have
         // neither.
-        let lowerable = decl.effective_field("lower").is_some();
+        let lowerable = ["wdoc.ContentBlock", "wdoc.SvgBlock", "wdoc.TermPrimitive"]
+            .iter()
+            .any(|interface| decl.is_descendant_of(interface));
         let own_lower = decl.fields().any(|f| f.name() == "lower");
         let kind = block_kind(&decl);
 
@@ -343,7 +343,8 @@ pub(crate) fn native_errors(doc: &Document) -> Vec<Report> {
                 &decl,
                 format!(
                     "type '{}' carries `@native` but is not a renderable block — only a type \
-                     extending `WdocBlock` or `SvgBlock` has a rendering to declare",
+                     extending `ContentBlock`, `SvgBlock`, or `TermPrimitive` has a \
+                     rendering to declare",
                     decl.name()
                 ),
             ));
@@ -539,7 +540,7 @@ mod tests {
     #[test]
     fn a_block_with_neither_lowering_nor_native_is_refused() {
         let errs = messages(&open_wdoc(
-            "@block(\"mine\")\ntype Mine extends wdoc.WdocBlock { }\n",
+            "@block(\"mine\")\ntype Mine extends wdoc.ContentBlock { }\n",
         ));
         assert_eq!(errs.len(), 1, "{errs:#?}");
         assert!(
@@ -549,9 +550,19 @@ mod tests {
     }
 
     #[test]
+    fn an_unrelated_interface_with_a_lower_field_is_not_a_block_contract() {
+        let errs = messages(&open_wdoc(
+            "interface HelperContract {\n  \
+             lower: fn(&HelperContract) -> list<wdoc.Content>?\n}\n\
+             type Helper extends HelperContract { }\n",
+        ));
+        assert!(errs.is_empty(), "{errs:#?}");
+    }
+
+    #[test]
     fn a_block_with_both_is_refused() {
         let errs = messages(&open_wdoc(
-            "@block(\"mine\") @native\ntype Mine extends wdoc.WdocBlock {\n  \
+            "@block(\"mine\") @native\ntype Mine extends wdoc.ContentBlock {\n  \
              lower = fn(m: Mine) -> list<wdoc.Html> []\n}\n",
         ));
         assert!(
@@ -564,7 +575,7 @@ mod tests {
     #[test]
     fn native_on_a_kind_no_backend_implements_is_refused() {
         let errs = messages(&open_wdoc(
-            "@block(\"mine\") @native\ntype Mine extends wdoc.WdocBlock { }\n",
+            "@block(\"mine\") @native\ntype Mine extends wdoc.ContentBlock { }\n",
         ));
         assert_eq!(errs.len(), 1, "{errs:#?}");
         assert!(errs[0].contains("implements no dispatch"), "{errs:#?}");
@@ -581,7 +592,7 @@ mod tests {
     fn an_unknown_backend_symbol_is_refused() {
         let errs = messages(&open_wdoc(
             "@block(\"mine\") @native(backends = [:paper])\n\
-             type Mine extends wdoc.WdocBlock { }\n",
+             type Mine extends wdoc.ContentBlock { }\n",
         ));
         assert_eq!(errs.len(), 1, "{errs:#?}");
         assert!(errs[0].contains("unknown backend `:paper`"), "{errs:#?}");
@@ -596,7 +607,7 @@ mod tests {
         // target that renders something nobody declared).
         let errs = messages(&open_wdoc_ns(
             "@block(\"file\") @native(backends = [:pdf])\n\
-             type MyFile extends WdocBlock { }\n",
+             type MyFile extends ContentBlock { }\n",
         ));
         assert!(
             errs.iter()

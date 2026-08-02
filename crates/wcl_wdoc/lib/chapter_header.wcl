@@ -17,7 +17,7 @@
 namespace wdoc
 
 @block("chapter_header")
-type ChapterHeader extends WdocBlock {
+type ChapterHeader extends ContentBlock {
   @doc("The page title (the inline label slot) — rendered as the page `h1`.")
   @inline(0) title: utf8
   @doc("Small eyebrow above the title (e.g. a chapter number + section name).")

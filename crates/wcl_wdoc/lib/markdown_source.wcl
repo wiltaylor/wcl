@@ -20,7 +20,7 @@ namespace wdoc
 
 @block("markdown_source")
 @native(backends = [:html])
-type MarkdownSource extends WdocBlock {
+type MarkdownSource extends ContentBlock {
   @doc("Skill start-page name. Set it (with `pages`) to render the body under the skill folder link layout; unset renders book-relative links.")
   start_page: utf8?
   @doc("The previewed page is a `references/` page (one level deep) — its internal links get a `../` prefix.")
@@ -29,5 +29,5 @@ type MarkdownSource extends WdocBlock {
   @default([]) pages: list<utf8>
   @doc("Asset-filename stem for any diagram/terminal SVGs the body's Markdown writes — set it to the previewed page's name so the `![](…)` refs match the real skill output. Defaults to `markdown_source`.")
   id: utf8?
-  @children(WdocBlock) children: list<WdocBlock>
+  @children(ContentBlock) children: list<ContentBlock>
 }

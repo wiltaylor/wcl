@@ -19,7 +19,6 @@ use std::path::Path;
 use wcl_lang::{Block, Document, Value};
 
 use crate::inline::InlinePatterns;
-use crate::kinds;
 use crate::render::{
     Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_repeater_children, field_f64,
     field_symbol, field_utf8, fill_content_slot, gather_inline_text, instance_target_def,
@@ -71,12 +70,12 @@ fn collect_block(
     // `wcl editor` preview's edit mode, which is an HTML build. A PDF renders
     // nothing for it — stated here rather than left to fall through, so the
     // kind is honestly covered on this target.
-    if kind == kinds::EDIT_OBJECT {
+    if kind == "edit_object" {
         return;
     }
     // A presentation fragment is a step-reveal wrapper — in a static PDF its
     // children simply render in place.
-    if kind == kinds::FRAGMENT {
+    if kind == "fragment" {
         for child in block.blocks() {
             collect_block(doc, &child, patterns, base_dir, out);
         }
@@ -87,7 +86,7 @@ fn collect_block(
     // the children render stacked in place — the same degradation `region`
     // and `fragment` take, and the reason `column` is native here at all
     // (until this arm existed it silently dropped its children).
-    if kind == kinds::COLUMN {
+    if kind == "column" {
         for child in block.blocks() {
             collect_block(doc, &child, patterns, base_dir, out);
         }
@@ -95,7 +94,7 @@ fn collect_block(
     }
     // An `edit_field` binds its children to a data-object field for the
     // editor's Design mode — a transparent wrapper here.
-    if kind == kinds::EDIT_FIELD {
+    if kind == "edit_field" {
         for child in block.blocks() {
             collect_block(doc, &child, patterns, base_dir, out);
         }
@@ -105,35 +104,35 @@ fn collect_block(
     // SVG in Rust. If the diagram has `card` shapes (foreignObject boxes), the
     // SVG draws everything but the card content, and each card body is collected
     // for native overlay painting; otherwise embed the SVG as-is.
-    if kind == kinds::DIAGRAM {
+    if kind == "diagram" {
         let svg = render_diagram(doc, block, patterns, base_dir);
         out.push(collect_diagram(doc, block, svg, patterns, base_dir));
         return;
     }
     // Lists are fundamental HTML blocks (no usable `lower`); read their nested
     // `li` structure directly into flattened, marked lines.
-    if kind == kinds::LIST {
+    if kind == "list" {
         let mut lines = Vec::new();
         let ordered = field_symbol(block, "style").as_deref() == Some("numbered");
         collect_li_group(doc, block, ordered, 0, "", patterns, &mut lines);
         out.push(BlockNode::List { lines });
         return;
     }
-    if kind == kinds::TABLE {
+    if kind == "table" {
         out.push(collect_table(doc, block, patterns));
         return;
     }
     // Terminals already render to a complete (static-snapshot) SVG in Rust.
     // The PDF entry bakes the window background + default colours into the
     // bare `<svg>` (no `<div>` / injected CSS to lean on when embedded).
-    if kind == kinds::TERMINAL {
+    if kind == "terminal" {
         out.push(BlockNode::Svg {
             svg: crate::terminal::render_terminal_pdf(doc, block, base_dir),
         });
         return;
     }
     // A page-level raster image: load the source bytes for embedding.
-    if kind == kinds::IMAGE {
+    if kind == "image" {
         if let Some(node) = collect_image(block, base_dir) {
             out.push(node);
         }
@@ -146,7 +145,7 @@ fn collect_block(
     // reaches the PDF too. A repeater stamps its body once per element
     // of `each`; a `wdoc_instance` renders the component named by its
     // `component` value.
-    if kind == kinds::REPEATER {
+    if kind == "wdoc_repeater" {
         if block.binding_scope_depth() <= MAX_LOWER_DEPTH {
             for child in expand_repeater_children(block) {
                 collect_block(doc, &child, patterns, base_dir, out);
@@ -154,7 +153,7 @@ fn collect_block(
         }
         return;
     }
-    if kind == kinds::INSTANCE {
+    if kind == "wdoc_instance" {
         if block.binding_scope_depth() <= MAX_LOWER_DEPTH
             && let Some(def) = instance_target_def(block)
         {
@@ -166,7 +165,7 @@ fn collect_block(
         }
         return;
     }
-    if kind == kinds::CONTENT {
+    if kind == "wdoc_content" {
         fill_content_slot(block, &mut |child| {
             collect_block(doc, child, patterns, base_dir, out);
             Ok::<(), std::convert::Infallible>(())
@@ -177,7 +176,7 @@ fn collect_block(
     // A `demo` in static PDF can't show a dual light/dark preview (no
     // theming) or syntax-highlighted source seam, so it collapses to one
     // render of its children in place.
-    if kind == kinds::DEMO {
+    if kind == "demo" {
         for child in block.blocks() {
             collect_block(doc, &child, patterns, base_dir, out);
         }
@@ -552,7 +551,7 @@ fn collect_li_group(
             collect_li_group(doc, &li, ordered, depth + 1, sub_prefix, patterns, lines);
         }
         // Explicit nested `list` blocks with their own style.
-        for sub in li.blocks().filter(|b| b.kind() == kinds::LIST) {
+        for sub in li.blocks().filter(|b| b.kind() == "list") {
             let sub_ordered = field_symbol(&sub, "style").as_deref() == Some("numbered");
             let sub_prefix = if sub_ordered && ordered {
                 num.as_str()

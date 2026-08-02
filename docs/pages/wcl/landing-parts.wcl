@@ -1,5 +1,5 @@
 // Landing-page components for the `wcl` site. Each is an ordinary
-// user-declared `@block(...) extends WdocBlock` whose `lower` builds a
+// user-declared `@block(...) extends ContentBlock` whose `lower` builds a
 // semantic element tree, so the same page content renders through the
 // `website` template for HTML and degrades to sensible Markdown / PDF
 // (headings stay headings, links ride `Inline` markdown text, chrome —
@@ -170,7 +170,7 @@ let lp_section_head = fn(eyebrow: utf8, title: utf8, lede: utf8, cls: utf8) -> l
 // The hero: a decorative grid backdrop, an optional badge pill, the
 // headline, the lede, CTA buttons, and an optional footnote.
 @block("lp_hero")
-type LpHero extends WdocBlock {
+type LpHero extends ContentBlock {
   @doc("The main headline (rendered as the page `<h1>`).")
   @inline(0) heading: utf8
   @doc("The supporting paragraph under the headline.")
@@ -209,7 +209,7 @@ type LpHero extends WdocBlock {
 // A CTA button (child of `lp_hero`). `primary = true` fills it with the
 // accent colour; otherwise it renders as a ghost/outline button.
 @block("lp_cta")
-type LpCta extends WdocBlock {
+type LpCta extends ContentBlock {
   @inline(0) label: utf8
   href: utf8
   primary: bool?
@@ -219,7 +219,7 @@ type LpCta extends WdocBlock {
 
 // A feature-card grid section with an optional centred header.
 @block("lp_features")
-type LpFeatures extends WdocBlock {
+type LpFeatures extends ContentBlock {
   eyebrow: utf8?
   title: utf8?
   lede: utf8?
@@ -242,7 +242,7 @@ type LpFeatures extends WdocBlock {
 
 // One feature card (child of `lp_features`).
 @block("lp_feature")
-type LpFeature extends WdocBlock {
+type LpFeature extends ContentBlock {
   @inline(0) title: utf8
   body: utf8
   @doc("Icon as `pack.name` (default `lucide.sparkles`).")
@@ -265,7 +265,7 @@ type LpRefCard {
 // A data-driven card grid: same shell as `lp_features`, but the cards
 // come from a value field instead of child blocks.
 @block("lp_cards")
-type LpCards extends WdocBlock {
+type LpCards extends ContentBlock {
   eyebrow: utf8?
   title: utf8?
   lede: utf8?
@@ -291,7 +291,7 @@ type LpCards extends WdocBlock {
 // (filename bar, language tag) is `Raw`, so Markdown drops it and keeps
 // just the fenced listing.
 @block("lp_showcase")
-type LpShowcase extends WdocBlock {
+type LpShowcase extends ContentBlock {
   heading: utf8
   body: utf8
   eyebrow: utf8?
@@ -331,7 +331,7 @@ type LpShowcase extends WdocBlock {
 // A getting-started panel: header plus numbered steps, each a title over
 // a command line.
 @block("lp_steps")
-type LpSteps extends WdocBlock {
+type LpSteps extends ContentBlock {
   eyebrow: utf8?
   title: utf8?
   lede: utf8?
@@ -356,7 +356,7 @@ type LpSteps extends WdocBlock {
 
 // One numbered step (child of `lp_steps`).
 @block("lp_step")
-type LpStep extends WdocBlock {
+type LpStep extends ContentBlock {
   @inline(0) title: utf8
   command: utf8
   id: identifier?
@@ -366,7 +366,7 @@ type LpStep extends WdocBlock {
 // The multi-column site footer: a brand cell (icon + wordmark + tagline)
 // beside link columns, over a bottom bar with the copyright and a note.
 @block("lp_footer")
-type LpFooter extends WdocBlock {
+type LpFooter extends ContentBlock {
   @doc("Short prose under the brand wordmark.")
   tagline: utf8
   @doc("Brand wordmark text (chrome — dropped in Markdown).")
@@ -412,7 +412,7 @@ type LpFooter extends WdocBlock {
 // as nested `lp_footlink` blocks or spliced in as data with
 // `links = map(...)` (computed `@children`).
 @block("lp_footcol")
-type LpFootcol extends WdocBlock {
+type LpFootcol extends ContentBlock {
   @inline(0) title: utf8
   id: identifier?
   @children("lp_footlink") links: list<LpFootlink>?
@@ -421,7 +421,7 @@ type LpFootcol extends WdocBlock {
 
 // One footer link (child of `lp_footcol`).
 @block("lp_footlink")
-type LpFootlink extends WdocBlock {
+type LpFootlink extends ContentBlock {
   @inline(0) label: utf8
   href: utf8
   id: identifier?

@@ -190,7 +190,18 @@ mod tests {
             assert!(pf.iter().any(|f| f["name"] == want), "{v:#}");
         }
         assert!(shapes.iter().any(|k| k["kind"] == "rect"), "{v:#}");
-        // Page-level HTML blocks don't extend SvgBlock.
+        let wireframe_grid = shapes
+            .iter()
+            .find(|k| k["kind"] == "wf_grid")
+            .unwrap_or_else(|| panic!("no wireframe grid kind: {v:#}"));
+        assert_eq!(wireframe_grid["accepts_children"], true, "{v:#}");
+        let wireframe_button = shapes
+            .iter()
+            .find(|k| k["kind"] == "wf_button")
+            .unwrap_or_else(|| panic!("no wireframe button kind: {v:#}"));
+        assert_eq!(wireframe_button["accepts_children"], false, "{v:#}");
+        // Content-output blocks don't extend SvgBlock merely because a page
+        // slot accepts them.
         assert!(!shapes.iter().any(|k| k["kind"] == "diagram"), "{v:#}");
         // The authored component with its slot contract.
         let comps = v["components"].as_array().unwrap();

@@ -1,7 +1,7 @@
 // ── Image ───────────────────────────────────────────────────────────
 //
 // A raster image, usable two ways from one block:
-//   - on a page (`extends WdocBlock`)   → an `<img>`
+//   - on a page (`extends ContentBlock`)   → an `<img>`
 //   - inside a `diagram` / `container`  → a placeable SVG `<image>`
 // `source` is a path relative to the doc (copied into `_wdoc/` and
 // referenced by URL, so it resolves when *served*, not when opened
@@ -13,7 +13,7 @@ namespace wdoc
 
 @block("image")
 @native
-type Image extends WdocBlock, SvgBlock {
+type Image extends ContentBlock, SvgBlock {
   @doc("Image source (the inline label): a doc-relative path, a URL, or a `data:` URI.")
   @inline(0) source: utf8
   @doc("Alt text for the `<img>` (page form).")

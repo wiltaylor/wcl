@@ -43,7 +43,7 @@
 // The test is mechanical: a block whose lowering can carry a fixed payload
 // becomes a `Content` producer; a block that needs the authored block
 // subtree (or renderer-only state that no IR payload can hold) is `@native`.
-// This is the complete inventory of the 35 stdlib `WdocBlock` types.
+// This is the complete inventory of the 35 stdlib `ContentBlock` types.
 //
 // Content producers (16):
 //
@@ -64,7 +64,7 @@
 //
 //   block(s)                       test and reason
 //   ─────────────────────────────  ────────────────────────────────────────
-//   column, fragment, notes        need arbitrary child `WdocBlock` subtrees
+//   column, fragment, notes        need arbitrary child `ContentBlock` subtrees
 //   list                           needs nested `li`/`list` block structure
 //   terminal                       needs its terminal-widget subtree and Rust grid
 //   diagram                        needs its arbitrary `SvgBlock` subtree/layout

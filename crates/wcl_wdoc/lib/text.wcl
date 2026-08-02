@@ -18,7 +18,7 @@
 namespace wdoc
 
 @block("text")
-type Text extends WdocBlock {
+type Text extends ContentBlock {
   @doc("Optional single-run text (the inline label slot); inline patterns are applied. Use `span` children for styled runs.")
   @inline(0) text: utf8?
   @doc("Optional explicit HTML id.")
@@ -60,7 +60,7 @@ type Span {
 // not (the same degradation `region` / `fragment` take).
 @block("column")
 @native
-type Column extends WdocBlock {
+type Column extends ContentBlock {
   @doc("One CSS percentage per child slot (e.g. `[50.0, 50.0]`).")
   widths: list<f64>
   @doc("Optional explicit HTML id.")
@@ -68,6 +68,6 @@ type Column extends WdocBlock {
   @doc("Optional class list applied to the whole column group.")
   class:  list<utf8>?
   @doc("Any wdoc blocks — each consecutive block fills the next column slot.")
-  @children(WdocBlock) children: list<WdocBlock>
+  @children(ContentBlock) children: list<ContentBlock>
 }
 
