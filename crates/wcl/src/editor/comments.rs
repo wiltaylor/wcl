@@ -33,9 +33,11 @@ fn list_comments(ws: &Workspace) -> Result<serde_json::Value, String> {
 }
 
 /// `POST /api/comments` — add a comment. Body:
-/// `{ page, page_file?, loc?, target?, body, quote?, author? }` → `{ id }`.
-/// The page key routes the record to the sidecar that owns the page's
-/// source file; a block comment additionally carries its locator + target.
+/// `{ page?, page_file?, object_kind?, object_id?, loc?, target?, body,
+/// quote?, author? }` → `{ id }`. At least a page or a complete object
+/// address is required. The page key routes the record to the sidecar that
+/// owns the page's source file; a block comment additionally carries its
+/// locator + target.
 pub(super) async fn handle_comment_add(
     State(state): State<Arc<EditorState>>,
     body: String,
@@ -50,9 +52,7 @@ pub(super) async fn handle_comment_add(
 
 fn add_comment(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::Value, String> {
     let str_of = |k: &str| v.get(k).and_then(serde_json::Value::as_str);
-    let page = str_of("page")
-        .filter(|s| !s.is_empty())
-        .ok_or("missing page")?;
+    let page = str_of("page").filter(|s| !s.is_empty());
     let body_text = str_of("body")
         .filter(|s| !s.trim().is_empty())
         .ok_or("missing comment body")?;
@@ -64,15 +64,19 @@ fn add_comment(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::Valu
         Some(pf) => comments::comments_path(&pf, ws.root_dir(), wcl_wskill::ROOT_MARKER),
         None => ws.root_dir().join("comments.wcl"),
     };
-    let id = comments::add(
+    let id = comments::add_addressed(
         &sidecar,
-        page,
-        page_file,
-        str_of("loc"),
-        str_of("target"),
-        body_text,
-        str_of("author"),
-        str_of("quote"),
+        comments::NewComment {
+            page,
+            page_file,
+            loc: str_of("loc"),
+            target: str_of("target"),
+            object_kind: str_of("object_kind"),
+            object_id: str_of("object_id"),
+            body: body_text,
+            author: str_of("author"),
+            quote: str_of("quote"),
+        },
     )
     .map_err(|e| e.render_plain())?;
     Ok(serde_json::json!({ "id": id }))
@@ -298,6 +302,34 @@ mod tests {
         ] {
             assert!(add(&ws, bad.clone()).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn adds_an_object_only_comment_for_a_page_less_finding() {
+        let (_td, ws) = workspace_with(SITE_DOC);
+        let value = add(
+            &ws,
+            serde_json::json!({
+                "object_kind": "index",
+                "object_id": "reference",
+                "body": "This index needs a body.",
+                "author": "curator",
+            }),
+        )
+        .expect("object comment");
+
+        let listed = list_comments(&ws).expect("list comments");
+        let comment = listed["comments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|comment| comment["id"] == value["id"])
+            .unwrap();
+        assert_eq!(comment["scope"], "object");
+        assert!(comment["page"].is_null());
+        assert_eq!(comment["object_kind"], "index");
+        assert_eq!(comment["object_id"], "reference");
+        assert_eq!(comment["author"], "curator");
     }
 
     #[tokio::test]

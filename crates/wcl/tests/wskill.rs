@@ -25,6 +25,21 @@ fn git(dir: &Path, args: &[&str]) {
     assert!(ok, "git {args:?} failed in {}", dir.display());
 }
 
+fn git_output(dir: &Path, args: &[&str]) -> String {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .expect("run git");
+    assert!(
+        out.status.success(),
+        "git {args:?} failed in {}",
+        dir.display()
+    );
+    String::from_utf8(out.stdout).unwrap().trim().to_string()
+}
+
 /// Scaffold a wskill into `<tmp>/topic` and author two concepts into its
 /// reference file, one of them pinned into an index.
 fn scaffolded_wskill(tmp: &TempDir) -> PathBuf {
@@ -103,6 +118,8 @@ fn write_units(dest: &Path, units: &str) {
 /// Turn `dir` into a git repo with everything in it committed.
 fn git_init(dir: &Path) {
     git(dir, &["init", "-q"]);
+    git(dir, &["config", "user.email", "t@example.com"]);
+    git(dir, &["config", "user.name", "t"]);
     commit(dir, "baseline");
 }
 
@@ -130,6 +147,10 @@ fn graph_of(args: &[&str]) -> serde_json::Value {
         String::from_utf8_lossy(&out.stderr)
     );
     serde_json::from_slice(&out.stdout).expect("stdout is JSON")
+}
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
 #[test]
@@ -360,6 +381,7 @@ fn op_applies_the_vocabulary_and_a_dry_run_writes_nothing() {
         "the op list is the vocabulary's own JSON"
     );
 
+    git_init(&dest);
     // Applied for real, as a batch piped in — the printed ops decode back.
     let out = wcl()
         .args(["wskill", "op", dest_str])
@@ -384,7 +406,8 @@ fn op_applies_the_vocabulary_and_a_dry_run_writes_nothing() {
     assert_eq!(applied.len(), 2, "one line per applied op");
     assert_eq!(applied[0]["unit"], "concept:beta");
 
-    // And back the other way, through the other half of the vocabulary.
+    // And back the other way, through the other half of the vocabulary. A
+    // replacement index keeps beta indexed, so final lint health is level.
     wcl()
         .args(["wskill", "op", dest_str])
         .args([
@@ -392,9 +415,28 @@ fn op_applies_the_vocabulary_and_a_dry_run_writes_nothing() {
             r#"{"op":"unpin_unit","index":"reference","unit":"beta"}"#,
         ])
         .args(["--op", r#"{"op":"related_add","from":"alpha","to":"beta"}"#])
+        .args([
+            "--op",
+            r#"{"op":"create_index","id":"secondary","name":"Secondary","file":"data/reference/reference.wcl"}"#,
+        ])
+        .args([
+            "--op",
+            r#"{"op":"pin_unit","index":"secondary","unit":"alpha"}"#,
+        ])
+        .args([
+            "--op",
+            r#"{"op":"pin_unit","index":"secondary","unit":"beta"}"#,
+        ])
+        .args([
+            "--op",
+            r#"{"op":"delete_index","index":"reference"}"#,
+        ])
         .assert()
         .success();
-    assert_eq!(pinned_line(&dest), "related = [alpha]");
+    assert_eq!(
+        related_line(&dest, "index secondary {"),
+        "related = [alpha, beta]"
+    );
     assert_eq!(
         related_line(&dest, "concept alpha {"),
         "related = [beta]",
@@ -402,12 +444,186 @@ fn op_applies_the_vocabulary_and_a_dry_run_writes_nothing() {
     );
 }
 
-/// Ops apply one commit at a time and stop at the first refusal, saying how
-/// far they got — a curator resumes rather than re-runs blind.
+#[test]
+fn op_requires_a_clean_tree_and_commits_the_whole_run_once() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    git_init(&dest);
+    let baseline = git_output(&dest, &["rev-parse", "HEAD"]);
+
+    std::fs::write(dest.join("unrelated.txt"), "dirty\n").unwrap();
+    let out = wcl()
+        .args(["wskill", "op", dest.to_str().unwrap()])
+        .args([
+            "--op",
+            r#"{"op":"pin_unit","index":"reference","unit":"beta"}"#,
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains("working tree must be clean"), "{stderr}");
+    assert_eq!(pinned_line(&dest), "related = [alpha]");
+
+    std::fs::remove_file(dest.join("unrelated.txt")).unwrap();
+    wcl()
+        .args(["wskill", "op", dest.to_str().unwrap()])
+        .args(["--message", "curate demo graph"])
+        .write_stdin(
+            r#"[{"op":"pin_unit","index":"reference","unit":"beta"},
+                {"op":"reorder_children","index":"reference","order":["beta","alpha"]}]"#,
+        )
+        .assert()
+        .success();
+
+    assert_eq!(pinned_line(&dest), "related = [beta, alpha]");
+    assert_eq!(git_output(&dest, &["status", "--porcelain"]), "");
+    assert_eq!(
+        git_output(&dest, &["log", "-1", "--pretty=%s"]),
+        "curate demo graph"
+    );
+    assert_eq!(
+        git_output(
+            &dest,
+            &["rev-list", "--count", &format!("{baseline}..HEAD")]
+        ),
+        "1"
+    );
+}
+
+#[test]
+fn dry_run_with_comments_can_be_replayed_verbatim() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    let dest_str = dest.to_str().unwrap();
+
+    let preview = wcl()
+        .args(["wskill", "op", dest_str, "--dry-run"])
+        .args([
+            "--op",
+            r#"{"op":"pin_unit","index":"reference","unit":"beta"}"#,
+        ])
+        .args([
+            "--comment",
+            r#"{"object_kind":"index","object_id":"reference","body":"This index needs authored prose."}"#,
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(preview.status.code(), Some(0));
+    assert_eq!(pinned_line(&dest), "related = [alpha]");
+
+    git_init(&dest);
+    let applied = wcl()
+        .args(["wskill", "op", dest_str])
+        .write_stdin(preview.stdout)
+        .output()
+        .unwrap();
+    assert_eq!(
+        applied.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&applied.stderr)
+    );
+    assert_eq!(pinned_line(&dest), "related = [alpha, beta]");
+    let comments = std::fs::read_to_string(dest.join("comments.wcl")).unwrap();
+    assert!(comments.contains("author = \"curator\""), "{comments}");
+}
+
+#[test]
+fn op_rolls_back_when_lint_findings_increase() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    write_reference(&dest, "[alpha, beta]", "Beta");
+    git_init(&dest);
+    let baseline = git_output(&dest, &["rev-parse", "HEAD"]);
+
+    let out = wcl()
+        .args(["wskill", "op", dest.to_str().unwrap()])
+        .args([
+            "--op",
+            r#"{"op":"unpin_unit","index":"reference","unit":"beta"}"#,
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains("lint findings increased"), "{stderr}");
+    assert_eq!(pinned_line(&dest), "related = [alpha, beta]");
+    assert_eq!(git_output(&dest, &["rev-parse", "HEAD"]), baseline);
+    assert_eq!(git_output(&dest, &["status", "--porcelain"]), "");
+}
+
+#[test]
+fn op_rolls_back_when_any_declared_projection_fails_to_build() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    std::fs::write(
+        dest.join("wdoc/skill/main.wcl"),
+        "import <wdoc.wcl>\n\npage broken {{{\n",
+    )
+    .unwrap();
+    git_init(&dest);
+    let baseline = git_output(&dest, &["rev-parse", "HEAD"]);
+
+    let out = wcl()
+        .args(["wskill", "op", dest.to_str().unwrap()])
+        .args([
+            "--op",
+            r#"{"op":"pin_unit","index":"reference","unit":"beta"}"#,
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains("projection `ai_skill` failed"), "{stderr}");
+    assert_eq!(pinned_line(&dest), "related = [alpha]");
+    assert_eq!(git_output(&dest, &["rev-parse", "HEAD"]), baseline);
+    assert_eq!(git_output(&dest, &["status", "--porcelain"]), "");
+}
+
+#[test]
+fn op_commits_curator_comments_with_structural_changes_in_one_run() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    git_init(&dest);
+    let baseline = git_output(&dest, &["rev-parse", "HEAD"]);
+
+    wcl()
+        .args(["wskill", "op", dest.to_str().unwrap()])
+        .args([
+            "--op",
+            r#"{"op":"pin_unit","index":"reference","unit":"beta"}"#,
+        ])
+        .args([
+            "--comment",
+            r#"{"object_kind":"index","object_id":"reference","body":"This index needs authored prose."}"#,
+        ])
+        .args(["--message", "curate demo candidates"])
+        .assert()
+        .success();
+
+    let comments = std::fs::read_to_string(dest.join("comments.wcl")).unwrap();
+    assert!(comments.contains("object_kind = \"index\""), "{comments}");
+    assert!(comments.contains("object_id = \"reference\""), "{comments}");
+    assert!(comments.contains("author = \"curator\""), "{comments}");
+    assert_eq!(git_output(&dest, &["status", "--porcelain"]), "");
+    assert_eq!(
+        git_output(
+            &dest,
+            &["rev-list", "--count", &format!("{baseline}..HEAD")]
+        ),
+        "1"
+    );
+}
+
+/// A refused op rolls the whole run back to its clean starting point.
 #[test]
 fn op_stops_at_a_refusal_and_reports_how_far_it_got() {
     let tmp = TempDir::new().unwrap();
     let dest = scaffolded_wskill(&tmp);
+    git_init(&dest);
 
     let out = wcl()
         .args(["wskill", "op", dest.to_str().unwrap()])
@@ -424,9 +640,9 @@ fn op_stops_at_a_refusal_and_reports_how_far_it_got() {
         err.contains("op 2:") && err.contains("not pinned here"),
         "{err}"
     );
-    assert!(err.contains("applied 1 of 3 ops"), "{err}");
-    // The first op stands; the third never ran.
-    assert_eq!(pinned_line(&dest), "related = []");
+    assert!(err.contains("rolled back 1 of 3 ops"), "{err}");
+    // Neither the applied prefix nor the never-run suffix survives.
+    assert_eq!(pinned_line(&dest), "related = [alpha]");
 
     // A kind the caller names is checked, not echoed back: pinning
     // `research:beta` must not quietly pin the concept of that id.
@@ -444,7 +660,7 @@ fn op_stops_at_a_refusal_and_reports_how_far_it_got() {
             .unwrap()
             .contains("`beta` is a `concept`, not a `research`")
     );
-    assert_eq!(pinned_line(&dest), "related = []");
+    assert_eq!(pinned_line(&dest), "related = [alpha]");
 
     // A malformed op is a tool failure, and nothing is attempted: the whole
     // batch decodes before the first write.
@@ -491,6 +707,7 @@ fn op_rolls_back_an_edit_the_schema_rejects() {
         "gadget widget {\n  name    = \"Widget\"\n  summary = \"A gadget.\"\n  \
          related = [alpha]\n}\n",
     );
+    git_init(&dest);
 
     let out = wcl()
         .args(["wskill", "op", dest.to_str().unwrap()])
@@ -519,6 +736,7 @@ fn op_rolls_back_an_edit_the_schema_rejects() {
 fn op_targets_the_wskill_root_from_a_projection_entry() {
     let tmp = TempDir::new().unwrap();
     let dest = scaffolded_wskill(&tmp);
+    git_init(&dest);
 
     wcl()
         .args([
@@ -528,11 +746,11 @@ fn op_targets_the_wskill_root_from_a_projection_entry() {
         ])
         .args([
             "--op",
-            r#"{"op":"unpin_unit","index":"reference","unit":"alpha"}"#,
+            r#"{"op":"pin_unit","index":"reference","unit":"beta"}"#,
         ])
         .assert()
         .success();
-    assert_eq!(pinned_line(&dest), "related = []");
+    assert_eq!(pinned_line(&dest), "related = [alpha, beta]");
 
     // A new index lands in the file the caller names, read relative to the
     // wskill root — so an op list means the same thing wherever it is run.
@@ -541,6 +759,18 @@ fn op_targets_the_wskill_root_from_a_projection_entry() {
         .args([
             "--op",
             r#"{"op":"create_index","id":"howto","name":"How to","file":"data/reference/reference.wcl"}"#,
+        ])
+        .args([
+            "--op",
+            r#"{"op":"pin_unit","index":"howto","unit":"alpha"}"#,
+        ])
+        .args([
+            "--op",
+            r#"{"op":"pin_unit","index":"howto","unit":"beta"}"#,
+        ])
+        .args([
+            "--op",
+            r#"{"op":"delete_index","index":"reference"}"#,
         ])
         .assert()
         .success();
@@ -815,6 +1045,39 @@ fn install_refuses_agent_name_collisions() {
         !repo.join(".claude").exists(),
         "collision must write nothing"
     );
+}
+
+#[test]
+fn wskill_projection_ships_the_two_phase_curator_contract() {
+    let out = TempDir::new().unwrap();
+    wcl()
+        .args(["wdoc", "skill"])
+        .arg(repo_root().join("docs/wskills/wskill/wdoc/skill/main.wcl"))
+        .arg("--out")
+        .arg(out.path())
+        .assert()
+        .success();
+
+    let agent = std::fs::read_to_string(out.path().join("agents/wskill-curator.md"))
+        .expect("the wskill ships its curator agent");
+    for required in [
+        "wcl wskill lint",
+        "--severity candidate",
+        "flagged units and their 1-hop neighbours",
+        "Never edit a unit body",
+        "Never backfill",
+        "object_kind",
+        "object_id",
+        "author = \"curator\"",
+        "--dry-run",
+        "--message",
+        "No human approval",
+    ] {
+        assert!(
+            agent.contains(required),
+            "missing `{required}` in:\n{agent}"
+        );
+    }
 }
 
 /// The reference file of the authoring commit the audit tests review: `beta`

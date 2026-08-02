@@ -11,8 +11,10 @@
 // `wcl wdoc comments resolve <id>` to delete them. See
 // `crates/wcl_wdoc/src/comments.rs`.
 //
-// A sidecar is a list of `comment` blocks, each keyed by the page name plus a
-// positional block locator within that page (absent locator = the whole page):
+// A sidecar is a list of `comment` blocks. A comment names a page, an object
+// (`object_kind` + `object_id`), or both; at least one complete address is
+// required. A page may additionally carry a positional block locator (absent
+// locator = the whole page):
 //
 //   comment {
 //     id = "c12ab3"
@@ -31,9 +33,11 @@ namespace wdoc
 @block("comment")
 type Comment {
   id: utf8            // stable handle; survives edits so `resolve` can find it
-  page: utf8          // the page name the comment is on
+  page: utf8?         // the page name the comment is on (optional for object findings)
   page_file: utf8?    // the page's source file (disambiguates same-named pages
                       // across different sites / sub-documents)
+  object_kind: utf8?  // object address kind; present together with object_id
+  object_id: utf8?    // object address id; present together with object_kind
   loc: utf8?          // positional locator of the block within the page
   target: utf8?       // human description of the referenced block
   body: utf8          // the reviewer's note

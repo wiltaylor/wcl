@@ -11,13 +11,14 @@
 //! editor's own write / validate / roll-back pipeline — puts them on disk. So
 //! a curated op and a browser drag are one operation validated one way.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use wcl_wskill::audit::{Audit, Change, Metric, NodeDelta, Range};
 use wcl_wskill::ops::{self, Op};
-use wcl_wskill::{Finding, Severity};
+use wcl_wskill::{Finding, Rule, Severity};
 
 use crate::{EXIT_EVAL, EXIT_IO, EXIT_OK, EXIT_PARSE};
 
@@ -36,8 +37,8 @@ use crate::{EXIT_EVAL, EXIT_IO, EXIT_OK, EXIT_PARSE};
 /// exited non-zero for it would be a health gate wearing a review's clothes.
 ///
 /// `op` shares the shape for the same reason it is shared at all: its caller
-/// asks one question — did the edit land? — so a refused op is the 1 and an
-/// unreadable op list or wskill is the 2.
+/// asks one question — did the gated run land? A refused op or run gate is 1;
+/// unreadable input/model or a git failure is 2.
 const WSKILL_OK: u8 = 0;
 const WSKILL_FINDINGS: u8 = 1;
 const WSKILL_TOOL_FAILURE: u8 = 2;
@@ -132,29 +133,50 @@ pub(crate) fn run_lint(
 // `op` — apply the id-addressed op vocabulary
 // ---------------------------------------------------------------------------
 
-/// Run `wcl wskill op [<entry>] [--op <json>]… [--file <path>] [--dry-run]`.
+/// Run `wcl wskill op [<entry>] [--op <json>]… [--comment <json>]…`.
 ///
-/// Ops apply **in order, one commit each**: every op is re-addressed against
-/// a freshly loaded model (the previous one moved the spans it was written
-/// at) and committed through the validating pipeline, so a schema violation
-/// rolls that op back and stops the run. Earlier ops stay applied — each was
-/// valid on its own — and the summary says how far it got, which is what a
-/// curator needs to resume rather than to re-run blind.
-pub(crate) fn run_op(entry: &Path, inline: &[String], file: Option<&Path>, dry_run: bool) -> u8 {
-    let source = match read_ops(inline, file) {
+/// Every op is re-addressed against a freshly loaded model and written through
+/// the validating editor pipeline. The run starts from a clean git tree,
+/// captures an in-memory lint baseline, applies the whole batch, builds every
+/// declared projection, and creates one git commit only if lint did not
+/// regress. A refusal or failed run gate restores every touched file.
+pub(crate) fn run_op(
+    entry: &Path,
+    inline: &[String],
+    comment_texts: &[String],
+    file: Option<&Path>,
+    dry_run: bool,
+    message: &str,
+) -> u8 {
+    let mut comments = match decode_comments(comment_texts) {
+        Ok(comments) => comments,
+        Err(e) => {
+            eprintln!("{e}");
+            return WSKILL_TOOL_FAILURE;
+        }
+    };
+    let source = match read_ops(inline, file, comments.is_empty()) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("{e}");
             return WSKILL_TOOL_FAILURE;
         }
     };
-    let ops = match decode_ops(&source) {
-        Ok(ops) => ops,
+    let (ops, piped_comments) = match decode_batch(&source) {
+        Ok(batch) => batch,
         Err(e) => {
             eprintln!("{e}");
             return WSKILL_TOOL_FAILURE;
         }
     };
+    comments.extend(piped_comments);
+    if ops.is_empty() && comments.is_empty() {
+        eprintln!(
+            "no ops or comments given — pass `--op <json>`, `--comment <json>`, \
+             `--file <path>`, or pipe ops in"
+        );
+        return WSKILL_TOOL_FAILURE;
+    }
 
     // The target is resolved even for a dry run: pointing at something that
     // is not a wskill is a mistake worth hearing about before the ops are
@@ -175,18 +197,56 @@ pub(crate) fn run_op(entry: &Path, inline: &[String], file: Option<&Path>, dry_r
     // and which this command reads back.
     if dry_run {
         let list: Vec<serde_json::Value> = ops.iter().map(ops::to_json).collect();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&list).expect("ops serialize")
+        if comments.is_empty() {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&list).expect("ops serialize")
+            );
+        } else {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ops": list,
+                    "comments": comments.iter().map(PendingComment::to_json).collect::<Vec<_>>(),
+                }))
+                .expect("ops and comments serialize")
+            );
+        }
+        eprintln!(
+            "{}, {} — nothing written",
+            plural(ops.len(), "op"),
+            plural(comments.len(), "comment")
         );
-        eprintln!("{} — nothing written", plural(ops.len(), "op"));
         return WSKILL_OK;
     }
 
+    let git = match GitRun::begin(&root) {
+        Ok(git) => git,
+        Err(e) => {
+            eprintln!("{e}");
+            return WSKILL_TOOL_FAILURE;
+        }
+    };
+    let lint_before = match lint_counts(&root) {
+        Ok(counts) => counts,
+        Err(e) => {
+            eprintln!("capture lint baseline: {e}");
+            return WSKILL_TOOL_FAILURE;
+        }
+    };
+    let mut rollback = RunRollback::default();
+
     for (i, op) in ops.iter().enumerate() {
-        if let Err(e) = apply_one(&root, op) {
-            eprintln!("op {}: {e}", i + 1);
-            eprintln!("applied {} of {}", i, plural(ops.len(), "op"));
+        if let Err(e) = apply_one(&root, op, &mut rollback) {
+            rollback_run(
+                &rollback,
+                &format!(
+                    "op {}: {e}\nrolled back {} of {}",
+                    i + 1,
+                    i,
+                    plural(ops.len(), "op")
+                ),
+            );
             return WSKILL_FINDINGS;
         }
         println!(
@@ -194,23 +254,315 @@ pub(crate) fn run_op(entry: &Path, inline: &[String], file: Option<&Path>, dry_r
             serde_json::to_string(&ops::to_json(op)).expect("an op serializes")
         );
     }
+    let comments_file = root
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("comments.wcl");
+    for (i, comment) in comments.iter().enumerate() {
+        if let Err(e) = rollback
+            .capture(std::iter::once(comments_file.as_path()))
+            .and_then(|()| comment.add_to(&comments_file))
+        {
+            rollback_run(&rollback, &format!("comment {}: {e}", i + 1));
+            return WSKILL_FINDINGS;
+        }
+    }
+    match lint_counts(&root) {
+        Ok(after) => {
+            let regressions: Vec<String> = after
+                .iter()
+                .filter_map(|(&(severity, rule), &count)| {
+                    let before = lint_before.get(&(severity, rule)).copied().unwrap_or(0);
+                    (count > before).then(|| format!("{severity} [{rule}] {before} -> {count}"))
+                })
+                .collect();
+            if !regressions.is_empty() {
+                rollback_run(
+                    &rollback,
+                    &format!("lint findings increased: {}", regressions.join(", ")),
+                );
+                return WSKILL_FINDINGS;
+            }
+        }
+        Err(e) => {
+            rollback_run(&rollback, &format!("run-level lint failed: {e}"));
+            return WSKILL_FINDINGS;
+        }
+    }
+    if let Err(e) = build_projections(&root) {
+        rollback_run(&rollback, &e);
+        return WSKILL_FINDINGS;
+    }
+    if let Err(e) = git.commit(&root, message) {
+        let _ = git.unstage(&root);
+        rollback_run(&rollback, &format!("commit failed: {e}"));
+        return WSKILL_TOOL_FAILURE;
+    }
     eprintln!("applied {}", plural(ops.len(), "op"));
     WSKILL_OK
 }
 
-/// Apply one op and commit what it rewrites.
+#[derive(Debug)]
+struct PendingComment {
+    page: Option<String>,
+    page_file: Option<String>,
+    loc: Option<String>,
+    target: Option<String>,
+    object_kind: Option<String>,
+    object_id: Option<String>,
+    body: String,
+    author: Option<String>,
+    quote: Option<String>,
+}
+
+impl PendingComment {
+    fn as_new_comment(&self) -> wcl_wdoc::comments::NewComment<'_> {
+        wcl_wdoc::comments::NewComment {
+            page: self.page.as_deref(),
+            page_file: self.page_file.as_deref(),
+            loc: self.loc.as_deref(),
+            target: self.target.as_deref(),
+            object_kind: self.object_kind.as_deref(),
+            object_id: self.object_id.as_deref(),
+            body: &self.body,
+            author: self.author.as_deref(),
+            quote: self.quote.as_deref(),
+        }
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        self.as_new_comment()
+            .validate()
+            .map_err(|e| e.render_plain())
+    }
+
+    fn add_to(&self, file: &Path) -> Result<(), String> {
+        wcl_wdoc::comments::add_addressed(file, self.as_new_comment())
+            .map(|_| ())
+            .map_err(|e| e.render_plain())
+    }
+
+    fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "page": self.page,
+            "page_file": self.page_file,
+            "loc": self.loc,
+            "target": self.target,
+            "object_kind": self.object_kind,
+            "object_id": self.object_id,
+            "body": self.body,
+            "author": self.author,
+            "quote": self.quote,
+        })
+    }
+}
+
+fn decode_comments(texts: &[String]) -> Result<Vec<PendingComment>, String> {
+    let mut out = Vec::new();
+    for text in texts {
+        let value: serde_json::Value = serde_json::from_str(text.trim())
+            .map_err(|e| format!("the comments are not JSON: {e}"))?;
+        let items = match value {
+            serde_json::Value::Array(items) => items,
+            one => vec![one],
+        };
+        for item in items {
+            let string = |key: &str| {
+                item.get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+            };
+            let body = string("body")
+                .filter(|body| !body.trim().is_empty())
+                .ok_or_else(|| format!("comment {}: missing `body`", out.len() + 1))?;
+            let comment = PendingComment {
+                page: string("page"),
+                page_file: string("page_file"),
+                loc: string("loc"),
+                target: string("target"),
+                object_kind: string("object_kind"),
+                object_id: string("object_id"),
+                body,
+                author: match string("author") {
+                    Some(author) if author != "curator" => {
+                        return Err(format!(
+                            "comment {}: curator comments cannot use author `{author}`",
+                            out.len() + 1
+                        ));
+                    }
+                    _ => Some("curator".to_string()),
+                },
+                quote: string("quote"),
+            };
+            comment
+                .validate()
+                .map_err(|e| format!("comment {}: {e}", out.len() + 1))?;
+            out.push(comment);
+        }
+    }
+    Ok(out)
+}
+
+fn lint_counts(root: &Path) -> Result<BTreeMap<(Severity, Rule), usize>, String> {
+    let graph = wcl_wskill::Graph::open(root).map_err(|e| e.to_string())?;
+    let mut counts = BTreeMap::new();
+    for finding in wcl_wskill::lint(&graph) {
+        *counts.entry((finding.severity, finding.rule)).or_default() += 1;
+    }
+    Ok(counts)
+}
+
+fn build_projections(root: &Path) -> Result<(), String> {
+    let registry = wcl_wskill::Registry::read(root)
+        .ok_or_else(|| format!("could not read projection registry from {}", root.display()))?;
+    let root_dir = root.parent().unwrap_or_else(|| Path::new("."));
+    let output = tempfile::tempdir().map_err(|e| format!("create projection output: {e}"))?;
+    for artifact in registry.artifacts {
+        let entry = root_dir.join(&artifact.entry);
+        let out = output.path().join(&artifact.id);
+        let result = if artifact.kind == "ai_skill" {
+            wcl_wdoc::skill(&entry, &out, None)
+        } else {
+            wcl_wdoc::build(&entry, &out, None)
+        };
+        if let Err(e) = result {
+            return Err(format!(
+                "projection `{}` failed to build from {}: {}",
+                artifact.kind,
+                entry.display(),
+                e.render_plain()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Apply one op through the editor's validating write pipeline.
 ///
 /// The model is re-read per op rather than kept: an op rewrites the files the
 /// next one is addressed against, and a stale [`Graph`](wcl_wskill::Graph)
 /// would point at the file layout of the previous step.
-fn apply_one(root: &Path, op: &Op) -> Result<(), String> {
+fn apply_one(root: &Path, op: &Op, rollback: &mut RunRollback) -> Result<(), String> {
     let graph = wcl_wskill::Graph::open(root).map_err(|e| e.to_string())?;
     let changes = ops::apply(&graph, op).map_err(|e| e.to_string())?;
+    rollback.capture(changes.iter().map(|change| change.file.as_path()))?;
     crate::edit::commit(
         root,
         changes.into_iter().map(|c| (c.file, c.text)).collect(),
     )?;
     Ok(())
+}
+
+#[derive(Default)]
+struct RunRollback {
+    originals: BTreeMap<PathBuf, Option<Vec<u8>>>,
+}
+
+impl RunRollback {
+    fn capture<'a>(&mut self, files: impl Iterator<Item = &'a Path>) -> Result<(), String> {
+        for file in files {
+            if self.originals.contains_key(file) {
+                continue;
+            }
+            let original = match std::fs::read(file) {
+                Ok(bytes) => Some(bytes),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => return Err(format!("read {} for rollback: {e}", file.display())),
+            };
+            self.originals.insert(file.to_path_buf(), original);
+        }
+        Ok(())
+    }
+
+    fn restore(&self) -> Result<(), String> {
+        for (file, original) in &self.originals {
+            match original {
+                Some(bytes) => std::fs::write(file, bytes)
+                    .map_err(|e| format!("restore {}: {e}", file.display()))?,
+                None => match std::fs::remove_file(file) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(format!("remove {}: {e}", file.display())),
+                },
+            }
+        }
+        Ok(())
+    }
+}
+
+fn rollback_run(rollback: &RunRollback, failure: &str) {
+    eprintln!("{failure}");
+    if let Err(e) = rollback.restore() {
+        eprintln!("rollback failed: {e}");
+    }
+}
+
+struct GitRun {
+    repo: PathBuf,
+}
+
+impl GitRun {
+    fn begin(root: &Path) -> Result<GitRun, String> {
+        let wskill_dir = root.parent().unwrap_or_else(|| Path::new("."));
+        let repo = git_stdout(wskill_dir, &["rev-parse", "--show-toplevel"])?;
+        let repo = PathBuf::from(repo.trim());
+        let status = git_stdout(
+            &repo,
+            &["status", "--porcelain=v1", "--untracked-files=all"],
+        )?;
+        if !status.trim().is_empty() {
+            return Err(format!(
+                "working tree must be clean before a wskill op run:\n{}",
+                status.trim_end()
+            ));
+        }
+        Ok(GitRun { repo })
+    }
+
+    fn commit(&self, root: &Path, message: &str) -> Result<(), String> {
+        let wskill_dir = root.parent().unwrap_or_else(|| Path::new("."));
+        git_success(
+            &self.repo,
+            &["add", "--", &wskill_dir.display().to_string()],
+        )?;
+        git_success(&self.repo, &["commit", "-m", message])
+    }
+
+    fn unstage(&self, root: &Path) -> Result<(), String> {
+        let wskill_dir = root.parent().unwrap_or_else(|| Path::new("."));
+        git_success(
+            &self.repo,
+            &[
+                "reset",
+                "--quiet",
+                "HEAD",
+                "--",
+                &wskill_dir.display().to_string(),
+            ],
+        )
+    }
+}
+
+fn git_stdout(dir: &Path, args: &[&str]) -> Result<String, String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .map_err(|e| format!("run git: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    String::from_utf8(output.stdout).map_err(|e| format!("git output is not UTF-8: {e}"))
+}
+
+fn git_success(dir: &Path, args: &[&str]) -> Result<(), String> {
+    git_stdout(dir, args).map(|_| ())
 }
 
 /// The wskill root document an op targets — `wskill.wcl`, found from
@@ -244,14 +596,18 @@ fn root_doc(entry: &Path) -> Result<PathBuf, String> {
 
 /// The op JSON, from `--op` values and/or `--file` — stdin when the caller
 /// named neither, so a curator can pipe the list it just built.
-fn read_ops(inline: &[String], file: Option<&Path>) -> Result<Vec<String>, String> {
+fn read_ops(
+    inline: &[String],
+    file: Option<&Path>,
+    stdin_when_empty: bool,
+) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = inline.to_vec();
     match file {
         Some(path) if path == Path::new("-") => out.push(read_stdin()?),
         Some(path) => out.push(
             std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?,
         ),
-        None if out.is_empty() => out.push(read_stdin()?),
+        None if out.is_empty() && stdin_when_empty => out.push(read_stdin()?),
         None => {}
     }
     Ok(out)
@@ -265,26 +621,46 @@ fn read_stdin() -> Result<String, String> {
     Ok(buf)
 }
 
-/// Decode every op, from texts each holding one op object or an array of
-/// them. Nothing is applied until they all decode: a typo in the last op of
-/// a batch should not leave the first half of it on disk.
-fn decode_ops(texts: &[String]) -> Result<Vec<Op>, String> {
-    let mut out = Vec::new();
+/// Decode every op and embedded comment. Besides the original op object/array
+/// forms, this accepts the `{ ops, comments }` envelope printed by a dry run,
+/// so the preview can be piped back verbatim for the real run.
+fn decode_batch(texts: &[String]) -> Result<(Vec<Op>, Vec<PendingComment>), String> {
+    let mut ops_out = Vec::new();
+    let mut comment_texts = Vec::new();
     for text in texts {
         let v: serde_json::Value =
             serde_json::from_str(text.trim()).map_err(|e| format!("the ops are not JSON: {e}"))?;
-        let items = match v {
-            serde_json::Value::Array(items) => items,
-            one => vec![one],
-        };
-        for item in items {
-            out.push(ops::from_json(&item).map_err(|e| format!("op {}: {e}", out.len() + 1))?);
+        if let serde_json::Value::Object(batch) = &v
+            && (batch.contains_key("ops") || batch.contains_key("comments"))
+        {
+            let batch_ops = batch
+                .get("ops")
+                .cloned()
+                .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
+            decode_op_value(batch_ops, &mut ops_out)?;
+            if let Some(comments) = batch.get("comments") {
+                comment_texts.push(
+                    serde_json::to_string(comments)
+                        .expect("a parsed comment batch serializes back to JSON"),
+                );
+            }
+            continue;
         }
+        decode_op_value(v, &mut ops_out)?;
     }
-    if out.is_empty() {
-        return Err("no ops given — pass `--op <json>`, `--file <path>`, or pipe them in".into());
+    let comments = decode_comments(&comment_texts)?;
+    Ok((ops_out, comments))
+}
+
+fn decode_op_value(value: serde_json::Value, out: &mut Vec<Op>) -> Result<(), String> {
+    let items = match value {
+        serde_json::Value::Array(items) => items,
+        one => vec![one],
+    };
+    for item in items {
+        out.push(ops::from_json(&item).map_err(|e| format!("op {}: {e}", out.len() + 1))?);
     }
-    Ok(out)
+    Ok(())
 }
 
 /// One line per finding, plus a count on stderr so the summary survives a

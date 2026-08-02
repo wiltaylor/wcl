@@ -7,7 +7,7 @@ import { createSignal } from 'solid-js';
 import { api } from '../api';
 
 const [all, setAll] = createSignal([]);
-const [page, setPage] = createSignal(null); // {el, name, file} | null
+const [page, setPage] = createSignal(null); // {el, name, file, objects} | null
 const [picking, setPicking] = createSignal(false);
 /** null | {page: true} | {loc, target, quote} — the open compose modal. */
 const [compose, setCompose] = createSignal(null);
@@ -32,9 +32,23 @@ export {
 
 /** Comments on the iframe's current page (name + source-file key). */
 export function pageComments() {
-  const p = page();
-  if (!p) return [];
-  return all().filter((c) => c.page === p.name && (!c.page_file || c.page_file === p.file));
+  return commentsForPage(all(), page());
+}
+
+export function commentsForPage(comments, currentPage) {
+  if (!currentPage) return [];
+  return comments.filter((comment) => {
+    const pageMatch =
+      comment.page === currentPage.name &&
+      (!comment.page_file || comment.page_file === currentPage.file);
+    const objectMatch =
+      comment.object_kind &&
+      comment.object_id &&
+      currentPage.objects?.some(
+        (object) => object.kind === comment.object_kind && object.id === comment.object_id,
+      );
+    return pageMatch || objectMatch;
+  });
 }
 
 export async function loadComments() {

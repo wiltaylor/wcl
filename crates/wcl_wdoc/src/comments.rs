@@ -2,8 +2,9 @@
 //!
 //! The `wcl editor` preview pane lets a reviewer click a rendered block (or
 //! the page) and leave a note. Rather than touch the document source, every
-//! note persists into a **`comments.wcl` sidecar** keyed by the page name + a
-//! positional block locator. Watchers ignore `comments.wcl`, so a comment
+//! note persists into a **`comments.wcl` sidecar** keyed by a page, an object
+//! address (`object_kind` + `object_id`), or both. Watchers ignore
+//! `comments.wcl`, so a comment
 //! writes only the sidecar and the page re-shows it client-side — **no
 //! document rebuild**.
 //!
@@ -17,6 +18,8 @@
 //! comment {
 //!   id = "c12ab3"
 //!   page = "concept_records"   // page name the comment is on
+//!   object_kind = "concept"    // optional object address (the pair is atomic)
+//!   object_id = "records"
 //!   loc = "0/2/1"              // block locator within the page (absent = whole page)
 //!   target = "card — \"3rd\""  // human description of the block (optional)
 //!   body = "tighten this"
@@ -51,6 +54,8 @@ pub enum CommentScope {
     Block,
     /// Targets the page as a whole (no `loc`).
     Page,
+    /// Targets a model object without requiring a rendered page.
+    Object,
 }
 
 impl CommentScope {
@@ -58,6 +63,7 @@ impl CommentScope {
         match self {
             CommentScope::Block => "block",
             CommentScope::Page => "page",
+            CommentScope::Object => "object",
         }
     }
 }
@@ -71,11 +77,15 @@ pub struct CommentRecord {
     pub scope: CommentScope,
     /// The `comments.wcl` file that holds this record (where `resolve` edits).
     pub file: PathBuf,
-    /// The page name the comment is on.
-    pub page: String,
+    /// The page name the comment is on. Object-only comments have no page.
+    pub page: Option<String>,
     /// The source file the page is defined in. Together with `page` it
     /// disambiguates same-named pages across different sites / sub-documents.
     pub page_file: Option<String>,
+    /// The kind half of an object address (`concept`, `index`, …).
+    pub object_kind: Option<String>,
+    /// The id half of an object address.
+    pub object_id: Option<String>,
     /// Positional locator of the targeted block within the page; `None` for a
     /// whole-page comment.
     pub loc: Option<String>,
@@ -86,6 +96,54 @@ pub struct CommentRecord {
     pub body: String,
     pub author: Option<String>,
     pub status: Option<String>,
+}
+
+/// The fields needed to append one page-, object-, or jointly-addressed
+/// comment. Keeping them together gives every caller the same validation
+/// boundary instead of duplicating the address rules.
+pub struct NewComment<'a> {
+    pub page: Option<&'a str>,
+    pub page_file: Option<&'a str>,
+    pub loc: Option<&'a str>,
+    pub target: Option<&'a str>,
+    pub object_kind: Option<&'a str>,
+    pub object_id: Option<&'a str>,
+    pub body: &'a str,
+    pub author: Option<&'a str>,
+    pub quote: Option<&'a str>,
+}
+
+impl NewComment<'_> {
+    /// Check the cross-field address invariant the flat WCL schema cannot
+    /// express: page or a complete object pair, with loc scoped to a page.
+    pub fn validate(&self) -> Result<(), BuildError> {
+        validate_address(self.page, self.object_kind, self.object_id, self.loc)
+    }
+}
+
+fn validate_address(
+    page: Option<&str>,
+    object_kind: Option<&str>,
+    object_id: Option<&str>,
+    loc: Option<&str>,
+) -> Result<(), BuildError> {
+    let page = page.filter(|s| !s.is_empty());
+    let object_kind = object_kind.filter(|s| !s.is_empty());
+    let object_id = object_id.filter(|s| !s.is_empty());
+    if object_kind.is_some() != object_id.is_some() {
+        return Err(BuildError::BadPage(
+            "a comment object address needs both `object_kind` and `object_id`".into(),
+        ));
+    }
+    if page.is_none() && object_kind.is_none() {
+        return Err(BuildError::BadPage(
+            "a comment needs a `page` or an object address".into(),
+        ));
+    }
+    if page.is_none() && loc.is_some_and(|loc| !loc.is_empty()) {
+        return Err(BuildError::BadPage("a comment `loc` needs a `page`".into()));
+    }
+    Ok(())
 }
 
 /// The `comments.wcl` that owns comments for a page defined in `page_file`:
@@ -116,17 +174,34 @@ fn read_file(path: &Path) -> Vec<CommentRecord> {
         let Some(id) = fields.remove("id") else {
             continue;
         };
+        let page = fields.remove("page").filter(|s| !s.is_empty());
         let loc = fields.remove("loc").filter(|s| !s.is_empty());
+        let object_kind = fields.remove("object_kind").filter(|s| !s.is_empty());
+        let object_id = fields.remove("object_id").filter(|s| !s.is_empty());
+        if validate_address(
+            page.as_deref(),
+            object_kind.as_deref(),
+            object_id.as_deref(),
+            loc.as_deref(),
+        )
+        .is_err()
+        {
+            continue;
+        }
         out.push(CommentRecord {
             scope: if loc.is_some() {
                 CommentScope::Block
-            } else {
+            } else if page.is_some() {
                 CommentScope::Page
+            } else {
+                CommentScope::Object
             },
             id,
             file: path.to_path_buf(),
-            page: fields.remove("page").unwrap_or_default(),
+            page,
             page_file: fields.remove("page_file"),
+            object_kind,
+            object_id,
             loc,
             target: fields.remove("target"),
             quote: fields.remove("quote"),
@@ -151,24 +226,54 @@ pub fn add(
     author: Option<&str>,
     quote: Option<&str>,
 ) -> Result<String, BuildError> {
+    add_addressed(
+        comments_file,
+        NewComment {
+            page: Some(page),
+            page_file,
+            loc,
+            target,
+            object_kind: None,
+            object_id: None,
+            body,
+            author,
+            quote,
+        },
+    )
+}
+
+/// Append a comment addressed to a rendered page, a model object, or both.
+///
+/// An object address is indivisible: `object_kind` and `object_id` must be
+/// supplied together. At least one complete address (`page` or object) is
+/// required, and a positional `loc` only makes sense when a page is present.
+pub fn add_addressed(comments_file: &Path, comment: NewComment<'_>) -> Result<String, BuildError> {
+    comment.validate()?;
+    let page = comment.page.filter(|s| !s.is_empty());
+    let object_kind = comment.object_kind.filter(|s| !s.is_empty());
+    let object_id = comment.object_id.filter(|s| !s.is_empty());
     let id = gen_id('c');
-    let loc = loc.map(str::to_string).filter(|s| !s.is_empty());
+    let loc = comment.loc.map(str::to_string).filter(|s| !s.is_empty());
     let mut recs = read_file(comments_file);
     recs.push(CommentRecord {
         scope: if loc.is_some() {
             CommentScope::Block
-        } else {
+        } else if page.is_some() {
             CommentScope::Page
+        } else {
+            CommentScope::Object
         },
         id: id.clone(),
         file: comments_file.to_path_buf(),
-        page: page.to_string(),
-        page_file: page_file.map(str::to_string),
+        page: page.map(str::to_string),
+        page_file: comment.page_file.map(str::to_string),
+        object_kind: object_kind.map(str::to_string),
+        object_id: object_id.map(str::to_string),
         loc,
-        target: target.map(str::to_string),
-        quote: quote.map(str::to_string),
-        body: body.to_string(),
-        author: author.map(str::to_string),
+        target: comment.target.map(str::to_string),
+        quote: comment.quote.map(str::to_string),
+        body: comment.body.to_string(),
+        author: comment.author.map(str::to_string),
         status: None,
     });
     write_file(comments_file, &recs)?;
@@ -218,14 +323,22 @@ fn write_file(path: &Path, recs: &[CommentRecord]) -> Result<(), BuildError> {
     let mut out = String::from(
         "// Review comments for this document — written from the `wcl editor`\n\
          // preview pane and read back by `wcl wdoc comments`. Each `comment` block is\n\
-         // keyed by page name + block locator; safe to hand-edit or generate.\n\n",
+         // addressed to a page, an object, or both; safe to hand-edit or generate.\n\n",
     );
     for r in recs {
         out.push_str("comment {\n");
         out.push_str(&format!("  id = {}\n", wcl_string(&r.id)));
-        out.push_str(&format!("  page = {}\n", wcl_string(&r.page)));
+        if let Some(page) = &r.page {
+            out.push_str(&format!("  page = {}\n", wcl_string(page)));
+        }
         if let Some(pf) = &r.page_file {
             out.push_str(&format!("  page_file = {}\n", wcl_string(pf)));
+        }
+        if let Some(kind) = &r.object_kind {
+            out.push_str(&format!("  object_kind = {}\n", wcl_string(kind)));
+        }
+        if let Some(id) = &r.object_id {
+            out.push_str(&format!("  object_id = {}\n", wcl_string(id)));
         }
         if let Some(loc) = &r.loc {
             out.push_str(&format!("  loc = {}\n", wcl_string(loc)));
@@ -293,7 +406,7 @@ mod tests {
         let recs = ok(list(&dir));
         let rec = recs.iter().find(|r| r.id == id).unwrap();
         assert_eq!(rec.scope, CommentScope::Block);
-        assert_eq!(rec.page, "home");
+        assert_eq!(rec.page.as_deref(), Some("home"));
         assert_eq!(rec.page_file.as_deref(), Some("book/main.wcl"));
         assert_eq!(rec.loc.as_deref(), Some("0/2/1"));
         assert_eq!(rec.target.as_deref(), Some("card — \"3rd\""));
@@ -343,6 +456,76 @@ mod tests {
     }
 
     #[test]
+    fn object_only_comment_round_trips() {
+        let dir = tempdir();
+        let file = dir.join("comments.wcl");
+        fs::write(
+            &file,
+            "comment {\n  id = \"cobject\"\n  object_kind = \"concept\"\n  \
+             object_id = \"records\"\n  body = \"This unit should not exist.\"\n  \
+             author = \"curator\"\n}\n",
+        )
+        .unwrap();
+
+        let recs = ok(list(&dir));
+        let rec = recs.iter().find(|r| r.id == "cobject").unwrap();
+        assert_eq!(rec.scope, CommentScope::Object);
+        assert!(rec.page.is_none());
+        assert_eq!(rec.object_kind.as_deref(), Some("concept"));
+        assert_eq!(rec.object_id.as_deref(), Some("records"));
+        assert_eq!(rec.author.as_deref(), Some("curator"));
+
+        assert!(ok(edit(&dir, "cobject", "Sharper finding.")));
+        let written = fs::read_to_string(&file).unwrap();
+        assert!(written.contains("object_kind = \"concept\""), "{written}");
+        assert!(written.contains("object_id = \"records\""), "{written}");
+        assert!(!written.contains("page ="), "{written}");
+    }
+
+    #[test]
+    fn addressed_add_requires_a_page_or_a_complete_object_address() {
+        let dir = tempdir();
+        let file = dir.join("comments.wcl");
+
+        for (kind, id) in [(None, None), (Some("concept"), None), (None, Some("alpha"))] {
+            let result = add_addressed(
+                &file,
+                NewComment {
+                    page: None,
+                    page_file: None,
+                    loc: None,
+                    target: None,
+                    object_kind: kind,
+                    object_id: id,
+                    body: "finding",
+                    author: Some("curator"),
+                    quote: None,
+                },
+            );
+            assert!(result.is_err(), "accepted partial address {kind:?}:{id:?}");
+        }
+
+        let id = ok(add_addressed(
+            &file,
+            NewComment {
+                page: None,
+                page_file: None,
+                loc: None,
+                target: None,
+                object_kind: Some("index"),
+                object_id: Some("reference"),
+                body: "This index has no body.",
+                author: Some("curator"),
+                quote: None,
+            },
+        ));
+        let rec = ok(list(&dir)).into_iter().find(|r| r.id == id).unwrap();
+        assert_eq!(rec.scope, CommentScope::Object);
+        assert_eq!(rec.object_kind.as_deref(), Some("index"));
+        assert_eq!(rec.object_id.as_deref(), Some("reference"));
+    }
+
+    #[test]
     fn edit_changes_body_and_preserves_other_fields() {
         let dir = tempdir();
         let file = dir.join("comments.wcl");
@@ -366,7 +549,7 @@ mod tests {
         assert_eq!(rec.loc.as_deref(), Some("0/1"));
         assert_eq!(rec.target.as_deref(), Some("2nd p"));
         assert_eq!(rec.quote.as_deref(), Some("a quote"));
-        assert_eq!(rec.page, "home");
+        assert_eq!(rec.page.as_deref(), Some("home"));
 
         assert!(!ok(edit(&dir, "nope", "x")));
     }
