@@ -1,6 +1,6 @@
 // ── Stdlib sequence diagrams ───────────────────────────────────────
 //
-// `sequence_diagram` is a page-level block (`extends WdocBlock`) whose
+// `sequence_diagram` is a page-level block (`extends ContentBlock`) whose
 // lowering returns a `Content::Drawing`: participants rank left-to-right
 // in declaration order, messages top-to-bottom in declaration order, so
 // the whole figure is authored coordinate-free. Each backend fits a
@@ -249,7 +249,7 @@ type SeqNote {
 }
 
 @block("sequence_diagram")
-type SequenceDiagram extends WdocBlock {
+type SequenceDiagram extends ContentBlock {
   @doc("Rendered width in pixels; the height follows the content.")
   width = 760.0
   @doc("Horizontal distance between participant lifelines.")

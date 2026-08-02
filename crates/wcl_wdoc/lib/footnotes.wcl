@@ -24,7 +24,7 @@
 
 namespace wdoc
 
-// A single definition. Not a `WdocBlock`: it never renders on its own —
+// A single definition. Not a `ContentBlock`: it never renders on its own —
 // the parent `footnotes` block's `lower` maps it into one entry of the
 // content node — so it has neither a lowering of its own nor a native
 // implementation, exactly like an `li` under a `list`.
@@ -37,7 +37,7 @@ type Footnote {
 }
 
 @block("footnotes")
-type Footnotes extends WdocBlock {
+type Footnotes extends ContentBlock {
   @doc("The footnote definitions, in number order.")
   @children("footnote") items: list<Footnote>
   lower = fn(f: Footnotes) -> list<Content> [

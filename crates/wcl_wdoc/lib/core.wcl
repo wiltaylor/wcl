@@ -29,7 +29,7 @@ type Site {
   @children("wdoc_repeater")  generators:  list<WdocRepeater>
   // Tagged content deposits gathered by a matching `collect`. Legal at the
   // document root so partials can be scattered across imported files; also
-  // legal inside any page (via `WdocBlock`).
+  // legal inside any page (via `ContentBlock`).
   @children("partial")        partials:    list<WdocPartial>
   // Standalone addressable content fragments at the document root (and in
   // eagerly-imported files). Rendered by reference via `project`; a body
@@ -77,11 +77,12 @@ stylesheet "wdoc-base" {
     CSS
 }
 
-// Renderable-block interfaces. `WdocBlock` is the page-level domain
-// (renders to HTML today; could target other formats later).
-// `SvgBlock` is the diagram-level domain. User-authored block types
-// opt in with `extends WdocBlock` / `extends SvgBlock` to become
-// legal children of the corresponding `@children(...)` slot.
+// Renderable-block interfaces describe OUTPUT, not placement:
+// `ContentBlock` lowers to the target-neutral page-content IR and
+// `SvgBlock` lowers to the SVG IR (`TermPrimitive`, beside the terminal
+// IR declaration, is the third). Page-level vs diagram-child vs terminal-
+// child placement is expressed only by the accepts-type on the slot's
+// `@children(...)` field.
 //
 // A block is rendered one of exactly two ways, and it says which:
 //
@@ -89,8 +90,8 @@ stylesheet "wdoc-base" {
 //               list of fundamental variants. The interface signature
 //               uses `&Interface` as the parameter; concrete types are
 //               free to narrow the parameter to their own type
-//               (function-typed interface fields match on return type
-//               only). Implementations supply the function as a field
+//               (function-typed interface fields are structurally
+//               compatible). Implementations supply the function as a field
 //               default so per-instance overrides are possible but never
 //               required.
 //   `@native` — the renderer implements the block in Rust and never calls
@@ -102,9 +103,9 @@ stylesheet "wdoc-base" {
 // native.rs`), which refuses a block declaring both or neither — the
 // stub `lower` returning `[]` is exactly what that check exists to
 // prevent coming back.
-interface WdocBlock {
+interface ContentBlock {
   id:    identifier?
-  lower: fn(&WdocBlock) -> list<Html>?
+  lower: fn(&ContentBlock) -> list<Content>?
 }
 
 // Read-only authored content handed to a page template. `block` is the
@@ -114,7 +115,7 @@ interface WdocBlock {
 // them with `Html::Blocks`; they never render or mutate them.
 type BlockHandle {
   kind:     utf8
-  block:    WdocBlock
+  block:    ContentBlock
   children: list<BlockHandle>
   handle:   u64
 }
@@ -142,9 +143,9 @@ interface SvgBlock {
 // (`@except(backends = [:pdf])`): capability says *can't*, author intent
 // says *don't want to*, and the build refuses until they agree.
 //
-//   @block("terminal") @native            type Terminal extends WdocBlock { … }
+//   @block("terminal") @native         type Terminal extends ContentBlock { … }
 //   @block("file") @native(backends = [:html, :markdown, :skill])
-//                                         type FileObj  extends WdocBlock { … }
+//                                      type FileObj  extends ContentBlock { … }
 @decorator("native")
 type NativeBlock {
   backends: list<symbol>?
@@ -238,14 +239,14 @@ type Page {
   @doc("Optional YAML front matter for the Markdown target (Markdown only).")
   @child("frontmatter") frontmatter: Frontmatter?
   @doc("The page's content blocks.")
-  @children(WdocBlock) children: list<WdocBlock>
+  @children(ContentBlock) children: list<ContentBlock>
 }
 
 // Page front matter for the Markdown target. The type is `@schemaless`
 // (an open, dynamic kind, like `wdoc_instance`): authors write any
 // `key = value` pairs they like and the Markdown backend reads them back
 // (`Block::fields`) and emits a YAML header. This slot exists to register
-// `frontmatter` as a legal page child — it is not a `WdocBlock`, so it
+// `frontmatter` as a legal page child — it is not a `ContentBlock`, so it
 // never renders as page content and the HTML / PDF targets pass over it.
 //
 //   page intro {

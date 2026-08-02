@@ -1,12 +1,12 @@
 // wdoc section: Terminal.
 
 // A custom TUI control used in the "Custom widgets" section below: a keycap
-// pill. It extends TuiWidget (so it's a legal `terminal` child) and its
+// pill. It extends TermPrimitive (so it's a legal `terminal` child) and its
 // `lower` returns styled text runs — a coloured background of spaces with
 // the key label on top, both via the shared `term_run` / `term_repeat`
 // helpers the stdlib widgets use.
 @block("kbd")
-type Kbd extends TuiWidget {
+type Kbd extends TermPrimitive {
   @inline(0) key: utf8
   accent: utf8?
   row: i64  col: i64
@@ -301,7 +301,7 @@ WCL
 
   h3 "Custom widgets"
 
-  p "TUI widgets are user-extensible. Declare a `@block(\"name\") type … extends TuiWidget` with a `lower` that returns `list<TermFundamental>`, and it plugs into the renderer like the built-ins — a legal child of any `terminal` (or container). Lay it out from its own top-left `(1, 1)`; the renderer offsets it by the widget's placement. Build the output from the shared `term_run` / `term_repeat` helpers, since styled text is the only thing the renderer paints — colour over box characters."
+  p "TUI widgets are user-extensible. Declare a `@block(\"name\") type … extends TermPrimitive` with a `lower` that returns `list<TermFundamental>`, and it plugs into the renderer like the built-ins — a legal child of any `terminal` (or container). Lay it out from its own top-left `(1, 1)`; the renderer offsets it by the widget's placement. Build the output from the shared `term_run` / `term_repeat` helpers, since styled text is the only thing the renderer paints — colour over box characters."
 
   p "Here's a `kbd` keycap — a coloured background run with the key label on top, the accent overridable per instance:"
 
@@ -312,10 +312,10 @@ WCL
 
   code wcl {
     source = <<'WCL'
-// Extends TuiWidget → a legal terminal child. The lower returns styled
+// Extends TermPrimitive → a legal terminal child. The lower returns styled
 // text runs (a background of spaces + the label on top).
 @block("kbd")
-type Kbd extends TuiWidget {
+type Kbd extends TermPrimitive {
   @inline(0) key: utf8
   accent: utf8?
   row: i64  col: i64

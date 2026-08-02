@@ -12,7 +12,7 @@
 namespace wdoc
 
 @block("h1")
-type H1 extends WdocBlock {
+type H1 extends ContentBlock {
   @doc("The heading text (the inline label slot); inline patterns are applied.")
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")
@@ -23,7 +23,7 @@ type H1 extends WdocBlock {
 }
 
 @block("h2")
-type H2 extends WdocBlock {
+type H2 extends ContentBlock {
   @doc("The heading text (the inline label slot); inline patterns are applied.")
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")
@@ -34,7 +34,7 @@ type H2 extends WdocBlock {
 }
 
 @block("h3")
-type H3 extends WdocBlock {
+type H3 extends ContentBlock {
   @doc("The heading text (the inline label slot); inline patterns are applied.")
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")
@@ -45,7 +45,7 @@ type H3 extends WdocBlock {
 }
 
 @block("h4")
-type H4 extends WdocBlock {
+type H4 extends ContentBlock {
   @doc("The heading text (the inline label slot); inline patterns are applied.")
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")
@@ -56,7 +56,7 @@ type H4 extends WdocBlock {
 }
 
 @block("h5")
-type H5 extends WdocBlock {
+type H5 extends ContentBlock {
   @doc("The heading text (the inline label slot); inline patterns are applied.")
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")
@@ -67,7 +67,7 @@ type H5 extends WdocBlock {
 }
 
 @block("h6")
-type H6 extends WdocBlock {
+type H6 extends ContentBlock {
   @doc("The heading text (the inline label slot); inline patterns are applied.")
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")

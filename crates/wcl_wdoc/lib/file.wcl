@@ -28,7 +28,7 @@ namespace wdoc
 
 @block("file")
 @native(backends = [:html, :markdown, :skill])
-type FileObj extends WdocBlock {
+type FileObj extends ContentBlock {
   @doc("File source (the inline label): a doc-relative path, a URL, or a `data:` URI.")
   @inline(0) source: utf8
   @doc("Output subdirectory. Skill target: e.g. \"scripts\" / \"assets\". HTML/Markdown: defaults to the `_wdoc/` asset folder.")

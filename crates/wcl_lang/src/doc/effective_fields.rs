@@ -60,8 +60,8 @@ impl<'a> ParentDecl<'a> {
 /// Resolve an `extends` path written in a source whose namespace is
 /// `file_ns` to its declaration. The path resolves **within `file_ns`
 /// first** (then the document's aliases/wildcards, then absolute), so a
-/// stdlib type's bare `extends WdocBlock` under `namespace wdoc` finds
-/// `wdoc.WdocBlock`.
+/// stdlib type's bare `extends ContentBlock` under `namespace wdoc` finds
+/// `wdoc.ContentBlock`.
 fn lookup_parent<'a>(
     doc: &'a Document,
     path: &[String],
@@ -216,8 +216,8 @@ pub(super) fn is_descendant_of_walk(
             continue;
         };
         // Compare the *resolved* fully-qualified name, so a bare
-        // `extends WdocBlock` under `namespace wdoc` matches a
-        // `target_fqn` of `wdoc.WdocBlock`.
+        // `extends ContentBlock` under `namespace wdoc` matches a
+        // `target_fqn` of `wdoc.ContentBlock`.
         let key = decl.full_name();
         if !seen.insert(key.clone()) {
             continue;

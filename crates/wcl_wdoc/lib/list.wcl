@@ -41,7 +41,7 @@ symbol_set ListStyle { bullet numbered }
 
 @block("list")
 @native
-type ListBlock extends WdocBlock, ListNode {
+type ListBlock extends ContentBlock, ListNode {
   id:    identifier?
   class: list<utf8>?
   @doc("`:bullet` (default → `<ul>`) or `:numbered` (→ `<ol>`).")

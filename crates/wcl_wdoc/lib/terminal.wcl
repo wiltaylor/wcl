@@ -19,10 +19,10 @@
 // `palette` (:default | :light) plus `fg`/`bg` overrides; chrome
 // draws a title bar.
 
-// Marker interface for everything placeable in a terminal — the
-// `term_text` primitive (drawn directly) and every higher-level element
-// in `tui.wcl` (which extends `TuiWidget extends TermPrimitive` and
-// lowers to text). Each sits at a 1-based (row, col).
+// The terminal-output interface. Every implementation sits at a 1-based
+// (row, col) and either lowers to terminal IR or is a native primitive.
+// Placement is expressed separately by `Terminal.children` and container
+// slots accepting `TermPrimitive`.
 namespace wdoc
 
 interface TermPrimitive {
@@ -30,11 +30,12 @@ interface TermPrimitive {
   row: i64
   @doc("1-based grid column.")
   col: i64
+  lower: fn(&TermPrimitive) -> list<TermFundamental>?
 }
 
 @block("terminal")
 @native
-type Terminal extends WdocBlock {
+type Terminal extends ContentBlock {
   @doc("Grid width in cells (default `80`; a `.cast` header overrides it).")
   cols:        i64?
   @doc("Grid height in cells (default `24`; a `.cast` header overrides it).")
@@ -77,6 +78,7 @@ type Terminal extends WdocBlock {
 // controls in `tui.wcl`) is a higher-level element that lowers to
 // `TermFundamental::Text` runs.
 @block("term_text")
+@native
 type TermText extends TermPrimitive {
   @doc("The text (`@inline(0)`, so `term_text \"hi\" { … }`).")
   @inline(0) content: utf8
@@ -137,4 +139,3 @@ stylesheet "wdoc-terminal" {
     .term-overlay-play[hidden] { display: none; }
     CSS
 }
-

@@ -45,17 +45,9 @@ union TermFundamental {
   Children { row: i64  col: i64 }
 }
 
-// The base TUI widget — extend this to author your own control. It's a
-// `TermPrimitive`, so an instance is a legal `terminal` child (and a
-// legal child of any container widget). Supply a `lower` that returns
-// the `TermFundamental`s (styled-text runs) the control draws.
-interface TuiWidget extends TermPrimitive {
-  @doc("1-based grid row.")
-  row:   i64
-  @doc("1-based grid column.")
-  col:   i64
-  lower: fn(&TuiWidget) -> list<TermFundamental>
-}
+// Extend `TermPrimitive` to author a control. Its `lower` returns the
+// `TermFundamental` styled-text runs it draws; the terminal/container slot
+// is what makes the instance placeable, not a second widget interface.
 
 // ── Text helpers ──────────────────────────────────────────────────────
 // Shared composition fns. Every higher-level element builds its output
@@ -113,7 +105,7 @@ let term_box_runs = fn(row: i64, col: i64, w: i64, h: i64, border: symbol, title
 
 // A bordered box: :single (default) :double :rounded :heavy :ascii.
 @block("term_box")
-type TermBox extends TuiWidget {
+type TermBox extends TermPrimitive {
   row: i64  col: i64
   @doc("Box width in cells.")
   width: i64
@@ -136,7 +128,7 @@ type TermBox extends TuiWidget {
 // A run of text (may contain `\n`) at (row, col) — convenience alias for
 // a single styled-text fundamental.
 @block("term_glyph")
-type TermGlyph extends TuiWidget {
+type TermGlyph extends TermPrimitive {
   @doc("The text run (may contain `\\n`), `@inline(0)`.")
   @inline(0) glyph: utf8
   row: i64  col: i64
@@ -152,7 +144,7 @@ type TermGlyph extends TuiWidget {
 
 // Fill a rectangular region with a repeated char (label's first run).
 @block("term_fill")
-type TermFill extends TuiWidget {
+type TermFill extends TermPrimitive {
   @doc("The fill character (`@inline(0)`).")
   @inline(0) ch: utf8
   row: i64  col: i64
@@ -176,7 +168,7 @@ type TermFill extends TuiWidget {
 // with an optional leading label and a trailing `NN%`. `value` is a
 // percentage of `max` (default 100); `width` is the bar length in cells.
 @block("tui_progress")
-type TuiProgress extends TuiWidget {
+type TuiProgress extends TermPrimitive {
   @doc("Optional `@inline` caption to the left of the bar.")
   @inline(0) label: utf8?
   @doc("Filled amount (clamped to `0`..`max`).")
@@ -214,7 +206,7 @@ type TuiProgress extends TuiWidget {
 // A button: the label centred on a solid `accent`-coloured cell run, in
 // the contrasting `fg`. Colour defines the button — no border glyphs.
 @block("tui_button")
-type TuiButton extends TuiWidget {
+type TuiButton extends TermPrimitive {
   @doc("Button text (`@inline`).")
   @inline(0) label: utf8
   @doc("Total width (default = label + padding).")
@@ -242,7 +234,7 @@ type TuiButton extends TuiWidget {
 // `frame`); the `kind` picks the glyph set. `:dots` (braille, default),
 // `:circle`, or `:line`.
 @block("tui_spinner")
-type TuiSpinner extends TuiWidget {
+type TuiSpinner extends TermPrimitive {
   @doc("Optional `@inline` caption after the frame.")
   @inline(0) label: utf8?
   @doc("Which frame index to show (default `0`).")
@@ -269,7 +261,7 @@ type TuiSpinner extends TuiWidget {
 // A single-line input. An `accent` left bar, then the `value` (solid) or
 // the `placeholder` (muted) — plus a cursor when `focused`.
 @block("tui_input")
-type TuiInput extends TuiWidget {
+type TuiInput extends TermPrimitive {
   @doc("Muted prompt shown when empty (`@inline`).")
   @inline(0) placeholder: utf8
   @doc("Current text (overrides the placeholder).")
@@ -296,7 +288,7 @@ type TuiInput extends TuiWidget {
 // item, the `selected` one in the accent colour (defaulting to the item
 // equal to `text`).
 @block("tui_dropdown")
-type TuiDropdown extends TuiWidget {
+type TuiDropdown extends TermPrimitive {
   @doc("Selected / shown label (`@inline`).")
   @inline(0) text: utf8
   @doc("Option list shown below the field when `open`.")
@@ -345,7 +337,7 @@ type TuiDropdown extends TuiWidget {
 // A checkbox: a filled `■` (accent) when `checked`, else an empty `□`
 // (muted), followed by the label.
 @block("tui_checkbox")
-type TuiCheckbox extends TuiWidget {
+type TuiCheckbox extends TermPrimitive {
   @doc("Checkbox caption (`@inline`).")
   @inline(0) label: utf8
   @doc("On/off state.")
@@ -371,7 +363,7 @@ type TuiCheckbox extends TuiWidget {
 // A radio selector: a filled `◉` (accent) when `selected`, else an empty
 // `○` (muted), followed by the label.
 @block("tui_radio")
-type TuiRadio extends TuiWidget {
+type TuiRadio extends TermPrimitive {
   @doc("Radio caption (`@inline`).")
   @inline(0) label: utf8
   @doc("Whether this option is chosen.")
@@ -402,7 +394,7 @@ type TuiRadio extends TuiWidget {
 // A bordered panel with an optional title. Children sit inside the
 // border (content origin at local row 2, col 2).
 @block("tui_panel")
-type TuiPanel extends TuiWidget {
+type TuiPanel extends TermPrimitive {
   @doc("Optional heading drawn into the top border.")
   title:  utf8?
   @doc("Box width in cells.")
@@ -429,7 +421,7 @@ type TuiPanel extends TuiWidget {
 // A borderless group with an optional heading. Children sit below the
 // heading (or at the origin when there is none).
 @block("tui_group")
-type TuiGroup extends TuiWidget {
+type TuiGroup extends TermPrimitive {
   @doc("Optional heading above the children.")
   title: utf8?
   row: i64  col: i64

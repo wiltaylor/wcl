@@ -15,7 +15,7 @@
 // it accepts, and whether it holds one block or a list.
 //
 //   @block("image")
-//   type Image extends WdocBlock {
+//   type Image extends ContentBlock {
 //     @doc("Image path, a URL, or a data: URI")
 //     @inline(0) source: utf8
 //     @doc("Alt text for the <img>") alt: utf8?

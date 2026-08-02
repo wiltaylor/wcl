@@ -51,7 +51,7 @@ type Card extends SvgBlock {
   @doc("Diagram edge-attach sides, like any shape.")
   connect_points: list<AnchorSide>?
   @doc("The card's rich content (paragraphs, lists, callouts, nested diagrams…).")
-  @children(WdocBlock) body: list<WdocBlock>
+  @children(ContentBlock) body: list<ContentBlock>
 
   // The rich HTML body is rendered in Rust — see src/card.rs.
 }

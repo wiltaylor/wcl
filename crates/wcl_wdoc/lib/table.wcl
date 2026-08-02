@@ -31,7 +31,7 @@ namespace wdoc
 
 @block("table")
 @native
-type TableBlock extends WdocBlock {
+type TableBlock extends ContentBlock {
   @doc("Optional explicit HTML id.")
   id:     identifier?
   @doc("Optional class list applied to the `<table>` (e.g. to override `wdoc-table`).")

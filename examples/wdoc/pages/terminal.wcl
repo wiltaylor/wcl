@@ -12,14 +12,14 @@ class "term-mocha" {
   light { background = "#eff1f5"  color = "#4c4f69" }
 }
 
-// A custom TUI control, built by extending the `TuiWidget` base — a
+// A custom TUI control, built by extending the `TermPrimitive` base — a
 // keycap pill that lowers to styled text: a coloured background run
 // (spaces) with the key label on top, both via the shared `term_run` /
-// `term_repeat` helpers. Any `@block … extends TuiWidget` whose `lower`
+// `term_repeat` helpers. Any `@block … extends TermPrimitive` whose `lower`
 // returns `list<TermFundamental>` plugs into the renderer like the
 // built-in controls.
 @block("kbd")
-type Kbd extends TuiWidget {
+type Kbd extends TermPrimitive {
   @inline(0) key: utf8
   accent: utf8?
   row: i64  col: i64

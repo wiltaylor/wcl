@@ -1314,7 +1314,7 @@ fn a_user_block_lowering_to_the_content_ir_renders_in_pdf() {
     write_fixture(
         &src,
         "@block(\"gadget\")\n\
-         type Gadget extends WdocBlock {\n  \
+         type Gadget extends ContentBlock {\n  \
            @inline(0) name: utf8\n  id: identifier?\n  \
            lower = fn(g: Gadget) -> list<Content> [\n    \
              Content::Callout { kind: :warning, heading: g.name,\n      \
@@ -1341,12 +1341,12 @@ fn a_lowering_returning_another_custom_variant_recurses_in_pdf() {
         &src,
         "union Step { Inner { text: utf8 } }\n\
          @block(\"inner\")\n\
-         type Inner extends WdocBlock {\n  \
+         type Inner extends ContentBlock {\n  \
            text: utf8\n  id: identifier?\n  \
            lower = fn(i: Inner) -> list<Content> [Content::Paragraph { text: i.text }]\n\
          }\n\
          @block(\"outer\")\n\
-         type Outer extends WdocBlock {\n  \
+         type Outer extends ContentBlock {\n  \
            @inline(0) text: utf8\n  id: identifier?\n  \
            lower = fn(o: Outer) -> list<Step> [Step::Inner { text: o.text }]\n\
          }\n\

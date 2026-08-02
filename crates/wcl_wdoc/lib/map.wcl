@@ -110,7 +110,7 @@ type MapPin {
   @doc("Optional card heading.")
   title: utf8?                       // optional card heading
   @doc("The card body — any wdoc blocks.")
-  @children(WdocBlock) card: list<WdocBlock>
+  @children(ContentBlock) card: list<ContentBlock>
 }
 
 // Default map styling. Bare-class selectors so user `class`es win, with

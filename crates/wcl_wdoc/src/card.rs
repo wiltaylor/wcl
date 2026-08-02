@@ -22,7 +22,7 @@ use crate::render::{
 
 /// Render a free-standing `@block("card")` placed in a diagram /
 /// container: resolve its box (anchor-aware, like `rect`) and draw its
-/// `@children(WdocBlock)` body as a `<foreignObject>`.
+/// `@children(ContentBlock)` body as a `<foreignObject>`.
 pub(crate) fn render_card(
     block: &Block<'_>,
     ctx: RenderCtx<'_>,

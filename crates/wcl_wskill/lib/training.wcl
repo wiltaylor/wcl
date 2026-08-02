@@ -125,7 +125,7 @@ type TrainingModule {
 // parsing prose, and so a build with no JS still shows the question and its
 // choices as readable content.
 @block("quiz")
-type Quiz extends WdocBlock {
+type Quiz extends ContentBlock {
   @inline(0) qid: utf8                    // check id — the progress key
   prompt: utf8
   kind: CheckKind

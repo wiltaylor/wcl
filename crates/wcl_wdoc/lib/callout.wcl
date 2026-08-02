@@ -18,7 +18,7 @@
 namespace wdoc
 
 @block("callout")
-type Callout extends WdocBlock {
+type Callout extends ContentBlock {
   @doc("Inline label — the coloured heading at the top of the callout.")
   @inline(0) heading: utf8
   @doc("The prose under the heading. Runs through the inline-pattern engine.")

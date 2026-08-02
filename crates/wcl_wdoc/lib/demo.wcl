@@ -27,7 +27,7 @@ namespace wdoc
 
 @block("demo")
 @native
-type Demo extends WdocBlock {
+type Demo extends ContentBlock {
   @doc("Optional caption shown above the example.")
   @inline(0) title: utf8?
   @doc("Centre + scale the light/dark previews for diagram-family components (kept side by side), so a compact diagram fills its pane instead of sitting in a half-empty box.")
@@ -35,7 +35,7 @@ type Demo extends WdocBlock {
   @doc("Optional explicit HTML id.")
   id: identifier?
   @doc("The component(s) to show. Printed as the example source and rendered live as the light/dark preview.")
-  @children(WdocBlock) children: list<WdocBlock>
+  @children(ContentBlock) children: list<ContentBlock>
 
   // The source listing + dual-theme preview are rendered in Rust (see
   // src/demo.rs); a pure-WCL lower can't reach the source text or

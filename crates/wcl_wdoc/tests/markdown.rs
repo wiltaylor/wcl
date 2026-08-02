@@ -386,7 +386,7 @@ fn lowerless_block_fails_the_build() {
     let src = tmp.path().join("doc.wcl");
     write_fixture(
         &src,
-        "@block(\"gadget\")\ntype Gadget extends WdocBlock {\n  id: identifier?\n}\n\
+        "@block(\"gadget\")\ntype Gadget extends ContentBlock {\n  id: identifier?\n}\n\
          page p {\n  gadget {}\n  p \"kept\"\n}\n",
     );
     let out = tmp.path().join("out");
@@ -784,7 +784,7 @@ fn a_user_block_lowering_to_the_content_ir_renders_in_markdown() {
     // declaration.
     let (_t, out) = build(
         "@block(\"gadget\")\n\
-         type Gadget extends WdocBlock {\n  \
+         type Gadget extends ContentBlock {\n  \
            @inline(0) name: utf8\n  id: identifier?\n  \
            lower = fn(g: Gadget) -> list<Content> [\n    \
              Content::Heading { level: 3, text: g.name },\n    \
@@ -804,12 +804,12 @@ fn a_lowering_returning_another_custom_variant_recurses_in_markdown() {
     let (_t, out) = build(
         "union Step { Inner { text: utf8 } }\n\
          @block(\"inner\")\n\
-         type Inner extends WdocBlock {\n  \
+         type Inner extends ContentBlock {\n  \
            text: utf8\n  id: identifier?\n  \
            lower = fn(i: Inner) -> list<Content> [Content::Paragraph { text: i.text }]\n\
          }\n\
          @block(\"outer\")\n\
-         type Outer extends WdocBlock {\n  \
+         type Outer extends ContentBlock {\n  \
            @inline(0) text: utf8\n  id: identifier?\n  \
            lower = fn(o: Outer) -> list<Step> [Step::Inner { text: o.text }]\n\
          }\n\
@@ -825,7 +825,7 @@ fn a_callout_body_is_content_not_a_string() {
     // alert block instead of being flattened into one paragraph string.
     let (_t, out) = build(
         "@block(\"boxed\")\n\
-         type Boxed extends WdocBlock {\n  \
+         type Boxed extends ContentBlock {\n  \
            id: identifier?\n  \
            lower = fn(b: Boxed) -> list<Content> [\n    \
              Content::Callout {\n      \
@@ -855,7 +855,7 @@ fn a_malformed_content_node_fails_the_build() {
     write_fixture(
         &src,
         "@block(\"broken\")\n\
-         type Broken extends WdocBlock {\n  \
+         type Broken extends ContentBlock {\n  \
            id: identifier?\n  \
            lower = fn(b: Broken) -> list<Content> [Content::Heading { level: 900 }]\n\
          }\n\

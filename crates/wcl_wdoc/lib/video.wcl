@@ -1,6 +1,6 @@
 // ── Video ───────────────────────────────────────────────────────────
 //
-// An embedded video, shown on a page (`extends WdocBlock`). The `source`
+// An embedded video, shown on a page (`extends ContentBlock`). The `source`
 // is either a local video file (a doc-relative path — typically `.mp4` —
 // copied into `_wdoc/` and referenced by URL, so it resolves when
 // *served*, not when opened directly from disk) or a web URL: YouTube,
@@ -21,7 +21,7 @@
 namespace wdoc
 
 @block("video")
-type Video extends WdocBlock {
+type Video extends ContentBlock {
   @doc("Video source (the label slot) — a doc-relative path, or a YouTube / Vimeo / other URL.")
   @inline(0) source: utf8             // local video path, or a YouTube / Vimeo / other URL
   @doc("Thumbnail shown before play — a doc-relative path or URL. Auto-derived for YouTube; otherwise a placeholder.")

@@ -12,7 +12,7 @@
 namespace wdoc
 
 @block("p")
-type P extends WdocBlock {
+type P extends ContentBlock {
   @doc("The paragraph text (the inline label slot); inline patterns are applied.")
   @inline(0) text: utf8
   @doc("Optional explicit HTML id.")
