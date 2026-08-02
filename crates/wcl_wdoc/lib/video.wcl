@@ -13,13 +13,14 @@
 // is the explicit `poster` (a local path or URL), or — for YouTube — an
 // auto-derived thumbnail; otherwise a plain play-button placeholder shows.
 //
-// Like `image` it is `@native` — the asset copy, URL parsing, facade HTML,
-// and PDF handling aren't expressible in WCL. Page-only: unlike `image` it
-// isn't an `SvgBlock`, so it can't be placed inside a diagram.
+// The block is payload-shaped: its fixed fields lower to a
+// `Content::Video`, then each backend owns the target-specific reading —
+// asset copy and click-to-play facade in HTML, a shipped link in Markdown,
+// and a poster/link/static label in PDF. Page-only: unlike `image` it isn't
+// an `SvgBlock`, so it can't be placed inside a diagram.
 namespace wdoc
 
 @block("video")
-@native
 type Video extends WdocBlock {
   @doc("Video source (the label slot) — a doc-relative path, or a YouTube / Vimeo / other URL.")
   @inline(0) source: utf8             // local video path, or a YouTube / Vimeo / other URL
@@ -35,6 +36,17 @@ type Video extends WdocBlock {
   id:     identifier?
   @doc("Optional class list.")
   class:  list<utf8>?
+  lower = fn(v: Video) -> list<Content> [
+    Content::Video {
+      source: v.source,
+      poster: v.poster,
+      title: v.title,
+      width: v.width,
+      height: v.height,
+      id: v.id,
+      class: v.class,
+    },
+  ]
 }
 
 // Click-to-play facade styling. Element+class selectors and a pseudo-

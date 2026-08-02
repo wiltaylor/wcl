@@ -184,14 +184,6 @@ impl Emitter<'_> {
                 let rel = self.write_svg("diagram", &svg)?;
                 out.push(image_ref(&self.svg_alt(block, "diagram"), &rel));
             }
-            // Page-level SVG blocks lowered from WCL (`lower_svg`) write a
-            // standalone `.svg` exactly like `diagram`.
-            kinds::SEQUENCE_DIAGRAM | "state_diagram" => {
-                let svg =
-                    crate::render::render_lowered_svg_block(self.doc, block, kind, self.patterns);
-                let rel = self.write_svg(&kind.replace('_', "-"), &svg)?;
-                out.push(image_ref(&self.svg_alt(block, kind), &rel));
-            }
             kinds::TERMINAL => {
                 let svg = crate::terminal::render_terminal_pdf(self.doc, block, self.base_dir);
                 let rel = self.write_svg("terminal", &svg)?;
@@ -206,11 +198,6 @@ impl Emitter<'_> {
             }
             kinds::FILE => {
                 if let Some(s) = self.file(block) {
-                    out.push(s);
-                }
-            }
-            kinds::VIDEO => {
-                if let Some(s) = self.video(block) {
                     out.push(s);
                 }
             }
@@ -504,20 +491,6 @@ impl Emitter<'_> {
             escape_link_text(&text),
             self.asset_href(&entry.url)
         ))
-    }
-
-    /// A page video: an online video becomes a plain link; a local video is
-    /// registered (copied into `_wdoc/` after the page loop, like `file`
-    /// blocks) and linked, so it survives the static render instead of
-    /// silently vanishing.
-    fn video(&self, block: &Block<'_>) -> Option<String> {
-        let source = label_string(block)?;
-        let url = match crate::video::online_url(&source) {
-            Some(url) => url,
-            None => self.asset_href(&self.patterns.videos().register(&source, "video")),
-        };
-        let title = field_utf8(block, "title").unwrap_or_else(|| url.clone());
-        Some(format!("[{}]({url})", escape_link_text(&title)))
     }
 }
 

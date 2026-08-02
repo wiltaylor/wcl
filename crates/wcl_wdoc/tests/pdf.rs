@@ -520,8 +520,8 @@ fn online_video_renders_a_link_in_pdf() {
 fn local_video_has_no_link_in_pdf() {
     // A local video gets only its poster — never a link (a path to a local
     // file is useless in a distributed PDF). With no poster there is nothing
-    // to show, but `video` declares itself native on :pdf, so it names itself
-    // instead of vanishing between the paragraphs either side of it.
+    // to show, but the content IR's exhaustive video arm names it instead of
+    // letting it vanish between the paragraphs either side of it.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("local.wcl");
     write_fixture(

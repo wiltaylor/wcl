@@ -1,12 +1,11 @@
 // ── Stdlib sequence diagrams ───────────────────────────────────────
 //
 // `sequence_diagram` is a page-level block (`extends WdocBlock`) whose
-// geometry lives in `lower_svg`: participants rank left-to-right in
-// declaration order, messages top-to-bottom in declaration order, so
-// the whole figure is authored coordinate-free. The renderer
-// (render/svg/standalone.rs) calls `lower_svg`, fits a viewBox over
-// the returned fundamentals, and derives the height from the content —
-// the block declares only `width` knobs.
+// lowering returns a `Content::Drawing`: participants rank left-to-right
+// in declaration order, messages top-to-bottom in declaration order, so
+// the whole figure is authored coordinate-free. Each backend fits a
+// viewBox over the drawing's shapes and derives the height from the content
+// — the block declares only `width` knobs.
 //
 //   sequence_diagram {
 //     participant "customer" { name = "Customer"  kind = :actor }
@@ -250,7 +249,6 @@ type SeqNote {
 }
 
 @block("sequence_diagram")
-@native
 type SequenceDiagram extends WdocBlock {
   @doc("Rendered width in pixels; the height follows the content.")
   width = 760.0
@@ -273,10 +271,11 @@ type SequenceDiagram extends WdocBlock {
   @doc("Margin notes anchored to messages.")
   @children("note") notes: list<SeqNote>
 
-  // Page-level placement contract (`WdocBlock`): `@native`, because the
-  // geometry below is SVG the Rust renderer fits a viewBox over.
-
-  lower_svg = fn(s: SequenceDiagram) -> list<Svg> {
+  // This is payload-shaped, not subtree-shaped: participants, messages and
+  // notes are ordinary records the lowering can read. The geometry crosses
+  // the page-content seam as a typed `Drawing`; every backend fits the same
+  // SVG payload without naming `sequence_diagram` in its Rust dispatch.
+  lower = fn(s: SequenceDiagram) -> list<Content> {
     let cw = s.col_width ?? 140.0;
     let rh = s.row_height ?? 44.0;
     let hh = s.header_height ?? 64.0;
@@ -295,6 +294,12 @@ type SequenceDiagram extends WdocBlock {
       seq_message(m, ids, msg_ids, cw, rh, hh)));
     let notes = flatten(map(s.notes, fn(nb: SeqNote) -> list<Svg>
       seq_note(nb, msg_ids, len(s.participants), cw, rh, hh)));
-    flatten([heads, lifelines, msgs, notes])
+    [Content::Drawing {
+      shapes: flatten([heads, lifelines, msgs, notes]),
+      width: s.width,
+      desc: s.desc ?? "sequence diagram",
+      id: s.id,
+      class: s.class,
+    }]
   }
 }

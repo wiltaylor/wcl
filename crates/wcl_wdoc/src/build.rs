@@ -1676,11 +1676,6 @@ fn build_site(
             crate::render::DOPESHEET_PLAYER_JS,
         )?;
     }
-    let uses_video = spec.pages.iter().any(crate::video::uses_video);
-    if uses_video && write_shared {
-        write_asset(out_dir, "wdoc-video.js", crate::render::WDOC_VIDEO_JS)?;
-    }
-
     // Site descriptor: the default template + title a template can show.
     // `None` block ⇒ the synthetic default site, so pages render bare
     // unless they set their own `template`.
@@ -1907,7 +1902,6 @@ fn build_site(
             pan_zoom: uses_pan_zoom,
             map: uses_map,
             dopesheet: uses_dopesheet,
-            video: uses_video,
             search,
         },
         search,
@@ -1996,8 +1990,15 @@ fn build_site(
     // or diagram) into `_wdoc/`. No-op when none were used.
     inline_patterns.images().copy_used_images(out_dir)?;
 
-    // Copy each local video file / poster referenced by a rendered `video`
-    // block into `_wdoc/`. No-op when none were used.
+    // Video usage is recorded while consuming the content IR, rather than
+    // inferred from authored block kinds: custom lowerings that emit a Video
+    // therefore receive the same facade player as the stdlib `video` block.
+    if inline_patterns.videos().is_used() {
+        write_asset(out_dir, "wdoc-video.js", crate::render::WDOC_VIDEO_JS)?;
+    }
+
+    // Copy each local video file / poster referenced by a rendered video
+    // node into `_wdoc/`. No-op when none were used.
     inline_patterns.videos().copy_used_assets(out_dir)?;
 
     // Copy each local file referenced by a rendered `file` block into its
@@ -2469,7 +2470,6 @@ struct PlayerScripts {
     pan_zoom: bool,
     map: bool,
     dopesheet: bool,
-    video: bool,
     search: bool,
 }
 
@@ -2477,7 +2477,7 @@ impl PlayerScripts {
     /// Append the `<script>` tags for the players this site uses. Loaded
     /// once per page; each no-ops on a page that doesn't use it. Shared
     /// verbatim by the per-page loop and the presentation deck.
-    fn inject(self, body: &mut String) {
+    fn inject(self, body: &mut String, video: bool) {
         if self.terminals {
             body.push_str("\n<script src=\"_wdoc/terminal-player.js\" defer></script>\n");
         }
@@ -2492,7 +2492,7 @@ impl PlayerScripts {
         if self.dopesheet {
             body.push_str("\n<script src=\"_wdoc/dopesheet-player.js\" defer></script>\n");
         }
-        if self.video {
+        if video {
             body.push_str("\n<script src=\"_wdoc/wdoc-video.js\" defer></script>\n");
         }
         if self.search {
@@ -2627,7 +2627,8 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
         ctx.inline_patterns,
     );
     // The slides may use the same interactive assets a normal page can.
-    ctx.players.inject(&mut rendered.body);
+    ctx.players
+        .inject(&mut rendered.body, ctx.inline_patterns.videos().is_used());
     // The deck keyboard-navigation player.
     write_asset(
         ctx.out_dir,
@@ -2788,7 +2789,8 @@ fn build_normal_page(
             page_heading: page_heading_title(page),
         },
     };
-    ctx.players.inject(&mut rendered.body);
+    ctx.players
+        .inject(&mut rendered.body, ctx.inline_patterns.videos().is_used());
     // Browser tab title: the page's own `title` (else its name), suffixed
     // with the site title as `<page> — <site>` when the site sets one.
     let page_title = field_utf8(page, "title").unwrap_or_else(|| page_name.clone());

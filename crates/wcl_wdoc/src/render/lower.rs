@@ -120,26 +120,12 @@ pub(crate) const MAX_LOWER_DEPTH: usize = 32;
 /// `@block` type's `@default(...)` for `lower`. Returns `None` when
 /// neither path produces a callable.
 pub(crate) fn lookup_block_lower(doc: &Document, block: &Block<'_>, kind: &str) -> Option<FnValue> {
-    lookup_block_lower_named(doc, block, kind, "lower")
-}
-
-/// [`lookup_block_lower`] generalised over the hosting field name. A
-/// page-level block must satisfy `WdocBlock` (whose `lower` returns
-/// HTML fundamentals), so a block that *also* carries SVG geometry
-/// hosts it in a second function field (`lower_svg`) and the renderer
-/// dispatches by name.
-pub(crate) fn lookup_block_lower_named(
-    doc: &Document,
-    block: &Block<'_>,
-    kind: &str,
-    field: &str,
-) -> Option<FnValue> {
-    if let Some(f) = block.field(field)
+    if let Some(f) = block.field("lower")
         && let Ok(Value::Function(fv)) = f.value()
     {
         return Some(fv.clone());
     }
-    lookup_type_lower_named(doc, kind, field)
+    lookup_type_lower(doc, kind)
 }
 
 /// Look up the `lower` function declared on a `@block` (or plain
@@ -147,37 +133,19 @@ pub(crate) fn lookup_block_lower_named(
 /// Used both for block-side dispatch (after the instance check) and
 /// for recursive variant dispatch (where no instance is available).
 pub(crate) fn lookup_type_lower(doc: &Document, kind: &str) -> Option<FnValue> {
-    lookup_type_lower_named(doc, kind, "lower")
-}
-
-/// [`lookup_type_lower`] generalised over the hosting field name.
-pub(crate) fn lookup_type_lower_named(doc: &Document, kind: &str, field: &str) -> Option<FnValue> {
     let schema = doc
         .block_schema(kind)
         .or_else(|| doc.type_decl(&kind_to_typename(kind)))?;
-    match schema.field(field)?.default_value()? {
+    match schema.field("lower")?.default_value()? {
         Value::Function(fv) => Some(fv),
         _ => None,
     }
 }
 
 /// Call a block's `lower` function and return the raw list of
-/// `Svg` variant values. `None` when the block has no
+/// lowered variant values. `None` when the block has no
 /// record, no `lower`, the call errors, or the result isn't a list.
-/// Shared by [`lower_svg_block`] and the `timeline` renderer (which
-/// intercepts `Card` variants before rendering the rest).
 pub(crate) fn lower_to_values(doc: &Document, block: &Block<'_>, kind: &str) -> Option<Vec<Value>> {
-    lower_to_values_named(doc, block, kind, "lower")
-}
-
-/// [`lower_to_values`] generalised over the hosting field name (see
-/// [`lookup_block_lower_named`]).
-pub(crate) fn lower_to_values_named(
-    doc: &Document,
-    block: &Block<'_>,
-    kind: &str,
-    field: &str,
-) -> Option<Vec<Value>> {
     // A block that can't produce a record or has no lowering would
     // render nothing on every backend. That silent vanishing is almost
     // always a missing `lower` or a data-only kind placed in a page
@@ -193,13 +161,13 @@ pub(crate) fn lower_to_values_named(
         );
         return None;
     };
-    let Some(fv) = lookup_block_lower_named(doc, block, kind, field) else {
+    let Some(fv) = lookup_block_lower(doc, block, kind) else {
         record_lower_error(
             block,
             EvalError::user_error(
                 format!(
-                    "block '{kind}' has no `{field}` lowering — it would render nothing. \
-                     Declare `fn {field}(b: {kind}) -> …` for the kind, or remove the \
+                    "block '{kind}' has no `lower` lowering — it would render nothing. \
+                     Declare `fn lower(b: {kind}) -> …` for the kind, or remove the \
                      block from the page."
                 ),
                 block.span(),
@@ -220,7 +188,7 @@ pub(crate) fn lower_to_values_named(
                 block,
                 EvalError::user_error(
                     format!(
-                        "the `{field}` lowering for block kind '{kind}' returned {} — \
+                        "the `lower` lowering for block kind '{kind}' returned {} — \
                          expected a list of fundamentals",
                         other.type_name()
                     ),

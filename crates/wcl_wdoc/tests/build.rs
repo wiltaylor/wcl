@@ -12391,6 +12391,35 @@ fn a_user_block_lowering_to_the_content_ir_renders_in_html() {
 }
 
 #[test]
+fn a_custom_content_video_gets_the_html_player() {
+    let src = r#"
+@block("clip")
+type Clip extends WdocBlock {
+  id: identifier?
+  lower = fn(c: Clip) -> list<Content> [
+    Content::Video {
+      source: "https://example.com/player/embed/abc",
+      title: "Custom clip",
+    },
+  ]
+}
+page index {
+  clip { }
+}
+"#;
+    let (html, out) = build_video(src);
+    assert!(
+        html.contains("data-kind=\"generic\" data-src=\"https://example.com/player/embed/abc\""),
+        "{html}"
+    );
+    assert!(html.contains("_wdoc/wdoc-video.js"), "{html}");
+    assert!(
+        out.path().join("_wdoc/wdoc-video.js").is_file(),
+        "the custom IR producer must ship the player asset"
+    );
+}
+
+#[test]
 fn a_content_drawing_renders_its_shapes_as_svg() {
     // `Drawing` carries the SVG shape vocabulary, not SVG markup — the
     // closed IR's answer to a bespoke page-level drawing.

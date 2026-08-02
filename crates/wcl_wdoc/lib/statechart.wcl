@@ -1,9 +1,9 @@
 // ── Stdlib state diagrams ──────────────────────────────────────────
 //
 // `state_diagram` is a page-level block (`extends WdocBlock`) whose
-// geometry lives in `lower_svg`. States auto-layout by longest-path
-// rank from the diagram's transition graph (back-edges and self-loops
-// route around), so an entity lifecycle is authored coordinate-free;
+// lowering returns a `Content::Drawing`. States auto-layout by
+// longest-path rank from the diagram's transition graph (back-edges and
+// self-loops route around), so an entity lifecycle is authored coordinate-free;
 // a state may still pin itself with explicit `x`/`y`. Transitions are
 // blocks (not `->` connections) because they carry payload: `trigger`
 // and an optional `guard`, rendered as the standard `trigger [guard]`
@@ -377,7 +377,6 @@ type Transition {
 }
 
 @block("state_diagram")
-@native
 type StateDiagram extends WdocBlock {
   @doc("Rendered width in pixels; the height follows the content.")
   width = 640.0
@@ -398,10 +397,11 @@ type StateDiagram extends WdocBlock {
   @doc("Transitions between states (`trigger [guard]` edge labels).")
   @children("transition") transitions: list<Transition>
 
-  // Page-level placement contract (`WdocBlock`): `@native`, because the
-  // geometry below is SVG the Rust renderer fits a viewBox over.
-
-  lower_svg = fn(d: StateDiagram) -> list<Svg> {
+  // This is payload-shaped, not subtree-shaped: states and transitions are
+  // ordinary records the lowering can read. The geometry crosses the
+  // page-content seam as a typed `Drawing`; every backend fits the same SVG
+  // payload without naming `state_diagram` in its Rust dispatch.
+  lower = fn(d: StateDiagram) -> list<Content> {
     let dir = d.direction ?? :top_to_bottom;
     let layer_gap = d.layer_gap ?? 64.0;
     let node_gap = d.node_gap ?? 48.0;
@@ -437,6 +437,12 @@ type StateDiagram extends WdocBlock {
     }));
     let edges = flatten(map(d.transitions, fn(t: Transition) -> list<Svg>
       sc_edge(t, d.states, ids, pos, dir, ranks, back_ids, lane_base)));
-    flatten([boxes, edges])
+    [Content::Drawing {
+      shapes: flatten([boxes, edges]),
+      width: d.width,
+      desc: d.desc ?? "state diagram",
+      id: d.id,
+      class: d.class,
+    }]
   }
 }

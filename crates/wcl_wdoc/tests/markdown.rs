@@ -625,10 +625,10 @@ fn sequence_diagram_writes_standalone_svg() {
     );
     let md = read(&out, "seq.md");
     assert!(
-        md.contains("](_wdoc/seq-sequence-diagram-1.svg)"),
+        md.contains("![sequence diagram](_wdoc/seq-drawing-1.svg)"),
         "image ref:\n{md}"
     );
-    let svg = read(&out, "_wdoc/seq-sequence-diagram-1.svg");
+    let svg = read(&out, "_wdoc/seq-drawing-1.svg");
     assert!(svg.starts_with("<svg"), "standalone svg:\n{svg}");
     assert!(svg.contains("wdoc-lifeline"), "content lowered:\n{svg}");
 }
@@ -640,10 +640,10 @@ fn state_diagram_writes_standalone_svg() {
     );
     let md = read(&out, "sc.md");
     assert!(
-        md.contains("](_wdoc/sc-state-diagram-1.svg)"),
+        md.contains("![state diagram](_wdoc/sc-drawing-1.svg)"),
         "image ref:\n{md}"
     );
-    let svg = read(&out, "_wdoc/sc-state-diagram-1.svg");
+    let svg = read(&out, "_wdoc/sc-drawing-1.svg");
     assert!(svg.contains("wdoc-state"), "content lowered:\n{svg}");
 }
 

@@ -193,20 +193,31 @@ pub(crate) fn collect_content(
         Content::Video {
             source,
             poster,
+            title,
+            width,
+            height,
             caption,
             ..
         } => {
+            let before = out.len();
             // Static print can't play a video: show the poster and, for an
             // online video only, link to it (a local path is useless in a
             // distributed PDF).
-            if let Some(node) = poster
-                .as_ref()
-                .and_then(|p| image_node(p, base_dir, None, None))
-            {
+            if let Some(node) = poster.as_ref().and_then(|p| {
+                image_node(
+                    p,
+                    base_dir,
+                    width.map(|w| w as f32),
+                    height.map(|h| h as f32),
+                )
+            }) {
                 out.push(node);
             }
             if let Some(url) = crate::video::online_url(source) {
-                let label = caption.clone().unwrap_or_else(|| url.clone());
+                let label = title
+                    .clone()
+                    .or_else(|| caption.clone())
+                    .unwrap_or_else(|| url.clone());
                 out.push(BlockNode::Paragraph {
                     runs: vec![InlineRun::Link {
                         runs: vec![InlineRun::Text {
@@ -214,6 +225,24 @@ pub(crate) fn collect_content(
                             style: TextStyle::body(),
                         }],
                         href: url,
+                    }],
+                });
+            } else if out.len() == before {
+                // A local video path is useless in a distributed PDF. With
+                // no poster, name the content rather than silently dropping
+                // a covered page concept.
+                let label = title
+                    .as_ref()
+                    .or(caption.as_ref())
+                    .map(|t| format!("Video: {t}"))
+                    .unwrap_or_else(|| "Video".to_string());
+                out.push(BlockNode::Paragraph {
+                    runs: vec![InlineRun::Text {
+                        text: label,
+                        style: TextStyle {
+                            italic: true,
+                            ..TextStyle::body()
+                        },
                     }],
                 });
             } else if let Some(caption) = caption {
@@ -256,19 +285,19 @@ pub(crate) fn collect_content(
             width,
             height,
             caption,
+            desc,
             ..
         } => {
-            let values: Vec<wcl_lang::Value> = shapes.iter().map(wcl_lang::Value::from).collect();
             out.push(BlockNode::Svg {
-                svg: crate::render::fit_lowered_svg(
+                svg: crate::render::fit_content_drawing(
                     doc,
-                    &values,
+                    shapes,
                     crate::render::SvgFrame {
                         width: *width,
                         height: *height,
                         class_attr: "",
                         id: None,
-                        desc: caption.as_deref(),
+                        desc: desc.as_deref(),
                     },
                     patterns,
                 ),

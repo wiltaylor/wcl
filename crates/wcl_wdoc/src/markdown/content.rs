@@ -124,7 +124,10 @@ impl Emitter<'_> {
                 }
             }
             Content::Video {
-                source, caption, ..
+                source,
+                title,
+                caption,
+                ..
             } => {
                 // Static Markdown can't play a video: an online one becomes
                 // a link, a local one is copied out and linked.
@@ -132,7 +135,10 @@ impl Emitter<'_> {
                     Some(url) => url,
                     None => self.asset_href(&self.patterns.videos().register(source, "video")),
                 };
-                let label = caption.clone().unwrap_or_else(|| url.clone());
+                let label = title
+                    .clone()
+                    .or_else(|| caption.clone())
+                    .unwrap_or_else(|| url.clone());
                 out.push(format!("[{}]({url})", escape_link_text(&label)));
             }
             Content::File { path, label, .. } => {
@@ -155,24 +161,26 @@ impl Emitter<'_> {
                 width,
                 height,
                 caption,
+                desc,
                 ..
             } => {
-                let values: Vec<wcl_lang::Value> =
-                    shapes.iter().map(wcl_lang::Value::from).collect();
-                let svg = crate::render::fit_lowered_svg(
+                let svg = crate::render::fit_content_drawing(
                     self.doc,
-                    &values,
+                    shapes,
                     crate::render::SvgFrame {
                         width: *width,
                         height: *height,
                         class_attr: "",
                         id: None,
-                        desc: caption.as_deref(),
+                        desc: desc.as_deref(),
                     },
                     self.patterns,
                 );
                 let rel = self.write_svg("drawing", &svg)?;
-                out.push(image_ref(caption.as_deref().unwrap_or("drawing"), &rel));
+                out.push(image_ref(
+                    desc.as_deref().or(caption.as_deref()).unwrap_or("drawing"),
+                    &rel,
+                ));
                 if let Some(caption) = caption {
                     self.push_para(caption, out);
                 }

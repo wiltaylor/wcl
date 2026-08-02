@@ -1,48 +1,20 @@
-//! Standalone page-level SVG blocks (`sequence_diagram` /
-//! `state_diagram`): a `WdocBlock` whose geometry lives in a WCL
-//! `lower_svg` function returning `list<Svg>`. The renderer
-//! calls the lowering, fits a viewBox over the returned fundamentals'
-//! bounding boxes, and emits a self-contained `<svg>` whose height
-//! follows the content's aspect ratio (the block declares only
-//! `width`). All three backends dispatch here: HTML embeds the string,
-//! PDF rasterises it through the shared SVG embedder, Markdown writes
-//! it to a standalone `.svg` file.
+//! Standalone page-level SVG payloads carried by `Content::Drawing`.
+//! The renderer fits a viewBox over the shape fundamentals' bounding
+//! boxes and emits a self-contained `<svg>` whose height follows the
+//! content's aspect ratio unless the node declares one.
 
 use std::fmt::Write as _;
 
-use wcl_lang::{Block, Document, Value, VariantPayload};
+use wcl_lang::{Document, Value, VariantPayload};
 
+use crate::content::Svg;
 use crate::inline::InlinePatterns;
 use crate::text;
 
 use super::*;
 
-pub(crate) fn render_lowered_svg_block(
-    doc: &Document,
-    block: &Block<'_>,
-    kind: &str,
-    patterns: &InlinePatterns,
-) -> String {
-    let Some(items) = lower_to_values_named(doc, block, kind, "lower_svg") else {
-        return String::new();
-    };
-    fit_lowered_svg(
-        doc,
-        &items,
-        SvgFrame {
-            width: field_f64(block, "width"),
-            height: None,
-            class_attr: &class_attr(block),
-            id: field_id(block, "id").as_deref(),
-            desc: field_utf8(block, "desc").as_deref(),
-        },
-        patterns,
-    )
-}
-
 /// The width a fitted `<svg>` takes when nothing declares one — the same
-/// default `sequence_diagram` / `state_diagram` carry, so a page-level
-/// drawing is the width of a diagram beside it.
+/// default page drawings carry, so one is the width of a diagram beside it.
 pub(crate) const DEFAULT_SVG_WIDTH: f64 = 640.0;
 
 /// The frame a fitted `<svg>` is drawn in: the declared width, an optional
@@ -59,14 +31,23 @@ pub(crate) struct SvgFrame<'a> {
     pub desc: Option<&'a str>,
 }
 
+/// Render the typed shape payload carried by `Content::Drawing` in a fitted
+/// standalone SVG. This is the single adapter shared by every backend.
+pub(crate) fn fit_content_drawing(
+    doc: &Document,
+    shapes: &[Svg],
+    frame: SvgFrame<'_>,
+    patterns: &InlinePatterns,
+) -> String {
+    let values: Vec<Value> = shapes.iter().map(Value::from).collect();
+    fit_lowered_svg(doc, &values, frame, patterns)
+}
+
 /// Fit a self-contained `<svg>` around already-lowered shape fundamentals.
 ///
-/// Shared by [`render_lowered_svg_block`] (which reads the geometry off a
-/// block's `lower_svg`) and the content IR's `Drawing` node (which carries
-/// the shape vocabulary directly), so a page-level drawing is fitted the
-/// same way whichever side produced it. `height`, when given, overrides the
-/// aspect-derived one.
-pub(crate) fn fit_lowered_svg(
+/// Used by every backend's reading of the content IR's `Drawing` node.
+/// `height`, when given, overrides the aspect-derived one.
+fn fit_lowered_svg(
     doc: &Document,
     items: &[Value],
     frame: SvgFrame<'_>,

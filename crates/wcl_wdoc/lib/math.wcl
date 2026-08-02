@@ -16,6 +16,11 @@
 // prose use `$…$` (text style) or `$$…$$` (display style); see
 // `inline-patterns.wcl`. Equations paint with `currentColor`, so they
 // follow the surrounding text colour (theme / class / light-dark toggle).
+//
+// The block lowers to the semantic content IR's `Math` node. LaTeX is a
+// fixed payload: Rust still does the target-specific typesetting, but every
+// backend receives that payload through the same exhaustive `Content`
+// match instead of through the HTML vocabulary's `Math` leaf.
 
 namespace wdoc
 
@@ -27,8 +32,14 @@ type Math extends WdocBlock {
   id:    identifier?
   @doc("Optional class list (e.g. to recolour or resize the equation).")
   class: list<utf8>?
-  lower = fn(m: Math) -> list<Html>
-    [Html::Math { latex: m.source, display: true, class: m.class }]
+  lower = fn(m: Math) -> list<Content> [
+    Content::Math {
+      latex: m.source,
+      display: true,
+      id: m.id,
+      class: m.class,
+    },
+  ]
 }
 
 // Centring + scroll-on-overflow for block equations, and the inline
