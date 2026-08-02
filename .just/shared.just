@@ -25,6 +25,56 @@ heredoc := "heredoc() { out=$(sed -n \"/<<'$2'/,/^$2$/p\" \"$1\" | sed '1d;$d');
 wskill_template := "crates/wcl/src/scaffold/templates/wskill.wcl"
 wad_template := "crates/wcl/src/scaffold/templates/wad.wcl"
 
+# Prefix for a heavy gate command, so only ONE HEAVY COMMAND runs at a time
+# machine-wide: `bash "{{ci_lock}}" cargo test --workspace`. Many agents work
+# this repo at once, each in its own worktree with its own target/, and every
+# heavy part already fans out across every core — run eight at once and the box
+# oversubscribes, making the whole fleet slower than if it had queued.
+#
+# One heavy command, not one whole gate: two gates DO interleave part by part
+# (and command by command within a part, which is why a contended run can print
+# the waiting note more than once). That is the intended trade — the parts are
+# independent, and either way only one of them is burning the machine.
+#
+# The lock goes on the PARTS, never on `check`. Two reasons: `check` is a pure
+# dependency list and just runs each dependency in its own shell, so a lock in
+# its body would be taken after every part had already finished; and CLAUDE.md
+# tells contributors to run `just workspace-test` / `just workspace-lint`
+# directly, which is where most of the real contention is. Never do both —
+# flock is not reentrant across processes, so a lock on `check` AND on its
+# parts would self-deadlock on the first part.
+#
+# Heavy means "burns the machine": it compiles, fans out across every core, or
+# walks the whole tree. `cargo fmt` (0.7s, single-core) and the pure-bash drift
+# checks are left unlocked — they oversubscribe nothing, so queueing them behind
+# a test run would only add latency. Every part of `check` that does real work
+# is covered; the ONE thing to remember when adding a heavy recipe is to prefix
+# it, because nothing enforces that (norm 7 rules out a wrapper recipe).
+#
+# Invoked as `bash <script>`, not as an executable: a checkout that lost the
+# exec bit (Windows, an unpacked archive) would otherwise fail every heavy part
+# with "Permission denied" — a hard gate failure from the very thing that is
+# supposed to degrade quietly. The gate already runs under bash (`set shell`).
+#
+# Bash rather than norm 12's uv-python, deliberately: `uv` is currently required
+# by exactly one part (wad-extract), and a python wrapper would make it a hard
+# dependency of `fmt-check`, `workspace-test` and the rest. The lock also has to
+# hold an fd across an `exec` so it covers the command's whole life, which is a
+# shell idiom. The script stays small and flat to earn that.
+#
+# SIDE EFFECT, and the deliberate exception to norm 14's contract item 4: a
+# lock file outside the checkout — ${XDG_RUNTIME_DIR:-/tmp}/wcl-ci.lock, plus a
+# .holder record beside it (and a .noflock warn-stamp on a box without flock).
+# Outside is the whole point: the contention is between separate worktrees, and
+# a lock file under one of them locks nothing. It is per-user session, not
+# literally machine-wide — a run under cron or `docker exec` may see no
+# XDG_RUNTIME_DIR and fall back to /tmp, which is a different lock; set
+# WCL_CI_LOCK_FILE to a fixed path if that ever matters here.
+# WCL_CI_LOCK_DISABLE=1 opts out entirely; WCL_CI_LOCK_TIMEOUT bounds the wait.
+#
+# Absolute, not repo-relative: `fuzz-sweep` runs cargo from crates/wcl_lang.
+ci_lock := justfile_directory() / ".just/ci-lock.sh"
+
 # ── External tooling guards ───────────────────────────────────────────────
 # So a missing tool reports as a missing tool rather than as a confusing
 # build error. pnpm/node are deliberately absent: crates/wcl's build.rs
@@ -65,12 +115,12 @@ fmt-check: require-rustfmt
 # Lint with clippy (warnings are errors)
 [group('quality')]
 workspace-lint: require-clippy
-    cargo clippy --workspace --all-targets -- -D warnings
+    bash "{{ci_lock}}" cargo clippy --workspace --all-targets -- -D warnings
 
 # Run all tests (unit + integration)
 [group('test')]
 workspace-test: require-cargo
-    cargo test --workspace
+    bash "{{ci_lock}}" cargo test --workspace
 
 # Bounded fuzz sweep across every target (~15s each, ~75s total)
 [group('test')]
@@ -78,7 +128,7 @@ fuzz-sweep: require-cargo-fuzz
     @host="$(rustc +nightly -vV | sed -n 's/^host: //p')"; \
     for t in parse eval format_round_trip json_round_trip set_edit_path; do \
         echo "==> fuzz $t" >&2; \
-        (cd crates/wcl_lang && cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
+        (cd crates/wcl_lang && bash "{{ci_lock}}" cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
     done
 
 # Fail when a live wskill base.wcl drifts from the scaffold heredoc (runs in ci)
@@ -185,7 +235,7 @@ skills-check: require-cargo
         topic=$(basename "$d"); \
         stage="target/skills-check/$topic"; \
         echo "==> $topic" >&2; \
-        cargo run -q -p wcl -- wdoc skill "$d/wdoc/skill/main.wcl" --out "$stage" \
+        bash "{{ci_lock}}" cargo run -q -p wcl -- wdoc skill "$d/wdoc/skill/main.wcl" --out "$stage" \
             || { echo "skill projection FAILED: $d/wdoc/skill/main.wcl"; exit 1; }; \
         for md in "$stage/SKILL.md" "$stage"/*/SKILL.md; do \
             [ -f "$md" ] || continue; \
@@ -244,20 +294,20 @@ host_builtins := "included_sites"
 wcl-refcheck: require-cargo
     @mkdir -p target/refcheck
     @printf '@document\ntype D {\n  names: list<utf8>\n}\n\nnames = builtin_names()\n' > target/refcheck/builtins.wcl
-    @cargo run -q -p wcl -- eval target/refcheck/builtins.wcl names \
+    @bash "{{ci_lock}}" cargo run -q -p wcl -- eval target/refcheck/builtins.wcl names \
         | tr -d '[]" ' | tr ',' '\n' | sed '/^$/d' \
         | grep -vxF -e '{{host_builtins}}' | sort > target/refcheck/builtins-real.txt
     @grep -oE '^  name *= *"[^"]+"' docs/wskills/wcl/data/builtins.wcl \
         | sed 's/.*"\(.*\)"/\1/' | sort > target/refcheck/builtins-doc.txt
     @diff target/refcheck/builtins-real.txt target/refcheck/builtins-doc.txt \
         || { echo "wcl reference drift: builtins (< missing from docs/wskills/wcl/data/builtins.wcl, > documented but not a builtin)"; exit 1; }
-    @subs() { cargo run -q -p wcl -- $1 --help 2>&1 \
+    @subs() { bash "{{ci_lock}}" cargo run -q -p wcl -- $1 --help 2>&1 \
         | sed -n '/^Commands:/,/^$/p' | sed -n 's/^  \([a-z][a-z-]*\) .*/\1/p' | grep -v '^help$'; }; \
     { subs ""; subs wdoc | sed 's/^/wdoc /'; subs wad | sed 's/^/wad /'; \
       subs wskill | sed 's/^/wskill /'; } \
         | sort > target/refcheck/commands-real.txt
     @printf '{ let c = head(clis); join(flatten(map(c.subcommands, fn(s: Subcommand) -> list<utf8> { flatten([[s.name], map(s.subcommands, fn(n: Subcommand) -> utf8 { $"${s.name} ${n.name}" })]) })), "\\n") }\n' \
-        | cargo run -q -p wcl -- repl docs/wskills/wcl/wskill.wcl \
+        | bash "{{ci_lock}}" cargo run -q -p wcl -- repl docs/wskills/wcl/wskill.wcl \
         | sed 's/^"//; s/"$//' | sed 's/\\n/\n/g' | sort > target/refcheck/commands-doc.txt
     @diff target/refcheck/commands-real.txt target/refcheck/commands-doc.txt \
         || { echo "wcl reference drift: CLI subcommands (< missing from docs/wskills/wcl/data/reference/cli.wcl, > documented but not a subcommand)"; exit 1; }
@@ -272,8 +322,8 @@ wad-schema-check:
 # Validate the WCL architecture document (.wad/) — model + book template
 [group('quality')]
 wad-check: require-cargo
-    cargo run -p wcl -- check .wad/wad.wcl
-    cargo run -p wcl -- check .wad/wdoc/book/main.wcl
+    bash "{{ci_lock}}" cargo run -p wcl -- check .wad/wad.wcl
+    bash "{{ci_lock}}" cargo run -p wcl -- check .wad/wdoc/book/main.wcl
 
 # Needs uv and full git history. releases.wcl is exempt: it derives from git
 # tags, and the release pipeline creates a tag AFTER the commit CI builds from,
@@ -309,12 +359,12 @@ wad-facts-check:
 [group('quality')]
 wplan-template-check: require-cargo
     rm -rf target/wplan-template-check
-    cargo run -p wcl -- init wplan target/wplan-template-check --defaults
-    cargo run -p wcl -- check target/wplan-template-check/plan.wcl
-    cargo run -p wcl -- check target/wplan-template-check/gates.wcl
+    bash "{{ci_lock}}" cargo run -p wcl -- init wplan target/wplan-template-check --defaults
+    bash "{{ci_lock}}" cargo run -p wcl -- check target/wplan-template-check/plan.wcl
+    bash "{{ci_lock}}" cargo run -p wcl -- check target/wplan-template-check/gates.wcl
     @for g in $(grep -oE '^gate [a-z_0-9]+' target/wplan-template-check/gates.wcl | cut -d' ' -f2 | grep -v '^signoffs_complete$'); do \
         printf 'gate %-24s ' "$g"; \
-        cargo run -q -p wcl -- eval target/wplan-template-check/gates.wcl "gates.$g.ok" || exit 1; \
+        bash "{{ci_lock}}" cargo run -q -p wcl -- eval target/wplan-template-check/gates.wcl "gates.$g.ok" || exit 1; \
     done
 
 # ── Builds the gate depends on ────────────────────────────────────────────
@@ -322,7 +372,7 @@ wplan-template-check: require-cargo
 # Build the project's docs/ site into docs/_site/ (gitignored)
 [group('dev')]
 docs-build *ARGS: require-cargo
-    cargo run -p wcl -- wdoc build docs/main.wcl --out docs/_site {{ARGS}}
+    bash "{{ci_lock}}" cargo run -p wcl -- wdoc build docs/main.wcl --out docs/_site {{ARGS}}
 
 # The output dir is wiped first: a build never deletes pages that no longer
 # exist, so removed entities would otherwise linger as orphaned HTML.
@@ -331,9 +381,9 @@ docs-build *ARGS: require-cargo
 [group('dev')]
 wad-build *ARGS: require-cargo
     rm -rf .wad/_site
-    cargo run -p wcl -- wdoc build .wad/wdoc/book/main.wcl --out .wad/_site {{ARGS}}
+    bash "{{ci_lock}}" cargo run -p wcl -- wdoc build .wad/wdoc/book/main.wcl --out .wad/_site {{ARGS}}
 
 # Run every WAD extractor script (rewrites .wad/data/generated/), then re-validate
 [group('dev')]
 wad-extract: require-uv && wad-check
-    for s in .wad/scripts/extract_*.py; do echo "==> $s" >&2; uv run "$s"; done
+    for s in .wad/scripts/extract_*.py; do echo "==> $s" >&2; bash "{{ci_lock}}" uv run "$s"; done
