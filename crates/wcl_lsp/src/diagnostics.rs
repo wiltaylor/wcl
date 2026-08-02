@@ -292,4 +292,25 @@ mod tests {
             assert!(d.range.start != Position::default() || d.range.end != Position::default());
         }
     }
+
+    #[test]
+    fn undeclared_decorator_reports_at_its_name() {
+        let src = "@document type Root { title: utf8 }\n@missing\ntitle = \"Hello\"\n";
+        let diags = compute(src, "test.wcl", None, loader());
+        let diagnostic = diags
+            .iter()
+            .find(|diagnostic| diagnostic.message.contains("decorator 'missing'"))
+            .expect("undeclared decorator diagnostic");
+
+        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::ERROR));
+        assert_eq!(diagnostic.range.start, Position::new(1, 1));
+        assert_eq!(diagnostic.range.end, Position::new(1, 8));
+        assert_eq!(
+            diagnostic.data,
+            Some(serde_json::json!({
+                "kind": "UndeclaredDecorator",
+                "name": "missing",
+            }))
+        );
+    }
 }

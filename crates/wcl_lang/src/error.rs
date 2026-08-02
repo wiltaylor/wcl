@@ -3,6 +3,26 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SchemaDiagnosticSource {
+    name: String,
+    text: String,
+}
+
+impl SchemaDiagnosticSource {
+    fn from_named_source(source: NamedSource<String>) -> Self {
+        Self {
+            name: source.name().to_string(),
+            text: source.inner().clone(),
+        }
+    }
+
+    pub(crate) fn named_source(&self) -> NamedSource<String> {
+        NamedSource::new(&self.name, self.text.clone())
+    }
+}
+
 #[derive(Debug, Error, Diagnostic)]
 pub enum ParseError {
     #[error("io error: {0}")]
@@ -232,6 +252,8 @@ pub enum EvalError {
         /// `message`. `None` for kinds that don't name a single token.
         detail: Option<String>,
         message: String,
+        #[doc(hidden)]
+        origin: Option<std::sync::Arc<SchemaDiagnosticSource>>,
         #[label("schema violation")]
         span: SourceSpan,
     },
@@ -472,6 +494,7 @@ impl EvalError {
             kind,
             detail: None,
             message: message.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -489,7 +512,39 @@ impl EvalError {
             kind,
             detail: Some(name.into()),
             message: message.into(),
+            origin: None,
             span: span_to_miette(span),
+        }
+    }
+
+    pub(crate) fn with_schema_source(self, source: NamedSource<String>) -> Self {
+        match self {
+            Self::SchemaViolation {
+                kind,
+                detail,
+                message,
+                span,
+                ..
+            } => Self::SchemaViolation {
+                kind,
+                detail,
+                message,
+                origin: Some(std::sync::Arc::new(
+                    SchemaDiagnosticSource::from_named_source(source),
+                )),
+                span,
+            },
+            other => other,
+        }
+    }
+
+    pub(crate) fn schema_source(&self) -> Option<NamedSource<String>> {
+        match self {
+            Self::SchemaViolation {
+                origin: Some(source),
+                ..
+            } => Some(source.named_source()),
+            _ => None,
         }
     }
 

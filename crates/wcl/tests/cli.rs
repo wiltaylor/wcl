@@ -51,6 +51,127 @@ fn check_reports_syntax_error_and_exits_nonzero() {
 }
 
 #[test]
+fn check_reports_undeclared_decorator_with_its_source_span() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("decorators.wcl");
+    std::fs::write(
+        &file,
+        "@document type Root { title: utf8 }\n@missing\ntitle = \"Hello\"\n",
+    )
+    .expect("write fixture");
+
+    wcl()
+        .arg("check")
+        .arg(&file)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "decorator 'missing' has no @decorator declaration",
+        ))
+        .stderr(predicate::str::contains("@missing"));
+}
+
+#[test]
+fn check_renders_an_imported_decorator_error_against_the_imported_source() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = tmp.path().join("main.wcl");
+    let imported = tmp.path().join("imported.wcl");
+    std::fs::write(&main, "import \"./imported.wcl\"\n").expect("write main fixture");
+    std::fs::write(
+        &imported,
+        "@document type Root { title: utf8 }\n@missing\ntitle = \"Imported\"\n",
+    )
+    .expect("write imported fixture");
+
+    wcl()
+        .arg("check")
+        .arg(&main)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "decorator 'missing' has no @decorator declaration",
+        ))
+        .stderr(predicate::str::contains("imported.wcl"))
+        .stderr(predicate::str::contains("@missing"));
+}
+
+#[test]
+fn check_renders_an_imported_global_validation_against_its_source() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = tmp.path().join("main.wcl");
+    let first = tmp.path().join("first.wcl");
+    let second = tmp.path().join("second.wcl");
+    std::fs::write(
+        &main,
+        "@document type Root { @children(\"item\") items: list<Item> }\n\
+         @block(\"item\") type Item { @inline(0) id: identifier }\n\
+         import \"./first.wcl\"\n\
+         import \"./second.wcl\"\n",
+    )
+    .expect("write main fixture");
+    std::fs::write(&first, "item duplicate {}\n").expect("write first fixture");
+    std::fs::write(&second, "item duplicate {}\n").expect("write second fixture");
+
+    wcl()
+        .arg("check")
+        .arg(&main)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("duplicate id"))
+        .stderr(predicate::str::contains("second.wcl"))
+        .stderr(predicate::str::contains("item duplicate"));
+}
+
+#[test]
+fn check_renders_a_lazy_imported_decorator_error_against_its_source() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = tmp.path().join("main.wcl");
+    let fragment = tmp.path().join("fragment.wcl");
+    std::fs::write(
+        &main,
+        "@document type Root { @children(\"item\") items: list<Item> }\n\
+         @block(\"item\") type Item { title: utf8 }\n\
+         item { import \"./fragment.wcl\" }\n",
+    )
+    .expect("write main fixture");
+    std::fs::write(&fragment, "@missing\ntitle = \"Imported\"\n").expect("write fragment fixture");
+
+    wcl()
+        .arg("check")
+        .arg(&main)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "decorator 'missing' has no @decorator declaration",
+        ))
+        .stderr(predicate::str::contains("fragment.wcl"))
+        .stderr(predicate::str::contains("@missing"));
+}
+
+#[test]
+fn check_omits_a_snippet_when_recursive_error_provenance_is_unknown() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = tmp.path().join("main.wcl");
+    let fragment = tmp.path().join("fragment.wcl");
+    std::fs::write(
+        &main,
+        "@document type Root { @children(\"item\") items: list<Item> }\n\
+         @block(\"item\") type Item { title: utf8 }\n\
+         item { import \"./fragment.wcl\" }\n",
+    )
+    .expect("write main fixture");
+    std::fs::write(&fragment, "rogue = true\n").expect("write fragment fixture");
+
+    wcl()
+        .arg("check")
+        .arg(&main)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("field 'rogue' is not declared"))
+        .stderr(predicate::str::contains("@document type Root").not());
+}
+
+#[test]
 fn check_reports_missing_file() {
     wcl()
         .arg("check")

@@ -4,9 +4,9 @@
 //! source driving and shared token helpers.
 
 use crate::ast::{
-    Block, Decorator, Expr, Field, ImportDecl, Item, NamedArg, NamespaceDecl, Span, SymbolEntry,
-    SymbolSetDecl, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDecl, UseForm, UseItem,
-    VariantBody,
+    Block, Decorator, Expr, Field, ImportDecl, Item, NamedArg, NamespaceDecl, SchemalessMode, Span,
+    SymbolEntry, SymbolSetDecl, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDecl, UseForm,
+    UseItem, VariantBody,
 };
 use crate::error::ParseError;
 use crate::lexer::{StringLit, TokenKind};
@@ -32,7 +32,7 @@ fn has_default_decorator(decorators: &[Decorator]) -> bool {
 fn decorator_is_schemaless(decorators: &[Decorator]) -> bool {
     decorators
         .iter()
-        .any(|d| d.name.len() == 1 && d.name[0] == "schemaless")
+        .any(|decorator| matches!(decorator.schemaless_mode(), Some(SchemalessMode::Full)))
 }
 
 /// Infer a `TypeRef` from an expression used as an inline default in

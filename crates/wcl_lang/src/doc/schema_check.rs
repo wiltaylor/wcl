@@ -321,8 +321,19 @@ pub(super) fn duplicate_id_violations<'a>(
     siblings: impl Iterator<Item = Block<'a>>,
     errs: &mut Vec<EvalError>,
 ) {
+    errs.extend(
+        duplicate_id_errors(siblings)
+            .into_iter()
+            .map(|(error, _)| error),
+    );
+}
+
+pub(super) fn duplicate_id_errors<'a>(
+    siblings: impl Iterator<Item = Block<'a>>,
+) -> Vec<(EvalError, Block<'a>)> {
     use crate::error::SchemaViolationKind as Kind;
     let mut seen: HashMap<(String, String, String), ast::Span> = HashMap::new();
+    let mut errors = Vec::new();
     for b in siblings {
         let Some(label) = identity_label(&b) else {
             continue;
@@ -330,16 +341,19 @@ pub(super) fn duplicate_id_violations<'a>(
         let key = (b.kind_ns().join("."), b.kind().to_string(), label.clone());
         match seen.get(&key) {
             Some(_first) => {
-                errs.push(EvalError::schema_violation(
-                    Kind::DuplicateBlockId,
-                    format!(
-                        "duplicate id: '{}' block '{label}' is already declared \
+                errors.push((
+                    EvalError::schema_violation(
+                        Kind::DuplicateBlockId,
+                        format!(
+                            "duplicate id: '{}' block '{label}' is already declared \
                          — ids must be unique among a parent's (or the document's) \
                          '{}' blocks",
-                        b.kind(),
-                        b.kind(),
+                            b.kind(),
+                            b.kind(),
+                        ),
+                        b.span(),
                     ),
-                    b.span(),
+                    b,
                 ));
             }
             None => {
@@ -347,29 +361,22 @@ pub(super) fn duplicate_id_violations<'a>(
             }
         }
     }
+    errors
 }
 
 pub(super) fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
-    let name = BuiltinDecorator::Schemaless.as_str();
-    decorators.iter().any(|d| {
-        d.name.len() == 1
-            && d.name[0] == name
-            && !d.named.iter().any(|arg| arg.name == "annotations")
-    })
+    decorators
+        .iter()
+        .any(|decorator| matches!(decorator.schemaless_mode(), Some(ast::SchemalessMode::Full)))
 }
 
 /// Whether a node opts its annotations out of decorator declaration checks.
 /// Bare `@schemaless` includes this exemption; the narrow form spells it as
 /// the literal named argument `annotations = true`.
 fn has_annotation_exemption(decorators: &[ast::Decorator]) -> bool {
-    has_schemaless(decorators)
-        || decorators.iter().any(|decorator| {
-            decorator.name.len() == 1
-                && decorator.name[0] == BuiltinDecorator::Schemaless.as_str()
-                && decorator.named.iter().any(|arg| {
-                    arg.name == "annotations" && matches!(arg.value, ast::Expr::Bool(true))
-                })
-        })
+    decorators
+        .iter()
+        .any(|decorator| decorator.schemaless_mode().is_some())
 }
 
 /// `true` when `decorators` carries `@contextual` — see
@@ -493,6 +500,45 @@ pub(super) fn validate_item_decorators(
         }
     }
     errors
+}
+
+/// Validate decorators introduced by a lazy in-block import. Eager imports
+/// are covered by the source-level pass in `Document::collect_schema_errors`,
+/// while a lazy import is only visible after its enclosing block is realized.
+fn validate_lazy_field_decorators(block: &Block<'_>, field: &super::Field<'_>) -> Vec<EvalError> {
+    let block_source = block.named_source();
+    let field_source = field.named_source();
+    if block_source.name() == field_source.name() {
+        return Vec::new();
+    }
+
+    let context_ns = block.doc.find_field_source_ns(field.ast);
+    validate_decorators(block.doc, &field.ast.decorators, context_ns)
+        .into_iter()
+        .map(|error| error.with_schema_source(field_source.clone()))
+        .collect()
+}
+
+/// A lazy imported block can contain an authored subtree from the imported
+/// file. Validate that whole subtree once, at the boundary where its source
+/// differs from the enclosing block's source.
+fn validate_lazy_block_decorators(block: &Block<'_>, nested: &Block<'_>) -> Vec<EvalError> {
+    let block_source = block.named_source();
+    let nested_source = nested.named_source();
+    if block_source.name() == nested_source.name() {
+        return Vec::new();
+    }
+
+    let mut errors = validate_decorators(block.doc, &nested.ast.decorators, nested.file_ns());
+    errors.extend(validate_item_decorators(
+        block.doc,
+        &nested.ast.items,
+        nested.file_ns(),
+    ));
+    errors
+        .into_iter()
+        .map(|error| error.with_schema_source(nested_source.clone()))
+        .collect()
 }
 
 /// Validate every `Item::Connection` in a flat item list against the
@@ -711,6 +757,7 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         errs.extend(decorator_argument_errors(block.doc, &decorator));
     }
     for field in block.fields() {
+        errs.extend(validate_lazy_field_decorators(block, &field));
         if has_schemaless(&field.ast.decorators) {
             continue;
         }
@@ -1086,6 +1133,7 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     //   - `@contextual` kinds: context-polymorphic bodies that only have
     //     meaning once expanded with bindings.
     for nested in block.blocks() {
+        errs.extend(validate_lazy_block_decorators(block, &nested));
         if nested.schema().is_none() && block.doc.is_possible_block_slot_fill(nested.kind()) {
             continue;
         }
