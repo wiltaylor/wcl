@@ -4,7 +4,7 @@
 // document concept, no generic container, and no escape into markup.
 // It is the layer every backend (HTML, PDF, Markdown, skill) is meant
 // to consume, in place of each one reverse-engineering semantics out of
-// `HtmlFundamental` — a heading whose level rides in a CSS class, a
+// `Html` — a heading whose level rides in a CSS class, a
 // callout re-implemented three times, a walker that ends in `_ => {}`.
 //
 // Three rules the declaration below obeys, and why:
@@ -12,7 +12,7 @@
 //   1. **Closed.** There is no `Html { }` / `Raw { }` variant and no
 //      generic `Container { role, children }`. A concept that is not in
 //      this union is not page content: a user keeps bespoke *drawings*
-//      (`SvgFundamental`, via `Drawing`) and gives up bespoke page
+//      (`Svg`, via `Drawing`) and gives up bespoke page
 //      *markup*. Adding a concept means adding a variant — which every
 //      backend then has to match, by construction.
 //   2. **One variant per concept.** A `role: symbol` on a shared
@@ -39,7 +39,7 @@
 // backends read those nodes from this declaration, matching the union
 // exhaustively; the hand-written re-implementations the PDF and Markdown
 // backends carried are gone, and so is `heading_level()`. The rest of the
-// blocks still lower to `HtmlFundamental` (see `core.wcl`) and move over
+// blocks still lower to `Html` (see `core.wcl`) and move over
 // one concept at a time.
 
 namespace wdoc
@@ -111,7 +111,7 @@ union Content {
   @doc("A block equation, carried as LaTeX for the backend to typeset.")
   Math      { latex: utf8 display: bool? id: identifier? class: list<utf8>? }
   @doc("A page-level drawing: the SVG shape vocabulary, not SVG markup.")
-  Drawing   { shapes: list<SvgFundamental> width: f64? height: f64? caption: utf8? id: identifier? class: list<utf8>? }
+  Drawing   { shapes: list<Svg> width: f64? height: f64? caption: utf8? id: identifier? class: list<utf8>? }
   @doc("A terminal session: the resolved screen, one string per line.")
   Terminal  { lines: list<utf8> title: utf8? id: identifier? class: list<utf8>? }
 

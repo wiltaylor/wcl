@@ -104,14 +104,14 @@ stylesheet "wdoc-base" {
 // prevent coming back.
 interface WdocBlock {
   id:    identifier?
-  lower: fn(&WdocBlock) -> list<HtmlFundamental>?
+  lower: fn(&WdocBlock) -> list<Html>?
 }
 
 // Read-only authored content handed to a page template. `block` is the
 // concrete authored value (an H1 stays an H1, a Callout stays a Callout),
 // `children` exposes the same shape recursively, and `handle` is opaque
 // renderer identity. Templates query and reorder these values, then place
-// them with `HtmlFundamental::Blocks`; they never render or mutate them.
+// them with `Html::Blocks`; they never render or mutate them.
 type BlockHandle {
   kind:     utf8
   block:    WdocBlock
@@ -121,7 +121,7 @@ type BlockHandle {
 
 interface SvgBlock {
   id:    identifier?
-  lower: fn(&SvgBlock) -> list<SvgFundamental>?
+  lower: fn(&SvgBlock) -> list<Svg>?
 }
 
 // This block is implemented in Rust, not by a WCL `lower`. Only wdoc's

@@ -556,7 +556,7 @@ mod tests {
     fn a_block_with_both_is_refused() {
         let errs = messages(&open_wdoc(
             "@block(\"mine\") @native\ntype Mine extends wdoc.WdocBlock {\n  \
-             lower = fn(m: Mine) -> list<wdoc.HtmlFundamental> []\n}\n",
+             lower = fn(m: Mine) -> list<wdoc.Html> []\n}\n",
         ));
         assert!(
             errs.iter()

@@ -130,17 +130,17 @@ WCL
 
   h2 "Custom templates"
 
-  p "The three built-ins are not special: a template is just a function from a `TemplateCtx` to a list of HTML fundamentals, and the document schema accepts your own. Declare a `template <name> { render = fn(c: TemplateCtx) -> list<HtmlFundamental> … }` in your document and select it with a site's `default_template` (e.g. `:blog`) or a page's `template` field."
+  p "The three built-ins are not special: a template is just a function from a `TemplateCtx` to a list of HTML fundamentals, and the document schema accepts your own. Declare a `template <name> { render = fn(c: TemplateCtx) -> list<Html> … }` in your document and select it with a site's `default_template` (e.g. `:blog`) or a page's `template` field."
 
   p "The renderer hands `render` this context:"
 
   type_table { type = TemplateCtx }
 
-  p "`c.content` is the current page's read-only authored block tree as `list<BlockHandle>`: each handle exposes its concrete `block`, `kind`, and recursive `children`. A template may filter or reorder those handles freely, then places them with `wdoc_blocks(handles)` (or `HtmlFundamental::Blocks { blocks: handles }`). The renderer resolves placements only after the template function returns. Call `page_metadata(c)` for memoised reading order, previous/current/next entries, the active TOC path, and the current page's authored h2/h3 metadata; it indexes site navigation once and never evaluates another page body."
+  p "`c.content` is the current page's read-only authored block tree as `list<BlockHandle>`: each handle exposes its concrete `block`, `kind`, and recursive `children`. A template may filter or reorder those handles freely, then places them with `wdoc_blocks(handles)` (or `Html::Blocks { blocks: handles }`). The renderer resolves placements only after the template function returns. Call `page_metadata(c)` for memoised reading order, previous/current/next entries, the active TOC path, and the current page's authored h2/h3 metadata; it indexes site navigation once and never evaluates another page body."
 
   type_table { type = PageMetadata }
 
-  p "You rarely build a template from raw fundamentals. The stdlib exposes its own chrome as composable **parts** — each a function returning `list<HtmlFundamental>` — plus one `wdoc_*_layout` function per built-in that is its whole default composition. Parts resolve by bare name once you `import <wdoc.wcl>`."
+  p "You rarely build a template from raw fundamentals. The stdlib exposes its own chrome as composable **parts** — each a function returning `list<Html>` — plus one `wdoc_*_layout` function per built-in that is its whole default composition. Parts resolve by bare name once you `import <wdoc.wcl>`."
 
   table {
     rows:
@@ -166,7 +166,7 @@ WCL
 
   h3 "The `el` constructor family"
 
-  p "Where a part doesn't already exist, you build the markup yourself. The stdlib ships shorthands for the HTML element vocabulary, so a `<div>` is a call rather than a record. Each is exactly the long form with the field names dropped — `el(\"div\", [\"row\"], kids)` is `HtmlFundamental::Element { tag: \"div\", class: [\"row\"], children: kids }`."
+  p "Where a part doesn't already exist, you build the markup yourself. The stdlib ships shorthands for the HTML element vocabulary, so a `<div>` is a call rather than a record. Each is exactly the long form with the field names dropped — `el(\"div\", [\"row\"], kids)` is `Html::Element { tag: \"div\", class: [\"row\"], children: kids }`."
 
   table {
     rows:
@@ -190,7 +190,7 @@ WCL
 
   callout "The long form stays legal" {
     class = ["note"]
-    body  = "The family covers the HTML **element** vocabulary only. `SvgFundamental` and the semantic content IR keep the named-field literal — they are field-shaped, and WCL checks argument arity but never argument types, so transposing two of a shape's interchangeable `f64`s would render silently wrong where the record raises a shape mismatch. Write the record for anything the family doesn't name, too: an element with both an id and attrs, a `Paragraph` with an id, a `Head`, a `Table`."
+    body  = "The family covers the HTML **element** vocabulary only. `Svg` and the semantic content IR keep the named-field literal — they are field-shaped, and WCL checks argument arity but never argument types, so transposing two of a shape's interchangeable `f64`s would render silently wrong where the record raises a shape mismatch. Write the record for anything the family doesn't name, too: an element with both an id and attrs, a `Paragraph` with an id, a `Head`, a `Table`."
   }
 
   h3 "Extend a built-in"
@@ -200,7 +200,7 @@ WCL
   code wcl {
     source = <<'WCL'
 template blog {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_webpage_layout(c),
       [ el("footer", ["site-footer"], [raw("© 2026 — built with wdoc")]) ],
@@ -218,7 +218,7 @@ WCL
   code wcl {
     source = <<'WCL'
 template app_home {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_part_webpage_css(),                    // keep the stdlib styling…
       [ el("header", ["hero"], [raw(c.title)]) ], // …a hero masthead instead of wdoc_part_header

@@ -1,6 +1,6 @@
 //! Standalone page-level SVG blocks (`sequence_diagram` /
 //! `state_diagram`): a `WdocBlock` whose geometry lives in a WCL
-//! `lower_svg` function returning `list<SvgFundamental>`. The renderer
+//! `lower_svg` function returning `list<Svg>`. The renderer
 //! calls the lowering, fits a viewBox over the returned fundamentals'
 //! bounding boxes, and emits a self-contained `<svg>` whose height
 //! follows the content's aspect ratio (the block declares only

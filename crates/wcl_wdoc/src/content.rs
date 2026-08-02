@@ -18,7 +18,7 @@
 //! in a CSS class the non-HTML backends parsed back out. Each returns a
 //! typed node all four backends render from this one declaration, matching
 //! the union **exhaustively**. The remaining blocks still lower to
-//! `HtmlFundamental` and are moved over per concept.
+//! `Html` and are moved over per concept.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -50,7 +50,7 @@ pub(crate) fn chapter_meta_line(
 /// The test is the **union tag**, not the variant name: the content IR and
 /// the HTML element vocabulary both declare `Paragraph`, `Table` and
 /// `Math`, so a name-based test would read one as the other. `None` means
-/// "not content" — an `HtmlFundamental`, or a custom variant its own kind
+/// "not content" — an `Html`, or a custom variant its own kind
 /// will lower further. `Some(Err(_))` is a content node that didn't
 /// convert, which is an authoring error the caller must surface rather
 /// than swallow.
@@ -162,7 +162,7 @@ mod read {
     use super::{At, ContentError};
 
     /// The variant name and payload map of a union value, checked to
-    /// belong to `owner` — so handing a `SvgFundamental` to `Content`
+    /// belong to `owner` — so handing a `Svg` to `Content`
     /// is an error rather than a silent miss.
     pub(super) fn variant_payload<'a>(
         value: &'a Value,
@@ -345,7 +345,7 @@ use read::*;
 
 include!(concat!(env!("OUT_DIR"), "/content_ir.rs"));
 
-/// Put a typed [`SvgFundamental`] back into the `Value` the SVG renderer
+/// Put a typed [`Svg`] back into the `Value` the SVG renderer
 /// reads.
 ///
 /// `Content::Drawing` carries the shape vocabulary typed, but the shape
@@ -357,8 +357,8 @@ include!(concat!(env!("OUT_DIR"), "/content_ir.rs"));
 /// The match is exhaustive for the same reason the backends' are: a shape
 /// added to the WCL union stops compiling here instead of silently
 /// disappearing from every drawing.
-impl From<&SvgFundamental> for Value {
-    fn from(shape: &SvgFundamental) -> Value {
+impl From<&Svg> for Value {
+    fn from(shape: &Svg) -> Value {
         /// A field that carries a value, skipping the absent ones — a
         /// missing key and an explicit `none` read the same downstream.
         fn put<T>(
@@ -379,7 +379,7 @@ impl From<&SvgFundamental> for Value {
 
         let mut map = BTreeMap::new();
         let variant = match shape {
-            SvgFundamental::Rect {
+            Svg::Rect {
                 x,
                 y,
                 width,
@@ -401,7 +401,7 @@ impl From<&SvgFundamental> for Value {
                 put(&mut map, "class", class, classes);
                 "Rect"
             }
-            SvgFundamental::Circle {
+            Svg::Circle {
                 cx,
                 cy,
                 r,
@@ -419,7 +419,7 @@ impl From<&SvgFundamental> for Value {
                 put(&mut map, "class", class, classes);
                 "Circle"
             }
-            SvgFundamental::Line {
+            Svg::Line {
                 x1,
                 y1,
                 x2,
@@ -439,7 +439,7 @@ impl From<&SvgFundamental> for Value {
                 put(&mut map, "class", class, classes);
                 "Line"
             }
-            SvgFundamental::Label {
+            Svg::Label {
                 content,
                 x,
                 y,
@@ -461,7 +461,7 @@ impl From<&SvgFundamental> for Value {
                 put(&mut map, "class", class, classes);
                 "Label"
             }
-            SvgFundamental::Polygon {
+            Svg::Polygon {
                 points,
                 fill,
                 stroke,
@@ -475,7 +475,7 @@ impl From<&SvgFundamental> for Value {
                 put(&mut map, "class", class, classes);
                 "Polygon"
             }
-            SvgFundamental::Polyline {
+            Svg::Polyline {
                 points,
                 stroke,
                 dash,
@@ -489,7 +489,7 @@ impl From<&SvgFundamental> for Value {
                 put(&mut map, "class", class, classes);
                 "Polyline"
             }
-            SvgFundamental::Link { href, children } => {
+            Svg::Link { href, children } => {
                 map.insert("href".to_string(), Value::Utf8(href.clone()));
                 map.insert(
                     "children".to_string(),
@@ -499,7 +499,7 @@ impl From<&SvgFundamental> for Value {
             }
         };
         Value::Variant {
-            union: vec!["wdoc".to_string(), "SvgFundamental".to_string()],
+            union: vec!["wdoc".to_string(), "Svg".to_string()],
             variant: variant.to_string(),
             payload: VariantPayload::Record(Arc::new(map)),
         }
@@ -661,7 +661,7 @@ mod tests {
         let value = eval(
             "node",
             r#"node = Content::Drawing {
-                 shapes: [SvgFundamental::Rect { x: 0.0, y: 1.0, width: 10.0, height: 4.0 }],
+                 shapes: [Svg::Rect { x: 0.0, y: 1.0, width: 10.0, height: 4.0 }],
                }"#,
         );
         let Ok(Content::Drawing { shapes, .. }) = Content::try_from(&value) else {
@@ -669,7 +669,7 @@ mod tests {
         };
         assert_eq!(
             shapes,
-            vec![SvgFundamental::Rect {
+            vec![Svg::Rect {
                 x: Some(0.0),
                 y: Some(1.0),
                 width: Some(10.0),
@@ -705,7 +705,7 @@ mod tests {
         // A markup fundamental is not content: the union tag is checked,
         // so a `Raw` can't be read as a content node by shape alone.
         let foreign = Value::Variant {
-            union: vec!["wdoc".to_string(), "HtmlFundamental".to_string()],
+            union: vec!["wdoc".to_string(), "Html".to_string()],
             variant: "Raw".to_string(),
             payload: VariantPayload::Record(Arc::new(BTreeMap::from([(
                 "html".to_string(),
@@ -868,7 +868,7 @@ mod tests {
         ));
 
         let html = Value::Variant {
-            union: vec!["wdoc".to_string(), "HtmlFundamental".to_string()],
+            union: vec!["wdoc".to_string(), "Html".to_string()],
             variant: "Paragraph".to_string(),
             payload: VariantPayload::Record(Arc::new(BTreeMap::new())),
         };
@@ -883,7 +883,7 @@ mod tests {
         // `Content::Drawing` types its shapes; the SVG renderer reads
         // payload maps. Absent optionals must not become present `none`s
         // the renderer would then draw from.
-        let value = Value::from(&SvgFundamental::Rect {
+        let value = Value::from(&Svg::Rect {
             x: Some(1.0),
             y: Some(2.0),
             width: Some(30.0),
@@ -902,7 +902,7 @@ mod tests {
         else {
             panic!("expected a record variant");
         };
-        assert_eq!(union.last().map(String::as_str), Some("SvgFundamental"));
+        assert_eq!(union.last().map(String::as_str), Some("Svg"));
         assert_eq!(variant, "Rect");
         assert_eq!(map.get("width"), Some(&Value::F64(30.0)));
         assert_eq!(map.get("fill"), Some(&Value::Utf8("#abc".to_string())));
@@ -917,9 +917,9 @@ mod tests {
 
     #[test]
     fn a_nested_drawing_link_carries_its_children_over() {
-        let value = Value::from(&SvgFundamental::Link {
+        let value = Value::from(&Svg::Link {
             href: "guide".to_string(),
-            children: vec![SvgFundamental::Circle {
+            children: vec![Svg::Circle {
                 cx: Some(5.0),
                 cy: Some(5.0),
                 r: Some(3.0),

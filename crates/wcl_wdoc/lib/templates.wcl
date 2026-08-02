@@ -6,7 +6,7 @@
 // fundamentals become the page <body>. The `<head>` + stylesheet are
 // still emitted by the renderer.
 //
-// "Parts" are just functions returning `list<HtmlFundamental>`: a
+// "Parts" are just functions returning `list<Html>`: a
 // template composes them and places the framework-provided authored
 // block handles via `wdoc_blocks`. There is no built-in menu — a
 // template builds navigation itself from `ctx.pages`.
@@ -85,7 +85,7 @@ type PageMetadata {
 
 // Context handed to a template's (and any part function's) `render`.
 type TemplateCtx {
-  @doc("The page's authored block tree as read-only typed handles. Query or reorder it, then place handles with `wdoc_blocks` / `HtmlFundamental::Blocks`.")
+  @doc("The page's authored block tree as read-only typed handles. Query or reorder it, then place handles with `wdoc_blocks` / `Html::Blocks`.")
   content:      list<BlockHandle>
   @doc("Site title, or the page name when the site sets no `title`.")
   title:        utf8
@@ -116,8 +116,8 @@ type TemplateCtx {
 // Place authored block handles as one structural run. Evaluation merely
 // returns the handles; Rust resolves them through the ordinary block renderer
 // after the template function has completed.
-let wdoc_blocks = fn(blocks: list<BlockHandle>) -> list<HtmlFundamental> [
-  HtmlFundamental::Blocks { blocks: blocks }
+let wdoc_blocks = fn(blocks: list<BlockHandle>) -> list<Html> [
+  Html::Blocks { blocks: blocks }
 ]
 
 // One table-of-contents entry. The inline label is the display title;
@@ -343,7 +343,7 @@ type AgentConfig {
 @block("template")
 type Template {
   @inline(0) name: identifier
-  render: fn(TemplateCtx) -> list<HtmlFundamental>
+  render: fn(TemplateCtx) -> list<Html>
 }
 
 // The `webpage` template's own CSS, embedded as a `<style>` in the page
@@ -402,7 +402,7 @@ let webpage_css = <<CSS
 
 // Back-link to the root site, shown by the templates when the current
 // page is on a sub-site (`ctx.home_href` non-empty). Empty otherwise.
-let home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
+let home_link = fn(c: TemplateCtx, cls: utf8) -> list<Html>
   if c.home_href == "" { [] }
   else {
     [ ela("a", [cls], [["href", c.home_href]], [raw(format("← {}", c.home_title))]) ]
@@ -411,7 +411,7 @@ let home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
 // One navbar menu entry: a click-toggle `<button>` when it has children
 // (a dropdown parent), an `<a>` when it links somewhere, or a plain
 // `<span>` label otherwise. The current page's link carries `current`.
-let menu_entry = fn(m: MenuEntry, current_href: utf8) -> HtmlFundamental
+let menu_entry = fn(m: MenuEntry, current_href: utf8) -> Html
   if len(m.children) > 0 {
     ela("button", ["menu-toggle"], [["type", "button"]], [raw(m.label)])
   } else if m.href == "" {
@@ -423,10 +423,10 @@ let menu_entry = fn(m: MenuEntry, current_href: utf8) -> HtmlFundamental
 // Render menu entries as a nested `<ul class="menu">` — recursive, so
 // the tree nests to any depth. An empty list renders nothing (no stray
 // `<ul>`), which also terminates the recursion at the leaves.
-let site_menu = fn(entries: list<MenuEntry>, current_href: utf8) -> list<HtmlFundamental>
+let site_menu = fn(entries: list<MenuEntry>, current_href: utf8) -> list<Html>
   if len(entries) == 0 { [] }
   else {
-    [ el("ul", ["menu"], map(entries, fn(e: MenuEntry) -> HtmlFundamental
+    [ el("ul", ["menu"], map(entries, fn(e: MenuEntry) -> Html
         el("li",
           if len(e.children) > 0 { ["has-submenu"] } else { none },
           flatten([ [menu_entry(e, current_href)], site_menu(e.children, current_href) ])))) ]
@@ -463,7 +463,7 @@ let wdoc_search_css = <<CSS
   .site-nav .wdoc-search { display: inline-block; margin: 0 0 0 1rem; min-width: 14rem; vertical-align: middle; }
   CSS
 
-let wdoc_search_box = fn(enabled: bool) -> list<HtmlFundamental>
+let wdoc_search_box = fn(enabled: bool) -> list<Html>
   if enabled {
     [
       el("style", [], [raw(wdoc_search_css)]),
@@ -479,7 +479,7 @@ let wdoc_search_box = fn(enabled: bool) -> list<HtmlFundamental>
 // ── Public template parts ───────────────────────────────────────────
 //
 // Stable, composable building blocks for authoring your own `template`.
-// Each returns `list<HtmlFundamental>`; compose them with `flatten([…])`.
+// Each returns `list<Html>`; compose them with `flatten([…])`.
 // They resolve by BARE NAME across `import <wdoc.wcl>`, so don't shadow a
 // `wdoc_part_*` / `wdoc_*_layout` name with your own `let`. The built-in
 // templates below are themselves just compositions of these — call a
@@ -490,41 +490,41 @@ let wdoc_search_box = fn(enabled: bool) -> list<HtmlFundamental>
 
 // The site search box (input + results dropdown) plus its `<style>` when
 // `enabled`; empty otherwise. Gate it on `c.search`.
-let wdoc_part_search_box = fn(enabled: bool) -> list<HtmlFundamental>
+let wdoc_part_search_box = fn(enabled: bool) -> list<Html>
   wdoc_search_box(enabled)
 
 // The light/dark theme toggle button + its one-time script when `enabled`;
 // empty otherwise. Gate it on `c.theme_toggle`.
-let wdoc_part_theme_toggle = fn(enabled: bool) -> list<HtmlFundamental>
+let wdoc_part_theme_toggle = fn(enabled: bool) -> list<Html>
   if enabled { book_theme_toggle } else { [] }
 
 // The back-to-root link shown on sub-sites (empty on the root / single site).
 // `cls` is the CSS class to tag it with (e.g. "site-home" / "book-home").
-let wdoc_part_home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
+let wdoc_part_home_link = fn(c: TemplateCtx, cls: utf8) -> list<Html>
   home_link(c, cls)
 
 // Webpage parts ──────────────────────────────────────────────────────
 
 // The `webpage` template's `<style>` block — include it to inherit the
 // stdlib header / nav / content-card styling, or omit it and supply your own.
-let wdoc_part_webpage_css = fn() -> list<HtmlFundamental> [
+let wdoc_part_webpage_css = fn() -> list<Html> [
   el("style", [], [raw(webpage_css)]),
 ]
 
 // The site title header (`<header class="site-header">`).
-let wdoc_part_header = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+let wdoc_part_header = fn(c: TemplateCtx) -> list<Html> [
   el("header", ["site-header"], [raw(c.title)]),
 ]
 
 // The top navigation bar (`<nav class="site-nav">`): the back-to-root link,
 // the search box (when enabled), and the menu — the curated `menu` tree, or
 // a flat link per page when no `menu` is declared.
-let wdoc_part_navbar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+let wdoc_part_navbar = fn(c: TemplateCtx) -> list<Html> [
   el("nav", ["site-nav"], flatten([
     home_link(c, "site-home"),
     wdoc_search_box(c.search),
     if len(c.menu) == 0 {
-      map(c.pages, fn(p: PageRef) -> HtmlFundamental
+      map(c.pages, fn(p: PageRef) -> Html
         ela("a", [], [["href", p.href]], [raw(p.name)]))
     } else {
       site_menu(c.menu, format("{}.html", c.page_name))
@@ -533,23 +533,23 @@ let wdoc_part_navbar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
 ]
 
 // The page content wrapped in the reading card (`<main class="site-main">`).
-let wdoc_part_content = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+let wdoc_part_content = fn(c: TemplateCtx) -> list<Html> [
   el("main", ["site-main"], wdoc_blocks(c.content)),
 ]
 
 // The one-time dropdown-toggle script — emit it once when the navbar uses a
 // curated `menu` (empty otherwise, matching the built-in webpage template).
-let wdoc_part_menu_script = fn(menu: list<MenuEntry>) -> list<HtmlFundamental>
+let wdoc_part_menu_script = fn(menu: list<MenuEntry>) -> list<Html>
   if len(menu) > 0 { [menu_script] } else { [] }
 
 // The bare nested menu list (`<ul class="menu">`) — the navbar's menu without
 // the surrounding `<nav>`, for placing a dropdown menu anywhere you like.
-let wdoc_part_menu_tree = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let wdoc_part_menu_tree = fn(c: TemplateCtx) -> list<Html>
   site_menu(c.menu, format("{}.html", c.page_name))
 
 // The full default `webpage` layout: style, header, navbar, content, and the
 // menu script. The `webpage` template is exactly this.
-let wdoc_webpage_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let wdoc_webpage_layout = fn(c: TemplateCtx) -> list<Html>
   flatten([
     wdoc_part_webpage_css(),
     wdoc_part_header(c),
@@ -559,13 +559,13 @@ let wdoc_webpage_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
   ])
 
 template webpage {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     wdoc_webpage_layout(c)
 }
 
 // One sidebar entry: a `<span>` heading when the entry has no page
 // (empty href), otherwise an `<a>` link (with `current` highlighting).
-let book_toc_link = fn(e: TocEntry, current_href: utf8) -> HtmlFundamental
+let book_toc_link = fn(e: TocEntry, current_href: utf8) -> Html
   if e.href == "" {
     el("span", ["book-section"], [raw(e.title)])
   } else {
@@ -582,10 +582,10 @@ let book_toc_toggle = el("span", ["book-toc-toggle"], [])
 // also terminates the recursion at the leaves. A branch `<li>` carries
 // `book-branch` (plus `open` when it's on the active path), so its child
 // `<ul>` collapses by default and only the current page's ancestry expands.
-let book_toc = fn(entries: list<TocEntry>, m: PageMetadata) -> list<HtmlFundamental>
+let book_toc = fn(entries: list<TocEntry>, m: PageMetadata) -> list<Html>
   if len(entries) == 0 { [] }
   else {
-    [ el("ul", ["book-toc"], map(entries, fn(e: TocEntry) -> HtmlFundamental {
+    [ el("ul", ["book-toc"], map(entries, fn(e: TocEntry) -> Html {
         let has_children = len(e.children) > 0;
         el("li",
           if has_children { ["book-branch", if list_contains(m.active_path, e) { "open" }] } else { none },
@@ -599,7 +599,7 @@ let book_toc = fn(entries: list<TocEntry>, m: PageMetadata) -> list<HtmlFundamen
 // Bottom-of-page previous/next pagination, derived from the book reading
 // order supplied by `page_metadata`. Empty when the page isn't in the TOC;
 // at the ends only the one existing neighbour is shown.
-let book_pagenav = fn(m: PageMetadata) -> list<HtmlFundamental> {
+let book_pagenav = fn(m: PageMetadata) -> list<Html> {
     let prev = if m.previous != none {
       let p = m.previous;
       [ ela("a", ["book-nav", "book-nav-prev"], [["href", p.href]],
@@ -674,7 +674,7 @@ let book_css = <<CSS
 
 // The `book` template's `<style>` block — the fixed sidebar, nested TOC,
 // reading column, and theme toggle. Include it for stdlib book styling.
-let wdoc_part_book_css = fn() -> list<HtmlFundamental> [
+let wdoc_part_book_css = fn() -> list<Html> [
   el("style", [], [raw(book_css)]),
 ]
 
@@ -684,7 +684,7 @@ let wdoc_part_book_css = fn() -> list<HtmlFundamental> [
 // The label drives the `title` / `aria-label` (a hover tooltip + accessible
 // name) rather than visible text; a button with no icon falls back to its
 // label as text so it is never empty.
-let book_footer_button = fn(b: FooterButton, current_href: utf8) -> HtmlFundamental
+let book_footer_button = fn(b: FooterButton, current_href: utf8) -> Html
   ela("a", ["book-footer-btn", if b.href == current_href { "current" }],
     [["href", b.href], ["title", b.label], ["aria-label", b.label]],
     if b.icon == "" { [raw(b.label)] } else { [raw(b.icon)] })
@@ -692,10 +692,10 @@ let book_footer_button = fn(b: FooterButton, current_href: utf8) -> HtmlFundamen
 // The pinned sidebar footer (`<div class="book-sidebar-footer">`): one button
 // per `c.footer` entry. Empty (renders nothing) when the site declares no
 // `sidebar_footer`. Pinned to the bottom of the sidebar by `book_css`.
-let wdoc_part_sidebar_footer = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let wdoc_part_sidebar_footer = fn(c: TemplateCtx) -> list<Html>
   if len(c.footer) == 0 { [] }
   else {
-    [ el("div", ["book-sidebar-footer"], map(c.footer, fn(b: FooterButton) -> HtmlFundamental
+    [ el("div", ["book-sidebar-footer"], map(c.footer, fn(b: FooterButton) -> Html
         book_footer_button(b, format("{}.html", c.page_name)))) ]
   }
 
@@ -705,7 +705,7 @@ let wdoc_part_sidebar_footer = fn(c: TemplateCtx) -> list<HtmlFundamental>
 // book order. The scroll script runs after the TOC is in the DOM (an inline
 // script executes at parse time, so it sees its sibling chapter `<a>`s) and
 // centres the current chapter.
-let wdoc_part_sidebar_with_metadata = fn(c: TemplateCtx, m: PageMetadata) -> list<HtmlFundamental> [
+let wdoc_part_sidebar_with_metadata = fn(c: TemplateCtx, m: PageMetadata) -> list<Html> [
   el("nav", ["book-sidebar"], flatten([
     [ el("div", ["book-title"], [raw(c.title)]) ],
     home_link(c, "book-home"),
@@ -717,14 +717,14 @@ let wdoc_part_sidebar_with_metadata = fn(c: TemplateCtx, m: PageMetadata) -> lis
   ])),
 ]
 
-let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<Html>
   wdoc_part_sidebar_with_metadata(c, page_metadata(c))
 
 // The page content in the book reading column (`<main class="book-content">`),
 // followed by the previous/next pagination derived from the TOC order. The
 // inner `book-measure` caps the reading width and centres the column between
 // the fixed sidebar and rail.
-let wdoc_part_book_content_with_metadata = fn(c: TemplateCtx, m: PageMetadata) -> list<HtmlFundamental> [
+let wdoc_part_book_content_with_metadata = fn(c: TemplateCtx, m: PageMetadata) -> list<Html> [
   el("main", ["book-content"], [
     el("div", ["book-measure"], flatten([
       wdoc_blocks(c.content),
@@ -733,13 +733,13 @@ let wdoc_part_book_content_with_metadata = fn(c: TemplateCtx, m: PageMetadata) -
   ]),
 ]
 
-let wdoc_part_book_content = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let wdoc_part_book_content = fn(c: TemplateCtx) -> list<Html>
   wdoc_part_book_content_with_metadata(c, page_metadata(c))
 
 // One "on this page" rail link (`<a class="book-onpage-link level-N">`),
 // anchoring to the heading's synthesised id; `level-2` / `level-3` drive the
 // indent. The title is pre-escaped HTML, embedded via `Raw`.
-let book_onpage_link = fn(h: OnPageHeading) -> HtmlFundamental
+let book_onpage_link = fn(h: OnPageHeading) -> Html
   ela("a", ["book-onpage-link", format("level-{}", h.level)],
     [["href", format("#{}", h.id)]], [raw(h.title)])
 
@@ -751,7 +751,7 @@ let book_rail_script = raw(
 // The right-hand "on this page" rail (`<aside class="book-rail">`): the
 // current page's h2/h3 headings as anchor links plus the scroll-spy script.
 // Empty (renders nothing) on a page with no such headings.
-let wdoc_part_book_rail_with_metadata = fn(m: PageMetadata) -> list<HtmlFundamental>
+let wdoc_part_book_rail_with_metadata = fn(m: PageMetadata) -> list<Html>
   if len(m.headings) == 0 { [] }
   else {
     [ el("aside", ["book-rail"], flatten([
@@ -761,22 +761,22 @@ let wdoc_part_book_rail_with_metadata = fn(m: PageMetadata) -> list<HtmlFundamen
       ])) ]
   }
 
-let wdoc_part_book_rail = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let wdoc_part_book_rail = fn(c: TemplateCtx) -> list<Html>
   wdoc_part_book_rail_with_metadata(page_metadata(c))
 
 // The nested TOC list (`<ul class="book-toc">`) on its own — the sidebar's
 // chapter tree without the surrounding `<nav>`.
-let wdoc_part_toc_tree = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let wdoc_part_toc_tree = fn(c: TemplateCtx) -> list<Html>
   book_toc(c.toc, page_metadata(c))
 
 // The bottom-of-page previous/next pagination, derived from the TOC reading
 // order (empty when the current page isn't in the TOC).
-let wdoc_part_pagenav = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let wdoc_part_pagenav = fn(c: TemplateCtx) -> list<Html>
   book_pagenav(page_metadata(c))
 
 // The full default `book` layout: style, sidebar, content-with-pagination.
 // The `book` template is exactly this.
-let wdoc_book_layout = fn(c: TemplateCtx) -> list<HtmlFundamental> {
+let wdoc_book_layout = fn(c: TemplateCtx) -> list<Html> {
   let m = page_metadata(c);
   flatten([
     wdoc_part_book_css(),
@@ -787,7 +787,7 @@ let wdoc_book_layout = fn(c: TemplateCtx) -> list<HtmlFundamental> {
 }
 
 template book {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     wdoc_book_layout(c)
 }
 

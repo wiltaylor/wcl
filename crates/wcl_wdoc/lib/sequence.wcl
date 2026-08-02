@@ -40,9 +40,9 @@ let seq_cx = fn(ids: list<utf8>, id: utf8, cw: f64) -> f64
 // `:async` / `:reply`. The two carry different theme classes — a CSS
 // `fill` on the chevron's class would override its inline
 // `fill="none"`.
-let seq_arrow = fn(x: f64, y: f64, dir: f64, open_head: bool) -> SvgFundamental
+let seq_arrow = fn(x: f64, y: f64, dir: f64, open_head: bool) -> Svg
   if open_head {
-    SvgFundamental::Polyline {
+    Svg::Polyline {
       points: format(
         "{},{} {},{} {},{}",
         x - 9.0 * dir, y - 4.5,
@@ -52,7 +52,7 @@ let seq_arrow = fn(x: f64, y: f64, dir: f64, open_head: bool) -> SvgFundamental
       class: ["wdoc-seq-message"],
     }
   } else {
-    SvgFundamental::Polygon {
+    Svg::Polygon {
       points: format(
         "{},{} {},{} {},{}",
         x, y,
@@ -65,7 +65,7 @@ let seq_arrow = fn(x: f64, y: f64, dir: f64, open_head: bool) -> SvgFundamental
 
 // A participant's head shapes (box / actor / external), wrapped in a
 // `Link` when the participant carries one.
-let seq_head = fn(p: Participant, cx: f64, cw: f64) -> list<SvgFundamental> {
+let seq_head = fn(p: Participant, cx: f64, cw: f64) -> list<Svg> {
   let auto = p.class == none;
   let box_class = if auto { ["wdoc-participant"] } else { p.class };
   // Stroke-only class for open shapes (stick figure, dashed outline) —
@@ -77,21 +77,21 @@ let seq_head = fn(p: Participant, cx: f64, cw: f64) -> list<SvgFundamental> {
   let body = if p.kind == :actor {
     // Stick figure: head, trunk, arms, legs, with the name below.
     [
-      SvgFundamental::Circle { cx: cx, cy: 8.0, r: 5.0, fill: "none", class: line_class },
-      SvgFundamental::Line { x1: cx, y1: 13.0, x2: cx, y2: 23.0, class: line_class },
-      SvgFundamental::Line { x1: cx - 8.0, y1: 17.0, x2: cx + 8.0, y2: 17.0, class: line_class },
-      SvgFundamental::Polyline {
+      Svg::Circle { cx: cx, cy: 8.0, r: 5.0, fill: "none", class: line_class },
+      Svg::Line { x1: cx, y1: 13.0, x2: cx, y2: 23.0, class: line_class },
+      Svg::Line { x1: cx - 8.0, y1: 17.0, x2: cx + 8.0, y2: 17.0, class: line_class },
+      Svg::Polyline {
         points: format("{},{} {},{} {},{}", cx - 7.0, 31.0, cx, 23.0, cx + 7.0, 31.0),
         class: line_class,
       },
-      SvgFundamental::Label {
+      Svg::Label {
         content: label, x: cx, y: 37.0, font_size: 11.0, class: text_class,
       },
     ]
   } else if p.kind == :external {
     // Dashed outline (a closed Polyline — Rect carries no dash).
     [
-      SvgFundamental::Polyline {
+      Svg::Polyline {
         points: format(
           "{},{} {},{} {},{} {},{} {},{}",
           cx - bw / 2.0, 3.0,
@@ -103,24 +103,24 @@ let seq_head = fn(p: Participant, cx: f64, cw: f64) -> list<SvgFundamental> {
         dash: "5 4",
         class: line_class,
       },
-      SvgFundamental::Label {
+      Svg::Label {
         content: label, x: cx, y: 20.0,
         fit_width: bw - 8.0, fit_height: 30.0, class: text_class,
       },
     ]
   } else {
     [
-      SvgFundamental::Rect {
+      Svg::Rect {
         x: cx - bw / 2.0, y: 3.0, width: bw, height: 34.0, class: box_class,
       },
-      SvgFundamental::Label {
+      Svg::Label {
         content: label, x: cx, y: 20.0,
         fit_width: bw - 8.0, fit_height: 30.0, class: text_class,
       },
     ]
   };
   if p.link != none {
-    [SvgFundamental::Link { href: p.link, children: body }]
+    [Svg::Link { href: p.link, children: body }]
   } else {
     body
   }
@@ -135,7 +135,7 @@ let seq_message = fn(
   cw: f64,
   rh: f64,
   hh: f64,
-) -> list<SvgFundamental> {
+) -> list<Svg> {
   let y = hh + index_of(msg_ids, m.id) * rh;
   // A typo'd participant id is a build error, not a stray off-grid
   // arrow (the viewBox fit would happily show the garbage).
@@ -155,7 +155,7 @@ let seq_message = fn(
   let open_head = m.kind == :async || m.kind == :reply;
   if m.from == m.to {
     [
-      SvgFundamental::Polyline {
+      Svg::Polyline {
         points: format(
           "{},{} {},{} {},{} {},{}",
           xf, y,
@@ -167,7 +167,7 @@ let seq_message = fn(
         class: cls,
       },
       seq_arrow(xf + 7.0, y + rh * 0.45, -1.0, open_head),
-      SvgFundamental::Label {
+      Svg::Label {
         content: m.text ?? "", x: xf + 46.0, y: y - 11.0, font_size: 11.0, class: text_cls,
       },
     ]
@@ -175,9 +175,9 @@ let seq_message = fn(
     let dir = if xt > xf { 1.0 } else { -1.0 };
     let x2 = xt - dir * 4.0;
     [
-      SvgFundamental::Line { x1: xf, y1: y, x2: x2, y2: y, dash: dash, class: cls },
+      Svg::Line { x1: xf, y1: y, x2: x2, y2: y, dash: dash, class: cls },
       seq_arrow(x2, y, dir, open_head),
-      SvgFundamental::Label {
+      Svg::Label {
         content: m.text ?? "", x: (xf + xt) / 2.0, y: y - 11.0, font_size: 11.0, class: text_cls,
       },
     ]
@@ -193,7 +193,7 @@ let seq_note = fn(
   cw: f64,
   rh: f64,
   hh: f64,
-) -> list<SvgFundamental> {
+) -> list<Svg> {
   let y = if index_of(msg_ids, nb.at) < 0 {
     error(format("note '{}' is anchored to unknown message '{}'", nb.id, nb.at))
   } else {
@@ -201,10 +201,10 @@ let seq_note = fn(
   };
   let x = cols * cw + 8.0;
   [
-    SvgFundamental::Rect {
+    Svg::Rect {
       x: x, y: y - 14.0, width: 132.0, height: 28.0, class: ["wdoc-note"],
     },
-    SvgFundamental::Label {
+    Svg::Label {
       content: nb.text, x: x + 66.0, y: y,
       fit_width: 124.0, fit_height: 24.0, class: ["wdoc-note-text"],
     },
@@ -276,24 +276,24 @@ type SequenceDiagram extends WdocBlock {
   // Page-level placement contract (`WdocBlock`): `@native`, because the
   // geometry below is SVG the Rust renderer fits a viewBox over.
 
-  lower_svg = fn(s: SequenceDiagram) -> list<SvgFundamental> {
+  lower_svg = fn(s: SequenceDiagram) -> list<Svg> {
     let cw = s.col_width ?? 140.0;
     let rh = s.row_height ?? 44.0;
     let hh = s.header_height ?? 64.0;
     let ids = map(s.participants, fn(p: Participant) -> utf8 p.id);
     let msg_ids = map(s.messages, fn(m: Message) -> utf8 m.id);
     let y_end = hh + len(s.messages) * rh + rh / 2.0;
-    let heads = flatten(map(s.participants, fn(p: Participant) -> list<SvgFundamental>
+    let heads = flatten(map(s.participants, fn(p: Participant) -> list<Svg>
       seq_head(p, seq_cx(ids, p.id, cw), cw)));
-    let lifelines = map(s.participants, fn(p: Participant) -> SvgFundamental
-      SvgFundamental::Line {
+    let lifelines = map(s.participants, fn(p: Participant) -> Svg
+      Svg::Line {
         x1: seq_cx(ids, p.id, cw), y1: 44.0,
         x2: seq_cx(ids, p.id, cw), y2: y_end,
         dash: "4 4", class: ["wdoc-lifeline"],
       });
-    let msgs = flatten(map(s.messages, fn(m: Message) -> list<SvgFundamental>
+    let msgs = flatten(map(s.messages, fn(m: Message) -> list<Svg>
       seq_message(m, ids, msg_ids, cw, rh, hh)));
-    let notes = flatten(map(s.notes, fn(nb: SeqNote) -> list<SvgFundamental>
+    let notes = flatten(map(s.notes, fn(nb: SeqNote) -> list<Svg>
       seq_note(nb, msg_ids, len(s.participants), cw, rh, hh)));
     flatten([heads, lifelines, msgs, notes])
   }

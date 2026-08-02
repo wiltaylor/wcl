@@ -33,7 +33,7 @@ let landing_css = <<CSS
 // comes from the `wdoc_head_*` helpers (top-level `Head` fundamentals)
 // plus the site's `fonts` field.
 template landing {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_head_meta("viewport", "width=device-width, initial-scale=1"),
       wdoc_head_meta("description", "Nimbus — ship faster."),

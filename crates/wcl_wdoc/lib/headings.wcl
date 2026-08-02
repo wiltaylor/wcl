@@ -2,7 +2,7 @@
 //
 // `h1`..`h6` lower to a `Content::Heading` — one node of the semantic
 // content IR carrying the level as a **number**. Before, they lowered to
-// an `HtmlFundamental::Paragraph` whose level rode in a CSS class
+// an `Html::Paragraph` whose level rode in a CSS class
 // (`class: ["heading-2"]`), which every non-HTML backend then had to
 // parse back out of the class list; that reverse-engineering is what the
 // IR exists to end. The `heading-N` class survives as a *style hook*

@@ -156,7 +156,7 @@ impl IconRegistry {
         pack_lookup(&pack, icon).map(str::to_string)
     }
 
-    /// Resolve an `HtmlFundamental::Icon` (e.g. a `callout`'s built-in
+    /// Resolve an `Html::Icon` (e.g. a `callout`'s built-in
     /// default or an explicit override). Unlike `resolve_inline`, this
     /// also falls back to a `pack.name` token against a compiled-in pack
     /// when no matching `iconset` is declared — so the built-in callout

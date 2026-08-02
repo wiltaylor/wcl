@@ -2,7 +2,7 @@
 //! [`pdf::collect`](crate::pdf). It reuses the shared lowering seam
 //! ([`lower_block`](crate::render::lower_block), which runs a block's WCL
 //! `lower` and returns what it produced — a semantic content node, read by
-//! [`content`](super::content), or an `HtmlFundamental`) and the
+//! [`content`](super::content), or an `Html`) and the
 //! shared inline engine
 //! ([`InlinePatterns::render_markdown`](crate::inline::InlinePatterns::render_markdown)),
 //! so prose, emphasis and links resolve exactly as on the HTML / PDF paths.
@@ -273,7 +273,7 @@ impl Emitter<'_> {
         Ok(())
     }
 
-    /// Turn one lowered `HtmlFundamental` into Markdown blocks. `depth`
+    /// Turn one lowered `Html` into Markdown blocks. `depth`
     /// bounds the custom-variant recursion below, the same way the HTML
     /// renderer bounds its own.
     fn fundamental(&mut self, value: &Value, depth: usize, out: &mut Vec<String>) {

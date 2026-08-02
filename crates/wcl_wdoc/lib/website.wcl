@@ -12,7 +12,7 @@
 //     outside a region is the authored handle list `c.content`; place it
 //     with `wdoc_blocks(c.content)`.
 //
-//   • HEAD assets. A layout emits `HtmlFundamental::Head { … }` at the TOP
+//   • HEAD assets. A layout emits `Html::Head { … }` at the TOP
 //     LEVEL of its fundamentals to add `<link>` / `<script>` / `<meta>` /
 //     fonts to the page `<head>` — wrap the common cases with the
 //     `wdoc_head_*` helpers below. (The `site` block's `stylesheets` /
@@ -58,36 +58,36 @@ let wdoc_region = fn(c: TemplateCtx, name: utf8) -> utf8 {
 // A `<link rel="stylesheet" href>` added to the page `<head>`. `href` is
 // emitted verbatim, so it may be a URL, a copied `assets` path, or a
 // shipped `file`. Return it at a template's top level to take effect.
-let wdoc_head_stylesheet = fn(href: utf8) -> list<HtmlFundamental> [
-  HtmlFundamental::Head { children: [
+let wdoc_head_stylesheet = fn(href: utf8) -> list<Html> [
+  Html::Head { children: [
     ela("link", [], [["rel", "stylesheet"], ["href", href]], []),
   ] },
 ]
 
 // A deferred `<script src defer>` added to the page `<head>`.
-let wdoc_head_script = fn(src: utf8) -> list<HtmlFundamental> [
-  HtmlFundamental::Head { children: [
+let wdoc_head_script = fn(src: utf8) -> list<Html> [
+  Html::Head { children: [
     ela("script", [], [["src", src], ["defer", ""]], []),
   ] },
 ]
 
 // A web-font `<link rel="stylesheet" href>` (e.g. a Google Fonts URL).
 // Identical to `wdoc_head_stylesheet`; named for intent at the call site.
-let wdoc_head_font = fn(href: utf8) -> list<HtmlFundamental>
+let wdoc_head_font = fn(href: utf8) -> list<Html>
   wdoc_head_stylesheet(href)
 
 // A `<meta name content>` tag added to the page `<head>` (description,
 // viewport, an Open Graph `og:*` name, …).
-let wdoc_head_meta = fn(name: utf8, content: utf8) -> list<HtmlFundamental> [
-  HtmlFundamental::Head { children: [
+let wdoc_head_meta = fn(name: utf8, content: utf8) -> list<Html> [
+  Html::Head { children: [
     ela("meta", [], [["name", name], ["content", content]], []),
   ] },
 ]
 
 // Verbatim head HTML — an escape hatch for anything the typed helpers
 // don't cover (a `<base>`, a preconnect, an inline `<style>`, …).
-let wdoc_head_raw = fn(html: utf8) -> list<HtmlFundamental> [
-  HtmlFundamental::Head { children: [ raw(html) ] },
+let wdoc_head_raw = fn(html: utf8) -> list<Html> [
+  Html::Head { children: [ raw(html) ] },
 ]
 
 // ── The default layout ──────────────────────────────────────────────
@@ -121,7 +121,7 @@ let website_css = <<CSS
 
 // The `website` template's `<style>` block — include it to inherit the
 // default header / hero / layout / footer styling, or drop it for your own.
-let wdoc_part_website_css = fn() -> list<HtmlFundamental> [
+let wdoc_part_website_css = fn() -> list<Html> [
   el("style", [], [raw(website_css)]),
 ]
 
@@ -129,13 +129,13 @@ let wdoc_part_website_css = fn() -> list<HtmlFundamental> [
 // `menu` (or a flat link per page when no `menu` is declared), and a
 // right-side controls cluster — the search box and the light/dark theme
 // toggle — when the site enables them (`search` / `theme_toggle`).
-let website_header = fn(c: TemplateCtx) -> HtmlFundamental
+let website_header = fn(c: TemplateCtx) -> Html
   el("header", ["ws-header"], flatten([
     [ ela("a", ["ws-brand"],
         [["href", if c.home_href == "" { "index.html" } else { c.home_href }]],
         [raw(c.title)]) ],
     if len(c.menu) == 0 {
-      [ el("ul", ["menu"], map(c.pages, fn(p: PageRef) -> HtmlFundamental
+      [ el("ul", ["menu"], map(c.pages, fn(p: PageRef) -> Html
           el("li", [], [ ela("a", [], [["href", p.href]], [raw(p.name)]) ]))) ]
     } else {
       wdoc_part_menu_tree(c)
@@ -146,7 +146,7 @@ let website_header = fn(c: TemplateCtx) -> HtmlFundamental
 // The header's right-side controls: search + theme toggle, wrapped in a
 // `.ws-controls` cluster. Empty when neither feature is enabled, so
 // sites that set neither flag get exactly the header they had before.
-let website_header_controls = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let website_header_controls = fn(c: TemplateCtx) -> list<Html>
   if c.search || c.theme_toggle {
     [ el("div", ["ws-controls"], flatten([
         wdoc_part_search_box(c.search),
@@ -156,7 +156,7 @@ let website_header_controls = fn(c: TemplateCtx) -> list<HtmlFundamental>
 
 // A named region wrapped in `<tag class>`, or nothing when the page
 // declares no such region (so the wrapper is never emitted empty).
-let website_region_section = fn(c: TemplateCtx, name: utf8, tag: utf8, cls: utf8) -> list<HtmlFundamental> {
+let website_region_section = fn(c: TemplateCtx, name: utf8, tag: utf8, cls: utf8) -> list<Html> {
   let html = wdoc_region(c, name);
   if html == "" { [] }
   else { [ el(tag, [cls], [raw(html)]) ] }
@@ -164,7 +164,7 @@ let website_region_section = fn(c: TemplateCtx, name: utf8, tag: utf8, cls: utf8
 
 // The main content area: the default `content` plus, when the page
 // declares a `region "sidebar"`, an `<aside>` next to it (two-column).
-let website_body = fn(c: TemplateCtx) -> HtmlFundamental {
+let website_body = fn(c: TemplateCtx) -> Html {
   let aside = wdoc_region(c, "sidebar");
   el("div", ["ws-layout", if aside != "" { "has-aside" }], flatten([
     [ el("main", ["ws-main"], wdoc_blocks(c.content)) ],
@@ -174,7 +174,7 @@ let website_body = fn(c: TemplateCtx) -> HtmlFundamental {
 }
 
 // The site footer: a `region "footer"` when declared, else the site title.
-let website_footer = fn(c: TemplateCtx) -> HtmlFundamental {
+let website_footer = fn(c: TemplateCtx) -> Html {
   let footer = wdoc_region(c, "footer");
   el("footer", ["ws-footer"], [raw(if footer == "" { c.title } else { footer })])
 }
@@ -183,7 +183,7 @@ let website_footer = fn(c: TemplateCtx) -> HtmlFundamental {
 // hero regions, the content body (+ optional sidebar), and the footer.
 // The `website` template is exactly this — copy its body and swap parts
 // to retheme.
-let wdoc_website_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
+let wdoc_website_layout = fn(c: TemplateCtx) -> list<Html>
   flatten([
     wdoc_part_website_css(),
     [ website_header(c) ],
@@ -195,6 +195,6 @@ let wdoc_website_layout = fn(c: TemplateCtx) -> list<HtmlFundamental>
   ])
 
 template website {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     wdoc_website_layout(c)
 }

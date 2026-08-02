@@ -454,8 +454,8 @@ type Polygon extends SvgBlock {
 // ── Lowering layer ─────────────────────────────────────────────────
 //
 // Custom shapes ship as a `@block` declaration + a top-level
-// `<kind>_lower` function returning `list<SvgFundamental>` (SVG
-// diagram shapes) or `list<HtmlFundamental>` (page-level blocks).
+// `<kind>_lower` function returning `list<Svg>` (SVG
+// diagram shapes) or `list<Html>` (page-level blocks).
 // The renderer recursively lowers each returned variant until only
 // fundamentals remain. Users add their own shapes by declaring the
 // same pair in user source.
@@ -478,17 +478,17 @@ type Polygon extends SvgBlock {
 // fills. `Link` wraps child fundamentals in a clickable in-site link
 // (same `link` semantics as diagram shapes: bare page name or
 // `site:page`).
-union SvgFundamental {
+union Svg {
   Rect    { x: f64? y: f64? width: f64? height: f64? rx: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
   Circle  { cx: f64? cy: f64? r: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
   Line    { x1: f64? y1: f64? x2: f64? y2: f64? stroke: utf8? dash: utf8? id: identifier? class: list<utf8>? }
   Label   { content: utf8 x: f64? y: f64? font_size: f64? fit_width: f64? fit_height: f64? fill: utf8? id: identifier? class: list<utf8>? }
   Polygon { points: utf8 fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
   Polyline { points: utf8 stroke: utf8? dash: utf8? id: identifier? class: list<utf8>? }
-  Link    { href: utf8 children: list<SvgFundamental> }
+  Link    { href: utf8 children: list<Svg> }
 }
 
-union HtmlFundamental {
+union Html {
   // Typed authored-block placement. The renderer resolves these handles
   // only after template evaluation has returned the complete element tree.
   Blocks { blocks: list<BlockHandle> }
@@ -505,7 +505,7 @@ union HtmlFundamental {
   // can build arbitrary layout (header / nav / main / footer / a / …).
   // `attrs` is a list of `[name, value]` pairs (values escaped), e.g.
   // `[["href", p.href]]`.
-  Element { tag: utf8 id: identifier? class: list<utf8>? attrs: list<list<utf8>>? children: list<HtmlFundamental> }
+  Element { tag: utf8 id: identifier? class: list<utf8>? attrs: list<list<utf8>>? children: list<Html> }
   // Verbatim, pre-rendered HTML — NOT escaped. Used to embed already-
   // rendered content (e.g. a page's `content` part) inside a template.
   Raw { html: utf8 }
@@ -514,7 +514,7 @@ union HtmlFundamental {
   // `children` into the page `<head>` instead of the `<body>` — the seam
   // a custom (e.g. `website`) layout uses to add `<link>` / `<script>` /
   // `<meta>` / fonts. A `Head` nested inside the body renders to nothing.
-  Head { children: list<HtmlFundamental> }
+  Head { children: list<Html> }
   // An icon, resolved against the declared `iconset`s (and, for a
   // `pack.name`, the compiled-in packs). The renderer records it for
   // the shared sprite and emits `<svg class="wdoc-icon …"><use …/></svg>`

@@ -114,7 +114,7 @@ concept templates {
     p <<DOC
       The built-ins are not special: a template is just a function from a `TemplateCtx` to a list of
       HTML fundamentals. Declare a
-      `template <name> { render = fn(c: TemplateCtx) -> list<HtmlFundamental> … }` and select it
+      `template <name> { render = fn(c: TemplateCtx) -> list<Html> … }` and select it
       with a site's `default_template` (e.g. `:blog`) or a page's `template` field. The stdlib
       exposes its chrome as composable parts (`wdoc_part_*`) plus one `wdoc_*_layout` per built-in,
       all resolved by bare name once you `import <wdoc.wcl>`.
@@ -144,7 +144,7 @@ concept templates {
     code "wcl" {
       source = <<DOC
         template blog {
-          render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+          render = fn(c: TemplateCtx) -> list<Html>
             flatten([
               wdoc_webpage_layout(c),
               [ el("footer", ["site-footer"], [raw("© 2026 — built with wdoc")]) ],
@@ -153,7 +153,7 @@ concept templates {
       DOC
     }
     p <<DOC
-      The family covers the HTML **element** vocabulary only. `SvgFundamental` and the semantic
+      The family covers the HTML **element** vocabulary only. `Svg` and the semantic
       content IR keep the named-field literal: they are field-shaped, and WCL checks argument arity
       but never argument types, so transposing two of a shape's interchangeable `f64`s would render
       silently wrong where the record raises a shape mismatch. Write the record for anything the

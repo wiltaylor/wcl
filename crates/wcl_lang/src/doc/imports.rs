@@ -88,7 +88,7 @@ pub(super) fn push_eager_imports<'a>(imps: &'a [LoadedImport], out: &mut Vec<Blo
 /// Collect the symbol index of every eagerly-imported file (recursively)
 /// so the importing file's structural validation can resolve type
 /// references against declarations that live in imports — e.g. a user
-/// `lower` returning `list<SvgFundamental>` where the union is defined in
+/// `lower` returning `list<Svg>` where the union is defined in
 /// an imported schema file.
 pub(super) fn collect_import_symbols<'a>(imps: &'a [LoadedImport], out: &mut Vec<&'a SymbolIndex>) {
     for imp in imps {

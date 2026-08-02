@@ -27,8 +27,8 @@ type Math extends WdocBlock {
   id:    identifier?
   @doc("Optional class list (e.g. to recolour or resize the equation).")
   class: list<utf8>?
-  lower = fn(m: Math) -> list<HtmlFundamental>
-    [HtmlFundamental::Math { latex: m.source, display: true, class: m.class }]
+  lower = fn(m: Math) -> list<Html>
+    [Html::Math { latex: m.source, display: true, class: m.class }]
 }
 
 // Centring + scroll-on-overflow for block equations, and the inline

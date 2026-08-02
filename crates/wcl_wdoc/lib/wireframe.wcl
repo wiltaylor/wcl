@@ -62,7 +62,7 @@ interface Widget extends SvgBlock {
   accent:   symbol?
   @doc("Per-element mode override: `:dark` or `:light` (falls back to the site / document theme).")
   mode:     symbol?
-  lower:    fn(&Widget) -> list<SvgFundamental>
+  lower:    fn(&Widget) -> list<Svg>
 }
 
 // Shared geometry + theming fields, repeated per type (the schema lists a

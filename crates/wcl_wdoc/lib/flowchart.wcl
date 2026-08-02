@@ -14,8 +14,8 @@
 // the WCL param-annotation rule; a `none` value flows through unchanged).
 namespace wdoc
 
-let centered_label = fn(text: utf8, cx: f64, cy: f64, fit_w: f64, fit_h: f64, cls: list<utf8>) -> SvgFundamental
-  SvgFundamental::Label {
+let centered_label = fn(text: utf8, cx: f64, cy: f64, fit_w: f64, fit_h: f64, cls: list<utf8>) -> Svg
+  Svg::Label {
     content: text, x: cx, y: cy,
     fit_width: fit_w, fit_height: fit_h, class: cls,
   }
@@ -86,7 +86,7 @@ type Process extends SvgBlock {
   // so it isn't bare-SVG black; the box and its label carry separate classes
   // so the label stays legible against the themed fill. Any author styling
   // wins (and a CSS class would otherwise override a `fill="…"` attribute).
-  lower = fn(p: Process) -> list<SvgFundamental> {
+  lower = fn(p: Process) -> list<Svg> {
     let auto = p.fill == none && p.stroke == none && p.class == none;
     let box_class = if auto { ["wdoc-process"] } else { p.class };
     let text_class = if auto { ["wdoc-shape-text"] } else { p.class };
@@ -94,7 +94,7 @@ type Process extends SvgBlock {
     // shrink its fit so a `:left` icon badge sits beside the text.
     let lead = icon_lead(p.icon, p.icon_pos, p.icon_size, p.width, p.height);
     [
-      SvgFundamental::Rect {
+      Svg::Rect {
         x: p.x, y: p.y, width: p.width, height: p.height,
         fill: p.fill, stroke: p.stroke, id: p.id, class: box_class,
       },
@@ -139,13 +139,13 @@ type Decision extends SvgBlock {
   @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
   link: utf8?
 
-  lower = fn(d: Decision) -> list<SvgFundamental> {
+  lower = fn(d: Decision) -> list<Svg> {
     let auto = d.fill == none && d.stroke == none && d.class == none;
     let box_class = if auto { ["wdoc-decision"] } else { d.class };
     let text_class = if auto { ["wdoc-shape-text"] } else { d.class };
     let lead = icon_lead(d.icon, d.icon_pos, d.icon_size, d.width, d.height);
     [
-      SvgFundamental::Polygon {
+      Svg::Polygon {
         points: format(
           "{},{} {},{} {},{} {},{}",
           d.x + d.width / 2.0, d.y,
@@ -205,7 +205,7 @@ type GraphNode extends SvgBlock {
   @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
   link: utf8?
 
-  lower = fn(n: GraphNode) -> list<SvgFundamental> {
+  lower = fn(n: GraphNode) -> list<Svg> {
     let auto = n.fill == none && n.stroke == none && n.class == none;
     let box_class = if auto { ["wdoc-node"] } else { n.class };
     let text_class = if auto { ["wdoc-shape-text"] } else { n.class };
@@ -217,7 +217,7 @@ type GraphNode extends SvgBlock {
     // the circle's curve instead of overflowing it.
     let d = min(n.width, n.height);
     [
-      SvgFundamental::Circle {
+      Svg::Circle {
         cx: n.x + n.width / 2.0,
         cy: n.y + n.height / 2.0,
         r:  d / 2.0,
@@ -267,13 +267,13 @@ type Terminator extends SvgBlock {
   @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
   link: utf8?
 
-  lower = fn(t: Terminator) -> list<SvgFundamental> {
+  lower = fn(t: Terminator) -> list<Svg> {
     let auto = t.fill == none && t.stroke == none && t.class == none;
     let box_class = if auto { ["wdoc-terminator"] } else { t.class };
     let text_class = if auto { ["wdoc-shape-text"] } else { t.class };
     let lead = icon_lead(t.icon, t.icon_pos, t.icon_size, t.width, t.height);
     [
-      SvgFundamental::Polygon {
+      Svg::Polygon {
         points: oval_points(
           t.x + t.width / 2.0, t.y + t.height / 2.0,
           t.width / 2.0, t.height / 2.0,

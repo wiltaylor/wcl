@@ -387,7 +387,7 @@ pub(crate) fn read_deck(site: &Block<'_>) -> Vec<DeckSectionNode> {
 }
 
 /// A rendered template, split into the page `<body>` and any `<head>`
-/// content the template emitted via top-level `HtmlFundamental::Head`
+/// content the template emitted via top-level `Html::Head`
 /// fundamentals (hoisted out of the body — see [`head_fundamental_html`]).
 #[derive(Default)]
 pub(crate) struct Rendered {
@@ -1282,7 +1282,7 @@ pub(crate) fn table_html(
     out
 }
 
-/// Render an `HtmlFundamental::Icon { name, class? }` by resolving the
+/// Render an `Html::Icon { name, class? }` by resolving the
 /// name against the icon registry (which records it for the shared
 /// sprite). A miss renders nothing.
 pub(crate) fn render_icon_fundamental(
@@ -1296,7 +1296,7 @@ pub(crate) fn render_icon_fundamental(
     icons.resolve_html_icon(&name, &classes).unwrap_or_default()
 }
 
-/// Render an `HtmlFundamental::Inline { text }` by running the inline-
+/// Render an `Html::Inline { text }` by running the inline-
 /// pattern engine (bold / italic / link / icon) over `text`. The Rust
 /// regex engine stays the leaf; the `<p>` / `<span>` wrappers around it
 /// are emitted by the WCL `text` lower (`lib/text.wcl`).
@@ -1349,7 +1349,7 @@ fn render_markdown_source(
     format!("<pre class=\"code-block\"><code class=\"language-markdown\">{body}</code></pre>")
 }
 
-/// Render an `HtmlFundamental::Highlighted { source, language }` to the
+/// Render an `Html::Highlighted { source, language }` to the
 /// syntect-produced `<span class="tok-…">` token runs (the code body, no
 /// wrapper). The WCL `code` lower wraps it in `<pre><code class="language-…">`.
 pub(crate) fn render_highlighted_fundamental(map: &BTreeMap<String, Value>) -> String {
@@ -1380,7 +1380,7 @@ pub(crate) fn render_paragraph_payload(
     out
 }
 
-/// Render an `HtmlFundamental::Table` variant produced by a custom
+/// Render an `Html::Table` variant produced by a custom
 /// block's `lower`. `header` is the (optional) heading row and `rows`
 /// is `list<list<utf8>>` of body rows. Cells are plain escaped text
 /// on this path (no inline patterns), mirroring `Paragraph`'s spans.
@@ -1408,7 +1408,7 @@ pub(crate) fn render_table_payload(map: &BTreeMap<String, Value>) -> String {
     table_html(map_id(map, "id").as_deref(), &classes, &header, &body)
 }
 
-/// Render an `HtmlFundamental::Element` — `<tag id class attrs>…</tag>`
+/// Render an `Html::Element` — `<tag id class attrs>…</tag>`
 /// with its `children` rendered recursively as fundamentals. Powers
 /// template layout (header / nav / main / a / …).
 pub(crate) fn render_element_payload(
@@ -1458,7 +1458,7 @@ pub(crate) fn render_element_payload(
     out
 }
 
-/// Render an `HtmlFundamental::Raw` — pre-rendered HTML embedded
+/// Render an `Html::Raw` — pre-rendered HTML embedded
 /// verbatim (NOT escaped). Used to splice already-rendered content
 /// (e.g. a page's body) into a template.
 pub(crate) fn render_raw_payload(map: &BTreeMap<String, Value>) -> String {

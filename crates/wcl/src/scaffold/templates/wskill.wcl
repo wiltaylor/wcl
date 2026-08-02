@@ -1356,7 +1356,7 @@ JS
 
 // One syllabus entry. A lesson carries the completion mark the runtime fills
 // in; a module heading (a TOC entry with no page) renders as a label.
-let tr_nav_entry = fn(e: TocEntry) -> HtmlFundamental
+let tr_nav_entry = fn(e: TocEntry) -> Html
   if e.href == "" {
     el("li", ["tr-nav-module"], [raw(e.title)])
   } else {
@@ -1370,11 +1370,11 @@ let tr_nav_entry = fn(e: TocEntry) -> HtmlFundamental
 
 // The syllabus rail: module headings and their lessons, flattened to one list
 // (the course is two levels deep by construction).
-let tr_nav_items = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
-  flatten(map(entries, fn(e: TocEntry) -> list<HtmlFundamental>
+let tr_nav_items = fn(entries: list<TocEntry>) -> list<Html>
+  flatten(map(entries, fn(e: TocEntry) -> list<Html>
     flatten([[tr_nav_entry(e)], map(e.children, tr_nav_entry)])))
 
-let tr_nav = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+let tr_nav = fn(c: TemplateCtx) -> list<Html> [
   el("nav", ["tr-nav"], [
       el("div", ["tr-nav-title"], [raw(c.title)]),
       el("div", ["tr-progress"], [
@@ -1387,7 +1387,7 @@ let tr_nav = fn(c: TemplateCtx) -> list<HtmlFundamental> [
 ]
 
 template training {
-  render = fn(c: TemplateCtx) -> list<HtmlFundamental>
+  render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       [ el("style", [], [raw(training_css) ])],
       tr_nav(c),
