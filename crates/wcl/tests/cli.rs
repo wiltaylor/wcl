@@ -1110,3 +1110,70 @@ fn eval_resolves_through_expander_generated_children() {
         .success()
         .stdout(predicate::str::contains("a literal card"));
 }
+
+/// A wdoc document declaring a component and instantiating it. Slot
+/// checking rides the language's `@declares_kind` derivation: the kind
+/// `metric_card` is declared by an *instance* (`wdoc_component`), and
+/// `wcl check` schemas it like any other block.
+const COMPONENT_DOC: &str = r#"import <wdoc.wcl>
+
+wdoc_component metric_card {
+  wdoc_slot label
+  wdoc_slot status { default = "ok" }
+  wdoc_body {
+    p $"${label}"
+  }
+}
+
+page dash {
+  metric_card { label = "CPU" }
+}
+"#;
+
+fn component_doc(body: &str) -> (TempDir, PathBuf) {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("doc.wcl");
+    std::fs::write(&file, body).expect("write fixture");
+    (tmp, file)
+}
+
+#[test]
+fn check_accepts_a_filled_component_instance() {
+    let (_tmp, file) = component_doc(COMPONENT_DOC);
+    wcl()
+        .arg("check")
+        .arg(&file)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("OK"));
+}
+
+#[test]
+fn check_reports_an_unknown_component_slot() {
+    // The regression guard: a typo'd slot must not pass silently.
+    let (_tmp, file) = component_doc(&COMPONENT_DOC.replace("label = \"CPU\"", "labell = \"CPU\""));
+    wcl()
+        .arg("check")
+        .arg(&file)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "field 'labell' is not declared by schema 'metric_card'",
+        ));
+}
+
+#[test]
+fn check_reports_a_missing_required_component_slot() {
+    // `label` has no default, so an instance must supply it; `status`
+    // has one, so its absence is fine.
+    let (_tmp, file) = component_doc(&COMPONENT_DOC.replace(" label = \"CPU\" ", " "));
+    wcl()
+        .arg("check")
+        .arg(&file)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "block 'metric_card' is missing required field 'label'",
+        ))
+        .stderr(predicate::str::contains("status").not());
+}

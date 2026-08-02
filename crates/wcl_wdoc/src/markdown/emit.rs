@@ -234,7 +234,7 @@ impl Emitter<'_> {
             kind => {
                 // A user-defined `wdoc_component` instance: expand its
                 // declarative body with the instance's slots bound.
-                if let Some(def) = self.doc.component_def(kind) {
+                if let Some(def) = self.doc.kind_declarer(kind) {
                     self.component(block, &def, out)?;
                 } else if let Some(values) = lower_to_values(self.doc, block, kind) {
                     for v in &values {

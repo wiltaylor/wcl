@@ -5288,3 +5288,224 @@ fn missing_expander_does_not_affect_blocks_that_generate_nothing() {
         "a non-contextual block generates nothing, expander or not"
     );
 }
+
+// ─── @declares_kind: kinds declared by an instance ────────────────────
+//
+// A `@block` type carrying `@declares_kind` means "instances of this
+// type declare new block kinds". Kind lookup falls back to a schema
+// derived from the declarer's params, so an instance of a declared kind
+// is an ordinary block: the generic membership / required-field checks
+// apply to it, with no consumer vocabulary anywhere in the language.
+
+const DECLARES_KIND_SRC: &str = r#"
+@document("d") type D {
+  @children("widget") widgets: list<Widget>
+  @children("screen") screens: list<Screen>
+}
+@block("widget") @declares_kind(name = 0, params = "params", body = "body")
+type Widget {
+  @inline(0) name: identifier
+  @children("param") params: list<Param>
+  @child("body") body: WidgetBody
+}
+@block("param") type Param {
+  @inline(0) name: identifier
+  default: utf8?
+}
+@block("body") @schemaless type WidgetBody {}
+@block("screen") type Screen {
+  @inline(0) name: identifier
+}
+
+widget metric_card {
+  param label
+  param value
+  param status { default = "ok" }
+  body {}
+}
+
+screen dash {
+  metric_card { label = "CPU"  value = 42 }
+}
+"#;
+
+fn declares_kind_doc(src: &str) -> Document {
+    Document::open_with(src, "test", &Environment::new()).expect("open")
+}
+
+#[test]
+fn declares_kind_derives_a_block_schema_from_the_params() {
+    let doc = declares_kind_doc(DECLARES_KIND_SRC);
+    let schema = doc
+        .block_schema("metric_card")
+        .expect("an instance-declared kind resolves through kind lookup");
+    assert!(schema.is_derived(), "the schema came from the derivation");
+    assert_eq!(schema.name(), "metric_card");
+    let names: Vec<&str> = schema.fields().map(|f| f.name()).collect();
+    assert_eq!(names, ["label", "value", "status"], "one field per param");
+    assert!(
+        !schema.field("label").expect("label").optional(),
+        "a param with no default is required"
+    );
+    assert!(
+        schema.field("status").expect("status").optional(),
+        "a param carrying a default is optional"
+    );
+    assert_eq!(schema.required_fields(), ["label", "value"]);
+}
+
+#[test]
+fn a_derived_schema_is_reachable_through_the_typed_introspection_api() {
+    // The constraint from the spec: derived schemas must be readable
+    // through the same typed surface as declared ones — a consumer that
+    // learns a field's shape must not have to know where it came from.
+    use crate::value::BuiltinType;
+    let doc = declares_kind_doc(DECLARES_KIND_SRC);
+    let schema = doc.block_schema("metric_card").expect("derived schema");
+    let shape = schema.field("label").expect("label").shape();
+    assert_eq!(shape.builtin(), Some(BuiltinType::Utf8));
+    assert!(
+        doc.type_decls().all(|t| t.name() != "metric_card"),
+        "a derived schema is not a declaration: it stays out of type_decls()"
+    );
+}
+
+#[test]
+fn declares_kind_reads_its_contract_off_the_decorator() {
+    let doc = declares_kind_doc(DECLARES_KIND_SRC);
+    let widget = doc.block_schema("widget").expect("declarer type");
+    let contract = widget.declares_kind().expect("@declares_kind is indexed");
+    assert_eq!(contract.name_slot, 0);
+    assert_eq!(contract.params_field, "params");
+    assert_eq!(contract.body_field.as_deref(), Some("body"));
+    assert!(
+        doc.block_schema("screen")
+            .expect("screen type")
+            .declares_kind()
+            .is_none(),
+        "an ordinary @block type declares no kinds"
+    );
+    let declarer = doc
+        .kind_declarer("metric_card")
+        .expect("the declaring block resolves back from the kind");
+    assert_eq!(declarer.kind(), "widget");
+}
+
+#[test]
+fn an_unknown_param_on_an_instance_is_an_unknown_field() {
+    // The hard constraint the deleted `validate_component_instance`
+    // protected: a typo'd param is still caught, now by the generic
+    // membership check, for any consumer using the decorator.
+    let src = DECLARES_KIND_SRC.replace("label = \"CPU\"", "labell = \"CPU\"");
+    let doc = declares_kind_doc(&src);
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| {
+            matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::UnknownField,
+                    ..
+                }
+            ) && format!("{e}").contains("labell")
+                && format!("{e}").contains("metric_card")
+        }),
+        "expected an UnknownField naming the param and the kind: {errs:?}"
+    );
+}
+
+#[test]
+fn a_missing_required_param_is_a_missing_required_field() {
+    let src = DECLARES_KIND_SRC.replace("label = \"CPU\"  value = 42", "value = 42");
+    let doc = declares_kind_doc(&src);
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| {
+            matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::MissingRequired,
+                    ..
+                }
+            ) && format!("{e}").contains("label")
+        }),
+        "expected a MissingRequired naming the param: {errs:?}"
+    );
+    // The param that carries a default stays optional.
+    assert!(
+        !format!("{errs:?}").contains("'status'"),
+        "a defaulted param is not required: {errs:?}"
+    );
+}
+
+#[test]
+fn a_well_formed_instance_and_its_content_pass() {
+    let doc = declares_kind_doc(DECLARES_KIND_SRC);
+    assert!(
+        doc.schema_errors().is_empty(),
+        "a filled instance is an ordinary block: {:?}",
+        doc.schema_errors()
+    );
+    // An instance's own nested blocks are content the host places, so
+    // the child walk stops at the instance rather than reading them as
+    // disallowed children.
+    let src = DECLARES_KIND_SRC.replace(
+        "metric_card { label = \"CPU\"  value = 42 }",
+        "metric_card { label = \"CPU\"  value = 42\n    screen inner {}\n  }",
+    );
+    let doc = declares_kind_doc(&src);
+    assert!(
+        doc.schema_errors().is_empty(),
+        "an instance's nested content is not walked as its children: {:?}",
+        doc.schema_errors()
+    );
+}
+
+#[test]
+fn an_instance_declared_kind_is_contextual() {
+    // Placement is decided by context: the derived schema carries
+    // `@contextual`, so an instance is legal where its kind is named by
+    // no parent's `@children`.
+    let doc = declares_kind_doc(DECLARES_KIND_SRC);
+    let screen = doc.block("screen").expect("screen block");
+    let instance = screen.blocks().next().expect("the instance");
+    assert!(
+        instance.is_contextual(),
+        "an instance expands, so it is contextual"
+    );
+}
+
+#[test]
+fn a_declared_kind_colliding_with_a_declared_type_is_an_error() {
+    let src = DECLARES_KIND_SRC.replace(
+        "@block(\"screen\") type Screen {",
+        "@block(\"metric_card\") type MetricCard { label: utf8 }\n@block(\"screen\") type Screen {",
+    );
+    let doc = declares_kind_doc(&src);
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| {
+            matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::DeclaredKindCollision,
+                    ..
+                }
+            ) && format!("{e}").contains("metric_card")
+        }),
+        "expected a DeclaredKindCollision: {errs:?}"
+    );
+}
+
+#[test]
+fn a_kind_nothing_declares_is_still_unregistered() {
+    // The derivation adds kinds; it does not open the door to every
+    // kind. A bare block naming nothing keeps its UnregisteredKind.
+    let src = DECLARES_KIND_SRC.replace("metric_card { label", "metric_cards { label");
+    let doc = declares_kind_doc(&src);
+    let errs = doc.schema_errors();
+    assert!(
+        errs.iter().any(|e| format!("{e}").contains("metric_cards")),
+        "an undeclared kind is still a violation: {errs:?}"
+    );
+}

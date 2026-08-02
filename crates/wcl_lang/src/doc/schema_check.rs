@@ -363,62 +363,51 @@ fn dynamic_connection_admits(
         })
 }
 
-/// Validate a `wdoc_component` instance against its definition's slots:
-/// every instance field must name a declared slot, and every slot
-/// without a `default` must be supplied. (The definition itself —
-/// only `wdoc_slot`/`wdoc_body` children, one body — is validated by the
-/// generic schema on the `wdoc_component` block.)
-pub(super) fn validate_component_instance(
-    doc: &crate::doc::Document,
-    instance: &Block<'_>,
-) -> Vec<EvalError> {
+/// The two checks that read a block's own fields against its schema:
+/// every written field is declared (`UnknownField`), and every field the
+/// schema lists in `required_fields` is written (`MissingRequired`).
+///
+/// Split out because a `@contextual` block gets exactly these and no
+/// more — its body only has meaning once expanded, so the child walk
+/// stops at it, but the fields it was *written with* are checkable
+/// wherever it sits. For an instance of a `@declares_kind` kind that is
+/// the whole of the check, and the pair is exactly what a hand-rolled
+/// slot checker used to do.
+fn validate_own_fields(block: &Block<'_>, schema: &crate::doc::TypeDecl<'_>) -> Vec<EvalError> {
     use crate::error::SchemaViolationKind as Kind;
-    use crate::value::Value;
     let mut errs = Vec::new();
-    let Some(def) = doc.component_def(instance.kind()) else {
+    if schema.is_schemaless() {
         return errs;
-    };
-    let slot_name = |s: &Block<'_>| -> Option<String> {
-        match s.labels().ok()?.into_iter().next()? {
-            Value::Identifier(n) | Value::Utf8(n) | Value::Ascii(n) => Some(n),
-            _ => None,
-        }
-    };
-    let slots: Vec<Block<'_>> = def.blocks().filter(|b| b.kind() == "wdoc_slot").collect();
-    let slot_names: std::collections::HashSet<String> =
-        slots.iter().filter_map(slot_name).collect();
-
-    // Every instance field must be a declared slot.
-    for f in instance.fields() {
+    }
+    let declared_field_names: HashSet<String> =
+        schema.fields().map(|f| f.name().to_string()).collect();
+    for f in block.fields() {
         if has_schemaless(&f.ast.decorators) {
             continue;
         }
-        if !slot_names.contains(f.name()) {
+        if !declared_field_names.contains(f.name()) {
             errs.push(EvalError::schema_violation_named(
                 Kind::UnknownField,
                 format!(
-                    "field '{}' is not a slot of component '{}'",
+                    "field '{}' is not declared by schema '{}'",
                     f.name(),
-                    instance.kind()
+                    schema.name()
                 ),
                 f.name(),
                 f.span(),
             ));
         }
     }
-    // Every slot without a default must be supplied.
-    for s in &slots {
-        let Some(name) = slot_name(s) else { continue };
-        let has_default = s.field("default").is_some();
-        if !has_default && instance.field(&name).is_none() {
+    for required in schema.required_fields() {
+        if block.field(&required).is_none() {
             errs.push(EvalError::schema_violation(
                 Kind::MissingRequired,
                 format!(
-                    "component '{}' is missing required slot '{}'",
-                    instance.kind(),
-                    name
+                    "block '{}' is missing required field '{}'",
+                    block.kind(),
+                    required
                 ),
-                instance.span(),
+                block.span(),
             ));
         }
     }
@@ -448,12 +437,6 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     }
 
     let Some(schema) = block.schema() else {
-        // A `wdoc_component` instance has no `@block` schema of its own —
-        // it's validated against its definition's slots instead.
-        if block.doc.is_component_kind(block.kind()) {
-            errs.extend(validate_component_instance(block.doc, block));
-            return errs;
-        }
         // Strict mode: a block whose kind has no `@block`/`@table`
         // declaration is itself the violation.
         errs.push(EvalError::schema_violation(
@@ -474,27 +457,20 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         return errs;
     }
 
-    // Field-membership: every literal `Item::Field` inside this
-    // block must be named by the schema. `@schemaless` on a field
-    // exempts that specific field.
-    let declared_field_names: HashSet<String> =
-        schema.fields().map(|f| f.name().to_string()).collect();
-    for f in block.fields() {
-        if has_schemaless(&f.ast.decorators) {
-            continue;
-        }
-        if !declared_field_names.contains(f.name()) {
-            errs.push(EvalError::schema_violation_named(
-                Kind::UnknownField,
-                format!(
-                    "field '{}' is not declared by schema '{}'",
-                    f.name(),
-                    schema.name()
-                ),
-                f.name(),
-                f.span(),
-            ));
-        }
+    // Field-membership + `required_fields`: every literal `Item::Field`
+    // inside this block must be named by the schema, and every field the
+    // schema requires must be written. `@schemaless` on a field exempts
+    // that specific field from membership.
+    errs.extend(validate_own_fields(block, &schema));
+
+    // A schema *derived* from a `@declares_kind` instance describes the
+    // params the kind takes and nothing else: it declares no child slots
+    // because a declarer's params are fields. The instance's own nested
+    // blocks are content the host places (into whatever its declarer's
+    // body marks), so the child walk below would read every one of them
+    // as a disallowed child. The fields are the whole of the check.
+    if schema.is_derived() {
+        return errs;
     }
 
     // Surface dispatch failures for union-typed @child / @children
@@ -821,11 +797,14 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         // A `@contextual` block emits whatever its body contains once
         // expanded (page content in a page, shapes in a diagram, rows in
         // a node table), so accept it wherever children are allowed at
-        // all. A component instance also has its slot fields validated
-        // here, since the child walk above skips contextual bodies.
+        // all. Its body is not recursed into — but the fields it was
+        // written with are checked against its schema here, since the
+        // walk above skips contextual bodies. For an instance of a
+        // `@declares_kind` kind that is the whole check: unknown param,
+        // missing required param.
         if nested.is_contextual() {
-            if block.doc.is_component_kind(nested.kind()) {
-                errs.extend(validate_component_instance(block.doc, &nested));
+            if let Some(schema) = nested.schema() {
+                errs.extend(validate_own_fields(&nested, &schema));
             }
             continue;
         }

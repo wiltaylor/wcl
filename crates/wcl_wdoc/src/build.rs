@@ -1328,7 +1328,7 @@ fn collect_css_block(b: &Block<'_>, is_lib: bool, css: &mut CssBuckets) {
             }
         }
         kind => {
-            if let Some(def) = b.doc().component_def(kind) {
+            if let Some(def) = b.doc().kind_declarer(kind) {
                 for c in expand_component_children(b, &def) {
                     collect_css_block(&c, is_lib, css);
                 }

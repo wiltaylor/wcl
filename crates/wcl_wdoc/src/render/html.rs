@@ -617,7 +617,7 @@ pub(crate) fn render_block(
         // declarations are top-level fields, not blocks, so they never
         // reach here.
         kind => {
-            if let Some(def) = doc.component_def(kind) {
+            if let Some(def) = doc.kind_declarer(kind) {
                 Some(render_component(doc, block, &def, patterns, base_dir))
             } else {
                 Some(lower_html_block(doc, block, kind, patterns, base_dir))

@@ -79,7 +79,7 @@ fn collect_rows<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
             }
         }
         kind => {
-            if let Some(def) = child.doc().component_def(kind) {
+            if let Some(def) = child.doc().kind_declarer(kind) {
                 for c in expand_component_children(&child, &def) {
                     collect_rows(c, out);
                 }

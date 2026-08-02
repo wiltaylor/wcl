@@ -70,6 +70,7 @@ pub(crate) enum BuiltinDecorator {
     Decorator,
     Schemaless,
     Contextual,
+    DeclaresKind,
     Inline,
     Default,
     Child,
@@ -89,6 +90,7 @@ impl BuiltinDecorator {
             BuiltinDecorator::Decorator => "decorator",
             BuiltinDecorator::Schemaless => "schemaless",
             BuiltinDecorator::Contextual => "contextual",
+            BuiltinDecorator::DeclaresKind => "declares_kind",
             BuiltinDecorator::Inline => "inline",
             BuiltinDecorator::Default => "default",
             BuiltinDecorator::Child => "child",
@@ -1049,6 +1051,35 @@ pub struct TypeDecl<'a> {
     /// `@document` is authoritative, imported ones are library
     /// defaults that merge in. See `Document::schema_errors`.
     pub(super) is_imported: bool,
+    /// `true` when this declaration was *derived* from a
+    /// `@declares_kind` instance rather than written as a type — see
+    /// [`Document::block_schema`](crate::Document::block_schema). A
+    /// derived schema describes the declarer's params and nothing else,
+    /// so the child walk stops at an instance of it.
+    pub(super) is_derived: bool,
+}
+
+/// The `@declares_kind(...)` contract a `@block` type carries: its
+/// *instances* declare new block kinds, which the language schemas by
+/// deriving a type from each instance's params.
+///
+/// The decorator's name belongs to the language; its use belongs to the
+/// consumer — wdoc applies it to its own component type, and any host
+/// declaring a template-like kind can do the same.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaresKind {
+    /// `name = N` — the `@inline(N)` label slot of the declarer holding
+    /// the declared kind's name. Defaults to `0`.
+    pub name_slot: usize,
+    /// `params = "field"` — the declarer field holding its param blocks
+    /// (a `@children(K)` slot). Each param becomes one field of the
+    /// derived schema.
+    pub params_field: String,
+    /// `body = "field"` — the declarer field holding the template body,
+    /// if it names one. The language never reads the body (expansion is
+    /// the host's, through its [`Expander`](crate::Expander)); it is
+    /// carried here so a consumer reads one contract, not two.
+    pub body_field: Option<String>,
 }
 
 impl<'a> DeclName<'a> for TypeDecl<'a> {
@@ -1115,6 +1146,41 @@ impl<'a> TypeDecl<'a> {
         crate::doc::schema_check::has_by_ref(&self.ast.decorators)
     }
 
+    /// The [`DeclaresKind`] contract this type carries, if any: its
+    /// instances declare block kinds of their own, schema'd by the type
+    /// the language derives from each instance's params.
+    ///
+    /// `None` for the overwhelming majority of types. `params` is
+    /// required — a declarer with no param field declares kinds nothing
+    /// can be said about, which is indistinguishable from not declaring
+    /// any.
+    pub fn declares_kind(&self) -> Option<DeclaresKind> {
+        let decs: Vec<_> = self.decorators().collect();
+        let dec = find_builtin_dec(&decs, BuiltinDecorator::DeclaresKind)?;
+        let string_arg = |name: &str| match dec.resolved_arg_value(name) {
+            Some(Ok(Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s))) => Some(s),
+            _ => None,
+        };
+        let name_slot = match dec.resolved_arg_value("name") {
+            Some(Ok(v)) => v.as_u64().unwrap_or(0) as usize,
+            _ => 0,
+        };
+        Some(DeclaresKind {
+            name_slot,
+            params_field: string_arg("params")?,
+            body_field: string_arg("body"),
+        })
+    }
+
+    /// `true` when this schema was derived from a `@declares_kind`
+    /// instance rather than written as a type declaration. Such a schema
+    /// is reachable only through kind lookup — it is deliberately absent
+    /// from [`type_decls`](crate::Document::type_decls), which walks
+    /// what the document *declares*.
+    pub fn is_derived(&self) -> bool {
+        self.is_derived
+    }
+
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -1143,25 +1209,39 @@ impl<'a> TypeDecl<'a> {
     /// once in any instance of this type. Non-string entries in the
     /// list are silently dropped.
     pub fn required_children(&self) -> Vec<String> {
+        self.block_string_list("required_children")
+    }
+
+    /// `required_fields = ["name", ...]` named arg on the type's
+    /// `@block(...)` decorator. Each listed field must be written in
+    /// any instance of this type. The twin of
+    /// [`required_children`](Self::required_children) for fields: the
+    /// language does not otherwise require a declared field to be
+    /// supplied, so a schema that means it says so. Non-string entries
+    /// in the list are silently dropped.
+    pub fn required_fields(&self) -> Vec<String> {
+        self.block_string_list("required_fields")
+    }
+
+    /// The string entries of a list-valued named arg on this type's
+    /// `@block(...)` decorator — the shape both `required_children` and
+    /// `required_fields` read. Absent decorator, absent arg, erroring
+    /// arg and non-string entries all yield nothing.
+    fn block_string_list(&self, arg_name: &str) -> Vec<String> {
         let decs: Vec<_> = self.decorators().collect();
-        let dec = match find_builtin_dec(&decs, BuiltinDecorator::Block) {
-            Some(d) => d,
-            None => return Vec::new(),
+        let Some(dec) = find_builtin_dec(&decs, BuiltinDecorator::Block) else {
+            return Vec::new();
         };
-        let arg = match dec.named_arg("required_children") {
-            Some(Ok(v)) => v,
-            _ => return Vec::new(),
+        let Some(Ok(Value::List(items))) = dec.named_arg(arg_name) else {
+            return Vec::new();
         };
-        match arg {
-            Value::List(items) => std::sync::Arc::unwrap_or_clone(items)
-                .into_iter()
-                .filter_map(|v| match v {
-                    Value::Utf8(s) | Value::Ascii(s) => Some(s),
-                    _ => None,
-                })
-                .collect(),
-            _ => Vec::new(),
-        }
+        std::sync::Arc::unwrap_or_clone(items)
+            .into_iter()
+            .filter_map(|v| match v {
+                Value::Utf8(s) | Value::Ascii(s) => Some(s),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Implicit set of allowed child block kinds: the union of all
@@ -1857,8 +1937,8 @@ impl<'a> Field<'a> {
                 };
                 match block.schema() {
                     // A `@schemaless` type declaration opens all its
-                    // instances — undeclared fields pass like a component
-                    // instance's (which has no schema at all).
+                    // instances — every undeclared field passes, with no
+                    // per-instance annotation.
                     Some(schema) if schema.is_schemaless() => None,
                     Some(schema) if schema.field(self.name()).is_some() => None,
                     Some(schema) => Some(EvalError::schema_violation(
@@ -2085,7 +2165,7 @@ impl<'a> Block<'a> {
     }
 
     /// The document this block belongs to. Lets host renderers reach
-    /// document-level lookups (e.g. `component_def`) from a block view.
+    /// document-level lookups (e.g. `kind_declarer`) from a block view.
     pub fn doc(&self) -> &'a Document {
         self.doc
     }
@@ -2957,20 +3037,16 @@ impl<'a> Block<'a> {
     }
 
     /// `true` when this block is context-polymorphic — its `@block` type
-    /// carries `@contextual`, or it instantiates a kind declared by a
-    /// document-level declarer. Such a block is legal wherever children
+    /// carries `@contextual`. Such a block is legal wherever children
     /// are allowed at all, its body is not recursed into by the child
     /// walk, and its children come from the host's expander.
-    //
-    // The `is_component_kind` arm is the last hardcoded consumer
-    // vocabulary in this predicate: an instance-declared kind has no
-    // `@block` type to carry the decorator until `@declares_kind`
-    // derives one for it.
+    ///
+    /// An instance of a `@declares_kind`-declared kind answers `true`
+    /// through the same route as any other block: the schema derived
+    /// from its declarer carries `@contextual`, because what such an
+    /// instance emits is whatever its declarer's body expands to.
     pub(crate) fn is_contextual(&self) -> bool {
-        match self.schema() {
-            Some(t) => t.is_contextual(),
-            None => self.doc.is_component_kind(self.kind()),
-        }
+        self.schema().is_some_and(|t| t.is_contextual())
     }
 
     /// The blocks this `@contextual` block generates, flattened across

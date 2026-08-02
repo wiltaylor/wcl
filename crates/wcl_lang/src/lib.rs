@@ -40,11 +40,11 @@ pub use builtins::{
 };
 pub use data::{DataKind, DataRef};
 pub use doc::{
-    Block, ChildFamily, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Document,
-    Field, FieldShape, FileLoader, GatheredKind, InterfaceDecl, NamedArg, Registry, ResolvedType,
-    RowView, SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit, SymbolSetDecl, TableView, TypeDecl,
-    TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem, VariantBodyView,
-    disk_loader, overlay_loader,
+    Block, ChildFamily, ChildKind, Connection, ConnectionDecl, DeclName, DeclaresKind, Decorator,
+    Document, Field, FieldShape, FileLoader, GatheredKind, InterfaceDecl, NamedArg, Registry,
+    ResolvedType, RowView, SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit, SymbolSetDecl, TableView,
+    TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
+    VariantBodyView, disk_loader, overlay_loader,
 };
 pub use environment::{
     BuiltType, DecoratorBuilder, Environment, Expander, TypeBuilder, TypeFieldBuilder,

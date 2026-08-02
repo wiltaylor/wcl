@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::ast;
-use crate::ast::Span;
+use crate::ast::{synthetic_decorator, synthetic_field, synthetic_span};
 use crate::builtins::BuiltinFn;
 use crate::doc::Block;
 use crate::value::{BuiltinType, TypeRef, Value};
@@ -125,10 +125,6 @@ impl Environment {
     }
 }
 
-fn synthetic_span() -> Span {
-    Span::new(0, 0)
-}
-
 /// The always-on built-in unit types (`std.ByteSize`, `std.Distance`,
 /// `std.Duration`), parsed once from the embedded `lib/units.wcl` and
 /// cloned into every [`Environment::new`]. They are plain type aliases
@@ -231,7 +227,38 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
             "reason",
             TypeRef::Builtin(BuiltinType::Utf8),
         ),
+        // `@declares_kind(name = 0, params = "…", body = "…")` marks a
+        // block type whose *instances* declare block kinds of their own.
+        // Kind lookup falls back to a schema derived from the named
+        // param field, so an instance of a declared kind validates like
+        // any other block. Three slots, so it gets its own literal
+        // rather than the one-field helper.
+        declares_kind_schema(),
     ]
+}
+
+/// Schema for `@declares_kind(name = 0, params = "slots", body = "body")`.
+/// `name` is the declarer's `@inline(N)` label slot carrying the declared
+/// kind's name; `params` and `body` name declarer fields.
+fn declares_kind_schema() -> ast::TypeDecl {
+    ast::TypeDecl {
+        name: vec!["DeclaresKind".to_string()],
+        extends: Vec::new(),
+        alias: None,
+        fields: vec![
+            synthetic_field("name", TypeRef::Builtin(BuiltinType::U64), true),
+            synthetic_field("params", TypeRef::Builtin(BuiltinType::Utf8), false),
+            synthetic_field("body", TypeRef::Builtin(BuiltinType::Utf8), true),
+        ],
+        decorators: vec![synthetic_decorator(
+            "decorator",
+            vec![ast::Expr::Utf8("declares_kind".to_string())],
+        )],
+        span: synthetic_span(),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
+    }
 }
 
 fn synth_decorator_schema(
@@ -244,23 +271,11 @@ fn synth_decorator_schema(
         name: vec![type_name.to_string()],
         extends: Vec::new(),
         alias: None,
-        fields: vec![ast::TypeField {
-            name: field_name.to_string(),
-            ty: field_ty,
-            ty_span: synthetic_span(),
-            optional: false,
-            decorators: Vec::new(),
-            span: synthetic_span(),
-            default_expr: None,
-            leading_trivia: Vec::new(),
-            trailing_comment: None,
-        }],
-        decorators: vec![ast::Decorator {
-            name: vec!["decorator".to_string()],
-            positional: vec![ast::Expr::Utf8(decorator_name.to_string())],
-            named: Vec::new(),
-            span: synthetic_span(),
-        }],
+        fields: vec![synthetic_field(field_name, field_ty, false)],
+        decorators: vec![synthetic_decorator(
+            "decorator",
+            vec![ast::Expr::Utf8(decorator_name.to_string())],
+        )],
         span: synthetic_span(),
         leading_trivia: Vec::new(),
         trailing_comment: None,
