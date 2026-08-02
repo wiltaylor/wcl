@@ -69,6 +69,12 @@ pub enum DataKind<'a> {
     Variant(UnionVariant<'a>),
     Symbols(SymbolSetDecl<'a>),
     Symbol(SymbolEntry<'a>),
+    /// A reference that could not be produced. Navigation into it and
+    /// materialisation of it both surface the error, so a projection
+    /// that fails on demand (a `@contextual` block whose expander is
+    /// missing) reaches the host as a diagnostic instead of as a
+    /// quietly incomplete list.
+    Error(EvalError),
 }
 
 impl<'a> DataKind<'a> {
@@ -90,6 +96,7 @@ impl<'a> DataKind<'a> {
             DataKind::Variant(_) => "variant",
             DataKind::Symbols(_) => "symbol_set",
             DataKind::Symbol(_) => "symbol_entry",
+            DataKind::Error(_) => "error",
         }
     }
 
@@ -114,6 +121,9 @@ impl<'a> DataKind<'a> {
             DataKind::Variant(v) => v.span(),
             DataKind::Symbols(s) => s.span(),
             DataKind::Symbol(s) => s.span(),
+            // The error carries its own labelled span; this one only
+            // feeds `not_a_leaf`, which `Error` never reaches.
+            DataKind::Error(_) => crate::ast::Span::new(0, 0),
         }
     }
 }
@@ -155,6 +165,12 @@ impl<'a> DataRef<'a> {
     }
     pub fn from_variant_value_list(vs: Vec<Value>) -> Self {
         Self::new(DataKind::VariantValueList(vs))
+    }
+    /// A reference that failed to materialise. Every navigation step
+    /// through it stays this error, and [`DataRef::value`] returns it,
+    /// so the failure reaches whoever consumes the path.
+    pub fn from_error(e: EvalError) -> Self {
+        Self::new(DataKind::Error(e))
     }
 
     pub fn kind(&self) -> &'static str {
@@ -253,6 +269,10 @@ impl<'a> DataRef<'a> {
             | DataKind::TypeField(_)
             | DataKind::Symbol(_)
             | DataKind::VariantValueList(_) => None,
+            // Navigating through a failed reference keeps the failure —
+            // the host sees why the path is unavailable rather than a
+            // bare "no such path".
+            DataKind::Error(_) => Some(self.clone()),
             DataKind::VariantValue(v) => match v {
                 // Member access on a record-shaped value: project the
                 // named field as a fresh leaf navigator.
@@ -326,6 +346,7 @@ impl<'a> DataRef<'a> {
             },
             DataKind::VariantValue(v) => Ok(v.clone()),
             DataKind::VariantValueList(vs) => Ok(Value::List(std::sync::Arc::new(vs.clone()))),
+            DataKind::Error(e) => Err(e.clone()),
             _ => Err(EvalError::not_a_leaf(self.kind(), self.span())),
         }
     }
@@ -368,7 +389,8 @@ impl<'a> DataRef<'a> {
             | DataKind::BlockList(_)
             | DataKind::Table(_)
             | DataKind::VariantValue(_)
-            | DataKind::VariantValueList(_) => None,
+            | DataKind::VariantValueList(_)
+            | DataKind::Error(_) => None,
         }
     }
 
@@ -490,7 +512,8 @@ impl<'a> DataRef<'a> {
             | DataKind::Field(_)
             | DataKind::TypeField(_)
             | DataKind::Symbol(_)
-            | DataKind::VariantValue(_) => Box::new(std::iter::empty()),
+            | DataKind::VariantValue(_)
+            | DataKind::Error(_) => Box::new(std::iter::empty()),
             DataKind::VariantValueList(vs) => {
                 Box::new(vs.clone().into_iter().map(DataRef::from_variant_value))
             }

@@ -126,8 +126,8 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_environment {
     name = "environment"
     kind = "module"
-    summary = "1 file, 5 pub items"
-    deps = [n_cg_wcl_lang_ast, n_cg_wcl_lang_builtins, n_cg_wcl_lang_value]
+    summary = "1 file, 6 pub items"
+    deps = [n_cg_wcl_lang_ast, n_cg_wcl_lang_builtins, n_cg_wcl_lang_doc, n_cg_wcl_lang_value]
   }
   code_node n_cg_wcl_lang_error {
     name = "error"
@@ -431,7 +431,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "14 files, 213 pub items"
+    summary = "14 files, 214 pub items"
     deps = [n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
@@ -512,7 +512,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_xc_wcl_lang {
     name = "wcl_lang (crate)"
     kind = "extern_crate"
-    summary = "uses Block, Document, Environment, Registry, +5 more"
+    summary = "uses Block, Document, Environment, Registry, +6 more"
   }
 }
 
@@ -2499,12 +2499,12 @@ code_item code_api_wcl_lang_data {
       signature = "fn from_variant_value_list(vs: Vec<Value>) -> Self"
       kind = "method"
     }
-    code_member m_n_api_wcl_lang_data_DataRef_kind {
-      signature = "fn kind(&self) -> &'static str"
+    code_member m_n_api_wcl_lang_data_DataRef_from_error {
+      signature = "fn from_error(e: EvalError) -> Self"
       kind = "method"
     }
     code_member m_n_api_wcl_lang_data_DataRef_more {
-      signature = "… +22 more"
+      signature = "… +23 more"
       kind = "overflow"
     }
   }
@@ -2565,7 +2565,7 @@ code_item code_api_wcl_lang_data {
       kind = "variant"
     }
     code_member m_n_api_wcl_lang_data_DataKind_more {
-      signature = "… +3 more"
+      signature = "… +4 more"
       kind = "overflow"
     }
   }
@@ -2635,7 +2635,7 @@ code_item code_api_doc_view {
       kind = "method"
     }
     code_member m_n_api_doc_view_Document_more {
-      signature = "… +76 more"
+      signature = "… +77 more"
       kind = "overflow"
     }
   }
@@ -3102,6 +3102,10 @@ code_item code_api_doc_view {
       signature = "Schemaless"
       kind = "variant"
     }
+    code_member m_n_api_doc_view_BuiltinDecorator_Contextual {
+      signature = "Contextual"
+      kind = "variant"
+    }
     code_member m_n_api_doc_view_BuiltinDecorator_Inline {
       signature = "Inline"
       kind = "variant"
@@ -3130,14 +3134,9 @@ code_item code_api_doc_view {
       signature = "Ref"
       kind = "variant"
     }
-    code_member m_n_api_doc_view_BuiltinDecorator_ByRef {
-      signature = "ByRef"
-      kind = "variant"
-    }
-    code_member m_n_api_doc_view_BuiltinDecorator_as_str {
-      signature = "fn as_str(self) -> &'static str"
-      kind = "method"
-      visibility = "crate"
+    code_member m_n_api_doc_view_BuiltinDecorator_more {
+      signature = "… +2 more"
+      kind = "overflow"
     }
   }
   code_node n_api_doc_view_ResolvedType {
@@ -3833,6 +3832,15 @@ code_item code_api_host_bindings {
   name      = "Public surface"
   summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_lang)."
   kind      = :module_api
+  code_node n_api_host_bindings_Expander {
+    name = "Expander"
+    kind = "trait"
+    summary = "src/environment.rs"
+    code_member m_n_api_host_bindings_Expander_expand {
+      signature = "fn expand<'a>(&self, block: &Block<'a>) -> Vec<Block<'a>>"
+      kind = "method"
+    }
+  }
   code_node n_api_host_bindings_Environment {
     name = "Environment"
     kind = "struct"
@@ -3857,6 +3865,17 @@ code_item code_api_host_bindings {
     code_member m_n_api_host_bindings_Environment_add_builtin {
       signature = "fn add_builtin(&mut self, name: impl Into<String>, f: BuiltinFn…"
       kind = "method"
+    }
+    code_member m_n_api_host_bindings_Environment_set_expander {
+      signature = "fn set_expander(&mut self, expander: Arc<dyn Expander>) -> &mut…"
+      kind = "method"
+      deps = [n_api_host_bindings_Expander]
+    }
+    code_member m_n_api_host_bindings_Environment_expander {
+      signature = "fn expander(&self) -> Option<&dyn Expander>"
+      kind = "method"
+      visibility = "crate"
+      deps = [n_api_host_bindings_Expander]
     }
     code_member m_n_api_host_bindings_Environment_types {
       signature = "fn types(&self) -> &[ast::TypeDecl]"
@@ -4359,7 +4378,7 @@ code_item code_api_wcl_lang_error {
       kind = "variant"
     }
     code_member m_n_api_wcl_lang_error_EvalError_more {
-      signature = "… +34 more"
+      signature = "… +36 more"
       kind = "overflow"
     }
   }
@@ -6658,6 +6677,15 @@ code_item code_api_wdoc_html_renderer {
       visibility = "crate"
     }
   }
+  code_node n_api_wdoc_html_renderer_WdocExpander {
+    name = "WdocExpander"
+    kind = "struct"
+    summary = "src/render/expand.rs"
+    code_member m_n_api_wdoc_html_renderer_WdocExpander_impl_Expander {
+      signature = "impl Expander"
+      kind = "impl"
+    }
+  }
   code_node n_api_wdoc_html_renderer_CollectGuard {
     name = "CollectGuard"
     kind = "struct"
@@ -7388,85 +7416,10 @@ code_item code_api_wdoc_html_renderer {
       kind = "overflow"
     }
   }
-  code_node n_api_wdoc_html_renderer_shapes_fns {
-    name = "shapes"
-    kind = "fns"
-    summary = "src/render/svg/shapes.rs"
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_resolve_shape_bbox {
-      signature = "fn resolve_shape_bbox( block: &Block<'_>, kind: &str, parent_w:…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_collect_shape_positions {
-      signature = "fn collect_shape_positions( block: &Block<'_>, tx: f64, ty: f64…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_CollectCtx, n_api_wdoc_html_renderer_Collector]
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_effective_dims {
-      signature = "fn effective_dims(block: &Block<'_>) -> (f64, f64)"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_text_content {
-      signature = "fn text_content(block: &Block<'_>) -> Option<String>"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_polygon_bbox {
-      signature = "fn polygon_bbox(block: &Block<'_>) -> Option<(f64, f64, f64, f6…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_build_metrics {
-      signature = "fn build_metrics(block: &Block<'_>, bbox: (f64, f64, f64, f64))…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_ShapeMetrics]
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_shape_anchor_attrs {
-      signature = "fn shape_anchor_attrs(block: &Block<'_>, patterns: &InlinePatte…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_InlinePatterns]
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_wrap_shape_anchor {
-      signature = "fn wrap_shape_anchor( block: &Block<'_>, rendered: String, patt…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_InlinePatterns]
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_render_shape {
-      signature = "fn render_shape( block: &Block<'_>, parent_w: f64, parent_h: f6…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_RenderCtx]
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_with_shape_icon {
-      signature = "fn with_shape_icon( block: &Block<'_>, kind: &str, parent_w: f6…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_shape_icon_box {
-      signature = "fn shape_icon_box( block: &Block<'_>, kind: &str, parent_w: f64…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_place_icon {
-      signature = "fn place_icon(pos: &str, bx: f64, by: f64, bw: f64, bh: f64, si…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_shapes_fns_render_icon {
-      signature = "fn render_icon( block: &Block<'_>, parent_w: f64, parent_h: f64…"
-      kind = "fn"
-      visibility = "crate"
-    }
-  }
   code_node n_api_wdoc_html_renderer_more {
-    name = "… +4 more"
+    name = "… +5 more"
     kind = "overflow"
-    summary = "4 further public items — see the source."
+    summary = "5 further public items — see the source."
   }
 }
 

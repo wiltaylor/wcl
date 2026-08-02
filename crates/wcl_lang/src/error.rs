@@ -276,6 +276,20 @@ pub enum EvalError {
         #[label("needs a unit-bearing type in context")]
         span: SourceSpan,
     },
+
+    #[error("no expander is registered for the `@contextual` block kind '{kind}'")]
+    #[diagnostic(
+        code(wcl::eval::missing_expander),
+        help(
+            "a `@contextual` block generates its children at expansion time; open the document \
+             with the host environment that registers the expander (`Environment::set_expander`)"
+        )
+    )]
+    MissingExpander {
+        kind: String,
+        #[label("this block's generated children were demanded")]
+        span: SourceSpan,
+    },
 }
 
 /// Why an arithmetic operator had no answer for operands it *did* accept.
@@ -592,6 +606,15 @@ impl EvalError {
     pub fn user_error(message: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::UserError {
             message: message.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    /// A `@contextual` block's generated children were demanded from a
+    /// document opened without an [`Expander`](crate::Expander).
+    pub(crate) fn missing_expander(kind: impl Into<String>, span: crate::ast::Span) -> Self {
+        Self::MissingExpander {
+            kind: kind.into(),
             span: span_to_miette(span),
         }
     }

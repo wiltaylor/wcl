@@ -81,9 +81,9 @@ pub(crate) enum ItemCellKind {
         /// value-backed: its label/field cells are pre-seeded with the
         /// record's values, so reads never touch the placeholder AST.
         computed_children: OnceLock<Vec<SynthChild>>,
-        /// Body expansions for `wdoc_component` / `wdoc_repeater` — one
-        /// per binding set (one for a component instance; one per element
-        /// for a repeater). Each holds a **fresh** copy of the body's
+        /// Body expansions for a `@contextual` block — one per binding
+        /// set (one for an instantiated body; one per element for a
+        /// repetition). Each holds a **fresh** copy of the body's
         /// evaluation cells so the same body AST evaluated under different
         /// bindings (repeated instances, loop iterations) doesn't collide
         /// in the shared field-value cache. Built once, lazily, by
@@ -189,8 +189,8 @@ pub(crate) struct SynthChild {
     pub(crate) cells: ItemCells,
 }
 
-/// One body expansion of a `wdoc_component` / `wdoc_repeater`: a binding
-/// set (slot values, or a loop variable) plus a fresh copy of the body
+/// One body expansion of a `@contextual` block: a binding set (a
+/// declarer's parameter values, or a loop variable) plus a fresh copy of the body
 /// block's evaluation cells, so each expansion evaluates independently.
 #[derive(Debug)]
 pub(crate) struct Expansion {

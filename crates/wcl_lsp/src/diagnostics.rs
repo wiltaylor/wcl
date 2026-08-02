@@ -159,7 +159,8 @@ fn eval_error_span(err: &EvalError) -> miette::SourceSpan {
         | EvalError::UnresolvedReference { span, .. }
         | EvalError::NotAReference { span, .. }
         | EvalError::UnitNoMatch { span, .. }
-        | EvalError::UnitWithoutType { span, .. } => *span,
+        | EvalError::UnitWithoutType { span, .. }
+        | EvalError::MissingExpander { span, .. } => *span,
     }
 }
 
@@ -188,6 +189,7 @@ fn diagnostic_code(err: &EvalError) -> &'static str {
         EvalError::NotAReference { .. } => "wcl::eval::not_a_reference",
         EvalError::UnitNoMatch { .. } => "wcl::eval::unit_no_match",
         EvalError::UnitWithoutType { .. } => "wcl::eval::unit_without_type",
+        EvalError::MissingExpander { .. } => "wcl::eval::missing_expander",
     }
 }
 

@@ -46,7 +46,9 @@ pub use doc::{
     TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem, VariantBodyView,
     disk_loader, overlay_loader,
 };
-pub use environment::{BuiltType, DecoratorBuilder, Environment, TypeBuilder, TypeFieldBuilder};
+pub use environment::{
+    BuiltType, DecoratorBuilder, Environment, Expander, TypeBuilder, TypeFieldBuilder,
+};
 pub use error::{ArithmeticFault, EvalError, ParseError, SchemaViolationKind, SyntaxError};
 pub use lexer::{
     LexError, Lexer, NumberLit, StringEncoding, StringLit, StringPart, Token, TokenKind,

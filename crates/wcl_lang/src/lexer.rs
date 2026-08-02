@@ -1143,9 +1143,9 @@ mod tests {
             ]
         );
         assert_eq!(
-            tokens("wdoc-series-1"),
+            tokens("data-series-1"),
             vec![
-                TokenKind::Ident("wdoc".into()),
+                TokenKind::Ident("data".into()),
                 TokenKind::Dash,
                 TokenKind::Ident("series".into()),
                 TokenKind::Dash,

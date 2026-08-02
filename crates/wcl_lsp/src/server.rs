@@ -57,6 +57,16 @@ use crate::signature;
 use crate::symbols;
 use crate::workspace;
 
+/// Environment for a root-document parse: the wdoc one, so `@contextual`
+/// block kinds (`wdoc_repeater`, component instances) expand through
+/// wdoc's expander and its builtins (`included_sites`) resolve. A bare
+/// `Environment::new()` would make every projection over a repeater a
+/// hard error and paint valid documents red. Mirrors what
+/// [`crate::diagnostics`] opens with.
+fn root_environment(root: &std::path::Path) -> Environment {
+    wcl_wdoc::wdoc_environment(root.parent())
+}
+
 /// The LSP backend. Holds the open-document cache (a rope per URI,
 /// kept in sync via incremental change events) and an optional root
 /// document path resolved during `initialize`; everything else is
@@ -140,7 +150,7 @@ impl Backend {
     /// parsing in that case.
     pub fn root_document(&self) -> Option<Document> {
         let path = self.root_path()?;
-        Document::from_file_with_loader(&path, &Environment::new(), self.loader()).ok()
+        Document::from_file_with_loader(&path, &root_environment(&path), self.loader()).ok()
     }
 
     /// Recompute diagnostics for `uri` from the cached rope and
@@ -498,7 +508,7 @@ impl LanguageServer for Backend {
             let mut overlay = self.overlay_snapshot();
             overlay.insert(path, signature::repair_source(&source, offset));
             let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlay));
-            Document::from_file_with_loader(&root, &Environment::new(), loader).ok()
+            Document::from_file_with_loader(&root, &root_environment(&root), loader).ok()
         });
         Ok(signature::signature_help(
             &source,

@@ -33,9 +33,19 @@ fn cli_loader() -> wcl_lang::FileLoader {
     wcl_wdoc::schema_registry().loader(wcl_lang::disk_loader())
 }
 
+/// Environment for every CLI document open. The registry above supplies
+/// wdoc's *schemas*; this supplies its *behaviour* — the expander that
+/// `@contextual` block kinds (`wdoc_repeater`, component instances)
+/// expand through. Without it, projecting their generated children is a
+/// hard error, so every command that evaluates a wdoc document opens
+/// through here rather than through a bare `Environment::new()`.
+fn cli_environment(base_dir: Option<&Path>) -> Environment {
+    wcl_wdoc::wdoc_environment(base_dir)
+}
+
 fn open_document(file: &Path, profile: bool) -> Result<Document, ParseError> {
     let mut doc =
-        Document::from_file_with_loader(file, &wcl_lang::Environment::new(), cli_loader())?;
+        Document::from_file_with_loader(file, &cli_environment(file.parent()), cli_loader())?;
     if profile {
         doc.enable_profiling();
     }
@@ -1380,7 +1390,13 @@ fn run_check(file: &Path, json: bool) -> u8 {
             }
         };
         let base_dir = std::env::current_dir().ok();
-        Document::open_at_with_loader(&src, &name, base_dir, &Environment::new(), cli_loader())
+        Document::open_at_with_loader(
+            &src,
+            &name,
+            base_dir.clone(),
+            &cli_environment(base_dir.as_deref()),
+            cli_loader(),
+        )
     } else {
         open_document(file, false)
     };
