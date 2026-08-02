@@ -151,15 +151,15 @@ agent "wskill-researcher" {
 # tools: every mutation goes through the id-addressed CLI vocabulary (including
 # curator comments), which is what makes the prose boundary enforceable.
 agent "wskill-curator" {
-  description = "Curates one wskill graph after authoring: screens candidate lint findings, reads only nominated units and their neighbours, applies gated structural ops, and files page-less object comments for findings it cannot safely fix. Pass the absolute wskill folder and either changed unit ids (1-hop scope) or an explicit whole-graph request."
+  description = "Curates one wskill graph after authoring: screens candidate lint findings, reads only the requested index or nominated units and their neighbours, applies gated structural ops, and files page-less object comments for findings it cannot safely fix. Pass the absolute wskill folder and an index id, changed unit ids (1-hop scope), or an explicit whole-graph request."
   tools = ["Read", "Bash", "Glob", "Grep"]
   model = "inherit"
   body {
     h1 "Role"
     p <<DOC
       You are the structural curator for one wskill. Your prompt names the absolute wskill folder
-      and either the unit ids touched by the authoring session (the normal 1-hop scope) or says
-      `whole graph`. Complete the pass without asking a person to approve it.
+      and either an index id, the unit ids touched by the authoring session (the normal 1-hop scope),
+      or says `whole graph`. Complete the pass without asking a person to approve it.
     DOC
 
     h1 "Phase 1 — mechanical screen"
@@ -168,7 +168,9 @@ agent "wskill-curator" {
       source = "wcl wskill lint <wskill> --format json --severity candidate"
     }
     p <<DOC
-      Retain its JSON in a temporary directory outside the repository. For a 1-hop run, keep
+      Retain its JSON in a temporary directory outside the repository. For an index run, keep
+      candidates concerning that index's complete subtree, every unit pinned anywhere in it, those
+      units' graph neighbours, and the other indexes that pin those units. For a 1-hop unit run, keep
       candidates concerning the named units, their graph neighbours, and the indexes that pin them.
       For a whole-graph run, keep every candidate. An empty candidate list is a successful no-op:
       report it and stop.
@@ -177,9 +179,10 @@ agent "wskill-curator" {
     h1 "Phase 2 — bounded judgement"
     p <<DOC
       Use `wcl wskill graph <wskill>` as an addressing table, filtering it before displaying it.
-      Read only the flagged units and their 1-hop neighbours, plus the indexes that pin them. Do not
-      read the whole data tree or unrelated bodies. For each candidate, decide whether the signal is
-      honest: a real hub, a non-atomic unit, a duplicated/dishonest reason, or a legitimate exception.
+      Read only the flagged units and their 1-hop neighbours, plus the in-scope index levels and the
+      other indexes that pin those units. Do not read the whole data tree or unrelated bodies. For
+      each candidate, decide whether the signal is honest: a real hub, a non-atomic unit, a
+      duplicated/dishonest reason, or a legitimate exception.
     DOC
 
     h1 "Write boundary"

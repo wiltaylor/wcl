@@ -32,11 +32,12 @@ import {
   Minus,
   Pin,
   Plus,
+  Sparkles,
   Trash2,
 } from 'lucide-solid';
 import { Badge, Button, IconButton, Input, Select } from '@forge/ui';
 
-import { busy, commitNavOpQuiet } from '../../state/design';
+import { busy, commitNavOpQuiet, runCurator } from '../../state/design';
 import {
   focusedUnitNode,
   graphData,
@@ -129,6 +130,12 @@ function IndexActions(props) {
   return (
     <>
       <span class="ed-nav-actions">
+        <IconButton
+          icon={Sparkles}
+          label={`Curate “${props.level.title}”`}
+          disabled={busy()}
+          onClick={() => runCurator({ scope: 'index', index: props.level.id })}
+        />
         <IconButton
           icon={ArrowUp}
           label="Move up"

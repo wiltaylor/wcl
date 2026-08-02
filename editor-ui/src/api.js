@@ -88,6 +88,10 @@ export const api = {
       'GET',
       `/api/audit?entry=${encodeURIComponent(entry)}&range=${encodeURIComponent(range)}`,
     ),
+  /** Run the installed wskill curator headlessly. `scope` is either
+      `{ scope: 'index', index }` or `{ scope: 'whole_graph' }`. A commit
+      response carries the exact git range the audit view must open. */
+  curator: (entry, scope) => json('POST', '/api/curator', { entry, ...scope }),
   /** The Systems view's model: schema-derived containment metadata
       (`kinds` with their parent links / refs / edge role) plus every data
       object as a node and every relation as an edge. */
