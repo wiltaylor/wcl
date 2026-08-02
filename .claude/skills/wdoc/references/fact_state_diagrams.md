@@ -55,7 +55,7 @@ state_diagram {
 }
 ```
 
-![state_diagram](../_wdoc/fact_state_diagrams-state-diagram-1.svg)
+![state diagram](../_wdoc/fact_state_diagrams-drawing-1.svg)
 
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |

@@ -68,7 +68,7 @@ sequence_diagram {
 }
 ```
 
-![sequence_diagram](../_wdoc/fact_sequence_diagrams-sequence-diagram-1.svg)
+![sequence diagram](../_wdoc/fact_sequence_diagrams-drawing-1.svg)
 
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -150,7 +150,7 @@ sequence_diagram {
 }
 ```
 
-![sequence_diagram](../_wdoc/fact_sequence_diagrams-sequence-diagram-2.svg)
+![sequence diagram](../_wdoc/fact_sequence_diagrams-drawing-2.svg)
 
 A lifeline; `kind` picks the head (`:box` / `:actor` / `:external`) and `link` makes it clickable.
 
