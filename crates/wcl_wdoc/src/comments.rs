@@ -98,6 +98,45 @@ pub struct CommentRecord {
     pub status: Option<String>,
 }
 
+/// The fields needed to append one page-, object-, or jointly-addressed
+/// comment. Keeping them together gives every caller the same validation
+/// boundary instead of duplicating the address rules.
+pub struct NewComment<'a> {
+    pub page: Option<&'a str>,
+    pub page_file: Option<&'a str>,
+    pub loc: Option<&'a str>,
+    pub target: Option<&'a str>,
+    pub object_kind: Option<&'a str>,
+    pub object_id: Option<&'a str>,
+    pub body: &'a str,
+    pub author: Option<&'a str>,
+    pub quote: Option<&'a str>,
+}
+
+impl NewComment<'_> {
+    /// Check the cross-field address invariant the flat WCL schema cannot
+    /// express: page or a complete object pair, with loc scoped to a page.
+    pub fn validate(&self) -> Result<(), BuildError> {
+        let page = self.page.filter(|s| !s.is_empty());
+        let object_kind = self.object_kind.filter(|s| !s.is_empty());
+        let object_id = self.object_id.filter(|s| !s.is_empty());
+        if object_kind.is_some() != object_id.is_some() {
+            return Err(BuildError::BadPage(
+                "a comment object address needs both `object_kind` and `object_id`".into(),
+            ));
+        }
+        if page.is_none() && object_kind.is_none() {
+            return Err(BuildError::BadPage(
+                "a comment needs a `page` or an object address".into(),
+            ));
+        }
+        if page.is_none() && self.loc.is_some_and(|loc| !loc.is_empty()) {
+            return Err(BuildError::BadPage("a comment `loc` needs a `page`".into()));
+        }
+        Ok(())
+    }
+}
+
 /// The `comments.wcl` that owns comments for a page defined in `page_file`:
 /// the nearest ancestor directory (within `root`) holding `marker` — the
 /// file the caller uses to mark a document root — else `root/comments.wcl`.
@@ -176,15 +215,17 @@ pub fn add(
 ) -> Result<String, BuildError> {
     add_addressed(
         comments_file,
-        Some(page),
-        page_file,
-        loc,
-        target,
-        None,
-        None,
-        body,
-        author,
-        quote,
+        NewComment {
+            page: Some(page),
+            page_file,
+            loc,
+            target,
+            object_kind: None,
+            object_id: None,
+            body,
+            author,
+            quote,
+        },
     )
 }
 
@@ -193,37 +234,13 @@ pub fn add(
 /// An object address is indivisible: `object_kind` and `object_id` must be
 /// supplied together. At least one complete address (`page` or object) is
 /// required, and a positional `loc` only makes sense when a page is present.
-#[allow(clippy::too_many_arguments)]
-pub fn add_addressed(
-    comments_file: &Path,
-    page: Option<&str>,
-    page_file: Option<&str>,
-    loc: Option<&str>,
-    target: Option<&str>,
-    object_kind: Option<&str>,
-    object_id: Option<&str>,
-    body: &str,
-    author: Option<&str>,
-    quote: Option<&str>,
-) -> Result<String, BuildError> {
-    let page = page.filter(|s| !s.is_empty());
-    let object_kind = object_kind.filter(|s| !s.is_empty());
-    let object_id = object_id.filter(|s| !s.is_empty());
-    if object_kind.is_some() != object_id.is_some() {
-        return Err(BuildError::BadPage(
-            "a comment object address needs both `object_kind` and `object_id`".into(),
-        ));
-    }
-    if page.is_none() && object_kind.is_none() {
-        return Err(BuildError::BadPage(
-            "a comment needs a `page` or an object address".into(),
-        ));
-    }
+pub fn add_addressed(comments_file: &Path, comment: NewComment<'_>) -> Result<String, BuildError> {
+    comment.validate()?;
+    let page = comment.page.filter(|s| !s.is_empty());
+    let object_kind = comment.object_kind.filter(|s| !s.is_empty());
+    let object_id = comment.object_id.filter(|s| !s.is_empty());
     let id = gen_id('c');
-    let loc = loc.map(str::to_string).filter(|s| !s.is_empty());
-    if page.is_none() && loc.is_some() {
-        return Err(BuildError::BadPage("a comment `loc` needs a `page`".into()));
-    }
+    let loc = comment.loc.map(str::to_string).filter(|s| !s.is_empty());
     let mut recs = read_file(comments_file);
     recs.push(CommentRecord {
         scope: if loc.is_some() {
@@ -236,14 +253,14 @@ pub fn add_addressed(
         id: id.clone(),
         file: comments_file.to_path_buf(),
         page: page.map(str::to_string),
-        page_file: page_file.map(str::to_string),
+        page_file: comment.page_file.map(str::to_string),
         object_kind: object_kind.map(str::to_string),
         object_id: object_id.map(str::to_string),
         loc,
-        target: target.map(str::to_string),
-        quote: quote.map(str::to_string),
-        body: body.to_string(),
-        author: author.map(str::to_string),
+        target: comment.target.map(str::to_string),
+        quote: comment.quote.map(str::to_string),
+        body: comment.body.to_string(),
+        author: comment.author.map(str::to_string),
         status: None,
     });
     write_file(comments_file, &recs)?;
@@ -460,30 +477,34 @@ mod tests {
         for (kind, id) in [(None, None), (Some("concept"), None), (None, Some("alpha"))] {
             let result = add_addressed(
                 &file,
-                None,
-                None,
-                None,
-                None,
-                kind,
-                id,
-                "finding",
-                Some("curator"),
-                None,
+                NewComment {
+                    page: None,
+                    page_file: None,
+                    loc: None,
+                    target: None,
+                    object_kind: kind,
+                    object_id: id,
+                    body: "finding",
+                    author: Some("curator"),
+                    quote: None,
+                },
             );
             assert!(result.is_err(), "accepted partial address {kind:?}:{id:?}");
         }
 
         let id = ok(add_addressed(
             &file,
-            None,
-            None,
-            None,
-            None,
-            Some("index"),
-            Some("reference"),
-            "This index has no body.",
-            Some("curator"),
-            None,
+            NewComment {
+                page: None,
+                page_file: None,
+                loc: None,
+                target: None,
+                object_kind: Some("index"),
+                object_id: Some("reference"),
+                body: "This index has no body.",
+                author: Some("curator"),
+                quote: None,
+            },
         ));
         let rec = ok(list(&dir)).into_iter().find(|r| r.id == id).unwrap();
         assert_eq!(rec.scope, CommentScope::Object);

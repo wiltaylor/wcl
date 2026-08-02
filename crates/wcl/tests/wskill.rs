@@ -492,6 +492,44 @@ fn op_requires_a_clean_tree_and_commits_the_whole_run_once() {
 }
 
 #[test]
+fn dry_run_with_comments_can_be_replayed_verbatim() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    let dest_str = dest.to_str().unwrap();
+
+    let preview = wcl()
+        .args(["wskill", "op", dest_str, "--dry-run"])
+        .args([
+            "--op",
+            r#"{"op":"pin_unit","index":"reference","unit":"beta"}"#,
+        ])
+        .args([
+            "--comment",
+            r#"{"object_kind":"index","object_id":"reference","body":"This index needs authored prose."}"#,
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(preview.status.code(), Some(0));
+    assert_eq!(pinned_line(&dest), "related = [alpha]");
+
+    git_init(&dest);
+    let applied = wcl()
+        .args(["wskill", "op", dest_str])
+        .write_stdin(preview.stdout)
+        .output()
+        .unwrap();
+    assert_eq!(
+        applied.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&applied.stderr)
+    );
+    assert_eq!(pinned_line(&dest), "related = [alpha, beta]");
+    let comments = std::fs::read_to_string(dest.join("comments.wcl")).unwrap();
+    assert!(comments.contains("author = \"curator\""), "{comments}");
+}
+
+#[test]
 fn op_rolls_back_when_lint_findings_increase() {
     let tmp = TempDir::new().unwrap();
     let dest = scaffolded_wskill(&tmp);
@@ -560,7 +598,7 @@ fn op_commits_curator_comments_with_structural_changes_in_one_run() {
         ])
         .args([
             "--comment",
-            r#"{"object_kind":"index","object_id":"reference","body":"This index needs authored prose.","author":"curator"}"#,
+            r#"{"object_kind":"index","object_id":"reference","body":"This index needs authored prose."}"#,
         ])
         .args(["--message", "curate demo candidates"])
         .assert()

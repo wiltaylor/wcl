@@ -326,7 +326,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_comments {
     name = "comments"
     kind = "module"
-    summary = "1 file, 7 pub items"
+    summary = "1 file, 9 pub items"
     deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_sidecar, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_content {
@@ -1050,7 +1050,7 @@ code_item code_api_cli_commands {
       visibility = "crate"
     }
     code_member m_n_api_cli_commands_wskill_fns_run_op {
-      signature = "fn run_op(entry: &Path, inline: &[String], file: Option<&Path>,…"
+      signature = "fn run_op( entry: &Path, inline: &[String], comment_texts: &[St…"
       kind = "fn"
       visibility = "crate"
     }
@@ -5984,6 +5984,10 @@ code_item code_api_wcl_wdoc_comments {
       signature = "Page"
       kind = "variant"
     }
+    code_member m_n_api_wcl_wdoc_comments_CommentScope_Object {
+      signature = "Object"
+      kind = "variant"
+    }
     code_member m_n_api_wcl_wdoc_comments_CommentScope_as_str {
       signature = "fn as_str(self) -> &'static str"
       kind = "method"
@@ -6007,11 +6011,19 @@ code_item code_api_wcl_wdoc_comments {
       kind = "field"
     }
     code_member m_n_api_wcl_wdoc_comments_CommentRecord_page {
-      signature = "page: String"
+      signature = "page: Option<String>"
       kind = "field"
     }
     code_member m_n_api_wcl_wdoc_comments_CommentRecord_page_file {
       signature = "page_file: Option<String>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_comments_CommentRecord_object_kind {
+      signature = "object_kind: Option<String>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_comments_CommentRecord_object_id {
+      signature = "object_id: Option<String>"
       kind = "field"
     }
     code_member m_n_api_wcl_wdoc_comments_CommentRecord_loc {
@@ -6039,6 +6051,51 @@ code_item code_api_wcl_wdoc_comments {
       kind = "field"
     }
   }
+  code_node n_api_wcl_wdoc_comments_NewComment {
+    name = "NewComment"
+    kind = "struct"
+    summary = "src/comments.rs"
+    code_member m_n_api_wcl_wdoc_comments_NewComment_page {
+      signature = "page: Option<&'a str>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_comments_NewComment_page_file {
+      signature = "page_file: Option<&'a str>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_comments_NewComment_loc {
+      signature = "loc: Option<&'a str>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_comments_NewComment_target {
+      signature = "target: Option<&'a str>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_comments_NewComment_object_kind {
+      signature = "object_kind: Option<&'a str>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_comments_NewComment_object_id {
+      signature = "object_id: Option<&'a str>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_comments_NewComment_body {
+      signature = "body: &'a str"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_comments_NewComment_author {
+      signature = "author: Option<&'a str>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_comments_NewComment_quote {
+      signature = "quote: Option<&'a str>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_comments_NewComment_validate {
+      signature = "fn validate(&self) -> Result<(), BuildError>"
+      kind = "method"
+    }
+  }
   code_node n_api_wcl_wdoc_comments_comments_fns {
     name = "comments"
     kind = "fns"
@@ -6055,6 +6112,11 @@ code_item code_api_wcl_wdoc_comments {
     code_member m_n_api_wcl_wdoc_comments_comments_fns_add {
       signature = "fn add( comments_file: &Path, page: &str, page_file: Option<&st…"
       kind = "fn"
+    }
+    code_member m_n_api_wcl_wdoc_comments_comments_fns_add_addressed {
+      signature = "fn add_addressed(comments_file: &Path, comment: NewComment<'_>)…"
+      kind = "fn"
+      deps = [n_api_wcl_wdoc_comments_NewComment]
     }
     code_member m_n_api_wcl_wdoc_comments_comments_fns_resolve {
       signature = "fn resolve(root: &Path, id: &str) -> Result<bool, BuildError>"

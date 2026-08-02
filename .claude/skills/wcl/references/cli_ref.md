@@ -465,7 +465,7 @@ Apply structural ops to a wskill — the one id-addressed op vocabulary the brow
 | --- | --- | --- |
 | --op | JSON | One op, as JSON (repeatable). A JSON array of ops works too. |
 | --file | PATH | Read the ops from a file (an op object or an array of them); `-` reads stdin. |
-| --dry-run | — | Print the ops that would be applied and write nothing. |
+| --dry-run | — | Print the ops and comments that would be applied and write nothing. |
 
 ```console
 wcl wskill op docs/wskills/wcl --op '{"op":"pin_unit","index":"reference","unit":"alpha"}'

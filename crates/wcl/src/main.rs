@@ -478,8 +478,9 @@ enum WskillCommand {
         /// One op, as JSON (repeatable). A JSON array of ops works too.
         #[arg(long = "op", value_name = "JSON")]
         op: Vec<String>,
-        /// File a sidecar comment in the same gated commit (repeatable JSON).
-        /// A comment needs `body` plus `page`, or `object_kind` + `object_id`.
+        /// File a curator-tagged sidecar comment in the gated commit
+        /// (repeatable JSON). A comment needs `body` plus `page`, or
+        /// `object_kind` + `object_id`.
         #[arg(long = "comment", value_name = "JSON")]
         comment: Vec<String>,
         /// Read the ops from a file (an op object or an array of them);

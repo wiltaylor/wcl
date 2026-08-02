@@ -66,15 +66,17 @@ fn add_comment(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::Valu
     };
     let id = comments::add_addressed(
         &sidecar,
-        page,
-        page_file,
-        str_of("loc"),
-        str_of("target"),
-        str_of("object_kind"),
-        str_of("object_id"),
-        body_text,
-        str_of("author"),
-        str_of("quote"),
+        comments::NewComment {
+            page,
+            page_file,
+            loc: str_of("loc"),
+            target: str_of("target"),
+            object_kind: str_of("object_kind"),
+            object_id: str_of("object_id"),
+            body: body_text,
+            author: str_of("author"),
+            quote: str_of("quote"),
+        },
     )
     .map_err(|e| e.render_plain())?;
     Ok(serde_json::json!({ "id": id }))

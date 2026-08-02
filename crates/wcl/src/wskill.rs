@@ -148,7 +148,7 @@ pub(crate) fn run_op(
     dry_run: bool,
     message: &str,
 ) -> u8 {
-    let comments = match decode_comments(comment_texts) {
+    let mut comments = match decode_comments(comment_texts) {
         Ok(comments) => comments,
         Err(e) => {
             eprintln!("{e}");
@@ -162,17 +162,14 @@ pub(crate) fn run_op(
             return WSKILL_TOOL_FAILURE;
         }
     };
-    let ops = if source.is_empty() {
-        Vec::new()
-    } else {
-        match decode_ops(&source) {
-            Ok(ops) => ops,
-            Err(e) => {
-                eprintln!("{e}");
-                return WSKILL_TOOL_FAILURE;
-            }
+    let (ops, piped_comments) = match decode_batch(&source) {
+        Ok(batch) => batch,
+        Err(e) => {
+            eprintln!("{e}");
+            return WSKILL_TOOL_FAILURE;
         }
     };
+    comments.extend(piped_comments);
     if ops.is_empty() && comments.is_empty() {
         eprintln!(
             "no ops or comments given — pass `--op <json>`, `--comment <json>`, \
@@ -241,12 +238,15 @@ pub(crate) fn run_op(
 
     for (i, op) in ops.iter().enumerate() {
         if let Err(e) = apply_one(&root, op, &mut rollback) {
-            let rollback_note = rollback.restore();
-            eprintln!("op {}: {e}", i + 1);
-            eprintln!("rolled back {} of {}", i, plural(ops.len(), "op"));
-            if let Err(e) = rollback_note {
-                eprintln!("rollback failed: {e}");
-            }
+            rollback_run(
+                &rollback,
+                &format!(
+                    "op {}: {e}\nrolled back {} of {}",
+                    i + 1,
+                    i,
+                    plural(ops.len(), "op")
+                ),
+            );
             return WSKILL_FINDINGS;
         }
         println!(
@@ -263,11 +263,7 @@ pub(crate) fn run_op(
             .capture(std::iter::once(comments_file.as_path()))
             .and_then(|()| comment.add_to(&comments_file))
         {
-            let rollback_note = rollback.restore();
-            eprintln!("comment {}: {e}", i + 1);
-            if let Err(e) = rollback_note {
-                eprintln!("rollback failed: {e}");
-            }
+            rollback_run(&rollback, &format!("comment {}: {e}", i + 1));
             return WSKILL_FINDINGS;
         }
     }
@@ -281,38 +277,25 @@ pub(crate) fn run_op(
                 })
                 .collect();
             if !regressions.is_empty() {
-                let rollback_note = rollback.restore();
-                eprintln!("lint findings increased: {}", regressions.join(", "));
-                if let Err(e) = rollback_note {
-                    eprintln!("rollback failed: {e}");
-                }
+                rollback_run(
+                    &rollback,
+                    &format!("lint findings increased: {}", regressions.join(", ")),
+                );
                 return WSKILL_FINDINGS;
             }
         }
         Err(e) => {
-            let rollback_note = rollback.restore();
-            eprintln!("run-level lint failed: {e}");
-            if let Err(e) = rollback_note {
-                eprintln!("rollback failed: {e}");
-            }
+            rollback_run(&rollback, &format!("run-level lint failed: {e}"));
             return WSKILL_FINDINGS;
         }
     }
     if let Err(e) = build_projections(&root) {
-        let rollback_note = rollback.restore();
-        eprintln!("{e}");
-        if let Err(e) = rollback_note {
-            eprintln!("rollback failed: {e}");
-        }
+        rollback_run(&rollback, &e);
         return WSKILL_FINDINGS;
     }
     if let Err(e) = git.commit(&root, message) {
         let _ = git.unstage(&root);
-        let rollback_note = rollback.restore();
-        eprintln!("commit failed: {e}");
-        if let Err(e) = rollback_note {
-            eprintln!("rollback failed: {e}");
-        }
+        rollback_run(&rollback, &format!("commit failed: {e}"));
         return WSKILL_TOOL_FAILURE;
     }
     eprintln!("applied {}", plural(ops.len(), "op"));
@@ -333,21 +316,30 @@ struct PendingComment {
 }
 
 impl PendingComment {
+    fn as_new_comment(&self) -> wcl_wdoc::comments::NewComment<'_> {
+        wcl_wdoc::comments::NewComment {
+            page: self.page.as_deref(),
+            page_file: self.page_file.as_deref(),
+            loc: self.loc.as_deref(),
+            target: self.target.as_deref(),
+            object_kind: self.object_kind.as_deref(),
+            object_id: self.object_id.as_deref(),
+            body: &self.body,
+            author: self.author.as_deref(),
+            quote: self.quote.as_deref(),
+        }
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        self.as_new_comment()
+            .validate()
+            .map_err(|e| e.render_plain())
+    }
+
     fn add_to(&self, file: &Path) -> Result<(), String> {
-        wcl_wdoc::comments::add_addressed(
-            file,
-            self.page.as_deref(),
-            self.page_file.as_deref(),
-            self.loc.as_deref(),
-            self.target.as_deref(),
-            self.object_kind.as_deref(),
-            self.object_id.as_deref(),
-            &self.body,
-            self.author.as_deref(),
-            self.quote.as_deref(),
-        )
-        .map(|_| ())
-        .map_err(|e| e.render_plain())
+        wcl_wdoc::comments::add_addressed(file, self.as_new_comment())
+            .map(|_| ())
+            .map_err(|e| e.render_plain())
     }
 
     fn to_json(&self) -> serde_json::Value {
@@ -392,21 +384,20 @@ fn decode_comments(texts: &[String]) -> Result<Vec<PendingComment>, String> {
                 object_kind: string("object_kind"),
                 object_id: string("object_id"),
                 body,
-                author: string("author"),
+                author: match string("author") {
+                    Some(author) if author != "curator" => {
+                        return Err(format!(
+                            "comment {}: curator comments cannot use author `{author}`",
+                            out.len() + 1
+                        ));
+                    }
+                    _ => Some("curator".to_string()),
+                },
                 quote: string("quote"),
             };
-            if comment.object_kind.is_some() != comment.object_id.is_some() {
-                return Err(format!(
-                    "comment {}: an object address needs both `object_kind` and `object_id`",
-                    out.len() + 1
-                ));
-            }
-            if comment.page.is_none() && comment.object_kind.is_none() {
-                return Err(format!(
-                    "comment {}: needs a `page` or an object address",
-                    out.len() + 1
-                ));
-            }
+            comment
+                .validate()
+                .map_err(|e| format!("comment {}: {e}", out.len() + 1))?;
             out.push(comment);
         }
     }
@@ -497,6 +488,13 @@ impl RunRollback {
             }
         }
         Ok(())
+    }
+}
+
+fn rollback_run(rollback: &RunRollback, failure: &str) {
+    eprintln!("{failure}");
+    if let Err(e) = rollback.restore() {
+        eprintln!("rollback failed: {e}");
     }
 }
 
@@ -623,26 +621,46 @@ fn read_stdin() -> Result<String, String> {
     Ok(buf)
 }
 
-/// Decode every op, from texts each holding one op object or an array of
-/// them. Nothing is applied until they all decode: a typo in the last op of
-/// a batch should not leave the first half of it on disk.
-fn decode_ops(texts: &[String]) -> Result<Vec<Op>, String> {
-    let mut out = Vec::new();
+/// Decode every op and embedded comment. Besides the original op object/array
+/// forms, this accepts the `{ ops, comments }` envelope printed by a dry run,
+/// so the preview can be piped back verbatim for the real run.
+fn decode_batch(texts: &[String]) -> Result<(Vec<Op>, Vec<PendingComment>), String> {
+    let mut ops_out = Vec::new();
+    let mut comment_texts = Vec::new();
     for text in texts {
         let v: serde_json::Value =
             serde_json::from_str(text.trim()).map_err(|e| format!("the ops are not JSON: {e}"))?;
-        let items = match v {
-            serde_json::Value::Array(items) => items,
-            one => vec![one],
-        };
-        for item in items {
-            out.push(ops::from_json(&item).map_err(|e| format!("op {}: {e}", out.len() + 1))?);
+        if let serde_json::Value::Object(batch) = &v
+            && (batch.contains_key("ops") || batch.contains_key("comments"))
+        {
+            let batch_ops = batch
+                .get("ops")
+                .cloned()
+                .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
+            decode_op_value(batch_ops, &mut ops_out)?;
+            if let Some(comments) = batch.get("comments") {
+                comment_texts.push(
+                    serde_json::to_string(comments)
+                        .expect("a parsed comment batch serializes back to JSON"),
+                );
+            }
+            continue;
         }
+        decode_op_value(v, &mut ops_out)?;
     }
-    if out.is_empty() {
-        return Err("no ops given — pass `--op <json>`, `--file <path>`, or pipe them in".into());
+    let comments = decode_comments(&comment_texts)?;
+    Ok((ops_out, comments))
+}
+
+fn decode_op_value(value: serde_json::Value, out: &mut Vec<Op>) -> Result<(), String> {
+    let items = match value {
+        serde_json::Value::Array(items) => items,
+        one => vec![one],
+    };
+    for item in items {
+        out.push(ops::from_json(&item).map_err(|e| format!("op {}: {e}", out.len() + 1))?);
     }
-    Ok(out)
+    Ok(())
 }
 
 /// One line per finding, plus a count on stderr so the summary survives a
