@@ -14,6 +14,11 @@ union Shape {
 // ── 1. Plain if / else / else-if chain ───────────────────────────────
 @schemaless cmp_lt   = if 1 < 2 { :less } else { :ge }
 @schemaless cmp_cat  = if 0 > 0 { :pos } else if 0 < 0 { :neg } else { :zero }
+// The `else` is optional — an untaken branch is `none`, so an else-less
+// `if` in a list literal contributes a droppable element.
+@schemaless maybe    = if 1 > 2 { :never }
+@schemaless classes  = ["base", if 1 > 2 { "current" }]
+@schemaless chain_no = if 0 > 0 { :pos } else if 0 < 0 { :neg }
 
 // ── 2. Variant construction (all three body shapes) ──────────────────
 @schemaless c1       = Shape::Circle { radius: 5.0, stroke: 0.5 }

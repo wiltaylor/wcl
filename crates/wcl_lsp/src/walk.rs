@@ -146,7 +146,9 @@ fn walk_expr<'a>(expr: &'a Expr, offset: usize, out: &mut EnclosingScopes<'a>) {
             }
             walk_expr(cond, offset, out);
             walk_expr(then_block, offset, out);
-            walk_expr(else_block, offset, out);
+            if let Some(else_block) = else_block {
+                walk_expr(else_block, offset, out);
+            }
         }
         Expr::IfLet {
             pattern,

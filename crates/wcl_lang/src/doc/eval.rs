@@ -519,7 +519,12 @@ impl Document {
             } => {
                 let c = self.eval_in(cond, ctx)?;
                 let b = as_bool(&c, ast::BinOp::And, *span)?;
-                return self.eval_in(if b { then_block } else { else_block }, ctx);
+                return match (b, else_block) {
+                    (true, _) => self.eval_in(then_block, ctx),
+                    // No `else`: the untaken branch is `none`.
+                    (false, None) => Ok(Value::None),
+                    (false, Some(e)) => self.eval_in(e, ctx),
+                };
             }
             E::IfLet {
                 pattern,

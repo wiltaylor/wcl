@@ -2988,10 +2988,15 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
         (Value::Record { ty, .. }, TypeRef::Named { path, .. }) => {
             ty.is_empty() || path_matches_suffix(path, ty)
         }
-        // Lists check element type recursively.
-        (Value::List(items), TypeRef::List(inner)) => {
-            items.iter().all(|el| value_matches_type_ref(el, inner))
-        }
+        // Lists check element type recursively — except that a `none`
+        // *element* is always legal. An else-less `if` in a list literal
+        // (`["base", if e.current { "current" }]`) contributes one, and
+        // consumers drop it; the rule that a `none` never satisfies a
+        // concrete type bounds a field's own value, not what a list may
+        // hold on the way to being filtered.
+        (Value::List(items), TypeRef::List(inner)) => items
+            .iter()
+            .all(|el| matches!(el, Value::None) || value_matches_type_ref(el, inner)),
         // Tensors / functions / references stay permissive — strict
         // checks here would need richer type information than we
         // currently carry on `Value`.

@@ -170,7 +170,9 @@ pub enum Expr {
     If {
         cond: Box<Expr>,
         then_block: Box<Expr>,
-        else_block: Box<Expr>,
+        /// Absent when the source omits `else`; the untaken branch of an
+        /// else-less `if` evaluates to `none`.
+        else_block: Option<Box<Expr>>,
         span: Span,
     },
     IfLet {

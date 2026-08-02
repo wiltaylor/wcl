@@ -341,20 +341,31 @@ impl<'a> Parser<'a> {
                 Span::new(start, then_span.end.max(else_span.end)),
             ));
         }
-        // Plain `if cond { ... } else { ... }`.
+        // Plain `if cond { ... }`, with an optional `else` branch. Without
+        // one the untaken branch is `none`.
         let (cond, _) = self.parse_expr()?;
         let (then_block, then_span) = self.parse_block_expr()?;
-        self.expect(TokenKind::Else, "'if' requires an 'else' branch")?;
-        let (else_block, else_span) = self.parse_if_or_block()?;
-        let span = Span::new(start, else_span.end);
+        let else_arm = if matches!(self.peek()?.kind, TokenKind::Else) {
+            self.bump()?; // 'else'
+            Some(self.parse_if_or_block()?)
+        } else {
+            None
+        };
+        let span = Span::new(
+            start,
+            match &else_arm {
+                Some((_, else_span)) => else_span.end,
+                None => then_span.end,
+            },
+        );
         Ok((
             Expr::If {
                 cond: Box::new(cond),
                 then_block: Box::new(then_block),
-                else_block: Box::new(else_block),
+                else_block: else_arm.map(|(e, _)| Box::new(e)),
                 span,
             },
-            Span::new(start, then_span.end.max(else_span.end)),
+            span,
         ))
     }
 

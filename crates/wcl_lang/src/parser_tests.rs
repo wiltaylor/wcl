@@ -1939,3 +1939,43 @@ fn invalid_digit_for_base_is_rejected_not_unit_suffix() {
     assert_syntax_err(parse_err("a 0b08\n"), "invalid digit '8' for base 2");
     assert_syntax_err(parse_err("a 0o9\n"), "invalid digit '9' for base 8");
 }
+
+/// An `if` may omit its `else`; the branch is absent in the AST (rather
+/// than a synthesised `none` block) and the expression's span ends at the
+/// then-block's `}` — the span the editor stamps as `data-wcl-span`.
+#[test]
+fn parse_if_without_else_leaves_the_branch_absent() {
+    let src = "x = if c { 1 }";
+    let s = parse(src);
+    let Expr::If {
+        else_block, span, ..
+    } = &field(&s.items, "x").expr
+    else {
+        panic!("expected an if expression");
+    };
+    assert!(else_block.is_none(), "else branch must be absent");
+    assert_eq!(&src[span.start..span.end], "if c { 1 }");
+}
+
+/// A trailing `else` on a chain binds to the innermost `if`, and the
+/// outer one is left else-less.
+#[test]
+fn parse_else_binds_to_the_innermost_if() {
+    let s = parse("x = if a { 1 } else if b { 2 } else { 3 }");
+    let Expr::If { else_block, .. } = &field(&s.items, "x").expr else {
+        panic!("expected an if expression");
+    };
+    let Some(inner) = else_block else {
+        panic!("outer if must keep its else-if chain");
+    };
+    assert!(
+        matches!(
+            inner.as_ref(),
+            Expr::If {
+                else_block: Some(_),
+                ..
+            }
+        ),
+        "the inner if owns the final else",
+    );
+}
