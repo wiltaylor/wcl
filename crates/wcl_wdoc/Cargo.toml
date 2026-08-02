@@ -34,6 +34,11 @@ cosmic-text = "0.19"
 # hand it to `Surface::draw_svg`, so the version must unify with krilla-svg's.
 usvg = "0.47"
 
+# The build script generates the content IR from `lib/content.wcl`, so it
+# parses WCL with the real parser rather than a second, approximate one.
+[build-dependencies]
+wcl_lang = { workspace = true }
+
 [dev-dependencies]
 tempfile = { workspace = true }
 

@@ -1,4 +1,9 @@
-//! Build script: bundle the vendored SVG icon packs into the binary.
+//! Build script: bundle the vendored SVG icon packs into the binary, and
+//! generate the semantic content IR from its WCL declaration.
+//!
+//! The content IR (`$OUT_DIR/content_ir.rs`, `include!`d by `src/content.rs`)
+//! is emitted by [`content_ir`] from `lib/content.wcl` — the WCL union is the
+//! source of truth for the Rust enum, so the two cannot drift.
 //!
 //! For each directory under `assets/icons/<pack>/` we concatenate every
 //! `*.svg` into a single `$OUT_DIR/<pack>.bin` blob and emit a
@@ -14,14 +19,25 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[path = "build/content_ir.rs"]
+mod content_ir;
+
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let icons_root = manifest_dir.join("assets/icons");
+    let lib_dir = manifest_dir.join("lib");
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
 
-    // Re-run whenever any vendored icon changes (added / removed / edited).
+    // Re-run whenever any vendored icon changes (added / removed / edited),
+    // or any stdlib declaration the content IR is generated from.
     println!("cargo:rerun-if-changed={}", icons_root.display());
+    println!("cargo:rerun-if-changed={}", lib_dir.display());
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=build/content_ir.rs");
+
+    let ir_path = out_dir.join("content_ir.rs");
+    fs::write(&ir_path, content_ir::generate(&lib_dir))
+        .unwrap_or_else(|e| panic!("write {}: {e}", ir_path.display()));
 
     // Discover pack directories deterministically (sorted) so the
     // generated manifest is stable across builds.

@@ -1,0 +1,132 @@
+// ── The semantic content IR ────────────────────────────────────────
+//
+// `Content` is the target-neutral document vocabulary: one variant per
+// document concept, no generic container, and no escape into markup.
+// It is the layer every backend (HTML, PDF, Markdown, skill) is meant
+// to consume, in place of each one reverse-engineering semantics out of
+// `HtmlFundamental` — a heading whose level rides in a CSS class, a
+// callout re-implemented three times, a walker that ends in `_ => {}`.
+//
+// Three rules the declaration below obeys, and why:
+//
+//   1. **Closed.** There is no `Html { }` / `Raw { }` variant and no
+//      generic `Container { role, children }`. A concept that is not in
+//      this union is not page content: a user keeps bespoke *drawings*
+//      (`SvgFundamental`, via `Drawing`) and gives up bespoke page
+//      *markup*. Adding a concept means adding a variant — which every
+//      backend then has to match, by construction.
+//   2. **One variant per concept.** A `role: symbol` on a shared
+//      container is a stringly-typed key each backend interprets or
+//      ignores; that is the very divergence this layer exists to end.
+//   3. **Semantics in fields, never in strings.** `Heading.level` is a
+//      number, not `class: ["heading-2"]`; `Callout.kind` is a symbol
+//      from a declared vocabulary, not a class name matched by hand.
+//
+// `class` survives as a *style hint* only (the `class` system is read by
+// the non-HTML backends too, so it is not HTML chrome) and `id` as an
+// anchor target. Neither may carry meaning a backend has to parse back
+// out — that is exactly the mistake being deleted.
+//
+// This file is the source of truth for the Rust `Content` enum: the
+// wdoc build script parses it and generates `crates/wcl_wdoc/src/`'s
+// `content` module (the enum, the supporting types, and the
+// `Value` → `Content` conversion). Edit the union, not the Rust.
+//
+// NOTE: nothing lowers to this union yet — the blocks still lower to
+// `HtmlFundamental` (see `core.wcl`). Wiring the backends onto it is
+// the contraction half of the change; this file is the expand half.
+
+namespace wdoc
+
+// The kind of admonition a `Callout` is, replacing today's
+// match-on-a-class-name (`class = ["warning"]`). Each backend maps the
+// symbol to its own accent / icon / prefix.
+symbol_set CalloutKind { note info tip warning error success }
+
+// One item of a `List`. `text` is the item's own inline prose (run
+// through the inline-pattern engine by the backend, like every other
+// prose field here); `blocks` carries any content nested underneath it
+// — a sub-`List`, a `Code` sample, a `Paragraph`.
+type ContentListItem {
+  @doc("The item's own prose. Inline patterns apply.")
+  text:   utf8
+  @doc("Content nested under this item (a sub-list, a code sample, …).")
+  blocks: list<Content>?
+}
+
+// One line of a `Toc`. `depth` is the nesting level (0 = top), `target`
+// the page/anchor the entry links to (absent for a grouping heading)
+// and `number` the resolved section number, if the site numbers its
+// chapters.
+type ContentTocEntry {
+  @doc("Nesting level; 0 is a top-level entry.")
+  depth:  u8
+  @doc("The entry's title text.")
+  title:  utf8
+  @doc("Page or anchor this entry links to; absent for a grouping heading.")
+  target: utf8?
+  @doc("Resolved section number (e.g. `2.1`), when the site numbers chapters.")
+  number: utf8?
+}
+
+// One resolved footnote: the marker printed at both ends (`1`, `a`, …)
+// and the note's prose.
+type ContentFootnote {
+  @doc("The marker printed at the reference and beside the note.")
+  marker: utf8
+  @doc("The note's prose. Inline patterns apply.")
+  text:   utf8
+}
+
+union Content {
+  // ── Prose ──────────────────────────────────────────────────────
+  @doc("A section heading. `level` is 1–6 — a number, never a CSS class.")
+  Heading   { level: u8 text: utf8 id: identifier? class: list<utf8>? }
+  @doc("A body paragraph. `text` runs through the inline-pattern engine.")
+  Paragraph { text: utf8 id: identifier? class: list<utf8>? }
+  @doc("A bullet or numbered list; nesting lives in each item's `blocks`.")
+  List      { items: list<ContentListItem> style: ListStyle? start: u32? id: identifier? class: list<utf8>? }
+  @doc("A data table: an optional heading row plus body rows of cell prose.")
+  Table     { rows: list<list<utf8>> header: list<utf8>? caption: utf8? id: identifier? class: list<utf8>? }
+  @doc("A code listing. Highlighting is the backend's job; `filename` is the header a listing may carry.")
+  Code      { source: utf8 language: identifier? filename: utf8? id: identifier? class: list<utf8>? }
+  @doc("An admonition: a typed accent, a heading, and nested body content.")
+  Callout   { kind: CalloutKind? heading: utf8 body: list<Content> icon: utf8? id: identifier? class: list<utf8>? }
+  @doc("Side-by-side content columns; each column is its own content list.")
+  Columns   { columns: list<list<Content>> id: identifier? class: list<utf8>? }
+
+  // ── Media ──────────────────────────────────────────────────────
+  @doc("A raster or vector image asset, sized in user units.")
+  Image     { source: utf8 alt: utf8? caption: utf8? width: f64? height: f64? id: identifier? class: list<utf8>? }
+  @doc("An embedded video asset.")
+  Video     { source: utf8 poster: utf8? caption: utf8? autoplay: bool? id: identifier? class: list<utf8>? }
+  @doc("A file shipped with the output and offered for download.")
+  File      { path: utf8 label: utf8? id: identifier? class: list<utf8>? }
+  @doc("A block equation, carried as LaTeX for the backend to typeset.")
+  Math      { latex: utf8 display: bool? id: identifier? class: list<utf8>? }
+  @doc("A page-level drawing: the SVG shape vocabulary, not SVG markup.")
+  Drawing   { shapes: list<SvgFundamental> width: f64? height: f64? caption: utf8? id: identifier? class: list<utf8>? }
+  @doc("A terminal session: the resolved screen, one string per line.")
+  Terminal  { lines: list<utf8> title: utf8? id: identifier? class: list<utf8>? }
+
+  // ── Apparatus ──────────────────────────────────────────────────
+  @doc("A table of contents: resolved entries, not a marker for the backend to expand.")
+  Toc       { entries: list<ContentTocEntry> title: utf8? id: identifier? class: list<utf8>? }
+  @doc("The footnote apparatus at the foot of a page.")
+  Footnotes { notes: list<ContentFootnote> title: utf8? id: identifier? class: list<utf8>? }
+  @doc("A chapter's opening header: kicker, title, and the meta line under it.")
+  ChapterHeader {
+    title: utf8 kicker: utf8? subtitle: utf8? reading_time: utf8? updated: utf8? version: utf8?
+    id: identifier? class: list<utf8>?
+  }
+
+  // ── Presentation ───────────────────────────────────────────────
+  @doc("A step-revealed group on a slide; shown at once outside a deck.")
+  Fragment     { body: list<Content> id: identifier? class: list<utf8>? }
+  // No `class`: presenter commentary is never part of the rendered page,
+  // so it carries no styling hook — exactly as the `notes` block declares
+  // none today. (It also keeps this variant's shape distinct from
+  // `Fragment`'s, which bare-record dispatch requires.)
+  @doc("Presenter-only commentary on a slide; omitted from printed output.")
+  SpeakerNotes { body: list<Content> id: identifier? }
+}

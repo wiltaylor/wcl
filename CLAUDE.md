@@ -65,6 +65,7 @@ connectable by edges), not a page block. Everything deeper → the doc page or t
 | Feature | Rust | WCL stdlib | Doc page |
 |---|---|---|---|
 | core / pages / sites | `src/render/` | `core.wcl`, `headings.wcl`, `p.wcl`, `text.wcl` | `pages.wcl`, `sites.wcl`, `primitives.wcl` |
+| semantic content IR (the closed, target-neutral `Content` union — one variant per document concept, no generic container, no raw-HTML escape. The Rust enum, its supporting records/symbol vocabularies and their `TryFrom<Value>` are **generated** at build time from the WCL declaration, which walks every type reachable from `union Content`; an unmappable field type fails the build rather than becoming a hole. **Nothing lowers to it yet** — the blocks still lower to `HtmlFundamental` and the four backends still walk that; see `spec/wdoc-substrate/02-blocks.md` §2.1–§2.3, §2.9 on the branch that holds it.) | `build/content_ir.rs` (the emitter, run from `build.rs` → `$OUT_DIR/content_ir.rs`), `src/content.rs` (the hand-written half: `ContentError` + the `Value` readers, plus the tests) | `content.wcl` | — |
 | inline patterns / formatting | `src/inline.rs` | `inline.wcl`, `inline-patterns.wcl` | `formatting.wcl` |
 | tables / lists | `src/render/` | `table.wcl`, `list.wcl` | `tables.wcl` |
 | code highlight | `src/highlight.rs` | `code.wcl` | `formatting.wcl` |
