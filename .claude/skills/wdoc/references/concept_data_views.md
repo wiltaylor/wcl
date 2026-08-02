@@ -268,7 +268,8 @@ A `wdoc_component` block: a reusable fragment of wdoc markup with named slots, i
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `slots` | `wdoc_slot` | yes |  |
+| `slots` | `slot` | yes |  |
+| `legacy_slots` | `wdoc_slot` | yes |  |
 | `body` | `wdoc_body` | no |  |
 
 A `wdoc_slot` inside a component: a named, optionally-defaulted parameter filled at instantiation.

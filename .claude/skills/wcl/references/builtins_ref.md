@@ -1114,6 +1114,17 @@ values({ name: "Rex", age: 4 })   // field values, in key order → [4, "Rex"]
 
 ## Reflection functions
 
+### __wdoc_slot(slots: list<TemplateSlot>, name: symbol, field: symbol) → T
+
+Resolve one field of a declared template slot for the wdoc standard library.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| slots | list<TemplateSlot> | The resolved template slot table. |
+| name | symbol | The declared slot name. |
+| field | symbol | The slot field to return (`blocks` or `default`). |
+| returns | T | The requested field; an undeclared slot or field is an evaluation error. |
+
 ### ast_string(target: &T) → utf8
 
 Pretty-print the canonical source behind a reference (type/interface/union/symbol_set/block/field) or a function value.
