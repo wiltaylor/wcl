@@ -21,10 +21,10 @@ use wcl_lang::{Block, Document, Value};
 use crate::inline::InlinePatterns;
 use crate::kinds;
 use crate::render::{
-    Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_component_children,
-    expand_repeater_children, field_f64, field_symbol, field_utf8, gather_inline_text,
-    heading_level, instance_target_def, lower_block, map_list, map_utf8, map_utf8_list,
-    render_diagram,
+    Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_repeater_children, field_f64,
+    field_symbol, field_utf8, fill_content_slot, gather_inline_text, heading_level,
+    instance_target_def, lower_block, map_list, map_utf8, map_utf8_list, render_diagram,
+    walk_component,
 };
 
 use super::content;
@@ -178,13 +178,20 @@ fn collect_block(
         if block.binding_scope_depth() <= MAX_LOWER_DEPTH
             && let Some(def) = instance_target_def(block)
         {
-            collect_component(doc, block, &def, patterns, base_dir, out);
+            walk_component(block, &def, &mut |child| {
+                collect_block(doc, child, patterns, base_dir, out);
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .expect("infallible component walk");
         }
         return;
     }
-    // A bare `wdoc_content` outside a component has no effect (the
-    // substitution happens in `collect_component`).
     if kind == kinds::CONTENT {
+        fill_content_slot(block, &mut |child| {
+            collect_block(doc, child, patterns, base_dir, out);
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .expect("infallible content-slot walk");
         return;
     }
     // A `demo` in static PDF can't show a dual light/dark preview (no
@@ -199,7 +206,11 @@ fn collect_block(
     // A user-defined `wdoc_component` instance: expand its declarative
     // body with the instance's slots bound.
     if let Some(def) = doc.kind_declarer(kind) {
-        collect_component(doc, block, &def, patterns, base_dir, out);
+        walk_component(block, &def, &mut |child| {
+            collect_block(doc, child, patterns, base_dir, out);
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .expect("infallible component walk");
         return;
     }
     let Some(values) = lower_block(doc, block, kind) else {
@@ -211,32 +222,6 @@ fn collect_block(
             // shares — see `pdf::content`.
             Lowered::Content(node) => content::collect_content(doc, node, patterns, base_dir, out),
             Lowered::Html(value) => walk_block_variant(doc, value, 0, patterns, base_dir, out),
-        }
-    }
-}
-
-/// Expand a `wdoc_component` instance into the PDF IR: walk the
-/// definition's body with the instance's slots bound, substituting the
-/// instance's own children for a top-level `wdoc_content` placeholder
-/// (the common layout-slot case). Mirrors the Markdown emitter.
-fn collect_component(
-    doc: &Document,
-    instance: &Block<'_>,
-    def: &Block<'_>,
-    patterns: &InlinePatterns,
-    base_dir: Option<&Path>,
-    out: &mut Vec<BlockNode>,
-) {
-    if instance.binding_scope_depth() > MAX_LOWER_DEPTH {
-        return;
-    }
-    for child in expand_component_children(instance, def) {
-        if child.kind() == kinds::CONTENT {
-            for ic in instance.blocks() {
-                collect_block(doc, &ic, patterns, base_dir, out);
-            }
-        } else {
-            collect_block(doc, &child, patterns, base_dir, out);
         }
     }
 }

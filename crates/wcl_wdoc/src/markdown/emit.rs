@@ -23,10 +23,10 @@ use crate::build::BuildError;
 use crate::inline::InlinePatterns;
 use crate::kinds;
 use crate::render::{
-    Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_component_children,
-    expand_repeater_children, field_symbol, field_utf8, gather_inline_text, heading_level,
-    instance_target_def, label_string, lower_block, map_list, map_utf8, map_utf8_list,
-    render_diagram_static,
+    Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_repeater_children, field_symbol,
+    field_utf8, fill_content_slot, gather_inline_text, heading_level, instance_target_def,
+    label_string, lower_block, map_list, map_utf8, map_utf8_list, render_diagram_static,
+    walk_component,
 };
 use crate::terminal::ASSET_DIR;
 
@@ -250,17 +250,15 @@ impl Emitter<'_> {
                 if block.binding_scope_depth() <= MAX_LOWER_DEPTH
                     && let Some(def) = instance_target_def(block)
                 {
-                    self.component(block, &def, out)?;
+                    walk_component(block, &def, &mut |child| self.block(child, out))?;
                 }
             }
-            // A bare `wdoc_content` outside a component has no effect (the
-            // substitution happens in `component`).
-            kinds::CONTENT => {}
+            kinds::CONTENT => fill_content_slot(block, &mut |child| self.block(child, out))?,
             kind => {
                 // A user-defined `wdoc_component` instance: expand its
                 // declarative body with the instance's slots bound.
                 if let Some(def) = self.doc.kind_declarer(kind) {
-                    self.component(block, &def, out)?;
+                    walk_component(block, &def, &mut |child| self.block(child, out))?;
                 } else if let Some(values) = lower_block(self.doc, block, kind) {
                     for value in &values {
                         match value {
@@ -272,30 +270,6 @@ impl Emitter<'_> {
                         }
                     }
                 }
-            }
-        }
-        Ok(())
-    }
-
-    /// Expand a `wdoc_component` instance: walk the definition's body with the
-    /// instance's slots bound, substituting the instance's own children for a
-    /// top-level `wdoc_content` placeholder (the common layout-slot case).
-    fn component(
-        &mut self,
-        instance: &Block<'_>,
-        def: &Block<'_>,
-        out: &mut Vec<String>,
-    ) -> Result<(), BuildError> {
-        if instance.binding_scope_depth() > MAX_LOWER_DEPTH {
-            return Ok(());
-        }
-        for child in expand_component_children(instance, def) {
-            if child.kind() == kinds::CONTENT {
-                for ic in instance.blocks() {
-                    self.block(&ic, out)?;
-                }
-            } else {
-                self.block(&child, out)?;
             }
         }
         Ok(())

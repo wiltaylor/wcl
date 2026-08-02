@@ -90,6 +90,24 @@ fn region_children_render_in_place() {
 }
 
 #[test]
+fn nested_component_content_renders_in_markdown() {
+    let (_t, out) = build(
+        "wdoc_component inner {\n  wdoc_body {\n    h2 \"Inner frame\"\n    wdoc_content\n  }\n}\n\
+         wdoc_component outer {\n  wdoc_body {\n    inner {\n      wdoc_content\n    }\n  }\n}\n\
+         page p {\n  outer {\n    p \"Nested **payload**.\"\n  }\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(
+        md.contains("## Inner frame"),
+        "inner component rendered:\n{md}"
+    );
+    assert!(
+        md.contains("Nested **payload**."),
+        "the outer content slot was forwarded through the inner component:\n{md}"
+    );
+}
+
+#[test]
 fn skill_site_is_skipped_and_rejected_when_named() {
     // A `:ai_skill` site alongside a plain markdown site: the markdown target
     // skips the skill site, and naming it with `--site` is an error.

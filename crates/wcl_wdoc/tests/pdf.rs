@@ -1136,21 +1136,29 @@ fn component_instance_expands_into_the_pdf() {
 
 #[test]
 fn component_content_slot_renders_instance_children() {
-    // `wdoc_content` inside the body splices the instance's own children.
+    // The outer component forwards its content slot through the inner one.
+    // The payload's bold run only embeds the bold face if that structural
+    // slot context survives both component expansions.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("slot.wcl");
     write_fixture(
         &src,
         concat!(
-            "wdoc_component wrap {\n",
+            "wdoc_component inner {\n",
             "  wdoc_body {\n",
-            "    p \"Before.\"\n",
+            "    p \"Inner frame.\"\n",
             "    wdoc_content\n",
-            "    p \"After.\"\n",
+            "  }\n",
+            "}\n",
+            "wdoc_component outer {\n",
+            "  wdoc_body {\n",
+            "    inner {\n",
+            "      wdoc_content\n",
+            "    }\n",
             "  }\n",
             "}\n",
             "page p {\n",
-            "  wrap {\n",
+            "  outer {\n",
             "    p \"Inner **payload** here.\"\n",
             "  }\n",
             "}\n",

@@ -6,6 +6,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use wcl_lang::{Block, Document, EvalError, Expander, Value};
@@ -109,13 +110,18 @@ fn flatten_container_child<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
     if child.binding_scope_depth() > MAX_LOWER_DEPTH {
         return;
     }
-    match generated_children(&child) {
-        Some(generated) => {
-            for c in generated {
-                flatten_container_child(c, out);
-            }
+    if child.kind() == "wdoc_content" {
+        fill_content_slot(&child, &mut |child| {
+            flatten_container_child(child.clone(), out);
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .expect("infallible content-slot flatten");
+    } else if let Some(generated) = generated_children(&child) {
+        for child in generated {
+            flatten_container_child(child, out);
         }
-        None => out.push(child),
+    } else {
+        out.push(child);
     }
 }
 
@@ -298,11 +304,11 @@ fn project_target_paths(block: &Block<'_>) -> Vec<String> {
 /// own dispatch". `fragment` is deliberately NOT handled here: HTML
 /// wraps fragment children in a step-reveal `<div>`, so only the static
 /// backends treat it as transparent.
-pub(crate) fn walk_structural<E>(
-    doc: &Document,
-    block: &Block<'_>,
+pub(crate) fn walk_structural<'a, E>(
+    doc: &'a Document,
+    block: &Block<'a>,
     patterns: &InlinePatterns,
-    recurse: &mut dyn for<'b> FnMut(&Block<'b>) -> Result<(), E>,
+    recurse: &mut dyn FnMut(&Block<'a>) -> Result<(), E>,
 ) -> Option<Result<(), E>> {
     if !crate::visibility::block_visible(block, patterns) {
         return Some(Ok(()));
@@ -412,11 +418,47 @@ pub(crate) fn expand_component_children<'a>(
     let Some(body) = def.block("wdoc_body") else {
         return Vec::new();
     };
+    let content = Rc::new(instance.blocks().collect());
     instance
-        .expand_bodies(&body, vec![Arc::new(bindings)])
+        .expand_bodies_with_content(&body, vec![Arc::new(bindings)], content)
         .into_iter()
         .next()
         .unwrap_or_default()
+}
+
+/// Walk a component definition under its instance bindings and structural
+/// content scope. Backends supply only their ordinary per-block recursion;
+/// component expansion and slot lookup are defined once here.
+pub(crate) fn walk_component<'a, E>(
+    instance: &Block<'a>,
+    def: &Block<'a>,
+    recurse: &mut dyn FnMut(&Block<'a>) -> Result<(), E>,
+) -> Result<(), E> {
+    if instance.binding_scope_depth() > MAX_LOWER_DEPTH {
+        return Ok(());
+    }
+    for child in expand_component_children(instance, def) {
+        recurse(&child)?;
+    }
+    Ok(())
+}
+
+/// Fill the current component's content slot as block nodes during recursion.
+/// A slot outside a component has no structural content and therefore renders
+/// nothing.
+pub(crate) fn fill_content_slot<'a, E>(
+    marker: &Block<'a>,
+    recurse: &mut dyn FnMut(&Block<'a>) -> Result<(), E>,
+) -> Result<(), E> {
+    let Some(content) = marker.structural_content() else {
+        return Ok(());
+    };
+    (|| {
+        for child in &content {
+            recurse(child)?;
+        }
+        Ok(())
+    })()
 }
 
 /// The component name a `wdoc_instance` selects — its `component` field

@@ -1304,6 +1304,114 @@ page index {
 }
 
 #[test]
+fn build_renders_nested_component_content_structurally() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("nested-components.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component inner {
+  wdoc_body {
+    h2 "Inner frame"
+    wdoc_content
+  }
+}
+wdoc_component outer {
+  wdoc_body {
+    inner {
+      wdoc_content
+    }
+  }
+}
+page index {
+  outer {
+    p "Nested **payload**."
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(
+        html.contains("<p>Nested <span class=\"bold\">payload</span>.</p>"),
+        "the outer content slot was forwarded through the inner component:\n{html}"
+    );
+}
+
+#[test]
+fn build_keeps_component_content_through_a_native_html_wrapper() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("component-demo.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component preview {
+  wdoc_body {
+    demo {
+      wdoc_content
+    }
+  }
+}
+page index {
+  preview {
+    p "Nested **payload**."
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(
+        html.contains("<p>Nested <span class=\"bold\">payload</span>.</p>"),
+        "the demo wrapper kept the component's structural slot context:\n{html}"
+    );
+}
+
+#[test]
+fn build_fills_component_content_with_diagram_shapes() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("component-shapes.wcl");
+    write_fixture(
+        &src,
+        r#"
+wdoc_component shape_group {
+  wdoc_body {
+    container {
+      width = 140
+      height = 80
+      wdoc_content
+    }
+  }
+}
+page index {
+  diagram canvas {
+    width = 240
+    height = 120
+    shape_group {
+      rect payload {
+        x = 10
+        y = 10
+        width = 100
+        height = 50
+        text = "slotted shape"
+      }
+    }
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
+    assert!(
+        html.contains("<rect x=\"10\" y=\"10\" width=\"100\" height=\"50\" />"),
+        "the diagram walker filled the component slot with shape nodes:\n{html}"
+    );
+}
+
+#[test]
 fn build_renders_repeater_and_composes_with_components() {
     // `wdoc_repeater` iterates a list, binding each element to `as`. It
     // composes both ways: a repeater inside a component body iterating a

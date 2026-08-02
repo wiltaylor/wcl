@@ -2264,6 +2264,7 @@ impl<'a> Block<'a> {
             file_ns: self.file_ns,
             kind_override: self.kind_override,
             bindings: None,
+            content: None,
             expansion_depth: 0,
         })
     }
@@ -2287,6 +2288,18 @@ impl<'a> Block<'a> {
             .unwrap_or(0)
     }
 
+    /// Structural content supplied by the nearest renderer-driven component
+    /// expansion, if any. Returned as block nodes so a placement marker can
+    /// feed them back through the caller's normal recursion without lowering
+    /// them to a value or rendered string first.
+    pub fn structural_content(&self) -> Option<Vec<Block<'a>>> {
+        self.scope
+            .frames()
+            .iter()
+            .rev()
+            .find_map(|frame| frame.content.as_deref().map(|blocks| blocks.to_vec()))
+    }
+
     /// Expand `body`'s child blocks once per binding set, each under a
     /// scope carrying that set's `name → value` bindings **and a fresh
     /// copy of the body's evaluation cells**. The fresh cells are the
@@ -2306,6 +2319,28 @@ impl<'a> Block<'a> {
         &self,
         body: &Block<'a>,
         binding_sets: Vec<std::sync::Arc<Vec<(String, Value)>>>,
+    ) -> Vec<Vec<Block<'a>>> {
+        self.expand_bodies_inner(body, binding_sets, None)
+    }
+
+    /// [`expand_bodies`](Self::expand_bodies) with structural content attached
+    /// to every expanded descendant's scope. Used by component renderers so a
+    /// placement marker can recover the instance's child block nodes even
+    /// after recursion crosses a native wrapper or container.
+    pub fn expand_bodies_with_content(
+        &self,
+        body: &Block<'a>,
+        binding_sets: Vec<std::sync::Arc<Vec<(String, Value)>>>,
+        content: std::rc::Rc<Vec<Block<'a>>>,
+    ) -> Vec<Vec<Block<'a>>> {
+        self.expand_bodies_inner(body, binding_sets, Some(content))
+    }
+
+    fn expand_bodies_inner(
+        &self,
+        body: &Block<'a>,
+        binding_sets: Vec<std::sync::Arc<Vec<(String, Value)>>>,
+        content: Option<std::rc::Rc<Vec<Block<'a>>>>,
     ) -> Vec<Vec<Block<'a>>> {
         let ItemCellKind::Block { expansions, .. } = &self.cells.kind else {
             return Vec::new();
@@ -2341,6 +2376,7 @@ impl<'a> Block<'a> {
                     file_ns: body.file_ns,
                     kind_override: body.kind_override,
                     bindings: Some(g.bindings.clone()),
+                    content: content.clone(),
                     // One deeper than the *instance* (`self`), whose own
                     // scope carries the dynamic depth at the
                     // instantiation site — `body.scope` is the

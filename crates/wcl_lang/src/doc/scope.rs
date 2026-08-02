@@ -9,7 +9,7 @@ use std::rc::Rc;
 use crate::ast;
 use crate::value::Value;
 
-use super::ItemCells;
+use super::{Block, ItemCells};
 
 #[derive(Clone)]
 pub(crate) struct Scope<'a> {
@@ -35,6 +35,10 @@ pub(crate) struct ScopeFrame<'a> {
     pub(crate) file_ns: &'a [String],
     pub(crate) kind_override: Option<&'a str>,
     pub(crate) bindings: Option<std::sync::Arc<Vec<(String, Value)>>>,
+    /// Structural content supplied by a renderer-driven component expansion.
+    /// Descendant placement markers can retrieve these block nodes without
+    /// encoding them as values or rendered strings.
+    pub(crate) content: Option<std::rc::Rc<Vec<Block<'a>>>>,
     /// **Dynamic** expansion depth at the point this frame was created:
     /// 0 for plain lexical frames, `instance depth + 1` for a
     /// component/repeater binding frame. Carried explicitly because a
