@@ -40,13 +40,14 @@ pub use builtins::{
 };
 pub use data::{DataKind, DataRef};
 pub use doc::{
-    Block, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Document, Field, FileLoader,
-    InterfaceDecl, NamedArg, Registry, ResolvedType, RowView, SYSTEM_IMPORT_ROOT, SymbolEntry,
-    SymbolHit, SymbolSetDecl, TableView, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView,
-    UseFormView, UseItem, VariantBodyView, disk_loader, overlay_loader,
+    Block, ChildFamily, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Document,
+    Field, FileLoader, GatheredKind, InterfaceDecl, NamedArg, Registry, ResolvedType, RowView,
+    SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit, SymbolSetDecl, TableView, TypeDecl, TypeField,
+    UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem, VariantBodyView, disk_loader,
+    overlay_loader,
 };
 pub use environment::{BuiltType, DecoratorBuilder, Environment, TypeBuilder, TypeFieldBuilder};
-pub use error::{EvalError, ParseError, SchemaViolationKind, SyntaxError};
+pub use error::{ArithmeticFault, EvalError, ParseError, SchemaViolationKind, SyntaxError};
 pub use lexer::{
     LexError, Lexer, NumberLit, StringEncoding, StringLit, StringPart, Token, TokenKind,
 };

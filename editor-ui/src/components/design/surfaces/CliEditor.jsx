@@ -9,17 +9,16 @@
 
 import { For, Show } from 'solid-js';
 
+import { cellText } from '../../../preview/schemaform';
 import { usageLine } from '../surfaces';
 import { FamilySection, createDetail } from './fields';
 
 /** Collapsed rows per family, man-page flavoured. */
-const cell = (item, name) => item.cells?.[name]?.text ?? '';
-
 const argSummary = (item) => (
   <>
-    <code>{cell(item, 'name') || item.label}</code>
-    <span class="ed-surface-desc">{cell(item, 'description')}</span>
-    <Show when={cell(item, 'required') === 'false'}>
+    <code>{cellText(item.cells, 'name') || item.label}</code>
+    <span class="ed-surface-desc">{cellText(item.cells, 'description')}</span>
+    <Show when={cellText(item.cells, 'required') === 'false'}>
       <span class="ed-surface-note">optional</span>
     </Show>
   </>
@@ -28,14 +27,14 @@ const argSummary = (item) => (
 const flagSummary = (item) => (
   <>
     <code>
-      {cell(item, 'name') || item.label}
-      {cell(item, 'value') ? ` ${cell(item, 'value')}` : ''}
+      {cellText(item.cells, 'name') || item.label}
+      {cellText(item.cells, 'value') ? ` ${cellText(item.cells, 'value')}` : ''}
     </code>
-    <span class="ed-surface-desc">{cell(item, 'description')}</span>
-    <Show when={cell(item, 'default')}>
-      <span class="ed-surface-note">default: {cell(item, 'default')}</span>
+    <span class="ed-surface-desc">{cellText(item.cells, 'description')}</span>
+    <Show when={cellText(item.cells, 'default')}>
+      <span class="ed-surface-note">default: {cellText(item.cells, 'default')}</span>
     </Show>
-    <Show when={cell(item, 'repeatable') === 'true'}>
+    <Show when={cellText(item.cells, 'repeatable') === 'true'}>
       <span class="ed-surface-note">repeatable</span>
     </Show>
   </>
@@ -43,8 +42,8 @@ const flagSummary = (item) => (
 
 const exampleSummary = (item) => (
   <>
-    <code>{cell(item, 'command') || item.label}</code>
-    <span class="ed-surface-desc">{cell(item, 'description')}</span>
+    <code>{cellText(item.cells, 'command') || item.label}</code>
+    <span class="ed-surface-desc">{cellText(item.cells, 'description')}</span>
   </>
 );
 
@@ -68,8 +67,8 @@ export default function CliEditor(props) {
         <div class="ed-surface-usage">
           <code>{usageLine(d())}</code>
         </div>
-        <Show when={d().cells?.summary?.text}>
-          <p class="ed-surface-summary">{d().cells.summary.text}</p>
+        <Show when={cellText(d().cells, 'summary')}>
+          <p class="ed-surface-summary">{cellText(d().cells, 'summary')}</p>
         </Show>
         <For each={families()}>
           {(family) => (

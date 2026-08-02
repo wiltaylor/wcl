@@ -18,6 +18,7 @@ import { Plus, Trash2 } from 'lucide-solid';
 import { Button, IconButton, Select, toast } from '@forge/ui';
 
 import { api } from '../../api';
+import { cellText } from '../../preview/schemaform';
 import { busy, commitOpsQuiet } from '../../state/design';
 
 /** The kinds a step flow edge can carry — `StepFlowKind` in the wskill base
@@ -52,7 +53,7 @@ export default function FlowPanel(props) {
       await Promise.all(
         k.steps.map(async (st) => {
           const r = await api.blockSource({ file: st.file, span: st.span });
-          if (r.ok) out[st.id] = r.fields?.shape?.text ?? 'process';
+          if (r.ok) out[st.id] = cellText(r.cells, 'shape') || 'process';
         }),
       );
       return out;

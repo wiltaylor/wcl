@@ -40,7 +40,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_editor {
     name = "editor"
     kind = "module"
-    summary = "13 files, 17 pub items"
+    summary = "19 files, 19 pub items"
     deps = [n_cg_wcl_edit, n_cg_wcl_serve, n_cg_wcl_xc_wcl_lang, n_cg_wcl_xc_wcl_wdoc]
   }
   code_node n_cg_wcl_gitspec {
@@ -74,7 +74,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
     kind = "extern_crate"
-    summary = "uses Block, DeclName, Decorator, Document, +21 more"
+    summary = "uses Block, DeclName, Decorator, Document, +23 more"
   }
   code_node n_cg_wcl_xc_wcl_wdoc {
     name = "wcl_wdoc (crate)"
@@ -103,7 +103,7 @@ code_item code_crate_wcl_lang {
     name = "collections"
     kind = "module"
     summary = "1 file, 2 pub items"
-    deps = [n_cg_wcl_lang_builtins, n_cg_wcl_lang_environment, n_cg_wcl_lang_numeric, n_cg_wcl_lang_value]
+    deps = [n_cg_wcl_lang_builtins, n_cg_wcl_lang_environment, n_cg_wcl_lang_error, n_cg_wcl_lang_numeric, n_cg_wcl_lang_value]
   }
   code_node n_cg_wcl_lang_data {
     name = "data"
@@ -114,7 +114,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_doc {
     name = "doc"
     kind = "module"
-    summary = "15 files, 63 pub items"
+    summary = "16 files, 65 pub items"
     deps = [n_cg_wcl_lang_ast, n_cg_wcl_lang_data, n_cg_wcl_lang_environment, n_cg_wcl_lang_error, n_cg_wcl_lang_lexer, n_cg_wcl_lang_numeric, n_cg_wcl_lang_parser, n_cg_wcl_lang_symbols, n_cg_wcl_lang_value]
   }
   code_node n_cg_wcl_lang_edit {
@@ -132,7 +132,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_error {
     name = "error"
     kind = "module"
-    summary = "1 file, 4 pub items"
+    summary = "1 file, 5 pub items"
   }
   code_node n_cg_wcl_lang_format {
     name = "format"
@@ -501,7 +501,7 @@ code_item code_crate_wcl_wdoc {
     name = "wireframe"
     kind = "module"
     summary = "1 file, 4 pub items"
-    deps = [n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
+    deps = [n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_xc_wcl_lang {
     name = "wcl_lang (crate)"
@@ -796,45 +796,33 @@ code_item code_api_cli_commands {
       visibility = "crate"
     }
   }
-  code_node n_api_cli_commands_EditorState {
-    name = "EditorState"
-    kind = "struct"
-    summary = "src/editor/mod.rs"
-  }
   code_node n_api_cli_commands_editor_fns {
     name = "editor"
     kind = "fns"
     summary = "src/editor/mod.rs"
-    code_member m_n_api_cli_commands_editor_fns_serve {
-      signature = "fn serve( root: Option<PathBuf>, addr: BindSpec, ) -> Result<()…"
-      kind = "fn"
-      visibility = "crate"
-    }
     code_member m_n_api_cli_commands_editor_fns_router {
       signature = "fn router(state: Arc<EditorState>) -> Router"
       kind = "fn"
       visibility = "crate"
       deps = [n_api_cli_commands_EditorState]
     }
+    code_member m_n_api_cli_commands_editor_fns_serve {
+      signature = "fn serve( root: Option<PathBuf>, addr: BindSpec, ) -> Result<()…"
+      kind = "fn"
+      visibility = "crate"
+    }
     code_member m_n_api_cli_commands_editor_fns_err_str {
       signature = "fn err_str(e: impl std::fmt::Display) -> String"
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_cli_commands_editor_fns_resolve_doc_entry {
-      signature = "fn resolve_doc_entry( state: &EditorState, entry: &str, page_fi…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_cli_commands_EditorState]
-    }
-    code_member m_n_api_cli_commands_editor_fns_resolve_doc_entry_from {
-      signature = "fn resolve_doc_entry_from( state: &EditorState, v: &serde_json:…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_cli_commands_EditorState]
-    }
     code_member m_n_api_cli_commands_editor_fns_span_json {
       signature = "fn span_json(span: wcl_lang::Span) -> serde_json::Value"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_editor_fns_find_block {
+      signature = "fn find_block<'a>( items: &'a [wcl_lang::ast::Item], pred: &imp…"
       kind = "fn"
       visibility = "crate"
     }
@@ -843,6 +831,11 @@ code_item code_api_cli_commands {
       kind = "fn"
       visibility = "crate"
     }
+  }
+  code_node n_api_cli_commands_EditorState {
+    name = "EditorState"
+    kind = "struct"
+    summary = "src/editor/mod.rs"
   }
   code_node n_api_cli_commands_assets_fns {
     name = "assets"
@@ -859,24 +852,28 @@ code_item code_api_cli_commands {
     kind = "fns"
     summary = "src/editor/files.rs"
     code_member m_n_api_cli_commands_files_fns_list_tree {
-      signature = "fn list_tree(root_dir: &Path) -> Result<serde_json::Value, Stri…"
+      signature = "fn list_tree(ws: &Workspace) -> Result<serde_json::Value, Strin…"
       kind = "fn"
       visibility = "crate"
+      deps = [n_api_cli_commands_Workspace]
     }
     code_member m_n_api_cli_commands_files_fns_read_text {
-      signature = "fn read_text(root_dir: &Path, path: &str) -> Result<serde_json:…"
+      signature = "fn read_text(ws: &Workspace, path: &str) -> Result<serde_json::…"
       kind = "fn"
       visibility = "crate"
+      deps = [n_api_cli_commands_Workspace]
     }
     code_member m_n_api_cli_commands_files_fns_read_raw {
-      signature = "fn read_raw(root_dir: &Path, path: &str) -> Result<(PathBuf, Ve…"
+      signature = "fn read_raw(ws: &Workspace, path: &str) -> Result<(PathBuf, Vec…"
       kind = "fn"
       visibility = "crate"
+      deps = [n_api_cli_commands_Workspace]
     }
     code_member m_n_api_cli_commands_files_fns_save_file {
-      signature = "fn save_file( root_dir: &Path, root_file: Option<&Path>, body: …"
+      signature = "fn save_file( ws: &Workspace, previews: &Sessions, body: &serde…"
       kind = "fn"
       visibility = "crate"
+      deps = [n_api_cli_commands_Workspace, n_api_cli_commands_Sessions]
     }
   }
   code_node n_api_cli_commands_lsp_bridge_fns {
@@ -890,15 +887,30 @@ code_item code_api_cli_commands {
       deps = [n_api_cli_commands_EditorState]
     }
   }
+  code_node n_api_cli_commands_Sessions {
+    name = "Sessions"
+    kind = "struct"
+    summary = "src/editor/preview.rs"
+    code_member m_n_api_cli_commands_Sessions_invalidate {
+      signature = "fn invalidate(&self)"
+      kind = "method"
+      visibility = "crate"
+    }
+  }
+  code_node n_api_cli_commands_PreviewTarget {
+    name = "PreviewTarget"
+    kind = "struct"
+    summary = "src/editor/preview.rs"
+    code_member m_n_api_cli_commands_PreviewTarget_slug {
+      signature = "fn slug(&self) -> String"
+      kind = "method"
+      visibility = "crate"
+    }
+  }
   code_node n_api_cli_commands_PreviewSession {
     name = "PreviewSession"
     kind = "struct"
     summary = "src/editor/preview.rs"
-    code_member m_n_api_cli_commands_PreviewSession_generation {
-      signature = "generation: u64"
-      kind = "field"
-      visibility = "crate"
-    }
   }
   code_node n_api_cli_commands_preview_fns {
     name = "preview"
@@ -915,8 +927,64 @@ code_item code_api_cli_commands {
     kind = "fns"
     summary = "src/editor/sites.rs"
     code_member m_n_api_cli_commands_sites_fns_scan_sites {
-      signature = "fn scan_sites( root_dir: &Path, root_file: Option<&Path>, ) -> …"
+      signature = "fn scan_sites(ws: &super::Workspace) -> Result<serde_json::Valu…"
       kind = "fn"
+      visibility = "crate"
+      deps = [n_api_cli_commands_Workspace]
+    }
+  }
+  code_node n_api_cli_commands_Workspace {
+    name = "Workspace"
+    kind = "struct"
+    summary = "src/editor/workspace.rs"
+    code_member m_n_api_cli_commands_Workspace_new {
+      signature = "fn new(root_dir: PathBuf, root_file: Option<PathBuf>) -> Self"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_root_dir {
+      signature = "fn root_dir(&self) -> &Path"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_root_file {
+      signature = "fn root_file(&self) -> Option<&Path>"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_abs {
+      signature = "fn abs(&self, rel: &str) -> Result<PathBuf, String>"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_abs_new {
+      signature = "fn abs_new(&self, rel: &str) -> Result<PathBuf, String>"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_rel {
+      signature = "fn rel(&self, file: &Path) -> Result<String, String>"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_doc_entry {
+      signature = "fn doc_entry( &self, entry: &str, page_file: Option<&str>, ) ->…"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_doc_entry_from {
+      signature = "fn doc_entry_from(&self, v: &serde_json::Value) -> Result<PathB…"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_overlay {
+      signature = "fn overlay( &self, v: &serde_json::Value, ) -> Result<HashMap<P…"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_cli_commands_Workspace_at {
+      signature = "fn at(dir: &Path) -> Self"
+      kind = "method"
       visibility = "crate"
     }
   }
@@ -2561,7 +2629,7 @@ code_item code_api_doc_view {
       kind = "method"
     }
     code_member m_n_api_doc_view_Document_more {
-      signature = "… +74 more"
+      signature = "… +76 more"
       kind = "overflow"
     }
   }
@@ -2929,6 +2997,52 @@ code_item code_api_doc_view {
       deps = [n_api_doc_view_Decorator, n_api_doc_view_DecoratorCell]
     }
   }
+  code_node n_api_doc_view_GatheredKind {
+    name = "GatheredKind"
+    kind = "struct"
+    summary = "src/doc/gathers.rs"
+    code_member m_n_api_doc_view_GatheredKind_kind {
+      signature = "fn kind(&self) -> &str"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_GatheredKind_gather_field {
+      signature = "fn gather_field(&self) -> &str"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_GatheredKind_schema {
+      signature = "fn schema(&self) -> &TypeDecl<'a>"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_GatheredKind_into_schema {
+      signature = "fn into_schema(self) -> TypeDecl<'a>"
+      kind = "method"
+    }
+  }
+  code_node n_api_doc_view_ChildFamily {
+    name = "ChildFamily"
+    kind = "struct"
+    summary = "src/doc/gathers.rs"
+    code_member m_n_api_doc_view_ChildFamily_field {
+      signature = "fn field(&self) -> &str"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_ChildFamily_kind {
+      signature = "fn kind(&self) -> &str"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_ChildFamily_many {
+      signature = "fn many(&self) -> bool"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_ChildFamily_schema {
+      signature = "fn schema(&self) -> Option<&TypeDecl<'a>>"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_ChildFamily_doc_comment {
+      signature = "fn doc_comment(&self) -> Option<&str>"
+      kind = "method"
+    }
+  }
   code_node n_api_doc_view_imports_fns {
     name = "imports"
     kind = "fns"
@@ -3043,7 +3157,6 @@ code_item code_api_doc_view {
     code_member m_n_api_doc_view_ResolvedType_Connection {
       signature = "Connection(ConnectionDecl<'a>)"
       kind = "variant"
-      deps = [n_api_doc_view_ConnectionDecl]
     }
     code_member m_n_api_doc_view_ResolvedType_Reference {
       signature = "Reference(Box<ResolvedType<'a>>)"
@@ -3297,68 +3410,10 @@ code_item code_api_doc_view {
       kind = "method"
     }
   }
-  code_node n_api_doc_view_Connection {
-    name = "Connection"
-    kind = "struct"
-    summary = "src/doc/views.rs"
-    code_member m_n_api_doc_view_Connection_source {
-      signature = "fn source(&self) -> &'a str"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_Connection_destination {
-      signature = "fn destination(&self) -> &'a str"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_Connection_kind {
-      signature = "fn kind(&self) -> Option<&'a str>"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_Connection_span {
-      signature = "fn span(&self) -> Span"
-      kind = "method"
-    }
-  }
-  code_node n_api_doc_view_ConnectionDecl {
-    name = "ConnectionDecl"
-    kind = "struct"
-    summary = "src/doc/views.rs"
-    code_member m_n_api_doc_view_ConnectionDecl_impl_DeclName__a_ {
-      signature = "impl DeclName<'a>"
-      kind = "impl"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_span {
-      signature = "fn span(&self) -> Span"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_source_type {
-      signature = "fn source_type(&self) -> &'a TypeRef"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_destination_type {
-      signature = "fn destination_type(&self) -> &'a TypeRef"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_kind_set_path {
-      signature = "fn kind_set_path(&self) -> &'a [String]"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_kind_set {
-      signature = "fn kind_set(&self) -> Option<SymbolSetDecl<'a>>"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_default_kind {
-      signature = "fn default_kind(&self) -> Option<String>"
-      kind = "method"
-    }
-    code_member m_n_api_doc_view_ConnectionDecl_is_dynamic {
-      signature = "fn is_dynamic(&self) -> bool"
-      kind = "method"
-    }
-  }
   code_node n_api_doc_view_more {
-    name = "… +13 more"
+    name = "… +15 more"
     kind = "overflow"
-    summary = "13 further public items — see the source."
+    summary = "15 further public items — see the source."
   }
 }
 
@@ -4237,8 +4292,29 @@ code_item code_api_wcl_lang_error {
       kind = "variant"
     }
     code_member m_n_api_wcl_lang_error_EvalError_more {
-      signature = "… +32 more"
+      signature = "… +34 more"
       kind = "overflow"
+    }
+  }
+  code_node n_api_wcl_lang_error_ArithmeticFault {
+    name = "ArithmeticFault"
+    kind = "enum"
+    summary = "src/error.rs"
+    code_member m_n_api_wcl_lang_error_ArithmeticFault_DivideByZero {
+      signature = "DivideByZero"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_lang_error_ArithmeticFault_Overflow {
+      signature = "Overflow{ ty: String }"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_lang_error_ArithmeticFault_overflow {
+      signature = "fn overflow(ty: impl Into<String>) -> Self"
+      kind = "method"
+    }
+    code_member m_n_api_wcl_lang_error_ArithmeticFault_impl_std__fmt__Display {
+      signature = "impl std::fmt::Display"
+      kind = "impl"
     }
   }
   code_node n_api_wcl_lang_error_SchemaViolationKind {

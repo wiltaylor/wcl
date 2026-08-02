@@ -1,22 +1,31 @@
-/* Unit tests for the schema-driven form helpers shared by the diagram
-   ShapePanel, the Systems dock and the details modal: field ordering, the
-   typed field-value → block-op mapping, list round-tripping, and the block
-   snippet a new child block is seeded from. */
+/* Unit tests for the schema-driven form helpers every panel shares: field
+   ordering, reading a cell, which control a (field, cell) pair wants, the
+   ops a draft produces, the typed field-value → block-op mapping, list
+   round-tripping, and the block snippet a new child block is seeded from.
+
+   The control itself is deliberately untested: FieldControl is a flat
+   switch over `controlFor` with no branching of its own, so a rendering
+   harness would only re-test Forge. */
 
 import { describe, expect, it } from 'vitest';
 
 import {
   CUSTOM_OPTION,
   blockSnippet,
+  cellText,
+  cellWrite,
+  controlFor,
+  createFields,
   createValue,
-  fieldState,
+  draftOps,
   fieldText,
   formEditable,
   freshShapeId,
   listExpr,
-  listText,
+  notEditable,
   orderFields,
   shapeSnippet,
+  slugify,
   suggestOptions,
   valueOp,
 } from './schemaform';
@@ -30,6 +39,10 @@ const field = (name, type, extra = {}) => ({
   default: null,
   ...extra,
 });
+
+/** Cells as the server serves them: positional labels, named fields. */
+const cells = (fields = {}, labels = []) => ({ labels, fields });
+const text = (t) => ({ state: 'text', text: t });
 
 const SPAN = { start: 10, end: 40 };
 
@@ -55,6 +68,9 @@ describe('valueOp', () => {
       text: 'Hi',
     });
     expect(valueOp(SPAN, field('kind', 'K', { symbols: ['a'] }), 'a').expr).toBe(':a');
+    // An OPEN `symbol` field has no set to pick from, but its cell text is
+    // still the bare name, so the colon goes back on.
+    expect(valueOp(SPAN, field('op', 'symbol'), 'deploy').expr).toBe(':deploy');
     expect(valueOp(SPAN, field('n', 'u32'), '3.7').expr).toBe('4');
     expect(valueOp(SPAN, field('w', 'f64'), '12').expr).toBe('12.0');
     expect(valueOp(SPAN, field('on', 'bool'), 'true').expr).toBe('true');
@@ -76,11 +92,11 @@ describe('valueOp', () => {
 describe('lists', () => {
   const tags = field('tags', 'list<utf8>');
   const repos = field('repos', 'list<identifier>');
-  const cells = { tags: { state: 'list', items: [{ text: 'one' }, { text: 'two' }] } };
+  const listCells = cells({ tags: { state: 'list', items: [text('one'), text('two')] } });
 
   it('reads a list cell as one editable line', () => {
-    expect(listText(tags, cells)).toBe('one, two');
-    expect(listText(repos, cells)).toBe('');
+    expect(fieldText(tags, listCells)).toBe('one, two');
+    expect(fieldText(repos, listCells)).toBe('');
   });
 
   it('quotes string elements and leaves identifiers bare', () => {
@@ -123,9 +139,29 @@ describe('createValue', () => {
   it('keeps the WCL shape of each field type', () => {
     expect(createValue(field('container', 'identifier'), 'wcl_lang')).toEqual({ ident: 'wcl_lang' });
     expect(createValue(field('kind', 'K', { symbols: ['a'] }), 'a')).toEqual({ sym: 'a' });
+    expect(createValue(field('op', 'symbol'), 'deploy')).toEqual({ sym: 'deploy' });
     expect(createValue(field('on', 'bool'), 'true')).toBe(true);
     expect(createValue(field('n', 'u32'), '7')).toBe(7);
     expect(createValue(field('name', 'utf8'), 'Hi')).toBe('Hi');
+    // A list takes the same comma line the edit forms take.
+    expect(createValue(field('tags', 'list<utf8>'), 'a, b')).toEqual(['a', 'b']);
+    expect(createValue(field('repos', 'list<identifier>'), 'one')).toEqual([{ ident: 'one' }]);
+  });
+
+  it('agrees with valueOp about a type neither of them recognises', () => {
+    // A type alias (`type Level = u8`) or a user type: both paths trust the
+    // author's raw expression, so creating and editing a column cannot
+    // disagree about how its value is written.
+    const level = field('level', 'Level');
+    expect(createValue(level, '3')).toEqual({ expr: '3' });
+    expect(valueOp(SPAN, level, '3')).toEqual({
+      op: 'set_field',
+      span: SPAN,
+      field: 'level',
+      expr: '3',
+    });
+    // A declared string type stays a string on both paths.
+    expect(createValue(field('name', 'utf8<64>'), 'Hi')).toBe('Hi');
   });
 });
 
@@ -164,21 +200,182 @@ describe('blockSnippet', () => {
   });
 });
 
-describe('fieldState / fieldText', () => {
-  const cells = {
-    '@0': { state: 'literal', text: 'lexer', slot: 0 },
-    kind: { state: 'literal', text: ':module' },
-  };
+describe('fieldText', () => {
+  const block = cells(
+    { kind: { state: 'symbol', text: 'module' }, hp: { state: 'number', text: '10' } },
+    [{ state: 'identifier', text: 'lexer' }],
+  );
+
   it('reads inline slots by position and fields by name', () => {
-    expect(fieldText(field('id', 'identifier', { inline_slot: 0 }), cells)).toBe('lexer');
-    // A symbol cell arrives as `:name`; the form works in bare names.
-    expect(fieldText(field('kind', 'K', { symbols: ['module'] }), cells)).toBe('module');
-    expect(fieldState(field('missing', 'utf8?'), cells)).toBe('absent');
+    expect(fieldText(field('id', 'identifier', { inline_slot: 0 }), block)).toBe('lexer');
+    // A symbol's text is the bare member name — the colon is syntax.
+    expect(fieldText(field('kind', 'K', { symbols: ['module'] }), block)).toBe('module');
+    expect(fieldText(field('hp', 'u32'), block)).toBe('10');
+    expect(fieldText(field('missing', 'utf8?'), block)).toBe('');
+    expect(cellText(block, 'kind')).toBe('module');
   });
 
-  it('sends computed values to the source editor', () => {
+  it('sends computed values, but only those, to the source editor', () => {
     expect(formEditable('computed')).toBe(false);
-    expect(formEditable('absent')).toBe(true);
+    expect(formEditable('rows')).toBe(false);
+    for (const state of ['text', 'identifier', 'symbol', 'bool', 'number', 'list', 'absent']) {
+      expect(formEditable(state)).toBe(true);
+    }
+  });
+});
+
+describe('notEditable', () => {
+  it('names a grid and an expression distinctly, in both lengths', () => {
+    expect(notEditable({ state: 'rows' })).toEqual({
+      short: '(grid)',
+      long: '(a grid — edit as source)',
+    });
+    expect(notEditable({ state: 'computed' }).short).toBe('(expr)');
+    // One vocabulary: the table marker and the form note agree on a value.
+    expect(notEditable(undefined)).toBe(notEditable({ state: 'computed' }));
+  });
+});
+
+describe('cellWrite', () => {
+  it('writes only a text cell as a string, everything else as WCL', () => {
+    expect(cellWrite({ state: 'text' }, 'rust')).toEqual({ text: 'rust' });
+    // A `code` block's language slot is declared `identifier`: quoting it
+    // would write `code "rust"` and fail validation.
+    expect(cellWrite({ state: 'identifier' }, 'rust')).toEqual({ expr: 'rust' });
+    expect(cellWrite({ state: 'number' }, '12')).toEqual({ expr: '12' });
+    // An absent cell has nothing to round-trip; a string is the safe read.
+    expect(cellWrite(undefined, 'x')).toEqual({ text: 'x' });
+  });
+});
+
+describe('controlFor', () => {
+  const cell = (state, t) => ({ state, text: t });
+
+  it('picks a picker for symbols, for id references and for suggestions', () => {
+    const kind = field('kind', 'K', { symbols: ['module', 'cli'] });
+    expect(controlFor(kind, cell('symbol', 'module'))).toBe('symbol');
+    const owner = field('container', 'identifier?');
+    expect(controlFor(owner, cell('identifier', 'wcl_lang'), { ids: [{ value: 'a' }] })).toBe(
+      'idref',
+    );
+    // Nothing to point at ⇒ type the reference.
+    expect(controlFor(owner, cell('identifier', 'wcl_lang'))).toBe('text');
+    const free = field('kind', 'utf8?');
+    expect(controlFor(free, cell('text', 'store'), { suggestions: ['store'] })).toBe('suggest');
+    // "Custom…" escapes the picker; a real new value is always possible.
+    expect(controlFor(free, cell('text', 'store'), { suggestions: ['store'], custom: true })).toBe(
+      'text',
+    );
+  });
+
+  it('gives a bool a checkbox and a scalar an input, wherever it is opened', () => {
+    expect(controlFor(field('on', 'bool'), cell('bool', 'true'))).toBe('bool');
+    expect(controlFor(field('on', 'bool?'), undefined)).toBe('bool');
+    // Numbers and identifiers are editable — they used to fall through to
+    // a silently read-only control.
+    expect(controlFor(field('hp', 'u32'), cell('number', '10'))).toBe('text');
+    expect(controlFor(field('size', 'Bytes'), cell('number', '5MiB'))).toBe('text');
+    expect(controlFor(field('repo', 'identifier?'), cell('identifier', 'r'))).toBe('text');
+  });
+
+  it('marks what no control can express', () => {
+    expect(controlFor(field('title', 'utf8'), cell('computed'))).toBe('computed');
+    expect(controlFor(field('rows', 'list<list<utf8>>'), { state: 'rows', rows: [] })).toBe(
+      'computed',
+    );
+    // A list is one comma-separated line, in every panel.
+    expect(controlFor(field('tags', 'list<utf8>'), { state: 'list', items: [] })).toBe('list');
+    expect(controlFor(field('tags', 'list<utf8>'), undefined)).toBe('list');
+  });
+});
+
+describe('draftOps', () => {
+  const fields = [
+    field('id', 'identifier', { inline_slot: 0 }),
+    field('name', 'utf8', { optional: false }),
+    field('summary', 'utf8?'),
+    field('hp', 'u32?'),
+    field('tags', 'list<utf8>?'),
+    field('notes', 'list<utf8>?'),
+    field('owners', 'list<utf8>', { optional: false }),
+  ];
+  const block = cells(
+    {
+      name: text('Hero'),
+      summary: text('a hero'),
+      hp: { state: 'number', text: '10' },
+      tags: { state: 'list', items: [text('a'), text('b')] },
+      owners: { state: 'list', items: [text('wil')] },
+    },
+    [{ state: 'identifier', text: 'hero' }],
+  );
+
+  it('writes nothing for a draft that changes nothing', () => {
+    expect(draftOps(fields, block, {}, SPAN)).toEqual([]);
+    expect(draftOps(fields, block, { name: 'Hero', hp: '10', id: 'hero' }, SPAN)).toEqual([]);
+  });
+
+  it('writes the typed value of a changed field', () => {
+    expect(draftOps(fields, block, { name: 'Villain', hp: '12' }, SPAN)).toEqual([
+      { op: 'set_field', span: SPAN, field: 'hp', expr: '12' },
+      { op: 'set_field', span: SPAN, field: 'name', text: 'Villain' },
+    ]);
+  });
+
+  it('removes a cleared optional field and ignores a cleared required one', () => {
+    expect(draftOps(fields, block, { summary: '', name: '' }, SPAN)).toEqual([
+      { op: 'remove_field', span: SPAN, field: 'summary' },
+    ]);
+    // An inline label can't be absent, so clearing it writes nothing.
+    expect(draftOps(fields, block, { id: '' }, SPAN)).toEqual([]);
+    // Clearing something that was never set is not a removal.
+    expect(draftOps(fields, block, { notes: '' }, SPAN)).toEqual([]);
+  });
+
+  it('removes a cleared optional list, and empties a required one', () => {
+    // Not `set_field tags = []`: an emptied optional field is removed,
+    // whatever its type, so the same gesture means the same thing.
+    expect(draftOps(fields, block, { tags: '' }, SPAN)).toEqual([
+      { op: 'remove_field', span: SPAN, field: 'tags' },
+    ]);
+    // A required list CAN hold nothing, so clearing it writes the empty
+    // literal — unlike a required scalar, which has no such value.
+    expect(draftOps(fields, block, { owners: '' }, SPAN)).toEqual([
+      { op: 'set_field', span: SPAN, field: 'owners', expr: '[]' },
+    ]);
+    expect(draftOps(fields, block, { name: '' }, SPAN)).toEqual([]);
+  });
+
+  it('targets a label slot by position and a field by name', () => {
+    expect(draftOps(fields, block, { id: 'villain', tags: 'a, b, c' }, SPAN)).toEqual([
+      { op: 'set_label', span: SPAN, slot: 0, expr: 'villain' },
+      { op: 'set_field', span: SPAN, field: 'tags', expr: '["a", "b", "c"]' },
+    ]);
+  });
+});
+
+describe('createFields', () => {
+  it('types every answered field and leaves the empty ones out', () => {
+    const fields = [
+      field('id', 'identifier', { inline_slot: 0 }),
+      field('name', 'utf8'),
+      field('kind', 'K', { symbols: ['cli'] }),
+      field('n', 'u32'),
+      field('summary', 'utf8?'),
+    ];
+    expect(createFields(fields, { id: 'x', name: 'Hi', kind: 'cli', n: '3', summary: '' })).toEqual({
+      name: 'Hi',
+      kind: { sym: 'cli' },
+      n: 3,
+    });
+  });
+});
+
+describe('slugify', () => {
+  it('derives an identifier from a display name', () => {
+    expect(slugify('WCL parse!')).toBe('wcl_parse');
+    expect(slugify('2 fast')).toBe('_2_fast');
+    expect(slugify(null)).toBe('');
   });
 });
 

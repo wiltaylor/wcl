@@ -9,7 +9,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::builtins::{BuiltinFn, Caller, from_fn};
 use crate::environment::Environment;
-use crate::numeric::for_each_numeric_variant;
+use crate::error::ArithmeticFault;
+use crate::numeric::{for_each_float_numeric_variant, for_each_integer_numeric_variant};
 use crate::value::{Value, VariantPayload};
 
 /// Register every collection builtin into `env`.
@@ -1289,14 +1290,18 @@ fn sum_pure(v: Value) -> Result<Value, String> {
     };
     let first = items.first().ok_or("sum: empty list".to_string())?;
 
-    macro_rules! sum_variant {
-        ($t:ty, $variant:ident) => {
+    // The accumulator keeps the first element's own variant, so a narrow
+    // type can run out of room part-way through the list. `$add` is what
+    // each half of the numeric ladder does about that: integers report the
+    // overflow, floats let IEEE saturate to `inf`.
+    macro_rules! sum_variant_with {
+        ($t:ty, $variant:ident, $add:expr) => {
             if let Value::$variant(first_v) = first {
                 let mut acc: $t = *first_v;
                 for elem in items.iter().skip(1) {
                     match elem {
                         Value::$variant(n) => {
-                            acc += *n;
+                            acc = $add(acc, *n)?;
                         }
                         other => {
                             return Err(format!(
@@ -1311,7 +1316,26 @@ fn sum_pure(v: Value) -> Result<Value, String> {
             }
         };
     }
-    for_each_numeric_variant!(sum_variant);
+    macro_rules! sum_int {
+        ($t:ty, $variant:ident) => {
+            sum_variant_with!($t, $variant, |acc: $t, n: $t| acc
+                .checked_add(n)
+                .ok_or_else(|| {
+                    // A builtin answers with a plain `String`, so this
+                    // can't be an `EvalError` — but it renders through the
+                    // same fault, so `sum([127i8, 1i8])` reads like the
+                    // `127i8 + 1i8` it is.
+                    format!("sum: cannot {}", ArithmeticFault::overflow(stringify!($t)))
+                }));
+        };
+    }
+    macro_rules! sum_float {
+        ($t:ty, $variant:ident) => {
+            sum_variant_with!($t, $variant, |acc: $t, n: $t| Ok::<$t, String>(acc + n));
+        };
+    }
+    for_each_integer_numeric_variant!(sum_int);
+    for_each_float_numeric_variant!(sum_float);
     Err(format!(
         "sum: list elements must be numeric, got {}",
         first.type_name()

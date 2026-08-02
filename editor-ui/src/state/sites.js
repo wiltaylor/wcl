@@ -1,12 +1,11 @@
-/* Site-preview state: the discovered site tree (/api/sites), the selected
-   site, and manual rebuilds. Nothing here reacts to buffer edits — a build
-   runs only when the user presses Rebuild, and the awaited POST doubles as
-   the progress signal. */
+/* Site discovery and selection: the site tree (/api/sites), which node (and
+   which wskill view) is selected, and the entry/site every build and design
+   endpoint targets. Building itself belongs to the preview module
+   (state/preview.js), which reads the selection from here. */
 
 import { createSignal } from 'solid-js';
 
 import { api } from '../api';
-import { dirtyFiles } from './buffers';
 import { treeData } from './tree';
 
 const [siteTree, setSiteTree] = createSignal([]);
@@ -15,31 +14,8 @@ const [siteTree, setSiteTree] = createSignal([]);
 const [selected, setSelected] = createSignal(null);
 /** The active view (artifact id) of a selected wskill node. */
 const [selectedView, setSelectedView] = createSignal(null);
-const [building, setBuilding] = createSignal(false);
-const [previewHref, setPreviewHref] = createSignal(null);
-const [buildSeq, setBuildSeq] = createSignal(0); // bumps on every finished build
-const [buildError, setBuildError] = createSignal(null);
-/** A skill view's built folder: { base, files } | null. */
-const [skillPreview, setSkillPreview] = createSignal(null);
-/** The page name the preview iframe currently shows (data-wcl-page-name),
-    kept by PreviewPane on every frame load — the manual Rebuild's target. */
-const [previewPage, setPreviewPage] = createSignal(null);
-/** What the last build did: 'targeted' | 'full' | null (no build yet). */
-const [buildMode, setBuildMode] = createSignal(null);
 
-export {
-  siteTree,
-  selected,
-  selectedView,
-  building,
-  previewHref,
-  buildSeq,
-  buildError,
-  skillPreview,
-  previewPage,
-  setPreviewPage,
-  buildMode,
-};
+export { siteTree, selected, selectedView };
 
 const storageKey = () => `wcl-editor:site:${treeData()?.root ?? ''}`;
 
@@ -97,8 +73,6 @@ export function viewLabel(kind) {
 
 export function selectView(id) {
   setSelectedView(id);
-  // A view switch changes the build target, so the shown page is stale.
-  setPreviewPage(null);
   persistSelection();
 }
 
@@ -143,47 +117,5 @@ export async function loadSites() {
 export function selectSite(node) {
   setSelected(node);
   setSelectedView(null);
-  // The previous build stays visible (and labelled) until the next Rebuild;
-  // its page belongs to the old site, so it's no longer a rebuild target.
-  setPreviewPage(null);
   persistSelection();
-}
-
-/** `extra` may carry { pages, changed } — the Design-mode targeted-rebuild
-    hint (ignored by the server on a cold output dir). Without an explicit
-    hint the manual Rebuild targets the page the preview currently shows —
-    the server re-renders just that page (stale siblings materialize lazily
-    on navigation) and self-falls-back to a full build whenever a targeted
-    one isn't possible. */
-export async function rebuild(extra = {}) {
-  const entry = activeEntry();
-  if (!entry || building()) return { ok: true };
-  // A skill view builds the actual skill folder (Markdown backend) and the
-  // canvas browses its files instead of an iframe.
-  const skill = activeView()?.skill === true;
-  const page = previewPage();
-  const targeted =
-    !skill && extra.pages === undefined && extra.changed === undefined && page
-      ? { pages: [page] }
-      : {};
-  setBuilding(true);
-  const res = await api.preview(entry, activeSite(), dirtyFiles(), {
-    ...targeted,
-    ...extra,
-    ...(skill ? { skill: true } : {}),
-  });
-  setBuilding(false);
-  if (res.ok) {
-    setBuildError(null);
-    setBuildMode(skill ? null : (res.mode ?? null));
-    if (skill) {
-      setSkillPreview({ base: res.base, files: res.files ?? [] });
-    } else {
-      setPreviewHref(res.href);
-    }
-    setBuildSeq(buildSeq() + 1);
-  } else {
-    setBuildError(res.error);
-  }
-  return res;
 }

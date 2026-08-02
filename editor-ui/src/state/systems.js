@@ -111,6 +111,27 @@ export function nodeById(id) {
   return model()?.nodes?.find((n) => n.id === id) ?? null;
 }
 
+/**
+ * The ids a field may name, as picker options — `null` when it names no
+ * kind and should stay a plain input. A field is a reference when the
+ * kind's schema declares it a parent link (`component.container`), or when
+ * its NAME is another gathered kind's (the same convention `/api/systems`
+ * derives the model from).
+ *
+ * Shared so every form agrees: the property dock and the details modal must
+ * not offer a picker in one and a text box in the other. `selfId` drops the
+ * object being edited, which can never reference itself.
+ */
+export function idOptions(schema, field, selfId) {
+  const link =
+    (schema?.parents ?? []).find((p) => p.field === field.name)?.kind ??
+    (model()?.kinds ?? []).find((k) => k.kind === field.name)?.kind;
+  if (!link) return null;
+  return (model()?.nodes ?? [])
+    .filter((n) => n.kind === link && n.id !== selfId)
+    .map((n) => ({ value: n.id, label: `${n.title} (${n.id})` }));
+}
+
 /** How many objects the canvas opens with before it stops drilling down. */
 const DEFAULT_BUDGET = 80;
 

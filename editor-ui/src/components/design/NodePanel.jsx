@@ -2,34 +2,26 @@
    form, docked to the right of the canvas.
 
    Rows come from the kind's `effective_fields` metadata in the /api/systems
-   payload merged with the instance's classified cell values, so a kind added
-   to the schema — and any symbol added to one of its vocabularies — gets a
-   form with no change here. Strings are inputs, symbol sets are selects,
-   bools are checkboxes, and a field naming another kind (`container`,
-   `owner`) becomes a select over that kind's ids. Computed values are
-   read-only and hand off to the fragment editor. Save batches every touched
-   field into one atomic commit. */
+   payload merged with the instance's cells, and every row is the shared
+   FieldControl — so a kind added to the schema (and any symbol added to one
+   of its vocabularies) gets a form with no change here, and the form matches
+   the details modal's exactly — including the id picker a field naming
+   another kind (`container`, `owner`) gets, which both read from the shared
+   `idOptions`. Save batches every touched field into one atomic commit
+   through the shared save rule. */
 
 import { For, Show, createEffect, createSignal } from 'solid-js';
 import { Braces, FileCode2, Maximize2, Plus, Trash2 } from 'lucide-solid';
-import { Button, Checkbox, Input, Select, toast } from '@forge/ui';
+import { Button, toast } from '@forge/ui';
 
-import {
-  CUSTOM_OPTION,
-  bareType,
-  fieldState,
-  fieldText,
-  formEditable,
-  isSlot,
-  orderFields,
-  suggestOptions,
-  valueOp,
-} from '../../preview/schemaform';
+import { draftOps, orderFields } from '../../preview/schemaform';
+import FieldControl from './FieldControl';
 import { openFile } from '../../state/buffers';
 import { revealSpan } from '../../state/views';
 import { busy, commitOpsQuiet, exitDesign, setPopover } from '../../state/design';
 import {
   deletePlan,
+  idOptions,
   kindOf,
   loadSystems,
   model,
@@ -56,41 +48,14 @@ export default function NodePanel(props) {
   });
 
   const rows = () => orderFields(schema()?.fields ?? []);
-  /** List-valued fields have no form control — the source editor owns them. */
-  const isList = (f) => /^list</.test(bareType(f));
-  const cells = () => node()?.cells ?? {};
-  const current = (f) => (f.name in draft() ? draft()[f.name] : fieldText(f, cells()));
-  const stateOf = (f) => fieldState(f, cells());
-
-  /** Values already in use for a free-text field, when there are any. */
-  const vocab = (f) => (custom()[f.name] ? null : suggestOptions(f, schema(), current(f)));
-
-  /** Ids this field may name, when it points at another kind. */
-  const idOptions = (f) => {
-    const link =
-      (schema()?.parents ?? []).find((p) => p.field === f.name)?.kind ??
-      (model()?.kinds ?? []).find((k) => k.kind === f.name)?.kind;
-    if (!link) return null;
-    return (model()?.nodes ?? [])
-      .filter((n) => n.kind === link && n.id !== node()?.id)
-      .map((n) => ({ value: n.id, label: `${n.title} (${n.id})` }));
-  };
+  const cells = () => node()?.cells;
 
   const save = async () => {
     const n = node();
     if (!n) return;
-    const ops = [];
-    for (const f of rows()) {
-      if (!(f.name in draft())) continue;
-      const text = draft()[f.name];
-      if (text === '' && !isSlot(f)) {
-        if (f.optional !== false) ops.push({ op: 'remove_field', span: n.span, field: f.name });
-        continue;
-      }
-      if (text === '') continue;
-      ops.push(valueOp(n.span, f, text));
-    }
-    if (!ops.length) return;
+    const ops = draftOps(rows(), cells(), draft(), n.span);
+    // Nothing actually changed — settle the form rather than committing.
+    if (!ops.length) return setDraft({});
     const res = await commitOpsQuiet(n.file, ops, { etag: n.etag });
     if (res.ok) {
       setDraft({});
@@ -184,79 +149,19 @@ export default function NodePanel(props) {
             {(f) => (
               <label class="ed-sys-field" title={f.doc ?? undefined}>
                 <span class="ed-sys-fieldname">{f.name}</span>
-                <Show
-                  when={formEditable(stateOf(f)) && !isList(f)}
-                  fallback={
-                    <Input
-                      value={isList(f) ? '(list — edit as source)' : '(computed — edit as source)'}
-                      disabled
-                    />
-                  }
-                >
-                  <Show
-                    when={f.symbols}
-                    fallback={
-                      <Show
-                        when={idOptions(f)}
-                        fallback={
-                          <Show
-                            when={(f.type ?? '').replace(/\?$/, '') === 'bool'}
-                            fallback={
-                              <Show
-                                when={vocab(f)}
-                                fallback={
-                                  <Input
-                                    value={current(f)}
-                                    placeholder={f.default ?? (f.optional ? '(unset)' : '')}
-                                    onInput={(e) =>
-                                      setDraft({ ...draft(), [f.name]: e.currentTarget.value })
-                                    }
-                                  />
-                                }
-                              >
-                                <Select
-                                  options={vocab(f)}
-                                  value={current(f)}
-                                  onChange={(v) => {
-                                    if (v === CUSTOM_OPTION) {
-                                      setCustom({ ...custom(), [f.name]: true });
-                                      setDraft({ ...draft(), [f.name]: '' });
-                                    } else setDraft({ ...draft(), [f.name]: v });
-                                  }}
-                                />
-                              </Show>
-                            }
-                          >
-                            <Checkbox
-                              checked={current(f) === 'true'}
-                              onChange={(on) =>
-                                setDraft({ ...draft(), [f.name]: on ? 'true' : 'false' })
-                              }
-                            />
-                          </Show>
-                        }
-                      >
-                        <Select
-                          options={[
-                            ...(f.optional !== false ? [{ value: '', label: '(unset)' }] : []),
-                            ...idOptions(f),
-                          ]}
-                          value={current(f)}
-                          onChange={(v) => setDraft({ ...draft(), [f.name]: v })}
-                        />
-                      </Show>
-                    }
-                  >
-                    <Select
-                      options={[
-                        ...(f.optional !== false ? [{ value: '', label: '(unset)' }] : []),
-                        ...f.symbols.map((sym) => ({ value: sym, label: `:${sym}` })),
-                      ]}
-                      value={current(f)}
-                      onChange={(v) => setDraft({ ...draft(), [f.name]: v })}
-                    />
-                  </Show>
-                </Show>
+                <FieldControl
+                  field={f}
+                  cells={cells()}
+                  schema={schema()}
+                  ids={idOptions(schema(), f, node()?.id)}
+                  value={f.name in draft() ? draft()[f.name] : undefined}
+                  custom={custom()[f.name]}
+                  onCustom={() => {
+                    setCustom({ ...custom(), [f.name]: true });
+                    setDraft({ ...draft(), [f.name]: '' });
+                  }}
+                  onChange={(v) => setDraft({ ...draft(), [f.name]: v })}
+                />
               </label>
             )}
           </For>

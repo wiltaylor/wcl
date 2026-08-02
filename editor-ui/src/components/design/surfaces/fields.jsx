@@ -1,9 +1,10 @@
 /* Shared building blocks for the Systems view's detail modal and its
    native surface editors (CLI / API / Screens):
 
-   - FieldForm / draftOps — the schema-generated property form and the ops a
-     draft produces (extracted from NodeDetailModal so every editor reuses
-     them).
+   - FieldForm — the schema-generated property form: the modal's layout
+     around the shared FieldControl, saved through the shared `draftOps`
+     rule (schemaform.js), so a field behaves here exactly as it does in
+     the canvas dock.
    - createDetail — load + keep one object's /api/systems/detail across
      commits: every write reformats the file and moves spans, so after a
      commit the object is re-found by (kind, id) in the refreshed model and
@@ -14,42 +15,26 @@
 
 import { For, Show, createEffect, createSignal } from 'solid-js';
 import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-solid';
-import { Button, Checkbox, Input, Select, toast } from '@forge/ui';
+import { Button, toast } from '@forge/ui';
 
 import { api } from '../../../api';
-import {
-  CUSTOM_OPTION,
-  blockSnippet,
-  fieldState,
-  fieldText,
-  formEditable,
-  isSlot,
-  listExpr,
-  listText,
-  orderFields,
-  suggestOptions,
-  valueOp,
-} from '../../../preview/schemaform';
+import { blockSnippet, cellText, draftOps, orderFields } from '../../../preview/schemaform';
 import { busy, commitOpsQuiet } from '../../../state/design';
 import { activeEntry } from '../../../state/sites';
-import { loadSystems, model } from '../../../state/systems';
+import { idOptions, loadSystems, model } from '../../../state/systems';
+import FieldControl from '../FieldControl';
 
-/** A form row per editable field, shared by the object and its children. */
+/**
+ * A form row per editable field, shared by the object and its children.
+ * `selfId` is the object being edited, so a reference field's picker leaves
+ * it out — the ids come from the same `idOptions` the canvas dock uses, so
+ * opening an object two ways offers the same controls.
+ */
 export function FieldForm(props) {
   const rows = () => orderFields(props.schema?.fields ?? []);
-  const cells = () => props.cells ?? {};
-  const isList = (f) => (f.type ?? '').replace(/\?$/, '').startsWith('list<');
-  const current = (f) =>
-    f.name in props.draft
-      ? props.draft[f.name]
-      : isList(f)
-        ? listText(f, cells())
-        : fieldText(f, cells());
-  const state = (f) => (isList(f) ? 'list' : fieldState(f, cells()));
   const set = (name, value) => props.onChange({ ...props.draft, [name]: value });
   /** Fields switched to free typing by picking "Custom…". */
   const [custom, setCustom] = createSignal({});
-  const options = (f) => (custom()[f.name] ? null : suggestOptions(f, props.schema, current(f)));
 
   return (
     <div class="ed-detail-form">
@@ -64,88 +49,24 @@ export function FieldForm(props) {
                 <span class="ed-detail-req">*</span>
               </Show>
             </span>
-            <Show
-              when={formEditable(state(f)) || state(f) === 'list'}
-              fallback={<Input value="(computed — edit as source)" disabled />}
-            >
-              <Show
-                when={f.symbols}
-                fallback={
-                  <Show
-                    when={(f.type ?? '').replace(/\?$/, '') === 'bool'}
-                    fallback={
-                      <Show
-                        when={options(f)}
-                        fallback={
-                          <Input
-                            value={current(f)}
-                            placeholder={
-                              isList(f)
-                                ? 'comma separated'
-                                : (f.default ?? (f.optional ? '(unset)' : ''))
-                            }
-                            onInput={(e) => set(f.name, e.currentTarget.value)}
-                          />
-                        }
-                      >
-                        <Select
-                          options={options(f)}
-                          value={current(f)}
-                          onChange={(v) => {
-                            if (v === CUSTOM_OPTION) {
-                              setCustom({ ...custom(), [f.name]: true });
-                              set(f.name, '');
-                            } else set(f.name, v);
-                          }}
-                        />
-                      </Show>
-                    }
-                  >
-                    <Checkbox
-                      checked={current(f) === 'true'}
-                      onChange={(on) => set(f.name, on ? 'true' : 'false')}
-                    />
-                  </Show>
-                }
-              >
-                <Select
-                  options={[
-                    ...(f.optional !== false ? [{ value: '', label: '(unset)' }] : []),
-                    ...f.symbols.map((s) => ({ value: s, label: `:${s}` })),
-                  ]}
-                  value={current(f)}
-                  onChange={(v) => set(f.name, v)}
-                />
-              </Show>
-            </Show>
+            <FieldControl
+              field={f}
+              cells={props.cells}
+              schema={props.schema}
+              ids={idOptions(props.schema, f, props.selfId)}
+              value={f.name in props.draft ? props.draft[f.name] : undefined}
+              custom={custom()[f.name]}
+              onCustom={() => {
+                setCustom({ ...custom(), [f.name]: true });
+                set(f.name, '');
+              }}
+              onChange={(v) => set(f.name, v)}
+            />
           </label>
         )}
       </For>
     </div>
   );
-}
-
-/** The ops a draft produces against one block's span. */
-export function draftOps(schema, draft, span, cells) {
-  const ops = [];
-  for (const f of orderFields(schema?.fields ?? [])) {
-    if (!(f.name in draft)) continue;
-    const text = draft[f.name];
-    const isList = (f.type ?? '').replace(/\?$/, '').startsWith('list<');
-    if (isList) {
-      const expr = listExpr(f, text);
-      if (expr === '[]' && f.optional !== false && !cells?.[f.name]) continue;
-      ops.push({ op: 'set_field', span, field: f.name, expr });
-      continue;
-    }
-    if (text === '' && !isSlot(f)) {
-      if (f.optional !== false) ops.push({ op: 'remove_field', span, field: f.name });
-      continue;
-    }
-    if (text === '') continue;
-    ops.push(valueOp(span, f, text));
-  }
-  return ops;
 }
 
 /**
@@ -232,7 +153,7 @@ export function FamilySection(props) {
     if (!changes || !Object.keys(changes).length) return;
     return props
       .commit(
-        draftOps(props.family.schema, changes, item.span, item.cells),
+        draftOps(props.family.schema?.fields, item.cells, changes, item.span),
         `Saved ${props.family.kind}`,
       )
       .then((ok) => {
@@ -345,10 +266,9 @@ export function FamilySection(props) {
 /** The fallback collapsed row: label + the first descriptive cell. */
 export function defaultSummary(item) {
   const text =
-    item.cells?.description?.text ??
-    item.cells?.summary?.text ??
-    item.cells?.name?.text ??
-    '';
+    cellText(item.cells, 'description') ||
+    cellText(item.cells, 'summary') ||
+    cellText(item.cells, 'name');
   return (
     <>
       <code>{item.label ?? ''}</code>

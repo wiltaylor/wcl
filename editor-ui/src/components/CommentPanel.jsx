@@ -7,7 +7,8 @@
 import { For, Show, createSignal } from 'solid-js';
 import { Badge, Button, DropdownMenu, Modal, Textarea, toast } from '@forge/ui';
 
-import { rebuild, building, selected } from '../state/sites';
+import { selected } from '../state/sites';
+import { mainPreview } from '../state/preview';
 import {
   compose,
   editComment,
@@ -25,7 +26,8 @@ import {
   setPicking,
   submitComment,
 } from '../state/comments';
-import { beginPick, descOf, elByLoc, jumpTo, locOf, pageInfo, selectionQuote } from '../preview/frame';
+import { pageInfo } from '../preview/anchors';
+import { beginPick, descOf, elByLoc, jumpTo, locOf, selectionQuote } from '../preview/frame';
 
 /** The expandable trigger + hint, rendered in the preview header strip. */
 export function CommentMenu(props) {
@@ -175,7 +177,7 @@ export function CommentOverlays(props) {
             An AI agent is ready for your review — rebuild to see its latest changes, leave
             comments, then send.
           </span>
-          <Button size="sm" onClick={rebuild} disabled={!selected() || building()}>
+          <Button size="sm" onClick={() => mainPreview.build()} disabled={!selected() || mainPreview.building()}>
             Rebuild
           </Button>
           <Button size="sm" variant="primary" onClick={send} disabled={sending()}>

@@ -11,19 +11,20 @@
 import { For, Show, createEffect, createSignal } from 'solid-js';
 import { Button, Input, Modal, Select, toast } from '@forge/ui';
 
-import { createValue } from '../../preview/schemaform';
+import { createFields, slugify } from '../../preview/schemaform';
 import { busy } from '../../state/design';
-
-/** A plausible id from a display name: lowercase, non-identifier → `_`. */
-const slugify = (name) =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .replace(/^(\d)/, '_$1');
+import FieldControl from './FieldControl';
 
 export default function AddNodeDialog(props) {
   const [form, setForm] = createSignal({ kind: '', id: '', idTouched: false, fields: {} });
+  /** Free-text fields switched to typing by picking "Custom…" — a kind's
+      suggestions are what other instances use, never the whole vocabulary.
+      Cleared with the form: the escape belongs to one field of one kind. */
+  const [custom, setCustom] = createSignal({});
+  const reset = (kind = '') => {
+    setForm({ kind, id: '', idTouched: false, fields: {} });
+    setCustom({});
+  };
   const patch = (p) => setForm({ ...form(), ...p });
   const kinds = () => props.kinds ?? [];
   const def = () => kinds().find((k) => k.kind === form().kind) ?? null;
@@ -40,7 +41,7 @@ export default function AddNodeDialog(props) {
     if (!props.open) return;
     const cur = form().kind;
     const want = list.some((k) => k.kind === cur) ? cur : list.length === 1 ? list[0].kind : '';
-    if (want !== cur) setForm({ kind: want, id: '', idTouched: false, fields: {} });
+    if (want !== cur) reset(want);
   });
 
   /** Editable fields: the kind's own, minus the locked parent link. */
@@ -82,12 +83,7 @@ export default function AddNodeDialog(props) {
       toast(`Fill: ${missing.map((m) => m.name).join(', ')}`, { tone: 'danger', duration: 4000 });
       return;
     }
-    const out = {};
-    for (const fd of fields()) {
-      const v = f.fields[fd.name];
-      if (v == null || v === '') continue;
-      out[fd.name] = createValue(fd, v);
-    }
+    const out = createFields(fields(), f.fields);
     const pf = parentField();
     if (pf) out[pf] = { ident: props.parent.id };
     const res = await props.onSubmit({
@@ -97,7 +93,7 @@ export default function AddNodeDialog(props) {
       fields: out,
     });
     if (res?.ok) {
-      setForm({ kind: '', id: '', idTouched: false, fields: {} });
+      reset();
       props.onClose();
     }
   };
@@ -125,7 +121,12 @@ export default function AddNodeDialog(props) {
             options={kinds().map((k) => ({ value: k.kind, label: k.kind }))}
             value={form().kind || undefined}
             placeholder="Kind…"
-            onChange={(kind) => patch({ kind, fields: {} })}
+            onChange={(kind) => {
+              // The id survives a kind change (it may already be typed);
+              // the field values and their Custom… escapes do not.
+              patch({ kind, fields: {} });
+              setCustom({});
+            }}
           />
           <Input
             value={form().id}
@@ -140,26 +141,24 @@ export default function AddNodeDialog(props) {
           <Show when={def()?.doc}>
             <p class="ed-sys-panel-doc">{def().doc}</p>
           </Show>
+          {/* The same controls the edit forms offer — a create form that
+              disagreed about a kind's shape would invent values the edit
+              form then refuses. */}
           <div class="ed-add-unit-fields">
             <For each={fields()}>
               {(f) => (
-                <Show
-                  when={f.symbols}
-                  fallback={
-                    <Input
-                      value={form().fields[f.name] ?? ''}
-                      onInput={(e) => setField(f.name, e.currentTarget.value)}
-                      placeholder={`${f.name}${f.optional === false ? ' (required)' : ''}`}
-                    />
-                  }
-                >
-                  <Select
-                    options={f.symbols.map((s) => ({ value: s, label: `:${s}` }))}
-                    value={form().fields[f.name] || undefined}
-                    placeholder={f.name}
-                    onChange={(v) => setField(f.name, v)}
-                  />
-                </Show>
+                <FieldControl
+                  field={f}
+                  schema={def()}
+                  value={form().fields[f.name] ?? ''}
+                  placeholder={`${f.name}${f.optional === false ? ' (required)' : ''}`}
+                  custom={custom()[f.name]}
+                  onCustom={() => {
+                    setCustom({ ...custom(), [f.name]: true });
+                    setField(f.name, '');
+                  }}
+                  onChange={(v) => setField(f.name, v)}
+                />
               )}
             </For>
           </div>

@@ -7,14 +7,29 @@
    Click selects a block; click again enters a source-swap text session for
    prose kinds or opens the right structured editor (the popovers render in
    DesignView's BlockEditorModals, shared by every surface). Every commit
-   runs the disk → targeted rebuild → re-anchor loop in state/design.js —
-   the rebuild routes to the owning surface via setSurfaceRebuild.
+   runs the disk → targeted rebuild → re-anchor loop in state/design.js.
+
+   Mounting it is a matter of passing what you have: a preview and a little
+   configuration. Everything else — registering the rebuild hook, releasing
+   the busy gate on the paths where no frame will load, saving and restoring
+   the page the host was showing, and clearing the selection and any
+   half-finished editing session — is scoped to this component's own mount
+   and unmount, so a new host cannot forget it.
 
    Props:
-   - src()        — accessor: the iframe URL (null = fallback slot)
-   - reloadSeq()  — accessor: bump with an unchanged src to reload in place
-   - onNavigate   — optional ref callback receiving { goto(url) }
-   - fallback     — JSX shown while src() is null
+   - preview      — the preview to mount (state/preview.js): `src()` is the
+                    iframe URL (null = fallback slot), bumping `reloadSeq()`
+                    with an unchanged src reloads in place (scroll survives),
+                    `build({ changed })` is what the commit tail runs while
+                    this surface is mounted, and `id` is the identity the
+                    commit bus keys staleness on — so a surface is named by
+                    the preview it shows rather than by a constant.
+   - ref          — callback receiving the mount-scoped surface handle
+                    ({ goto, doc, redecorate, merged, currentSite }),
+                    and `null` on unmount. The handle goes inert when
+                    released, so a host holding it cannot act on a surface
+                    that is gone.
+   - fallback     — JSX shown while the preview has no page
    - hideChrome   — hide the book template's sidebar/rail/pagenav in the
                     frame (the content modal's page-only previews)
    - gutter       — optional config for the per-block left gutter (drag
@@ -25,7 +40,9 @@
                     editor; the handle re-orders via batched `move` ops.
    - site         — the site this build renders under (non-merged
                     surfaces); the visibility editor uses it to hide a
-                    block in place when it excludes the current view. */
+                    block in place when it excludes the current view.
+   - onFrameLoad  — optional: hosts that mirror the frame's content (the
+                    screen editor's structure tree) rebuild on it. */
 
 import { Show, createEffect, createSignal, onCleanup } from 'solid-js';
 import {
@@ -57,33 +74,41 @@ import {
   commitOps,
   commitOpsLocal,
   commitUnitField,
-  currentPage,
   editingSession,
   frameReady,
   loadPalette,
   palette,
   pendingReveal,
+  pushSurfaceRebuild,
   selection,
-  setCurrentPage,
   setEditingSession,
   setPendingReveal,
   setPopover,
   setSelection,
+  showRefusal,
 } from '../../state/design';
-import { parseSpanAttr } from '../../preview/anchors';
-import { injectBareCss, pageInfo } from '../../preview/frame';
+import { currentPage, setCurrentPage } from '../../state/preview';
 import {
   adjacentSameFileSibling,
-  elsBySpan,
-  mappedSpan,
-  moveDomBlock,
-  patchAnchors,
-} from '../../preview/localops';
+  anchorEls,
+  anchorOf,
+  closestOfKind,
+  diagramOf,
+  elBySpan,
+  isManualLayout,
+  pageInfo,
+  prevSiblingOfKind,
+  restampExcept,
+  shapeChildren,
+  shapeIdOf,
+  spanOf,
+} from '../../preview/anchors';
+import { injectBareCss } from '../../preview/frame';
+import { mappedSpan, moveDomBlock, patchAnchors } from '../../preview/localops';
+import { cellNamed } from '../../preview/schemaform';
 import { placeVisGutters } from '../../preview/visgutter';
 import {
-  anchorOf,
   beginTextSession,
-  elBySpan,
   installDesign,
   markSelected,
   wclString,
@@ -95,7 +120,9 @@ import {
   readTranslate,
   refreshShapeHandles,
 } from '../../preview/diagram';
-import { relocateOps } from '../../preview/widgetdnd';
+import { createPageScopes } from '../../preview/pagescope';
+import { shapeOps } from '../../preview/shapeops';
+import { createSurfaceHandle } from '../../preview/surfaceref';
 import {
   cellCoords,
   delColAt,
@@ -110,10 +137,14 @@ import ShapePanel from './ShapePanel';
 const DOCK_W = 332;
 const DOCK_GAP = 10;
 
+/* Who owns `currentPage` while surfaces nest — see preview/pagescope.js.
+   One stack for every mounted surface; each one hands the page back to
+   whatever was under it, so a host never has to remember to. */
+const pageScopes = createPageScopes();
+
 const PROSE = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']);
 const HEADING_KINDS = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
 const DIAGRAM_LAYOUTS = ['free', 'grid', 'layered', 'force', 'radial'];
-const MANUAL_LAYOUTS = ['free', 'none'];
 
 export default function EditSurface(props) {
   let iframe;
@@ -128,16 +159,73 @@ export default function EditSurface(props) {
   const [sessionRegion, setSessionRegion] = createSignal(null); // {el, plain}
 
   const doc = () => iframe?.contentDocument;
+  const src = () => props.preview?.src() ?? null;
+  const reloadSeq = () => props.preview?.reloadSeq() ?? 0;
 
-  props.onNavigate?.({
+  // ------------------------------------------------------------------
+  // Mount scope: the handle, the rebuild hook, and the obligations that
+  // used to be the host's to remember.
+  // ------------------------------------------------------------------
+
+  // Everything a host may ask of this surface, in one reference whose
+  // lifetime is the component's.
+  const { handle, release } = createSurfaceHandle({
     goto: (url) => {
       if (iframe) iframe.src = url;
     },
+    /** The preview document — hosts resolving anchors in the frame
+        themselves (the screen editor's widget palette finds the wireframe
+        diagram through it). */
+    doc,
+    /** Re-place the gutters after an in-place change (the visibility
+        editor refreshes ghosts and button tints through it). */
+    redecorate: () => decorate(),
+    merged: () => props.gutter?.merged ?? false,
+    currentSite: () => props.gutter?.currentSite ?? props.site,
   });
-  // Read-only handle for hosts that need to resolve anchors in the frame
-  // themselves (the screen editor's widget palette finds the wireframe
-  // diagram through it).
-  props.surfaceRef?.({ doc });
+  props.ref?.(handle);
+
+  const pageScope = pageScopes.push(currentPage());
+  /** The page the frame is showing — kept in the shared state AND in this
+      surface's own scope, so unmounting hands the right one back. */
+  const notePage = (d) => {
+    const page = pageInfo(d);
+    setCurrentPage(page);
+    pageScope.note(page);
+  };
+
+  onCleanup(() => {
+    release();
+    props.ref?.(null);
+    setSelection(null);
+    setEditingSession(null);
+    const back = pageScope.release();
+    if (back.restore) setCurrentPage(back.page);
+  });
+
+  // This surface owns the commit tail while it is mounted — through its
+  // preview's own rebuild when it has one, else the main build the canvas
+  // shows. The busy gate comes with it: a rebuild that leaves nothing to
+  // reload (an unchanged href, or one refused because a build is already
+  // running) releases the gate here rather than leaving the surface
+  // disabled; the reloading paths release from the frame's load.
+  onCleanup(
+    pushSurfaceRebuild({
+      // Read at commit time, not at mount: one surface can be handed a
+      // different preview while it stays mounted (the content modal's tabs).
+      get id() {
+        return props.preview?.id ?? null;
+      },
+      run: async ({ changed }) => {
+        const href0 = src();
+        const seq0 = reloadSeq();
+        const res = (await props.preview?.build({ changed })) ?? { ok: false };
+        const reloading = !!src() && (src() !== href0 || reloadSeq() !== seq0);
+        if (res?.ok && !reloading) frameReady();
+        return res;
+      },
+    }),
+  );
 
   // ------------------------------------------------------------------
   // Sessions
@@ -157,8 +245,10 @@ export default function EditSurface(props) {
       return;
     }
     const slot =
-      region.type === 'label' ? res.labels?.[region.slot] : res.fields?.[region.name];
-    if (!slot || slot.state !== 'literal') {
+      region.type === 'label'
+        ? res.cells?.labels?.[region.slot]
+        : cellNamed(res.cells, region.name);
+    if (!slot || slot.state !== 'text') {
       // Interpolated / computed content: the fragment editor is the truth.
       setPopover({ type: 'fragment', anchor });
       return;
@@ -265,8 +355,8 @@ export default function EditSurface(props) {
       return;
     }
     const src = await api.blockSource({ file: loc.file, span: loc.span });
-    const slot = src.ok ? src.fields?.[binding.field] : null;
-    if (!slot || slot.state !== 'literal') {
+    const slot = src.ok ? cellNamed(src.cells, binding.field) : null;
+    if (!slot || slot.state !== 'text') {
       toast(`${binding.field} is computed — edit it in the source`, {
         tone: 'danger',
         duration: 5000,
@@ -286,29 +376,16 @@ export default function EditSurface(props) {
   };
 
   // ------------------------------------------------------------------
-  // Diagram shapes: schema metadata + drag/resize commits
+  // Diagram shapes: the DOM/request half of the five gestures
   // ------------------------------------------------------------------
+  // The ops themselves come from preview/shapeops.js — given a block's
+  // source, its kind definition and the gesture it returns either the ops
+  // or a refusal with a reason. What stays here is the fetch, the commit,
+  // the message and everything that has to read the document.
 
-  const shapeKindFields = (kind) =>
-    palette()?.diagram_kinds?.find((k) => k.kind === kind)?.fields ?? null;
-  const shapeHasField = (kind, name) =>
-    !!shapeKindFields(kind)?.some((f) => f.name === name);
-  /** A numeric field expr matching the schema's declared type (integer
-      kinds get integers; everything else a decimal so f64 fields stay
-      float-typed). */
-  const numExpr = (kind, name, v) => {
-    const ty = shapeKindFields(kind)?.find((f) => f.name === name)?.type ?? 'f64';
-    if (/^[iu]/.test(ty)) return String(Math.round(v));
-    const r = Math.round(v * 10) / 10;
-    return Number.isInteger(r) ? `${r}.0` : String(r);
-  };
-  /** Current numeric value of a shape field from blockSource: absent → 0,
-      number literal → its value, anything else → NaN (not form-writable). */
-  const numField = (src, name) => {
-    const slot = src.fields?.[name];
-    if (!slot) return 0;
-    return slot.state === 'number' ? Number(slot.text) : NaN;
-  };
+  const kindDefOf = (kind) => palette()?.diagram_kinds?.find((k) => k.kind === kind) ?? null;
+  /** Does this shape kind nest children? (the schema-derived palette flag) */
+  const acceptsChildren = (kind) => kindDefOf(kind)?.accepts_children === true;
 
   const shapeMove = async (el, delta) => {
     const d = doc();
@@ -316,22 +393,37 @@ export default function EditSurface(props) {
     if (!a) return;
     const src = await api.blockSource({ file: a.file, span: a.span });
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
-    if (!shapeHasField(a.kind, 'x') || !shapeHasField(a.kind, 'y')) {
-      return toast(`a ${a.kind} has no x/y — edit its source instead`, { duration: 4000 });
-    }
-    const x0 = numField(src, 'x');
-    const y0 = numField(src, 'y');
-    if (Number.isNaN(x0) || Number.isNaN(y0)) {
-      return toast('x/y are computed — edit the source instead', { duration: 4000 });
-    }
-    commitOps(
-      a.file,
-      [
-        { op: 'set_field', span: a.span, field: 'x', expr: numExpr(a.kind, 'x', x0 + delta.dx) },
-        { op: 'set_field', span: a.span, field: 'y', expr: numExpr(a.kind, 'y', y0 + delta.dy) },
-      ],
-      { etag: src.etag, reveal: 'edited' },
-    );
+    const res = shapeOps({
+      gesture: 'move',
+      kind: a.kind,
+      kindDef: kindDefOf(a.kind),
+      span: a.span,
+      source: src,
+      delta,
+    });
+    if (!res.ok) return showRefusal(res);
+    commitOps(a.file, res.ops, { etag: src.etag, reveal: 'edited' });
+  };
+
+  const shapeResize = async (el, delta) => {
+    const d = doc();
+    const a = d && anchorOf(d, el);
+    if (!a) return;
+    const src = await api.blockSource({ file: a.file, span: a.span });
+    if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
+    const res = shapeOps({
+      gesture: 'resize',
+      kind: a.kind,
+      kindDef: kindDefOf(a.kind),
+      span: a.span,
+      source: src,
+      delta,
+      // The anchor's stashed measurement: dimensions the source leaves to
+      // the renderer start from what is on screen.
+      box: a.box ?? null,
+    });
+    if (!res.ok) return showRefusal(res);
+    commitOps(a.file, res.ops, { etag: src.etag, reveal: 'edited' });
   };
 
   /** Port dragged from one shape onto another: wire them with an `a -> b`
@@ -340,108 +432,50 @@ export default function EditSurface(props) {
   const shapeConnect = async (fromEl, toEl) => {
     const d = doc();
     if (!d) return;
-    const from = fromEl.getAttribute('data-wcl-shape-id');
-    const to = toEl.getAttribute('data-wcl-shape-id');
-    if (!from || !to) {
-      return toast('Both shapes need an id before they can be connected', { duration: 4000 });
-    }
-    const svg = fromEl.closest('svg[data-wcl-layout]');
-    const owner = svg && anchorOf(d, svg);
-    if (!owner) return toast('No diagram found for these shapes', { duration: 4000 });
-    // A generated diagram (a procedure's flowchart) shares one span across
-    // every instance — writing there would edit the component, not the data.
-    if (owner.shared) {
-      return toast('This diagram is generated — edit its source data instead', {
-        duration: 5000,
-      });
-    }
+    const from = shapeIdOf(fromEl);
+    const to = shapeIdOf(toEl);
+    const owner = anchorOf(d, diagramOf(fromEl)) || null;
+    // Missing ids, a self-connection and a generated diagram (one span
+    // shared across every instance) are the builder's to refuse.
+    const built = shapeOps({ gesture: 'connect', from, to, owner });
+    if (!built.ok) return showRefusal(built);
     const src = await api.blockSource({ file: owner.file, span: owner.span });
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
-    const res = await commitOps(
-      owner.file,
-      [{ op: 'connect_add', span: owner.span, from, to }],
-      { etag: src.etag, reveal: 'edited' },
-    );
+    const res = await commitOps(owner.file, built.ops, { etag: src.etag, reveal: 'edited' });
     if (res?.ok) toast(`Connected ${from} → ${to}`, { duration: 3000 });
   };
 
   /** A move released somewhere structural: re-home the shape's source —
       after a leaf sibling, into a container widget, or out onto the
-      diagram (with x/y at the drop point under a manual layout). One
-      atomic batch: insert the canonical slice at the target, delete the
-      original. */
+      diagram (with x/y at the drop point when the target places shapes by
+      coordinate). One atomic batch: insert the canonical slice at the
+      target, delete the original. */
   const shapeRelocate = async (el, target, point) => {
     const d = doc();
     const a = d && anchorOf(d, el);
     const t = d && anchorOf(d, target.el);
     if (!a || !t) return;
-    if (a.shared || t.shared) {
-      return toast('This diagram is generated — edit its source data instead', {
-        duration: 5000,
-      });
-    }
-    if (a.file !== t.file) {
-      return toast('Cannot move a widget across files — edit the source instead', {
-        duration: 5000,
-      });
-    }
     const src = await api.blockSource({ file: a.file, span: a.span });
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
-    const at =
-      target.mode === 'diagram' &&
-      MANUAL_LAYOUTS.includes(target.el.getAttribute('data-wcl-layout') ?? '')
-        ? clientToUser(target.el, point.x, point.y)
-        : null;
-    const ops = relocateOps({
+    // Only meaningful on a manual-layout diagram; the builder decides,
+    // off the anchor's own layout (which reads through a viewport wrapper).
+    const at = target.mode === 'diagram' ? clientToUser(target.el, point.x, point.y) : null;
+    const res = shapeOps({
+      gesture: 'relocate',
       slice: src.source,
       mode: target.mode,
-      targetSpan: t.span,
-      sourceSpan: a.span,
+      source: a,
+      target: { ...t, acceptsChildren: acceptsChildren(t.kind) },
       at,
       slot: target.slot ?? null,
     });
-    commitOps(a.file, ops, { etag: src.etag, reveal: 'inserted' });
-  };
-
-  const shapeResize = async (el, delta) => {
-    const d = doc();
-    const a = d && anchorOf(d, el);
-    if (!a) return;
-    if (!shapeHasField(a.kind, 'width') || !shapeHasField(a.kind, 'height')) {
-      return toast(`a ${a.kind} has no width/height — edit its source instead`, { duration: 4000 });
+    if (!res.ok) return showRefusal(res);
+    // The move is legal but the solver will place it: say so, rather than
+    // letting the shape land somewhere the author didn't drop it.
+    if (at && !res.positional) {
+      toast('This diagram lays its shapes out — the drop position was ignored', { duration: 4000 });
     }
-    const src = await api.blockSource({ file: a.file, span: a.span });
-    if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
-    const vals = {
-      x: numField(src, 'x'),
-      y: numField(src, 'y'),
-      width: numField(src, 'width'),
-      height: numField(src, 'height'),
-    };
-    // Absent width/height start from the rendered bbox, not 0, so the first
-    // grab of a default-sized shape doesn't collapse it.
-    const box = el.__wclShapeBox;
-    if (!vals.width && box) vals.width = box.width;
-    if (!vals.height && box) vals.height = box.height;
-    const ops = [];
-    const push = (name, v) => {
-      if (Number.isNaN(vals[name])) return false;
-      ops.push({ op: 'set_field', span: a.span, field: name, expr: numExpr(a.kind, name, v) });
-      return true;
-    };
-    if (!push('width', Math.max(vals.width + delta.dw, 8))) {
-      return toast('width is computed — edit the source instead', { duration: 4000 });
-    }
-    if (!push('height', Math.max(vals.height + delta.dh, 8))) {
-      return toast('height is computed — edit the source instead', { duration: 4000 });
-    }
-    if (delta.dx && shapeHasField(a.kind, 'x') && !Number.isNaN(vals.x)) {
-      push('x', vals.x + delta.dx);
-    }
-    if (delta.dy && shapeHasField(a.kind, 'y') && !Number.isNaN(vals.y)) {
-      push('y', vals.y + delta.dy);
-    }
-    commitOps(a.file, ops, { etag: src.etag, reveal: 'edited' });
+    commitOps(a.file, res.ops, { etag: src.etag, reveal: 'inserted' });
   };
 
   /** Materialize every top-level child's solver position into explicit
@@ -450,28 +484,23 @@ export default function EditSurface(props) {
     const a = selection();
     const d = doc();
     if (!a || a.kind !== 'diagram' || !d) return;
-    const ops = [{ op: 'set_field', span: a.span, field: 'layout', expr: ':free' }];
-    let skipped = 0;
-    for (const g of a.el.querySelectorAll('[data-wcl-shape]')) {
-      // Top-level children only: a container's nested shapes keep their
-      // container-local layout.
-      const parentAnchor = g.parentElement?.closest?.('[data-wcl-span][data-wcl-file]');
-      if (parentAnchor !== a.el) continue;
+    const children = [];
+    // Top-level children only: a container's nested shapes keep their
+    // container-local layout.
+    for (const g of shapeChildren(a.el)) {
       const sa = anchorOf(d, g);
-      if (!sa || !shapeHasField(sa.kind, 'x') || !shapeHasField(sa.kind, 'y')) {
-        skipped += 1;
-        continue;
-      }
-      const t = readTranslate(g);
-      ops.push(
-        { op: 'set_field', span: sa.span, field: 'x', expr: numExpr(sa.kind, 'x', t.x) },
-        { op: 'set_field', span: sa.span, field: 'y', expr: numExpr(sa.kind, 'y', t.y) },
-      );
+      children.push({
+        kindDef: sa && kindDefOf(sa.kind),
+        span: sa?.span,
+        at: readTranslate(g),
+      });
     }
-    if (skipped) {
-      toast(`${skipped} shape(s) without x/y fields kept their defaults`, { duration: 4000 });
+    const res = shapeOps({ gesture: 'convert', span: a.span, children });
+    if (!res.ok) return showRefusal(res);
+    if (res.skipped) {
+      toast(`${res.skipped} shape(s) without x/y fields kept their defaults`, { duration: 4000 });
     }
-    commitOps(a.file, ops, { reveal: 'edited' });
+    commitOps(a.file, res.ops, { reveal: 'edited' });
   };
 
   const setDiagramLayout = (mode) => {
@@ -521,24 +550,55 @@ export default function EditSurface(props) {
     placeVisGutters(d, {
       merged: props.gutter?.merged ?? false,
       currentSite: props.gutter?.currentSite,
-      onProfile: (a) =>
-        setPopover({ type: 'visibility', anchor: a, surface: surfaceHandle }),
+      onProfile: (a) => openVisibility(a),
       onReorder: reorderLocal,
       enabled: () => !busy(),
     });
   };
 
-  // How the visibility editor applies its change to THIS surface in place
-  // (merged-ness decides restamp vs remove; redecorate refreshes ghosts
-  // and button tints).
-  const surfaceHandle = {
-    doc,
-    merged: () => props.gutter?.merged ?? false,
-    currentSite: () => props.gutter?.currentSite ?? props.site,
-    redecorate: decorate,
+  /** Open the visibility editor on `anchor`, telling it how to apply what
+      it decides. The editor returns the ops it wants; the surface applies
+      them, so DOM mutation stays on the side that owns the DOM. */
+  const openVisibility = (anchor) =>
+    setPopover({ type: 'visibility', anchor, apply: applyVisibility });
+
+  /** Commit the visibility editor's ops IN PLACE on this surface: restamp
+      (merged builds) or remove (hidden in the shown view), no rebuild and
+      no iframe reload. Un-hiding a block absent from a non-merged DOM
+      can't be shown without a render, so that one case reports `false` and
+      falls back to the full loop. */
+  const applyVisibility = ({ anchor, ops, except, wasExcept, etag }) => {
+    const onApplied = (res) => {
+      const d = doc();
+      if (!d) return true;
+      const merged = props.gutter?.merged ?? false;
+      const site = props.gutter?.currentSite ?? props.site;
+      const els = anchorEls(d, anchor.file, anchor.span);
+      const hidesHere = !merged && site && except.includes(site);
+      const unhidesHere = !merged && site && wasExcept.includes(site) && !except.includes(site);
+      if (unhidesHere && els.length === 0) return false;
+      patchAnchors(d, anchor.file, res.span_map ?? []);
+      for (const el of els) {
+        if (hidesHere) el.remove();
+        else restampExcept(el, except);
+      }
+      if (hidesHere) {
+        const sel = selection();
+        if (sel && sel.file === anchor.file && sel.span.start === anchor.span.start) {
+          setSelection(null);
+        }
+      }
+      decorate();
+      return true;
+    };
+    return commitOpsLocal(anchor.file, ops, {
+      etag,
+      surface: props.preview?.id ?? null,
+      onApplied,
+    });
   };
 
-  const spanOfEl = (e) => parseSpanAttr(e.getAttribute('data-wcl-span')) ?? { start: 0, end: 0 };
+  const spanOfEl = (e) => spanOf(e) ?? { start: 0, end: 0 };
 
   /** Gutter drag → in-place move + local commit; anchors patched from the
       response's span_map, so no rebuild or reload. The `move_to` op is
@@ -554,7 +614,7 @@ export default function EditSurface(props) {
       ? { before: spanOfEl(sameFile[dropIdx]) }
       : { after: spanOfEl(sameFile[sameFile.length - 1]) };
     const ops = [{ op: 'move_to', span, ...target }];
-    if (!d || elsBySpan(d, file, span).length > 1) {
+    if (!d || anchorEls(d, file, span).length > 1) {
       commitOps(file, ops, { reveal: 'edited' });
       return;
     }
@@ -564,9 +624,10 @@ export default function EditSurface(props) {
     const revert = moveDomBlock(el, ref);
     decorate();
     commitOpsLocal(file, ops, {
+      surface: props.preview?.id ?? null,
       onApplied(res) {
         patchAnchors(d, file, res.span_map ?? []);
-        setCurrentPage(pageInfo(d));
+        notePage(d);
         decorate();
       },
     }).then((res) => {
@@ -588,7 +649,7 @@ export default function EditSurface(props) {
     setSessionRegion(null);
     setEditingSession(null);
     setSelection(null);
-    setCurrentPage(pageInfo(d));
+    notePage(d);
     loadPalette();
     const select = (anchor) => {
       setSelection(anchor);
@@ -609,8 +670,7 @@ export default function EditSurface(props) {
       onMove: shapeMove,
       onResize: shapeResize,
       onConnect: shapeConnect,
-      acceptsChildren: (kind) =>
-        palette()?.diagram_kinds?.find((k) => k.kind === kind)?.accepts_children === true,
+      acceptsChildren,
       onRelocate: shapeRelocate,
     });
     // Re-anchor after a commit rebuild.
@@ -633,8 +693,8 @@ export default function EditSurface(props) {
 
   // Rebuild → reload in place (scroll survives); new href → src swap.
   createEffect(() => {
-    const seq = props.reloadSeq();
-    const href = props.src();
+    const seq = reloadSeq();
+    const href = src();
     if (seq === lastSeq) return;
     lastSeq = seq;
     if (href === lastHref) iframe?.contentWindow?.location.reload();
@@ -730,10 +790,11 @@ export default function EditSurface(props) {
     const revert = dir === 'up' ? moveDomBlock(a.el, sib) : moveDomBlock(sib, a.el);
     decorate();
     commitOpsLocal(a.file, ops, {
+      surface: props.preview?.id ?? null,
       onApplied(res) {
         patchAnchors(d, a.file, res.span_map ?? []);
         setSelection({ ...a, span: mappedSpan(res.span_map ?? [], a.span) ?? a.span });
-        setCurrentPage(pageInfo(d));
+        notePage(d);
         decorate();
       },
     }).then((res) => {
@@ -775,8 +836,7 @@ export default function EditSurface(props) {
     if (!src.ok) return toast(src.error, { tone: 'danger', duration: 5000 });
     let ops = null;
     if (indent) {
-      let prev = a.el.previousElementSibling;
-      while (prev && prev.getAttribute('data-wcl-kind') !== 'li') prev = prev.previousElementSibling;
+      const prev = prevSiblingOfKind(a.el, 'li');
       const prevAnchor = prev && anchorOf(d, prev);
       if (!prevAnchor) return toast('No previous item to nest under', { duration: 3000 });
       ops = [
@@ -784,7 +844,7 @@ export default function EditSurface(props) {
         { op: 'delete', span: a.span },
       ];
     } else {
-      const parentLi = a.el.parentElement?.closest?.('[data-wcl-kind="li"]');
+      const parentLi = closestOfKind(a.el.parentElement, 'li');
       const parentAnchor = parentLi && anchorOf(d, parentLi);
       if (!parentAnchor) return toast('Already at the top level', { duration: 3000 });
       ops = [
@@ -808,10 +868,10 @@ export default function EditSurface(props) {
   return (
     <div class="ed-design-canvas" ref={wrapper}>
       <Show
-        when={props.src()}
+        when={src()}
         fallback={props.fallback ?? <div class="ed-empty">Building the design canvas…</div>}
       >
-        <iframe ref={iframe} src={props.src()} title="design canvas" onLoad={onFrameLoad} />
+        <iframe ref={iframe} src={src()} title="design canvas" onLoad={onFrameLoad} />
       </Show>
 
       <Show when={toolbarPos() && !busy()}>
@@ -850,7 +910,7 @@ export default function EditSurface(props) {
                     }
                     onChange={(k) => k !== (selection()?.layout ?? 'free') && setDiagramLayout(k)}
                   />
-                  <Show when={!MANUAL_LAYOUTS.includes(selection()?.layout ?? 'free')}>
+                  <Show when={!isManualLayout(selection()?.layout)}>
                     <IconButton
                       icon={Hand}
                       label="Convert to manual layout (keep positions)"
@@ -897,13 +957,7 @@ export default function EditSurface(props) {
                   <IconButton
                     icon={Eye}
                     label="Views (visibility)"
-                    onClick={() =>
-                      setPopover({
-                        type: 'visibility',
-                        anchor: selection(),
-                        surface: surfaceHandle,
-                      })
-                    }
+                    onClick={() => openVisibility(selection())}
                   />
                 </Show>
                 <IconButton

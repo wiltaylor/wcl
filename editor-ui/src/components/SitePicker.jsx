@@ -6,8 +6,13 @@
    / skill) are views of the same model, so picking it needs a second control
    to say which view to preview — otherwise `activeView()` falls back to the
    first non-skill view and the course/deck are unreachable outside Design
-   mode. Switching either control rebuilds, since both change the build
-   target. */
+   mode. Switching either control retargets the main preview. A view switch
+   also builds: the picker is a topbar control, so it is reachable in Code
+   mode, where no surface auto-builds and picking a view would otherwise
+   leave the pane on "Press Rebuild". Picking another SITE deliberately does
+   not — a site can be a whole book, and Code mode's builds are the author's
+   to ask for; the empty pane says so rather than leaving the previous
+   site's pages under the new site's label. */
 
 import { RefreshCw } from 'lucide-solid';
 import { IconButton, Select } from '@forge/ui';
@@ -18,13 +23,13 @@ import {
   flatSites,
   loadSites,
   nodeKey,
-  rebuild,
   selectSite,
   selectView,
   selected,
   siteTree,
   viewLabel,
 } from '../state/sites';
+import { mainPreview } from '../state/preview';
 
 const INDENT = '  '; // NBSP — plain spaces collapse when rendered
 
@@ -59,9 +64,11 @@ export default function SitePicker() {
         <Select
           options={viewOptions()}
           value={activeView()?.id}
-          onChange={async (id) => {
+          onChange={(id) => {
             selectView(id);
-            await rebuild();
+            // In Design mode the canvas's own effect is already on it; the
+            // in-flight guard makes the two one build.
+            mainPreview.build();
           }}
         />
       </Show>

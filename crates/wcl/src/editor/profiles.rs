@@ -23,8 +23,9 @@ use axum::response::Response;
 use wcl_lang::ast::{Expr, Item};
 use wcl_lang::{edit as ast_edit, format as wcl_format, parse_for_edit};
 
-use super::{EditorState, run_blocking};
-use crate::serve::{json_error, parse_json_body, sandboxed};
+use super::preview::Sessions;
+use super::{EditorState, Workspace, run_blocking};
+use crate::serve::{json_error, parse_json_body};
 
 /// The scaffold's directory name for an artifact kind (`wdoc/<dir>/`,
 /// `data/<dir>/`, `schema/<dir>.wcl`).
@@ -47,26 +48,35 @@ pub(super) async fn handle_profile(
         Err(e) => return json_error(StatusCode::BAD_REQUEST, &e),
     };
     let state2 = Arc::clone(&state);
-    run_blocking(move || profile(&state2, &v)).await
+    run_blocking(move || profile(&state2.ws, &state2.sessions, &v)).await
 }
 
-fn profile(state: &EditorState, v: &serde_json::Value) -> Result<serde_json::Value, String> {
+fn profile(
+    ws: &Workspace,
+    previews: &Sessions,
+    v: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
     let registry = crate::edit::str_field(v, "registry")?;
-    let registry_abs = sandboxed(&state.root_dir, &state.root_dir.join(registry))
-        .ok_or_else(|| format!("file outside the served tree: {registry}"))?;
+    let registry_abs = ws.abs(registry)?;
     let kind = crate::edit::str_field(v, "kind")?;
-    if !super::blocks::is_identifier(kind) {
+    if !super::util::is_identifier(kind) {
         return Err(format!("`{kind}` is not an artifact kind"));
     }
     let enable = v
         .get("enable")
         .and_then(serde_json::Value::as_bool)
         .ok_or("missing `enable`")?;
-    if enable {
+    let result = if enable {
         enable_profile(&registry_abs, kind)
     } else {
         disable_profile(&registry_abs, kind)
+    };
+    if result.is_ok() {
+        // Projection files were written or deleted: every built preview is
+        // behind the disk.
+        previews.invalidate();
     }
+    result
 }
 
 /// The registry's `artifact` blocks of one kind: `(span, entry path)`.
@@ -175,7 +185,7 @@ fn enable_profile(registry_abs: &Path, kind: &str) -> Result<serde_json::Value, 
     };
     let mut answers = BTreeMap::new();
     if let Some(t) = topic {
-        if let Some(id) = super::blocks::ast_label(t) {
+        if let Some(id) = super::util::ast_label(t) {
             answers.insert("topic_id".to_string(), id);
         }
         if let Some(n) = field(t, "name") {
@@ -290,4 +300,74 @@ fn enable_profile(registry_abs: &Path, kind: &str) -> Result<serde_json::Value, 
         .collect();
     crate::edit::commit(registry_abs, changes)?;
     Ok(serde_json::json!({ "ok": true, "written": written }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::testsupport::workspace_built_by;
+
+    /// Profile toggles on a real template-scaffolded wskill: disable
+    /// removes the artifact + projection folder; enable scaffolds them
+    /// back (files, aggregator imports, artifact block) and the document
+    /// still validates.
+    #[test]
+    fn disable_then_enable() {
+        // Scaffold a full wskill (with the presentation view) from the
+        // built-in template.
+        let (_td, ws) = workspace_built_by(|root| {
+            let answers = std::collections::BTreeMap::from([
+                ("topic_id".to_string(), "demo".to_string()),
+                ("topic_name".to_string(), "Demo".to_string()),
+                ("include_presentation".to_string(), "yes".to_string()),
+                ("include_training".to_string(), "no".to_string()),
+            ]);
+            let (files, folders) =
+                crate::scaffold::evaluate_template_tree("wskill", answers).unwrap();
+            for dir in &folders {
+                std::fs::create_dir_all(root.join(dir)).unwrap();
+            }
+            for (rel, content) in &files {
+                // The scaffold with training off still emits only wanted files.
+                let p = root.join(rel);
+                std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+                std::fs::write(p, content).unwrap();
+            }
+            assert!(root.join("wdoc/presentation/main.wcl").is_file());
+        });
+        let root = ws.root_dir().to_path_buf();
+        let previews = Sessions::default();
+        let toggle = |kind: &str, enable: bool| {
+            profile(
+                &ws,
+                &previews,
+                &serde_json::json!({
+                    "registry": "wskill.wcl", "kind": kind, "enable": enable,
+                }),
+            )
+        };
+
+        // Disable the presentation profile.
+        toggle("presentation", false).expect("disable");
+        let reg = std::fs::read_to_string(root.join("wskill.wcl")).unwrap();
+        assert!(!reg.contains(":presentation"), "{reg}");
+        assert!(!root.join("wdoc/presentation").exists());
+        // The book view is untouched.
+        assert!(root.join("wdoc/book/main.wcl").is_file());
+        assert!(reg.contains(":book"));
+
+        // Re-enable it: files + artifact come back, doc still validates.
+        toggle("presentation", true).expect("enable");
+        let reg = std::fs::read_to_string(root.join("wskill.wcl")).unwrap();
+        assert!(reg.contains(":presentation"), "{reg}");
+        assert!(root.join("wdoc/presentation/main.wcl").is_file());
+        // Validating open of the registry succeeds (commit already gated
+        // this; double-check directly).
+        let doc = wcl_wdoc::open_doc_for_edit(&root.join("wskill.wcl")).unwrap();
+        assert!(doc.schema_errors().is_empty());
+        // Idempotence guards.
+        let e = toggle("presentation", true).unwrap_err();
+        assert!(e.contains("already exists"), "{e}");
+        assert!(toggle("training", false).is_err());
+    }
 }

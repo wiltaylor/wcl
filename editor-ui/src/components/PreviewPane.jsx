@@ -11,16 +11,8 @@ import { Progress, toast } from '@forge/ui';
 import { api } from '../api';
 import { active, dirtyFiles, openFile } from '../state/buffers';
 import { revealSpan } from '../state/views';
-import {
-  activeEntry,
-  buildError,
-  buildMode,
-  buildSeq,
-  building,
-  previewHref,
-  selected,
-  setPreviewPage,
-} from '../state/sites';
+import { activeEntry, selected } from '../state/sites';
+import { mainPreview, setCurrentPage } from '../state/preview';
 import {
   allComments,
   commentPage,
@@ -34,7 +26,8 @@ import {
   startReviewPoll,
 } from '../state/comments';
 import { CommentMenu, CommentOverlays } from './CommentPanel';
-import { installEditButtons, injectCss, pageInfo, placePins } from '../preview/frame';
+import { pageInfo } from '../preview/anchors';
+import { installEditButtons, injectCss, placePins } from '../preview/frame';
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp)$/i;
 
@@ -85,16 +78,16 @@ export default function PreviewPane() {
     setPicking(false);
     installEditButtons(iframe?.contentDocument, onEditObject, () => !picking());
     refreshFrame();
-    // The page now shown is the manual Rebuild's target (null on non-wdoc
+    // The page now shown is the next rebuild's target (null on non-wdoc
     // pages like a multi-site chooser — the server then does a full build).
-    setPreviewPage(pageInfo(iframe?.contentDocument)?.name ?? null);
+    setCurrentPage(pageInfo(iframe?.contentDocument));
   };
 
   // A finished rebuild with an unchanged href reloads the iframe in place
   // so scroll position survives; a new href swaps the src.
   createEffect(() => {
-    const seq = buildSeq();
-    const href = previewHref();
+    const seq = mainPreview.reloadSeq();
+    const href = mainPreview.src();
     if (seq === lastSeq) return;
     lastSeq = seq;
     if (href === lastHref) {
@@ -135,24 +128,24 @@ export default function PreviewPane() {
       >
         <div class="ed-preview-note">
           <span>{selected() ? selected().label : 'no site selected'}</span>
-          <Show when={building()}>
+          <Show when={mainPreview.building()}>
             <span>building…</span>
           </Show>
-          <Show when={!building() && buildMode()}>
-            <span>{buildMode() === 'targeted' ? 'page build' : 'full build'}</span>
+          <Show when={!mainPreview.building() && mainPreview.mode()}>
+            <span>{mainPreview.mode() === 'targeted' ? 'page build' : 'full build'}</span>
           </Show>
-          <Show when={buildError()}>
-            <span class="err">{buildError()}</span>
+          <Show when={mainPreview.error()}>
+            <span class="err">{mainPreview.error()}</span>
           </Show>
           <span class="spacer" />
           <CommentMenu iframe={() => iframe} />
         </div>
-        <Show when={building()}>
+        <Show when={mainPreview.building()}>
           <Progress indeterminate />
         </Show>
         <CommentOverlays iframe={() => iframe} />
         <Show
-          when={previewHref()}
+          when={mainPreview.src()}
           fallback={
             <div class="ed-empty">
               {selected()
@@ -161,7 +154,7 @@ export default function PreviewPane() {
             </div>
           }
         >
-          <iframe ref={iframe} src={previewHref()} title="wdoc preview" onLoad={onFrameLoad} />
+          <iframe ref={iframe} src={mainPreview.src()} title="wdoc preview" onLoad={onFrameLoad} />
         </Show>
       </Show>
     </div>

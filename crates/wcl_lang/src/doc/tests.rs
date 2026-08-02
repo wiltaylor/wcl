@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::ArithmeticFault;
 
 fn open(src: &str) -> Document {
     // The strict-validation default rejects any top-level field
@@ -1098,6 +1099,99 @@ fn eval_arithmetic_precedence() {
 fn eval_unary_neg_and_paren() {
     let doc = open_with_builtins("x = -(1 + 2)");
     assert_eq!(doc.field("x").unwrap().value().unwrap(), &Value::I64(-3));
+}
+
+/// Integer `/` and `%` by zero are a diagnostic carrying the operator's
+/// span, not a Rust panic — every host that evaluates a field (CLI, LSP,
+/// the editor's commit pipeline, wdoc builds) inherits this path.
+#[test]
+fn eval_integer_division_by_zero_errors() {
+    for src in ["x = 4 / 0", "x = 4 % 0", "x = 4u8 / 0u8", "x = 4u8 % 0u8"] {
+        let doc = open_with_builtins(src);
+        let err = doc.field("x").unwrap().value().unwrap_err();
+        let EvalError::Arithmetic { fault, .. } = &err else {
+            panic!("expected Arithmetic for `{src}`, got {err:?}");
+        };
+        assert_eq!(*fault, ArithmeticFault::DivideByZero, "{src}");
+    }
+}
+
+/// The diagnostic points at the operation, not at the whole field: the
+/// span is the failing binary expression's, so `miette` underlines the
+/// inner `4 / 0` of `1 + 4 / 0` and a host can seek straight to it.
+#[test]
+fn eval_arithmetic_error_span_covers_the_failing_expression() {
+    // Spans index the source the document was opened over, wrap included.
+    let src = laxify_for_tests("x = 1 + 4 / 0");
+    let doc = open_with_builtins("x = 1 + 4 / 0");
+    let err = doc.field("x").unwrap().value().unwrap_err();
+    let EvalError::Arithmetic { span, .. } = &err else {
+        panic!("expected Arithmetic, got {err:?}");
+    };
+    let start = span.offset();
+    assert_eq!(&src[start..start + span.len()], "4 / 0");
+}
+
+/// Float division keeps IEEE semantics — `inf` / `NaN`, never an error.
+#[test]
+fn eval_float_division_by_zero_is_infinite() {
+    let doc = open_with_builtins("x = 4.0 / 0.0");
+    let Value::F64(v) = doc.field("x").unwrap().value().unwrap() else {
+        panic!("expected f64");
+    };
+    assert!(v.is_infinite(), "{v}");
+}
+
+/// Same-typed integer arithmetic wraps in release and panics in debug;
+/// both are wrong for a config language, so overflow is a diagnostic too.
+#[test]
+fn eval_integer_overflow_errors() {
+    for (src, ty) in [
+        ("x = 127i8 + 1i8", "i8"),
+        ("x = -128i8 - 1i8", "i8"),
+        ("x = 127i8 * 2i8", "i8"),
+        ("x = 255u8 + 1u8", "u8"),
+    ] {
+        let doc = open_with_builtins(src);
+        let err = doc.field("x").unwrap().value().unwrap_err();
+        let EvalError::Arithmetic { fault, .. } = &err else {
+            panic!("expected Arithmetic for `{src}`, got {err:?}");
+        };
+        assert_eq!(*fault, ArithmeticFault::overflow(ty), "{src}");
+    }
+}
+
+/// `-i8::MIN` has no answer in `i8`; the same guard covers unary negation.
+#[test]
+fn eval_unary_neg_overflow_errors() {
+    let doc = open_with_builtins("low = -128i8\nx = -low");
+    let err = doc.field("x").unwrap().value().unwrap_err();
+    let EvalError::Arithmetic { fault, .. } = &err else {
+        panic!("expected Arithmetic, got {err:?}");
+    };
+    assert_eq!(*fault, ArithmeticFault::overflow("i8"));
+}
+
+/// `MIN % -1` is `0`, even though the matching division overflows —
+/// `checked_rem` reports it as an overflow, and `%` must not repeat that.
+/// `MIN / -1` really has no answer, so it stays an error.
+#[test]
+fn eval_min_rem_negative_one_is_zero_but_div_overflows() {
+    let doc = open_with_builtins("low = -128i8\nr = low % -1i8\nd = low / -1i8");
+    assert_eq!(doc.field("r").unwrap().value().unwrap(), &Value::I8(0));
+    let err = doc.field("d").unwrap().value().unwrap_err();
+    let EvalError::Arithmetic { fault, .. } = &err else {
+        panic!("expected Arithmetic, got {err:?}");
+    };
+    assert_eq!(*fault, ArithmeticFault::overflow("i8"));
+}
+
+/// An arithmetic fault is an ordinary evaluation error, so `try`/`catch`
+/// recovers from it like any other.
+#[test]
+fn eval_division_by_zero_is_catchable() {
+    let doc = open_with_builtins("x = try 4 / 0 catch e { 99 }");
+    assert_eq!(doc.field("x").unwrap().value().unwrap(), &Value::I64(99));
 }
 
 #[test]

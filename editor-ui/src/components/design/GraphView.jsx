@@ -36,10 +36,10 @@ import {
 } from '@forge/ui';
 
 import { api } from '../../api';
-import { builtPageExists } from '../../preview/manifest';
-import { dirtyFiles, openFile } from '../../state/buffers';
+import { openFile } from '../../state/buffers';
 import { revealSpan } from '../../state/views';
-import { activeEntry, activeView, rebuild, selectView, selected } from '../../state/sites';
+import { activeEntry, activeView, selectView, selected } from '../../state/sites';
+import { targetHasPage } from '../../state/preview';
 import {
   busy,
   commitNavOpQuiet,
@@ -614,13 +614,8 @@ export default function GraphView() {
 
   const focused = () => (focus() ? node(focus()) : null);
 
-  /** Does `view`'s built site contain `page`? Builds the view (targeted;
-      warm dirs are cheap, an unknown page falls back to a full build) and
-      reads its manifest — the content modal's hasPage pattern. */
-  const viewHasPage = async (view, page) => {
-    const res = await api.preview(view.entry, view.site, dirtyFiles(), { pages: [page] });
-    return res.ok && builtPageExists(res.href, page);
-  };
+  const viewHasPage = (view, page) =>
+    targetHasPage({ entry: view.entry, site: view.site, page });
 
   const [openingPage, setOpeningPage] = createSignal(false);
   /** Open the unit's page in the canvas. The page may exist only in
@@ -639,10 +634,10 @@ export default function GraphView() {
       for (const v of ordered) {
         if (!(await viewHasPage(v, page))) continue;
         if (v.id !== act?.id) {
+          // Retargets the main preview; the canvas builds the new view and
+          // the pending goto performs itself once its href lands.
           selectView(v.id);
           setDesignTab('canvas');
-          // The pending goto must wait for the new view's base href.
-          await rebuild();
           loadNav();
           loadPalette();
         } else {

@@ -2,10 +2,23 @@ import { describe, expect, it } from 'vitest';
 
 import { SURFACES, attachedSurfaces, attachedUnits, surfaceOf, usageLine } from './surfaces';
 
-const cliNode = { kind: 'cli_command', id: 'parse', cells: {} };
-const apiNode = { kind: 'code_item', id: 'http', cells: { kind: { text: ':api' } } };
-const dbNode = { kind: 'code_item', id: 'schema', cells: { kind: { text: ':db_schema' } } };
-const screenNode = { kind: 'screen', id: 'login', cells: {} };
+/** A block's cells as every endpoint serves them: positional labels, named
+    fields. Symbol values are bare — the colon is syntax. */
+const cells = (fields = {}) => ({
+  labels: [],
+  fields: Object.fromEntries(
+    Object.entries(fields).map(([k, v]) => [
+      k,
+      typeof v === 'object' ? v : { state: 'text', text: v },
+    ]),
+  ),
+});
+const sym = (name) => ({ state: 'symbol', text: name });
+
+const cliNode = { kind: 'cli_command', id: 'parse', cells: cells() };
+const apiNode = { kind: 'code_item', id: 'http', cells: cells({ kind: sym('api') }) };
+const dbNode = { kind: 'code_item', id: 'schema', cells: cells({ kind: sym('db_schema') }) };
+const screenNode = { kind: 'screen', id: 'login', cells: cells() };
 
 describe('surfaceOf', () => {
   it('matches the curated kinds', () => {
@@ -13,20 +26,19 @@ describe('surfaceOf', () => {
     expect(surfaceOf(screenNode)?.id).toBe('screen');
   });
 
-  it('gates code_item on its kind cell (bare or symbol form)', () => {
+  it('gates code_item on its kind cell', () => {
     expect(surfaceOf(apiNode)?.id).toBe('api');
-    expect(surfaceOf({ ...apiNode, cells: { kind: { text: 'api' } } })?.id).toBe('api');
     expect(surfaceOf(dbNode)).toBeNull();
   });
 
   it('leaves other kinds to the generic forms', () => {
-    expect(surfaceOf({ kind: 'adr', cells: {} })).toBeNull();
+    expect(surfaceOf({ kind: 'adr', cells: cells() })).toBeNull();
     expect(surfaceOf(null)).toBeNull();
   });
 });
 
 describe('attachedUnits / attachedSurfaces', () => {
-  const component = { kind: 'component', id: 'cli_core', cells: {} };
+  const component = { kind: 'component', id: 'cli_core', cells: cells() };
   const model = {
     nodes: [
       component,
@@ -34,7 +46,7 @@ describe('attachedUnits / attachedSurfaces', () => {
       {
         kind: 'cli_command',
         id: 'check',
-        cells: {},
+        cells: cells(),
         parents: [{ field: 'component', kind: 'component', id: 'other' }],
       },
       { ...apiNode, parents: [{ field: 'component', kind: 'component', id: 'cli_core' }] },
@@ -52,26 +64,26 @@ describe('attachedUnits / attachedSurfaces', () => {
   });
 
   it('follows containment transitively — a container aggregates its components commands', () => {
-    const container = { kind: 'container', id: 'cli_bin', cells: {} };
+    const container = { kind: 'container', id: 'cli_bin', cells: cells() };
     const deep = {
       nodes: [
         container,
         {
           kind: 'component',
           id: 'cli_commands',
-          cells: {},
+          cells: cells(),
           parents: [{ field: 'container', kind: 'container', id: 'cli_bin' }],
         },
         {
           kind: 'cli_command',
           id: 'parse',
-          cells: {},
+          cells: cells(),
           parents: [{ field: 'component', kind: 'component', id: 'cli_commands' }],
         },
         {
           kind: 'cli_command',
           id: 'other',
-          cells: {},
+          cells: cells(),
           parents: [{ field: 'component', kind: 'component', id: 'elsewhere' }],
         },
       ],
@@ -82,10 +94,10 @@ describe('attachedUnits / attachedSurfaces', () => {
   });
 
   it('offers the surface tab on a kind-marked host even with nothing attached', () => {
-    const cliComp = { kind: 'component', id: 'cmds', cells: { kind: { text: ':cli' } } };
-    const tuiComp = { kind: 'component', id: 'console', cells: { kind: { text: ':tui' } } };
-    const apiComp = { kind: 'component', id: 'httpd', cells: { kind: { text: ':web_api' } } };
-    const plain = { kind: 'component', id: 'lexer', cells: { kind: { text: ':module' } } };
+    const cliComp = { kind: 'component', id: 'cmds', cells: cells({ kind: sym('cli') }) };
+    const tuiComp = { kind: 'component', id: 'console', cells: cells({ kind: sym('tui') }) };
+    const apiComp = { kind: 'component', id: 'httpd', cells: cells({ kind: sym('web_api') }) };
+    const plain = { kind: 'component', id: 'lexer', cells: cells({ kind: sym('module') }) };
     const m = { nodes: [cliComp, tuiComp, apiComp, plain] };
     expect(attachedSurfaces(cliComp, m).map((x) => x.surface.id)).toEqual(['cli']);
     expect(attachedSurfaces(tuiComp, m).map((x) => x.surface.id)).toEqual(['screen']);
@@ -94,12 +106,12 @@ describe('attachedUnits / attachedSurfaces', () => {
   });
 
   it('survives containment cycles', () => {
-    const a = { kind: 'component', id: 'a', cells: {}, parents: [{ field: 'parent', kind: 'component', id: 'b' }] };
-    const b = { kind: 'component', id: 'b', cells: {}, parents: [{ field: 'parent', kind: 'component', id: 'a' }] };
+    const a = { kind: 'component', id: 'a', cells: cells(), parents: [{ field: 'parent', kind: 'component', id: 'b' }] };
+    const b = { kind: 'component', id: 'b', cells: cells(), parents: [{ field: 'parent', kind: 'component', id: 'a' }] };
     const cmd = {
       kind: 'cli_command',
       id: 'run',
-      cells: {},
+      cells: cells(),
       parents: [{ field: 'component', kind: 'component', id: 'b' }],
     };
     const cli = SURFACES.find((s) => s.id === 'cli');
@@ -121,20 +133,23 @@ describe('usageLine', () => {
   it('renders name, bracketed args and flags', () => {
     const detail = {
       id: 'parse',
-      cells: { name: { text: 'wcl parse' } },
+      cells: cells({ name: 'wcl parse' }),
       children: [
         {
           kind: 'cli_arg',
           items: [
-            { label: 'file', cells: { name: { text: '<file>' } } },
-            { label: 'tpl', cells: { name: { text: 'template' }, required: { text: 'false' } } },
+            { label: 'file', cells: cells({ name: '<file>' }) },
+            {
+              label: 'tpl',
+              cells: cells({ name: 'template', required: { state: 'bool', text: 'false' } }),
+            },
           ],
         },
         {
           kind: 'cli_flag',
           items: [
-            { label: 'out', cells: { name: { text: '--out' }, value: { text: '<dir>' } } },
-            { label: 'quiet', cells: { name: { text: '-q' } } },
+            { label: 'out', cells: cells({ name: '--out', value: '<dir>' }) },
+            { label: 'quiet', cells: cells({ name: '-q' }) },
           ],
         },
       ],
@@ -143,6 +158,6 @@ describe('usageLine', () => {
   });
 
   it('falls back to the id with no children', () => {
-    expect(usageLine({ id: 'parse', cells: {}, children: [] })).toBe('parse');
+    expect(usageLine({ id: 'parse', cells: cells(), children: [] })).toBe('parse');
   });
 });

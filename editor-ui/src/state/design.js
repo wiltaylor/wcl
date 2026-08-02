@@ -15,8 +15,10 @@ import { createSignal } from 'solid-js';
 
 import { api } from '../api';
 import { applyDiskUpdate, buffers, buffer, openFile, saveBuffer } from './buffers';
+import { emitCommit } from './commits';
 import { reloadGraph } from './graph';
-import { activeEntry, activeSite, rebuild, selected } from './sites';
+import { currentPage, mainPreview } from './preview';
+import { activeEntry, activeSite } from './sites';
 import { treeData } from './tree';
 import { revealSpan } from './views';
 import { toast } from '@forge/ui';
@@ -30,8 +32,6 @@ const [selection, setSelection] = createSignal(null);
 const [busy, setBusy] = createSignal(false);
 /** An active text session exists (the toolbar shows marker buttons). */
 const [editingSession, setEditingSession] = createSignal(null);
-/** The page currently shown in the canvas: { name, file } | null. */
-const [currentPage, setCurrentPage] = createSignal(null);
 /** Re-anchor instruction applied on the next frame load:
     { file, span, edit?: {kind, region} } */
 const [pendingReveal, setPendingReveal] = createSignal(null);
@@ -43,9 +43,6 @@ const [gotoPage, setGotoPage] = createSignal(null);
 /** Which design surface shows: the WYSIWYG canvas, the wskill unit graph,
     or a WAD's systems model. */
 const [designTab, setDesignTab] = createSignal('canvas'); // 'canvas' | 'graph' | 'systems'
-/** Graph-mode commits skip the iframe rebuild; the canvas rebuilds on
-    return when this is set. */
-const [canvasStale, setCanvasStale] = createSignal(false);
 
 export {
   mode,
@@ -57,8 +54,6 @@ export {
   setBusy,
   editingSession,
   setEditingSession,
-  currentPage,
-  setCurrentPage,
   pendingReveal,
   setPendingReveal,
   popover,
@@ -67,8 +62,6 @@ export {
   setGotoPage,
   designTab,
   setDesignTab,
-  canvasStale,
-  setCanvasStale,
 };
 
 /** The shared scaffolding of every commit: the entry + busy gate, the
@@ -113,25 +106,16 @@ const unitCreateCall = (unit, pin) => (entry) =>
     ...(pin ? { pin } : {}),
   });
 
-/** A commit without the canvas rebuild loop — the graph view's write path
-    (it refetches its own data; the canvas rebuilds when shown again). */
+/** A commit without any surface rebuild — the graph view's write path (it
+    refetches its own data; every preview rebuilds when shown again). */
 export async function commitOpsQuiet(file, ops, opts = {}) {
   const res = await runCommit(blockOpsCall(file, ops, opts), {
     guardFile: file,
     sync: true,
     release: true,
   });
-  if (res.ok) setCanvasStale(true);
+  if (res.ok) emitCommit({ surface: null });
   return res;
-}
-
-/** Listeners for in-place commits (`commitOpsLocal`) — the content modal
-    subscribes to mark its cached per-view builds stale without rebuilding
-    the surface the commit just patched. */
-const localCommitListeners = new Set();
-export function onLocalCommit(fn) {
-  localCommitListeners.add(fn);
-  return () => localCommitListeners.delete(fn);
 }
 
 /** A commit applied IN PLACE — no preview rebuild, no iframe reload. The
@@ -139,9 +123,12 @@ export function onLocalCommit(fn) {
     element, restamp visibility) and patches the stale anchors from the
     response's `span_map`; returning `false` means the change can't be
     represented in place (e.g. un-hiding a block absent from this view's
-    DOM) and the normal rebuild tail runs instead. Everything else — the
-    graph payload, the canvas behind a modal, the other view tabs — is
-    marked stale and refreshes lazily. */
+    DOM) and the normal rebuild tail runs instead.
+
+    `opts.surface` is the preview whose mounted page was patched: it is the
+    one thing on screen that already matches disk, so the commit event
+    exempts it and marks everything else — the graph payload, the canvas
+    behind a modal, the other view tabs — stale. */
 export async function commitOpsLocal(file, ops, opts = {}) {
   const res = await runCommit(blockOpsCall(file, ops, opts), { guardFile: file, sync: true });
   if (!res.ok) return res;
@@ -154,36 +141,33 @@ export async function commitOpsLocal(file, ops, opts = {}) {
   }
   // The graph payload's spans shifted with the reformat.
   reloadGraph({ keepPositions: true });
-  // The canvas is stale unless it IS the patched surface (no modal open,
-  // canvas tab showing) — setting the flag there would trigger an
-  // immediate rebuild of the surface we just patched.
-  if (surfaceRebuild || designTab() !== 'canvas') setCanvasStale(true);
-  for (const fn of localCommitListeners) fn({ file: res.file });
+  // `patched`: the surface's live DOM matches, but the build behind it does
+  // not — it must rebuild before it is shown again from its URL.
+  emitCommit({ surface: opts.surface ?? null, patched: true });
   setBusy(false); // no frame load coming — release directly
   return res;
 }
 
-/** A nav op without the canvas rebuild loop — the graph-mode index panel's
-    write path (pin/unpin/reorder). The nav model refreshes so the canvas
-    NavPanel stays in sync; the caller refetches the graph itself. */
+/** A nav op without a surface rebuild — the graph-mode index panel's write
+    path (pin/unpin/reorder). The nav model refreshes so the canvas NavPanel
+    stays in sync; the caller refetches the graph itself. */
 export async function commitNavOpQuiet(payload) {
   const res = await runCommit((entry) => api.navOp({ entry, site: activeSite(), ...payload }), {
     guardFile: payload.file,
     release: true,
   });
   if (!res.ok) return res;
-  setCanvasStale(true);
+  emitCommit({ surface: null });
   loadNav();
   return res;
 }
 
-/** Unit creation without the canvas rebuild loop — the graph view's write
-    path (its caller refetches the graph; the canvas rebuilds when shown
-    again). Same payload as [`commitUnitCreate`]. */
+/** Unit creation without a surface rebuild — the graph view's write path
+    (its caller refetches the graph). Same payload as [`commitUnitCreate`]. */
 export async function commitUnitCreateQuiet(unit, pin) {
   const res = await runCommit(unitCreateCall(unit, pin), { release: true });
   if (!res.ok) return res;
-  setCanvasStale(true);
+  emitCommit({ surface: null });
   loadNav();
   return res;
 }
@@ -219,9 +203,13 @@ async function saveAllDirty(context) {
 }
 
 /** Enter Design mode: save every dirty buffer (disk-only policy), then load
-    the nav + palette models. The canvas builds on first mount. */
+    the nav + palette models. Any earlier build is invalidated because those
+    saves changed disk without a commit — the canvas needs fresh anchors, and
+    an older build's byte spans may not match any more; it rebuilds as soon
+    as it mounts. */
 export async function enterDesign() {
   if (!(await saveAllDirty('Design mode'))) return false;
+  mainPreview.invalidate();
   setMode('design');
   loadNav();
   loadPalette();
@@ -345,34 +333,54 @@ export async function commitUnitCreate(unit, pin) {
   return res;
 }
 
-/** When set, the commit tail rebuilds through this hook instead of the main
-    preview — the graph content modal registers its own targeted view build
-    while it is open, so edits made inside it refresh its iframe (and not the
-    hidden canvas). Receives { changed } and must resolve to { ok }. */
-let surfaceRebuild = null;
-export function setSurfaceRebuild(fn) {
-  surfaceRebuild = fn;
+/** The commit tail rebuilds through the innermost registered surface instead
+    of the main preview — an editable surface inside a modal registers its own
+    while it is mounted, so edits made there refresh its iframe (and not the
+    hidden canvas). A stack, not a slot: surfaces nest and unmount out of
+    order (a tab switch mounts the next before dropping the last), so each
+    registration is removed by identity.
+
+    An entry is `{ id, run({changed}) }`: `run` resolves to `{ ok }`, and `id`
+    is the preview the rebuild refreshed — the key the commit bus exempts, so
+    a surface no longer has to be named by a constant for the staleness rules
+    to find it. */
+const surfaceRebuilds = [];
+export function pushSurfaceRebuild(entry) {
+  surfaceRebuilds.push(entry);
+  return () => {
+    const i = surfaceRebuilds.indexOf(entry);
+    if (i >= 0) surfaceRebuilds.splice(i, 1);
+  };
+}
+const surfaceRebuild = () => surfaceRebuilds[surfaceRebuilds.length - 1] ?? null;
+
+/** Show a refused shape gesture's stated reason. The refusal comes back as
+    a value from `preview/shapeops.js`; every surface presents it alike. */
+export function showRefusal(res) {
+  toast(res.message, { duration: 5000 });
 }
 
-/** The shared tail of every commit: rebuild (targeted when possible — the
-    server falls back to full on structural change), refresh models, release
-    the busy gate once the iframe has reloaded (onFrameReady). */
+/** The shared tail of every commit: rebuild the surface the author is
+    looking at (targeted at its page — the server falls back to full on
+    structural change), announce the commit so every OTHER preview goes
+    stale, refresh models, and release the busy gate once the iframe has
+    reloaded (frameReady). */
 async function afterCommit({ changed, refreshNav }) {
   setSelection(null);
   setEditingSession(null);
-  const page = currentPage()?.name;
-  const res = surfaceRebuild
-    ? await surfaceRebuild({ changed: changed ?? [] })
-    : await rebuild({
-        ...(page ? { pages: [page] } : {}),
-        changed: changed ?? [],
-      });
+  // No surface mounted (a write from the graph or the systems view) means
+  // the main preview is what a rebuild refreshes.
+  const owner = surfaceRebuild() ?? { id: mainPreview.id, run: (o) => mainPreview.build(o) };
+  const res = await owner.run({ changed: changed ?? [] });
+  // A rebuild that failed leaves nothing on screen matching disk, so
+  // nothing is exempt.
+  emitCommit({ surface: res.ok ? owner.id : null });
   if (!res.ok) {
     setBusy(false);
     toast('Rebuild failed — see the preview pane', { tone: 'danger', duration: 6000 });
   }
   if (refreshNav) loadNav();
-  // busy is released by onFrameReady (the owning EditSurface) once anchors
+  // busy is released by frameReady (the owning EditSurface) once anchors
   // are fresh; a failed rebuild released it above.
 }
 

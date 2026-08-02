@@ -4,20 +4,21 @@
    merged with the instance's current values from /api/block/source, so any
    `extends SvgBlock` kind — including user-declared shapes — gets a form.
 
-   Geometry (x/y/width/height) leads, then the remaining scalar fields:
-   numbers and strings as inputs, symbol sets as selects, bools as toggles.
-   Computed (expression-valued) fields render read-only and defer to the
-   fragment editor. Save batches set_label / set_field / remove_field ops
-   into one atomic commit; Reset position/size drop the explicit fields so
-   the layout (or the kind's defaults) takes over. */
+   Geometry (x/y/width/height) leads, then the remaining scalar fields, each
+   as the shared FieldControl — so a shape's properties offer exactly what
+   the same field offers in any other panel. Save batches set_label /
+   set_field / remove_field ops into one atomic commit through the shared
+   save rule; Reset position/size drop the explicit fields so the layout (or
+   the kind's defaults) takes over. */
 
 import { For, Show, createEffect, createResource, createSignal } from 'solid-js';
 import { Braces, RotateCcw, Scaling } from 'lucide-solid';
-import { Button, Checkbox, Input, Select } from '@forge/ui';
+import { Button } from '@forge/ui';
 
 import { api } from '../../api';
 import { busy, commitOps, palette, selection, setPopover } from '../../state/design';
-import { orderFields, valueOp } from '../../preview/schemaform';
+import { draftOps, orderFields } from '../../preview/schemaform';
+import FieldControl from './FieldControl';
 
 export default function ShapePanel() {
   const anchor = () => (selection()?.shape ? selection() : null);
@@ -35,6 +36,8 @@ export default function ShapePanel() {
     setDraft({});
   });
 
+  const cells = () => (src()?.ok ? src().cells : null);
+
   /** The form rows: schema-driven when the kind is known, else generic
       rows for whatever fields the instance carries. */
   const rows = () => {
@@ -42,50 +45,16 @@ export default function ShapePanel() {
     if (!s?.ok) return [];
     const known = schema()?.fields;
     if (known) return orderFields(known);
-    return Object.keys(s.fields ?? {}).map((name) => ({ name, type: '', optional: true }));
+    return Object.keys(s.cells?.fields ?? {}).map((name) => ({ name, type: '', optional: true }));
   };
-
-  const current = (f) => {
-    if (f.name in draft()) return draft()[f.name];
-    const s = src();
-    if (!s?.ok) return '';
-    const slot =
-      f.inline_slot !== null && f.inline_slot !== undefined
-        ? s.labels?.[f.inline_slot]
-        : s.fields?.[f.name];
-    return slot?.text ?? '';
-  };
-  const stateOf = (f) => {
-    const s = src();
-    if (!s?.ok) return 'absent';
-    const slot =
-      f.inline_slot !== null && f.inline_slot !== undefined
-        ? s.labels?.[f.inline_slot]
-        : s.fields?.[f.name];
-    if (!slot) return 'absent';
-    return slot.state;
-  };
-  const editable = (f) =>
-    ['literal', 'number', 'bool', 'symbol', 'absent'].includes(stateOf(f));
 
   const save = () => {
     const a = anchor();
     const s = src();
     if (!a || !s?.ok) return;
-    const ops = [];
-    for (const f of rows()) {
-      if (!(f.name in draft())) continue;
-      const text = draft()[f.name];
-      const isSlot = f.inline_slot !== null && f.inline_slot !== undefined;
-      if (text === '' && !isSlot) {
-        // Clearing an optional field drops it (tolerant of absence).
-        if (f.optional !== false) ops.push({ op: 'remove_field', span: a.span, field: f.name });
-        continue;
-      }
-      if (text === '') continue;
-      ops.push(valueOp(a.span, f, text));
-    }
-    if (!ops.length) return;
+    const ops = draftOps(rows(), cells(), draft(), a.span);
+    // Nothing actually changed — settle the form rather than committing.
+    if (!ops.length) return setDraft({});
     commitOps(a.file, ops, { etag: s.etag, reveal: 'edited' });
   };
 
@@ -122,50 +91,13 @@ export default function ShapePanel() {
               {(f) => (
                 <label class="ed-shape-field" title={f.doc ?? undefined}>
                   <span class="ed-shape-name">{f.name}</span>
-                  <Show
-                    when={editable(f)}
-                    fallback={
-                      <Input
-                        value={stateOf(f) === 'computed' ? '(computed)' : '(list)'}
-                        disabled
-                        title="Edit as source instead"
-                      />
-                    }
-                  >
-                    <Show
-                      when={f.symbols}
-                      fallback={
-                        <Show
-                          when={(f.type ?? '').replace(/\?$/, '') === 'bool'}
-                          fallback={
-                            <Input
-                              value={current(f)}
-                              placeholder={f.default ?? (f.optional ? '(unset)' : '')}
-                              onInput={(e) =>
-                                setDraft({ ...draft(), [f.name]: e.currentTarget.value })
-                              }
-                            />
-                          }
-                        >
-                          <Checkbox
-                            checked={current(f) === 'true'}
-                            onChange={(on) =>
-                              setDraft({ ...draft(), [f.name]: on ? 'true' : 'false' })
-                            }
-                          />
-                        </Show>
-                      }
-                    >
-                      <Select
-                        options={[
-                          ...(f.optional ? [{ value: '', label: '(unset)' }] : []),
-                          ...f.symbols.map((sym) => ({ value: sym, label: `:${sym}` })),
-                        ]}
-                        value={current(f)}
-                        onChange={(v) => setDraft({ ...draft(), [f.name]: v })}
-                      />
-                    </Show>
-                  </Show>
+                  <FieldControl
+                    field={f}
+                    cells={cells()}
+                    schema={schema()}
+                    value={f.name in draft() ? draft()[f.name] : undefined}
+                    onChange={(v) => setDraft({ ...draft(), [f.name]: v })}
+                  />
                 </label>
               )}
             </For>

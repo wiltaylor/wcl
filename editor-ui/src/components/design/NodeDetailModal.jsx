@@ -34,7 +34,7 @@ import { CodeEditor } from '@forge/code';
 
 import { api } from '../../api';
 import { wclLanguage } from '../../lang/wcl';
-import { blockSnippet } from '../../preview/schemaform';
+import { blockSnippet, createValue, draftOps, slugify } from '../../preview/schemaform';
 import { openFile } from '../../state/buffers';
 import { revealSpan } from '../../state/views';
 import {
@@ -44,9 +44,10 @@ import {
   exitDesign,
 } from '../../state/design';
 import { activeEntry } from '../../state/sites';
+import { createPreview } from '../../state/preview';
 import { loadSystems, model } from '../../state/systems';
-import { SURFACES, attachedSurfaces, slugify, subtreeIds, surfaceOf } from './surfaces';
-import { FieldForm, draftOps, freshChildId } from './surfaces/fields';
+import { SURFACES, attachedSurfaces, subtreeIds, surfaceOf } from './surfaces';
+import { FieldForm, freshChildId } from './surfaces/fields';
 import ApiEditor from './surfaces/ApiEditor';
 import CliEditor from './surfaces/CliEditor';
 import ScreenEditor from './surfaces/ScreenEditor';
@@ -56,10 +57,19 @@ const EDITORS = { cli: CliEditor, api: ApiEditor, screen: ScreenEditor };
 
 export default function NodeDetailModal(props) {
   const [detail, setDetail] = createSignal(null);
+  // One preview for the modal's lifetime, handed to whichever surface
+  // editor mounts a rendered page (the screen editor). Its cache is keyed
+  // by target, so re-opening a screen shown earlier in this modal mounts
+  // it with no build and opening another one does not discard it; closing
+  // the modal takes the whole thing with it.
+  const surfacePreview = createPreview();
   const [tab, setTab] = createSignal('properties');
   const [draft, setDraft] = createSignal({});
-  /** Per-child drafts, keyed by `${family field}:${span.start}`. */
+  /** Per-child drafts. Keyed by the item's LABEL, which survives the
+      reformat every commit causes — a span-keyed draft would lose what you
+      were typing the moment you saved a sibling. */
   const [childDrafts, setChildDrafts] = createSignal({});
+  const childKey = (family, item) => `${family.field}:${item.label ?? item.span.start}`;
   const [source, setSource] = createSignal('');
   const [bodySource, setBodySource] = createSignal('');
   const [saving, setSaving] = createSignal(false);
@@ -123,13 +133,15 @@ export default function NodeDetailModal(props) {
   };
 
   const saveProperties = () =>
-    commit(draftOps(d().schema, draft(), d().span, d().cells), 'Saved properties');
+    commit(draftOps(d().schema?.fields, d().cells, draft(), d().span), 'Saved properties');
 
   const saveChild = (family, item) => {
-    const key = `${family.field}:${item.span.start}`;
-    const changes = childDrafts()[key];
+    const changes = childDrafts()[childKey(family, item)];
     if (!changes) return;
-    return commit(draftOps(family.schema, changes, item.span, item.cells), `Saved ${family.kind}`);
+    return commit(
+      draftOps(family.schema?.fields, item.cells, changes, item.span),
+      `Saved ${family.kind}`,
+    );
   };
 
   const addChild = (family) =>
@@ -217,6 +229,7 @@ export default function NodeDetailModal(props) {
             <FieldForm
               schema={d().schema}
               cells={d().cells}
+              selfId={d().id}
               draft={draft()}
               onChange={setDraft}
             />
@@ -226,6 +239,7 @@ export default function NodeDetailModal(props) {
             <Dynamic
               component={EDITORS[ownSurface().id]}
               anchor={props.anchor}
+              preview={surfacePreview}
               onCommitted={reanchor}
             />
           </Show>
@@ -241,6 +255,7 @@ export default function NodeDetailModal(props) {
                   surface={s}
                   units={aggregates().find((a) => a.surface.id === s.id)?.units ?? []}
                   owner={d()}
+                  preview={surfacePreview}
                   onCommitted={reanchor}
                 />
               </Show>
@@ -272,7 +287,7 @@ export default function NodeDetailModal(props) {
                     </Show>
                     <For each={family.items}>
                       {(item) => {
-                        const key = `${family.field}:${item.span.start}`;
+                        const key = childKey(family, item);
                         const changes = () => childDrafts()[key] ?? {};
                         return (
                           <div class="ed-detail-child">
@@ -469,21 +484,24 @@ function AggregateSurface(props) {
     const taken = new Set((model()?.ids ?? []).concat(props.units.map((u) => u.id)));
     let id = base;
     for (let n = 2; taken.has(id); n += 1) id = `${base}_${n}`;
+    // Required fields are seeded and typed by the SAME rule the create
+    // forms use, so an aggregate Add and the add dialog agree about a
+    // kind's shape.
     const fields = { [pf]: { ident: owner.id } };
     for (const f of entry.fields ?? []) {
       if (f.inline_slot != null || f.optional !== false || f.default != null) continue;
       if (f.name in fields) continue;
       const hint = props.surface.create?.[f.name];
-      if (f.name === 'name' || f.name === 'title') fields[f.name] = nm;
-      else if (f.symbols?.length) fields[f.name] = { sym: hint ?? f.symbols[0] };
-      else fields[f.name] = hint ?? '';
+      const seed =
+        f.name === 'name' || f.name === 'title' ? nm : (hint ?? f.symbols?.[0] ?? '');
+      fields[f.name] = createValue(f, seed);
     }
     // Surface gate fields must be set even when the schema calls them
     // optional — without them the new unit wouldn't appear in this tab.
     for (const [k, v] of Object.entries(props.surface.create ?? {})) {
       if (k in fields) continue;
       const f = (entry.fields ?? []).find((x) => x.name === k);
-      fields[k] = f?.symbols ? { sym: v } : v;
+      fields[k] = f ? createValue(f, v) : v;
     }
     setAdding(true);
     const res = await commitUnitCreateQuiet({
@@ -551,6 +569,7 @@ function AggregateSurface(props) {
               <div class="ed-surface-detail">
                 <Editor
                   anchor={{ file: u().file, span: u().span }}
+                  preview={props.preview}
                   onCommitted={props.onCommitted}
                 />
               </div>

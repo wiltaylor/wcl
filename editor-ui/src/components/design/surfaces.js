@@ -9,11 +9,7 @@
    Everything here is pure (no Solid, no API): the modal decides what to do
    with the matches. */
 
-/** A cell's text with a leading symbol colon stripped (`:api` → `api`). */
-const cellText = (cells, name) => {
-  const t = cells?.[name]?.text ?? '';
-  return t.startsWith(':') ? t.slice(1) : t;
-};
+import { cellText } from '../../preview/schemaform';
 
 /* `label` names the aggregate tab on a component/container; `ownLabel` the
    tab on the unit itself. `when` gates kinds that host several payloads
@@ -41,14 +37,6 @@ export const SURFACES = [
     hostKinds: ['ui', 'tui'],
   },
 ];
-
-/** A plausible id from a display name: lowercase, non-identifier → `_`. */
-export const slugify = (name) =>
-  String(name ?? '')
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .replace(/^(\d)/, '_$1');
 
 /** The surface a node (or detail payload) itself is, or null. */
 export function surfaceOf(node) {
@@ -118,16 +106,16 @@ export function attachedSurfaces(node, model) {
     Flags are always optional. */
 export function usageLine(detail) {
   const items = (kind) => detail?.children?.find((f) => f.kind === kind)?.items ?? [];
-  const name = detail?.cells?.name?.text ?? detail?.id ?? '';
+  const name = cellText(detail?.cells, 'name') || detail?.id || '';
   const args = items('cli_arg').map((a) => {
-    const n = a.cells?.name?.text ?? a.label ?? 'arg';
+    const n = cellText(a.cells, 'name') || a.label || 'arg';
     if (/^[<[]/.test(n)) return n;
-    const required = (a.cells?.required?.text ?? 'true') !== 'false';
+    const required = (cellText(a.cells, 'required') || 'true') !== 'false';
     return required ? `<${n}>` : `[${n}]`;
   });
   const flags = items('cli_flag').map((f) => {
-    const n = f.cells?.name?.text ?? f.label ?? '--flag';
-    const v = f.cells?.value?.text;
+    const n = cellText(f.cells, 'name') || f.label || '--flag';
+    const v = cellText(f.cells, 'value');
     return v ? `[${n} ${v}]` : `[${n}]`;
   });
   return [name, ...args, ...flags].filter(Boolean).join(' ');

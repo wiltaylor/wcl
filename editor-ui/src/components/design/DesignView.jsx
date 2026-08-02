@@ -26,13 +26,17 @@ import {
   loadPalette,
   palette,
   popover,
-  selection,
   setPopover,
-  setSelection,
 } from '../../state/design';
 import { reloadGraph } from '../../state/graph';
-import { elsBySpan, patchAnchors, restampExcept } from '../../preview/localops';
-import { freshShapeId, shapeSnippet } from '../../preview/schemaform';
+import { isManualLayout, shapeEls } from '../../preview/anchors';
+import {
+  cellNamed,
+  cellText,
+  cellWrite,
+  freshShapeId,
+  shapeSnippet,
+} from '../../preview/schemaform';
 import { wclString } from '../../preview/wysiwyg';
 import {
   delColAt,
@@ -127,7 +131,7 @@ function BlockEditorModals() {
         <VisibilityEditor
           anchor={anchor()}
           src={src()}
-          surface={p()?.surface}
+          apply={p()?.apply}
           onClose={close}
           onCommit={commitAnd}
         />
@@ -231,6 +235,14 @@ function VisibilityEditor(props) {
   // @except names sites this wskill's views don't cover — preserve them.
   const foreign = [...initialExcept].filter((s) => !views().some((v) => v.site === s));
 
+  /* The editor decides WHAT to write and hands it to whoever opened it;
+     applying it is the opener's business. An editable surface applies it in
+     place on its own document (restamp / remove, no rebuild) — DOM mutation
+     stays on the side that owns the DOM. Opened from somewhere with no
+     surface (the content modal's block-list fallback), the plain in-place
+     commit runs and the graph reload inside it refreshes the rows. */
+  const applyDefault = (plan) => commitOpsLocal(plan.anchor.file, plan.ops, { etag: plan.etag });
+
   const save = () => {
     const except = [
       ...views()
@@ -238,42 +250,15 @@ function VisibilityEditor(props) {
         .map((v) => v.site),
       ...foreign,
     ];
-    // Apply IN PLACE on the owning surface — restamp (merged) or remove
-    // (hidden in the shown view); no rebuild, no iframe reload. Un-hiding
-    // a block absent from a non-merged DOM can't be shown without a
-    // render, so that one case falls back to the full loop (`false`).
-    // Without a surface (the content modal's block-list fallback) the
-    // graph reload inside commitOpsLocal refreshes the rows.
-    const onApplied = (res) => {
-      const s = props.surface;
-      const d = s?.doc?.();
-      if (!d) return true;
-      const els = elsBySpan(d, props.anchor.file, props.anchor.span);
-      const site = s.currentSite();
-      const hidesHere = !s.merged() && site && except.includes(site);
-      const unhidesHere =
-        !s.merged() && site && initialExcept.has(site) && !except.includes(site);
-      if (unhidesHere && els.length === 0) return false;
-      patchAnchors(d, props.anchor.file, res.span_map ?? []);
-      for (const el of els) {
-        if (hidesHere) el.remove();
-        else restampExcept(el, except);
-      }
-      if (hidesHere) {
-        const sel = selection();
-        if (sel && sel.file === props.anchor.file && sel.span.start === props.anchor.span.start) {
-          setSelection(null);
-        }
-      }
-      s.redecorate();
-      return true;
-    };
+    const apply = props.apply ?? applyDefault;
     props.onCommit(
-      commitOpsLocal(
-        props.anchor.file,
-        [{ op: 'set_visibility', span: props.anchor.span, except_sites: except }],
-        { etag: props.src.etag, onApplied },
-      ),
+      apply({
+        anchor: props.anchor,
+        ops: [{ op: 'set_visibility', span: props.anchor.span, except_sites: except }],
+        except,
+        wasExcept: [...initialExcept],
+        etag: props.src.etag,
+      }),
     );
   };
 
@@ -361,21 +346,29 @@ function FragmentEditor(props) {
 // ---------------------------------------------------------------------------
 
 function CodeBlockEditor(props) {
-  const langSlot = () => props.src.labels?.[0];
-  const srcField = () => props.src.fields?.source;
+  const langSlot = () => props.src.cells?.labels?.[0];
+  const srcField = () => cellNamed(props.src.cells, 'source');
   // Computed language / source → fragment editing is the truth.
   if (langSlot()?.state === 'computed' || srcField()?.state === 'computed') {
     return <FragmentEditor {...props} />;
   }
   const [lang, setLang] = createSignal(langSlot()?.text ?? 'text');
   const [text, setText] = createSignal(srcField()?.text ?? '');
+  // Each value goes back the way its cell came: the language slot is
+  // declared `identifier`, so quoting it here would write `code "rust"` and
+  // fail schema validation on commit.
   const save = () =>
     props.onCommit(
       commitOps(
         props.anchor.file,
         [
-          { op: 'set_label', span: props.anchor.span, slot: 0, text: lang() },
-          { op: 'set_field', span: props.anchor.span, field: 'source', text: text() },
+          { op: 'set_label', span: props.anchor.span, slot: 0, ...cellWrite(langSlot(), lang()) },
+          {
+            op: 'set_field',
+            span: props.anchor.span,
+            field: 'source',
+            ...cellWrite(srcField(), text()),
+          },
         ],
         { etag: props.src.etag, reveal: 'edited' },
       ),
@@ -417,7 +410,7 @@ function TableEditor(props) {
       <FragmentEditor
         {...props}
         notice={
-          props.src.fields?.rows
+          cellNamed(props.src.cells, 'rows')
             ? 'This table is generated: its rows come from an expression over data, so there is no cell grid — edit the expression here, or edit the underlying data objects it draws from.'
             : 'No literal pipe rows found in this table — edit its source directly.'
         }
@@ -525,14 +518,20 @@ function TableEditor(props) {
 // ---------------------------------------------------------------------------
 
 function ImageEditor(props) {
-  const lit = (slot) => (slot?.state === 'literal' ? (slot.text ?? '') : null);
-  const source0 = lit(props.src.labels?.[0]);
+  // The source is a string; the rest are whatever scalar the author wrote
+  // (a width is a number), so they read through the shared cell text.
+  const str = (cell) => (cell?.state === 'text' ? (cell.text ?? '') : null);
+  const scalar = (name) => {
+    const cell = cellNamed(props.src.cells, name);
+    return cell && cell.state !== 'computed' ? (cell.text ?? '') : '';
+  };
+  const source0 = str(props.src.cells?.labels?.[0]);
   if (source0 === null) return <FragmentEditor {...props} />;
   const [form, setForm] = createSignal({
     source: source0,
-    alt: lit(props.src.fields?.alt) ?? '',
-    width: lit(props.src.fields?.width) ?? '',
-    height: lit(props.src.fields?.height) ?? '',
+    alt: scalar('alt'),
+    width: scalar('width'),
+    height: scalar('height'),
   });
   const save = () => {
     const f = form();
@@ -585,11 +584,19 @@ function ComponentEditor(props) {
   if (!def()) return <FragmentEditor {...props} />;
   const initial = {};
   for (const slot of def().slots) {
-    const f = props.src.fields?.[slot.name];
+    const f = cellNamed(props.src.cells, slot.name);
+    // A slot is untyped, so it holds whatever the instance wrote — a string
+    // label, a number (`metric_card { value = 42 }`). Anything with a single
+    // value is editable and goes back the way it came ({@link cellWrite});
+    // a computed slot, or a list, has no such value and belongs in the
+    // source editor.
+    const scalar = !f || f.text != null;
     initial[slot.name] = {
-      value: f?.state === 'literal' ? (f.text ?? '') : '',
-      computed: f?.state === 'computed',
+      value: scalar ? (f?.text ?? '') : '',
+      readOnly: !scalar,
+      state: f?.state,
       present: !!f,
+      cell: f,
     };
   }
   const [form, setForm] = createSignal(initial);
@@ -597,11 +604,16 @@ function ComponentEditor(props) {
     const ops = [];
     for (const slot of def().slots) {
       const f = form()[slot.name];
-      if (f.computed) continue;
-      const orig = props.src.fields?.[slot.name]?.text ?? '';
+      if (f.readOnly) continue;
+      const orig = cellText(props.src.cells, slot.name);
       if (f.value === orig && f.present) continue;
       if (f.value === '' && !slot.required) continue;
-      ops.push({ op: 'set_field', span: props.anchor.span, field: slot.name, text: f.value });
+      ops.push({
+        op: 'set_field',
+        span: props.anchor.span,
+        field: slot.name,
+        ...cellWrite(f.cell, f.value),
+      });
     }
     if (ops.length === 0) return props.onClose();
     props.onCommit(
@@ -627,7 +639,7 @@ function ComponentEditor(props) {
           {(slot) => (
             <Input
               value={form()[slot.name].value}
-              disabled={form()[slot.name].computed}
+              disabled={form()[slot.name].readOnly}
               onInput={(e) =>
                 setForm({
                   ...form(),
@@ -635,8 +647,8 @@ function ComponentEditor(props) {
                 })
               }
               placeholder={
-                form()[slot.name].computed
-                  ? `${slot.name} (computed — edit as source)`
+                form()[slot.name].readOnly
+                  ? `${slot.name} (${form()[slot.name].state} — edit as source)`
                   : `${slot.name}${slot.required ? ' (required)' : slot.default ? ` (default: ${slot.default})` : ''}`
               }
             />
@@ -688,10 +700,8 @@ function AddShapeModal(props) {
   const insert = (entry) => {
     const a = props.anchor;
     const source = props.src.source ?? '';
-    const manual = ['free', 'none'].includes(a.layout ?? 'free');
-    const index =
-      a.el?.querySelectorAll?.('[data-wcl-shape]')?.length ??
-      (source.match(/\bid\s*=/g) ?? []).length;
+    const manual = isManualLayout(a.layout);
+    const index = a.el ? shapeEls(a.el).length : (source.match(/\bid\s*=/g) ?? []).length;
     const snippet = shapeSnippet(entry, { uid: freshShapeId(entry.kind, source), manual, index });
     props.onCommit(
       commitOps(

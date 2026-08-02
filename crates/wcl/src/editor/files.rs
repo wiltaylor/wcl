@@ -4,14 +4,16 @@
 
 use std::path::{Path, PathBuf};
 
+use super::Workspace;
+use super::preview::Sessions;
 use crate::edit::{commit, content_etag, read, str_field};
-use crate::serve::{sandboxed, sandboxed_create};
 
 /// `GET /api/files` — every file and directory under `root_dir`, honouring
 /// `.gitignore` (also outside a git repo), excluding `.git` itself. Paths are
 /// `root_dir`-relative and `/`-normalized; directories come with
 /// `type: "dir"` so the client can render empty folders.
-pub(crate) fn list_tree(root_dir: &Path) -> Result<serde_json::Value, String> {
+pub(crate) fn list_tree(ws: &Workspace) -> Result<serde_json::Value, String> {
+    let root_dir = ws.root_dir();
     let mut files = Vec::new();
     let walk = ignore::WalkBuilder::new(root_dir)
         .hidden(false) // show dotfiles (.gitignore, .github, …)
@@ -45,8 +47,8 @@ pub(crate) fn list_tree(root_dir: &Path) -> Result<serde_json::Value, String> {
 /// `GET /api/file?path=` — a text file's contents plus the etag the save
 /// endpoint checks. Binary content (NUL bytes / invalid UTF-8) is refused
 /// with a pointer at `/api/raw`.
-pub(crate) fn read_text(root_dir: &Path, path: &str) -> Result<serde_json::Value, String> {
-    let file = resolve_existing(root_dir, path)?;
+pub(crate) fn read_text(ws: &Workspace, path: &str) -> Result<serde_json::Value, String> {
+    let file = resolve_existing(ws, path)?;
     let bytes = std::fs::read(&file).map_err(|e| format!("read {path}: {e}"))?;
     let text = String::from_utf8(bytes)
         .map_err(|_| format!("binary file: fetch /api/raw?path={path} instead"))?;
@@ -62,8 +64,8 @@ pub(crate) fn read_text(root_dir: &Path, path: &str) -> Result<serde_json::Value
 
 /// `GET /api/raw?path=` — a file's raw bytes (image previews and other
 /// binary assets).
-pub(crate) fn read_raw(root_dir: &Path, path: &str) -> Result<(PathBuf, Vec<u8>), String> {
-    let file = resolve_existing(root_dir, path)?;
+pub(crate) fn read_raw(ws: &Workspace, path: &str) -> Result<(PathBuf, Vec<u8>), String> {
+    let file = resolve_existing(ws, path)?;
     let bytes = std::fs::read(&file).map_err(|e| format!("read {path}: {e}"))?;
     Ok((file, bytes))
 }
@@ -75,14 +77,13 @@ pub(crate) fn read_raw(root_dir: &Path, path: &str) -> Result<(PathBuf, Vec<u8>)
 /// without one they still pass the syntax gate. Everything else is a plain
 /// atomic write.
 pub(crate) fn save_file(
-    root_dir: &Path,
-    root_file: Option<&Path>,
+    ws: &Workspace,
+    previews: &Sessions,
     body: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let path = str_field(body, "path")?;
     let text = str_field(body, "text")?;
-    let file = sandboxed_create(root_dir, &root_dir.join(path))
-        .ok_or_else(|| format!("file outside the served tree: {path}"))?;
+    let file = ws.abs_new(path)?;
     if let Some(base) = body.get("base_etag").and_then(serde_json::Value::as_str) {
         let current = content_etag(&read(&file)?);
         if current != base {
@@ -92,7 +93,7 @@ pub(crate) fn save_file(
         }
     }
     let is_wcl = file.extension().and_then(|s| s.to_str()) == Some("wcl");
-    match (is_wcl, root_file) {
+    match (is_wcl, ws.root_file()) {
         (true, Some(root)) => {
             // Gate syntax here with a user-facing message — `commit` words its
             // own syntax gate as an internal error (in the WYSIWYG pipeline the
@@ -106,6 +107,8 @@ pub(crate) fn save_file(
         }
         (false, _) => write_plain(&file, text)?,
     }
+    // The disk moved under every built preview.
+    previews.invalidate();
     Ok(serde_json::json!({ "ok": true, "etag": content_etag(text) }))
 }
 
@@ -120,9 +123,10 @@ fn write_plain(file: &Path, text: &str) -> Result<(), String> {
 }
 
 /// Resolve a request-relative path to an existing file inside `root_dir`.
-fn resolve_existing(root_dir: &Path, path: &str) -> Result<PathBuf, String> {
-    let file = sandboxed(root_dir, &root_dir.join(path))
-        .ok_or_else(|| format!("no such file in the served tree: {path}"))?;
+fn resolve_existing(ws: &Workspace, path: &str) -> Result<PathBuf, String> {
+    let file = ws
+        .abs(path)
+        .map_err(|_| format!("no such file in the served tree: {path}"))?;
     if !file.is_file() {
         return Err(format!("not a file: {path}"));
     }
@@ -132,6 +136,7 @@ fn resolve_existing(root_dir: &Path, path: &str) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::editor::testsupport::workspace_built_by;
 
     fn tree_paths(v: &serde_json::Value) -> Vec<(String, String)> {
         v["files"]
@@ -149,19 +154,19 @@ mod tests {
 
     #[test]
     fn list_tree_honours_gitignore_and_skips_git_dir() {
-        let td = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(td.path()).unwrap();
-        std::fs::write(root.join(".gitignore"), "ignored.txt\ntarget/\n").unwrap();
-        std::fs::write(root.join("kept.wcl"), "name = \"x\"\n").unwrap();
-        std::fs::write(root.join("ignored.txt"), "nope").unwrap();
-        std::fs::create_dir(root.join("target")).unwrap();
-        std::fs::write(root.join("target").join("junk.bin"), "nope").unwrap();
-        std::fs::create_dir(root.join(".git")).unwrap();
-        std::fs::write(root.join(".git").join("HEAD"), "ref").unwrap();
-        std::fs::create_dir(root.join("src")).unwrap();
-        std::fs::write(root.join("src").join("lib.wcl"), "x = 1\n").unwrap();
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::write(root.join(".gitignore"), "ignored.txt\ntarget/\n").unwrap();
+            std::fs::write(root.join("kept.wcl"), "name = \"x\"\n").unwrap();
+            std::fs::write(root.join("ignored.txt"), "nope").unwrap();
+            std::fs::create_dir(root.join("target")).unwrap();
+            std::fs::write(root.join("target").join("junk.bin"), "nope").unwrap();
+            std::fs::create_dir(root.join(".git")).unwrap();
+            std::fs::write(root.join(".git").join("HEAD"), "ref").unwrap();
+            std::fs::create_dir(root.join("src")).unwrap();
+            std::fs::write(root.join("src").join("lib.wcl"), "x = 1\n").unwrap();
+        });
 
-        let v = list_tree(&root).unwrap();
+        let v = list_tree(&ws).unwrap();
         let paths = tree_paths(&v);
         assert!(paths.contains(&(".gitignore".into(), "file".into())));
         assert!(paths.contains(&("kept.wcl".into(), "file".into())));
@@ -178,49 +183,47 @@ mod tests {
 
     #[test]
     fn read_text_rejects_binary() {
-        let td = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(td.path()).unwrap();
-        std::fs::write(root.join("img.png"), b"\x89PNG\0\0").unwrap();
-        let err = read_text(&root, "img.png").unwrap_err();
+        let (_td, ws) = workspace_built_by(|root| {
+            std::fs::write(root.join("img.png"), b"\x89PNG\0\0").unwrap();
+        });
+        let err = read_text(&ws, "img.png").unwrap_err();
         assert!(err.contains("/api/raw"), "{err}");
     }
 
     #[test]
     fn save_rejects_traversal_and_stale_etag() {
-        let td = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(td.path()).unwrap();
-        std::fs::write(root.join("a.txt"), "one").unwrap();
-
+        let (_td, ws) =
+            workspace_built_by(|root| std::fs::write(root.join("a.txt"), "one").unwrap());
+        let root = ws.root_dir().to_path_buf();
+        let previews = Sessions::default();
         let esc = serde_json::json!({ "path": "../escape.txt", "text": "x" });
-        assert!(save_file(&root, None, &esc).is_err());
+        assert!(save_file(&ws, &previews, &esc).is_err());
 
         let stale = serde_json::json!({
             "path": "a.txt", "text": "two", "base_etag": "not-the-etag",
         });
-        let err = save_file(&root, None, &stale).unwrap_err();
+        let err = save_file(&ws, &previews, &stale).unwrap_err();
         assert!(err.contains("conflict"), "{err}");
         assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "one");
     }
 
     #[test]
     fn save_writes_new_file_in_new_directory() {
-        let td = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(td.path()).unwrap();
+        let (_td, ws) = workspace_built_by(|_| {});
         let body = serde_json::json!({ "path": "notes/new.md", "text": "# hi\n" });
-        let v = save_file(&root, None, &body).unwrap();
+        let v = save_file(&ws, &Sessions::default(), &body).unwrap();
         assert_eq!(v["ok"], true);
         assert_eq!(
-            std::fs::read_to_string(root.join("notes").join("new.md")).unwrap(),
+            std::fs::read_to_string(ws.root_dir().join("notes").join("new.md")).unwrap(),
             "# hi\n"
         );
     }
 
     #[test]
     fn save_wcl_without_root_still_gates_syntax() {
-        let td = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(td.path()).unwrap();
+        let (_td, ws) = workspace_built_by(|_| {});
         let body = serde_json::json!({ "path": "bad.wcl", "text": "block {{{" });
-        assert!(save_file(&root, None, &body).is_err());
-        assert!(!root.join("bad.wcl").exists());
+        assert!(save_file(&ws, &Sessions::default(), &body).is_err());
+        assert!(!ws.root_dir().join("bad.wcl").exists());
     }
 }
