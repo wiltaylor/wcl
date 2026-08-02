@@ -11,37 +11,15 @@
 //! `/api/block/source` answers with, so they stay with that endpoint even
 //! though other modules read the same shape.
 
-use wcl_lang::ast::{self, Expr, Item};
+use std::path::Path;
+
 use wcl_lang::{Span, Value};
 
 /// The first inline label of an AST block when it's a plain identifier or
-/// string literal.
-pub(super) fn ast_label(b: &ast::Block) -> Option<String> {
-    match b.labels.first()? {
-        Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
-        Expr::Identifier(s, _) => Some(s.clone()),
-        _ => None,
-    }
-}
-
-/// The first `kind`-block labelled `label`, anywhere in the tree.
-pub(super) fn find_block_by_kind_label<'a>(
-    items: &'a mut [Item],
-    kind: &str,
-    label: &str,
-) -> Option<&'a mut ast::Block> {
-    for item in items {
-        if let Item::Block(b) = item {
-            if b.kind == kind && ast_label(b).as_deref() == Some(label) {
-                return Some(b);
-            }
-            if let Some(found) = find_block_by_kind_label(&mut b.items, kind, label) {
-                return Some(found);
-            }
-        }
-    }
-    None
-}
+/// string literal. How a block is *named* is a language fact, not an editor
+/// one — this and [`find_block_by_kind_label`] are `wcl_lang::edit`'s, kept
+/// here under the names the editor already reads them by.
+pub(super) use wcl_lang::edit::{block_label as ast_label, find_block_by_kind_label};
 
 /// The first label of a document-view block as a plain string.
 pub(super) fn first_label(b: &wcl_lang::Block<'_>) -> Option<String> {
@@ -100,9 +78,35 @@ pub(super) fn stale_span() -> String {
     "no block at that span — the file changed; rebuild the preview".to_string()
 }
 
-/// Whether `s` can be written as a bare WCL identifier.
-pub(super) fn is_identifier(s: &str) -> bool {
-    let mut chars = s.chars();
-    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+/// Whether `s` can be written as a bare WCL identifier — the lexer's own
+/// rule, so what the editor accepts is what the lexer will read back.
+pub(super) use wcl_lang::is_identifier;
+
+/// A [`wcl_wskill`] anchor as the repo-relative `{file, span}` binding every
+/// editor response speaks and every write endpoint takes back.
+///
+/// The model anchors relative to the **wskill root**, which is a
+/// sub-directory of the served tree whenever a wskill is edited inside a
+/// larger repo — so both adapters over the model need this translation, and
+/// needing it twice is how two answers for one file's name appear.
+pub(super) fn anchor_json(
+    ws: &super::Workspace,
+    root: &Path,
+    anchor: &wcl_wskill::Anchor,
+) -> serde_json::Value {
+    serde_json::json!({
+        "file": anchor_file(ws, root, anchor),
+        "span": super::span_json(anchor.span),
+    })
+}
+
+/// [`anchor_json`]'s path half, for a payload that carries `file` and `span`
+/// as separate keys.
+pub(super) fn anchor_file(
+    ws: &super::Workspace,
+    root: &Path,
+    anchor: &wcl_wskill::Anchor,
+) -> String {
+    let abs = root.join(&anchor.file);
+    ws.rel(&abs).unwrap_or_else(|_| abs.display().to_string())
 }

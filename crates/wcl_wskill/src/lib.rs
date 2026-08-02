@@ -27,6 +27,12 @@
 //! - a [`Graph`] is **owned** — nothing borrows the document it was read
 //!   from, so two revisions can be held at once.
 //!
+//! Beside the model sits [`ops`] — the one vocabulary of structural edits
+//! (pin, unpin, reorder, the index tree, `related` links), id-addressed and
+//! returning file changes for the caller to commit. A curator and an editing
+//! UI run the same functions; a UI that drags between rendered nodes merely
+//! resolves its span to a `(kind, id)` first.
+//!
 //! What is *not* here: layout (a graph view lays out what it draws), the
 //! wire shapes of any HTTP endpoint, and rendering. The model says what the
 //! wskill is.
@@ -34,12 +40,13 @@
 pub mod lint;
 mod load;
 mod model;
+pub mod ops;
 mod registry;
 #[cfg(test)]
 mod testsupport;
 
 pub use lint::{Finding, Rule, Severity, lint};
-pub use load::Error;
+pub use load::{DEFAULT_AUDIENCE, Error, root_for};
 pub use model::{
     Anchor, ContentBlock, Course, CourseModule, Edge, EdgeKind, Graph, Index, Link, NodeKey, Topic,
     Unit, View, Visibility, routes_to, structural_view_kind,

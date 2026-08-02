@@ -1,40 +1,35 @@
-//! The Design-mode unit graph: every wskill unit as a laid-out node with
-//! its `related` / index-membership edges and per-view visibility, down to
-//! the individual body blocks — so the graph shows exactly which blocks
-//! ship in which view, and the client can toggle them.
+//! The Design-mode unit graph — an **adapter** over [`wcl_wskill::Graph`].
 //!
 //! `GET /api/graph?entry=…&sites=book,deck,…&kinds=book=book,deck=presentation,…`
 //! — `sites` is the wskill's view site-name list and `kinds` maps each site
 //! to its artifact kind (both from the grouped `/api/sites` payload).
-//! Per-view booleans combine two mechanisms: each block's
-//! `@except(sites = […])` decorator (anything richer reports `custom` and
-//! the client sends users to the source), and — for top-level units and
-//! indexes — the wskill `audience` routing (`:book`/`:ai`/`:both`): the
-//! book renders `!= :ai`, the skill `!= :book`, and indexes exist only in
-//! those two views. Layout is server-side via the deterministic diagram
-//! force solver ([`wcl_wdoc::layout_graph`]).
 //!
-//! **Superseded by [`wcl_wskill::Graph`]**, which owns this model as typed
-//! Rust so the CLI and the curator agent can read it without an editor. This
-//! endpoint keeps its own reading until issue #56 rebuilds it (and the nav
-//! ops) as a thin adapter — layout and serialisation over the library. Until
-//! then, a change to how the graph is *read* belongs in both.
+//! Nothing here reads the wskill format. The library answers what the units,
+//! indexes, edges and per-view membership *are* ([`wcl_wskill::Graph`],
+//! [`Unit::shows_in`](wcl_wskill::Unit::shows_in)); this module places the
+//! nodes ([`wcl_wdoc::layout_graph`]), rewrites the model's wskill-relative
+//! anchors as the repo-relative paths every editor response speaks, and
+//! serialises. The one thing it synthesizes is the training **syllabus**
+//! node — a course has no `index` block, so the panel that edits index trees
+//! is handed the course shaped like one.
+//!
+//! The site list arrives on the query rather than being taken from the
+//! model's registry because the client picks which views it is looking at;
+//! a site whose artifact kind the caller didn't send keeps plain visibility
+//! behaviour (the model's audience routing needs the kind to route by).
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use axum::extract::State;
 use axum::http::Uri;
 use axum::response::Response;
 
-use wcl_lang::ast::{self, Item};
-use wcl_lang::{Document, Span, Value, parse_for_edit};
+use wcl_lang::{Document, Span};
+use wcl_wskill::{ContentBlock, Course, Edge, EdgeKind, Index, Unit, View, Visibility};
 
-use super::blocks::visibility_json;
-use super::kinds::KindModel;
-use super::util::{ast_label, field_string, first_label, value_string};
-
+use super::util::anchor_file as rel;
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::query_param;
 
@@ -51,96 +46,72 @@ pub(super) async fn handle_graph(State(state): State<Arc<EditorState>>, uri: Uri
 }
 
 /// Id of the synthetic top-level syllabus node (a training view's stand-in
-/// for an `index`). Double-underscored so it cannot collide with an authored
-/// block id, which WCL identifiers never start with.
-pub(super) const SYLLABUS_ID: &str = "__course";
+/// for an `index`) — the id the nav ops address a course's top level by.
+pub(super) const SYLLABUS_ID: &str = wcl_wskill::ops::COURSE_ID;
 
-/// One graph node under construction.
-struct NodeInfo {
-    key: String,
-    node_type: &'static str, // "unit" | "index"
-    id: String,
-    kind: String,
-    title: String,
-    /// The unit's one-line description (`summary`), when it declares one —
-    /// a search field of its own, and the hit list's subtitle.
-    summary: String,
-    /// Every literal string the block carries, newline-joined — the prose
-    /// the find-a-unit box searches. See [`block_text`].
-    text: String,
-    file: PathBuf,
-    span: Span,
-    visibility: serde_json::Value,
-    /// The wskill audience routing value (`book` / `ai` / `both`) — the
-    /// block's own field, else its kind schema's declared default.
-    audience: String,
-    blocks: Vec<serde_json::Value>,
-    related: Vec<String>,
-    related_editable: bool,
-    /// For `index` nodes: the ordered pinned ids (the `related` list) —
-    /// the index panel edits this order.
-    pinned: Vec<String>,
-    /// For `index` nodes: nested sub-indexes (`{id, title, pinned,
-    /// related_editable, children}`, recursive) — the index panel's
-    /// sub-headings. Sub-indexes are not graph nodes; their pins ride the
-    /// top-level index's edges with an `index_id` attribution.
-    children: Vec<serde_json::Value>,
+/// The wskill model behind `entry`, read from an already-open document.
+///
+/// The wskill root is the library's ([`wcl_wskill::root_for`]) so the two
+/// endpoints and the CLI can't disagree about which folder a projection
+/// entry belongs to.
+pub(super) fn open_graph(doc: &Document, entry_abs: &Path) -> Result<wcl_wskill::Graph, String> {
+    let root = wcl_wskill::root_for(entry_abs);
+    wcl_wskill::Graph::from_document(doc, &root, entry_abs).map_err(|e| e.to_string())
 }
 
-/// The ordered `related` id list of an index/unit block (empty when the
-/// field is absent or not a literal-enough list to evaluate).
-fn related_ids(b: &wcl_lang::Block<'_>) -> Vec<String> {
-    b.field("related")
-        .and_then(|f| f.value().ok().cloned())
-        .map(|v| match v {
-            Value::List(items) => items.iter().map(value_string).collect(),
-            _ => Vec::new(),
-        })
-        .unwrap_or_default()
+/// One view the client asked about: the site name a visibility decorator
+/// uses, and the artifact kind it projects (absent when the caller didn't
+/// send a `kinds` mapping).
+struct QueryView {
+    site: String,
+    /// The model's view for this site, when the kind is known — routing by
+    /// `audience` is only answerable against an artifact kind.
+    view: Option<View>,
 }
 
-/// A `related` list is editable only when absent or a literal list — a
-/// computed expression must not be clobbered by pin/unpin/reorder writes.
-fn related_editable_of(blk: Option<&ast::Block>) -> bool {
-    blk.is_some_and(|blk| {
-        !blk.items.iter().any(|it| {
-            matches!(it, Item::Field(f)
-                if f.name == "related" && !matches!(f.expr, ast::Expr::ListLit { .. }))
-        })
-    })
-}
-
-/// Recurse an index's nested sub-index blocks into the panel's tree
-/// payload, pushing every nested pin as `(top_id, owning id, unit id)`.
-fn index_children(
-    src: &ast::Source,
-    b: &wcl_lang::Block<'_>,
-    top_id: &str,
-    pins: &mut Vec<(String, String, String)>,
-) -> Vec<serde_json::Value> {
-    let mut out = Vec::new();
-    for c in b.blocks().filter(|c| c.kind() == "index") {
-        let Some(id) = first_label(&c) else { continue };
-        let title = c
-            .field("name")
-            .and_then(|f| f.value().ok().cloned())
-            .as_ref()
-            .map(value_string)
-            .unwrap_or_else(|| id.clone());
-        let pinned = related_ids(&c);
-        for rid in &pinned {
-            pins.push((top_id.to_string(), id.clone(), rid.clone()));
+impl QueryView {
+    fn shows_unit(&self, unit: &Unit) -> bool {
+        match &self.view {
+            Some(v) => unit.shows_in(v),
+            None => unit.visibility.shows_in(&self.site),
         }
-        let children = index_children(src, &c, top_id, pins);
-        out.push(serde_json::json!({
-            "id": id,
-            "title": title,
-            "pinned": pinned,
-            "related_editable": related_editable_of(super::find_block_at(&src.items, c.span())),
-            "children": children,
-        }));
     }
-    out
+
+    fn shows_index(&self, index: &Index) -> bool {
+        match &self.view {
+            Some(v) => index.shows_in(v),
+            None => index.visibility.shows_in(&self.site),
+        }
+    }
+
+    fn kind(&self) -> Option<&str> {
+        self.view.as_ref().map(|v| v.kind.as_str())
+    }
+}
+
+/// `sites=a,b` + `kinds=a=book,b=training` as the views to report on.
+fn query_views(sites_csv: &str, kinds_csv: &str) -> Vec<QueryView> {
+    let kinds: HashMap<&str, &str> = kinds_csv
+        .split(',')
+        .filter_map(|pair| {
+            let (site, kind) = pair.trim().split_once('=')?;
+            (!site.is_empty()).then_some((site, kind))
+        })
+        .collect();
+    sites_csv
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|site| QueryView {
+            view: kinds.get(site).map(|kind| View {
+                id: site.to_string(),
+                kind: (*kind).to_string(),
+                entry: String::new(),
+                site: Some(site.to_string()),
+            }),
+            site: site.to_string(),
+        })
+        .collect()
 }
 
 fn graph(
@@ -151,239 +122,303 @@ fn graph(
 ) -> Result<serde_json::Value, String> {
     let entry_abs = ws.abs(entry)?;
     let doc = wcl_wdoc::open_doc_for_edit(&entry_abs).map_err(super::err_str)?;
-    let sites: Vec<String> = sites_csv
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
+    let model = open_graph(&doc, &entry_abs)?;
+    let views = query_views(sites_csv, kinds_csv);
+    let sites: Vec<&str> = views.iter().map(|v| v.site.as_str()).collect();
+
+    // Layout runs over units and indexes together — an index pulls the units
+    // it pins toward itself, even though the canvas draws only the units —
+    // and in DECLARATION order, so the arrangement follows how the wskill is
+    // written rather than which of the model's two lists a node landed in.
+    let mut placed: Vec<Placed<'_>> = model
+        .units
+        .iter()
+        .map(Placed::unit)
+        .chain(model.indexes.iter().map(Placed::index))
         .collect();
-    // site name → artifact kind (`book` / `ai_skill` / `presentation` / …).
-    let site_kinds: HashMap<String, String> = kinds_csv
-        .split(',')
-        .filter_map(|pair| {
-            let (site, kind) = pair.trim().split_once('=')?;
-            (!site.is_empty()).then(|| (site.to_string(), kind.to_string()))
-        })
-        .collect();
+    placed.sort_by(|a, b| a.anchor().cmp(&b.anchor()));
 
-    let model = KindModel::new(&doc);
-    let kind_names: Vec<String> = model.unit_kind_names();
-
-    // Per-file AST cache: block-level detail (children, decorators) comes
-    // from the parse, keyed by the doc view's spans.
-    let mut asts: HashMap<PathBuf, ast::Source> = HashMap::new();
-
-    let mut nodes: Vec<NodeInfo> = Vec::new();
-    // (top-level index id, owning index id, unit id) — the owner differs
-    // from the top-level id for pins inside nested sub-indexes.
-    let mut pins: Vec<(String, String, String)> = Vec::new();
-
-    for (path, b) in doc.blocks_with_source() {
-        let kind = b.kind().to_string();
-        let is_index = kind == "index";
-        if !is_index && !kind_names.contains(&kind) {
-            continue;
-        }
-        let Some(id) = first_label(&b) else { continue };
-        let title = ["name", "title", "topic"]
-            .iter()
-            .find_map(|f| b.field(f).and_then(|f| f.value().ok().cloned()))
-            .as_ref()
-            .map(value_string)
-            .unwrap_or_else(|| id.clone());
-        let file = path
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| entry_abs.clone());
-        let span = b.span();
-
-        // AST-level detail for visibility + body blocks.
-        if !asts.contains_key(&file) {
-            let text = crate::edit::read(&file)?;
-            let src = parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
-            asts.insert(file.clone(), src);
-        }
-        let src = &asts[&file];
-        let ast_block = super::find_block_at(&src.items, span);
-        let visibility = ast_block
-            .map(visibility_json)
-            .unwrap_or_else(|| serde_json::json!({ "except_sites": [], "custom": false }));
-        let blocks = ast_block
-            .map(|blk| content_blocks(ws, blk, &file, &sites))
-            .unwrap_or_default();
-        let text = ast_block.map(block_text).unwrap_or_default();
-        // The out-port is editable only when the `related` field is absent
-        // or a literal list — a computed expression must not be clobbered.
-        let related_editable = related_editable_of(ast_block);
-
-        // Audience routing: the block's own field wins, else the kind
-        // schema's declared default (research ships `:ai`, the rest `:book`).
-        let audience = b
-            .field("audience")
-            .and_then(|f| f.value().ok().cloned())
-            .map(|v| value_string(&v))
-            .unwrap_or_else(|| default_audience(&model, &kind));
-
-        // Edges.
-        let related = related_ids(&b);
-        let mut children = Vec::new();
-        if is_index {
-            for rid in &related {
-                pins.push((id.clone(), id.clone(), rid.clone()));
-            }
-            children = index_children(src, &b, &id, &mut pins);
-        }
-
-        nodes.push(NodeInfo {
-            key: format!("{kind}:{id}"),
-            node_type: if is_index { "index" } else { "unit" },
-            id,
-            kind,
-            title,
-            summary: field_string(&b, "summary").unwrap_or_default(),
-            text,
-            file,
-            span,
-            visibility,
-            audience,
-            blocks,
-            pinned: if is_index {
-                related.clone()
-            } else {
-                Vec::new()
-            },
-            related: if is_index { Vec::new() } else { related },
-            related_editable,
-            children,
-        });
-    }
-
-    // Resolve edges to node indices (related ids match any unit kind).
-    let index_of_id: HashMap<&str, usize> = nodes
+    let sizes: Vec<(f64, f64)> = placed.iter().map(|p| box_for(p.title())).collect();
+    let slot: HashMap<String, usize> = placed
         .iter()
         .enumerate()
-        .map(|(i, n)| (n.id.as_str(), i))
+        .map(|(i, p)| (p.key(), i))
         .collect();
-    let key_of = |i: usize| nodes[i].key.clone();
-    let mut edges: Vec<serde_json::Value> = Vec::new();
-    let mut layout_edges: Vec<(usize, usize)> = Vec::new();
-    for (i, n) in nodes.iter().enumerate() {
-        for rid in &n.related {
-            if let Some(&j) = index_of_id.get(rid.as_str()) {
-                layout_edges.push((i, j));
-                edges.push(serde_json::json!({
-                    "from": key_of(i), "to": key_of(j), "kind": "related",
-                }));
-            }
-        }
-    }
-    for (top_id, owner_id, unit_id) in &pins {
-        if let (Some(&i), Some(&j)) = (
-            index_of_id.get(top_id.as_str()),
-            index_of_id.get(unit_id.as_str()),
-        ) {
-            layout_edges.push((i, j));
-            // `index_id` is the level whose `related` list holds the pin —
-            // the sub-index itself for nested pins (edge writes target it).
-            edges.push(serde_json::json!({
-                "from": key_of(i), "to": key_of(j), "kind": "pin", "index_id": owner_id,
-            }));
-        }
-    }
-
-    // Deterministic force layout over title-sized boxes.
-    let sizes: Vec<(f64, f64)> = nodes
+    let layout_edges: Vec<(usize, usize)> = model
+        .edges
         .iter()
-        .map(|n| {
-            let w = (n.title.chars().count() as f64 * 7.5 + 30.0).clamp(90.0, 260.0);
-            (w, 48.0)
+        .filter_map(|e| {
+            Some((
+                *slot.get(&e.from.to_string())?,
+                *slot.get(&e.to.to_string())?,
+            ))
         })
         .collect();
     let offsets = wcl_wdoc::layout_graph(&sizes, &layout_edges);
 
-    let nodes_json: Vec<serde_json::Value> = nodes
+    let mut nodes: Vec<serde_json::Value> = placed
         .iter()
-        .zip(sizes.iter().zip(offsets.iter()))
-        .map(|(n, (&(w, h), &(x, y)))| {
-            serde_json::json!({
-                "key": n.key,
-                "type": n.node_type,
-                "id": n.id,
-                "kind": n.kind,
-                "title": n.title,
-                // The find-a-unit box's two extra search fields (id and
-                // title are above) — see `block_text`.
-                "summary": n.summary,
-                "text": n.text,
-                "file": rel(ws, &n.file),
-                "span": super::span_json(n.span),
-                "x": x, "y": y, "w": w, "h": h,
-                "visibility": n.visibility,
-                "audience": n.audience,
-                "views": node_views_map(
-                    &sites,
-                    &site_kinds,
-                    &n.visibility,
-                    &n.kind,
-                    &n.audience,
-                    n.node_type == "index",
-                ),
-                "organized": if n.node_type == "unit" {
-                    organized_sites(&n.kind, &sites, &site_kinds)
-                } else {
-                    Vec::new()
+        .enumerate()
+        .map(|(i, p)| {
+            let node = match p {
+                Placed::Unit(u) => GraphNode {
+                    node_type: "unit",
+                    id: &u.id,
+                    kind: &u.kind,
+                    title: &u.title,
+                    summary: u.summary.as_deref().unwrap_or_default(),
+                    text: &u.text,
+                    file: rel(ws, &model.root, &u.anchor),
+                    span: super::span_json(u.anchor.span),
+                    visibility: &u.visibility,
+                    audience: &u.audience,
+                    views: map_over(&views, |v| v.shows_unit(u)),
+                    organized: organizing_sites(&views, &u.kind),
+                    blocks: blocks_json(ws, &model.root, &u.blocks, &sites),
+                    related_editable: u.related_editable,
+                    ..GraphNode::default()
                 },
-                "blocks": n.blocks,
-                "related_editable": n.related_editable,
-                "pinned": n.pinned,
-                "children": n.children,
-            })
+                Placed::Index(x) => GraphNode {
+                    node_type: "index",
+                    id: &x.id,
+                    kind: "index",
+                    title: &x.title,
+                    summary: x.summary.as_deref().unwrap_or_default(),
+                    text: &x.text,
+                    file: rel(ws, &model.root, &x.anchor),
+                    span: super::span_json(x.anchor.span),
+                    visibility: &x.visibility,
+                    audience: &x.audience,
+                    views: map_over(&views, |v| v.shows_index(x)),
+                    blocks: blocks_json(ws, &model.root, &x.blocks, &sites),
+                    related_editable: x.related_editable,
+                    pinned: x.pinned.clone(),
+                    children: sub_indexes(&x.children),
+                    ..GraphNode::default()
+                },
+            };
+            node.json(sizes[i], offsets[i])
         })
         .collect();
-    let mut nodes_json = nodes_json;
-    nodes_json.extend(syllabus_nodes(&doc, &sites, &site_kinds, ws, &entry_abs));
+    nodes.extend(syllabus_node(&model, &views, ws, &entry_abs));
+
     Ok(serde_json::json!({
         "ok": true,
         "sites": sites,
-        "nodes": nodes_json,
-        "edges": edges,
+        "nodes": nodes,
+        "edges": model.edges.iter().map(edge_json).collect::<Vec<_>>(),
     }))
 }
 
-/// The training view's syllabus, shaped as index nodes so the index panel can
-/// show and reorder it.
+/// A node the force solver places: a unit or a top-level index, before it
+/// becomes JSON. Both are laid out in one pass, so both need one handle.
+enum Placed<'a> {
+    Unit(&'a Unit),
+    Index(&'a Index),
+}
+
+impl<'a> Placed<'a> {
+    fn unit(u: &'a Unit) -> Self {
+        Placed::Unit(u)
+    }
+
+    fn index(i: &'a Index) -> Self {
+        Placed::Index(i)
+    }
+
+    fn anchor(&self) -> (&Path, usize) {
+        let a = match self {
+            Placed::Unit(u) => &u.anchor,
+            Placed::Index(i) => &i.anchor,
+        };
+        (a.file.as_path(), a.span.start)
+    }
+
+    fn title(&self) -> &str {
+        match self {
+            Placed::Unit(u) => &u.title,
+            Placed::Index(i) => &i.title,
+        }
+    }
+
+    fn key(&self) -> String {
+        match self {
+            Placed::Unit(u) => u.key().to_string(),
+            Placed::Index(i) => i.key().to_string(),
+        }
+    }
+}
+
+/// A node's box, sized to fit its title.
+fn box_for(title: &str) -> (f64, f64) {
+    (
+        (title.chars().count() as f64 * 7.5 + 30.0).clamp(90.0, 260.0),
+        48.0,
+    )
+}
+
+/// One graph node's wire shape, stated once.
+///
+/// Three things become a node — a unit, an index, and the synthetic syllabus
+/// — and they differ in a handful of fields out of eighteen. Building them
+/// through one struct is what stops a key being added to one and silently
+/// missing from another, which the client would read as `undefined`.
+struct GraphNode<'a> {
+    node_type: &'static str,
+    id: &'a str,
+    kind: &'a str,
+    title: &'a str,
+    /// The find-a-unit box's search fields, beyond id and title.
+    summary: &'a str,
+    text: &'a str,
+    file: String,
+    span: serde_json::Value,
+    visibility: &'a Visibility,
+    audience: &'a str,
+    views: serde_json::Value,
+    /// The views whose own navigation carries this node structurally.
+    organized: Vec<String>,
+    blocks: Vec<serde_json::Value>,
+    related_editable: bool,
+    pinned: Vec<String>,
+    children: Vec<serde_json::Value>,
+    /// Ordered by `n` rather than by a `related` list — see [`syllabus_node`].
+    syllabus: bool,
+}
+
+impl Default for GraphNode<'_> {
+    fn default() -> Self {
+        GraphNode {
+            node_type: "unit",
+            id: "",
+            kind: "",
+            title: "",
+            summary: "",
+            text: "",
+            file: String::new(),
+            span: super::span_json(Span::new(0, 0)),
+            visibility: EMPTY_VISIBILITY,
+            audience: wcl_wskill::DEFAULT_AUDIENCE,
+            views: serde_json::Value::Object(serde_json::Map::new()),
+            organized: Vec::new(),
+            blocks: Vec::new(),
+            related_editable: true,
+            pinned: Vec::new(),
+            children: Vec::new(),
+            syllabus: false,
+        }
+    }
+}
+
+/// The visibility a synthesized node reports: it has no block, so nothing
+/// declares any.
+static EMPTY_VISIBILITY: &Visibility = &Visibility {
+    except_sites: Vec::new(),
+    custom: false,
+};
+
+impl GraphNode<'_> {
+    fn json(self, (w, h): (f64, f64), (x, y): (f64, f64)) -> serde_json::Value {
+        serde_json::json!({
+            "key": format!("{}:{}", self.kind, self.id),
+            "type": self.node_type,
+            "id": self.id,
+            "kind": self.kind,
+            "title": self.title,
+            "summary": self.summary,
+            "text": self.text,
+            "file": self.file,
+            "span": self.span,
+            "x": x, "y": y, "w": w, "h": h,
+            "visibility": visibility_json(self.visibility),
+            "audience": self.audience,
+            "views": self.views,
+            "organized": self.organized,
+            "blocks": self.blocks,
+            "related_editable": self.related_editable,
+            "pinned": self.pinned,
+            "children": self.children,
+            "syllabus": self.syllabus,
+        })
+    }
+}
+
+/// The queried sites whose own navigation carries a unit of `kind`
+/// structurally rather than by pinning — a lesson in a training view, a
+/// presentation in its deck. Which kinds those are is the library's.
+fn organizing_sites(views: &[QueryView], kind: &str) -> Vec<String> {
+    let Some(owner) = wcl_wskill::structural_view_kind(kind) else {
+        return Vec::new();
+    };
+    views
+        .iter()
+        .filter(|v| v.kind() == Some(owner))
+        .map(|v| v.site.clone())
+        .collect()
+}
+
+fn edge_json(e: &Edge) -> serde_json::Value {
+    match e.kind {
+        EdgeKind::Related => serde_json::json!({
+            "from": e.from.to_string(), "to": e.to.to_string(), "kind": "related",
+        }),
+        // `index_id` is the level whose `related` list holds the pin — the
+        // sub-index itself for nested pins (edge writes target it).
+        EdgeKind::Pin => serde_json::json!({
+            "from": e.from.to_string(), "to": e.to.to_string(), "kind": "pin",
+            "index_id": e.index_id,
+        }),
+    }
+}
+
+/// The nested sub-index tree the index panel shows as indented sub-headings.
+/// Sub-indexes are not graph nodes; their pins ride the top-level index's
+/// edges with an `index_id` attribution.
+fn sub_indexes(children: &[Index]) -> Vec<serde_json::Value> {
+    children
+        .iter()
+        .map(|c| {
+            serde_json::json!({
+                "id": c.id,
+                "title": c.title,
+                "pinned": c.pinned,
+                "related_editable": c.related_editable,
+                "children": sub_indexes(&c.children),
+            })
+        })
+        .collect()
+}
+
+/// The training view's syllabus, shaped as an index node so the index panel
+/// can show and reorder it.
 ///
 /// A course has no `index` blocks — its structure IS the data: `module`s and
 /// `lesson`s ordered by `n`. Without this the panel is empty for a training
 /// view. One top-level node ("Course") carries the ungrouped lessons as pins
 /// and each module as a sub-level, mirroring the index / sub-index tree.
 ///
-/// `syllabus: true` marks the levels as ordered-by-`n` rather than pinned by a
-/// `related` list: reordering rewrites the lessons' `n` (see
-/// `nav::syllabus_reorder`), and there is nothing to pin or unpin — a lesson
-/// belongs to the course by existing. Emitted after layout with zero geometry,
-/// since index nodes never render on the canvas.
-fn syllabus_nodes(
-    doc: &Document,
-    sites: &[String],
-    site_kinds: &HashMap<String, String>,
+/// `syllabus: true` marks the levels as ordered-by-`n` rather than pinned by
+/// a `related` list: reordering rewrites the lessons' `n`, and there is
+/// nothing to pin or unpin — a lesson belongs to the course by existing.
+/// Emitted after layout with zero geometry, since index nodes never render
+/// on the canvas.
+fn syllabus_node(
+    model: &wcl_wskill::Graph,
+    views: &[QueryView],
     ws: &Workspace,
     entry_abs: &Path,
 ) -> Vec<serde_json::Value> {
-    let training: Vec<&String> = sites
-        .iter()
-        .filter(|s| site_kinds.get(*s).map(String::as_str) == Some("training"))
-        .collect();
-    if training.is_empty() {
+    let Some(course) = model.course.as_ref() else {
+        return Vec::new();
+    };
+    // Which projection a course belongs to is the library's fact, read off
+    // the kind whose data builds it.
+    let owner = wcl_wskill::structural_view_kind("lesson");
+    let in_course = |v: &QueryView| owner.is_some() && v.kind() == owner;
+    if !views.iter().any(in_course) {
         return Vec::new();
     }
-    let (lessons, modules) = course_structure(doc);
-    if lessons.is_empty() && modules.is_empty() {
-        return Vec::new();
-    }
-    let views: serde_json::Map<String, serde_json::Value> = sites
-        .iter()
-        .map(|s| (s.clone(), training.contains(&s).into()))
-        .collect();
+    let Course { lessons, modules } = course;
     let children: Vec<serde_json::Value> = modules
         .iter()
         .map(|m| {
@@ -397,337 +432,68 @@ fn syllabus_nodes(
             })
         })
         .collect();
-    vec![serde_json::json!({
-        "key": format!("index:{SYLLABUS_ID}"),
-        "type": "index",
-        "id": SYLLABUS_ID,
-        "kind": "index",
-        "title": "Course",
-        // Synthesized from the lesson data — no block, so no prose.
-        "summary": "",
-        "text": "",
-        "file": rel(ws, entry_abs),
-        "span": super::span_json(Span::new(0, 0)),
-        "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0,
-        "visibility": serde_json::json!({ "except_sites": [], "custom": false }),
-        "audience": "book",
-        "views": serde_json::Value::Object(views),
-        "organized": Vec::<String>::new(),
-        "blocks": Vec::<serde_json::Value>::new(),
-        "related_editable": true,
-        "syllabus": true,
-        "pinned": lessons,
-        "children": children,
-    })]
+    vec![
+        GraphNode {
+            node_type: "index",
+            id: SYLLABUS_ID,
+            kind: "index",
+            title: "Course",
+            // Synthesized from the lesson data — no block, so no prose.
+            file: ws
+                .rel(entry_abs)
+                .unwrap_or_else(|_| entry_abs.display().to_string()),
+            views: map_over(views, in_course),
+            pinned: lessons.clone(),
+            children,
+            syllabus: true,
+            ..GraphNode::default()
+        }
+        .json((0.0, 0.0), (0.0, 0.0)),
+    ]
 }
 
-/// One part of a course: its id, display title, and lesson ids in `n` order.
-pub(super) struct CourseModule {
-    pub id: String,
-    pub title: String,
-    pub lessons: Vec<String>,
-}
-
-/// The course: ungrouped lesson ids in `n` order, then each module in `n`
-/// order with its own lessons ordered the same way.
-pub(super) fn course_structure(doc: &Document) -> (Vec<String>, Vec<CourseModule>) {
-    let ordered = |blocks: Vec<wcl_lang::Block<'_>>| -> Vec<(u64, String)> {
-        let mut v: Vec<(u64, String)> = blocks
+/// `{ site: <pred> }` over the queried views.
+fn map_over(views: &[QueryView], pred: impl Fn(&QueryView) -> bool) -> serde_json::Value {
+    serde_json::Value::Object(
+        views
             .iter()
-            .filter_map(|b| Some((order_of(b), first_label(b)?)))
-            .collect();
-        v.sort_by_key(|(n, _)| *n);
-        v
-    };
-    let lessons = ordered(doc.blocks().filter(|b| b.kind() == "lesson").collect())
-        .into_iter()
-        .map(|(_, id)| id)
-        .collect();
-    let mut modules: Vec<(u64, String, String, Vec<String>)> = doc
-        .blocks()
-        .filter(|b| b.kind() == "module")
-        .filter_map(|m| {
-            let id = first_label(&m)?;
-            let title = m
-                .field("title")
-                .and_then(|f| f.value().ok().cloned())
-                .as_ref()
-                .map(value_string)
-                .unwrap_or_else(|| id.clone());
-            let kids = ordered(m.blocks().filter(|b| b.kind() == "lesson").collect())
-                .into_iter()
-                .map(|(_, id)| id)
-                .collect();
-            Some((order_of(&m), id, title, kids))
-        })
-        .collect();
-    modules.sort_by_key(|(n, ..)| *n);
-    (
-        lessons,
-        modules
-            .into_iter()
-            .map(|(_, id, title, lessons)| CourseModule { id, title, lessons })
+            .map(|v| (v.site.clone(), pred(v).into()))
             .collect(),
     )
 }
 
-/// A course block's `n` (its position); missing / non-numeric sorts last.
-fn order_of(b: &wcl_lang::Block<'_>) -> u64 {
-    b.field("n")
-        .and_then(|f| f.value().ok().cloned())
-        .and_then(|v| match v {
-            Value::U32(n) => Some(n as u64),
-            Value::U64(n) => Some(n),
-            Value::I64(n) if n >= 0 => Some(n as u64),
-            _ => None,
-        })
-        .unwrap_or(u64::MAX)
+fn visibility_json(v: &Visibility) -> serde_json::Value {
+    serde_json::json!({ "except_sites": v.except_sites, "custom": v.custom })
 }
 
-fn rel(ws: &Workspace, file: &Path) -> String {
-    std::fs::canonicalize(file)
-        .unwrap_or_else(|_| file.to_path_buf())
-        .strip_prefix(ws.root_dir())
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|_| file.display().to_string())
-}
+/// How much of a block's label the list shows. The model carries the whole
+/// label — how much of it fits in a row is the reader's business.
+const PREVIEW_CHARS: usize = 60;
 
-/// `{ site: visible }` from a `visibility_json` payload (custom ⇒ every
-/// site reports visible; the `custom` flag tells the client to defer).
-fn views_map(sites: &[String], visibility: &serde_json::Value) -> serde_json::Value {
-    let except: Vec<&str> = visibility["except_sites"]
-        .as_array()
-        .map(|a| a.iter().filter_map(|s| s.as_str()).collect())
-        .unwrap_or_default();
-    let map: serde_json::Map<String, serde_json::Value> = sites
-        .iter()
-        .map(|s| (s.clone(), (!except.contains(&s.as_str())).into()))
-        .collect();
-    serde_json::Value::Object(map)
-}
-
-/// Per-view membership for a top-level unit / index node: the `@except`
-/// visibility axis AND the wskill audience routing. The book renders
-/// `audience != :ai`, the skill `!= :book`; indexes shape only those two
-/// views (a deck / training site reports them absent), while units in the
-/// other views stay visibility-governed (their data is selected by the
-/// template, not by audience). A site with no known kind (a caller that
-/// didn't pass `kinds`) keeps the plain visibility behaviour.
-/// The site kind that OWNS a unit kind — the one view whose projection
-/// renders it, because that view is built from this data and no other reads
-/// it. `None` for reference content (concept / entity / fact / procedure /
-/// research / index), which the book and the skill share and route by
-/// `audience` instead.
-///
-/// Kind names are hardcoded like the audience routing below — they are the
-/// canonical wskill base-schema vocabulary.
-fn owning_view_kind(unit_kind: &str) -> Option<&'static str> {
-    match unit_kind {
-        "lesson" | "module" => Some("training"),
-        "presentation" => Some("presentation"),
-        _ => None,
-    }
-}
-
-fn node_views_map(
-    sites: &[String],
-    site_kinds: &HashMap<String, String>,
-    visibility: &serde_json::Value,
-    unit_kind: &str,
-    audience: &str,
-    is_index: bool,
-) -> serde_json::Value {
-    let except: Vec<&str> = visibility["except_sites"]
-        .as_array()
-        .map(|a| a.iter().filter_map(|s| s.as_str()).collect())
-        .unwrap_or_default();
-    let owner = if is_index {
-        None
-    } else {
-        owning_view_kind(unit_kind)
-    };
-    let map: serde_json::Map<String, serde_json::Value> = sites
-        .iter()
-        .map(|s| {
-            let visible = !except.contains(&s.as_str());
-            let kind = site_kinds.get(s).map(String::as_str);
-            let routed = match owner {
-                // A view-owned kind appears ONLY in the view built from it: a
-                // lesson is not book content, and a concept is not a lesson.
-                Some(owner) => kind == Some(owner),
-                // Reference content is shared by the book and the skill,
-                // routed by audience; the data-owned views don't render it.
-                None => match kind {
-                    Some("book") => audience != "ai",
-                    Some("ai_skill") => audience != "book",
-                    Some(_) => false,
-                    None => true,
-                },
-            };
-            (s.clone(), (visible && routed).into())
-        })
-        .collect();
-    serde_json::Value::Object(map)
-}
-
-/// The sites whose own navigation includes a unit of `kind` STRUCTURALLY —
-/// the training syllabus is built from the lesson/module data itself, and a
-/// deck renders its `presentation` unit as the slides. Such units are never
-/// index-pinned yet aren't "unindexed": the client folds these into the
-/// membership counts so lessons stop reading as orphans (and stop matching
-/// the unindexed filter). Kind names are hardcoded like the audience
-/// routing above — they're the canonical wskill base-schema vocabulary.
-fn organized_sites(
-    kind: &str,
-    sites: &[String],
-    site_kinds: &HashMap<String, String>,
-) -> Vec<String> {
-    let Some(owner) = owning_view_kind(kind) else {
-        return Vec::new();
-    };
-    sites
-        .iter()
-        .filter(|s| site_kinds.get(*s).map(String::as_str) == Some(owner))
-        .cloned()
-        .collect()
-}
-
-/// The declared `@default` of a kind schema's `audience` field, else
-/// `book` (the base schema's default for every unit kind except research).
-fn default_audience(model: &KindModel<'_>, kind: &str) -> String {
-    model
-        .get(kind)
-        .and_then(|k| k.field_default("audience"))
-        .unwrap_or_else(|| "book".to_string())
-}
-
-/// The string literals a block's subtree carries, in source order and
-/// newline-joined: its string labels, its string-valued fields (through
-/// lists, interpolations and record literals), then the same again for
-/// every nested block — a unit's `body` paragraphs, its tables, a
-/// procedure's steps. This is the searchable prose behind the editor's
-/// find-a-unit box, so it is deliberately only the *content*: field names,
-/// block kinds, identifiers and symbols stay out, or searching "related"
-/// would hit every unit that declares the field rather than the one whose
-/// prose says the word. Strings a *computed* field would produce are
-/// likewise absent — this reads the source, not an evaluation.
-///
-/// Nothing is truncated: a hit the box can't show is a hit the reader
-/// can't find. The cost is bounded by what a wskill is — the largest one
-/// in this repo (`docs/wskills/wcl`, 189 units, ~3x the size the box was
-/// asked to stay usable at) contributes 138 KB to a 402 KB payload.
-///
-/// The ids and names the box also searches ride on the node itself, so
-/// they need no extraction here (they land in the text as well, being
-/// string fields; the client attributes a hit to the narrowest source
-/// that carries it).
-fn block_text(b: &ast::Block) -> String {
-    let mut out = Vec::new();
-    collect_block_strings(b, &mut out);
-    out.join("\n")
-}
-
-fn collect_block_strings(b: &ast::Block, out: &mut Vec<String>) {
-    for label in &b.labels {
-        collect_expr_strings(label, out);
-    }
-    for item in &b.items {
-        match item {
-            Item::Field(f) => collect_expr_strings(&f.expr, out),
-            Item::Block(c) => collect_block_strings(c, out),
-            _ => {}
-        }
-    }
-}
-
-fn collect_expr_strings(e: &ast::Expr, out: &mut Vec<String>) {
-    match e {
-        ast::Expr::Utf8(s) | ast::Expr::Ascii(s) => push_text(s, out),
-        ast::Expr::InterpolatedString { parts, .. } => {
-            for part in parts {
-                match part {
-                    ast::TemplatePart::Literal(s) => push_text(s, out),
-                    ast::TemplatePart::Expr(inner) => collect_expr_strings(inner, out),
-                }
-            }
-        }
-        ast::Expr::ListLit { elements, .. } => {
-            for el in elements {
-                collect_expr_strings(el, out);
-            }
-        }
-        // A bare record literal is a value like any other — a `wdoc` block
-        // field can hold a list of them (chart series, table rows), and
-        // their strings are as much prose as a paragraph's.
-        ast::Expr::Record { fields, .. } => {
-            for f in fields {
-                collect_expr_strings(&f.value, out);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Push one literal, split on its own newlines so a heredoc body arrives as
-/// lines — the client shows the matching line as the hit's snippet.
-fn push_text(s: &str, out: &mut Vec<String>) {
-    for line in s.lines() {
-        let line = line.trim();
-        if !line.is_empty() {
-            out.push(line.to_string());
-        }
-    }
-}
-
-/// The unit's content blocks, flattened one level: direct children, with
-/// transparent containers (`body`, the addressable per-step `bodies`)
-/// spliced so the graph shows the blocks that actually render.
-fn content_blocks(
+fn blocks_json(
     ws: &Workspace,
-    unit: &ast::Block,
-    file: &Path,
-    sites: &[String],
+    root: &Path,
+    blocks: &[ContentBlock],
+    sites: &[&str],
 ) -> Vec<serde_json::Value> {
-    let mut out = Vec::new();
-    for item in &unit.items {
-        let Item::Block(b) = item else { continue };
-        if b.kind == "body" {
-            for inner in &b.items {
-                if let Item::Block(c) = inner {
-                    out.push(block_entry(ws, c, file, sites, None));
-                }
-            }
-        } else {
-            let label = ast_label(b);
-            out.push(block_entry(ws, b, file, sites, label.as_deref()));
-        }
-    }
-    out
-}
-
-fn block_entry(
-    ws: &Workspace,
-    b: &ast::Block,
-    file: &Path,
-    sites: &[String],
-    label: Option<&str>,
-) -> serde_json::Value {
-    let preview: String = label
-        .map(str::to_string)
-        .or_else(|| ast_label(b))
-        .unwrap_or_default()
-        .chars()
-        .take(60)
-        .collect();
-    let visibility = visibility_json(b);
-    serde_json::json!({
-        "kind": b.kind,
-        "preview": preview,
-        "file": rel(ws, file),
-        "span": super::span_json(b.span),
-        "views": views_map(sites, &visibility),
-        "visibility": visibility,
-    })
+    blocks
+        .iter()
+        .map(|b| {
+            let views: serde_json::Map<String, serde_json::Value> = sites
+                .iter()
+                .map(|s| ((*s).to_string(), b.visibility.shows_in(s).into()))
+                .collect();
+            let preview: String = b.preview.chars().take(PREVIEW_CHARS).collect();
+            serde_json::json!({
+                "kind": b.kind,
+                "preview": preview,
+                "file": rel(ws, root, &b.anchor),
+                "span": super::span_json(b.anchor.span),
+                "views": serde_json::Value::Object(views),
+                "visibility": visibility_json(&b.visibility),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -778,6 +544,7 @@ mod tests {
         assert_eq!(alpha["kind"], "concept");
         assert_eq!(alpha["title"], "Alpha");
         assert!(alpha["x"].is_number() && alpha["y"].is_number());
+        assert_eq!(alpha["file"], "data/concepts/alpha.wcl");
         let idx = node(&v, "lang");
         assert_eq!(idx["type"], "index");
         // Ordered pin list — the index panel edits this order.
@@ -805,6 +572,97 @@ mod tests {
             .find(|b| b["preview"] == "Everywhere")
             .unwrap();
         assert_eq!(shown["views"]["deck"], true);
+        assert_eq!(shown["file"], "data/concepts/alpha.wcl");
+    }
+
+    /// The model anchors every node relative to the **wskill root**, which
+    /// is a sub-directory of the served tree for any wskill living inside a
+    /// larger repo. Every file the payload names is what the write endpoints
+    /// take: repo-relative to the served directory.
+    #[test]
+    fn files_are_repo_relative_even_when_the_wskill_is_nested() {
+        let (_td, ws) = workspace_built_by(|root| {
+            let skill = root.join("docs/skill");
+            std::fs::create_dir_all(&skill).unwrap();
+            write_mini_wskill(&skill);
+            // The marker is what makes `docs/skill` the wskill root, and so
+            // what the model's anchors become relative to.
+            std::fs::write(
+                skill.join(wcl_wskill::ROOT_MARKER),
+                "topic mini {\n  name = \"Mini\"\n}\n",
+            )
+            .unwrap();
+        });
+
+        let v = graph(&ws, "docs/skill/main.wcl", "book", "book=book").expect("graph");
+        assert_eq!(
+            node(&v, "alpha")["file"],
+            "docs/skill/data/concepts/alpha.wcl"
+        );
+        assert_eq!(node(&v, "lang")["file"], "docs/skill/data/indexes.wcl");
+        // And a nav op addressed by id lands on the right file.
+        crate::editor::nav::nav_op(
+            &ws,
+            &Sessions::default(),
+            &serde_json::json!({
+                "entry": "docs/skill/main.wcl", "op": "unpin_unit",
+                "index_id": "lang", "unit_id": "alpha",
+            }),
+        )
+        .expect("unpin");
+        let text =
+            std::fs::read_to_string(ws.root_dir().join("docs/skill/data/indexes.wcl")).unwrap();
+        assert!(text.contains("related = [beta]"), "{text}");
+    }
+
+    /// Every node — a unit, an index, the synthetic syllabus — answers with
+    /// the same key set, because they are all built through one shape. A key
+    /// present on one and missing from another reads as `undefined` client
+    /// side, which is why this is asserted rather than left to review.
+    #[test]
+    fn every_node_carries_the_same_keys() {
+        let (_td, ws) = workspace_built_by(write_mini_wskill_training);
+        let v = model(&ws, "book,course", "book=book,course=training");
+        let nodes = v["nodes"].as_array().unwrap();
+        let keys = |n: &serde_json::Value| {
+            let mut k: Vec<String> = n.as_object().unwrap().keys().cloned().collect();
+            k.sort();
+            k
+        };
+        let expected = keys(&nodes[0]);
+        assert!(expected.contains(&"syllabus".to_string()), "{expected:?}");
+        for n in nodes {
+            assert_eq!(keys(n), expected, "node {} differs: {n:#}", n["key"]);
+        }
+        // Including the one with no block behind it at all.
+        assert!(nodes.iter().any(|n| n["syllabus"] == true));
+    }
+
+    /// Layout is seeded in DECLARATION order — where each node is written,
+    /// not which of the model's two lists it came from. An index declared
+    /// between two units sits between them.
+    #[test]
+    fn nodes_are_ordered_by_where_they_are_declared() {
+        let (_td, ws) = workspace_built_by(|root| {
+            write_mini_wskill(root);
+            // One file declaring a unit, then an index, then a unit.
+            std::fs::write(
+                root.join("data/indexes.wcl"),
+                "concept early {\n  name = \"Early\"\n}\n\n\
+                 index lang {\n  name = \"Language\"\n  related = [alpha]\n}\n\n\
+                 concept late {\n  name = \"Late\"\n}\n",
+            )
+            .unwrap();
+        });
+        let v = model(&ws, "book", "");
+        let order: Vec<&str> = v["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|n| n["file"] == "data/indexes.wcl")
+            .map(|n| n["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(order, ["early", "lang", "late"], "{v:#}");
     }
 
     /// The find-a-unit box searches four fields; two of them (`summary` and
