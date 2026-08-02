@@ -2,10 +2,17 @@
 //
 // A rich page header: an optional kicker (chapter / section eyebrow), the
 // page's `h1`, and an optional meta line (reading time / updated date /
-// version). Lowers to a `<header class="book-chapter-header">` wrapping a
-// real `heading-1` paragraph — so the book's nav-title fallback (first h1
-// on the page) still finds it, and the Markdown / PDF backends descend the
-// header and emit the `# title` plus the kicker/meta as plain text.
+// version). Lowers to a `Content::ChapterHeader` — one node of the
+// semantic content IR carrying each of those as a field — so every
+// backend renders it from one declaration.
+//
+// Before, the header was built here out of `Element` / `Raw` markup, and
+// the kicker, reading time, updated date and version existed **only in
+// HTML**: the Markdown and PDF backends descended the `<header>` and
+// emitted whatever prose fell out, with the meta line's structure gone.
+// They read the fields now, and each decides how to print them (the
+// separator between the meta parts is one shared fact — `chapter_meta_line`
+// in `crates/wcl_wdoc/src/content.rs`).
 
 namespace wdoc
 
@@ -21,41 +28,30 @@ type ChapterHeader extends WdocBlock {
   updated: utf8?
   @doc("Version label (e.g. `\"wdoc 0.24.1-alpha\"`).")
   version: utf8?
-  @doc("Optional explicit HTML id for the heading.")
+  @doc("Optional explicit HTML id for the header.")
   id: identifier?
-  lower = fn(c: ChapterHeader) -> list<HtmlFundamental> {
-    let kicker =
-      if c.kicker == none { [] }
-      else { [ el("p", ["book-kicker"], [raw(c.kicker ?? "")]) ] };
-    let meta_item = fn(text: utf8) -> HtmlFundamental
-      el("span", ["book-meta-item"], [raw(text)]);
-    let meta_items = flatten([
-      if c.reading_time == none { [] } else { [ meta_item(c.reading_time ?? "") ] },
-      if c.updated == none { [] } else { [ meta_item(c.updated ?? "") ] },
-      if c.version == none { [] } else { [ meta_item(c.version ?? "") ] },
-    ]);
-    let meta =
-      if len(meta_items) == 0 { [] }
-      else { [ el("div", ["book-meta"], meta_items) ] };
-    [
-      el("header", ["book-chapter-header"], flatten([
-        kicker,
-        // The `id` keeps this a long-form `Paragraph`: `para` names no id.
-        [ HtmlFundamental::Paragraph { id: c.id, class: ["heading-1"], spans: [c.title] } ],
-        meta,
-      ])),
-    ]
-  }
+  lower = fn(c: ChapterHeader) -> list<Content> [
+    Content::ChapterHeader {
+      title: c.title,
+      kicker: c.kicker,
+      reading_time: c.reading_time,
+      updated: c.updated,
+      version: c.version,
+      id: c.id,
+    },
+  ]
 }
 
-// Chapter-header layout; colours come from the theme apply rules.
+// Chapter-header layout; colours come from the theme apply rules. The
+// class names are the ones the content IR's HTML reading emits
+// (`render/content_html.rs`), not names authored here — a
+// `Content::ChapterHeader` renders the same however it was produced.
 stylesheet "wdoc-chapter-header" {
   css = <<CSS
-    .book-chapter-header { margin: 0 0 2.5rem; }
-    .book-kicker { font-size: 0.8rem; letter-spacing: 0.04em; margin: 0 0 0.6rem; }
-    .book-chapter-header .heading-1 { margin-top: 0; }
-    .book-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; margin-top: 1rem; padding-top: 0.9rem; font-size: 0.82rem; }
-    .book-meta-item { white-space: nowrap; }
-    .book-meta-item + .book-meta-item::before { content: "·"; margin-right: 1.1rem; }
+    .chapter-header { margin: 0 0 2.5rem; }
+    .chapter-kicker { font-size: 0.8rem; letter-spacing: 0.04em; margin: 0 0 0.6rem; }
+    .chapter-header h1 { margin-top: 0; }
+    .chapter-subtitle { font-size: 1.05rem; margin: 0.4rem 0 0; }
+    .chapter-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; margin: 1rem 0 0; padding-top: 0.9rem; font-size: 0.82rem; white-space: pre-wrap; }
     CSS
 }

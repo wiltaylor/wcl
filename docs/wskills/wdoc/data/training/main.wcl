@@ -145,7 +145,7 @@ lesson everyday_formatting {
   prerequisites = [book_site]
   related = [formatting, callouts, columns]
   body {
-    p "Inline patterns light up automatically wherever prose renders: `**bold**`, `_italic_` (underscores, not asterisks), backtick code, `[text](page)` links, `:lucide.check:` icons, and `$x^2$` math. For a paragraph mixing styled segments, a `text` block holds `span`s, each with its own `class`."
+    p "Inline patterns light up automatically wherever prose renders: `**bold**`, `_italic_` (underscores, not asterisks), backtick code, `[text](page)` links, `:lucide.check:` icons, and `$x^2$` math. A `text` block assembles one paragraph from `span`s in source order, and takes a `class` of its own."
     p "A `callout` is an admonition with an icon and a coloured heading — six built-in classes: `note`, `info`, `tip`, `warning`, `error`, `success`. A `column` block lays its children side by side; `widths` gives one CSS percentage per child, summing to about 100."
   }
   exercise formatted_page {
@@ -189,7 +189,7 @@ WCL
   check text_block_versus_p {
     prompt  = "When does a `text` block earn its keep over a plain `p`?"
     kind    = :text
-    rubric  = "A good answer says a `p` is one run of prose with inline patterns, while a `text` block holds `span`s that each carry their own `class` — so it is what you reach for when segments of one paragraph need different styling that the inline patterns do not express."
+    rubric  = "A good answer says a `p` is one run of prose with inline patterns, while a `text` block assembles one paragraph out of several `span`s run together in source order — so it is what you reach for when a paragraph is composed from parts (a label plus computed segments, say) rather than written as one string."
     related = [formatting]
   }
 }

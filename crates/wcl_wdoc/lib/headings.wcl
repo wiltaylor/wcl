@@ -1,4 +1,13 @@
 // ── Stdlib headings ────────────────────────────────────────────────
+//
+// `h1`..`h6` lower to a `Content::Heading` — one node of the semantic
+// content IR carrying the level as a **number**. Before, they lowered to
+// an `HtmlFundamental::Paragraph` whose level rode in a CSS class
+// (`class: ["heading-2"]`), which every non-HTML backend then had to
+// parse back out of the class list; that reverse-engineering is what the
+// IR exists to end. The `heading-N` class survives as a *style hook*
+// (`css-classes.wcl` sizes each level through it), but it is now derived
+// from the number by the backend — never read back into one.
 
 namespace wdoc
 
@@ -8,8 +17,8 @@ type H1 extends WdocBlock {
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")
   id: identifier?
-  lower = fn(h: H1) -> list<HtmlFundamental> [
-    HtmlFundamental::Paragraph { id: h.id, class: ["heading-1"], spans: [h.text] }
+  lower = fn(h: H1) -> list<Content> [
+    Content::Heading { level: 1, text: h.text, id: h.id }
   ]
 }
 
@@ -19,8 +28,8 @@ type H2 extends WdocBlock {
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")
   id: identifier?
-  lower = fn(h: H2) -> list<HtmlFundamental> [
-    HtmlFundamental::Paragraph { id: h.id, class: ["heading-2"], spans: [h.text] }
+  lower = fn(h: H2) -> list<Content> [
+    Content::Heading { level: 2, text: h.text, id: h.id }
   ]
 }
 
@@ -30,8 +39,8 @@ type H3 extends WdocBlock {
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")
   id: identifier?
-  lower = fn(h: H3) -> list<HtmlFundamental> [
-    HtmlFundamental::Paragraph { id: h.id, class: ["heading-3"], spans: [h.text] }
+  lower = fn(h: H3) -> list<Content> [
+    Content::Heading { level: 3, text: h.text, id: h.id }
   ]
 }
 
@@ -41,8 +50,8 @@ type H4 extends WdocBlock {
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")
   id: identifier?
-  lower = fn(h: H4) -> list<HtmlFundamental> [
-    HtmlFundamental::Paragraph { id: h.id, class: ["heading-4"], spans: [h.text] }
+  lower = fn(h: H4) -> list<Content> [
+    Content::Heading { level: 4, text: h.text, id: h.id }
   ]
 }
 
@@ -52,8 +61,8 @@ type H5 extends WdocBlock {
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")
   id: identifier?
-  lower = fn(h: H5) -> list<HtmlFundamental> [
-    HtmlFundamental::Paragraph { id: h.id, class: ["heading-5"], spans: [h.text] }
+  lower = fn(h: H5) -> list<Content> [
+    Content::Heading { level: 5, text: h.text, id: h.id }
   ]
 }
 
@@ -63,8 +72,7 @@ type H6 extends WdocBlock {
   @inline(0) text: utf8
   @doc("Optional explicit HTML id (the link target for cross-page anchors).")
   id: identifier?
-  lower = fn(h: H6) -> list<HtmlFundamental> [
-    HtmlFundamental::Paragraph { id: h.id, class: ["heading-6"], spans: [h.text] }
+  lower = fn(h: H6) -> list<Content> [
+    Content::Heading { level: 6, text: h.text, id: h.id }
   ]
 }
-

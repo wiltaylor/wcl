@@ -32,7 +32,7 @@ SRC
 PROSE
     }
     p <<PROSE
-For a paragraph mixing several styled segments, use a `text` block holding `span`s — each `span` takes its own `class`.
+A `text` block assembles one paragraph from `span`s, run together in source order; `class` on the `text` styles the paragraph.
 PROSE
 
     h2 "Headings"
@@ -133,8 +133,8 @@ SRC
 
     h2 "Block reference"
     block_doc { type = P  description = "A `p` block: a prose paragraph whose label text runs through the inline-pattern engine." }
-    block_doc { type = Span  description = "A `span`: an inline run of text inside a `text` block, carrying its own `class`." }
-    block_doc { type = Text  description = "A `text` block: a paragraph assembled from `span`s, each independently styled." }
+    block_doc { type = Span  description = "A `span`: one segment of a `text` block's paragraph, joined to its siblings in source order." }
+    block_doc { type = Text  description = "A `text` block: one paragraph assembled from `span`s in source order." }
     block_doc { type = H1  description = "A heading block — `h1` through `h6` all share this one type — taking the heading text and an optional `id` anchor." }
     block_doc { type = Code  description = "A `code` block: a syntax-highlighted listing, its language tag picking the grammar and `source` (usually a raw heredoc) holding the body." }
   }

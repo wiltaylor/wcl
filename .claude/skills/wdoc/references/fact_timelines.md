@@ -73,9 +73,7 @@ diagram {
       height = 104.0
       text {
         span "First "
-        span "stable" {
-          class = ["accent"]
-        }
+        span "**stable**"
         span " release. APIs frozen."
       }
     }

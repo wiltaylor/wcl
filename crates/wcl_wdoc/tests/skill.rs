@@ -383,3 +383,29 @@ fn nested_component_content_renders_in_the_skill_folder() {
         "the outer content slot was forwarded through the inner component:\n{md}"
     );
 }
+
+#[test]
+fn the_content_ir_blocks_render_in_a_skill_page() {
+    // The skill target runs the Markdown emitter, so it reads the content
+    // IR through the same exhaustive match — the chapter header's meta
+    // line, the footnotes title and the code filename reach a skill for
+    // the same reason they reach a Markdown build.
+    let (_t, out) = build(&format!(
+        "{SITE}page overview {{ start = true\n  \
+           chapter_header \"Demo\" {{ kicker = \"Chapter 1\"  version = \"v2\" }}\n  \
+           code rust {{ filename = \"src/main.rs\"  source = \"fn main() {{}}\" }}\n  \
+           footnotes {{ footnote why {{ text = \"Because.\" }} }}\n\
+         }}\n"
+    ));
+    let md = read(&out, "SKILL.md");
+    assert!(md.contains("# Demo"), "chapter title:\n{md}");
+    assert!(md.contains("_Chapter 1_"), "kicker:\n{md}");
+    assert!(md.contains("_v2_"), "meta line:\n{md}");
+    assert!(md.contains("`src/main.rs`"), "code filename:\n{md}");
+    assert!(md.contains("```rust"), "fence:\n{md}");
+    assert!(md.contains("## Footnotes"), "footnotes title:\n{md}");
+    assert!(
+        md.contains("[^why]: Because."),
+        "footnote definition:\n{md}"
+    );
+}

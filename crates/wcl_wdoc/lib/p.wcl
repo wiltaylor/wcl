@@ -1,11 +1,13 @@
 // ── Stdlib paragraph ───────────────────────────────────────────────
 //
-// Shorthand for a single-span text block. Lowers to a plain <p> whose
-// child is an `Inline` fundamental, so the body text runs through the
-// inline-pattern engine like any `span` content — `**bold**`, `_italic_`,
-// `` `code` ``, `[links](page)`, `:icons:` and `$math$` all work inside
-// `p "..." {}`. Use the long form `text { span … {} … }` when you need
-// multiple spans with their own classes.
+// Shorthand for a single-span text block. Lowers to a
+// `Content::Paragraph` — the semantic content IR's body-prose node — so
+// every backend renders it from one declaration rather than from a `<p>`
+// each had to recognise. The text runs through the inline-pattern engine
+// (on every backend, since the IR carries prose rather than markup), so
+// `**bold**`, `_italic_`, `` `code` ``, `[links](page)`, `:icons:` and
+// `$math$` all work inside `p "..." {}`. Use the long form
+// `text { span … {} … }` when you want several spans in one paragraph.
 
 namespace wdoc
 
@@ -17,7 +19,7 @@ type P extends WdocBlock {
   id:    identifier?
   @doc("Optional style classes.")
   class: list<utf8>?
-  lower = fn(p: P) -> list<HtmlFundamental> [
-    eli("p", p.id, p.class, [inl(p.text)]),
+  lower = fn(p: P) -> list<Content> [
+    Content::Paragraph { text: p.text, id: p.id, class: p.class }
   ]
 }

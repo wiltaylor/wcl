@@ -24,9 +24,8 @@ use crate::inline::InlinePatterns;
 use crate::kinds;
 use crate::render::{
     Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_repeater_children, field_symbol,
-    field_utf8, fill_content_slot, gather_inline_text, heading_level, instance_target_def,
-    label_string, lower_block, map_list, map_utf8, map_utf8_list, render_diagram_static,
-    walk_component,
+    field_utf8, fill_content_slot, gather_inline_text, instance_target_def, label_string,
+    lower_block, map_list, map_utf8, map_utf8_list, render_diagram_static, walk_component,
 };
 use crate::terminal::ASSET_DIR;
 
@@ -207,7 +206,6 @@ impl Emitter<'_> {
             }
             kinds::LIST => out.push(self.list(block)),
             kinds::TABLE => out.push(self.table(block)),
-            kinds::CODE => out.push(self.code(block)),
             kinds::IMAGE => {
                 if let Some(s) = self.image(block) {
                     out.push(s);
@@ -286,19 +284,24 @@ impl Emitter<'_> {
             return;
         };
         match kind.as_str() {
+            // A paragraph fundamental is prose. A heading is *not* one of
+            // these any more: it reaches this backend as a
+            // `Content::Heading` whose level is a number, so nothing here
+            // parses a level back out of a CSS class.
             "paragraph" => {
                 let text = map_utf8_list(map, "spans").join("");
-                let classes = map_utf8_list(map, "class");
-                if let Some(level) = heading_level(&classes) {
-                    out.push(format!(
-                        "{} {}",
-                        "#".repeat(level as usize),
-                        self.inline(&text)
-                    ));
-                } else {
-                    self.push_para(&text, out);
-                }
+                self.push_para(&text, out);
             }
+            // An `Element` is a member of the HTML element vocabulary, and
+            // its tag is the only thing that says what it means — so this
+            // *is* dispatch on a tag string, and it survives on purpose.
+            // No stdlib block lowers to one any more, but a user block
+            // still may until the vocabularies split (#46), and dropping
+            // the arms would silently degrade a user's `<h2>` to a
+            // paragraph. What went with the content blocks is the other
+            // half: recovering a *level* from a CSS class. Here the level
+            // comes off the tag, which is the element's own name for
+            // itself, not a hint smuggled in a style hook.
             "element" => {
                 let tag = map_utf8(map, "tag").unwrap_or_default();
                 let children = map_list(map, "children");
@@ -473,15 +476,6 @@ impl Emitter<'_> {
 
     fn cell(&self, v: &Value) -> String {
         escape_cell(&self.inline(&cell_text(v)))
-    }
-
-    /// A syntax-tagged code block: language from the inline label, source from
-    /// the `source` field, in a fenced block (no highlighting — Markdown
-    /// renderers re-tokenize from the language tag).
-    fn code(&self, block: &Block<'_>) -> String {
-        let lang = label_string(block).unwrap_or_default();
-        let source = field_utf8(block, "source").unwrap_or_default();
-        fence(&lang, &source)
     }
 
     /// A page image: register the source (local files are copied to `_wdoc/`

@@ -47,11 +47,11 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
     // overview page, flat at the root since showcase is the root site.
     let overview =
         std::fs::read_to_string(out.path().join("overview.html")).expect("read overview.html");
-    assert!(overview.contains("<p><span>"), "{overview}");
+    assert!(overview.contains("<p class=\"accent\">"), "{overview}");
     assert!(overview.contains("<svg"), "{overview}");
     assert!(overview.contains("class=\""), "{overview}");
     assert!(
-        overview.contains("<p class=\"heading-1\" id="),
+        overview.contains("<h1 class=\"heading-1\" id="),
         "{overview}"
     );
 }

@@ -22,10 +22,8 @@ class accent {
   light { color = "#5e81ac" }
 }
 
-// Use the class on a span:
-text {
-  span "highlighted segment" { class = ["accent"] }
-}
+// Use the class on a block:
+p "highlighted paragraph" { class = ["accent"] }
 SRC
     }
 

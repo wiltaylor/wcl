@@ -20,13 +20,16 @@
 // plus four leaves — `raw` (verbatim HTML), `inl` (a prose run through
 // the inline-pattern engine), `icon`, and `para`.
 //
-// `icon` and `para` currently have no caller in this stdlib: their one
-// user was `callout`, which now lowers to `Content::Callout` instead of
-// building `<div>`s. They are not dead — `Icon` and `Paragraph` are
-// live variants any user `lower` may return, and most of the element
-// vocabulary's construction sites are OUTSIDE this stdlib (the docs
-// landing page, the scaffold templates, the wskill projections). Both
-// are covered by `tests/el.rs`.
+// `eli`, `inl`, `icon` and `para` currently have no caller in this
+// stdlib: every block that used them — `callout`, then `chapter_header`
+// / `code` / `footnotes` / `p` / `text` — now lowers to the semantic
+// content IR instead of building HTML. What is left here is the
+// template layer, which is HTML by definition. They are not dead:
+// `Element`, `Inline`, `Icon` and `Paragraph` are live variants any
+// user `lower` may return, most of the element vocabulary's
+// construction sites are OUTSIDE this stdlib (the docs landing page,
+// the scaffold templates, the wskill projections), and all four are
+// covered by `tests/el.rs`.
 //
 // `ela` and `eli` take the SAME number of arguments, so arity — the one
 // positional mistake WCL catches — does not separate them: calling one

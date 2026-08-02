@@ -1362,3 +1362,33 @@ fn a_lowering_returning_another_custom_variant_recurses_in_pdf() {
         "empty page"
     );
 }
+
+#[test]
+fn the_markup_using_blocks_reach_the_pdf_through_the_content_ir() {
+    // `chapter_header`, `code` and `footnotes` used to build their own
+    // markup, so this backend descended a `<header>` / `<figure>` /
+    // `<section>` and lost the kicker, the meta line, the filename and the
+    // section title entirely. They lower to content nodes now: the meta
+    // line and the filename become flow paragraphs, the listing becomes
+    // coloured runs in the mono face, and the title becomes a heading.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("ir.wcl");
+    write_fixture(
+        &src,
+        "page one {\n  \
+           chapter_header \"Getting started\" {\n    \
+             kicker = \"Chapter 1\"\n    reading_time = \"9 min read\"\n  }\n  \
+           code rust {\n    filename = \"src/main.rs\"\n    \
+             source = \"fn main() {}\"\n  }\n  \
+           footnotes {\n    footnote why { text = \"Because it matters.\" }\n  }\n\
+         }\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+    let bytes = std::fs::read(out.path().join("ir.pdf")).expect("read pdf");
+    let blob = String::from_utf8_lossy(&bytes);
+    // The chapter title and the footnotes title are headings (bold serif),
+    // and the listing + filename caption draw in the mono face.
+    assert!(blob.contains("NotoSans-Bold"), "heading face embedded");
+    assert!(blob.contains("NotoSansMono"), "code face embedded");
+}

@@ -867,3 +867,86 @@ fn a_malformed_content_node_fails_the_build() {
         "a malformed content node must fail the build"
     );
 }
+
+// ── The five markup-using blocks, routed through the content IR ────
+//
+// Each of these carried information that existed only in HTML while the
+// block built its own markup: this backend descended the lowered
+// `<header>` / `<section>` / `<figure>` and emitted whatever prose fell
+// out of it. They lower to content nodes now, so the fields reach here.
+
+#[test]
+fn chapter_header_metadata_survives_in_markdown() {
+    let (_t, out) = build(
+        "page one {\n  chapter_header \"Getting started\" {\n    \
+           kicker = \"Chapter 1\"\n    reading_time = \"9 min read\"\n    \
+           updated = \"2026-08-02\"\n    version = \"wdoc 0.24.1-alpha\"\n  }\n}\n",
+    );
+    let md = read(&out, "one.md");
+    assert!(md.contains("# Getting started"), "title:\n{md}");
+    assert!(md.contains("_Chapter 1_"), "kicker:\n{md}");
+    assert!(
+        md.contains("_9 min read · 2026-08-02 · wdoc 0.24.1-alpha_"),
+        "the meta line, joined by the one shared separator:\n{md}"
+    );
+}
+
+#[test]
+fn footnotes_emit_gfm_definitions_under_their_title() {
+    let (_t, out) = build(
+        "page one {\n  p \"See the note[^why].\"\n  footnotes {\n    \
+           footnote why { text = \"Because **it matters**.\" }\n    \
+           footnote later { text = \"A second note.\" }\n  }\n}\n",
+    );
+    let md = read(&out, "one.md");
+    // The section title is data now, not HTML chrome.
+    assert!(md.contains("## Footnotes"), "title:\n{md}");
+    // The marker is the definition's id — a GFM footnote label, so a
+    // reader that resolves references has one to resolve. (The reference
+    // in prose stays escaped: the inline engine can't tell `[^why]` from
+    // a regex character class without the page's definitions, which is
+    // the same reason the HTML pass only rewrites defined ones.)
+    assert!(md.contains("See the note\\[^why\\]."), "reference:\n{md}");
+    assert!(
+        md.contains("[^why]: Because **it matters**."),
+        "definition, inline patterns applied:\n{md}"
+    );
+    assert!(md.contains("[^later]: A second note."), "second:\n{md}");
+}
+
+#[test]
+fn code_filename_survives_in_markdown() {
+    let (_t, out) = build(
+        "page one {\n  code rust {\n    filename = \"src/main.rs\"\n    \
+           source = \"fn main() {}\"\n  }\n}\n",
+    );
+    let md = read(&out, "one.md");
+    assert!(
+        md.contains("`src/main.rs`"),
+        "filename names the listing:\n{md}"
+    );
+    assert!(md.contains("```rust\nfn main() {}\n```"), "fence:\n{md}");
+}
+
+#[test]
+fn heading_levels_come_from_the_node_not_a_class() {
+    let (_t, out) =
+        build("page one {\n  h1 \"One\"\n  h2 \"Two\"\n  h3 \"Three\"\n  h6 \"Six\"\n}\n");
+    let md = read(&out, "one.md");
+    for expect in ["# One", "## Two", "### Three", "###### Six"] {
+        assert!(md.contains(expect), "{expect} missing:\n{md}");
+    }
+}
+
+#[test]
+fn a_text_block_runs_its_spans_together_into_one_paragraph() {
+    let (_t, out) = build(
+        "page one {\n  text {\n    span \"Plain, then \"\n    \
+           span \"**bold**\"\n    span \", then plain.\"\n  }\n}\n",
+    );
+    let md = read(&out, "one.md");
+    assert!(
+        md.contains("Plain, then **bold**, then plain."),
+        "one paragraph:\n{md}"
+    );
+}

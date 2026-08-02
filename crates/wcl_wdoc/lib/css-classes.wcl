@@ -102,8 +102,10 @@ class "book-chapter" { color = "inherit" }
 class "book-section" { color = "inherit" }
 class "current"      { bold = true }
 
-// Heading hierarchy. `h1`..`h6` lower to `<p class="heading-N">`; these
-// give each level its weight and descending scale. Now bare single-class
+// Heading hierarchy. `h1`..`h6` lower to a `Content::Heading`, which the
+// HTML backend renders as `<hN class="heading-N">` — the level is a
+// number on the node and this class is the style hook derived from it;
+// these give each level its weight and descending scale. Now bare single-class
 // rules (the class system carries `font_weight` / `line_height` /
 // `text_transform` / `letter_spacing`), so a user `class "heading-1"`
 // overrides them by cascade — same as every other bundled class.

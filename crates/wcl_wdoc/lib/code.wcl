@@ -1,15 +1,18 @@
 // ── Stdlib code block ──────────────────────────────────────────────
 //
-// Syntax-highlighted source listing, rendered as the book code-card: a
-// `<figure class="code-card">` wrapping a header bar (window dots, an
-// optional `filename`, the language tag) and the `<pre class="code-block">
-// <code class="language-X">…</code></pre>` listing. The per-token
-// colouring is produced in Rust by syntect (the `Highlighted`
-// fundamental), which also wraps each line in `<span class="code-line">`
-// so a CSS counter draws the line-number gutter. The header is a single
-// `Raw` so the Markdown / PDF backends (which read the block's fields,
-// not its lowered HTML) ignore it. The `language` tag picks the grammar
-// (`rust`, `python`, `wcl`, …); an unknown tag falls back to plain text.
+// Syntax-highlighted source listing. Lowers to a `Content::Code` — the
+// semantic content IR's listing node, carrying the source, the language
+// tag and the optional `filename` as fields — and each backend draws its
+// own chrome from that: HTML the book code-card (a `<figure
+// class="code-card">` over a header bar and the highlighted `<pre>`),
+// Markdown a fenced block under the filename, PDF a caption line over
+// natively-drawn coloured runs. Before, the card was built here out of
+// `Raw` markup and a `Highlighted` fundamental, so the filename header
+// existed only in HTML and the Markdown backend had to reach past the
+// lowering and re-read the block's fields to emit a fence at all.
+//
+// The `language` tag picks the grammar (`rust`, `python`, `wcl`, …); an
+// unknown tag falls back to plain text.
 
 namespace wdoc
 
@@ -25,25 +28,15 @@ type Code extends WdocBlock {
   id:     identifier?
   @doc("Optional class list (in addition to `code-block`).")
   class:  list<utf8>?
-  lower = fn(c: Code) -> list<HtmlFundamental> {
-    let dots = "<span class=\"code-dots\"><span></span><span></span><span></span></span>";
-    let name = if c.filename == none { "" } else { format("<span class=\"code-name\">{}</span>", c.filename ?? "") };
-    let header = format("<div class=\"code-filename\">{}{}<span class=\"code-lang\">{}</span></div>", dots, name, c.language);
-    [
-      el("figure", ["code-card"], [
-        raw(header),
-        eli("pre", c.id,
-          flatten([["code-block"], if c.class == none { [] } else { c.class }]),
-          [
-            el("code", [format("language-{}", c.language)], [
-              HtmlFundamental::Highlighted {
-                source: c.source, language: format("{}", c.language),
-              },
-            ]),
-          ]),
-      ]),
-    ]
-  }
+  lower = fn(c: Code) -> list<Content> [
+    Content::Code {
+      source: c.source,
+      language: c.language,
+      filename: c.filename,
+      id: c.id,
+      class: c.class,
+    },
+  ]
 }
 
 // Code-card chrome + line-number gutter. Element+descendant selectors a

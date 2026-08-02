@@ -10,7 +10,9 @@
 //! the semantic content IR ([`crate::content`]) is retiring: a kind routed
 //! through it has no entry here at all, because every backend reads it
 //! from one declaration rather than special-casing the block. `callout`
-//! was the first to go.
+//! was the first to go; `code` — the one kind Markdown alone named, so it
+//! could re-read the block's fields past a lowering it couldn't follow —
+//! went with the five markup-using content blocks.
 
 pub(crate) const COLUMN: &str = "column";
 pub(crate) const FRAGMENT: &str = "fragment";
@@ -23,7 +25,6 @@ pub(crate) const STATE_DIAGRAM: &str = "state_diagram";
 pub(crate) const TERMINAL: &str = "terminal";
 pub(crate) const LIST: &str = "list";
 pub(crate) const TABLE: &str = "table";
-pub(crate) const CODE: &str = "code";
 pub(crate) const IMAGE: &str = "image";
 pub(crate) const FILE: &str = "file";
 pub(crate) const VIDEO: &str = "video";

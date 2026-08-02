@@ -32,10 +32,13 @@
 // `content` module (the enum, the supporting types, and the
 // `Value` → `Content` conversion). Edit the union, not the Rust.
 //
-// `callout` is the first block routed through it (`callout.wcl`): all
-// four backends read its `Callout` node from this declaration, matching
-// the union exhaustively, and the hand-written re-implementations the
-// PDF and Markdown backends each carried are gone. The rest of the
+// `callout` was the first block routed through it (`callout.wcl`); the
+// five that built their own markup followed — `chapter_header`, `code`,
+// `footnotes`, `p` and `text` — along with `h1`..`h6`, whose level used
+// to ride in a CSS class each non-HTML backend parsed back out. All four
+// backends read those nodes from this declaration, matching the union
+// exhaustively; the hand-written re-implementations the PDF and Markdown
+// backends carried are gone, and so is `heading_level()`. The rest of the
 // blocks still lower to `HtmlFundamental` (see `core.wcl`) and move over
 // one concept at a time.
 

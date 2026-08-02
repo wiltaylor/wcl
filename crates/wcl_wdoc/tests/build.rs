@@ -62,11 +62,7 @@ fn build_emits_fundamentals_for_example_site() {
         overview.contains("<title>overview — wdoc showcase</title>"),
         "{overview}"
     );
-    // text + span
-    assert!(
-        overview.contains("<p><span>Welcome to wdoc </span>"),
-        "{overview}"
-    );
+    // text + spans: the spans run together into the one paragraph.
     // class system: <style> with both class rules + class= attributes.
     // The example's `accent` uses the theme accent var so it adapts per
     // site theme (rather than a fixed colour that muddies on dark themes).
@@ -79,7 +75,7 @@ fn build_emits_fundamentals_for_example_site() {
         "{overview}"
     );
     assert!(
-        overview.contains("<span class=\"accent\">— now with classes.</span>"),
+        overview.contains("<p class=\"accent\">Welcome to wdoc — now with classes.</p>"),
         "{overview}"
     );
     // column carries `class` AND its inline grid style
@@ -139,9 +135,8 @@ fn build_emits_fundamentals_for_example_site() {
     // stdlib heading lowering — h1 reduces to a paragraph with the
     // matching heading class.
     assert!(
-        overview.contains(
-            "<p class=\"heading-1\" id=\"pipeline-overview\"><span>Pipeline overview</span></p>"
-        ),
+        overview
+            .contains("<h1 class=\"heading-1\" id=\"pipeline-overview\">Pipeline overview</h1>"),
         "{overview}"
     );
     // stdlib flowchart lowering — process emits a rect + centered
@@ -592,8 +587,11 @@ page index {
     build_ok(&src, out.path());
 
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
-    assert!(html.contains("<span>A &amp; B &lt;c&gt;</span>"), "{html}");
-    assert!(html.contains("<span>say &quot;hi&quot;</span>"), "{html}");
+    // Both spans concatenate into the one paragraph, each escaped.
+    assert!(
+        html.contains("<p>A &amp; B &lt;c&gt;say &quot;hi&quot;</p>"),
+        "{html}"
+    );
 }
 
 #[test]
@@ -677,9 +675,9 @@ page index {
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
 
-    // Value path: text → <p> of generated <span>s.
+    // Value path: text → one <p> of the generated spans' prose, in order.
     assert!(
-        html.contains("<p><span>alice</span><span>bob</span><span>carol</span></p>"),
+        html.contains("<p>alicebobcarol</p>"),
         "computed text spans:\n{html}"
     );
     // Render path: list → <ul> of generated <li>s, computed from records.
@@ -870,7 +868,7 @@ page index {
         let page = std::fs::read_to_string(out.path().join(format!("{route}.html")))
             .unwrap_or_else(|e| panic!("read {route}.html: {e}"));
         assert!(
-            page.contains(&format!("<span>{title}</span>")),
+            page.contains(&format!(">{title}</h1>")),
             "{route}.html should carry its element title heading:\n{page}"
         );
         assert!(
@@ -1095,7 +1093,7 @@ page all {
 
     // Each server's heading appears once...
     assert!(
-        html.contains("<span>web01</span>") && html.contains("<span>web02</span>"),
+        html.contains(">web01</h2>") && html.contains(">web02</h2>"),
         "per-server headings:\n{html}"
     );
     // ...followed by that server's own projected body, region resolved in the
@@ -1298,7 +1296,7 @@ page index {
     // Content slot splices the instance's own children, in order, after
     // the wrapper heading.
     assert!(
-        html.contains("<p class=\"heading-3\"><span>Logs</span></p><p>line one</p><p>line two</p>"),
+        html.contains("<h3 class=\"heading-3\">Logs</h3><p>line one</p><p>line two</p>"),
         "panel content slot:\n{html}"
     );
 }
@@ -1462,7 +1460,7 @@ page index {
     // Repeater-in-component over a list-typed slot: heading + a row per
     // element (the loop body sees both the loop var `r` and the slot).
     assert!(
-        html.contains("<p class=\"heading-2\"><span>Fleet</span></p>"),
+        html.contains("<h2 class=\"heading-2\">Fleet</h2>"),
         "component heading slot:\n{html}"
     );
     // Two distinct values prove each iteration has an independent cache
@@ -1553,9 +1551,9 @@ page index {
 
     // Block-side path: rect picks up id directly.
     assert!(html.contains("id=\"box\""), "{html}");
-    // Lowered HTML payload path: h1 -> paragraph carries id.
+    // Lowered content-IR path: h1 -> heading carries id.
     assert!(
-        html.contains("<p class=\"heading-1\" id=\"title\">"),
+        html.contains("<h1 class=\"heading-1\" id=\"title\">"),
         "{html}"
     );
     // Lowered SVG payload path: process -> rect carries id, label does not.
@@ -1569,9 +1567,11 @@ page index {
         !label_chunk.starts_with("x") || !label_chunk.contains("id=\"step1\""),
         "process label should not carry the process id: {label_chunk}"
     );
-    // Block-side text and span pick up ids.
+    // Block-side text picks up its id. A `span`'s own id has nowhere to
+    // land now that a `text` lowers to one `Content::Paragraph` — the IR
+    // carries prose, not a list of styled runs (see `lib/text.wcl`).
     assert!(html.contains("<p id=\"intro\">"), "{html}");
-    assert!(html.contains("<span id=\"greeting\">"), "{html}");
+    assert!(!html.contains("id=\"greeting\""), "{html}");
 }
 
 #[test]
@@ -1652,11 +1652,11 @@ page index {
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
 
     let order = [
-        "<p class=\"heading-1\"><span>First</span></p>",
-        "<p><span>alpha</span></p>",
-        "<p class=\"heading-2\"><span>Middle</span></p>",
+        "<h1 class=\"heading-1\">First</h1>",
+        "<p>alpha</p>",
+        "<h2 class=\"heading-2\">Middle</h2>",
         "<svg",
-        "<p><span>omega</span></p>",
+        "<p>omega</p>",
     ];
     let mut cursor = 0;
     for marker in order {
@@ -3204,7 +3204,7 @@ fn build_renders_bold_inline() {
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     assert!(
-        html.contains("<span>Hello <span class=\"bold\">world</span></span>"),
+        html.contains("<p>Hello <span class=\"bold\">world</span></p>"),
         "bold not rendered:\n{html}"
     );
 }
@@ -3217,7 +3217,7 @@ fn build_renders_italic_inline() {
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     assert!(
-        html.contains("<span>an <span class=\"italic\">accent</span> here</span>"),
+        html.contains("<p>an <span class=\"italic\">accent</span> here</p>"),
         "italic not rendered:\n{html}"
     );
 }
@@ -3252,7 +3252,7 @@ fn build_renders_code_inline() {
     build_ok(&src, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     assert!(
-        html.contains("<span>say <span class=\"code\">hello</span></span>"),
+        html.contains("<p>say <span class=\"code\">hello</span></p>"),
         "code not rendered:\n{html}"
     );
 }
@@ -4210,7 +4210,7 @@ page index {
         !html.contains("<table"),
         "empty table should emit nothing:\n{html}"
     );
-    assert!(html.contains("<span>after</span>"), "{html}");
+    assert!(html.contains("<p>after</p>"), "{html}");
 }
 
 #[test]
@@ -4307,9 +4307,7 @@ page about {
     assert!(html.contains("<a href=\"about.html\">about</a>"), "{html}");
     // The page's own content lands inside <main>.
     assert!(
-        html.contains(
-            "<main class=\"site-main\"><p class=\"heading-1\" id=\"home\"><span>Home</span></p>"
-        ),
+        html.contains("<main class=\"site-main\"><h1 class=\"heading-1\" id=\"home\">Home</h1>"),
         "{html}"
     );
 }
@@ -4343,10 +4341,7 @@ page plain {
         !bare.contains("<main"),
         "page without a template should render bare:\n{bare}"
     );
-    assert!(
-        bare.contains("<p class=\"heading-1\"><span>Bare</span></p>"),
-        "{bare}"
-    );
+    assert!(bare.contains("<h1 class=\"heading-1\">Bare</h1>"), "{bare}");
 }
 
 // Split a rendered page into its `<head>` and `<body>` halves, so a test
@@ -4384,7 +4379,7 @@ page index {
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     // The hero region renders inside the hero section.
     assert!(
-        html.contains("<section class=\"ws-hero\"><p class=\"heading-1\"><span>Welcome</span></p>"),
+        html.contains("<section class=\"ws-hero\"><h1 class=\"heading-1\">Welcome</h1>"),
         "hero region should fill the hero section:\n{html}"
     );
     // A sidebar region switches the layout to two columns and renders the
@@ -4399,7 +4394,7 @@ page index {
     );
     // The non-region blocks form the default content <main>.
     assert!(
-        html.contains("<main class=\"ws-main\"><p class=\"heading-2\" id=\"body-heading\"><span class=\"heading-marker\">§ 1</span><span>Body heading</span>"),
+        html.contains("<main class=\"ws-main\"><h2 class=\"heading-2\" id=\"body-heading\"><span class=\"heading-marker\">§ 1</span>Body heading"),
         "non-region blocks should be the default content:\n{html}"
     );
     // Region content must not be duplicated into the default content <main>.
@@ -4641,10 +4636,7 @@ page index {
         "part fn / attr escaping wrong:\n{html}"
     );
     // Raw embeds the page content verbatim inside <main>.
-    assert!(
-        html.contains("<main><p><span>body text</span></p>"),
-        "{html}"
-    );
+    assert!(html.contains("<main><p>body text</p>"), "{html}");
 }
 
 #[test]
@@ -4824,7 +4816,7 @@ page other { h1 "Other" {} }
         "navbar part missing:\n{html}"
     );
     assert!(
-        html.contains("<main class=\"site-main\"><p><span>hello</span></p>"),
+        html.contains("<main class=\"site-main\"><p>hello</p>"),
         "content part missing:\n{html}"
     );
 }
@@ -5148,7 +5140,7 @@ page usage {
     // Content lands in the reading column.
     assert!(
         intro
-            .contains("<main class=\"book-content\"><div class=\"book-measure\"><p class=\"heading-1\" id=\"intro\"><span>Intro</span></p>"),
+            .contains("<main class=\"book-content\"><div class=\"book-measure\"><h1 class=\"heading-1\" id=\"intro\">Intro</h1>"),
         "{intro}"
     );
 
@@ -5338,7 +5330,7 @@ fn class_without_modes_is_unchanged() {
         &src,
         r##"
 class accent { color = "#003a8c"  bold = true }
-page index { text { span "hi" { class = ["accent"] } } }
+page index { p "hi" { class = ["accent"] } }
 "##,
     );
 
@@ -5518,7 +5510,7 @@ page syntax {
     );
     assert!(
         html.contains(
-            "<p class=\"heading-2\" id=\"fields\"><span class=\"heading-marker\">§ 1</span><span>Fields</span></p>"
+            "<h2 class=\"heading-2\" id=\"fields\"><span class=\"heading-marker\">§ 1</span>Fields</h2>"
         ),
         "{html}"
     );
@@ -5816,7 +5808,7 @@ page index {
     card {
       x = 20.0  y = 20.0  width = 200.0  height = 100.0
       title = "Notes"
-      text { span "A card with " {} span "formatted" { class = ["accent"] } span " text." {} }
+      text { span "A card with " {} span "**formatted**" {} span " text." {} }
     }
   }
 }
@@ -5837,14 +5829,14 @@ page index {
         html.contains("<div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"wdoc-card\">"),
         "{html}"
     );
-    // Title + the body rendered through the inline engine (the accent
+    // Title + the body rendered through the inline engine (the bold
     // span proves render_block ran, not plain SVG text).
     assert!(
         html.contains("<div class=\"wdoc-card-title\">Notes</div>"),
         "{html}"
     );
     assert!(
-        html.contains("<span class=\"accent\">formatted</span>"),
+        html.contains("<p>A card with <span class=\"bold\">formatted</span> text.</p>"),
         "{html}"
     );
     // Structural card CSS is injected.
@@ -5869,7 +5861,7 @@ page index {
       end   = "2026-12-31"
       // No `items` — a cards-only timeline must render.
       card { on = "2026-06-15"  title = "Beta"
-        text { span "First public " {} span "beta" { class = ["accent"] } span " build." {} }
+        text { span "First public " {} span "**beta**" {} span " build." {} }
       }
       card { on = "2026-12-01"  side = :far  title = "GA"
         text { span "General availability." {} }
@@ -5894,7 +5886,7 @@ page index {
     );
     // The card body is run through the inline engine.
     assert!(
-        html.contains("<span class=\"accent\">beta</span>"),
+        html.contains("<p>First public <span class=\"bold\">beta</span> build.</p>"),
         "{html}"
     );
     // The axis chrome renders, and each card has its own axis marker.
@@ -8736,10 +8728,7 @@ class "town-pin" { color = "#3b82f6" }
         index.contains("<div class=\"wdoc-map-card-title\">Dragon</div>"),
         "{index}"
     );
-    assert!(
-        index.contains("<p><span>Guards the ruins.</span></p>"),
-        "{index}"
-    );
+    assert!(index.contains("<p>Guards the ruins.</p>"), "{index}");
     assert!(index.contains("wdoc-map-card-close"), "{index}");
     assert!(!index.contains("data-map-card=\"town\""), "{index}");
 
@@ -9100,7 +9089,7 @@ page index {
     let n = build_ok(&src, out.path());
     assert_eq!(n, 1, "expected the single page to render");
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
-    assert!(html.contains("<span>Hello</span>"), "{html}");
+    assert!(html.contains("<p>Hello</p>"), "{html}");
 }
 
 #[test]
@@ -9825,8 +9814,7 @@ page ref {
 
     // block_reference: one h3 kind heading per child slot, per usage.
     assert_eq!(
-        html.matches("<p class=\"heading-3\"><span>gizmo</span></p>")
-            .count(),
+        html.matches("<h3 class=\"heading-3\">gizmo</h3>").count(),
         2,
         "bare and qualified block_reference both emit the kind heading:\n{html}"
     );
@@ -11558,4 +11546,144 @@ fn a_malformed_content_node_fails_the_html_build() {
         build(&file, out.path(), None).is_err(),
         "an out-of-range `level` is an authoring error, not a silent skip"
     );
+}
+
+// ── The five markup-using blocks, routed through the content IR ────
+//
+// Each of these used to build its own markup, so the HTML backend was the
+// only one that could read it back. They lower to content nodes now and
+// every backend renders from the one declaration; these pin the HTML
+// reading, which is also what the stdlib stylesheets are written against.
+
+#[test]
+fn chapter_header_renders_kicker_title_and_meta() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("ch.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  chapter_header "Getting started" {
+    kicker = "Chapter 1"
+    reading_time = "9 min read"
+    updated = "2026-08-02"
+    version = "wdoc 0.24.1-alpha"
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(html.contains("<header class=\"chapter-header\">"), "{html}");
+    assert!(
+        html.contains("<p class=\"chapter-kicker\">Chapter 1</p>"),
+        "{html}"
+    );
+    // The title carries the `heading-1` hook, so it is sized like any
+    // other level-1 heading and the per-page heading pass finds it (this
+    // page is untemplated, and that pass runs on the templated path).
+    assert!(
+        html.contains("<h1 class=\"heading-1\">Getting started</h1>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<p class=\"chapter-meta\">9 min read · 2026-08-02 · wdoc 0.24.1-alpha</p>"),
+        "{html}"
+    );
+    // The stylesheet is keyed on the classes the backend emits.
+    assert!(html.contains(".chapter-kicker {"), "{html}");
+}
+
+#[test]
+fn footnotes_render_a_numbered_list_and_link_their_references() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("fn.wcl");
+    write_fixture(
+        &src,
+        // The `[^id]` rewrite is part of the templated page pass, so this
+        // fixture takes a template.
+        r#"
+site { default_template = :webpage }
+page index {
+  p "See the note[^why], and a regex [^abc] that has none."
+  footnotes {
+    footnote why { text = "Because **it matters**." }
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("<section class=\"wdoc-footnotes\">"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<div class=\"wdoc-footnotes-title\">Footnotes</div>"),
+        "the title is data on the node, not chrome:\n{html}"
+    );
+    // The `<ol>` supplies the number; the marker is the anchor key.
+    assert!(
+        html.contains(
+            "<ol class=\"wdoc-footnote-list\"><li class=\"wdoc-footnote-item\" id=\"fn-why\">\
+             Because <span class=\"bold\">it matters</span>.\
+             <a class=\"wdoc-footnote-back\" href=\"#fnref-why\">↩</a></li></ol>"
+        ),
+        "{html}"
+    );
+    // A defined reference is rewritten to a numbered superscript…
+    assert!(
+        html.contains(
+            "<sup class=\"footnote-ref\" id=\"fnref-why\"><a href=\"#fn-why\">1</a></sup>"
+        ),
+        "{html}"
+    );
+    // …and an undefined one is left exactly as written.
+    assert!(html.contains("[^abc]"), "{html}");
+}
+
+#[test]
+fn code_renders_the_card_header_with_its_filename() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("code.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust {
+    filename = "src/main.rs"
+    source = "fn main() {}"
+  }
+  code sh {
+    source = "cargo test"
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains(
+            "<figure class=\"code-card\"><div class=\"code-filename\">\
+             <span class=\"code-dots\"><span></span><span></span><span></span></span>\
+             <span class=\"code-name\">src/main.rs</span>\
+             <span class=\"code-lang\">rust</span></div>\
+             <pre class=\"code-block\"><code class=\"language-rust\">"
+        ),
+        "{html}"
+    );
+    // No filename ⇒ no name span, but the header bar still names the language.
+    assert!(
+        html.contains("<span class=\"code-lang\">sh</span>"),
+        "{html}"
+    );
+    assert_eq!(html.matches("class=\"code-name\"").count(), 1, "{html}");
+    // The listing is highlighted (the syntect line wrapper the gutter counts).
+    assert!(html.contains("class=\"code-line\""), "{html}");
 }

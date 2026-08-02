@@ -12,10 +12,13 @@
 //! generated type, so a lowered WCL value becomes a typed node — or a
 //! precise [`ContentError`] naming the variant and field that failed.
 //!
-//! `callout` is the first block routed through it: its `lower` returns a
-//! `Content::Callout` and all four backends render that node from this one
-//! declaration, matching the union **exhaustively**. The remaining blocks
-//! still lower to `HtmlFundamental` and are moved over per concept.
+//! Six blocks are routed through it: `callout` (the first), and then the
+//! five that built their own markup — `chapter_header`, `code`,
+//! `footnotes`, `p` and `text` — plus `h1`..`h6`, whose level used to ride
+//! in a CSS class the non-HTML backends parsed back out. Each returns a
+//! typed node all four backends render from this one declaration, matching
+//! the union **exhaustively**. The remaining blocks still lower to
+//! `HtmlFundamental` and are moved over per concept.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

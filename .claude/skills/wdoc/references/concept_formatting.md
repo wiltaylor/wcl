@@ -32,7 +32,7 @@ DOC
 **bold**, _italic_, `code`, a [link](../references/concept_overview.md), an inline icon :lucide.check:, and math $x^2$ — every pattern lights up automatically.
 
 
-For a paragraph mixing several styled segments, use a `text` block holding `span`s — each `span` takes its own `class`.
+A `text` block assembles one paragraph from `span`s, run together in source order; `class` on the `text` styles the paragraph.
 
 
 ## Headings
@@ -168,27 +168,27 @@ A `p` block: a prose paragraph whose label text runs through the inline-pattern 
 | `id` | `identifier` | no | Optional explicit HTML id. |
 | `class` | `list<utf8>` | no | Optional style classes. |
 
-A `span`: an inline run of text inside a `text` block, carrying its own `class`.
+A `span`: one segment of a `text` block's paragraph, joined to its siblings in source order.
 
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
 | `text` | `utf8` | yes | The span text (the inline label slot); inline patterns are applied. |
-| `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional style classes for this span. |
+| `id` | `identifier` | no | Optional explicit HTML id. Not currently rendered — see `text`. |
+| `class` | `list<utf8>` | no | Optional style classes for this span. Not currently rendered — see `text`. |
 
-A `text` block: a paragraph assembled from `span`s, each independently styled.
+A `text` block: one paragraph assembled from `span`s in source order.
 
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
 | `text` | `utf8` | no | Optional single-run text (the inline label slot); inline patterns are applied. Use `span` children for styled runs. |
 | `id` | `identifier` | no | Optional explicit HTML id. |
-| `class` | `list<utf8>` | no | Optional class list applied to the `<p>`. |
+| `class` | `list<utf8>` | no | Optional class list applied to the paragraph. |
 
 #### Child blocks
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `spans` | `span` | yes | The styled segments, rendered as `<span>`s in source order. |
+| `spans` | `span` | yes | The segments, concatenated into the paragraph's prose in source order. |
 
 A heading block — `h1` through `h6` all share this one type — taking the heading text and an optional `id` anchor.
 

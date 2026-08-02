@@ -1,7 +1,10 @@
 //! Per-page heading post-processing.
 //!
-//! Heading blocks (`h1`..`h6`) lower to `<p class="heading-N">…</p>` with an
-//! id only when the author wrote one. This pass runs over a page's rendered
+//! Heading blocks (`h1`..`h6`) lower to a `Content::Heading`, which the HTML
+//! reading renders as `<hN class="heading-N">…</hN>` — a real heading tag,
+//! with the class kept as the style hook `lib/css-classes.wcl` sizes it
+//! through — carrying an id only when the author wrote one. This pass runs
+//! over a page's rendered
 //! body HTML to (a) synthesise a stable slug `id` on every heading (the
 //! anchor target for cross-links and the right rail), (b) prepend the
 //! `§ N.M` section-number marker on `h2`/`h3`, and (c) collect the `h2`/`h3`
@@ -22,12 +25,15 @@ pub(crate) struct PageHeading {
     pub number: String,
 }
 
-/// Matches a heading paragraph: level digit, any extra classes, an optional
-/// author id, then the inner spans up to `</p>`.
+/// Matches a rendered heading: the level digit off the tag, any extra
+/// classes after the `heading-N` hook, an optional author id, then the
+/// inner markup up to the closing tag. Headings never nest, so the lazy
+/// body can't run past its own close. (The `regex` crate has no
+/// backreferences, hence `</h[1-6]>` rather than a matched pair.)
 fn heading_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r#"(?s)<p class="heading-([1-6])([^"]*)"( id="([^"]*)")?>(.*?)</p>"#)
+        Regex::new(r#"(?s)<h([1-6]) class="heading-[1-6]([^"]*)"( id="([^"]*)")?>(.*?)</h[1-6]>"#)
             .expect("valid heading regex")
     })
 }
@@ -130,7 +136,7 @@ pub(crate) fn process_page_headings(content: &str) -> (String, Vec<PageHeading>)
 
         write!(
             out,
-            "<p class=\"heading-{level}{extra}\" id=\"{id}\">{marker}{inner}</p>"
+            "<h{level} class=\"heading-{level}{extra}\" id=\"{id}\">{marker}{inner}</h{level}>"
         )
         .expect("write to String");
     }
