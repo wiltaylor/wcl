@@ -59,7 +59,11 @@ pub(super) fn constraint_violation(
             "non_empty" => {
                 let empty = match value {
                     Value::Utf8(s) | Value::Ascii(s) => s.is_empty(),
-                    Value::List(xs) => xs.is_empty(),
+                    // `none` elements don't count: a list literal may
+                    // carry them (an else-less `if` contributes one) and
+                    // every consumer drops them, so a list of nothing but
+                    // absences is empty to everyone who reads it.
+                    Value::List(xs) => xs.iter().all(|x| matches!(x, Value::None)),
                     _ => false,
                 };
                 if empty {

@@ -1027,8 +1027,12 @@ impl Printer {
                 self.print_expr(cond, 0);
                 self.push_ch(' ');
                 self.print_expr(then_block, 0);
-                self.push(" else ");
-                self.print_expr(else_block, 0);
+                // An else-less `if` prints without one — the formatter
+                // never spells out the implicit `none`.
+                if let Some(else_block) = else_block {
+                    self.push(" else ");
+                    self.print_expr(else_block, 0);
+                }
             }
             Expr::IfLet {
                 pattern,
