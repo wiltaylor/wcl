@@ -18,7 +18,7 @@ page index { sites = [:mysite]  start = true
 
 > [!NOTE]
 > **Per-site page names**
-> Page names are unique per site, so two different sites can each have a page called `index`. A page with no `sites` field is shared with every site.
+> Page names are unique per site, so two different sites can each have a page called `index`. Once a document declares more than one site, every page must name its `sites` — a page carrying none is a build error, and a shared page says so with `sites = [:docs, :blog]`. A single-site document needs no `sites` field anywhere.
 
 ## Cross-page links
 
@@ -39,7 +39,7 @@ A `page` block: one rendered page — its id, title, the sites it joins, the sta
 | `id` | `identifier` | no | Optional explicit HTML id. |
 | `title` | `utf8` | no | Human-readable page title; sets the browser tab title (`<title>`). Falls back to the page name. |
 | `template` | `symbol` | no | Template to wrap the page in; overrides the site's `default_template`. |
-| `sites` | `list<symbol>` | no | Named sites this page belongs to; absent ⇒ every site. |
+| `sites` | `list<symbol>` | no | Named sites this page belongs to; required in a multi-site document. |
 | `start` | `bool` | no | Mark this page as the site's start page (served at `/`). |
 
 #### Child blocks

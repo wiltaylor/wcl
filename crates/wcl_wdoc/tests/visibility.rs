@@ -19,6 +19,7 @@ site guide {
   default_template = :book
 }
 page home {
+  sites = [:main, :guide]
   p "ALWAYS_HERE"
   @only(sites=[:main]) p "ONLY_MAIN"
   @except(sites=[:main]) p "NOT_MAIN"

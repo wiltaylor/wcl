@@ -62,7 +62,8 @@ type Stylesheet {
   @inline(0) name: identifier
   css: utf8
   // Limit this stylesheet to specific sites (`sites = [:book]`). Absent
-  // or empty ⇒ every site (like `Page.sites` / `Class.sites`).
+  // or empty ⇒ every site (like `Class.sites`; unlike `Page.sites`, which
+  // a multi-site document requires).
   sites: list<symbol>?
 }
 
@@ -166,9 +167,12 @@ type Page {
   @doc("Template to wrap the page in; overrides the site's `default_template`.")
   template: symbol?
   // Which named `site`s this page belongs to (`sites = [:docs, :blog]`).
-  // Absent or empty ⇒ every site (a shared page). A name with no
-  // matching `site` block is a build error.
-  @doc("Named sites this page belongs to; absent ⇒ every site.")
+  // Required once the document declares more than one site — the site
+  // chooses the page's template, so an untagged page belonging to all of
+  // them would be re-templated by a site added later without the page
+  // changing. A single-site document needs no `sites` anywhere. A name
+  // with no matching `site` block is a build error.
+  @doc("Named sites this page belongs to; required in a multi-site document.")
   sites: list<symbol>?
   // Mark this page as the site's start page: it's served when no page is
   // specified (`/`, or `/<site>/` for a sub-site), instead of requiring a
@@ -214,7 +218,8 @@ type Class {
 
   // Limit this class's CSS to specific sites (`sites = [:book]`), so a
   // multi-site document can theme one site without affecting the others.
-  // Absent or empty ⇒ every site (like `Page.sites`).
+  // Absent or empty ⇒ every site (unlike `Page.sites`, which a multi-site
+  // document requires).
   sites: list<symbol>?
 
   // Text styling

@@ -2,7 +2,7 @@
 
 _The `site` block: one output target — template, title, theme, multi-site routing, and full-text search._
 
-A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field.
+A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field, which is **required** once there is more than one site (a page carrying none is a build error). A single-site document needs no `sites` field anywhere.
 
 
 ```wcl

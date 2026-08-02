@@ -9,9 +9,12 @@
 //     → _site/index.html  showcase landing (the `root` site)
 //       _site/docs/…  _site/blog/…  _site/talk/index.html  (the deck)
 //
-// A page joins a site via its `sites` array (e.g. `sites = [:showcase]`);
-// a page with no `sites` is shared by every site. Shared styles and
-// iconsets below are global, so all three sites can use them.
+// A page joins a site via its `sites` array (e.g. `sites = [:showcase]`).
+// With more than one site declared the field is required — a page shared
+// by several sites lists them all — because the site chooses the page's
+// template. Shared styles and iconsets below are global (a `class` or
+// `stylesheet` with no `sites` still applies everywhere), so all four
+// sites can use them.
 //
 // The `import <wdoc.wcl>` below pulls in the embedded wdoc standard
 // library — every stdlib block is then in scope here and in the pages

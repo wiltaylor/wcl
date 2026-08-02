@@ -2,7 +2,7 @@
 page wdoc_sites { sites = [:reference]  title = "Sites & Templates"
   h1 "Sites & Templates"
 
-  p "A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field."
+  p "A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field, which is **required** once there is more than one site (a page carrying none is a build error). A single-site document needs no `sites` field anywhere."
 
   h2 "Fields"
 
