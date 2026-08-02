@@ -24,6 +24,14 @@
 //! - wdoc's own infrastructure gathers (pages, sites, components) and the
 //!   wskill plumbing kinds are not data objects a user adds.
 //!
+//! Every one of those conventions turns on what a field's type IS, and
+//! asks [`wcl_lang::TypeField::shape`] for it rather than rendering the
+//! type and matching the text. The two differ where it costs most:
+//! through an alias (`type NodeId = identifier`) a parent link still
+//! reads as one, and a declaration merely NAMED `fnord` is not a
+//! function. A printed-string comparison gets both wrong in silence — the
+//! field just stops being a parent link, with no error anywhere.
+//!
 //! Every endpoint that describes a kind serves [`Kind::json`], so the
 //! client has one reader. The only member derived from instance data is
 //! `suggestions` — it walks every block of the kind and forces field
@@ -38,9 +46,15 @@
 //! over the type declarations beside the one everything else reads. A
 //! consumer that needs a new schema fact adds it to [`Kind`].
 
-use wcl_lang::{ChildFamily, DeclName, Document, ResolvedType, TypeDecl, TypeField};
+use wcl_lang::{BuiltinType, ChildFamily, DeclName, Document, FieldShape, TypeDecl, TypeField};
 
 use super::util::{dec_first_string, field_string, first_label, value_string};
+
+/// The namespace wdoc's own document gathers (pages, sites, components, …)
+/// are declared in. They're infrastructure, not data objects a user
+/// models — but a user kind that happens to share one of their NAMES is,
+/// which is why the exclusion is by declaring namespace.
+const WDOC_NS: &str = "wdoc";
 
 /// Wskill plumbing kinds that never belong in the add-a-unit palette.
 const UNIT_KIND_DENYLIST: &[&str] = &[
@@ -140,7 +154,7 @@ impl<'a> Kind<'a> {
     /// `concept "alpha"`).
     pub(super) fn id_is_identifier(&self) -> bool {
         self.id_field_decl()
-            .map(|f| f.type_ref().to_string() == "identifier")
+            .map(|f| is_identifier(&f))
             .unwrap_or(false)
     }
 
@@ -177,24 +191,26 @@ impl<'a> Kind<'a> {
             if !is_scalar(&f) {
                 continue;
             }
-            let ty = f.type_ref();
+            // The shape is resolved in the field's OWN namespace and sees
+            // through type aliases — a `wcl.wad` field typed
+            // `ContainerKind` must not pick up a same-named set
+            // elsewhere, and `type NodeId = identifier` is an identifier.
+            let shape = f.shape();
             // Function-valued fields (an SvgBlock's `lower`, computed
-            // hooks) aren't form-editable properties.
-            if ty.to_string().starts_with("fn") {
+            // hooks) aren't form-editable properties. A field typed by a
+            // declaration merely NAMED like the keyword is one.
+            if shape.is_function() {
                 continue;
             }
-            // Resolved in the field's OWN namespace — a `wcl.wad` field
-            // typed `ContainerKind` must not pick up a same-named set
-            // elsewhere.
-            let symbols: Option<Vec<String>> = match f.resolved_type() {
-                ResolvedType::SymbolSet(ss) => {
+            let symbols: Option<Vec<String>> = match &shape {
+                FieldShape::Symbols(ss) => {
                     Some(ss.symbols().map(|s| s.name().to_string()).collect())
                 }
                 _ => None,
             };
             fields.push(serde_json::json!({
                 "name": f.name(),
-                "type": ty.to_string(),
+                "type": f.type_ref().to_string(),
                 "optional": f.optional(),
                 "inline_slot": f.inline_slot(),
                 "symbols": symbols,
@@ -260,11 +276,7 @@ impl<'a> Kind<'a> {
         for f in self.schema.effective_fields() {
             // The inline id names the instance; it is never a shared
             // vocabulary.
-            if f.inline_slot().is_some() || !is_scalar(&f) {
-                continue;
-            }
-            let ty = bare_type(&f);
-            if ty != "utf8" && ty != "ascii" {
+            if f.inline_slot().is_some() || !is_scalar(&f) || !is_free_text(&f) {
                 continue;
             }
             let values: Vec<String> = blocks
@@ -295,13 +307,13 @@ pub(super) struct KindModel<'a> {
 
 impl<'a> KindModel<'a> {
     pub(super) fn new(doc: &'a Document) -> Self {
-        // wdoc's own document gathers (pages, sites, components, …) are
-        // infrastructure, not data objects a user models; they're excluded
-        // by declaring namespace so a user kind sharing a name is kept.
+        // Excluded by declaring namespace — a namespace SEGMENT, not a
+        // prefix of the rendered name, so the filter says what it means
+        // and a user kind sharing a name is kept.
         let gathered: Vec<(String, TypeDecl<'a>)> = doc
             .gathered_kinds()
             .into_iter()
-            .filter(|g| !g.schema().full_name().starts_with("wdoc."))
+            .filter(|g| g.schema().namespace().first().map(String::as_str) != Some(WDOC_NS))
             .map(|g| (g.kind().to_string(), g.into_schema()))
             .collect();
         let names: Vec<String> = gathered.iter().map(|(k, _)| k.clone()).collect();
@@ -470,8 +482,7 @@ fn derive<'a>(kind: String, schema: TypeDecl<'a>, names: &[String]) -> Kind<'a> 
             continue;
         }
         let name = f.name().to_string();
-        let ty = bare_type(&f);
-        if ty == "identifier" {
+        if is_identifier(&f) {
             if name == "source" {
                 source = Some(name.clone());
             } else if name == "destination" {
@@ -496,7 +507,7 @@ fn derive<'a>(kind: String, schema: TypeDecl<'a>, names: &[String]) -> Kind<'a> 
                     list: false,
                 });
             }
-        } else if ty == "list<identifier>" {
+        } else if is_identifier_list(&f) {
             refs.push(RefField {
                 field: name,
                 list: true,
@@ -523,10 +534,29 @@ fn derive<'a>(kind: String, schema: TypeDecl<'a>, names: &[String]) -> Kind<'a> 
     }
 }
 
-/// A field's declared type with a trailing `?` stripped.
-fn bare_type(f: &TypeField<'_>) -> String {
-    let ty = f.type_ref().to_string();
-    ty.strip_suffix('?').unwrap_or(&ty).to_string()
+// The three readings of a field's TYPE the conventions above turn on.
+// Each asks [`TypeField::shape`], which resolves in the field's own
+// namespace and sees through type aliases — where matching the printed
+// type reclassifies the field silently.
+
+/// Whether the field holds exactly one `identifier` — the type that makes
+/// a field a link to another object.
+fn is_identifier(f: &TypeField<'_>) -> bool {
+    f.shape().builtin() == Some(BuiltinType::Identifier)
+}
+
+/// Whether the field holds `list<identifier>` — the same link, many times.
+fn is_identifier_list(f: &TypeField<'_>) -> bool {
+    f.shape().list_element().and_then(FieldShape::builtin) == Some(BuiltinType::Identifier)
+}
+
+/// Whether the field holds free text — the only kind whose repeated
+/// values read as a vocabulary.
+fn is_free_text(f: &TypeField<'_>) -> bool {
+    matches!(
+        f.shape().builtin(),
+        Some(BuiltinType::Utf8 | BuiltinType::Ascii)
+    )
 }
 
 /// Scalar fields only: child blocks, child-block lists and connections are
@@ -806,6 +836,104 @@ type D {
     fn suggestions_are_opt_in() {
         let doc = open("part a { name = \"A\"  kind = \"handler\" }\n");
         assert!(json_of(&doc, "part")["suggestions"].is_null());
+    }
+
+    /// What a field IS decides how it reads, not how it prints. Declared
+    /// through an alias (`type NodeId = identifier`), a parent link is
+    /// still a parent link, a list of them still a reference, and the
+    /// inline slot still the unit-id convention — every one of which a
+    /// comparison against the printed type drops without a word.
+    #[test]
+    fn an_aliased_identifier_reads_as_an_identifier() {
+        let doc = Document::open(
+            "type NodeId = identifier\n\
+             @block(\"zone\")\n\
+             type Zone { @inline(0) id: NodeId  name: utf8 }\n\
+             @block(\"system\")\n\
+             type System { @inline(0) id: NodeId  zone: NodeId?  tags: list<NodeId> }\n\
+             @document\n\
+             type D { @children(\"zone\") zones: list<Zone>  @children(\"system\") systems: list<System> }\n",
+            "test.wcl",
+        )
+        .expect("parse");
+        let model = KindModel::new(&doc);
+        let system = model.get("system").expect("system");
+        assert!(system.id_is_identifier(), "the inline slot is an id slot");
+        let json = system.json();
+        assert_eq!(
+            json["parents"],
+            serde_json::json!([{ "field": "zone", "kind": "zone" }])
+        );
+        assert_eq!(
+            json["refs"],
+            serde_json::json!([{ "field": "tags", "list": true }])
+        );
+    }
+
+    /// Only a function-VALUED field is dropped from the form fields. A
+    /// field typed by a declaration whose name merely begins with `fn` is
+    /// an ordinary property.
+    #[test]
+    fn a_type_named_like_the_fn_keyword_is_not_a_function() {
+        let doc = Document::open(
+            "type fnord { label: utf8 }\n\
+             @block(\"widget\")\n\
+             type Widget { @inline(0) id: identifier  boxed: fnord?  lower: fn(utf8) -> utf8 }\n\
+             @document\n\
+             type D { @children(\"widget\") widgets: list<Widget> }\n",
+            "test.wcl",
+        )
+        .expect("parse");
+        let names: Vec<String> = json_of(&doc, "widget")["fields"]
+            .as_array()
+            .expect("fields")
+            .iter()
+            .map(|f| f["name"].as_str().unwrap_or_default().to_string())
+            .collect();
+        assert!(names.contains(&"boxed".to_string()), "{names:?}");
+        assert!(!names.contains(&"lower".to_string()), "{names:?}");
+    }
+
+    /// Reclassifying a field is a change to the model, and the model is
+    /// what every surface serves — so the change SHOWS. Retyped from
+    /// `identifier` to free text, `system.zone` stops being containment
+    /// and becomes an ordinary property with a suggestion picker.
+    #[test]
+    fn reclassifying_a_field_moves_it_in_the_model() {
+        let schema = |ty: &str| {
+            format!(
+                "@block(\"zone\")\n\
+                 type Zone {{ @inline(0) id: identifier  name: utf8 }}\n\
+                 @block(\"system\")\n\
+                 type System {{ @inline(0) id: identifier  zone: {ty} }}\n\
+                 @document\n\
+                 type D {{ @children(\"zone\") zones: list<Zone>  @children(\"system\") systems: list<System> }}\n\
+                 system a {{ zone = {value} }}\n\
+                 system b {{ zone = {value} }}\n",
+                value = if ty.starts_with("identifier") {
+                    "core"
+                } else {
+                    "\"core\""
+                },
+            )
+        };
+        let linked = Document::open(&schema("identifier?"), "test.wcl").expect("parse");
+        let model = KindModel::new(&linked);
+        let system = model.get("system").expect("system");
+        assert_eq!(
+            system.json()["parents"],
+            serde_json::json!([{ "field": "zone", "kind": "zone" }])
+        );
+        assert!(model.json_with_suggestions(system)["suggestions"]["zone"].is_null());
+
+        let text = Document::open(&schema("utf8?"), "test.wcl").expect("parse");
+        let model = KindModel::new(&text);
+        let system = model.get("system").expect("system");
+        assert_eq!(system.json()["parents"], serde_json::json!([]));
+        assert_eq!(
+            model.json_with_suggestions(system)["suggestions"]["zone"],
+            serde_json::json!(["core"])
+        );
     }
 
     #[test]
