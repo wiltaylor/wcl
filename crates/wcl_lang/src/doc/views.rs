@@ -825,16 +825,16 @@ impl<'a> Decorator<'a> {
         if let Some(v) = self.named_arg(slot_name) {
             return Some(v);
         }
-        let slot_idx = slot.inline_slot()? as usize;
-        let positional = match self.positional() {
-            Ok(v) => v,
-            Err(e) => return Some(Err(e)),
-        };
-        positional
-            .into_iter()
-            .nth(slot_idx)
-            .map(Ok)
-            .or_else(|| slot.default_value().map(Ok))
+        if let Some(slot_idx) = slot.inline_slot() {
+            let positional = match self.positional() {
+                Ok(v) => v,
+                Err(e) => return Some(Err(e)),
+            };
+            if let Some(value) = positional.into_iter().nth(slot_idx as usize) {
+                return Some(Ok(value));
+            }
+        }
+        slot.default_value().map(Ok)
     }
 
     /// Dispatch the decorator's positional + named args into a
