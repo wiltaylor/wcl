@@ -314,11 +314,41 @@ impl Printer {
         self.print_leading_trivia(&b.leading_trivia);
         self.write_indent();
         self.print_decorators_inline(&b.decorators);
+        if let Some(slot) = &b.slot_decl {
+            self.push("slot ");
+            if let Some(name) = b.labels.first() {
+                match name {
+                    Expr::Identifier(name, _) => self.push(name),
+                    other => self.print_expr(other, 0),
+                }
+            }
+            self.push(": ");
+            self.print_type_ref(&slot.ty);
+            if slot.optional {
+                self.push("?");
+            } else if slot.repeated {
+                self.push("*");
+            }
+            if let Some(Item::Field(default)) = b
+                .items
+                .iter()
+                .find(|item| matches!(item, Item::Field(field) if field.name == "default"))
+            {
+                self.push(" = ");
+                self.print_expr(&default.expr, 0);
+            }
+            self.print_trailing_comment(&b.trailing_comment);
+            self.newline();
+            return;
+        }
         if !b.kind_ns.is_empty() {
             self.push(&b.kind_ns.join("."));
             self.push("::");
         }
         self.push(&b.kind);
+        if b.conditional {
+            self.push("?");
+        }
         // A single string label may print as a heredoc — legal only when
         // nothing can follow it on the line (empty body, no trailing
         // comment: the closing tag needs a bare newline, and item-starter

@@ -405,6 +405,7 @@ let tr_nav = fn(c: TemplateCtx) -> list<Html> [
 ]
 
 template training {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       [ el("style", [], [raw(training_css) ])],

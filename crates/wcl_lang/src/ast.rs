@@ -494,6 +494,14 @@ pub struct Block {
     /// Empty for a bare, unqualified kind. Multi-segment namespaces are
     /// dot-separated on the left of `::` (`foo.bar::process`).
     pub kind_ns: Vec<String>,
+    /// A bare-name content fill may be conditional (`aside? { ... }`).
+    /// The host that owns the surrounding slot contract interprets this;
+    /// the language only preserves the syntax.
+    pub conditional: bool,
+    /// Present for the declaration form `slot name: Type[? | *]`.
+    /// Slots remain ordinary blocks so host schemas can place them with
+    /// `@children("slot")`, while retaining their type syntax losslessly.
+    pub slot_decl: Option<SlotDecl>,
     pub labels: Vec<Expr>,
     pub items: Vec<Item>,
     pub decorators: Vec<Decorator>,
@@ -504,6 +512,14 @@ pub struct Block {
     pub trailing_comment: Option<String>,
     /// Comments/blank lines after the last item, before `}`.
     pub trailing_trivia: Vec<Trivia>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SlotDecl {
+    pub ty: crate::value::TypeRef,
+    pub ty_span: Span,
+    pub optional: bool,
+    pub repeated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

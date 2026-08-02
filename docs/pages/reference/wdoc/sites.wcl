@@ -200,6 +200,7 @@ WCL
   code wcl {
     source = <<'WCL'
 template blog {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_webpage_layout(c),
@@ -218,6 +219,7 @@ WCL
   code wcl {
     source = <<'WCL'
 template app_home {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_part_webpage_css(),                    // keep the stdlib styling…

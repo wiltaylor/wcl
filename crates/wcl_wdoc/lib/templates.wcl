@@ -17,12 +17,6 @@ namespace wdoc
 
 type PageRef { name: utf8  href: utf8 }
 
-// A named content region of the page being rendered, handed to a
-// template. `content` is the region's already-rendered HTML (its wdoc
-// blocks lowered). Built by the renderer from the page's `region "name"
-// { … }` blocks; pull one out by name with `wdoc_region(c, "name")`.
-type Region { name: utf8  content: utf8 }
-
 // A node in the resolved table of contents handed to templates. Built
 // by the renderer from the `site`'s `toc` block. `href` is empty for a
 // grouping heading (a `chapter` with no `page`); `children` are nested
@@ -87,12 +81,12 @@ type PageMetadata {
 type TemplateCtx {
   @doc("The page's authored block tree as read-only typed handles. Query or reorder it, then place handles with `wdoc_blocks` / `Html::Blocks`.")
   content:      list<BlockHandle>
+  @doc("Slots declared by the resolved template, including empty optional slots. Use `slot(c, :name)` to place one.")
+  slots:        list<TemplateSlot>
   @doc("Site title, or the page name when the site sets no `title`.")
   title:        utf8
   @doc("The current page's name.")
   page_name:    utf8
-  @doc("The page's named content regions (its `region \"name\" { … }` blocks), each already rendered to HTML. Pull one out by name with `wdoc_region(c, \"name\")`. Empty on pages with no regions.")
-  regions:      list<Region>
   @doc("Every page in the current site, in source order (for building navigation).")
   pages:        list<PageRef>
   @doc("The book TOC tree; flat (one entry per page) when the site declares no `toc`.")
@@ -113,11 +107,28 @@ type TemplateCtx {
   home_title:   utf8
 }
 
+type TemplateSlot {
+  name:   symbol
+  blocks: list<BlockHandle>
+}
+
 // Place authored block handles as one structural run. Evaluation merely
 // returns the handles; Rust resolves them through the ordinary block renderer
 // after the template function has completed.
 let wdoc_blocks = fn(blocks: list<BlockHandle>) -> list<Html> [
   Html::Blocks { blocks: blocks }
+]
+
+// Resolve a declared slot and preserve its identity through placement. The
+// host builtin errors when the calling template does not declare `name`.
+let slot_blocks = fn(c: TemplateCtx, name: symbol) -> list<BlockHandle>
+  __wdoc_slot_blocks(c.slots, name)
+
+let slot = fn(c: TemplateCtx, name: symbol) -> list<Html> [
+  Html::Blocks {
+    blocks: slot_blocks(c, name),
+    slot: name
+  }
 ]
 
 // One table-of-contents entry. The inline label is the display title;
@@ -343,6 +354,7 @@ type AgentConfig {
 @block("template")
 type Template {
   @inline(0) name: identifier
+  @children("slot") slots: list<Slot>
   render: fn(TemplateCtx) -> list<Html>
 }
 
@@ -534,7 +546,7 @@ let wdoc_part_navbar = fn(c: TemplateCtx) -> list<Html> [
 
 // The page content wrapped in the reading card (`<main class="site-main">`).
 let wdoc_part_content = fn(c: TemplateCtx) -> list<Html> [
-  el("main", ["site-main"], wdoc_blocks(c.content)),
+  el("main", ["site-main"], slot(c, :content)),
 ]
 
 // The one-time dropdown-toggle script — emit it once when the navbar uses a
@@ -559,6 +571,7 @@ let wdoc_webpage_layout = fn(c: TemplateCtx) -> list<Html>
   ])
 
 template webpage {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     wdoc_webpage_layout(c)
 }
@@ -727,7 +740,7 @@ let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<Html>
 let wdoc_part_book_content_with_metadata = fn(c: TemplateCtx, m: PageMetadata) -> list<Html> [
   el("main", ["book-content"], [
     el("div", ["book-measure"], flatten([
-      wdoc_blocks(c.content),
+      slot(c, :content),
       book_pagenav(m),
     ])),
   ]),
@@ -787,6 +800,7 @@ let wdoc_book_layout = fn(c: TemplateCtx) -> list<Html> {
 }
 
 template book {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html>
     wdoc_book_layout(c)
 }

@@ -93,14 +93,6 @@ fn collect_block(
         }
         return;
     }
-    // A named `region` slots into an HTML template; a PDF has no template,
-    // so its children render in place.
-    if kind == kinds::REGION {
-        for child in block.blocks() {
-            collect_block(doc, &child, patterns, base_dir, out);
-        }
-        return;
-    }
     // An `edit_field` binds its children to a data-object field for the
     // editor's Design mode — a transparent wrapper here.
     if kind == kinds::EDIT_FIELD {

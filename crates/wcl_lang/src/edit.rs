@@ -163,6 +163,8 @@ pub fn build_block(
     ast::Block {
         kind: kind.to_string(),
         kind_ns: kind_ns.to_vec(),
+        conditional: false,
+        slot_decl: None,
         labels,
         items,
         decorators: Vec::new(),

@@ -1105,6 +1105,20 @@ impl<'a> Parser<'a> {
         kind_end: usize,
         decorators: Vec<Decorator>,
     ) -> Result<Item, ParseError> {
+        let slot_decl = kind_ns.is_empty()
+            && kind == "slot"
+            && matches!(self.peek()?.kind, TokenKind::Ident(_))
+            && matches!(self.peek2()?.kind, TokenKind::Colon);
+        if slot_decl {
+            return self.parse_slot_decl(start, decorators);
+        }
+
+        let conditional = if matches!(self.peek()?.kind, TokenKind::Question) {
+            self.bump()?;
+            true
+        } else {
+            false
+        };
         // Labels are value expressions in positional slots. Their types are
         // determined by the schema's `@inline(N)`-decorated fields.
         //
@@ -1166,6 +1180,8 @@ impl<'a> Parser<'a> {
             return Ok(Item::Block(Block {
                 kind,
                 kind_ns,
+                conditional,
+                slot_decl: None,
                 labels,
                 items: Vec::new(),
                 decorators,
@@ -1223,6 +1239,8 @@ impl<'a> Parser<'a> {
         Ok(Item::Block(Block {
             kind,
             kind_ns,
+            conditional,
+            slot_decl: None,
             labels,
             items,
             decorators,
@@ -1230,6 +1248,70 @@ impl<'a> Parser<'a> {
             leading_trivia,
             trailing_comment: None,
             trailing_trivia,
+        }))
+    }
+
+    /// Parse the host-neutral slot declaration syntax:
+    /// `slot name: Type[? | *] [= default]`.
+    ///
+    /// It is represented as an ordinary `slot` block so schemas can place
+    /// declarations using `@children("slot")`. The type/modifiers live in
+    /// side-band AST metadata because a TypeRef is not a value expression;
+    /// an inline default is also exposed as the block's `default` field so
+    /// existing block APIs and instance-kind derivation can evaluate it.
+    fn parse_slot_decl(
+        &mut self,
+        start: usize,
+        decorators: Vec<Decorator>,
+    ) -> Result<Item, ParseError> {
+        let (name, name_span) = self.bump_ident("expected slot name after 'slot'")?;
+        self.expect(TokenKind::Colon, "expected ':' after slot name")?;
+        let (ty, ty_span) = self.parse_type_ref()?;
+        let mut optional = false;
+        let mut repeated = false;
+        let mut end = ty_span.end;
+        match self.peek()?.kind {
+            TokenKind::Question => {
+                end = self.bump()?.span.end;
+                optional = true;
+            }
+            TokenKind::Star => {
+                end = self.bump()?.span.end;
+                repeated = true;
+            }
+            _ => {}
+        }
+        let mut items = Vec::new();
+        if matches!(self.peek()?.kind, TokenKind::Eq) {
+            self.bump()?;
+            let (expr, expr_span) = self.parse_expr()?;
+            end = expr_span.end;
+            items.push(Item::Field(Field {
+                name: "default".to_string(),
+                expr,
+                decorators: Vec::new(),
+                span: Span::new(name_span.start, expr_span.end),
+                leading_trivia: Vec::new(),
+                trailing_comment: None,
+            }));
+        }
+        Ok(Item::Block(Block {
+            kind: "slot".to_string(),
+            kind_ns: Vec::new(),
+            conditional: false,
+            slot_decl: Some(crate::ast::SlotDecl {
+                ty,
+                ty_span,
+                optional,
+                repeated,
+            }),
+            labels: vec![Expr::Identifier(name, name_span)],
+            items,
+            decorators,
+            span: Span::new(start, end),
+            leading_trivia: self.take_item_trivia(),
+            trailing_comment: None,
+            trailing_trivia: Vec::new(),
         }))
     }
 }

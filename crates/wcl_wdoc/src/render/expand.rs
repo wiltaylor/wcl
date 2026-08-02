@@ -313,6 +313,14 @@ pub(crate) fn walk_structural<'a, E>(
     if !crate::visibility::block_visible(block, patterns) {
         return Some(Ok(()));
     }
+    if block.is_slot_fill() {
+        for child in block.blocks() {
+            if let Err(err) = recurse(&child) {
+                return Some(Err(err));
+            }
+        }
+        return Some(Ok(()));
+    }
     match block.kind() {
         "notes" | "frontmatter" => Some(Ok(())),
         "partial" => {
@@ -395,7 +403,10 @@ pub(crate) fn expand_component_children<'a>(
     def: &Block<'a>,
 ) -> Vec<Block<'a>> {
     let mut bindings: Vec<(String, Value)> = Vec::new();
-    for slot in def.blocks().filter(|b| b.kind() == "wdoc_slot") {
+    for slot in def
+        .blocks()
+        .filter(|b| matches!(b.kind(), "slot" | "wdoc_slot"))
+    {
         let Some(name) = label_string(&slot) else {
             continue;
         };

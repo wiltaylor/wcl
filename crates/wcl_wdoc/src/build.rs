@@ -3,7 +3,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use miette::{NamedSource, Report};
-use wcl_lang::{Block, Document, Environment, Registry, Value, disk_loader, from_fn};
+use wcl_lang::{
+    Block, DeclName, Document, Environment, Registry, TypeRef, Value, disk_loader, from_fn,
+};
 
 use crate::highlight;
 use crate::inline::InlinePatterns;
@@ -164,6 +166,45 @@ pub fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
     // a wdoc document must be opened with the wdoc environment.
     env.set_expander(std::sync::Arc::new(crate::render::WdocExpander));
     crate::page_metadata::register(&mut env);
+    env.add_builtin(
+        "__wdoc_slot_blocks",
+        from_fn(|slots: Value, requested: Value| -> Result<Value, String> {
+            let requested = match requested {
+                Value::Symbol(name)
+                | Value::Identifier(name)
+                | Value::Utf8(name)
+                | Value::Ascii(name) => name,
+                other => {
+                    return Err(format!(
+                        "slot name must be a symbol, found {}",
+                        other.type_name()
+                    ));
+                }
+            };
+            let Value::List(slots) = slots else {
+                return Err("template slot table is not a list".to_string());
+            };
+            for slot in slots.iter() {
+                let Value::Record { fields, .. } = slot else {
+                    continue;
+                };
+                let matches = matches!(
+                    fields.get("name"),
+                    Some(Value::Symbol(name) | Value::Identifier(name) | Value::Utf8(name) | Value::Ascii(name))
+                        if name == &requested
+                );
+                if matches {
+                    return Ok(fields
+                        .get("blocks")
+                        .cloned()
+                        .unwrap_or_else(|| Value::list(Vec::new())));
+                }
+            }
+            Err(format!(
+                "template references slot `{requested}` but does not declare it"
+            ))
+        }),
+    );
     let base = base_dir.map(Path::to_path_buf);
     env.add_builtin(
         "included_sites",
@@ -1549,6 +1590,7 @@ fn build_site(
         .block
         .as_ref()
         .and_then(|b| field_symbol(b, "default_template"));
+    validate_slot_contracts(doc, spec)?;
     let site_title = spec.block.as_ref().and_then(|b| field_utf8(b, "title"));
     let theme_toggle = spec
         .block
@@ -1880,6 +1922,287 @@ fn build_site(
     })
 }
 
+#[derive(Clone)]
+struct DeclaredSlot<'a> {
+    name: String,
+    declaration: Block<'a>,
+}
+
+fn declared_slots<'a>(template: &Block<'a>) -> Vec<DeclaredSlot<'a>> {
+    template
+        .blocks()
+        .filter(|block| block.kind() == "slot")
+        .filter_map(|declaration| {
+            label_string(&declaration).map(|name| DeclaredSlot { name, declaration })
+        })
+        .collect()
+}
+
+/// Check the page/layout side of the slot contract before rendering. The
+/// selected template is the page's literal override or the site's default;
+/// a page whose template cannot be resolved is left quiet, because a false
+/// positive is worse than deferring the check to render.
+fn validate_slot_contracts(doc: &Document, spec: &SiteSpec<'_>) -> Result<(), BuildError> {
+    let global_slot_names: HashSet<String> = doc
+        .blocks()
+        .filter(|block| block.kind() == "template")
+        .flat_map(|template| declared_slots(&template))
+        .map(|slot| slot.name)
+        .collect();
+    let site_slot_names = site_declared_slot_names(doc, spec);
+
+    for page in &spec.pages {
+        let template_name = if let Some(field) = page.field("template") {
+            let Some(name) = field.literal_symbol() else {
+                continue;
+            };
+            name.to_string()
+        } else if let Some(field) = spec
+            .block
+            .as_ref()
+            .and_then(|site| site.field("default_template"))
+        {
+            let Some(name) = field.literal_symbol() else {
+                continue;
+            };
+            name.to_string()
+        } else {
+            continue;
+        };
+        let Some(template) = find_template(doc, &template_name) else {
+            continue; // the existing unknown-template diagnostic owns this case
+        };
+        let slots = declared_slots(&template);
+        if let Some(slot) = slots.iter().find(|slot| {
+            slot.name == "content"
+                && !matches!(
+                    slot.declaration.slot_type_ref(),
+                    Some(TypeRef::Named { path, .. })
+                        if path.last().is_some_and(|name| name == "content")
+                )
+        }) {
+            return Err(BuildError::BadPage(format!(
+                "template `{template_name}`: reserved slot `content` must have a `content` type, found `{}`",
+                slot.declaration
+                    .slot_type_ref()
+                    .map_or_else(|| "unknown".to_string(), ToString::to_string)
+            )));
+        }
+        let slot_names: HashSet<&str> = slots.iter().map(|slot| slot.name.as_str()).collect();
+        let page_name = page_name(page).unwrap_or_else(|| "<unnamed>".to_string());
+        let mut fills: BTreeMap<String, usize> = BTreeMap::new();
+        let mut fill_children: BTreeMap<String, Vec<Block<'_>>> = BTreeMap::new();
+        let mut implicit_content = false;
+        let mut content_children = Vec::new();
+
+        for child in page.blocks() {
+            if child.kind() == "wdoc_repeater" {
+                let mut possible_fills = Vec::new();
+                let mut possible_content = false;
+                collect_possible_page_items(
+                    &child,
+                    &global_slot_names,
+                    &mut possible_fills,
+                    &mut possible_content,
+                );
+                for fill in possible_fills {
+                    record_slot_fill(
+                        &fill,
+                        &slot_names,
+                        &site_slot_names,
+                        &global_slot_names,
+                        &page_name,
+                        &template_name,
+                        &mut fills,
+                        &mut fill_children,
+                    )?;
+                }
+                if possible_content {
+                    implicit_content = true;
+                    content_children.push(child.clone());
+                }
+                continue;
+            }
+            if !record_slot_fill(
+                &child,
+                &slot_names,
+                &site_slot_names,
+                &global_slot_names,
+                &page_name,
+                &template_name,
+                &mut fills,
+                &mut fill_children,
+            )? {
+                implicit_content = true;
+                content_children.push(child.clone());
+            }
+        }
+        if implicit_content {
+            if !slot_names.contains("content") {
+                return Err(BuildError::BadPage(format!(
+                    "page `{page_name}` has loose content, but template `{template_name}` does not declare the reserved `content` slot"
+                )));
+            }
+            *fills.entry("content".to_string()).or_default() += 1;
+            fill_children.insert("content".to_string(), content_children);
+        }
+
+        if let Some((name, _)) = fills.iter().find(|(_, count)| **count > 1) {
+            return Err(BuildError::BadPage(format!(
+                "page `{page_name}` fills slot `{name}` more than once"
+            )));
+        }
+
+        for slot in slots {
+            let required =
+                !slot.declaration.slot_optional() && slot.declaration.field("default").is_none();
+            if required && !fills.contains_key(&slot.name) {
+                return Err(BuildError::BadPage(format!(
+                    "page `{page_name}`: required slot `{}` is unfilled for template `{template_name}`",
+                    slot.name
+                )));
+            }
+            let Some(accepted) = slot.declaration.slot_type_ref().and_then(|ty| match ty {
+                TypeRef::Named { path, args }
+                    if path.last().is_some_and(|name| name == "content") =>
+                {
+                    args.first()
+                }
+                _ => None,
+            }) else {
+                continue;
+            };
+            let Some(children) = fill_children.get(&slot.name) else {
+                continue;
+            };
+            for child in children {
+                let contextual = child
+                    .decorators()
+                    .any(|decorator| decorator.name() == "contextual");
+                if contextual || block_matches_accepted_type(child, accepted) {
+                    continue;
+                }
+                return Err(BuildError::BadPage(format!(
+                    "page `{page_name}`: slot `{}` accepts `{accepted}`, but found `{}`",
+                    slot.name,
+                    child.kind()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn site_declared_slot_names(doc: &Document, spec: &SiteSpec<'_>) -> HashSet<String> {
+    let mut templates = HashSet::new();
+    if let Some(name) = spec
+        .block
+        .as_ref()
+        .and_then(|site| site.field("default_template"))
+        .and_then(|field| field.literal_symbol())
+    {
+        templates.insert(name.to_string());
+    }
+    for page in &spec.pages {
+        if let Some(name) = page
+            .field("template")
+            .and_then(|field| field.literal_symbol())
+        {
+            templates.insert(name.to_string());
+        }
+    }
+    templates
+        .into_iter()
+        .filter_map(|name| find_template(doc, &name))
+        .flat_map(|template| declared_slots(&template))
+        .map(|slot| slot.name)
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_slot_fill<'a>(
+    fill: &Block<'a>,
+    slot_names: &HashSet<&str>,
+    site_slot_names: &HashSet<String>,
+    global_slot_names: &HashSet<String>,
+    page_name: &str,
+    template_name: &str,
+    fills: &mut BTreeMap<String, usize>,
+    fill_children: &mut BTreeMap<String, Vec<Block<'a>>>,
+) -> Result<bool, BuildError> {
+    let name = fill.kind();
+    if slot_names.contains(name) {
+        *fills.entry(name.to_string()).or_default() += 1;
+        fill_children
+            .entry(name.to_string())
+            .or_default()
+            .extend(fill.blocks());
+        return Ok(true);
+    }
+    if site_slot_names.contains(name) {
+        if fill.is_conditional() {
+            return Ok(true); // author requested that this absent fill be dropped
+        }
+        return Err(BuildError::BadPage(format!(
+            "page `{page_name}` fills slot `{name}`, but template `{template_name}` does not declare it"
+        )));
+    }
+    if global_slot_names.contains(name) {
+        return Err(BuildError::BadPage(format!(
+            "page `{page_name}` fills slot `{name}`, but no layout used by this site declares it"
+        )));
+    }
+    Ok(false)
+}
+
+/// Classify authored sites inside a repeater without evaluating its data.
+/// Each named fill remains one possible fill regardless of iteration count;
+/// any other generated block is possible implicit `content`.
+fn collect_possible_page_items<'a>(
+    block: &Block<'a>,
+    global_slot_names: &HashSet<String>,
+    fills: &mut Vec<Block<'a>>,
+    has_content: &mut bool,
+) {
+    for child in block.blocks() {
+        if child.kind() == "wdoc_repeater" {
+            collect_possible_page_items(&child, global_slot_names, fills, has_content);
+        } else if global_slot_names.contains(child.kind()) {
+            fills.push(child);
+        } else {
+            *has_content = true;
+        }
+    }
+}
+
+/// Expand page-level repeaters before routing their generated blocks into
+/// slots. Component instances stay intact — they are ordinary content
+/// handles whose own expansion happens only when the template places them.
+fn expand_page_repeaters<'a>(block: Block<'a>, out: &mut Vec<Block<'a>>) {
+    if block.kind() == "wdoc_repeater" {
+        for generated in expand_repeater_children(&block) {
+            expand_page_repeaters(generated, out);
+        }
+    } else {
+        out.push(block);
+    }
+}
+
+fn block_matches_accepted_type(block: &Block<'_>, accepted: &TypeRef) -> bool {
+    let TypeRef::Named { path, .. } = accepted else {
+        return true; // stay conservative for a type shape wdoc cannot classify
+    };
+    let expected = path.join(".");
+    let Some(last) = path.last() else {
+        return true;
+    };
+    block.schema().is_some_and(|schema| {
+        schema.name() == last
+            || schema.is_descendant_of(&expected)
+            || (path.len() == 1 && schema.is_descendant_of(&format!("wdoc.{expected}")))
+    })
+}
+
 /// Whether the site's current page set matches the `<name>.html` files
 /// already on disk (one per page, ignoring the `index.html` landing copy and
 /// any page literally named `index`). The incremental path uses this to fall
@@ -2072,10 +2395,9 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
         ctx.doc,
         &tmpl,
         &[],
+        &[],
         None,
         ctx.base_dir,
-        // A presentation has no named regions; it lays out the `deck`.
-        Value::List(std::sync::Arc::new(Vec::new())),
         &title,
         "",
         ctx.pages_value,
@@ -2145,30 +2467,42 @@ fn build_normal_page(
         });
     }
 
-    let page_blocks: Vec<_> = page.blocks().collect();
-    // Resolve the template before lowering anything. A template receives
-    // authored handles and decides which ones to place; unplaced bodies must
-    // stay lazy. Bare pages still need their full HTML, and searchable sites
-    // lower once for the page-local search index.
+    // Resolve the template before partitioning the authored page tree: bare
+    // child names matching its declarations are fills, while everything else
+    // belongs to the reserved implicit `content` slot.
     let template_name =
         field_symbol(page, "template").or_else(|| ctx.default_template.map(str::to_string));
+    let resolved_template = template_name
+        .as_deref()
+        .and_then(|name| find_template(ctx.doc, name));
+    let slot_names: HashSet<String> = resolved_template
+        .as_ref()
+        .map(declared_slots)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|slot| slot.name)
+        .collect();
+    let site_slot_names = site_declared_slot_names(ctx.doc, ctx.spec);
+
+    let mut page_blocks = Vec::new();
+    for block in page.blocks() {
+        expand_page_repeaters(block, &mut page_blocks);
+    }
+    // Templates receive lazy authored handles; only bare pages and searchable
+    // sites need to lower their implicit content eagerly.
     let needs_eager_content = template_name.is_none() || ctx.search;
+    let mut content_blocks = Vec::new();
+    let mut slot_blocks: BTreeMap<String, Vec<Block<'_>>> = BTreeMap::new();
     let mut content = String::new();
-    let mut regions: Vec<(String, String)> = Vec::new();
     for b in &page_blocks {
-        if b.kind() == "region" {
-            let name = label_string(b).unwrap_or_default();
-            let mut html = String::new();
-            for cb in b
-                .blocks()
-                .filter_map(|c| render_block(ctx.doc, &c, ctx.inline_patterns, ctx.base_dir))
-            {
-                html.push_str(&cb);
-                html.push('\n');
-            }
-            regions.push((name, html));
+        if slot_names.contains(b.kind()) {
+            slot_blocks.insert(b.kind().to_string(), b.blocks().collect());
             continue;
         }
+        if b.is_conditional() && site_slot_names.contains(b.kind()) {
+            continue;
+        }
+        content_blocks.push(b.clone());
         if needs_eager_content
             && let Some(s) = render_block(ctx.doc, b, ctx.inline_patterns, ctx.base_dir)
         {
@@ -2188,28 +2522,13 @@ fn build_normal_page(
         let page_span = page.span();
         content = format!(
             "<div data-wcl-page-file=\"{}\" data-wcl-page-name=\"{}\" \
-             data-wcl-page-span=\"{}:{}\" style=\"display:contents\">\n{content}</div>\n",
+             data-wcl-page-span=\"{}:{}\" data-wcl-slot=\"content\" style=\"display:contents\">\n{content}</div>\n",
             escape_html(src.name()),
             escape_html(&page_name),
             page_span.start,
             page_span.end,
         );
     }
-    let regions_val = Value::list(
-        regions
-            .iter()
-            .map(|(name, html)| {
-                let mut m = BTreeMap::new();
-                m.insert("name".to_string(), Value::Utf8(name.clone()));
-                m.insert("content".to_string(), Value::Utf8(html.clone()));
-                Value::Record {
-                    ty: vec!["Region".to_string()],
-                    fields: std::sync::Arc::new(m),
-                }
-            })
-            .collect(),
-    );
-
     let mut rendered = match template_name {
         // `:ai_skill` is a Markdown-only target, not an HTML template.
         Some(name) if name == "ai_skill" => {
@@ -2230,10 +2549,10 @@ fn build_normal_page(
             render_template(
                 ctx.doc,
                 &tmpl,
-                &page_blocks,
+                &content_blocks,
+                &slot_blocks.into_iter().collect::<Vec<_>>(),
                 Some(page),
                 ctx.base_dir,
-                regions_val,
                 &title,
                 &page_name,
                 ctx.pages_value,

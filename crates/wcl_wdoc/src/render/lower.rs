@@ -12,7 +12,7 @@ use crate::inline::InlinePatterns;
 
 use super::*;
 
-pub(crate) type BlockRenderer<'a> = dyn Fn(&[Value]) -> String + 'a;
+pub(crate) type BlockRenderer<'a> = dyn Fn(&[Value], Option<&str>) -> String + 'a;
 
 thread_local! {
     /// First eval error swallowed while lowering a block during the
@@ -540,7 +540,16 @@ pub(crate) fn render_html_variant_with_blocks(
     };
     match kind.as_str() {
         "blocks" => match (map.get("blocks"), block_renderer) {
-            (Some(Value::List(handles)), Some(render)) => render(handles),
+            (Some(Value::List(handles)), Some(render)) => {
+                let slot = map.get("slot").and_then(|value| match value {
+                    Value::Symbol(name)
+                    | Value::Identifier(name)
+                    | Value::Utf8(name)
+                    | Value::Ascii(name) => Some(name.as_str()),
+                    _ => None,
+                });
+                render(handles, slot)
+            }
             _ => String::new(),
         },
         "paragraph" => render_paragraph_payload(doc, map, patterns),

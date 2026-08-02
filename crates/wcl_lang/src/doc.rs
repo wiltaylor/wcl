@@ -167,7 +167,10 @@ pub struct Document {
 /// check is concerned.
 struct DeclaredKind {
     /// The declarer's position in `blocks()` order.
-    declarer: usize,
+    /// `None` for a content-fill kind synthesised from a `slot` declaration:
+    /// it has a permissive contextual schema but is not a component whose
+    /// body the host expander should enter.
+    declarer: Option<usize>,
     /// The derived `@block` type, plus its evaluation cells (a type
     /// declaration is viewed through both).
     ast: ast::TypeDecl,
@@ -2100,7 +2103,7 @@ impl Document {
         if name.is_empty() {
             return None;
         }
-        let pos = self.declared_kinds()?.get(name)?.declarer;
+        let pos = self.declared_kinds()?.get(name)?.declarer?;
         self.blocks().nth(pos)
     }
 
@@ -2188,11 +2191,52 @@ impl Document {
             out.insert(
                 name,
                 DeclaredKind {
-                    declarer: i,
+                    declarer: Some(i),
                     ast: derived,
                     cells,
                 },
             );
+        }
+        // A typed content slot introduces a contextual bare-name fill kind.
+        // The schema is intentionally permissive: which layout/container is
+        // active and which child type it accepts are host build-time facts,
+        // not global language-schema facts. Populate these after ordinary
+        // `@declares_kind` entries so a real component declaration wins a
+        // same-name collision.
+        for b in self.blocks() {
+            // Read literal AST children directly. Calling `b.blocks()` here
+            // would demand its computed-children OnceLock while this kind map
+            // may itself have been requested by that computation.
+            for item in &b.ast.items {
+                let ast::Item::Block(slot) = item else {
+                    continue;
+                };
+                if slot.kind != "slot" {
+                    continue;
+                }
+                let is_content = slot.slot_decl.as_ref().is_some_and(|decl| {
+                    matches!(&decl.ty, TypeRef::Named { path, .. } if path.last().is_some_and(|name| name == "content"))
+                });
+                if !is_content {
+                    continue;
+                }
+                let Some(ast::Expr::Identifier(name, _)) = slot.labels.first() else {
+                    continue;
+                };
+                if out.contains_key(name) {
+                    continue;
+                }
+                let derived = derive_content_fill_schema(name);
+                let cells = ItemCells::build(&ast::Item::TypeDecl(derived.clone()), None);
+                out.insert(
+                    name.clone(),
+                    DeclaredKind {
+                        declarer: None,
+                        ast: derived,
+                        cells,
+                    },
+                );
+            }
         }
         out
     }
@@ -3082,26 +3126,45 @@ fn derive_kind_schema(
     let mut fields: Vec<ast::TypeField> = Vec::new();
     let mut required: Vec<String> = Vec::new();
     if let Some(param_kind) = param_kind {
-        for p in declarer.blocks().filter(|b| b.kind() == param_kind) {
+        for p in declarer
+            .blocks()
+            .filter(|b| b.kind() == param_kind || (param_kind == "slot" && b.kind() == "wdoc_slot"))
+        {
             let Some(name) = block_first_label(&p) else {
                 continue;
             };
+            // Content slots describe nested block holes, not instance
+            // parameter fields. Their host validates/fills them against the
+            // resolved container contract at build/render time.
+            if p.slot_type_ref().is_some_and(|ty| {
+                matches!(ty, TypeRef::Named { path, .. } if path.last().is_some_and(|name| name == "content"))
+            }) {
+                continue;
+            }
             if fields.iter().any(|f| f.name == name) {
                 continue;
             }
-            let optional = p.field(PARAM_DEFAULT_FIELD).is_some();
+            let optional = p.field(PARAM_DEFAULT_FIELD).is_some() || p.slot_optional();
             if !optional {
                 required.push(name.clone());
             }
+            let typed = p.slot_type_ref().cloned();
             let mut field = synthetic_field(
                 &name,
-                TypeRef::Builtin(crate::value::BuiltinType::Utf8),
+                typed
+                    .clone()
+                    .unwrap_or(TypeRef::Builtin(crate::value::BuiltinType::Utf8)),
                 optional,
             );
-            field.decorators.push(synthetic_decorator(
-                BuiltinDecorator::Schemaless.as_str(),
-                Vec::new(),
-            ));
+            // Legacy `wdoc_slot` declarations were deliberately untyped.
+            // Preserve that contract while typed `slot` declarations use
+            // ordinary schema checking.
+            if typed.is_none() {
+                field.decorators.push(synthetic_decorator(
+                    BuiltinDecorator::Schemaless.as_str(),
+                    Vec::new(),
+                ));
+            }
             fields.push(field);
         }
     }
@@ -3135,6 +3198,32 @@ fn derive_kind_schema(
             synthetic_decorator(BuiltinDecorator::Contextual.as_str(), Vec::new()),
         ],
         span: declarer.span(),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
+    }
+}
+
+/// Permissive schema for a bare-name content fill introduced by
+/// `slot name: content<T>`. Slot names are scoped by their host contract,
+/// so this global schema exists only to let the authored block survive the
+/// generic validation walk; the host checks declaration, cardinality and
+/// accepted child type against the resolved container at build time.
+fn derive_content_fill_schema(kind: &str) -> ast::TypeDecl {
+    ast::TypeDecl {
+        name: vec![format!("SlotFill_{kind}")],
+        extends: Vec::new(),
+        alias: None,
+        fields: Vec::new(),
+        decorators: vec![
+            synthetic_decorator(
+                BuiltinDecorator::Block.as_str(),
+                vec![ast::Expr::Utf8(kind.to_string())],
+            ),
+            synthetic_decorator(BuiltinDecorator::Contextual.as_str(), Vec::new()),
+            synthetic_decorator(BuiltinDecorator::Schemaless.as_str(), Vec::new()),
+        ],
+        span: synthetic_span(),
         leading_trivia: Vec::new(),
         trailing_comment: None,
         trailing_trivia: Vec::new(),

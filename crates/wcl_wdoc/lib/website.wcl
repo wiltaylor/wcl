@@ -6,11 +6,9 @@
 //
 // Two seams make this work, on top of the ordinary `template` mechanism:
 //
-//   • Named REGIONS. A page declares `region "hero" { … }` blocks whose
-//     wdoc bodies render independently; a layout pulls each out by name
-//     with `wdoc_region(c, "hero")` (returns "" when absent). Everything
-//     outside a region is the authored handle list `c.content`; place it
-//     with `wdoc_blocks(c.content)`.
+//   • Named SLOTS. A layout declares `slot hero: content?`; a page fills it
+//     with a bare `hero { … }` block and the layout places it with
+//     `slot(c, :hero)`. Everything else implicitly fills reserved `content`.
 //
 //   • HEAD assets. A layout emits `Html::Head { … }` at the TOP
 //     LEVEL of its fundamentals to add `<link>` / `<script>` / `<meta>` /
@@ -19,41 +17,12 @@
 //     `scripts` / `fonts` fields do the same declaratively, and `assets`
 //     copies an externally-built folder verbatim into the output.)
 //
-// A layout can combine raw-HTML fragments with `wdoc_blocks(c.content)`
-// and `${wdoc_region(c, "name")}` / `${c.title}` interpolations. See the
-// `website` scaffold (`wcl init website`) and the Websites reference page
-// for a worked example. The default layout below is composed from parts so
-// it stays robust when a region is absent.
+// A layout can combine raw-HTML fragments with typed slot placements and
+// `${c.title}` interpolation. See the `website` scaffold (`wcl init website`)
+// and the Websites reference page for a worked example. The default layout
+// below is composed from parts so it stays robust when a slot is absent.
 
 namespace wdoc
-
-// A named content region of a page: its inline label is the region name,
-// its children are ordinary wdoc blocks. `build_normal_page` pulls these
-// out and renders each separately into the `TemplateCtx.regions` list
-// (`@native` — the region is handled directly in Rust).
-@block("region")
-@native
-type PageRegion extends WdocBlock {
-  @inline(0) name: utf8
-  id:    identifier?
-  @children(WdocBlock) body: list<WdocBlock>
-}
-
-// ── Region + head helpers ───────────────────────────────────────────
-
-// The already-rendered HTML of the page's `region "name" { … }` block,
-// or "" when the page declares no such region. Interpolate it into a
-// layout heredoc: `<header>${wdoc_region(c, "hero")}</header>`.
-let wdoc_region = fn(c: TemplateCtx, name: utf8) -> utf8 {
-  let matches = filter(c.regions, fn(r: Region) -> bool r.name == name);
-  if len(matches) == 0 { "" }
-  else {
-    // Bind before member access — `.content` on a call result isn't a
-    // resolvable reference (the bind-before-access rule).
-    let first = at(matches, 0);
-    first.content
-  }
-}
 
 // A `<link rel="stylesheet" href>` added to the page `<head>`. `href` is
 // emitted verbatim, so it may be a URL, a copied `assets` path, or a
@@ -154,47 +123,52 @@ let website_header_controls = fn(c: TemplateCtx) -> list<Html>
       ])) ]
   } else { [] }
 
-// A named region wrapped in `<tag class>`, or nothing when the page
-// declares no such region (so the wrapper is never emitted empty).
-let website_region_section = fn(c: TemplateCtx, name: utf8, tag: utf8, cls: utf8) -> list<Html> {
-  let html = wdoc_region(c, name);
-  if html == "" { [] }
-  else { [ el(tag, [cls], [raw(html)]) ] }
+// A named slot wrapped in `<tag class>`, or nothing when the page does not
+// fill it (so the wrapper is never emitted empty).
+let website_slot_section = fn(c: TemplateCtx, name: symbol, tag: utf8, cls: utf8) -> list<Html> {
+  if len(slot_blocks(c, name)) == 0 { [] }
+  else { [ el(tag, [cls], slot(c, name)) ] }
 }
 
 // The main content area: the default `content` plus, when the page
-// declares a `region "sidebar"`, an `<aside>` next to it (two-column).
+// fills `sidebar`, an `<aside>` next to it (two-column).
 let website_body = fn(c: TemplateCtx) -> Html {
-  let aside = wdoc_region(c, "sidebar");
-  el("div", ["ws-layout", if aside != "" { "has-aside" }], flatten([
-    [ el("main", ["ws-main"], wdoc_blocks(c.content)) ],
-    if aside == "" { [] }
-    else { [ el("aside", ["ws-aside"], [raw(aside)]) ] },
+  let aside = slot_blocks(c, :sidebar);
+  el("div", ["ws-layout", if len(aside) > 0 { "has-aside" }], flatten([
+    [ el("main", ["ws-main"], slot(c, :content)) ],
+    if len(aside) == 0 { [] }
+    else { [ el("aside", ["ws-aside"], slot(c, :sidebar)) ] },
   ]))
 }
 
-// The site footer: a `region "footer"` when declared, else the site title.
+// The site footer: the `footer` slot when filled, else the site title.
 let website_footer = fn(c: TemplateCtx) -> Html {
-  let footer = wdoc_region(c, "footer");
-  el("footer", ["ws-footer"], [raw(if footer == "" { c.title } else { footer })])
+  let footer = slot_blocks(c, :footer);
+  el("footer", ["ws-footer"],
+    if len(footer) == 0 { [raw(c.title)] } else { slot(c, :footer) })
 }
 
 // The full default `website` layout: style, header, optional banner and
-// hero regions, the content body (+ optional sidebar), and the footer.
+// hero slot, the content body (+ optional sidebar), and the footer.
 // The `website` template is exactly this — copy its body and swap parts
 // to retheme.
 let wdoc_website_layout = fn(c: TemplateCtx) -> list<Html>
   flatten([
     wdoc_part_website_css(),
     [ website_header(c) ],
-    website_region_section(c, "banner", "div", "ws-banner"),
-    website_region_section(c, "hero", "section", "ws-hero"),
+    website_slot_section(c, :banner, "div", "ws-banner"),
+    website_slot_section(c, :hero, "section", "ws-hero"),
     [ website_body(c) ],
     [ website_footer(c) ],
     wdoc_part_menu_script(c.menu),
   ])
 
 template website {
+  slot content: content
+  slot banner: content?
+  slot hero: content?
+  slot sidebar: content?
+  slot footer: content?
   render = fn(c: TemplateCtx) -> list<Html>
     wdoc_website_layout(c)
 }

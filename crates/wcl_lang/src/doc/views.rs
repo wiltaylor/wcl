@@ -639,6 +639,8 @@ fn synth_child_from_value(
     let synth_block = ast::Block {
         kind: String::new(),
         kind_ns: Vec::new(),
+        conditional: false,
+        slot_decl: None,
         labels: vec![ast::Expr::None; label_len],
         items,
         decorators: Vec::new(),
@@ -1767,6 +1769,16 @@ impl<'a> Field<'a> {
         self.ast.span
     }
 
+    /// Return the authored symbol when this field is exactly a symbol
+    /// literal (`template = :book`). Computed expressions deliberately
+    /// return `None`; hosts use this to avoid false-positive static checks.
+    pub fn literal_symbol(&self) -> Option<&'a str> {
+        match &self.ast.expr {
+            ast::Expr::Symbol(name) => Some(name.as_str()),
+            _ => None,
+        }
+    }
+
     /// Pretty-printed source for this field (`name = expr`).
     pub fn to_source(&self) -> String {
         crate::format::to_source_item(&ast::Item::Field(self.ast.clone()))
@@ -2162,6 +2174,42 @@ impl<'a> Block<'a> {
 
     pub fn kind(&self) -> &'a str {
         self.kind_override.unwrap_or(&self.ast.kind)
+    }
+
+    /// Whether this block was authored as a conditional bare-name fill
+    /// (`aside? { ... }`). Hosts interpret conditionality against their
+    /// resolved slot contract.
+    pub fn is_conditional(&self) -> bool {
+        self.ast.conditional
+    }
+
+    /// Declared type of a `slot name: Type` block.
+    pub fn slot_type_ref(&self) -> Option<&'a TypeRef> {
+        self.ast.slot_decl.as_ref().map(|slot| &slot.ty)
+    }
+
+    /// `true` for a declaration carrying `?` after its type.
+    pub fn slot_optional(&self) -> bool {
+        self.ast
+            .slot_decl
+            .as_ref()
+            .is_some_and(|slot| slot.optional)
+    }
+
+    /// `true` for a declaration carrying `*` after its type.
+    pub fn slot_repeated(&self) -> bool {
+        self.ast
+            .slot_decl
+            .as_ref()
+            .is_some_and(|slot| slot.repeated)
+    }
+
+    /// Whether this is a contextual bare-name content fill synthesised from
+    /// a `slot name: content` declaration. Host renderers use this to treat
+    /// the wrapper as structural on targets that do not apply templates.
+    pub fn is_slot_fill(&self) -> bool {
+        self.schema()
+            .is_some_and(|schema| schema.is_derived() && schema.name().starts_with("SlotFill_"))
     }
 
     /// The document this block belongs to. Lets host renderers reach

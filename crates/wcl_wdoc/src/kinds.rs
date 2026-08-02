@@ -16,7 +16,6 @@
 
 pub(crate) const COLUMN: &str = "column";
 pub(crate) const FRAGMENT: &str = "fragment";
-pub(crate) const REGION: &str = "region";
 pub(crate) const EDIT_FIELD: &str = "edit_field";
 pub(crate) const EDIT_OBJECT: &str = "edit_object";
 pub(crate) const DIAGRAM: &str = "diagram";
