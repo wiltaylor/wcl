@@ -5245,6 +5245,23 @@ fn missing_expander_errors_when_generated_children_are_demanded() {
 }
 
 #[test]
+fn missing_expander_is_not_readable_as_an_empty_slot() {
+    // The failure must survive every way the slot is read. Walking it
+    // has to surface the error too — a consumer that iterates children
+    // would otherwise take "no expander" for "no children", the quietly
+    // incomplete answer the whole hard-error design exists to prevent.
+    let doc = open_contextual(false);
+    let deck = doc.block("deck").expect("deck block");
+    let cards = deck.typed_field("cards").expect("cards slot");
+    let walked: Vec<_> = cards.children().collect();
+    assert_eq!(walked.len(), 1, "the failure is what the walk yields");
+    assert!(
+        matches!(walked[0].value(), Err(EvalError::MissingExpander { .. })),
+        "iterating a failed projection surfaces the error, not an empty list"
+    );
+}
+
+#[test]
 fn missing_expander_does_not_affect_blocks_that_generate_nothing() {
     // No expander, and no `@contextual` child: the projection is the
     // ordinary literal-block one, so nothing errors.

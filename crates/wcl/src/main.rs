@@ -39,6 +39,15 @@ fn cli_loader() -> wcl_lang::FileLoader {
 /// expand through. Without it, projecting their generated children is a
 /// hard error, so every command that evaluates a wdoc document opens
 /// through here rather than through a bare `Environment::new()`.
+///
+/// Unconditional, on purpose: the CLI does **not** sniff a document's
+/// imports to decide whether it is "wdoc's". It is already
+/// unconditionally wdoc-aware for schemas ([`cli_loader`] threads the
+/// registry into every open, not just wdoc documents), and behaviour
+/// follows schemas. The only widening is that wdoc's own builtins
+/// (`included_sites`) are in scope everywhere — which turns what used to
+/// be an "unknown builtin" error in a wdoc document under `wcl check`
+/// into a working call.
 fn cli_environment(base_dir: Option<&Path>) -> Environment {
     wcl_wdoc::wdoc_environment(base_dir)
 }
