@@ -1,6 +1,9 @@
 # composite shapes
 
-Composite shapes hold or lay out content rather than drawing a single primitive — a `container` frames child shapes, a `card` embeds rich wdoc content, and a `node_table` builds a row-table with per-row connection ports. Each leads with its own preview.
+Composite shapes hold or lay out content rather than drawing a single primitive — a
+`container` frames child shapes, a `card` embeds rich wdoc content, and a `node_table` builds
+a row-table with per-row connection ports. Each leads with its own preview.
+
 
 ## container
 
@@ -87,7 +90,9 @@ A titled box that groups and frames child shapes.
 
 ## card
 
-A `card`'s body is rich wdoc content (paragraphs, lists, even nested diagrams), drawn in a `foreignObject`:
+A `card`'s body is rich wdoc content (paragraphs, lists, even nested diagrams), drawn in a
+`foreignObject`:
+
 
 ```wcl
 diagram {
@@ -211,9 +216,5 @@ One row of a node_table.
 ## Related
 
 - [diagram](../references/fact_diagrams.md)
-
-- [primitive shapes](../references/fact_primitive_shapes.md)
-
-- [Connections](../references/concept_connections.md)
 
 [← Back to SKILL.md](../SKILL.md)

@@ -20,14 +20,4 @@ for you\*. Ship the optional two only when the topic warrants them — declaring
 `artifact` and authoring `data/presentation/` or `data/training/` is all it takes.
 
 
-## Related
-
-- [Separation of Data and Presentation](../references/concept_datapresentation.md)
-
-- [The presentation view](../references/concept_presentation_view.md)
-
-- [The training view](../references/concept_training_view.md)
-
-- [Anatomy of the AI skill](../references/concept_skill_anatomy.md)
-
 [← Back to SKILL.md](../SKILL.md)

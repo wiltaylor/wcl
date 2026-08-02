@@ -2,12 +2,17 @@
 
 _The built-in templates webpage / book / presentation / ai_skill, their navigation blocks, and writing a custom template._
 
-A **template** turns a site's pages into a particular shape of output. A site selects one with `default_template` (a page may override with `template`). Four are built in — `:webpage`, `:book`, `:presentation`, and `:ai_skill` — and each reads its own navigation block off the `site`.
+A **template** turns a site's pages into a particular shape of output. A site selects one with
+`default_template` (a page may override with `template`). Four are built in — `:webpage`,
+`:book`, `:presentation`, and `:ai_skill` — and each reads its own navigation block off the
+`site`.
 
 
 ## webpage template
 
-A Hugo-style site header, a sticky top navbar built from `menu`, and a reading column. Menu items use `page = <name>` for in-site links (validated against pages in this site) or `href = "…"` for external or cross-site URLs. Nested `item`s become dropdown groups.
+A Hugo-style site header, a sticky top navbar built from `menu`, and a reading column. Menu
+items use `page = <name>` for in-site links (validated against pages in this site) or
+`href = "…"` for external or cross-site URLs. Nested `item`s become dropdown groups.
 
 
 ```wcl
@@ -30,7 +35,9 @@ site marketing {
 
 ## book template
 
-An mdBook-style fixed left sidebar with nested chapters and current-chapter highlight; reading column on the right. Chapters nest to any depth. A `chapter` with no `page =` is a grouping heading. A `chapter` pointing at an unknown page is a build error.
+An mdBook-style fixed left sidebar with nested chapters and current-chapter highlight; reading
+column on the right. Chapters nest to any depth. A `chapter` with no `page =` is a grouping
+heading. A `chapter` pointing at an unknown page is a build error.
 
 
 ```wcl
@@ -51,7 +58,9 @@ site docs {
 
 ## presentation template
 
-A reveal.js-style slide deck: the whole site renders into a single `index.html`, navigated with the keyboard. The `deck` block lays out the 2-D grid — each `section` is a column, its `slide`s are rows — and each `slide` names a page that belongs to this site.
+A reveal.js-style slide deck: the whole site renders into a single `index.html`, navigated
+with the keyboard. The `deck` block lays out the 2-D grid — each `section` is a column, its
+`slide`s are rows — and each `slide` names a page that belongs to this site.
 
 
 ```wcl
@@ -71,7 +80,9 @@ site talk {
 }
 ```
 
-Each `slide` must sit on its own line. Two in-slide blocks are deck-specific: `fragment { … }` is a step-reveal group (hidden until the presenter advances with Space), and `notes { … }` holds speaker notes (hidden in the deck, shown in the overlay toggled with **s**).
+Each `slide` must sit on its own line. Two in-slide blocks are deck-specific: `fragment { … }`
+is a step-reveal group (hidden until the presenter advances with Space), and `notes { … }`
+holds speaker notes (hidden in the deck, shown in the overlay toggled with **s**).
 
 
 ```wcl
@@ -85,17 +96,38 @@ page topic {
 
 ## ai_skill template
 
-A fourth built-in: `default_template = :ai_skill` makes the site a Claude / agent skill folder, built by `wcl wdoc skill` (not `wcl wdoc build`). See the **skills** concept for the `skill { }` block and `file` blocks.
+A fourth built-in: `default_template = :ai_skill` makes the site a Claude / agent skill
+folder, built by `wcl wdoc skill` (not `wcl wdoc build`). See the **skills** concept for the
+`skill { }` block and `file` blocks.
 
 
 ## Custom templates
 
-The built-ins are not special: a template is just a function from a `TemplateCtx` to a list of HTML fundamentals. Declare a `template <name> { render = fn(c: TemplateCtx) -> list<HtmlFundamental> … }` and select it with a site's `default_template` (e.g. `:blog`) or a page's `template` field. The stdlib exposes its chrome as composable parts (`wdoc_part_*`) plus one `wdoc_*_layout` per built-in, all resolved by bare name once you `import <wdoc.wcl>`.
+The built-ins are not special: a template is just a function from a `TemplateCtx` to a list of
+HTML fundamentals. Declare a
+`template <name> { render = fn(c: TemplateCtx) -> list<HtmlFundamental> … }` and select it
+with a site's `default_template` (e.g. `:blog`) or a page's `template` field. The stdlib
+exposes its chrome as composable parts (`wdoc_part_*`) plus one `wdoc_*_layout` per built-in,
+all resolved by bare name once you `import <wdoc.wcl>`.
 
 
-The page arrives as read-only authored handles in `c.content`, not pre-rendered HTML. Query `BlockHandle.kind`, its concrete `block` fields, or recursive `children`, then place the selected handles with `wdoc_blocks(handles)`; resolution happens after the template returns.
+The page arrives as read-only authored handles in `c.content`, not pre-rendered HTML. Query
+`BlockHandle.kind`, its concrete `block` fields, or recursive `children`, then place the
+selected handles with `wdoc_blocks(handles)`; resolution happens after the template returns.
 
-Where no part fits, build the markup with the `el` constructor family — shorthands for the HTML element vocabulary, each exactly the long form with the field names dropped. `el(tag, cls, kids)` is the common shape, `ela(tag, cls, attrs, kids)` adds attributes (a list of `[name, value]` pairs) and `eli(tag, id, cls, kids)` an explicit id; the leaves are `raw(html)` (verbatim, unescaped), `inl(text)` (an inline-patterned prose run), `icon(name, cls)` and `para(cls, spans)`. There are three element constructors rather than one because a WCL parameter list is fixed at declaration — the language has neither default nor named arguments, so every call fills every parameter and `id` / `attrs` each need a name of their own. An empty `class` / `attrs` list emits no attribute, so `[]` costs nothing over omitting the field. Note that `ela` and `eli` take the SAME number of arguments: arity is the one positional mistake WCL catches, and it can't tell those two apart, so calling one where you meant the other drops the id or the attributes silently.
+
+Where no part fits, build the markup with the `el` constructor family — shorthands for the
+HTML element vocabulary, each exactly the long form with the field names dropped.
+`el(tag, cls, kids)` is the common shape, `ela(tag, cls, attrs, kids)` adds attributes (a list
+of `[name, value]` pairs) and `eli(tag, id, cls, kids)` an explicit id; the leaves are
+`raw(html)` (verbatim, unescaped), `inl(text)` (an inline-patterned prose run),
+`icon(name, cls)` and `para(cls, spans)`. There are three element constructors rather than one
+because a WCL parameter list is fixed at declaration — the language has neither default nor
+named arguments, so every call fills every parameter and `id` / `attrs` each need a name of
+their own. An empty `class` / `attrs` list emits no attribute, so `[]` costs nothing over
+omitting the field. Note that `ela` and `eli` take the SAME number of arguments: arity is the
+one positional mistake WCL catches, and it can't tell those two apart, so calling one where
+you meant the other drops the id or the attributes silently.
 
 
 ```wcl
@@ -108,7 +140,12 @@ template blog {
 }
 ```
 
-The family covers the HTML **element** vocabulary only. `SvgFundamental` and the semantic content IR keep the named-field literal: they are field-shaped, and WCL checks argument arity but never argument types, so transposing two of a shape's interchangeable `f64`s would render silently wrong where the record raises a shape mismatch. Write the record for anything the family doesn't name, too — an element with both an id and attrs, a `Paragraph` with an id, a `Head`, a `Table`.
+The family covers the HTML **element** vocabulary only. `SvgFundamental` and the semantic
+content IR keep the named-field literal: they are field-shaped, and WCL checks argument arity
+but never argument types, so transposing two of a shape's interchangeable `f64`s would render
+silently wrong where the record raises a shape mismatch. Write the record for anything the
+family doesn't name, too — an element with both an id and attrs, a `Paragraph` with an id, a
+`Head`, a `Table`.
 
 
 > [!NOTE]
@@ -233,12 +270,8 @@ A `notes` block: speaker notes inside a slide — hidden in the deck, shown in t
 
 ## Related
 
-- [Sites](../references/concept_sites.md)
-
 - [Pages](../references/concept_pages.md)
 
 - [Skill folders](../references/concept_skills.md)
-
-- [Styling](../references/concept_styling.md)
 
 [← Back to SKILL.md](../SKILL.md)

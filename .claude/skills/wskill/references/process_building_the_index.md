@@ -57,14 +57,4 @@ sidebar. See \*Setting up AI skill generation\*.
 >
 > Every index node has one scope body; each appears as an area page and a chapter in the book sidebar (and, when `:ai`/`:both`, in the skill projection), listing links to the units it owns.
 
-## Related
-
-- [Structured data](../references/concept_structured_data.md)
-
-- [Creating a new wskill](../references/process_creating_a_wskill.md)
-
-- [Researching a topic into a wskill](../references/process_researching_a_topic.md)
-
-- [Adding content to a wskill](../references/process_adding_content.md)
-
 [← Back to SKILL.md](../SKILL.md)

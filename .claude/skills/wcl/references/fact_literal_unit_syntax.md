@@ -1,6 +1,11 @@
 # Literal unit syntax
 
-A unit suffix is written **attached** to the magnitude (`5MiB`, not `5 MiB`) — the same lexical slot as a width suffix like `200u8`. Any suffix that isn't a numeric width is taken as a unit name and resolved against the field's declared type at evaluation time. The magnitude defaults to `i64` (integer) or `f64` (with a decimal point); the resolved value's type is the alias's underlying type.
+A unit suffix is written **attached** to the magnitude (`5MiB`, not `5 MiB`) — the same
+lexical slot as a width suffix like `200u8`. Any suffix that isn't a numeric width is taken as
+a unit name and resolved against the field's declared type at evaluation time. The magnitude
+defaults to `i64` (integer) or `f64` (with a decimal point); the resolved value's type is the
+alias's underlying type.
+
 
 ```wcl
 @document
@@ -19,7 +24,10 @@ sizes   = [256KiB, 1MiB]   // each element resolves
 
 ## Declaring units
 
-Units live on a numeric type alias as repeated `@unit(name, factor)` decorators — the same alias-decorator mechanism as `@min` / `@max`. `factor` is the number of base units in one of that unit, and is an ordinary expression.
+Units live on a numeric type alias as repeated `@unit(name, factor)` decorators — the same
+alias-decorator mechanism as `@min` / `@max`. `factor` is the number of base units in one of
+that unit, and is an ordinary expression.
+
 
 ```wcl
 @unit("B", 1)
@@ -46,12 +54,6 @@ type ByteSize = i64
 
 ## Related
 
-- [Literal Units](../references/concept_literal_units.md)
-
-- [Numbers](../references/concept_numbers.md)
-
 - [Number literals](../references/fact_number_literals.md)
-
-- [Type Aliases](../references/concept_type_aliases.md)
 
 [← Back to SKILL.md](../SKILL.md)

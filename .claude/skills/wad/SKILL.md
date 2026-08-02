@@ -209,7 +209,9 @@ Cite, don't re-derive. fact_wcl_notes is binding when writing any non-template W
 
 _Raise a bug or feature against an existing codebase and break it into a build-ready plan._
 
-Start with the pipeline runbook; recon is its heart. Trivial single-file changes skip the pipeline entirely - fix them directly (see the issue-mode concept's when-NOT-to-use rule).
+Start with the pipeline runbook; recon is its heart. Trivial single-file changes skip the
+pipeline entirely - fix them directly (see the issue-mode concept's when-NOT-to-use rule).
+
 
 - [The issue pipeline](references/process_proc_issue_pipeline.md)
 - [Codebase reconnaissance](references/process_proc_recon.md)
@@ -222,7 +224,10 @@ Start with the pipeline runbook; recon is its heart. Trivial single-file changes
 
 _Execute a rendered plan: orchestrate implementation, verification, review, fix and merge agents over the spec DAG until every spec is merged and every scenario passes._
 
-Read the roles fact first, then the orchestrator loop - everything else is the loop's sub-runbooks. A run is complete when every spec is :merged AND every scenario passes on trunk, never at the last merge.
+Read the roles fact first, then the orchestrator loop - everything else is the loop's
+sub-runbooks. A run is complete when every spec is :merged AND every scenario passes on trunk,
+never at the last merge.
+
 
 - [The build roles](references/fact_fact_roles.md)
 - [The orchestrator loop](references/process_proc_orchestrator_loop.md)

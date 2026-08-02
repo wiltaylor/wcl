@@ -4,7 +4,9 @@ _use pulls qualified names from other namespaces into local scope so they can be
 
 ## use declarations
 
-`use` brings qualified names into local scope so they can be written bare. It is top-level only; an unknown target or duplicate alias is an error when the document is opened.
+`use` brings qualified names into local scope so they can be written bare. It is top-level
+only; an unknown target or duplicate alias is an error when the document is opened.
+
 
 ```wcl
 use company.utils.Point          // bind the leaf: write `Point`
@@ -25,9 +27,5 @@ use company.shapes.{Circle, Square as Sq}   // pick several members at once
 ## Related
 
 - [Namespaces](../references/concept_namespaces.md)
-
-- [Qualified Block Kinds](../references/concept_qualified_kinds.md)
-
-- [Imports & Modules](../references/concept_imports.md)
 
 [← Back to SKILL.md](../SKILL.md)

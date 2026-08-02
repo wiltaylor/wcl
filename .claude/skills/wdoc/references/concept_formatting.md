@@ -2,12 +2,16 @@
 
 _Inline patterns (bold / italic / code / links / icons / math), headings, code, lists, callouts._
 
-The everyday building blocks of a page: prose paragraphs with inline formatting, the six heading levels, syntax-highlighted code listings, lists, and callouts. `p "…"` is the canonical paragraph shorthand; the label text is the paragraph's content and inline patterns light up automatically.
+The everyday building blocks of a page: prose paragraphs with inline formatting, the six
+heading levels, syntax-highlighted code listings, lists, and callouts. `p "…"` is the
+canonical paragraph shorthand; the label text is the paragraph's content and inline patterns
+light up automatically.
 
 
 ## Inline patterns
 
-The following patterns are recognised in any `p` body, in spans inside a `text` block, and in `utf8` table cells. Note the italic pattern uses underscores around the text.
+The following patterns are recognised in any `p` body, in spans inside a `text` block, and in
+`utf8` table cells. Note the italic pattern uses underscores around the text.
 
 
 ```wcl
@@ -24,20 +28,24 @@ $$\int x \, dx$$     // → display-style LaTeX
 
 ```wcl
 p <<DOC
-  **bold**, _italic_, `code`, a [link](concept_overview), an inline icon :lucide.check:, and math
-  $x^2$ — every pattern lights up automatically.
+  **bold**, _italic_, `code`, a [link](concept_overview), an inline icon :lucide.check:, and
+  math $x^2$ — every pattern lights up automatically.
 DOC
 ```
 
-**bold**, _italic_, `code`, a [link](../references/concept_overview.md), an inline icon :lucide.check:, and math $x^2$ — every pattern lights up automatically.
+**bold**, _italic_, `code`, a [link](../references/concept_overview.md), an inline icon :lucide.check:, and
+math $x^2$ — every pattern lights up automatically.
 
 
-A `text` block assembles one paragraph from `span`s, run together in source order; `class` on the `text` styles the paragraph.
+A `text` block assembles one paragraph from `span`s, run together in source order; `class` on
+the `text` styles the paragraph.
 
 
 ## Headings
 
-Six heading levels are available — `h1` through `h6` — each taking the heading text as a single inline label and an optional `id` (the link target for cross-page anchors). No other fields.
+Six heading levels are available — `h1` through `h6` — each taking the heading text as a
+single inline label and an optional `id` (the link target for cross-page anchors). No other
+fields.
 
 
 ```wcl
@@ -51,7 +59,12 @@ h6 "Minutiae"
 
 ## Code blocks
 
-`code <lang> { source = … }` renders a syntax-highlighted listing. The language tag picks the grammar; an unknown tag falls back to plain text. wdoc highlights a wide range of languages (via syntect + two-face) — `rust`, `python`, `javascript`, `typescript`, `go`, `c`, `cpp`, `java`, `ruby`, `php`, `html`, `css`, `json`, `yaml`, `toml`, `sql`, `bash`, `markdown`, and `wcl` among many. The `source` is usually a raw heredoc (`<<'TAG'`) so the body is verbatim, with no escapes or interpolation to mangle backslash-heavy code.
+`code <lang> { source = … }` renders a syntax-highlighted listing. The language tag picks the
+grammar; an unknown tag falls back to plain text. wdoc highlights a wide range of languages
+(via syntect + two-face) — `rust`, `python`, `javascript`, `typescript`, `go`, `c`, `cpp`,
+`java`, `ruby`, `php`, `html`, `css`, `json`, `yaml`, `toml`, `sql`, `bash`, `markdown`, and
+`wcl` among many. The `source` is usually a raw heredoc (`<<'TAG'`) so the body is verbatim,
+with no escapes or interpolation to mangle backslash-heavy code.
 
 
 ```wcl
@@ -70,7 +83,11 @@ RUST
 
 ## Lists
 
-A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`, links, and icons all work inside items. Nest an `li` inside an `li` for a sublist (it inherits the parent's style); drop a whole `list` block inside an `li` for a sublist with a different style.
+A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a
+numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`,
+links, and icons all work inside items. Nest an `li` inside an `li` for a sublist (it inherits
+the parent's style); drop a whole `list` block inside an `li` for a sublist with a different
+style.
 
 
 ```wcl
@@ -121,7 +138,10 @@ list {
 
 ## Callouts
 
-A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class` (`note`, `info`, `tip`, `warning`, `error`, `success`), each shipping a default colour and icon. For a custom type, give a `class` an `accent` colour and list it in the callout's `class`; the `icon` field picks any glyph.
+A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are
+selected by `class` (`note`, `info`, `tip`, `warning`, `error`, `success`), each shipping a
+default colour and icon. For a custom type, give a `class` an `accent` colour and list it in
+the callout's `class`; the `icon` field picks any glyph.
 
 
 ```wcl
@@ -206,9 +226,5 @@ A `code` block: a syntax-highlighted listing, its language tag picking the gramm
 | `filename` | `utf8` | no | Optional filename shown in the code-card header bar. |
 | `id` | `identifier` | no | Optional explicit HTML id. |
 | `class` | `list<utf8>` | no | Optional class list (in addition to `code-block`). |
-
-## Related
-
-- [Columns](../references/concept_columns.md)
 
 [← Back to SKILL.md](../SKILL.md)

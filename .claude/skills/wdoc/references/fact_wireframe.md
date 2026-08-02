@@ -1,6 +1,11 @@
 # Wireframes
 
-Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels, inputs, controls — as **diagram shapes**. Each `wf_*` block extends `SvgBlock`, so it lives inside a `diagram`: place it with `x` / `y` (or anchors), connect widgets with edges, and mix them with any other shape. Container widgets nest other widgets, so you compose a window of panels of rows of controls. They're static SVG mockups, not interactive.
+Wireframe widgets mock up a UI — windows, device frames (browser / phone / tablet), panels,
+inputs, controls — as **diagram shapes**. Each `wf_*` block extends `SvgBlock`, so it lives
+inside a `diagram`: place it with `x` / `y` (or anchors), connect widgets with edges, and mix
+them with any other shape. Container widgets nest other widgets, so you compose a window of
+panels of rows of controls. They're static SVG mockups, not interactive.
+
 
 ```wcl
 diagram {
@@ -30,7 +35,11 @@ diagram {
 
 ## Placing and connecting widgets
 
-Because widgets are diagram shapes, place them by `x` / `y` and draw edges between them by `id` — just like connecting any two shapes. A widget is sized by its content, so you only position the top-left corner. Under an auto-layout `diagram` (`layout = :layered` / `:force`), omit `x` / `y` and let the solver flow them.
+Because widgets are diagram shapes, place them by `x` / `y` and draw edges between them by
+`id` — just like connecting any two shapes. A widget is sized by its content, so you only
+position the top-left corner. Under an auto-layout `diagram` (`layout = :layered` / `:force`),
+omit `x` / `y` and let the solver flow them.
+
 
 ```wcl
 diagram {
@@ -58,11 +67,17 @@ diagram {
 
 ## Containers
 
-Every container takes `@children(Widget)` — drop any other widget inside, nested arbitrarily. The Rust renderer measures and lays the children out internally (their `x` / `y` are ignored; only the root widget's placement positions the whole group). Device frames have a realistic fixed default size; everything else is sized to its content.
+Every container takes `@children(Widget)` — drop any other widget inside, nested arbitrarily.
+The Rust renderer measures and lays the children out internally (their `x` / `y` are ignored;
+only the root widget's placement positions the whole group). Device frames have a realistic
+fixed default size; everything else is sized to its content.
+
 
 ### wf_window
 
-The outer desktop chrome: a titlebar (traffic-light controls, hidden by `controls = false`) over a body that hosts other widgets, stacked vertically.
+The outer desktop chrome: a titlebar (traffic-light controls, hidden by `controls = false`)
+over a body that hosts other widgets, stacked vertically.
+
 
 ```wcl
 diagram {
@@ -104,7 +119,9 @@ diagram {
 
 ### wf_browser
 
-A web-browser frame: a toolbar with traffic-light dots and an address bar (the inline label is the URL) over a content area. Drop a `wf_window` or any controls inside to mock up a web app.
+A web-browser frame: a toolbar with traffic-light dots and an address bar (the inline label is
+the URL) over a content area. Drop a `wf_window` or any controls inside to mock up a web app.
+
 
 ```wcl
 diagram {
@@ -154,7 +171,10 @@ diagram {
 
 ### wf_phone
 
-A phone shell — a bezel around a screen with a status bar (the inline label is an optional caption) and a home-indicator pill. Set `orientation = :landscape` to rotate it; the default is `:portrait`.
+A phone shell — a bezel around a screen with a status bar (the inline label is an optional
+caption) and a home-indicator pill. Set `orientation = :landscape` to rotate it; the default
+is `:portrait`.
+
 
 ```wcl
 diagram {
@@ -207,7 +227,9 @@ diagram {
 
 ### wf_tablet
 
-A tablet shell — the same chrome as `wf_phone` on a larger, squarer frame. Shown here in landscape:
+A tablet shell — the same chrome as `wf_phone` on a larger, squarer frame. Shown here in
+landscape:
+
 
 ```wcl
 diagram {
@@ -349,7 +371,9 @@ diagram {
 
 ### wf_column
 
-Stack children **vertically** — the default flow, useful for an explicit column inside a `wf_row` or `wf_grid`.
+Stack children **vertically** — the default flow, useful for an explicit column inside a
+`wf_row` or `wf_grid`.
+
 
 ```wcl
 diagram {
@@ -437,7 +461,12 @@ diagram {
 
 ## Node graphs
 
-A `wf_node_graph` mocks up a node editor — a shader graph, a blueprint, a dataflow pipeline. Each `wf_node` is a titled box with labelled `inputs` down its left edge and `outputs` down its right; a `wf_link` wires `"node.port"` → `"node.port"`. Nodes auto-lay-out left-to-right from the link graph (set `direction = :top_to_bottom` to flow downward, or give a node an explicit `x` / `y` to pin it).
+A `wf_node_graph` mocks up a node editor — a shader graph, a blueprint, a dataflow pipeline.
+Each `wf_node` is a titled box with labelled `inputs` down its left edge and `outputs` down
+its right; a `wf_link` wires `"node.port"` → `"node.port"`. Nodes auto-lay-out left-to-right
+from the link graph (set `direction = :top_to_bottom` to flow downward, or give a node an
+explicit `x` / `y` to pin it).
+
 
 ```wcl
 diagram {
@@ -524,7 +553,9 @@ Within a `wf_node_graph`, wires one node's port to another (`"node.port"` → `"
 
 ## Controls
 
-The leaf controls — text, buttons, fields, and toggles — drop into any container (or directly into a `diagram`).
+The leaf controls — text, buttons, fields, and toggles — drop into any container (or directly
+into a `diagram`).
+
 
 ### wf_label
 
@@ -561,7 +592,9 @@ diagram {
 
 ### wf_button
 
-A button caption, with an optional leading `icon` (any `pack.name`); `disabled = true` greys it out.
+A button caption, with an optional leading `icon` (any `pack.name`); `disabled = true` greys
+it out.
+
 
 ```wcl
 diagram {
@@ -603,7 +636,9 @@ diagram {
 
 ### wf_input
 
-A text field. With no `value` the `@inline` placeholder shows greyed; a `value` fills it with solid text.
+A text field. With no `value` the `@inline` placeholder shows greyed; a `value` fills it with
+solid text.
+
 
 ```wcl
 diagram {
@@ -714,7 +749,9 @@ diagram {
 
 ### wf_radio
 
-A radio button — like a checkbox but round; mark the active one with `selected = true` in a group you lay out yourself.
+A radio button — like a checkbox but round; mark the active one with `selected = true` in a
+group you lay out yourself.
+
 
 ```wcl
 diagram {
@@ -792,7 +829,9 @@ diagram {
 
 ## Common fields
 
-Every widget extends a shared `Widget` interface — its diagram placement geometry (`x` / `y` / anchors / `connect_points`) plus per-element theming hints:
+Every widget extends a shared `Widget` interface — its diagram placement geometry (`x` / `y` /
+anchors / `connect_points`) plus per-element theming hints:
+
 
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -814,9 +853,18 @@ Every widget extends a shared `Widget` interface — its diagram placement geome
 
 ## Custom widgets
 
-Wireframe widgets are user-extensible diagram shapes. Declare a `@block("name") type … extends Widget` with a `lower` that returns `list<SvgFundamental>`, and it plugs into the diagram render path like any custom shape — placed directly in a `diagram` by its own `x` / `y` and connectable by edges. (The built-in containers only lay out the built-in widgets, so a custom widget renders as a standalone shape, not nested inside a `wf_window`.)
+Wireframe widgets are user-extensible diagram shapes. Declare a
+`@block("name") type … extends Widget` with a `lower` that returns `list<SvgFundamental>`, and
+it plugs into the diagram render path like any custom shape — placed directly in a `diagram`
+by its own `x` / `y` and connectable by edges. (The built-in containers only lay out the
+built-in widgets, so a custom widget renders as a standalone shape, not nested inside a
+`wf_window`.)
 
-Here's a coloured status `wf_badge`. The `lower` reads its `x` / `y` and emits a filled box with a centred label — exactly how the built-in `process` shape lowers — and a `fill` field recolours an individual instance:
+
+Here's a coloured status `wf_badge`. The `lower` reads its `x` / `y` and emits a filled box
+with a centred label — exactly how the built-in `process` shape lowers — and a `fill` field
+recolours an individual instance:
+
 
 ```wcl
 diagram {
@@ -871,8 +919,6 @@ diagram { width = 320  height = 40
 ```
 
 ## Related
-
-- [terminal](../references/fact_terminals.md)
 
 - [diagram](../references/fact_diagrams.md)
 

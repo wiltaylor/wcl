@@ -2,17 +2,45 @@
 
 _The bug-fix spec (test-first, usually the whole DAG), feature decomposition along ownership lines, ownership in an existing tree, and the conditional prep spec._
 
-Specs use wplan's schema unchanged (`spec` blocks with `title`, `objective`, `depends_on`, `branch`, `owns`, `allowed`, `not_allowed`, `done`, `task`/`accept` children, and a `body` of copied-in context). Numbering: `spec_0NN_name`, branch `spec/0NN-name`, gaps of 10. What differs in brownfield is the \*content patterns\*.
+Specs use wplan's schema unchanged (`spec` blocks with `title`, `objective`, `depends_on`,
+`branch`, `owns`, `allowed`, `not_allowed`, `done`, `task`/`accept` children, and a `body` of
+copied-in context). Numbering: `spec_0NN_name`, branch `spec/0NN-name`, gaps of 10. What
+differs in brownfield is the \*content patterns\*.
 
-**Requirement phrasing.** EARS form throughout - and the brownfield signature pattern `WHEN [condition] THE SYSTEM SHALL CONTINUE TO [existing behaviour]` pins behaviour the change must NOT break. Write one for each adjacent behaviour recon showed the change could plausibly disturb; each becomes a regression assertion in the full-suite accept.
 
-**The bug-fix spec** (usually the whole DAG) is test-first structurally, not as advice: task 1 writes a failing regression test reproducing the bug exactly as the r_repro finding recorded it, and confirms it FAILS for the reported reason before any source changes; task 2 is the smallest fix that makes it pass; task 3 runs the full suite and STOPS (reporting in AGENT_NOTES.md) if anything outside the owned files breaks. Accepts: the regression test, then the full suite. Accept commands come from finding r_commands - the repo's real commands, never guessed. The body copies in the reproduction, the affected-code map, and the conventions verbatim.
+**Requirement phrasing.** EARS form throughout - and the brownfield signature pattern
+`WHEN [condition] THE SYSTEM SHALL CONTINUE TO [existing behaviour]` pins behaviour the change
+must NOT break. Write one for each adjacent behaviour recon showed the change could plausibly
+disturb; each becomes a regression assertion in the full-suite accept.
 
-**Feature decomposition** works as in plan mode: split along disjoint ownership, dependency-order the splits, and prefer fewer, larger specs over many entangled ones - brownfield merges are riskiest where specs interleave in existing files. Every spec's body copies in its slice of the findings; every spec's final accept runs the full existing suite.
 
-**Ownership in an existing tree.** `owns` covers every path the spec will create **or modify** - for brownfield that means existing files. The owns_disjoint gate is exact-string only, so check file-vs-directory overlaps yourself. Shared integration points (DI registration, route tables, manifest files, migration indexes) that several specs would touch: give ownership to the **last** dependency-ordered spec that touches them; earlier specs note their contribution under `allowed` (the stub-then-own pattern).
+**The bug-fix spec** (usually the whole DAG) is test-first structurally, not as advice: task 1
+writes a failing regression test reproducing the bug exactly as the
+r_repro finding recorded it, and confirms it FAILS for the reported reason before any source changes; task 2 is the smallest fix that makes it pass; task 3 runs the full suite and STOPS (reporting in AGENT_NOTES.md)
+if anything outside the owned files breaks. Accepts: the regression test, then the full suite.
+Accept commands come from finding r_commands - the repo's real commands, never guessed. The
+body copies in the reproduction, the affected-code map, and the conventions verbatim.
 
-**spec_000_prep - conditional.** Only when the scaffold script reports `.tree/` NOT gitignored, or recon found no green baseline command. Owns `[".gitignore"]`; tasks: add `.tree/` to .gitignore, run the baseline build/test from r_commands and record the result, commit. Everything else then `depends_on = [spec_000_prep]`. When neither condition holds, omit it - a one-spec bug fix should not pay a two-merge tax.
+
+**Feature decomposition** works as in plan mode: split along disjoint ownership,
+dependency-order the splits, and prefer fewer, larger specs over many entangled ones -
+brownfield merges are riskiest where specs interleave in existing files. Every spec's body
+copies in its slice of the findings; every spec's final accept runs the full existing suite.
+
+
+**Ownership in an existing tree.** `owns` covers every path the spec will create **or modify**
+- for brownfield that means existing files. The owns_disjoint gate is exact-string only, so
+check file-vs-directory overlaps yourself. Shared integration points (DI registration, route
+tables, manifest files, migration indexes) that several specs would touch: give ownership to
+the **last** dependency-ordered spec that touches them; earlier specs note their contribution
+under `allowed` (the stub-then-own pattern).
+
+
+**spec_000_prep - conditional.** Only when the scaffold script reports `.tree/` NOT
+gitignored, or recon found no green baseline command. Owns `[".gitignore"]`; tasks: add
+`.tree/` to .gitignore, run the baseline build/test from
+r_commands and record the result, commit. Everything else then `depends_on = [spec_000_prep]`. When neither condition holds, omit it - a one-spec bug fix should not pay a two-merge tax.
+
 
 ## Examples
 
@@ -48,12 +76,6 @@ spec spec_010_fix_login_timeout {
 
 ## Related
 
-- [Issue mode: wplan compressed for brownfield](../references/concept_issue_mode.md)
-
 - [File ownership](../references/concept_ownership.md)
-
-- [EARS requirement patterns](../references/fact_fact_ears.md)
-
-- [The issue pipeline](../references/process_proc_issue_pipeline.md)
 
 [← Back to SKILL.md](../SKILL.md)

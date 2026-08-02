@@ -2,7 +2,10 @@
 
 _The `site` block: one output target — template, title, theme, multi-site routing, and full-text search._
 
-A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field, which is **required** once there is more than one site (a page carrying none is a build error). A single-site document needs no `sites` field anywhere.
+A `site` block configures one output site — its template, title, theme, and navigation. A
+document can declare several sites; each page joins one or more via its `sites` field, which
+is **required** once there is more than one site (a page carrying none is a build error). A
+single-site document needs no `sites` field anywhere.
 
 
 ```wcl
@@ -17,7 +20,9 @@ site marketing {
 
 ## Search
 
-Set `search = true` on a site to add client-side full-text search. The build writes a per-page text index to `_wdoc/search-index.json` and the `book` and `webpage` templates render a search box — in the sidebar and the nav respectively.
+Set `search = true` on a site to add client-side full-text search. The build writes a per-page
+text index to `_wdoc/search-index.json` and the `book` and `webpage` templates render a search
+box — in the sidebar and the nav respectively.
 
 
 > [!NOTE]
@@ -86,12 +91,8 @@ A `site` block configuring one output target — its template, title, theme, nav
 
 ## Related
 
-- [wdoc Overview](../references/concept_overview.md)
-
 - [Pages](../references/concept_pages.md)
 
 - [Templates](../references/concept_templates.md)
-
-- [Styling](../references/concept_styling.md)
 
 [← Back to SKILL.md](../SKILL.md)

@@ -21,7 +21,10 @@ Get a finished HTML build of a wdoc document, and a watch-rebuild server while y
 $ wcl wdoc build site.wcl --out out
 ```
 
-Render every `page` block in `site.wcl` to `out/`. Each page lands at `out/<name>.html`; with several sites, each renders into its own `out/<name>/` subdirectory with a chooser index.
+Render every `page` block in `site.wcl` to `out/`. Each page lands at `out/<name>.html`;
+with several sites, each renders into its own `out/<name>/` subdirectory with a chooser
+index.
+
 
 ### Step 2: Open the output
 
@@ -39,7 +42,10 @@ $ wcl wdoc serve site.wcl
 Serving on http://127.0.0.1:8080
 ```
 
-Run `wcl wdoc serve` to start a dev server that watches the source for `.wcl` changes and re-renders on each save. Refresh the browser to see updates; pass `--addr` to change the bind address.
+Run `wcl wdoc serve` to start a dev server that watches the source for `.wcl` changes and
+re-renders on each save. Refresh the browser to see updates; pass `--addr` to change the
+bind address.
+
 
 > [!TIP]
 > **Verification**
@@ -49,7 +55,5 @@ Run `wcl wdoc serve` to start a dev server that watches the source for `.wcl` ch
 ## Related
 
 - [Sites](../references/concept_sites.md)
-
-- [Pages](../references/concept_pages.md)
 
 [← Back to SKILL.md](../SKILL.md)

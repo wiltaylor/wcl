@@ -1,6 +1,8 @@
 # WCL behaviour verified against the binary (0.29/0.30-alpha)
 
-Everything below was tested while building the template. The installed wcl may have moved past 0.29.0-alpha - re-verify anything that misbehaves and record it in lessons.wcl.
+Everything below was tested while building the template. The installed wcl may have moved past
+0.29.0-alpha - re-verify anything that misbehaves and record it in lessons.wcl.
+
 
 | Observed | Consequence |
 | --- | --- |

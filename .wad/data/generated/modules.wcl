@@ -75,7 +75,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_wskill {
     name = "wskill"
     kind = "module"
-    summary = "4 files, 6 pub items"
+    summary = "4 files, 8 pub items"
   }
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
@@ -1035,35 +1035,23 @@ code_item code_api_cli_commands {
       deps = [n_api_cli_commands_SpecFormat]
     }
   }
-  code_node n_api_cli_commands_wskill_fns {
-    name = "wskill"
-    kind = "fns"
+  code_node n_api_cli_commands_FixSelection {
+    name = "FixSelection"
+    kind = "enum"
     summary = "src/wskill.rs"
-    code_member m_n_api_cli_commands_wskill_fns_run_graph {
-      signature = "fn run_graph(entry: &Path, rev: Option<&str>) -> u8"
-      kind = "fn"
-      visibility = "crate"
+    code_member m_n_api_cli_commands_FixSelection_All {
+      signature = "All"
+      kind = "variant"
     }
-    code_member m_n_api_cli_commands_wskill_fns_run_lint {
-      signature = "fn run_lint( entry: &Path, format: crate::ReportFormat, severit…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_commands_wskill_fns_run_op {
-      signature = "fn run_op( entry: &Path, inline: &[String], comment_texts: &[St…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_commands_wskill_fns_run_audit {
-      signature = "fn run_audit(entry: &Path, range: &str, format: crate::ReportFo…"
-      kind = "fn"
-      visibility = "crate"
+    code_member m_n_api_cli_commands_FixSelection_Rule {
+      signature = "Rule(Rule)"
+      kind = "variant"
     }
   }
   code_node n_api_cli_commands_more {
-    name = "… +2 more"
+    name = "… +3 more"
     kind = "overflow"
-    summary = "2 further public items — see the source."
+    summary = "3 further public items — see the source."
   }
 }
 

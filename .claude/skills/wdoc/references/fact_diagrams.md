@@ -1,6 +1,13 @@
 # diagram
 
-A `diagram` is wdoc's drawing surface. It declares a `width` / `height` and holds shapes that break down into primitives and render as SVG. Connect two shapes by id with an `a -> b` edge; set `pan_zoom = true` for an interactive viewport; set a `layout` (`:layered` / `:radial` / `:force`) to place shapes automatically (see [layout modes](../references/fact_layout_modes.md)). Higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a `diagram` too. The primitive shapes are catalogued below; see also the [connections](../references/concept_connections.md) concept.
+A `diagram` is wdoc's drawing surface. It declares a `width` / `height` and holds shapes that
+break down into primitives and render as SVG. Connect two shapes by id with an `a -> b` edge;
+set `pan_zoom = true` for an interactive viewport; set a `layout` (`:layered` / `:radial` /
+`:force`) to place shapes automatically (see [layout modes](../references/fact_layout_modes.md)). Higher-level
+families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a
+`diagram` too. The primitive shapes are catalogued below; see also the
+[connections](../references/concept_connections.md) concept.
+
 
 ```wcl
 diagram {
@@ -77,22 +84,15 @@ A diagram holds shapes that break down into primitives. They split across three 
 - [Composite shapes](../references/fact_composite_shapes.md) — `container`, `card`, `node_table`: shapes that hold or lay out content.
 - [Styling shapes with classes](../references/fact_shape_styling.md) — paint shapes with theme-aware `class`es instead of baked-in `fill`s.
 
-Higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a `diagram` too; wiring is covered by the [connections](../references/concept_connections.md) concept and placement by the [layout modes](../references/fact_layout_modes.md).
+Higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that
+live inside a `diagram` too; wiring is covered by the
+[connections](../references/concept_connections.md) concept and placement by the [layout modes](../references/fact_layout_modes.md).
+
 
 ## Related
 
 - [flowchart shapes](../references/fact_flowcharts.md)
 
-- [sequence_diagram](../references/fact_sequence_diagrams.md)
-
-- [state_diagram](../references/fact_state_diagrams.md)
-
 - [charts](../references/fact_charts.md)
-
-- [tree](../references/fact_tree.md)
-
-- [image](../references/fact_images.md)
-
-- [iconset / icon_def / icon](../references/fact_icons.md)
 
 [← Back to SKILL.md](../SKILL.md)

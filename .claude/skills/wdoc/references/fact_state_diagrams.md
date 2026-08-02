@@ -1,8 +1,14 @@
 # state_diagram
 
-A `state_diagram` draws an entity lifecycle coordinate-free: `state`s auto-rank by longest path from the transition graph (back-edges and self-loops route around), `initial = true` draws the filled entry dot, `final = true` the double border, and each `transition` carries a `trigger [guard]` edge label. It is a page-level block, not a `diagram` shape.
+A `state_diagram` draws an entity lifecycle coordinate-free: `state`s auto-rank by longest
+path from the transition graph (back-edges and self-loops route around), `initial = true`
+draws the filled entry dot, `final = true` the double border, and each `transition` carries a
+`trigger [guard]` edge label. It is a page-level block, not a `diagram` shape.
 
-A page-level block drawing an entity lifecycle; `state`s auto-rank along `direction` and `transition`s carry `trigger [guard]` labels.
+
+A page-level block drawing an entity lifecycle; `state`s auto-rank along `direction` and
+`transition`s carry `trigger [guard]` labels.
+
 
 ```wcl
 state_diagram {
@@ -70,7 +76,11 @@ state_diagram {
 
 ## States and transitions
 
-A `transition` is a block (not an `a -> b` edge) because it carries payload: the `trigger` event and an optional `guard`. The same `from` and `to` renders a self-loop arc. States rank along `direction` (default `:top_to_bottom`); a state with explicit `x` **and** `y` opts out of auto-layout.
+A `transition` is a block (not an `a -> b` edge) because it carries payload: the `trigger`
+event and an optional `guard`. The same `from` and `to` renders a self-loop arc. States rank
+along `direction` (default `:top_to_bottom`); a state with explicit `x` **and** `y` opts out
+of auto-layout.
+
 
 A lifecycle state; `initial = true` draws the entry dot, `final = true` the double border, and explicit `x` and `y` opt out of auto-layout.
 
@@ -97,14 +107,12 @@ An edge between two states carrying a `trigger` event and an optional `guard`; t
 | `trigger` | `utf8` | no | The event that fires the transition (the edge label). |
 | `guard` | `utf8` | no | Guard condition, rendered as `trigger [guard]`. |
 
-Like every `@children` slot, `states` / `transitions` accept computed splices, so a state-machine model can generate its figure. See [data views](../references/concept_data_views.md).
+Like every `@children` slot, `states` / `transitions` accept computed splices, so a
+state-machine model can generate its figure. See [data views](../references/concept_data_views.md).
+
 
 ## Related
 
 - [diagram](../references/fact_diagrams.md)
-
-- [flowchart shapes](../references/fact_flowcharts.md)
-
-- [sequence_diagram](../references/fact_sequence_diagrams.md)
 
 [← Back to SKILL.md](../SKILL.md)

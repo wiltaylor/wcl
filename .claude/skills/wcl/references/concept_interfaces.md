@@ -2,7 +2,9 @@
 
 _Structural contracts — a set of fields a type must have, satisfied automatically._
 
-An `interface` declares a structural contract — a set of fields a type must have to satisfy it. Any type with the right fields satisfies it automatically, with no explicit `implements`.
+An `interface` declares a structural contract — a set of fields a type must have to satisfy
+it. Any type with the right fields satisfies it automatically, with no explicit `implements`.
+
 
 ## Declaring an interface
 
@@ -23,7 +25,9 @@ interface Sized extends Drawable {
 >
 > A type need not be declared as a parent or implement anything explicitly. If it happens to have all the interface's fields with compatible types, it satisfies the interface.
 
-Interfaces have one common consumer: **reference fields** (`&T`), which accept any value that structurally satisfies the interface. See [References](../references/concept_references.md).
+Interfaces have one common consumer: **reference fields** (`&T`), which accept any value that
+structurally satisfies the interface. See [References](../references/concept_references.md).
+
 
 ## Examples
 
@@ -46,8 +50,6 @@ interface Sized extends Drawable {
 **Expected:** Any record with the listed fields satisfies the interface automatically.
 
 ## Related
-
-- [Records](../references/concept_records.md)
 
 - [References](../references/concept_references.md)
 

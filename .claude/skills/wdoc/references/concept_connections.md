@@ -2,7 +2,11 @@
 
 _Edges between diagram blocks: source -> destination :kind, generated endpoints, computed edges, routing._
 
-Inside a `diagram`, `source -> destination :kind` draws an edge between two shapes (matched by `id`). The optional `:kind` tag is a symbol; the renderer routes the edge based on the diagram's layout and styles it by kind. Connections are the wiring under every relational diagram — see also [entity diagrams](../references/fact_diagrams.md), [flowcharts](../references/fact_flowcharts.md), [sequence diagrams](../references/fact_sequence_diagrams.md), and [state diagrams](../references/fact_state_diagrams.md).
+Inside a `diagram`, `source -> destination :kind` draws an edge between two shapes (matched by
+`id`). The optional `:kind` tag is a symbol; the renderer routes the edge based on the
+diagram's layout and styles it by kind. Connections are the wiring under every relational
+diagram — see also [entity diagrams](../references/fact_diagrams.md), [flowcharts](../references/fact_flowcharts.md),
+[sequence diagrams](../references/fact_sequence_diagrams.md), and [state diagrams](../references/fact_state_diagrams.md).
 
 
 ```wcl
@@ -50,7 +54,11 @@ diagram {
 
 ## Generated endpoints
 
-A diagram's `Edge` connection is declared `@dynamic`, so a `->` endpoint may name an id that a `wdoc_repeater` (or `wdoc_component`) produces at render time, not just a literal shape. This is what lets database / ER and class diagrams be data-driven. Opt a \*custom\* connection schema into the same behaviour with the `@dynamic` decorator; without it, an endpoint that doesn't name a literal block is a `wcl check` error.
+A diagram's `Edge` connection is declared `@dynamic`, so a `->` endpoint may name an id that a
+`wdoc_repeater` (or `wdoc_component`) produces at render time, not just a literal shape. This
+is what lets database / ER and class diagrams be data-driven. Opt a \*custom\* connection schema
+into the same behaviour with the `@dynamic` decorator; without it, an endpoint that doesn't
+name a literal block is a `wcl check` error.
 
 
 ```wcl
@@ -73,7 +81,10 @@ users_id -> orders_user_id :data
 
 ## Computed edges, labels and dashes
 
-Besides `->` statements, a diagram (or container) accepts a computed `edges = [...]` field — a list of records with `source` / `destination` (shape ids) and an optional `kind`. The two forms may coexist. Only the record form carries presentation payload: `label` renders as text at the edge's midpoint, and `dash` becomes an inline `stroke-dasharray`.
+Besides `->` statements, a diagram (or container) accepts a computed `edges = [...]` field — a
+list of records with `source` / `destination` (shape ids) and an optional `kind`. The two
+forms may coexist. Only the record form carries presentation payload: `label` renders as text
+at the edge's midpoint, and `dash` becomes an inline `stroke-dasharray`.
 
 
 ```wcl
@@ -104,7 +115,10 @@ diagram {
 
 ## Routing
 
-How an edge gets from source to destination is set on the \*diagram\*, not the edge: `routing = :elbow` (default) draws an orthogonal multi-bend polyline that routes around other shapes; `routing = :straight` draws a single direct line. Use `connect_points` on a shape to restrict which sides (`:north`/`:east`/`:south`/`:west`) an edge may attach to.
+How an edge gets from source to destination is set on the \*diagram\*, not the edge:
+`routing = :elbow` (default) draws an orthogonal multi-bend polyline that routes around other
+shapes; `routing = :straight` draws a single direct line. Use `connect_points` on a shape to
+restrict which sides (`:north`/`:east`/`:south`/`:west`) an edge may attach to.
 
 
 Elbow routing (the default) bends around an intervening shape:
@@ -143,9 +157,5 @@ diagram {
 ```
 
 ![diagram](../_wdoc/concept_connections-diagram-3.svg)
-
-## Related
-
-- [Data Views](../references/concept_data_views.md)
 
 [← Back to SKILL.md](../SKILL.md)

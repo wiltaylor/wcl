@@ -22,7 +22,11 @@ skill {
 }
 ```
 
-Add the single `skill` block in `wskill.wcl`. Its fields become `SKILL.md`'s front matter and intro: the `allowed_tools` / `disallowed_tools` / `disable_model_invocation` permissions, a `summary` overview, invocation `skill_param`s, and `skill_boundary` guardrails the agent must follow.
+Add the single `skill` block in `wskill.wcl`. Its fields become `SKILL.md`'s front matter
+and intro: the `allowed_tools` / `disallowed_tools` / `disable_model_invocation`
+permissions, a `summary` overview, invocation `skill_param`s, and `skill_boundary`
+guardrails the agent must follow.
+
 
 ### Step 2: Tag content for the skill
 
@@ -31,11 +35,17 @@ concept fast_forward { audience = :both  ... }   // book + skill
 fact   port_table    { audience = :ai    ... }   // skill only
 ```
 
-Every unit defaults to `audience = :book`, so it stays out of the skill. Mark the units the agent needs `:ai` (skill only) or `:both` (book and skill). Curate up — the skill stays lean because content has to opt in.
+Every unit defaults to `audience = :book`, so it stays out of the skill. Mark the units the
+agent needs `:ai` (skill only) or `:both` (book and skill). Curate up — the skill stays lean
+because content has to opt in.
+
 
 ### Step 3: Curate the skill navigation
 
-`SKILL.md` is index-driven: add an `index` with `audience = :ai` (or `:both`) whose `related` lists the units the agent should reach. Each such index is inlined into `SKILL.md` as a section linking straight to those units. See \*Building the wskill index\*.
+`SKILL.md` is index-driven: add an `index` with `audience = :ai` (or `:both`) whose
+`related` lists the units the agent should reach. Each such index is inlined into `SKILL.md`
+as a section linking straight to those units. See \*Building the wskill index\*.
+
 
 ### Step 4: Build and install the skill
 
@@ -44,7 +54,12 @@ $ wcl wskill check .
 $ wcl wskill install . --repo <repo>
 ```
 
-Run `wcl wskill check .` to build every declared projection in scratch space, then `wcl wskill install . --repo <repo>` to render and install `SKILL.md`, `references/*.md`, bundled files, and any agents. [Building and installing the AI skill](../references/process_installing_the_skill.md) covers drift checking and how to verify the agent actually loads it.
+Run `wcl wskill check .` to build every declared projection in scratch space, then
+`wcl wskill install . --repo <repo>` to render and install `SKILL.md`, `references/*.md`,
+bundled files, and any agents.
+[Building and installing the AI skill](../references/process_installing_the_skill.md) covers drift checking
+and how to verify the agent actually loads it.
+
 
 > [!TIP]
 > **Verification**
@@ -53,14 +68,8 @@ Run `wcl wskill check .` to build every declared projection in scratch space, th
 
 ## Related
 
-- [Structured data](../references/concept_structured_data.md)
-
 - [Building the wskill index](../references/process_building_the_index.md)
 
-- [Creating a new wskill](../references/process_creating_a_wskill.md)
-
 - [Building and installing the AI skill](../references/process_installing_the_skill.md)
-
-- [Anatomy of the AI skill](../references/concept_skill_anatomy.md)
 
 [← Back to SKILL.md](../SKILL.md)

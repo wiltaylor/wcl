@@ -29,7 +29,9 @@ with nothing to skip past. Write to be \*findable and correct\*, not to be enjoy
 
 ## Field conventions
 
-The record fields are read far more often than the body — they are the index rows, the nav labels, and the link text.
+The record fields are read far more often than the body — they are the index rows, the nav
+labels, and the link text.
+
 
 | Field | Write it as |
 | --- | --- |
@@ -50,14 +52,8 @@ The record fields are read far more often than the body — they are the index r
 
 ## Length
 
-A unit that runs past roughly a screen of prose is usually two units. Split it and link the halves — see [Linking discipline](../references/fact_linking_discipline.md).
+A unit that runs past roughly a screen of prose is usually two units. Split it and link the
+halves — see [Linking discipline](../references/fact_linking_discipline.md).
 
-## Related
-
-- [Atomic Note](../references/concept_atomic_note.md)
-
-- [Linking discipline — link sparingly](../references/fact_linking_discipline.md)
-
-- [Self-Contained Content](../references/concept_selfcontained.md)
 
 [← Back to SKILL.md](../SKILL.md)

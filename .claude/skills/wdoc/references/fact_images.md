@@ -18,7 +18,10 @@
 
 ## On a page
 
-An `image` block directly under a `page` renders as a standalone `<img>`. The source is the inline label; set `width` / `height` to size it, `alt` for accessibility, and a `class` for styling (live below — a Kenney CC0 spritesheet, scaled down):
+An `image` block directly under a `page` renders as a standalone `<img>`. The source is the
+inline label; set `width` / `height` to size it, `alt` for accessibility, and a `class` for
+styling (live below — a Kenney CC0 spritesheet, scaled down):
+
 
 ```wcl
 image "../../assets/kenney-platformer.png" {
@@ -31,7 +34,9 @@ image "../../assets/kenney-platformer.png" {
 
 ## Inside a diagram
 
-`image` is also a placeable `SvgBlock`, so it can sit in a `diagram` / `container` alongside `rect` / `circle`, positioned by `x` / `y` (or anchors).
+`image` is also a placeable `SvgBlock`, so it can sit in a `diagram` / `container` alongside
+`rect` / `circle`, positioned by `x` / `y` (or anchors).
+
 
 ```wcl
 diagram {
@@ -58,9 +63,5 @@ diagram {
 ## Related
 
 - [diagram](../references/fact_diagrams.md)
-
-- [video](../references/fact_videos.md)
-
-- [map](../references/fact_maps.md)
 
 [← Back to SKILL.md](../SKILL.md)

@@ -2,11 +2,16 @@
 
 _The naming rule for fields, types, kinds, labels, and bindings, plus reserved words._
 
-Identifiers are the names used throughout WCL — for fields, types, block kinds, block labels, variants, symbols, `let` bindings, and imported items. The lexical rule is the same everywhere, with one convenience exception for block labels.
+Identifiers are the names used throughout WCL — for fields, types, block kinds, block labels,
+variants, symbols, `let` bindings, and imported items. The lexical rule is the same
+everywhere, with one convenience exception for block labels.
+
 
 ## Lexical rule
 
-An identifier starts with an **ASCII letter** (`a`-`z`, `A`-`Z`) or an **underscore**, and continues with letters, digits, or underscores. No Unicode, no dashes, no spaces.
+An identifier starts with an **ASCII letter** (`a`-`z`, `A`-`Z`) or an **underscore**, and
+continues with letters, digits, or underscores. No Unicode, no dashes, no spaces.
+
 
 | Name | Legal? | Why |
 | --- | --- | --- |
@@ -17,7 +22,10 @@ An identifier starts with an **ASCII letter** (`a`-`z`, `A`-`Z`) or an **undersc
 
 ## Block labels: kebab-case and paths
 
-Block **labels** (the name after a block kind) are the one place a bare identifier may contain `-` and `/` connectors — so kebab-case class names and path-like page names need no quoting. The connector sits directly between name parts (no surrounding spaces).
+Block **labels** (the name after a block kind) are the one place a bare identifier may contain
+`-` and `/` connectors — so kebab-case class names and path-like page names need no quoting.
+The connector sits directly between name parts (no surrounding spaces).
+
 
 ```wcl
 class dgm-box {}              // kebab-case, bare
@@ -30,7 +38,9 @@ class "dgm-box" {}            // quoting still works
 
 ## Reserved words
 
-A handful of words are reserved by the lexer and cannot be used as identifiers in any position:
+A handful of words are reserved by the lexer and cannot be used as identifiers in any
+position:
+
 
 | Reserved | Used for |
 | --- | --- |
@@ -38,11 +48,17 @@ A handful of words are reserved by the lexer and cannot be used as identifiers i
 | `none` | The none literal |
 | `if`, `else`, `match` | Control flow |
 
-Other words that look special — `type`, `interface`, `union`, `symbol_set`, `let`, `import`, `connection`, `fn`, `extends`, `as` — are recognised only in declaration positions, so they may also appear as ordinary identifiers. It reads more clearly to keep them for their declaration use.
+Other words that look special — `type`, `interface`, `union`, `symbol_set`, `let`, `import`,
+`connection`, `fn`, `extends`, `as` — are recognised only in declaration positions, so they
+may also appear as ordinary identifiers. It reads more clearly to keep them for their
+declaration use.
+
 
 ## Naming conventions
 
-The standard library follows Rust-like conventions, but the language does not enforce them. Pick a style and stay consistent.
+The standard library follows Rust-like conventions, but the language does not enforce them.
+Pick a style and stay consistent.
+
 
 | Convention | Used for |
 | --- | --- |
@@ -51,8 +67,6 @@ The standard library follows Rust-like conventions, but the language does not en
 | `SCREAMING` | Rarely; reserve for visibly-constant globals |
 
 ## Related
-
-- [Namespaces](../references/concept_namespaces.md)
 
 - [Symbols](../references/concept_symbols.md)
 

@@ -52,8 +52,4 @@ preview page.
 >
 > The edited value appears in the data file (git diff shows a clean, minimal change) and on the rebuilt preview page.
 
-## Related
-
-- [Adding content to a wskill](../references/process_adding_content.md)
-
 [← Back to SKILL.md](../SKILL.md)

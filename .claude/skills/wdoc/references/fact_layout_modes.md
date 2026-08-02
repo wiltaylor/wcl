@@ -1,6 +1,9 @@
 # Diagram and container layout modes
 
-A `diagram` (or a `container`) places its shapes with one of several layout modes, set by `layout = :<mode>`. The default is free placement from explicit coordinates; the auto-layout modes derive positions from the connection graph instead.
+A `diagram` (or a `container`) places its shapes with one of several layout modes, set by
+`layout = :<mode>`. The default is free placement from explicit coordinates; the auto-layout
+modes derive positions from the connection graph instead.
+
 
 | Mode | Behaviour |
 | --- | --- |
@@ -16,7 +19,9 @@ Each derives positions from the same shapes + edges — only `layout` changes.
 
 ### :grid
 
-Children flow into a regular grid (here on a `container`, which also takes the grid sizing fields):
+Children flow into a regular grid (here on a `container`, which also takes the grid sizing
+fields):
+
 
 ```wcl
 diagram {
@@ -94,7 +99,9 @@ diagram {
 
 ### :radial
 
-One `hub` sits at the centre with the rest ringed around it (pairs well with `routing = :straight`):
+One `hub` sits at the centre with the rest ringed around it (pairs well with
+`routing = :straight`):
+
 
 ```wcl
 diagram {
@@ -180,7 +187,5 @@ diagram {
 - [diagram](../references/fact_diagrams.md)
 
 - [flowchart shapes](../references/fact_flowcharts.md)
-
-- [Connections](../references/concept_connections.md)
 
 [← Back to SKILL.md](../SKILL.md)

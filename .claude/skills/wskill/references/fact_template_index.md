@@ -1,6 +1,10 @@
 # Template — index
 
-An **index** is curated navigation: a top-level entry in the book nav whose members are the unit pages it pins in `related`. In the book a \*nav\* index (no `body`) is a heading whose children are those pages; a \*content\* index (with a `body`) renders as its own page. In the skill a `:both` index becomes a section of SKILL.md's Reference. Indexes may nest one level.
+An **index** is curated navigation: a top-level entry in the book nav whose members are the
+unit pages it pins in `related`. In the book a \*nav\* index (no `body`) is a heading whose
+children are those pages; a \*content\* index (with a `body`) renders as its own page. In the
+skill a `:both` index becomes a section of SKILL.md's Reference. Indexes may nest one level.
+
 
 ## Skeleton
 
@@ -30,7 +34,9 @@ index <id> {
 | `body` | Omit it for a plain nav heading. Add it only when the area needs its own prose page (a Quick Start, an orientation) |
 | nested `index` | One level renders. A deeper nest is not projected |
 
-A unit that is in no index is reachable by link but invisible in the nav — pinning is the last step of the [capture loop](../references/process_adding_content.md).
+A unit that is in no index is reachable by link but invisible in the nav — pinning is the last
+step of the [capture loop](../references/process_adding_content.md).
+
 
 ## Filled example
 
@@ -55,11 +61,5 @@ index authoring {
 - Members are in reading order, not the order you happened to write them.
 - Every unit in the wskill is pinned by exactly one index (a second pin is a duplicate nav entry).
 - It has a `body` only if it genuinely needs a page of its own.
-
-## Related
-
-- [Building the wskill index](../references/process_building_the_index.md)
-
-- [Linking discipline — link sparingly](../references/fact_linking_discipline.md)
 
 [← Back to SKILL.md](../SKILL.md)

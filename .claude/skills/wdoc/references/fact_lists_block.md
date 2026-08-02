@@ -1,6 +1,9 @@
 # list / li
 
-A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`, links, and icons all work inside items. See [formatting](../references/concept_formatting.md).
+A `list` holds `li` items. It's a bullet list by default; set `style = :numbered` for a
+numbered one. Each `li`'s text runs through the inline-pattern engine, so **bold**, `code`,
+links, and icons all work inside items. See [formatting](../references/concept_formatting.md).
+
 
 ```wcl
 list {
@@ -48,7 +51,10 @@ An `li` is one list item. Nest an `li` inside an `li` for a sublist, or drop a w
 
 ## Nesting
 
-Nest an `li` inside an `li` for a sublist — it inherits the parent list's style, so a numbered list numbers sublists hierarchically (`2.1`, `2.2`). For a sublist with a **different** style, drop a whole `list` block inside the `li` instead.
+Nest an `li` inside an `li` for a sublist — it inherits the parent list's style, so a numbered
+list numbers sublists hierarchically (`2.1`, `2.2`). For a sublist with a **different** style,
+drop a whole `list` block inside the `li` instead.
+
 
 ```wcl
 list {
@@ -75,11 +81,5 @@ list {
 3. Run
   - Foreground
   - Background
-
-## Related
-
-- [table](../references/fact_tables_block.md)
-
-- [callout](../references/fact_callouts.md)
 
 [← Back to SKILL.md](../SKILL.md)

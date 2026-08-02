@@ -39,6 +39,4 @@ An idea is never an entity. A table of values is never an entity.
 
 - [Process](../references/concept_process.md)
 
-- [Capturing research into a wskill](../references/process_capturing_research.md)
-
 [← Back to SKILL.md](../SKILL.md)

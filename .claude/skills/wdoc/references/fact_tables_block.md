@@ -1,6 +1,10 @@
 # table
 
-A `table { rows: | … | }` renders a tabular data grid using WCL's native pipe-row syntax. The first row becomes the `<thead>`; the remaining rows go in `<tbody>`. (In a wskill data block the pipe-row form is the page-authoring shape; wskill's own reference tables use a `header` / `rows` field pair.)
+A `table { rows: | … | }` renders a tabular data grid using WCL's native pipe-row syntax. The
+first row becomes the `<thead>`; the remaining rows go in `<tbody>`. (In a wskill data block
+the pipe-row form is the page-authoring shape; wskill's own reference tables use a `header` /
+`rows` field pair.)
+
 
 ```wcl
 table {
@@ -25,17 +29,14 @@ table {
 
 ## Cells
 
-Cells are expressions in the row schema's field positions. utf8 cells run through the inline pattern engine, so **bold**, italic, `inline code`, links, icons, and math all work inside cells. Numeric, boolean, and symbol cells stringify. See [formatting](../references/concept_formatting.md).
+Cells are expressions in the row schema's field positions. utf8 cells run through the inline
+pattern engine, so **bold**, italic, `inline code`, links, icons, and math all work inside
+cells. Numeric, boolean, and symbol cells stringify. See [formatting](../references/concept_formatting.md).
+
 
 > [!WARNING]
 > **Pipes in cells**
 >
 > A literal pipe outside a quoted cell splits the row, so wrap any cell that contains a pipe in a string literal.
-
-## Related
-
-- [list / li](../references/fact_lists_block.md)
-
-- [callout](../references/fact_callouts.md)
 
 [← Back to SKILL.md](../SKILL.md)

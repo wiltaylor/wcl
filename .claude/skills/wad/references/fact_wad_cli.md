@@ -9,12 +9,13 @@
 | `wcl diff <rev>:wad.wcl wad.wcl` | what changed since a revision (evaluated views) — a delta source for spec writing |
 | `wcl wad spec --from <rev> [wad.wcl]` | seed a spec skeleton in data/specs/ from the diff (`--id`, `--title`, `--format json`, `--include-specs`) |
 
-A scaffolded WAD's justfile wraps these as `wad-check`, `book-build`, `book-serve`, `md-build`, `extract`, `spec-new REV`, `clean`. In the WCL repository the root justfile prefixes them `wad-*`.
+A scaffolded WAD's justfile wraps these as `wad-check`, `book-build`, `book-serve`,
+`md-build`, `extract`, `spec-new REV`, `clean`. In the WCL repository the root justfile
+prefixes them `wad-*`.
+
 
 ## Related
 
 - [wcl init wad](../references/entity_wcl_init_wad.md)
-
-- [wcl diff (WAD usage)](../references/entity_wcl_diff_wad.md)
 
 [← Back to SKILL.md](../SKILL.md)

@@ -1,6 +1,8 @@
 # Operators
 
-WCL's complete operator set. Precedence runs unary tightest, then `*` `/` `%`, then `+` `-`, then comparison, then `&&`, then `||`, then `??` loosest.
+WCL's complete operator set. Precedence runs unary tightest, then `*` `/` `%`, then `+` `-`,
+then comparison, then `&&`, then `||`, then `??` loosest.
+
 
 | Operator | Meaning | Example |
 | --- | --- | --- |
@@ -15,7 +17,9 @@ WCL's complete operator set. Precedence runs unary tightest, then `*` `/` `%`, t
 
 ## There is no exponent or index operator
 
-Two shapes that other languages spell with an operator are builtin calls in WCL, and writing the operator is a parse error:
+Two shapes that other languages spell with an operator are builtin calls in WCL, and writing
+the operator is a parse error:
+
 
 | Instead of | Write | Note |
 | --- | --- | --- |
@@ -24,12 +28,9 @@ Two shapes that other languages spell with an operator are builtin calls in WCL,
 
 ## Not operators
 
-Three symbols read like operators but are syntax, not expressions: `&T` is a [reference type](../references/concept_references.md), `->` writes a [connection statement](../references/concept_connections.md) or a function's return type, and `=>` separates a `match` arm from its body.
+Three symbols read like operators but are syntax, not expressions: `&T` is a
+[reference type](../references/concept_references.md), `->` writes a [connection statement](../references/concept_connections.md)
+or a function's return type, and `=>` separates a `match` arm from its body.
 
-## Related
-
-- [Optionals](../references/concept_optionals.md)
-
-- [Numeric Promotion](../references/concept_numeric_promotion.md)
 
 [← Back to SKILL.md](../SKILL.md)

@@ -11,10 +11,4 @@
 | just serve | Live book preview |
 | just status <spec> | Query one spec's state (wcl eval plan.wcl statuses.<spec>.state) |
 
-## Related
-
-- [The gated pipeline](../references/concept_pipeline.md)
-
-- [Rendering and handoff](../references/process_proc_render_handoff.md)
-
 [← Back to SKILL.md](../SKILL.md)

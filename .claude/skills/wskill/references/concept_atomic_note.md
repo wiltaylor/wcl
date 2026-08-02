@@ -13,14 +13,4 @@ would ever be linked — without the other. Atomicity is what makes `related` li
 precise and keeps every view's pages focused.
 
 
-## Related
-
-- [Decomposing information](../references/concept_decomposing_information.md)
-
-- [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
-
-- [Self-Contained Content](../references/concept_selfcontained.md)
-
-- [Linking discipline — link sparingly](../references/fact_linking_discipline.md)
-
 [← Back to SKILL.md](../SKILL.md)

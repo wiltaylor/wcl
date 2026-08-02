@@ -21,8 +21,4 @@ disguise (one `:book`, one `:ai`). The common legitimate cases are an agent-only
 inside shared reference material, and media that one backend can't carry.
 
 
-## Related
-
-- [Different Views](../references/concept_views.md)
-
 [← Back to SKILL.md](../SKILL.md)

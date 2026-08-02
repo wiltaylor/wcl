@@ -1,6 +1,9 @@
 # primitive shapes
 
-The base shapes a `diagram` is built from — everything else (flowchart nodes, cards, trees) lowers to these. They live inside a `diagram` and are placed by `x` / `y` (or anchors). The five simplest, side by side:
+The base shapes a `diagram` is built from — everything else (flowchart nodes, cards, trees)
+lowers to these. They live inside a `diagram` and are placed by `x` / `y` (or anchors). The
+five simplest, side by side:
+
 
 ```wcl
 diagram {
@@ -175,14 +178,13 @@ An arbitrary closed shape from a point list.
 | `connect_points` | `list<AnchorSide>` | no | Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to. |
 | `link` | `utf8` | no | Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link. |
 
-Composite shapes — `container`, `card`, `node_table` — get their own page; see [composite shapes](../references/fact_composite_shapes.md). Paint them with the [class system](../references/fact_shape_styling.md).
+Composite shapes — `container`, `card`, `node_table` — get their own page; see
+[composite shapes](../references/fact_composite_shapes.md). Paint them with the
+[class system](../references/fact_shape_styling.md).
+
 
 ## Related
 
 - [diagram](../references/fact_diagrams.md)
-
-- [styling shapes with classes](../references/fact_shape_styling.md)
-
-- [Connections](../references/concept_connections.md)
 
 [← Back to SKILL.md](../SKILL.md)

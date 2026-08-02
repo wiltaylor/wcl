@@ -2,9 +2,17 @@
 
 _Every exported spec .md must stand alone: rules, context and findings are copied in, never referenced._
 
-A brief is executed by an agent that may be a much weaker model than the one writing it. Assume the implementing agent follows instructions literally, cannot research anything, treats ambiguity as permission, and forgets rules that are not in its own brief.
+A brief is executed by an agent that may be a much weaker model than the one writing it.
+Assume the implementing agent follows instructions literally, cannot research anything, treats
+ambiguity as permission, and forgets rules that are not in its own brief.
 
-So: project rules are copied verbatim into every brief; each spec's `body` copies in the PRD excerpts, research findings and conventions it relies on; and redundancy across briefs is deliberate. A brief that says "see the PRD" is a broken brief. Repeat the most frequently violated boundary inside the relevant task text too - weak models weigh task text more heavily than rule sections.
+
+So: project rules are copied verbatim into every brief; each spec's `body` copies in the PRD
+excerpts, research findings and conventions it relies on; and redundancy across briefs is
+deliberate. A brief that says "see the PRD" is a broken brief. Repeat the most frequently
+violated boundary inside the relevant task text too - weak models weigh task text more heavily
+than rule sections.
+
 
 ## Examples
 
@@ -34,13 +42,5 @@ spec spec_030_cli {
 ```
 
 **Expected:** wcl check plan.wcl passes (deps resolve, ownership disjoint); just specs emits a standalone brief with frontmatter, worktree instructions and the copied-in context.
-
-## Related
-
-- [Implementation vs verification](../references/concept_role_split.md)
-
-- [Breaking down the specs](../references/process_proc_spec_breakdown.md)
-
-- [Rendering and handoff](../references/process_proc_render_handoff.md)
 
 [← Back to SKILL.md](../SKILL.md)

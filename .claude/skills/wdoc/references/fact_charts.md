@@ -1,10 +1,18 @@
 # charts
 
-wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG via pure-WCL geometry. Each is an `SvgBlock`, so place it inside a `diagram` sharing its size. Data is a list of records and the variant is inferred from each record's shape, so a bare `{ … }` is all you need.
+wdoc ships three chart kinds — `bar_chart`, `line_chart`, and `pie_chart` — that lower to SVG
+via pure-WCL geometry. Each is an `SvgBlock`, so place it inside a `diagram` sharing its size.
+Data is a list of records and the variant is inferred from each record's shape, so a bare
+`{ … }` is all you need.
+
 
 ## Bar and line charts
 
-Both take a `series: list<ChartSeries>` — each series a `{ name, values }` record; multiple series produce grouped bars or multi-line plots, and `categories` labels the x-axis. `line_chart` adds `point_labels = true` (print every point's value) and `points` (author-named callouts, each `{ label, category, value }`).
+Both take a `series: list<ChartSeries>` — each series a `{ name, values }` record; multiple
+series produce grouped bars or multi-line plots, and `categories` labels the x-axis.
+`line_chart` adds `point_labels = true` (print every point's value) and `points` (author-named
+callouts, each `{ label, category, value }`).
+
 
 A grouped `bar_chart` — two series over four quarters:
 
@@ -87,7 +95,9 @@ diagram {
 
 ## Pie chart
 
-A `pie_chart` takes `slices: list<ChartSlice>` — each a `{ label, value }` record, drawn as polygon-approximated arcs.
+A `pie_chart` takes `slices: list<ChartSlice>` — each a `{ label, value }` record, drawn as
+polygon-approximated arcs.
+
 
 A pie chart over `slices: list<ChartSlice>`, each a `{ label, value }` record drawn as polygon-approximated arcs.
 
@@ -118,7 +128,9 @@ diagram {
 
 ![diagram](../_wdoc/fact_charts-diagram-3.svg)
 
-Charts cycle the `wdoc-series-1`..`wdoc-series-8` palette classes, so a `class` override or a site `theme` recolours them. See [styling](../references/concept_styling.md).
+Charts cycle the `wdoc-series-1`..`wdoc-series-8` palette classes, so a `class` override or a
+site `theme` recolours them. See [styling](../references/concept_styling.md).
+
 
 ## Examples
 
@@ -144,7 +156,5 @@ diagram { width = 360  height = 200
 ## Related
 
 - [diagram](../references/fact_diagrams.md)
-
-- [timeline](../references/fact_timelines.md)
 
 [← Back to SKILL.md](../SKILL.md)

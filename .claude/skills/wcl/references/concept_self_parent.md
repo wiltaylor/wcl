@@ -2,11 +2,19 @@
 
 _Keywords that navigate the enclosing scope — self is the current block, parent the one around it._
 
-Inside a block, the `self` and `parent` keywords are navigators into the document — the same kind of lazy reference a `&T` field holds. `self` resolves to the **current** block (the innermost enclosing scope); `parent` resolves to the block **around** it. Both walk the lexical scope chain upward, so a field can read a sibling or an ancestor without naming the whole path.
+Inside a block, the `self` and `parent` keywords are navigators into the document — the same
+kind of lazy reference a `&T` field holds. `self` resolves to the **current** block (the
+innermost enclosing scope); `parent` resolves to the block **around** it. Both walk the
+lexical scope chain upward, so a field can read a sibling or an ancestor without naming the
+whole path.
+
 
 ## self
 
-`self` names the current block. Member access off it reads a field declared in the same block — handy when a name would otherwise be shadowed, or to be explicit about where a value comes from.
+`self` names the current block. Member access off it reads a field declared in the same block
+— handy when a name would otherwise be shadowed, or to be explicit about where a value comes
+from.
+
 
 ```wcl
 box "panel" {
@@ -19,7 +27,10 @@ box "panel" {
 
 ## parent
 
-`parent` names the enclosing block one level out. Use it to read a value declared on the container from within a nested block. Referencing `parent` at the document root is an error — there is no scope above it.
+`parent` names the enclosing block one level out. Use it to read a value declared on the
+container from within a nested block. Referencing `parent` at the document root is an error —
+there is no scope above it.
+
 
 ```wcl
 service "web" {
@@ -39,9 +50,5 @@ service "web" {
 ## Related
 
 - [References](../references/concept_references.md)
-
-- [Fields](../references/concept_fields.md)
-
-- [Blocks](../references/concept_blocks.md)
 
 [← Back to SKILL.md](../SKILL.md)

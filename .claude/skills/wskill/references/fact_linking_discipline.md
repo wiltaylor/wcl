@@ -25,7 +25,11 @@ a "Strings" concept that says strings exist and then links "String literals" and
 page's clothes: the reader clicks through it every time and learns nothing.
 
 
-Delete the hub and pin its children into an [index](../references/process_building_the_index.md). That is exactly what an index is: a heading in the nav whose members are the real units. The WCL wskill lost two such hubs — a `strings` concept and a `cli` concept that restated the structured CLI reference — and both areas got easier to read.
+Delete the hub and pin its children into an [index](../references/process_building_the_index.md). That is
+exactly what an index is: a heading in the nav whose members are the real units. The WCL
+wskill lost two such hubs — a `strings` concept and a `cli` concept that restated the
+structured CLI reference — and both areas got easier to read.
+
 
 ## `related` is meaning; an index is navigation
 
@@ -45,14 +49,9 @@ one depends on that one" — a claim the index cannot make.
 
 ## Zero links is also a smell
 
-A content unit with no `related` at all is usually misfiled or not yet part of the topic's structure — the exception is a genuinely standalone fact. One or two deliberate links beat both extremes.
+A content unit with no `related` at all is usually misfiled or not yet part of the topic's
+structure — the exception is a genuinely standalone fact. One or two deliberate links beat
+both extremes.
 
-## Related
-
-- [Atomic Note](../references/concept_atomic_note.md)
-
-- [Writing style for wskill content](../references/fact_writing_style.md)
-
-- [Building the wskill index](../references/process_building_the_index.md)
 
 [← Back to SKILL.md](../SKILL.md)

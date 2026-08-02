@@ -15,10 +15,4 @@ schema for it (a typed block in `schema/extensions.wcl`); the new format is then
 projected exactly like the built-in ones.
 
 
-## Related
-
-- [Separation of Data and Presentation](../references/concept_datapresentation.md)
-
-- [Decomposing information](../references/concept_decomposing_information.md)
-
 [← Back to SKILL.md](../SKILL.md)

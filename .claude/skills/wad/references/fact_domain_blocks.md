@@ -1,6 +1,8 @@
 # Domain blocks
 
-The domain view captures the **business objects** — the nouns the business uses — and how they relate: the ubiquitous language, in typed form.
+The domain view captures the **business objects** — the nouns the business uses — and how they
+relate: the ubiquitous language, in typed form.
+
 
 | Block | Fields | Notes |
 | --- | --- | --- |
@@ -8,10 +10,8 @@ The domain view captures the **business objects** — the nouns the business use
 | `field` | inline name, `type`, `required`, `summary?` | nested — one per field that matters to the business |
 | `domain_rel` | `to`, `kind`, `label?`, `via_field?` | nested — `kind` is has_one / has_many / references / extends / uses; `via_field` pins the ER edge to a field row |
 
-The landing page derives an ER diagram from the objects and their relations; each object also gets its own page.
+The landing page derives an ER diagram from the objects and their relations; each object also
+gets its own page.
 
-## Related
-
-- [The twelve views](../references/concept_twelve_views.md)
 
 [← Back to SKILL.md](../SKILL.md)

@@ -2,7 +2,11 @@
 
 _The `include` block and `included_sites` builtin discover and embed other wdoc documents._
 
-The `include` block builds \*other\* wdoc documents found under a folder and ships each one's rendered output into a subdirectory of this build — exactly as if you had run `wcl wdoc build` (or `wcl wdoc skill`) on each one separately. Unlike imports (which merge another file's blocks into the current document), an included document stays a **separate artifact**: it keeps its own pages and `_wdoc/` assets under its own output subdirectory.
+The `include` block builds \*other\* wdoc documents found under a folder and ships each one's
+rendered output into a subdirectory of this build — exactly as if you had run `wcl wdoc build`
+(or `wcl wdoc skill`) on each one separately. Unlike imports (which merge another file's
+blocks into the current document), an included document stays a **separate artifact**: it
+keeps its own pages and `_wdoc/` assets under its own output subdirectory.
 
 
 > [!NOTE]
@@ -12,7 +16,10 @@ The `include` block builds \*other\* wdoc documents found under a folder and shi
 
 ## Discovery: pattern vs entry
 
-Name a folder (the inline label), then pick **exactly one** discovery mode. Each match builds into `<folder-basename>/<name>/`. **`pattern`** is a filename glob matched recursively; the sub-site name is the matching file's parent folder. **`entry`** is a fixed relative path checked inside each immediate subdirectory (no recursion).
+Name a folder (the inline label), then pick **exactly one** discovery mode. Each match builds
+into `<folder-basename>/<name>/`. **`pattern`** is a filename glob matched recursively; the
+sub-site name is the matching file's parent folder. **`entry`** is a fixed relative path
+checked inside each immediate subdirectory (no recursion).
 
 
 ```wcl
@@ -27,7 +34,9 @@ include "members" { entry = "wdoc/book/main.wcl" }
 
 ## Picking a site
 
-A member may declare several sites (e.g. a `:book` web site and an `:ai_skill` site over one model). The optional `site` field names which one to build — it is passed as `--site` to the per-member build.
+A member may declare several sites (e.g. a `:book` web site and an `:ai_skill` site over one
+model). The optional `site` field names which one to build — it is passed as `--site` to the
+per-member build.
 
 
 ```wcl
@@ -36,7 +45,11 @@ include "members" { entry = "main.wcl"  site = "book" }   // each member's :book
 
 ## Wiring navigation
 
-The companion `included_sites(options)` builtin runs the same scan and returns one `{ name, href, title, summary }` record per discovered sub-site. The argument is a **record mirroring the include block's fields** (WCL has no keyword arguments); pass the \*same\* options so the links line up with where the sub-sites were built. Note record fields use `:` where block fields use `=`.
+The companion `included_sites(options)` builtin runs the same scan and returns one
+`{ name, href, title, summary }` record per discovered sub-site. The argument is a
+**record mirroring the include block's fields** (WCL has no keyword arguments); pass the
+\*same\* options so the links line up with where the sub-sites were built. Note record fields
+use `:` where block fields use `=`.
 
 
 ```wcl
@@ -57,7 +70,9 @@ site main { root = true  default_template = :webpage
 
 ## Skill collections
 
-Because `include` also embeds for the skill target, one `wcl wdoc skill` renders every member's skill into `<out>/<folder>/<name>/`. A collection document can be pure fan-out — just `include` blocks, no site of its own.
+Because `include` also embeds for the skill target, one `wcl wdoc skill` renders every
+member's skill into `<out>/<folder>/<name>/`. A collection document can be pure fan-out — just
+`include` blocks, no site of its own.
 
 
 ```wcl
@@ -100,10 +115,6 @@ include "members" { entry = "wdoc/book/main.wcl" }
 
 ## Related
 
-- [Data Views](../references/concept_data_views.md)
-
 - [Sites](../references/concept_sites.md)
-
-- [Skill folders](../references/concept_skills.md)
 
 [← Back to SKILL.md](../SKILL.md)

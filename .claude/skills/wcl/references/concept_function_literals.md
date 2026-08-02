@@ -19,12 +19,4 @@ four = double(2i32)            // 4
 nine = sum_sq(1i32, 2i32)      // (1 + 2)^2 = 9
 ```
 
-## Related
-
-- [fn Items](../references/concept_fn_items.md)
-
-- [Higher-order Functions](../references/concept_higher_order_functions.md)
-
-- [Function Types](../references/concept_function_types.md)
-
 [← Back to SKILL.md](../SKILL.md)

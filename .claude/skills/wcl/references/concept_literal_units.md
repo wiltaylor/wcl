@@ -14,7 +14,9 @@ how to declare your own units.
 
 ## Built-in unit types
 
-Three unit types are always in scope, no import needed. Each is an ordinary `i64` alias carrying `@unit` decorators:
+Three unit types are always in scope, no import needed. Each is an ordinary `i64` alias
+carrying `@unit` decorators:
+
 
 | Type | Base unit | Units |
 | --- | --- | --- |
@@ -29,7 +31,10 @@ Three unit types are always in scope, no import needed. Each is an ordinary `i64
 
 ## Formatting back
 
-`format_unit(value, type, unit)` renders a stored base-unit value in a chosen unit — the inverse of resolution — looking the factor up from the type by name. `format_unit_value(value, factor, unit)` does the same with an explicit factor.
+`format_unit(value, type, unit)` renders a stored base-unit value in a chosen unit — the
+inverse of resolution — looking the factor up from the type by name.
+`format_unit_value(value, factor, unit)` does the same with an explicit factor.
+
 
 ```wcl
 @document
@@ -41,15 +46,5 @@ type Config {
 buffer = 4MiB                                        // 4194304
 label  = format_unit(buffer, "std.ByteSize", "MiB")  // "4 MiB"
 ```
-
-## Related
-
-- [Numbers](../references/concept_numbers.md)
-
-- [Number literals](../references/fact_number_literals.md)
-
-- [Type Aliases](../references/concept_type_aliases.md)
-
-- [Type & field constraints](../references/fact_type_constraints.md)
 
 [← Back to SKILL.md](../SKILL.md)

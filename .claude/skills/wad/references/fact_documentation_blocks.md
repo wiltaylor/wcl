@@ -9,10 +9,8 @@
 | --- | --- | --- |
 | `doc_item` | `name`, `summary`, `kind`, `source?`, `url?`, `built_by?`, `hosted_on?`, `audience[]`, `body?` | `kind` is a DocKind (site / book / skill / reference / readme / guide / changelog); `built_by` names the container that renders it; `audience` holds persona ids |
 
-Who populates: hand — documentation is small enough to enumerate, and the fields force the useful questions (where's the source? what builds it? where is it hosted? who is it for?).
+Who populates: hand — documentation is small enough to enumerate, and the fields force the
+useful questions (where's the source? what builds it? where is it hosted? who is it for?).
 
-## Related
-
-- [The twelve views](../references/concept_twelve_views.md)
 
 [← Back to SKILL.md](../SKILL.md)

@@ -2,9 +2,16 @@
 
 _Implementation agents build; a separate verification agent judges, records status, and controls merges - so agents never mark their own work done._
 
-status.wcl is edited by the verification agent only. Implementation briefs never mention it - they end with an instruction to stop and NOT update any status files. Do not leak the status mechanism into any implementation brief.
+status.wcl is edited by the verification agent only. Implementation briefs never mention it -
+they end with an instruction to stop and NOT update any status files. Do not leak the status
+mechanism into any implementation brief.
 
-The verification agent gets the plan folder, the repository with its worktrees, and the verification procedure. It runs every acceptance command, diffs against the spec's ownership, checks the done list, records the verdict, and gates merging on `:verified` plus merged dependencies.
+
+The verification agent gets the plan folder, the repository with its worktrees, and the
+verification procedure. It runs every acceptance command, diffs against the spec's ownership,
+checks the done list, records the verdict, and gates merging on `:verified` plus merged
+dependencies.
+
 
 ## Examples
 
@@ -21,9 +28,5 @@ status spec_020_core { state = :verified  by = "verifier-1"  note = "all checks 
 ## Related
 
 - [Self-contained briefs](../references/concept_briefs.md)
-
-- [Verifying and reviewing a spec](../references/process_proc_verify_spec.md)
-
-- [State vocabularies](../references/fact_fact_state_vocab.md)
 
 [← Back to SKILL.md](../SKILL.md)

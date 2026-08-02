@@ -1,6 +1,11 @@
 # Template — entity
 
-An **entity** is a concrete NAMED thing in the topic's world: a person, an organisation, a tool, a command, a library, a service, a file format, a place. It is not a catch-all — an idea is a `concept`, a value or table is a `fact`, a task is a `procedure`. `kind` comes from the closed `EntityKind` vocabulary in `schema/kinds.wcl`; extend that file when a topic needs a new one.
+An **entity** is a concrete NAMED thing in the topic's world: a person, an organisation, a
+tool, a command, a library, a service, a file format, a place. It is not a catch-all — an idea
+is a `concept`, a value or table is a `fact`, a task is a `procedure`. `kind` comes from the
+closed `EntityKind` vocabulary in `schema/kinds.wcl`; extend that file when a topic needs a
+new one.
+
 
 ## Skeleton
 
@@ -77,7 +82,5 @@ entity ripgrep {
 ## Related
 
 - [Entity](../references/concept_entity.md)
-
-- [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
 
 [← Back to SKILL.md](../SKILL.md)

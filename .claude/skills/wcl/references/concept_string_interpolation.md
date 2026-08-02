@@ -19,8 +19,4 @@ The first is ${head(items)}.
 MSG
 ```
 
-## Related
-
-- [String Literals](../references/concept_string_literals.md)
-
 [← Back to SKILL.md](../SKILL.md)

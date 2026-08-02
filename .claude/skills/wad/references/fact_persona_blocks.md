@@ -16,10 +16,9 @@
 | `access_grant` | `system`, `method`, `approver?` | nested in `persona` — the security control gating this user kind's access; omit entirely when there is none |
 | `use_case` | `title`, `persona`, `summary?`, `preconditions[]`, `outcome?`, steps + flow, `body?` | a typical flow for one persona, rendered as a flowchart (reuses the SOP `step` / `from -> to` machinery); record a good selection per persona — they double as user-acceptance tests |
 
-Personas are diagram nodes: relations from a persona to a container put them on the context diagram, and screens list the personas that use them (`screen.personas`). Use cases render under their persona's chapter, one page each with the flowchart above the step detail.
+Personas are diagram nodes: relations from a persona to a container put them on the context
+diagram, and screens list the personas that use them (`screen.personas`). Use cases render
+under their persona's chapter, one page each with the flowchart above the step detail.
 
-## Related
-
-- [The twelve views](../references/concept_twelve_views.md)
 
 [← Back to SKILL.md](../SKILL.md)

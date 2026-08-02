@@ -11,12 +11,6 @@ Some examples of a concept are: A mental modal, mathimatical process or a softwa
 
 ## Related
 
-- [Entity](../references/concept_entity.md)
-
-- [Fact](../references/concept_fact.md)
-
 - [Process](../references/concept_process.md)
-
-- [Separation of Data and Presentation](../references/concept_datapresentation.md)
 
 [← Back to SKILL.md](../SKILL.md)

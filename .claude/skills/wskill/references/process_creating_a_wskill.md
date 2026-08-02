@@ -69,16 +69,4 @@ units exist,
 >
 > `just wskill-check` passes and `just render` writes out/book and out/skill; the served book shows your topic name, and each unit you add appears as its own page on the next render.
 
-## Related
-
-- [What is it?](../references/concept_wskill_concept.md)
-
-- [Separation of Data and Presentation](../references/concept_datapresentation.md)
-
-- [Self-Contained Content](../references/concept_selfcontained.md)
-
-- [Adding content to a wskill](../references/process_adding_content.md)
-
-- [Researching a topic into a wskill](../references/process_researching_a_topic.md)
-
 [← Back to SKILL.md](../SKILL.md)

@@ -4,7 +4,10 @@ _Block and table kinds are namespace-scoped; a ::-qualified kind picks a schema 
 
 ## Qualified block kinds
 
-Block (and table) kinds are namespace-scoped too. A `::`-qualified kind at the instance site selects the `@block` declaration from that namespace, even when a local declaration shadows the bare kind.
+Block (and table) kinds are namespace-scoped too. A `::`-qualified kind at the instance site
+selects the `@block` declaration from that namespace, even when a local declaration shadows
+the bare kind.
+
 
 ```wcl
 import <wdoc.wcl>
@@ -18,7 +21,11 @@ wdoc::process "theirs" { }           // -> wdoc's Process, explicitly
 
 ## How bare names resolve
 
-A bare kind prefers a declaration in the referencing file's own namespace; otherwise it falls back to an imported one. So a user `@block("process")` deterministically shadows a library's. Two same-kind declarations in the **same** namespace are an error; the same kind across different namespaces is fine — disambiguate at the instance with `::`.
+A bare kind prefers a declaration in the referencing file's own namespace; otherwise it falls
+back to an imported one. So a user `@block("process")` deterministically shadows a library's.
+Two same-kind declarations in the **same** namespace are an error; the same kind across
+different namespaces is fine — disambiguate at the instance with `::`.
+
 
 > [!NOTE]
 > **import vs namespace vs use**
@@ -30,7 +37,5 @@ A bare kind prefers a declaration in the referencing file's own namespace; other
 - [Namespaces](../references/concept_namespaces.md)
 
 - [use Declarations](../references/concept_use_declarations.md)
-
-- [Imports & Modules](../references/concept_imports.md)
 
 [← Back to SKILL.md](../SKILL.md)

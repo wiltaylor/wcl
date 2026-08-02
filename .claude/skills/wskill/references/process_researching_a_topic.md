@@ -119,8 +119,4 @@ and fold review comments back into the units.
 
 - [Creating a new wskill](../references/process_creating_a_wskill.md)
 
-- [Capturing research into a wskill](../references/process_capturing_research.md)
-
-- [Adding content to a wskill](../references/process_adding_content.md)
-
 [← Back to SKILL.md](../SKILL.md)

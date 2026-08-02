@@ -34,7 +34,11 @@ type KeybindingDoc {
 }
 ```
 
-Declare an `@block` per shape (fields typed, `@inline(0) id` first) plus an `@document` gathering it. Imported `@document`s merge with the base, so the new list appears alongside `concepts`/`facts`. Keep it in `schema/extensions.wcl`, or in its own `schema/<area>.wcl` module for a large surface (the wcl wskill's `builtins.wcl` / `cli.wcl` pattern).
+Declare an `@block` per shape (fields typed, `@inline(0) id` first) plus an `@document`
+gathering it. Imported `@document`s merge with the base, so the new list appears alongside
+`concepts`/`facts`. Keep it in `schema/extensions.wcl`, or in its own `schema/<area>.wcl`
+module for a large surface (the wcl wskill's `builtins.wcl` / `cli.wcl` pattern).
+
 
 ### Step 2: Author instances in data/
 
@@ -44,7 +48,9 @@ keybinding save   { keys = "Ctrl+S"  action = "Save the buffer" }
 keybinding search { keys = "Ctrl+F"  action = "Find in file"    context = "editor" }
 ```
 
-Write instances like any other unit; import the file from `wskill.wcl` (or the data aggregator). `wcl check` now validates them against your schema.
+Write instances like any other unit; import the file from `wskill.wcl` (or the data
+aggregator). `wcl check` now validates them against your schema.
+
 
 ### Step 3: Add a render to every template set
 
@@ -55,21 +61,15 @@ wdoc_repeater { each = keybindings  as = :k
 }
 ```
 
-Project the gathered list in BOTH the book and the skill templates — a table, a page per instance, or a `wdoc_component` for a full house-style page body (see [Components](../references/concept_components_look_feel.md)). Extension data that renders in only one view drifts.
+Project the gathered list in BOTH the book and the skill templates — a table, a page per
+instance, or a `wdoc_component` for a full house-style page body (see
+[Components](../references/concept_components_look_feel.md)). Extension data that renders in only one view
+drifts.
+
 
 > [!TIP]
 > **Verification**
 >
 > `just wskill-check` passes with instances present, and both the book and the skill show the new section on the next render.
-
-## Related
-
-- [Custom projections (schema extension modules)](../references/concept_custom_projection.md)
-
-- [Structured data](../references/concept_structured_data.md)
-
-- [Components: one look for every unit](../references/concept_components_look_feel.md)
-
-- [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
 
 [← Back to SKILL.md](../SKILL.md)

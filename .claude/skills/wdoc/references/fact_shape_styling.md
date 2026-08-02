@@ -1,6 +1,11 @@
 # styling shapes with classes
 
-Every diagram shape takes a `class` list. A `class` emits SVG paint — `fill`, `stroke`, `stroke_width`, `opacity` — with `dark { }` / `light { }` overrides, so a shape follows the site theme and the reader's light/dark mode (instead of a baked-in `fill`). The stdlib ships ready-made shape classes — `wdoc-node`, `wdoc-process`, `wdoc-decision`, `wdoc-terminator` — that read the theme palette:
+Every diagram shape takes a `class` list. A `class` emits SVG paint — `fill`, `stroke`,
+`stroke_width`, `opacity` — with `dark { }` / `light { }` overrides, so a shape follows the
+site theme and the reader's light/dark mode (instead of a baked-in `fill`). The stdlib ships
+ready-made shape classes — `wdoc-node`, `wdoc-process`, `wdoc-decision`, `wdoc-terminator` —
+that read the theme palette:
+
 
 ```wcl
 diagram {
@@ -31,7 +36,11 @@ diagram {
 
 ![diagram](../_wdoc/fact_shape_styling-diagram-1.svg)
 
-Declare your own with a `class` block carrying `fill` / `stroke` (and `dark { }` / `light { }`), then list it on any shape. Because the paint comes from the class — not a hard-coded `fill` — the same shape recolours for the theme and for the reader's mode. See the [styling](../references/concept_styling.md) concept for the full class system.
+Declare your own with a `class` block carrying `fill` / `stroke` (and `dark { }` /
+`light { }`), then list it on any shape. Because the paint comes from the class — not a
+hard-coded `fill` — the same shape recolours for the theme and for the reader's mode. See the
+[styling](../references/concept_styling.md) concept for the full class system.
+
 
 ```wcl
 diagram {
@@ -66,8 +75,6 @@ class "accent-box" {
 ```
 
 ## Related
-
-- [primitive shapes](../references/fact_primitive_shapes.md)
 
 - [diagram](../references/fact_diagrams.md)
 

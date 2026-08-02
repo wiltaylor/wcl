@@ -2,7 +2,10 @@
 
 _Tests a value against a sequence of patterns, returning the body of the first that matches._
 
-`match` tests a value against a sequence of patterns, returning the body of the first that matches. It is WCL's primary tool for destructuring unions, optionals, and any shape with multiple cases.
+`match` tests a value against a sequence of patterns, returning the body of the first that
+matches. It is WCL's primary tool for destructuring unions, optionals, and any shape with
+multiple cases.
+
 
 ```wcl
 area = match shape {
@@ -17,7 +20,9 @@ See [Patterns](../references/fact_patterns.md) for the full pattern syntax.
 
 ## Guards
 
-An `if expr` after a pattern adds a runtime test; the arm fires only when both the pattern matches and the guard is true.
+An `if expr` after a pattern adds a runtime test; the arm fires only when both the pattern
+matches and the guard is true.
+
 
 ```wcl
 classify = match n {
@@ -48,8 +53,6 @@ area = match shape {
 ## Related
 
 - [Patterns](../references/fact_patterns.md)
-
-- [if let](../references/concept_if_let.md)
 
 - [Unions](../references/concept_unions.md)
 
