@@ -250,7 +250,11 @@ impl<'a> Placed<'a> {
 }
 
 /// A node's box, sized to fit its title.
-fn box_for(title: &str) -> (f64, f64) {
+///
+/// The audit graph draws the same units and reads this too, so a unit is
+/// the same width on both surfaces — a coupling worth having the compiler
+/// hold rather than two copies of one formula.
+pub(super) fn box_for(title: &str) -> (f64, f64) {
     (
         (title.chars().count() as f64 * 7.5 + 30.0).clamp(90.0, 260.0),
         48.0,

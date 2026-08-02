@@ -33,6 +33,8 @@ use axum::response::Response;
 use wcl_wskill::audit::{Audit, EdgeDelta, Metric, NodeDelta, Range};
 use wcl_wskill::lint::Finding;
 
+use super::graph::box_for;
+use super::util::rel_file;
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::query_param;
 
@@ -106,15 +108,6 @@ pub(super) fn audit_json(ws: &Workspace, audit: &Audit) -> serde_json::Value {
     })
 }
 
-/// A node's box, sized to fit its title — the same sizing the live graph
-/// uses, so a unit is the same width on both surfaces.
-fn box_for(title: &str) -> (f64, f64) {
-    (
-        (title.chars().count() as f64 * 7.5 + 30.0).clamp(90.0, 260.0),
-        48.0,
-    )
-}
-
 fn node_json(
     ws: &Workspace,
     audit: &Audit,
@@ -131,7 +124,7 @@ fn node_json(
         "title": n.title,
         "change": n.change,
         "changed": n.changed,
-        "file": rel_file(ws, audit, &n.file),
+        "file": rel_file(ws, &audit.root, &n.file),
         "span": n.span.map(super::span_json),
         "findings": n.findings.iter().map(finding_json).collect::<Vec<_>>(),
         // The union graph draws content, not navigation — see the module
@@ -178,13 +171,6 @@ fn metric_json(m: &Metric) -> serde_json::Value {
         "worse": m.worse,
         "moved": m.moved(),
     })
-}
-
-/// A model path (relative to the wskill root) as the repo-relative path
-/// every editor response speaks.
-fn rel_file(ws: &Workspace, audit: &Audit, file: &std::path::Path) -> String {
-    let abs = audit.root.join(file);
-    ws.rel(&abs).unwrap_or_else(|_| abs.display().to_string())
 }
 
 #[cfg(test)]

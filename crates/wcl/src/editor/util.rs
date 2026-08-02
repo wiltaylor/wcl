@@ -107,6 +107,14 @@ pub(super) fn anchor_file(
     root: &Path,
     anchor: &wcl_wskill::Anchor,
 ) -> String {
-    let abs = root.join(&anchor.file);
+    rel_file(ws, root, &anchor.file)
+}
+
+/// The translation itself, for a model path that arrives without an anchor
+/// around it — an audit's [`NodeDelta::file`](wcl_wskill::audit::NodeDelta),
+/// where a removal's span belongs to the revision it was deleted from and
+/// so does not travel with the path.
+pub(super) fn rel_file(ws: &super::Workspace, root: &Path, file: &Path) -> String {
+    let abs = root.join(file);
     ws.rel(&abs).unwrap_or_else(|_| abs.display().to_string())
 }
