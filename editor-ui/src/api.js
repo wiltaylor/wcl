@@ -46,8 +46,8 @@ export const api = {
     json('POST', '/api/preview', { entry, site, files, ...extra }),
   /** Resolve an edit_object target to its source → { file, span: {start, end} } */
   locateObject: (payload) => json('POST', '/api/object/locate', payload),
-  /** A block's exact source + slot classification → { kind, source, etag,
-      labels: [{slot, state, text}], fields: {name: {state, text}} } */
+  /** A block's exact source + direct body child + slot classification →
+      { kind, source, body?, etag, cells } */
   blockSource: (payload) => json('POST', '/api/block/source', payload),
   /** A batch of span-addressed mutations on one file → { file, etag,
       file_text, spans: [{role, span}] } */
@@ -66,7 +66,7 @@ export const api = {
   /** → { site_type, wskill, nav, units?, pages, container? } */
   nav: (entry, site) =>
     json('GET', `/api/nav?entry=${encodeURIComponent(entry)}&site=${encodeURIComponent(site ?? '')}`),
-  /** Structural nav edit → { ok } */
+  /** Navigation / index-authoring edit → { ok } */
   navOp: (payload) => json('POST', '/api/nav/op', payload),
   /** Enable/disable a wskill profile (artifact + projection files) */
   wskillProfile: (registry, kind, enable) =>

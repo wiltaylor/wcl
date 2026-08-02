@@ -309,7 +309,7 @@ fn static_entry(ws: &Workspace, b: &ast::Block, entry_abs: &Path) -> serde_json:
 // `POST /api/nav/op`
 // ---------------------------------------------------------------------------
 
-/// Body: `{ entry, site?, op, ... }`. Structural nav edits; each op names
+/// Body: `{ entry, site?, op, ... }`. Navigation and index-authoring edits; each op names
 /// its targets by source binding (`file` + `span`) or, for the wskill
 /// `related`-list ops, by ids (spans inside a `related` list aren't
 /// block-addressable). Ops:
@@ -327,7 +327,7 @@ fn static_entry(ws: &Workspace, b: &ast::Block, entry_abs: &Path) -> serde_json:
 ///
 /// Anything else the wskill vocabulary names ([`wops::is_op`] — `pin_unit`,
 /// `unpin_unit`, `reorder_children`, `delete_index`, `move_index`,
-/// `promote_index`, `demote_index`, `related_add`, `related_remove`) is
+/// `promote_index`, `demote_index`, `set_index_body`, `related_add`, `related_remove`) is
 /// **decoded by the library** ([`wops::from_json`]) rather than translated
 /// here: the request body IS an op in the one JSON dialect `wcl wskill op`
 /// reads, id-addressed because spans shift under every reformat and ids
@@ -704,6 +704,37 @@ mod tests {
         assert_eq!(children[1]["title"], "ghost");
         assert_eq!(children[1]["missing"], true, "{v:#}");
         assert_eq!(children[1]["unit"]["kind"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn nav_body_op_turns_an_index_heading_into_a_page() {
+        let (_td, ws) = workspace_built_by(|root| {
+            write_mini_wskill(root);
+            let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
+            let main = main.replace(
+                "@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n}",
+                "@block(\"body\") @schemaless\ntype UnitBody {\n}\n\n@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n  @child(\"body\") body: UnitBody?\n}",
+            );
+            std::fs::write(root.join("main.wcl"), main).unwrap();
+        });
+
+        let before = nav(&ws, "main.wcl", Some("book")).expect("nav");
+        assert!(before["nav"][0]["page"].is_null(), "{before:#}");
+
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "set_index_body", "index_id": "lang",
+                "source": "body {\n  p \"Choose a language topic.\"\n}",
+            }),
+        )
+        .expect("set_index_body");
+
+        let after = nav(&ws, "main.wcl", Some("book")).expect("nav");
+        assert_eq!(after["nav"][0]["page"], "index_lang", "{after:#}");
+        let text = read(&ws, "data/indexes.wcl");
+        assert!(text.contains("Choose a language topic."), "{text}");
+        assert!(text.contains("related = [alpha, beta]"), "{text}");
     }
 
     /// Creating a top-level index is the one wskill nav op the adapter still

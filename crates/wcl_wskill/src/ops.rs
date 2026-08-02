@@ -1,5 +1,5 @@
-//! The op vocabulary: every structural edit a curator (or an editing UI)
-//! makes to a wskill, defined once.
+//! The op vocabulary: every structural and index-authoring edit a curator
+//! (or an editing UI) makes to a wskill, defined once.
 //!
 //! Two properties make this the shared half rather than a second reading of
 //! the format:
@@ -117,6 +117,8 @@ pub enum Op {
         name: String,
         home: IndexHome,
     },
+    /// Add or replace an index's prose `body` block.
+    SetIndexBody { index: NodeRef, source: String },
     /// Remove an index and everything nested in it.
     DeleteIndex { index: NodeRef },
     /// Swap an index with its adjacent `index` sibling.
@@ -164,13 +166,14 @@ type Result<T> = std::result::Result<T, Error>;
 // one format, close enough that they cannot drift apart unnoticed.
 
 /// Every op name, in the vocabulary's declared order.
-pub const OP_NAMES: [&str; 10] = [
+pub const OP_NAMES: [&str; 11] = [
     "pin_unit",
     "unpin_unit",
     "reorder_children",
     "related_add",
     "related_remove",
     "create_index",
+    "set_index_body",
     "delete_index",
     "move_index",
     "promote_index",
@@ -223,6 +226,10 @@ pub fn from_json(v: &serde_json::Value) -> Result<Op> {
             id: text(v, &["id"]).ok_or("missing `id`")?.to_string(),
             name: text(v, &["name"]).ok_or("missing `name`")?.to_string(),
             home: index_home(v)?,
+        },
+        "set_index_body" => Op::SetIndexBody {
+            index: index_arg(v)?,
+            source: text(v, &["source"]).ok_or("missing `source`")?.to_string(),
         },
         "delete_index" => Op::DeleteIndex {
             index: index_arg(v)?,
@@ -296,6 +303,13 @@ pub fn to_json(op: &Op) -> serde_json::Value {
                         serde_json::json!(path.to_string_lossy().replace('\\', "/")),
                     ),
                 },
+            ],
+        ),
+        Op::SetIndexBody { index, source } => obj(
+            "set_index_body",
+            vec![
+                ("index", node(index)),
+                ("source", serde_json::json!(source)),
             ],
         ),
         Op::DeleteIndex { index } => obj("delete_index", vec![("index", node(index))]),
@@ -427,6 +441,7 @@ pub fn apply(graph: &Graph, op: &Op) -> Result<Vec<Change>> {
         Op::RelatedAdd { from, to } => related(graph, from, to, true),
         Op::RelatedRemove { from, to } => related(graph, from, to, false),
         Op::CreateIndex { id, name, home } => create_index(graph, id, name, home),
+        Op::SetIndexBody { index, source } => set_index_body(graph, index, source),
         Op::DeleteIndex { index } => delete_index(graph, index),
         Op::MoveIndex { index, dir } => move_index(graph, index, *dir),
         Op::PromoteIndex { index } => promote_index(graph, index),
@@ -778,6 +793,36 @@ fn create_index(graph: &Graph, id: &str, name: &str, home: &IndexHome) -> Result
     }
 }
 
+fn set_index_body(graph: &Graph, index: &NodeRef, source: &str) -> Result<Vec<Change>> {
+    let mut parsed = parse_for_edit(source, "index body")?;
+    let body = match parsed.items.as_mut_slice() {
+        [Item::Block(body)] if body.kind == "body" => body.clone(),
+        _ => {
+            return Err(Error::Op(
+                "`source` must contain exactly one `body { ... }` block".into(),
+            ));
+        }
+    };
+    let site = index_site(graph, index)?;
+    edit_block(&site, move |block| {
+        if let Some(pos) = block
+            .items
+            .iter()
+            .position(|item| matches!(item, Item::Block(child) if child.kind == "body"))
+        {
+            block.items[pos] = Item::Block(body);
+        } else {
+            let pos = block
+                .items
+                .iter()
+                .position(|item| matches!(item, Item::Block(child) if child.kind == "index"))
+                .unwrap_or(block.items.len());
+            block.items.insert(pos, Item::Block(body));
+        }
+        Ok(())
+    })
+}
+
 /// Remove an index and everything nested in it. Its pins are just ids in a
 /// `related` list, so nothing dangles elsewhere — the units stay put.
 fn delete_index(graph: &Graph, index: &NodeRef) -> Result<Vec<Change>> {
@@ -1113,6 +1158,37 @@ mod tests {
         )
         .unwrap_err();
         assert!(e.to_string().contains("permutation"), "{e}");
+    }
+
+    #[test]
+    fn authors_and_edits_an_index_body_without_disturbing_its_pins() {
+        let td = mini_wskill();
+        let root = td.path();
+
+        run(
+            root,
+            Op::SetIndexBody {
+                index: NodeRef::new("lang"),
+                source: "body {\n  p \"The route through the language.\"\n}".into(),
+            },
+        )
+        .expect("add body");
+        let text = read(root, "data/indexes.wcl");
+        assert!(text.contains("related = [alpha, beta]"), "{text}");
+        assert!(text.contains("The route through the language."), "{text}");
+
+        run(
+            root,
+            Op::SetIndexBody {
+                index: NodeRef::new("lang"),
+                source: "body {\n  p \"A revised route.\"\n}".into(),
+            },
+        )
+        .expect("edit body");
+        let text = read(root, "data/indexes.wcl");
+        assert!(text.contains("related = [alpha, beta]"), "{text}");
+        assert!(text.contains("A revised route."), "{text}");
+        assert!(!text.contains("The route through the language."), "{text}");
     }
 
     /// An op names an index that isn't there, or names one by the wrong
@@ -1521,6 +1597,7 @@ mod tests {
             serde_json::json!({"op": "related_remove", "from": "alpha", "to": "beta"}),
             serde_json::json!({"op": "create_index", "id": "usage", "name": "Usage", "parent": "index:lang"}),
             serde_json::json!({"op": "create_index", "id": "usage", "name": "Usage", "file": "data/indexes.wcl"}),
+            serde_json::json!({"op": "set_index_body", "index": "index:lang", "source": "body { p \"About language.\" }"}),
             serde_json::json!({"op": "delete_index", "index": "index:lang"}),
             serde_json::json!({"op": "move_index", "index": "index:lang", "dir": "up"}),
             serde_json::json!({"op": "promote_index", "index": "index:lang"}),

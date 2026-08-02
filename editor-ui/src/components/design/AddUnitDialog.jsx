@@ -1,7 +1,7 @@
 /* The "Add unit" dialog, shared by the NavPanel (canvas tab) and the graph
    view: pick a kind (from the palette's introspected unit kinds), give it
    an id, fill the kind's metadata fields (symbol sets render as selects),
-   optionally pin it into a section. The caller supplies the submit path —
+   place it into a section (or explicitly take the unpinned exception). The caller supplies the submit path —
    the canvas commits through the full rebuild loop, the graph through the
    quiet one — and the pinnable section list. */
 
@@ -11,6 +11,7 @@ import { Button, Input, Modal, Select, toast } from '@forge/ui';
 import { createFields, isSlot } from '../../preview/schemaform';
 import { busy, palette } from '../../state/design';
 import FieldControl from './FieldControl';
+import { placementOptions, selectedPin } from './addunit';
 
 export default function AddUnitDialog(props) {
   const [form, setForm] = createSignal({ kind: '', id: '', fields: {}, pin: '' });
@@ -23,10 +24,15 @@ export default function AddUnitDialog(props) {
       toast('Pick a kind and an id', { tone: 'danger', duration: 4000 });
       return;
     }
+    const placement = selectedPin(props.indexes ?? [], f.pin);
+    if (placement.error) {
+      toast(placement.error, { tone: 'danger', duration: 4000 });
+      return;
+    }
     const fields = createFields(kindDef()?.fields ?? [], f.fields);
     const res = await props.onSubmit(
       { kind: f.kind, id: f.id, fields },
-      f.pin ? { index_id: f.pin } : null,
+      placement.pin,
     );
     if (res.ok) {
       setForm({ kind: '', id: '', fields: {}, pin: '' });
@@ -82,14 +88,14 @@ export default function AddUnitDialog(props) {
         </Show>
         <Show when={(props.indexes ?? []).length > 0}>
           <Select
-            options={[
-              { value: '', label: '(no section)' },
-              ...(props.indexes ?? []).map((n) => ({ value: n.id, label: `Pin into: ${n.title}` })),
-            ]}
-            value={form().pin ?? ''}
-            placeholder="Pin into a section…"
+            options={placementOptions(props.indexes ?? [])}
+            value={form().pin || undefined}
+            placeholder="Choose a section…"
             onChange={(v) => patch({ pin: v })}
           />
+        </Show>
+        <Show when={(props.indexes ?? []).length === 0}>
+          <div class="ed-empty">No sections exist; this unit will be created unpinned.</div>
         </Show>
       </div>
     </Modal>
