@@ -1051,3 +1051,62 @@ fn editor_help_describes_the_command() {
         .stdout(predicate::str::contains("browser-based editor"))
         .stdout(predicate::str::contains("--addr"));
 }
+
+/// A document that imports the wdoc stdlib and feeds a concrete-kind
+/// `@children` slot from a `wdoc_repeater` — the shape that forces the
+/// CLI to open with wdoc's expander registered, not a bare environment.
+const EXPANDER_DOC: &str = r#"import <wdoc.wcl>
+
+@document("cli_demo") type CliDemo { @children("deck") decks: list<Deck> }
+@block("deck") type Deck { @inline(0) name: identifier  @children("card") cards: list<Card> }
+@block("card") type Card { @inline(0) id: identifier  title: utf8 }
+
+deck main {
+  card literal { title = "a literal card" }
+  wdoc_repeater { each = ["one", "two"]  as = :m
+    card $"g_${m}" { title = $"generated ${m}" }
+  }
+}
+"#;
+
+fn expander_doc() -> (TempDir, PathBuf) {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("decks.wcl");
+    std::fs::write(&file, EXPANDER_DOC).expect("write fixture");
+    (tmp, file)
+}
+
+#[test]
+fn check_accepts_a_repeater_generating_children() {
+    // `@contextual` exempts the repeater from `deck`'s child-kind list,
+    // and the expander supplies the generated cards.
+    let (_tmp, file) = expander_doc();
+    wcl()
+        .arg("check")
+        .arg(&file)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("OK"));
+}
+
+#[test]
+fn eval_resolves_through_expander_generated_children() {
+    // The generated card is addressable exactly like the literal one —
+    // which only holds if `wcl eval` / `wcl get` opened the document
+    // with the environment that registers wdoc's expander.
+    let (_tmp, file) = expander_doc();
+    wcl()
+        .arg("get")
+        .arg(&file)
+        .arg("decks.main.cards.g_two.title")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("generated two"));
+    wcl()
+        .arg("eval")
+        .arg(&file)
+        .arg("decks.main.cards.literal.title")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("a literal card"));
+}

@@ -278,7 +278,8 @@ fn collect_decorators<'a>(dr: &DataRef<'a>) -> Option<Vec<Decorator<'a>>> {
         | DataKind::BlockList(_)
         | DataKind::Table(_)
         | DataKind::VariantValue(_)
-        | DataKind::VariantValueList(_) => None,
+        | DataKind::VariantValueList(_)
+        | DataKind::Error(_) => None,
     }
 }
 
@@ -383,10 +384,10 @@ fn type_fields_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, Str
 /// element types of its `@child` / `@children` block slots, in the same
 /// own-then-inherited order as `type_fields`. Each result is a type
 /// reference (`Value::DataPath`) suitable for handing straight to
-/// `type_table` / `type_fields` / `ast_string`, so a `wdoc_repeater` can
+/// `type_table` / `type_fields` / `ast_string`, so a repetition block can
 /// auto-document every top-level block a `@document` declares:
 ///
-///   wdoc_repeater { each = child_types(MyDoc)  as = :b
+///   repeat { each = child_types(MyDoc)  as = :b
 ///     type_table { type = b }
 ///   }
 ///
@@ -432,7 +433,7 @@ fn child_types_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, Str
 /// `decl_info` / `doc_comment` / `type_fields` / `ast_string` — the chain a
 /// schema-documentation page relies on:
 ///
-///   wdoc_repeater { each = namespace_decls("wdoc")  as = :d
+///   repeat { each = namespace_decls("app")  as = :d
 ///     h3 { decl_info(d).name }
 ///     p { doc_comment(d) }
 ///     type_table { type = d }
@@ -944,7 +945,7 @@ mod tests {
     #[test]
     fn child_types_each_ref_reflects_via_type_fields() {
         // A returned reference is usable straight in `type_fields` — the
-        // chain a `wdoc_repeater` / `type_table` relies on.
+        // chain a repetition block / `type_table` relies on.
         let v = eval_field(
             r#"
             @document

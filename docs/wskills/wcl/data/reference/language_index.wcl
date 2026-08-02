@@ -55,7 +55,7 @@ index language {
   index lang_schema {
     name = "Schema & Decorators"
     summary = "Declaring and constraining the document model — decorators, types, and constraints."
-    related = [block_schema, document_schema, ref_integrity, child_count_constraints, type_aliases, type_constraints, dec_document, dec_block, dec_inline, dec_child, dec_children, dec_default, dec_table, dec_decorator, dec_doc, dec_by_ref, dec_only_except, dec_connections, dec_schemaless]
+    related = [block_schema, document_schema, ref_integrity, child_count_constraints, type_aliases, type_constraints, dec_document, dec_block, dec_inline, dec_child, dec_children, dec_default, dec_table, dec_decorator, dec_doc, dec_by_ref, dec_only_except, dec_connections, dec_schemaless, dec_contextual]
   }
 
   index lang_interviews {

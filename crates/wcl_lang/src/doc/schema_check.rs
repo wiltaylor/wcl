@@ -187,6 +187,15 @@ pub(super) fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
         .any(|d| d.name.len() == 1 && d.name[0] == name)
 }
 
+/// `true` when `decorators` carries `@contextual` — see
+/// [`TypeDecl::is_contextual`](crate::doc::TypeDecl::is_contextual).
+pub(super) fn has_contextual(decorators: &[ast::Decorator]) -> bool {
+    let name = BuiltinDecorator::Contextual.as_str();
+    decorators
+        .iter()
+        .any(|d| d.name.len() == 1 && d.name[0] == name)
+}
+
 /// `true` when `decorators` carries `@by_ref`. A block kind so marked is
 /// reified to a resolvable [`Value::DataPath`](crate::value::Value::DataPath)
 /// reference when it appears as a `@child`/`@children` slot of a reified
@@ -220,8 +229,8 @@ pub(super) fn validate_connection_stmts(
             (lhs, rhs) => {
                 // An operand that doesn't name a literal block is a typo for a
                 // static connection — but under a `@dynamic` connection it may
-                // be an id generated at render time (`wdoc_repeater` /
-                // `wdoc_component`), which we can't resolve statically. Suppress
+                // be an id generated at expansion time by a `@contextual`
+                // block, which we can't resolve statically. Suppress
                 // the error only when such a connection plausibly accepts this
                 // statement; otherwise flag it as before. (Mirrors the original
                 // single-operand reporting: source is reported first.)
@@ -778,18 +787,11 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     // Exceptions to the recursion:
     //   - union-dispatched blocks: their fields are a variant payload
     //     shape, not a `@block` schema, and are validated by dispatch;
-    //   - generator kinds (repeater / instance / content / component
-    //     instances): context-polymorphic bodies that only have
-    //     meaning once expanded at render time with bindings.
-    let is_generator_kind = |nested: &Block<'_>| {
-        matches!(
-            nested.kind(),
-            "wdoc_repeater" | "wdoc_instance" | "wdoc_content"
-        ) || block.doc.is_component_kind(nested.kind())
-    };
+    //   - `@contextual` kinds: context-polymorphic bodies that only have
+    //     meaning once expanded with bindings.
     for nested in block.blocks() {
         if allowed.iter().any(|k| k == nested.kind()) {
-            if !is_generator_kind(&nested) {
+            if !nested.is_contextual() {
                 errs.extend(nested.schema_errors().iter().cloned());
             }
             continue;
@@ -807,19 +809,17 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
                     .any(|iface| t.is_descendant_of(&iface.full_name()))
             });
         if matches_interface {
-            if !is_generator_kind(&nested) {
+            if !nested.is_contextual() {
                 errs.extend(nested.schema_errors().iter().cloned());
             }
             continue;
         }
-        // Generators — `wdoc_repeater` / `wdoc_content` and user-defined
-        // `wdoc_component` instances — are context-polymorphic: they emit
-        // whatever their body contains (WdocBlocks in a page, SvgBlocks in
-        // a diagram, rows in a node table), so accept them wherever
-        // children are allowed at all. A component instance also has its
-        // slot fields validated here, since the child walk above skips
-        // generator bodies.
-        if is_generator_kind(&nested) {
+        // A `@contextual` block emits whatever its body contains once
+        // expanded (page content in a page, shapes in a diagram, rows in
+        // a node table), so accept it wherever children are allowed at
+        // all. A component instance also has its slot fields validated
+        // here, since the child walk above skips contextual bodies.
+        if nested.is_contextual() {
             if block.doc.is_component_kind(nested.kind()) {
                 errs.extend(validate_component_instance(block.doc, &nested));
             }

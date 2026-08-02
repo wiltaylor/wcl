@@ -1215,8 +1215,8 @@ impl Document {
         }
         let mut skipped: Option<Skipped<'a>> = None;
         for i in (0..scope.frames().len()).rev() {
-            // Renderer-injected bindings (a `wdoc_component` slot or a
-            // `wdoc_repeater` loop variable) resolve first at this frame,
+            // Host-injected bindings (a `@contextual` block's parameter
+            // or loop variable) resolve first at this frame,
             // shadowing the frame's own fields/blocks like an inner `let`.
             if let Some(bindings) = &scope.frames()[i].bindings
                 && let Some((_, v)) = bindings.iter().find(|(n, _)| n == name)

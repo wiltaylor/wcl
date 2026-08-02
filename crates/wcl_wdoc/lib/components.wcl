@@ -62,7 +62,7 @@ type WdocBody {
 // Marks where a component instance's own nested blocks render — a layout
 // "content slot". Legal wherever a `WdocBlock` is. Special-cased in Rust;
 // its `lower` is a never-called stub (declared to satisfy the interface).
-@block("wdoc_content")
+@block("wdoc_content") @contextual
 type WdocContent extends WdocBlock {
   lower = fn(c: WdocContent) -> list<HtmlFundamental> []
 }
@@ -83,7 +83,10 @@ type WdocContent extends WdocBlock {
 // renderer looks for them (document root for pages, the TOC reader for
 // chapters, the CSS-collection pass for classes / stylesheets); a slot block
 // placed where its consumer doesn't look is structurally legal but ignored.
-@block("wdoc_repeater")
+// `@contextual`: placement is decided by context, not by kind — the
+// repeater is legal wherever children are allowed at all, and its body is
+// validated once expanded rather than in place.
+@block("wdoc_repeater") @contextual
 type WdocRepeater extends WdocBlock {
   // `@schemaless`: the `each` elements are read dynamically at render
   // time — `list<WdocItem>` only names the list shape.
@@ -116,7 +119,7 @@ type WdocItem {}
 // stub). Context-polymorphic like `wdoc_repeater` — legal wherever a
 // `WdocBlock` / `SvgBlock` is, expanding to whatever its component body
 // contains.
-@block("wdoc_instance") @schemaless
+@block("wdoc_instance") @schemaless @contextual
 type WdocInstance extends WdocBlock {
   component: utf8
   lower = fn(i: WdocInstance) -> list<HtmlFundamental> []

@@ -229,6 +229,14 @@ skills-check: require-cargo
 # documented subcommand tree vs `wcl --help` / `wcl wdoc --help` /
 # `wcl wad --help`. The wskill IS the WCL language/CLI/builtin reference, so a
 # new builtin or subcommand must land in it or the docs quietly go stale.
+#
+# `host_builtins` are the ones the CLI's *host* environment registers, not the
+# language: `wcl` opens every document with `wcl_wdoc::wdoc_environment` (that
+# is what supplies the expander `@contextual` block kinds need), so wdoc's own
+# builtins are callable too. They're documented with wdoc, not here — a new one
+# fails this check until it is either documented in the wcl wskill or listed
+# below as wdoc's.
+host_builtins := "included_sites"
 
 # Fail when the `wcl` wskill's builtin/subcommand reference drifts from the binary it documents (runs in ci)
 [group('quality')]
@@ -236,7 +244,8 @@ wcl-refcheck: require-cargo
     @mkdir -p target/refcheck
     @printf '@document\ntype D {\n  names: list<utf8>\n}\n\nnames = builtin_names()\n' > target/refcheck/builtins.wcl
     @cargo run -q -p wcl -- eval target/refcheck/builtins.wcl names \
-        | tr -d '[]" ' | tr ',' '\n' | sed '/^$/d' | sort > target/refcheck/builtins-real.txt
+        | tr -d '[]" ' | tr ',' '\n' | sed '/^$/d' \
+        | grep -vxF -e '{{host_builtins}}' | sort > target/refcheck/builtins-real.txt
     @grep -oE '^  name *= *"[^"]+"' docs/wskills/wcl/data/builtins.wcl \
         | sed 's/.*"\(.*\)"/\1/' | sort > target/refcheck/builtins-doc.txt
     @diff target/refcheck/builtins-real.txt target/refcheck/builtins-doc.txt \

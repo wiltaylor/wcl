@@ -20,8 +20,8 @@ pub(crate) struct Scope<'a> {
 /// cells (so name resolution can walk its fields/blocks/lets) and,
 /// optionally, a set of pre-evaluated `name → value` **bindings** that
 /// resolve like an inner `let` but come from the *renderer* rather than
-/// source — this is how a `wdoc_component`'s slots and a `wdoc_repeater`'s
-/// loop variable are injected into the scope a body subtree evaluates in.
+/// source — this is how a `@contextual` block's parameters and loop
+/// variable are injected into the scope a body subtree evaluates in.
 /// A frame always has `ast`/`cells`, so absolute frame-indexing
 /// (`frame_as_block` / `self_dataref` / `parent_dataref`) is unaffected by
 /// the presence of bindings.

@@ -796,3 +796,42 @@ async fn workspace_symbols_see_unsaved_overlay_buffer() {
         "overlayed symbol searchable: {hits:?}"
     );
 }
+
+#[tokio::test]
+async fn root_document_expands_contextual_blocks() {
+    // The root parse must use the wdoc environment, not a bare one: a
+    // `wdoc_repeater` is `@contextual`, so projecting the children it
+    // generates is a hard error without wdoc's registered expander —
+    // and cross-file resolution rests on this document.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(
+        dir.path().join("main.wcl"),
+        concat!(
+            "import <wdoc.wcl>\n\n",
+            "@document(\"lsp_demo\") type LspDemo { @children(\"deck\") decks: list<Deck> }\n",
+            "@block(\"deck\") type Deck { @inline(0) name: identifier  @children(\"card\") cards: list<Card> }\n",
+            "@block(\"card\") type Card { @inline(0) id: identifier  title: utf8 }\n\n",
+            "deck main {\n",
+            "  wdoc_repeater { each = [\"one\"]  as = :m\n",
+            "    card $\"g_${m}\" { title = $\"generated ${m}\" }\n",
+            "  }\n",
+            "}\n",
+        ),
+    )
+    .unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+
+    let doc = backend.root_document().expect("root document parses");
+    let title = doc
+        .get("decks.main.cards.g_one.title")
+        .expect("generated card is addressable")
+        .value()
+        .expect("no missing-expander error");
+    assert_eq!(title, wcl_lang::Value::Utf8("generated one".into()));
+}

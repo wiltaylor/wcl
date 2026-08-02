@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use wcl_lang::{Block, Document, EvalError, Value};
+use wcl_lang::{Block, Document, EvalError, Expander, Value};
 
 use crate::inline::InlinePatterns;
 
@@ -41,6 +41,33 @@ pub(crate) fn block_tree_any<F: Fn(&Block<'_>) -> bool>(block: &Block<'_>, pred:
                     .is_some_and(|def| def.blocks().any(|b| go(&b, pred, depth + 1))))
     }
     go(block, pred, 0)
+}
+
+/// wdoc's [`Expander`] — the one answer to "what does this
+/// `@contextual` block generate?", registered on every
+/// [`wdoc_environment`](crate::wdoc_environment) so the language's
+/// `@children` projections expand through exactly the code the renderer
+/// does. One step only: the language recurses through nested contextual
+/// blocks itself (and applies its own depth cap), which is what
+/// [`flatten_container_child`] does for the render path.
+pub struct WdocExpander;
+
+impl Expander for WdocExpander {
+    fn expand<'a>(&self, block: &Block<'a>) -> Vec<Block<'a>> {
+        match block.kind() {
+            "wdoc_repeater" => expand_repeater_children(block),
+            "wdoc_instance" => expand_instance_children(block),
+            // `wdoc_content` is a placement marker, not a generator: it
+            // is `@contextual` because it may appear wherever a
+            // `WdocBlock` may, and the renderer — not the language —
+            // fills it with the instance's own children.
+            "wdoc_content" => Vec::new(),
+            kind => match block.doc().component_def(kind) {
+                Some(def) => expand_component_children(block, &def),
+                None => Vec::new(),
+            },
+        }
+    }
 }
 
 /// Flatten a container's children, replacing every `wdoc_repeater`,

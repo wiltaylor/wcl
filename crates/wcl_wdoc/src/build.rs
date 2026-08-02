@@ -107,7 +107,8 @@ pub fn schema_registry() -> Registry {
 }
 
 /// The [`Environment`] every wdoc backend uses to open a document: the base
-/// environment plus the `included_sites(options)` builtin. The builtin scans
+/// environment, the wdoc [`Expander`](wcl_lang::Expander) for `@contextual`
+/// block kinds, plus the `included_sites(options)` builtin. The builtin scans
 /// a folder for sub-site entry points (see [`crate::include`]) and returns
 /// `{ name, href, title, summary }` records a nav `wdoc_repeater` consumes;
 /// it closes over `base_dir` so the scanned folder resolves relative to the
@@ -119,6 +120,10 @@ pub fn schema_registry() -> Registry {
 /// and aligned with the block. (Record fields use `:`; block fields use `=`.)
 pub fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
     let mut env = Environment::new();
+    // Without this every `@children` projection over a repeater /
+    // component instance is a hard error — which is exactly the point:
+    // a wdoc document must be opened with the wdoc environment.
+    env.set_expander(std::sync::Arc::new(crate::render::WdocExpander));
     let base = base_dir.map(Path::to_path_buf);
     env.add_builtin(
         "included_sites",
