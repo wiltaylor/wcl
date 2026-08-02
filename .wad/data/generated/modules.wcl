@@ -40,7 +40,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_editor {
     name = "editor"
     kind = "module"
-    summary = "20 files, 19 pub items"
+    summary = "21 files, 19 pub items"
     deps = [n_cg_wcl_edit, n_cg_wcl_serve, n_cg_wcl_xc_wcl_lang, n_cg_wcl_xc_wcl_wdoc]
   }
   code_node n_cg_wcl_gitspec {
@@ -75,7 +75,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_wskill {
     name = "wskill"
     kind = "module"
-    summary = "4 files, 6 pub items"
+    summary = "4 files, 8 pub items"
   }
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
@@ -433,6 +433,12 @@ code_item code_crate_wcl_wdoc {
     summary = "1 file, 4 pub items"
     deps = [n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
+  code_node n_cg_wcl_wdoc_page_metadata {
+    name = "page_metadata"
+    kind = "module"
+    summary = "1 file, 1 pub items"
+    deps = [n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
+  }
   code_node n_cg_wcl_wdoc_pdf {
     name = "pdf"
     kind = "module"
@@ -448,7 +454,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "15 files, 227 pub items"
+    summary = "15 files, 230 pub items"
     deps = [n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
@@ -1035,35 +1041,23 @@ code_item code_api_cli_commands {
       deps = [n_api_cli_commands_SpecFormat]
     }
   }
-  code_node n_api_cli_commands_wskill_fns {
-    name = "wskill"
-    kind = "fns"
+  code_node n_api_cli_commands_FixSelection {
+    name = "FixSelection"
+    kind = "enum"
     summary = "src/wskill.rs"
-    code_member m_n_api_cli_commands_wskill_fns_run_graph {
-      signature = "fn run_graph(entry: &Path, rev: Option<&str>) -> u8"
-      kind = "fn"
-      visibility = "crate"
+    code_member m_n_api_cli_commands_FixSelection_All {
+      signature = "All"
+      kind = "variant"
     }
-    code_member m_n_api_cli_commands_wskill_fns_run_lint {
-      signature = "fn run_lint( entry: &Path, format: crate::ReportFormat, severit…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_commands_wskill_fns_run_op {
-      signature = "fn run_op( entry: &Path, inline: &[String], comment_texts: &[St…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_commands_wskill_fns_run_audit {
-      signature = "fn run_audit(entry: &Path, range: &str, format: crate::ReportFo…"
-      kind = "fn"
-      visibility = "crate"
+    code_member m_n_api_cli_commands_FixSelection_Rule {
+      signature = "Rule(Rule)"
+      kind = "variant"
     }
   }
   code_node n_api_cli_commands_more {
-    name = "… +2 more"
+    name = "… +3 more"
     kind = "overflow"
-    summary = "2 further public items — see the source."
+    summary = "3 further public items — see the source."
   }
 }
 
@@ -6855,6 +6849,11 @@ code_item code_api_wdoc_html_renderer {
       visibility = "crate"
       deps = [n_api_wdoc_html_renderer_ProjectGuard]
     }
+    code_member m_n_api_wdoc_html_renderer_expand_fns_project_target_paths {
+      signature = "fn project_target_paths(block: &Block<'_>) -> Vec<String>"
+      kind = "fn"
+      visibility = "crate"
+    }
     code_member m_n_api_wdoc_html_renderer_expand_fns_walk_structural {
       signature = "fn walk_structural<'a, E>( doc: &'a Document, block: &Block<'a>…"
       kind = "fn"
@@ -6914,60 +6913,6 @@ code_item code_api_wdoc_html_renderer {
       kind = "impl"
     }
   }
-  code_node n_api_wdoc_html_renderer_PageHeading {
-    name = "PageHeading"
-    kind = "struct"
-    summary = "src/render/headings.rs"
-    code_member m_n_api_wdoc_html_renderer_PageHeading_level {
-      signature = "level: u8"
-      kind = "field"
-    }
-    code_member m_n_api_wdoc_html_renderer_PageHeading_id {
-      signature = "id: String"
-      kind = "field"
-    }
-    code_member m_n_api_wdoc_html_renderer_PageHeading_title {
-      signature = "title: String"
-      kind = "field"
-    }
-    code_member m_n_api_wdoc_html_renderer_PageHeading_number {
-      signature = "number: String"
-      kind = "field"
-    }
-  }
-  code_node n_api_wdoc_html_renderer_HeadingState {
-    name = "HeadingState"
-    kind = "struct"
-    summary = "src/render/headings.rs"
-  }
-  code_node n_api_wdoc_html_renderer_headings_fns {
-    name = "headings"
-    kind = "fns"
-    summary = "src/render/headings.rs"
-    code_member m_n_api_wdoc_html_renderer_headings_fns_process_page_headings {
-      signature = "fn process_page_headings(content: &str) -> (String, Vec<PageHea…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_PageHeading]
-    }
-    code_member m_n_api_wdoc_html_renderer_headings_fns_process_page_headings_with_state {
-      signature = "fn process_page_headings_with_state( content: &str, state: &mut…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_HeadingState, n_api_wdoc_html_renderer_PageHeading]
-    }
-    code_member m_n_api_wdoc_html_renderer_headings_fns_process_footnotes {
-      signature = "fn process_footnotes(content: &str) -> String"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_headings_fns_on_this_page_value {
-      signature = "fn on_this_page_value(headings: &[PageHeading]) -> wcl_lang::Va…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_PageHeading]
-    }
-  }
   code_node n_api_wdoc_html_renderer_html_fns {
     name = "html"
     kind = "fns"
@@ -6995,10 +6940,20 @@ code_item code_api_wdoc_html_renderer {
       deps = [n_api_wdoc_html_renderer_TocNode]
     }
     code_member m_n_api_wdoc_html_renderer_html_fns_toc_to_value {
-      signature = "fn toc_to_value(nodes: &[TocNode], current: &str) -> Value"
+      signature = "fn toc_to_value(nodes: &[TocNode]) -> Value"
       kind = "fn"
       visibility = "crate"
       deps = [n_api_wdoc_html_renderer_TocNode]
+    }
+    code_member m_n_api_wdoc_html_renderer_html_fns_pages_to_value {
+      signature = "fn pages_to_value(pages: &[(String, String, String)]) -> Value"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_html_fns_flat_toc_to_value {
+      signature = "fn flat_toc_to_value(pages: &[(String, String, String)]) -> Val…"
+      kind = "fn"
+      visibility = "crate"
     }
     code_member m_n_api_wdoc_html_renderer_html_fns_read_menu_items {
       signature = "fn read_menu_items(block: &Block<'_>) -> Vec<MenuNode>"
@@ -7013,10 +6968,16 @@ code_item code_api_wdoc_html_renderer {
       deps = [n_api_wdoc_html_renderer_MenuNode]
     }
     code_member m_n_api_wdoc_html_renderer_html_fns_menu_to_value {
-      signature = "fn menu_to_value(nodes: &[MenuNode], current: &str) -> Value"
+      signature = "fn menu_to_value(nodes: &[MenuNode]) -> Value"
       kind = "fn"
       visibility = "crate"
       deps = [n_api_wdoc_html_renderer_MenuNode]
+    }
+    code_member m_n_api_wdoc_html_renderer_html_fns_footer_to_value {
+      signature = "fn footer_to_value(nodes: &[FooterButtonNode], patterns: &Inlin…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wdoc_html_renderer_FooterButtonNode, n_api_wdoc_html_renderer_InlinePatterns]
     }
     code_member m_n_api_wdoc_html_renderer_html_fns_read_sidebar_footer {
       signature = "fn read_sidebar_footer(site: &Block<'_>) -> Vec<FooterButtonNod…"
@@ -7030,26 +6991,8 @@ code_item code_api_wdoc_html_renderer {
       visibility = "crate"
       deps = [n_api_wdoc_html_renderer_DeckSectionNode]
     }
-    code_member m_n_api_wdoc_html_renderer_html_fns_render_template {
-      signature = "fn render_template<'a>( doc: &'a Document, template: &Block<'a>…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_TocNode, n_api_wdoc_html_renderer_MenuNode, n_api_wdoc_html_renderer_FooterButtonNode, n_api_wdoc_html_renderer_InlinePatterns, n_api_wdoc_html_renderer_Rendered]
-    }
-    code_member m_n_api_wdoc_html_renderer_html_fns_render_block {
-      signature = "fn render_block( doc: &Document, block: &Block<'_>, patterns: &…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_InlinePatterns]
-    }
-    code_member m_n_api_wdoc_html_renderer_html_fns_render_component {
-      signature = "fn render_component( doc: &Document, instance: &Block<'_>, def:…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_InlinePatterns]
-    }
     code_member m_n_api_wdoc_html_renderer_html_fns_more {
-      signature = "… +16 more"
+      signature = "… +19 more"
       kind = "overflow"
     }
   }
@@ -7135,6 +7078,10 @@ code_item code_api_wdoc_html_renderer {
     }
     code_member m_n_api_wdoc_html_renderer_Rendered_head {
       signature = "head: String"
+      kind = "field"
+    }
+    code_member m_n_api_wdoc_html_renderer_Rendered_page_heading {
+      signature = "page_heading: Option<String>"
       kind = "field"
     }
   }
@@ -7223,6 +7170,47 @@ code_item code_api_wdoc_html_renderer {
     code_member m_n_api_wdoc_html_renderer_Lowered_Html {
       signature = "Html(Value)"
       kind = "variant"
+    }
+  }
+  code_node n_api_wdoc_html_renderer_HeadingSequence {
+    name = "HeadingSequence"
+    kind = "struct"
+    summary = "src/render/postprocess.rs"
+    code_member m_n_api_wdoc_html_renderer_HeadingSequence_id {
+      signature = "fn id(&mut self, title: &str, existing: Option<&str>) -> String"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_HeadingSequence_number {
+      signature = "fn number(&mut self, level: u8) -> Option<String>"
+      kind = "method"
+      visibility = "crate"
+    }
+  }
+  code_node n_api_wdoc_html_renderer_postprocess_fns {
+    name = "postprocess"
+    kind = "fns"
+    summary = "src/render/postprocess.rs"
+    code_member m_n_api_wdoc_html_renderer_postprocess_fns_plain_text {
+      signature = "fn plain_text(html: &str) -> String"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_postprocess_fns_heading_slug {
+      signature = "fn heading_slug(text: &str) -> String"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_postprocess_fns_process_page_headings {
+      signature = "fn process_page_headings(content: &str, state: &mut HeadingSequ…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wdoc_html_renderer_HeadingSequence]
+    }
+    code_member m_n_api_wdoc_html_renderer_postprocess_fns_process_footnotes {
+      signature = "fn process_footnotes(content: &str) -> String"
+      kind = "fn"
+      visibility = "crate"
     }
   }
   code_node n_api_wdoc_html_renderer_ShapeMetrics {
@@ -7470,10 +7458,86 @@ code_item code_api_wdoc_html_renderer {
       kind = "overflow"
     }
   }
+  code_node n_api_wdoc_html_renderer_edges_fns {
+    name = "edges"
+    kind = "fns"
+    summary = "src/render/svg/edges.rs"
+    code_member m_n_api_wdoc_html_renderer_edges_fns_all_edges {
+      signature = "fn all_edges(block: &Block<'_>) -> Vec<Value>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_edge_id_pairs {
+      signature = "fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_render_edges {
+      signature = "fn render_edges( block: &Block<'_>, positions: &ShapePositions,…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wdoc_html_renderer_svg_fns]
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_edge_label_extent {
+      signature = "fn edge_label_extent(label: &str) -> (f64, f64)"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_polyline_bbox {
+      signature = "fn polyline_bbox(points: &[(f64, f64)]) -> Option<(f64, f64, f6…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_gather_edges_recursive {
+      signature = "fn gather_edges_recursive(block: &Block<'_>, out: &mut Vec<Valu…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_AnchorMap {
+      signature = "type AnchorMap = HashMap<(String, Side), SidedAnchor>"
+      kind = "type"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_DestAnchorMap {
+      signature = "type DestAnchorMap = HashMap<(String, Side, String), SidedAncho…"
+      kind = "type"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_facing_side {
+      signature = "fn facing_side(from: (f64, f64), to: (f64, f64)) -> Side"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_build_shared_anchors {
+      signature = "fn build_shared_anchors( items: &[Value], positions: &ShapePosi…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wdoc_html_renderer_svg_fns]
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_centroid_of {
+      signature = "fn centroid_of(points: &[(f64, f64)]) -> (f64, f64)"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_pick_anchor_toward {
+      signature = "fn pick_anchor_toward( anchors: &[SidedAnchor], target: (f64, f…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_pick_closest_to {
+      signature = "fn pick_closest_to(anchors: &[SidedAnchor], target: (f64, f64))…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_edges_fns_more {
+      signature = "… +10 more"
+      kind = "overflow"
+    }
+  }
   code_node n_api_wdoc_html_renderer_more {
-    name = "… +9 more"
+    name = "… +8 more"
     kind = "overflow"
-    summary = "9 further public items — see the source."
+    summary = "8 further public items — see the source."
   }
 }
 
@@ -8618,6 +8682,23 @@ code_item code_api_wcl_wdoc_node_table {
     }
     code_member m_n_api_wcl_wdoc_node_table_node_table_fns_render_node_table {
       signature = "fn render_node_table( block: &Block<'_>, ctx: RenderCtx<'_>, pa…"
+      kind = "fn"
+      visibility = "crate"
+    }
+  }
+}
+
+code_item code_api_wcl_wdoc_page_metadata {
+  container = wcl_wdoc
+  name      = "Public surface — page_metadata"
+  summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_wdoc::page_metadata)."
+  kind      = :module_api
+  code_node n_api_wcl_wdoc_page_metadata_page_metadata_fns {
+    name = "page_metadata"
+    kind = "fns"
+    summary = "src/page_metadata.rs"
+    code_member m_n_api_wcl_wdoc_page_metadata_page_metadata_fns_register {
+      signature = "fn register(env: &mut Environment)"
       kind = "fn"
       visibility = "crate"
     }

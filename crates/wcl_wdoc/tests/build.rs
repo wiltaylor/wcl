@@ -5019,12 +5019,13 @@ site {
 }
 
 template inspect_metadata {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html> {
     let m = page_metadata(c);
     [
-      el("div", ["previous"], [raw(m.previous.title)]),
-      el("div", ["current"], [raw(m.current.title)]),
-      el("div", ["next"], [raw(m.next.title)]),
+      el("div", ["previous"], [raw(if m.previous != none { m.previous.title } else { "" })]),
+      el("div", ["current"], [raw(if m.current != none { m.current.title } else { "" })]),
+      el("div", ["next"], [raw(if m.next != none { m.next.title } else { "" })]),
       el("ol", ["reading-order"], map(m.reading_order, fn(e: TocEntry) -> Html
         el("li", [], [raw(e.title)]))),
       el("ol", ["active-path"], map(m.active_path, fn(e: TocEntry) -> Html
@@ -5098,6 +5099,7 @@ site {
 }
 
 template metadata_only {
+  slot content: content
   render = fn(c: TemplateCtx) -> list<Html> {
     let m = page_metadata(c);
     [el("p", [], [raw(m.current.title)])]
