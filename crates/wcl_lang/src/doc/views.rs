@@ -844,16 +844,50 @@ impl<'a> Decorator<'a> {
         }
         // Resolve a union slot from the decorator schema's namespace, not
         // the decorator use site's. Two libraries may both call the union
-        // `Choice`, just as they may both declare this decorator name. An
-        // entirely omitted union slot still receives its declared default.
+        // `Choice`, just as they may both declare this decorator name.
+        // Arguments claimed by the schema's other slots are removed before
+        // structural dispatch, so `@select("label", message = "chosen")`
+        // can carry both ordinary metadata and a union payload.
         if let ResolvedType::Union(union) = slot.resolved_type() {
-            if self.ast.positional.is_empty()
-                && self.ast.named.is_empty()
+            let claimed_positions: HashSet<usize> = schema
+                .fields()
+                .filter(|field| field.name() != slot_name)
+                .filter_map(|field| field.inline_slot().map(|index| index as usize))
+                .collect();
+            let positional: Vec<Value> = match self.positional() {
+                Ok(values) => values
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(index, value)| {
+                        (!claimed_positions.contains(&index)).then_some(value)
+                    })
+                    .collect(),
+                Err(error) => return Some(Err(error)),
+            };
+            let mut named = std::collections::BTreeMap::new();
+            for argument in self.named() {
+                if schema.field(argument.name()).is_some() {
+                    continue;
+                }
+                let value = match argument.value() {
+                    Ok(value) => value,
+                    Err(error) => return Some(Err(error)),
+                };
+                named.insert(argument.name().to_string(), value);
+            }
+            if positional.is_empty()
+                && named.is_empty()
                 && let Some(default) = slot.default_value()
             {
                 return Some(Ok(default));
             }
-            return Some(self.dispatch_into_union(union));
+            return Some(variant_dispatch::decorator_to_variant(
+                self.doc,
+                &positional,
+                &named,
+                union,
+                self.ast.span,
+            ));
         }
         slot.default_value().map(Ok)
     }

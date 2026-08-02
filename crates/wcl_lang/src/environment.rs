@@ -176,12 +176,7 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
             "kind",
             TypeRef::Builtin(BuiltinType::Identifier),
         ),
-        synth_decorator_schema(
-            "Children",
-            "children",
-            "kind",
-            TypeRef::Builtin(BuiltinType::Identifier),
-        ),
+        children_schema(),
         synth_decorator_schema(
             "Table",
             "table",
@@ -304,6 +299,30 @@ fn block_schema() -> ast::TypeDecl {
         decorators: vec![synthetic_decorator(
             "decorator",
             vec![ast::Expr::Utf8("block".to_string())],
+        )],
+        span: synthetic_span(),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
+    }
+}
+
+fn children_schema() -> ast::TypeDecl {
+    let mut kind = synthetic_field("kind", TypeRef::Builtin(BuiltinType::Identifier), false);
+    kind.decorators
+        .push(synthetic_decorator("inline", vec![ast::Expr::U64(0)]));
+    ast::TypeDecl {
+        name: vec!["Children".to_string()],
+        extends: Vec::new(),
+        alias: None,
+        fields: vec![
+            kind,
+            synthetic_field("min", TypeRef::Builtin(BuiltinType::U64), true),
+            synthetic_field("max", TypeRef::Builtin(BuiltinType::U64), true),
+        ],
+        decorators: vec![synthetic_decorator(
+            "decorator",
+            vec![ast::Expr::Utf8("children".to_string())],
         )],
         span: synthetic_span(),
         leading_trivia: Vec::new(),

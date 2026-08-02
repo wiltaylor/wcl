@@ -1,0 +1,6 @@
+@decorator("tag", repeatable = true) type Tag {}
+@document type Root { @child("vm") vm: Vm }
+@block("vm") type Vm {}
+@tag
+@tag
+vm {}
