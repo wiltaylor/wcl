@@ -612,6 +612,28 @@ union Choice { Two { message: utf8 } }
 }
 
 #[test]
+fn structural_union_type_mismatch_is_spanned_on_the_offending_argument() {
+    let source = r#"
+union Choice { Two { message: utf8 } }
+@decorator("select") type Select { value: Choice }
+@select(message = 42) type Target {}
+"#;
+
+    let errors = schema_errors(source);
+    assert_eq!(errors.len(), 1, "{errors:#?}");
+    let EvalError::SchemaViolation { kind, span, .. } = &errors[0] else {
+        panic!("expected a schema violation: {errors:#?}");
+    };
+    assert_eq!(*kind, SchemaViolationKind::VariantNoMatch);
+    let argument = "message = 42";
+    assert_eq!(
+        span.offset(),
+        source.find(argument).expect("argument is present")
+    );
+    assert_eq!(span.len(), argument.len());
+}
+
+#[test]
 fn omitted_union_typed_slot_uses_its_declared_default() {
     let source = r#"
 union Choice { One { code: i64 } }

@@ -854,17 +854,19 @@ impl<'a> Decorator<'a> {
                 .filter(|field| field.name() != slot_name)
                 .filter_map(|field| field.inline_slot().map(|index| index as usize))
                 .collect();
-            let positional: Vec<Value> = match self.positional() {
+            let (positional, positional_spans): (Vec<Value>, Vec<Span>) = match self.positional() {
                 Ok(values) => values
                     .into_iter()
+                    .zip(self.positional_spans().iter().copied())
                     .enumerate()
-                    .filter_map(|(index, value)| {
-                        (!claimed_positions.contains(&index)).then_some(value)
+                    .filter_map(|(index, value_and_span)| {
+                        (!claimed_positions.contains(&index)).then_some(value_and_span)
                     })
-                    .collect(),
+                    .unzip(),
                 Err(error) => return Some(Err(error)),
             };
             let mut named = std::collections::BTreeMap::new();
+            let mut named_spans = std::collections::BTreeMap::new();
             for argument in self.named() {
                 if schema.field(argument.name()).is_some() {
                     continue;
@@ -873,6 +875,7 @@ impl<'a> Decorator<'a> {
                     Ok(value) => value,
                     Err(error) => return Some(Err(error)),
                 };
+                named_spans.insert(argument.name().to_string(), argument.span());
                 named.insert(argument.name().to_string(), value);
             }
             if positional.is_empty()
@@ -884,7 +887,9 @@ impl<'a> Decorator<'a> {
             return Some(variant_dispatch::decorator_to_variant(
                 self.doc,
                 &positional,
+                &positional_spans,
                 &named,
+                &named_spans,
                 union,
                 self.ast.span,
             ));
@@ -898,16 +903,22 @@ impl<'a> Decorator<'a> {
     /// `VariantAmbiguous` defensively if multiple variants match.
     pub fn dispatch_into_union(&self, union: UnionDecl<'a>) -> Result<Value, EvalError> {
         let positional = self.positional()?;
+        let positional_spans = self.positional_spans();
         let mut named_map: std::collections::BTreeMap<String, Value> =
+            std::collections::BTreeMap::new();
+        let mut named_spans: std::collections::BTreeMap<String, Span> =
             std::collections::BTreeMap::new();
         for n in self.named() {
             let v = n.value()?;
+            named_spans.insert(n.name().to_string(), n.span());
             named_map.insert(n.name().to_string(), v);
         }
         variant_dispatch::decorator_to_variant(
             self.doc,
             &positional,
+            positional_spans,
             &named_map,
+            &named_spans,
             union,
             self.ast.span,
         )
