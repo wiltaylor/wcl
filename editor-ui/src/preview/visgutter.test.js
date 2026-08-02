@@ -9,7 +9,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { moveSteps, placeVisGutters } from './visgutter';
 
 const PAGE = `
-<div data-wcl-page-file="main.wcl" data-wcl-page-name="concept_x">
+<div data-wcl-page-file="main.wcl" data-wcl-page-span="0:300"
+     data-wcl-page-name="concept_x" data-wcl-slot="content">
   <p id="plain" data-wcl-block data-wcl-kind="p"
      data-wcl-span="10:20" data-wcl-file="main.wcl">always</p>
   <p id="hidden" data-wcl-block data-wcl-kind="p"
@@ -25,6 +26,11 @@ const PAGE = `
   </div>
   <div id="chrome" data-wcl-block data-wcl-kind="p"
        data-wcl-span="0:5" data-wcl-file="chrome-placeholder">chrome</div>
+</div>
+<div data-wcl-page-file="main.wcl" data-wcl-page-span="0:300"
+     data-wcl-page-name="concept_x" data-wcl-slot="hero">
+  <h1 id="hero" data-wcl-block data-wcl-kind="h1"
+      data-wcl-span="210:230" data-wcl-file="main.wcl">Hero</h1>
 </div>`;
 
 function setup() {
@@ -59,6 +65,7 @@ describe('placeVisGutters', () => {
     expect(document.querySelectorAll('#plain > .wcl-vis-gutter').length).toBe(1);
     expect(document.querySelectorAll('#hidden > .wcl-vis-gutter').length).toBe(1);
     expect(document.querySelectorAll('#outer > .wcl-vis-gutter').length).toBe(1);
+    expect(document.querySelectorAll('#hero > .wcl-vis-gutter').length).toBe(1);
     // Nested blocks keep the block toolbar's controls instead.
     expect(document.querySelectorAll('#nested > .wcl-vis-gutter').length).toBe(0);
     // Template chrome gets no gutter.
@@ -69,8 +76,8 @@ describe('placeVisGutters', () => {
     setup();
     placeVisGutters(document, { onProfile: () => {} });
     placeVisGutters(document, { onProfile: () => {} });
-    // plain + hidden + custom + outer — one gutter each, no duplicates.
-    expect(document.querySelectorAll('.wcl-vis-gutter').length).toBe(4);
+    // Four content blocks + the hero — one gutter each, no duplicates.
+    expect(document.querySelectorAll('.wcl-vis-gutter').length).toBe(5);
   });
 
   it('profile button pops the editor with the block anchor', () => {

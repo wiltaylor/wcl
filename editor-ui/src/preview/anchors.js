@@ -6,7 +6,7 @@
    (`data-wcl-shape` / `-shape-id`, the owning svg's `data-wcl-layout`, the
    layout-container guides' `data-wf-slot` zones), the visibility stamps a
    merged build adds (`data-wcl-except` / `data-wcl-vis`), the page
-   wrapper's `data-wcl-page-*`, the `edit_field` bindings
+   wrappers' `data-wcl-page-*` + `data-wcl-slot`, the `edit_field` bindings
    (`data-wcl-field-*`) and the `edit_object` buttons (`data-wcl-edit-*`).
 
    Every reader in the preview layer comes through here. The names of the
@@ -54,6 +54,7 @@ export const ATTR = {
   pageName: 'data-wcl-page-name',
   pageFile: 'data-wcl-page-file',
   pageSpan: 'data-wcl-page-span',
+  pageSlot: 'data-wcl-slot',
   fieldName: 'data-wcl-field-name',
   fieldKind: 'data-wcl-field-kind',
   fieldTarget: 'data-wcl-field-target',
@@ -302,8 +303,9 @@ export function anchorChainAt(target) {
 // Page wrapper + block tree
 // ---------------------------------------------------------------------------
 
-/** The anchored page in `doc`, or null (non-wdoc content, not yet loaded).
-    `span` (edit-mode builds only) is the page block's byte span in `file`. */
+/** The first anchored page slot in `doc`, or null (non-wdoc content, not yet
+    loaded). `span` (edit-mode builds only) is the owning page block's byte
+    span in `file`; `slot` names the layout hole this wrapper fills. */
 export function pageInfo(doc) {
   const el = doc?.querySelector?.(SEL.page);
   if (!el) return null;
@@ -312,7 +314,27 @@ export function pageInfo(doc) {
     name: el.getAttribute(ATTR.pageName),
     file: el.getAttribute(ATTR.pageFile),
     span: pageSpanOf(el),
+    slot: pageSlotOf(el),
   };
+}
+
+/** The page slot wrapper enclosing `el`, or null outside authored page
+    content (layout-owned fallbacks deliberately carry ordinary file/span
+    provenance instead). */
+export function pageRootOf(el) {
+  return el?.closest?.(SEL.page) ?? null;
+}
+
+/** The declared slot name stamped on a page wrapper. */
+export function pageSlotOf(el) {
+  return el?.getAttribute?.(ATTR.pageSlot) || null;
+}
+
+/** The page wrapper for `slot`, or null when this rendered page has no such
+    page-owned wrapper. */
+export function pageForSlot(doc, slot) {
+  if (!doc || !slot) return null;
+  return [...doc.querySelectorAll(SEL.page)].find((el) => pageSlotOf(el) === slot) ?? null;
 }
 
 /** The page wrapper's own source span, or null. */
@@ -348,12 +370,13 @@ export function blockChildren(node) {
     run `el` belongs to, which is how both the reorder walk and the comment
     locator address a block. */
 export function containerOf(pageEl, el) {
+  const root = pageRootOf(el) ?? pageEl;
   let p = el?.parentElement;
-  while (p && p !== pageEl) {
+  while (p && p !== root) {
     if (p.hasAttribute(ATTR.block)) return p;
     p = p.parentElement;
   }
-  return pageEl;
+  return root;
 }
 
 /** `el`'s ordered same-file block siblings, itself included: the block
@@ -363,10 +386,10 @@ export function containerOf(pageEl, el) {
     sibling in the same container" all agree because they ask this, under
     the established DOM-order == AST-order assumption for same-file runs. */
 export function sameFileSiblings(doc, el) {
-  const page = pageInfo(doc);
+  const pageEl = pageRootOf(el) ?? pageInfo(doc)?.el;
   const file = el?.getAttribute?.(ATTR.file);
-  if (!page || !file) return [];
-  return blockChildren(containerOf(page.el, el)).filter(
+  if (!pageEl || !file) return [];
+  return blockChildren(containerOf(pageEl, el)).filter(
     (b) => b.getAttribute(ATTR.file) === file && spanOf(b),
   );
 }
