@@ -25,6 +25,7 @@ mod kinds;
 mod layered;
 mod map;
 mod markdown;
+pub use markdown::GENERATED_AGENT_MARKER;
 mod math;
 mod native;
 mod node_table;

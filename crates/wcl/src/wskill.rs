@@ -1,10 +1,10 @@
 //! `wcl wskill` — the wskill model from the command line.
 //!
 //! The model itself lives in [`wcl_wskill`], and so do the lint rule engine,
-//! the range audit and the op vocabulary; this is the thin CLI face of all
-//! four, so an agent (or a script, or a human) can read a wskill's graph, its
-//! findings and what a range did to it — and edit its structure — without a
-//! browser editor running.
+//! the range audit and the op vocabulary. This CLI face also validates and
+//! installs model-declared projections, so an agent (or a script, or a human)
+//! can read, check, install and structurally edit a wskill without a browser
+//! editor running.
 //!
 //! `op` is the one write half, and it writes the way the editor does: the
 //! library turns an op into file changes, and [`crate::edit::commit`] — the
@@ -41,6 +41,13 @@ use crate::{EXIT_EVAL, EXIT_IO, EXIT_OK, EXIT_PARSE};
 const WSKILL_OK: u8 = 0;
 const WSKILL_FINDINGS: u8 = 1;
 const WSKILL_TOOL_FAILURE: u8 = 2;
+
+mod check;
+mod install;
+mod support;
+
+pub(crate) use check::run as run_check;
+pub(crate) use install::run as run_install;
 
 /// How much of a commit sha an audit header shows. Long enough to paste back
 /// into `git`, short enough that the two ends of a range fit on the line

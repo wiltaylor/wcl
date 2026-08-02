@@ -219,7 +219,7 @@ lesson ship_the_skill {
     code_lang = "bash"
     code = <<DOC
       just skill-build
-      cp -r out/skill <repo>/.claude/skills/my-topic
+      wcl wskill install . --repo <repo>
     DOC
     expected = "`.claude/skills/my-topic/SKILL.md` lists your index as a Reference section, and an agent session in that repo can answer from the skill's pages."
     hint = "If the agent never invokes the skill, sharpen the `description` in the skill block — it is what the agent matches requests against."

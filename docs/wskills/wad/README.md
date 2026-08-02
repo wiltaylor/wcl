@@ -26,15 +26,15 @@ way `import <wdoc.wcl>` already works.
 
 ```bash
 just                 # list recipes
-just wskill-check    # validate against the schema
+just wskill-check    # build every projection and report coverage
 just render          # build out/book (site) and out/skill (SKILL.md + references)
 just book-serve      # live-preview the book
 ```
 
-Install the rendered skill into a repo by copying it:
+Render and install the skill and any agents into a repo:
 
 ```bash
-cp -r out/skill <repo>/.claude/skills/<name>
+wcl wskill install . --repo <repo>
 ```
 
 ## Editing

@@ -70,20 +70,6 @@ fuzz-run TARGET *ARGS:
 workspace-fmt:
     cargo fmt --all
 
-# Report book/skill audience coverage per wskill (units kept vs total per
-# projection) — informational, not a gate. An excluded unit is otherwise
-# invisible: audience defaults to :book (research: :ai), so e.g. a fact
-# authored without `audience = :both` silently never reaches the skill.
-[group('quality')]
-wskill-coverage:
-    @for d in docs/wskills/*; do \
-        [ -f "$d/wskill.wcl" ] || continue; \
-        echo "== $(basename "$d")"; \
-        grep -vE '^\s*(//|$)' docs/wskills/coverage.repl \
-            | cargo run -q -p wcl -- repl "$d/wskill.wcl" \
-            | sed 's/^"//; s/"$//'; \
-    done
-
 # Propagate the canonical WAD base schema to .wad/schema/base.wcl
 [group('quality')]
 wad-schema-sync:
@@ -140,39 +126,13 @@ docs-comments *ARGS:
 md-build *ARGS:
     cargo run -p wcl -- wdoc markdown docs/main.wcl --out docs/_md {{ARGS}}
 
-# Install every wskill's AI skill into .claude/skills/<name>/ (committed) —
-# discovery matches the registry (skill entry file presence under docs/wskills/*),
-# so a new wskill is picked up with no list to maintain; each target folder is
-# replaced wholesale so removed pages don't linger. Smoke-tests `wcl wdoc skill`.
+# Render and install every wskill's AI skills and agents into the committed
+# `.claude/` tree. The command discovers artifacts from each parsed registry,
+# validates names before writing and replaces generated folders wholesale.
+# Install generated skills/agents and remove stale generated output.
 [group('dev')]
 skills-install:
-    @mkdir -p .claude/agents target/skills-stage && rm -rf target/skills-stage/*
-    @agent_names=""; \
-    for d in docs/wskills/*; do \
-        [ -f "$d/wdoc/skill/main.wcl" ] || continue; \
-        name=$(basename "$d"); \
-        echo "==> $name" >&2; \
-        stage="target/skills-stage/$name"; \
-        cargo run -q -p wcl -- wdoc skill "$d/wdoc/skill/main.wcl" --out "$stage"; \
-        for md in "$stage/SKILL.md" "$stage"/*/SKILL.md; do \
-            [ -f "$md" ] || continue; \
-            sd=$(dirname "$md"); \
-            sn=$(sed -n 's/^name: *//p' "$md" | head -1 | sed 's/^"//; s/"$//'); \
-            rm -rf ".claude/skills/$sn"; \
-            cp -r "$sd" ".claude/skills/$sn"; \
-        done; \
-        if [ -d "$stage/agents" ]; then \
-            echo "    agents: $(ls "$stage/agents")" >&2; \
-            for a in "$stage/agents/"*.md; do \
-                an=$(basename "$a" .md); \
-                case " $agent_names " in *" $an "*) \
-                    echo "agent name collision: $an declared by more than one wskill — refusing to clobber .claude/agents/$an.md"; exit 1;; \
-                esac; \
-                agent_names="$agent_names $an"; \
-            done; \
-            cp "$stage/agents/"*.md .claude/agents/; \
-        fi; \
-    done
+    cargo run -p wcl -- wskill install docs/wskills --repo .
 
 # Render the example and the docs to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`
 [group('dev')]

@@ -274,6 +274,10 @@ fn agent_blocks_emit_agent_files() {
     );
     let md = read(&out, "agents/demo-helper.md");
     assert!(md.starts_with("---\n"), "front matter fence: {md}");
+    assert!(
+        md.contains(wcl_wdoc::GENERATED_AGENT_MARKER),
+        "generated provenance: {md}"
+    );
     assert!(md.contains("name: demo-helper"), "agent name: {md}");
     assert!(
         md.contains("description: Runs one demo task. Use when dispatching demo work."),

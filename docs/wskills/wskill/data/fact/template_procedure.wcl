@@ -73,7 +73,7 @@ SH
   step copy { n = 2
     title = "Copy it into the repo"
     body screen { code "console" { source = <<'SH'
-$ cp -r out/skill <repo>/.claude/skills/<name>
+$ wcl wskill install . --repo <repo>
 SH
     } }
     body steps { p "The folder name is the skill name Claude Code will show." }

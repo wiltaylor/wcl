@@ -330,6 +330,37 @@ enum Command {
 
 #[derive(Subcommand)]
 enum WskillCommand {
+    /// Validate a wskill's model and build every artifact projection into a
+    /// temporary directory, then report how much of the model each view
+    /// reaches. Accepts either one wskill or a directory containing many.
+    ///
+    /// Examples:
+    ///   wcl wskill check
+    ///   wcl wskill check docs/wskills
+    Check {
+        /// A wskill folder, an entry `.wcl`, or a directory containing
+        /// wskills. Defaults to the current directory.
+        entry: Option<PathBuf>,
+    },
+    /// Render every declared AI-skill artifact and install its skill folders
+    /// and agents into a repository's `.claude/` directory. With `--check`,
+    /// write nothing and fail on drift, collisions, or stale generated files.
+    ///
+    /// Examples:
+    ///   wcl wskill install . --repo ../consumer
+    ///   wcl wskill install docs/wskills --repo . --check
+    Install {
+        /// A wskill folder, an entry `.wcl`, or a directory containing
+        /// wskills. Defaults to the current directory.
+        entry: Option<PathBuf>,
+        /// Repository root that owns `.claude/`. Defaults to the current
+        /// directory.
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        /// Check generated output against the repository without writing.
+        #[arg(long)]
+        check: bool,
+    },
     /// Print the wskill's model — units, index trees, `related` and pin
     /// edges, per-unit block lists, and where each is written — as JSON on
     /// stdout. No editor, no build: the same model the browser editor's
@@ -852,6 +883,14 @@ fn main() -> ExitCode {
             skip,
         } => answer::run_answer(&file, list, id.as_deref(), text.as_deref(), &pick, skip),
         Command::Wskill { cmd } => match cmd {
+            WskillCommand::Check { entry } => {
+                let entry = entry.unwrap_or_else(|| PathBuf::from("."));
+                wskill::run_check(&entry)
+            }
+            WskillCommand::Install { entry, repo, check } => {
+                let entry = entry.unwrap_or_else(|| PathBuf::from("."));
+                wskill::run_install(&entry, &repo, check)
+            }
             WskillCommand::Graph { entry, rev } => {
                 let entry = entry.unwrap_or_else(|| PathBuf::from("."));
                 wskill::run_graph(&entry, rev.as_deref())

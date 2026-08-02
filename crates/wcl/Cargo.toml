@@ -17,6 +17,7 @@ wcl_wdoc = { workspace = true }
 wcl_wskill = { workspace = true }
 clap = { workspace = true }
 miette = { workspace = true }
+thiserror = { workspace = true }
 serde_json = "1"
 tempfile = { workspace = true }
 # `wcl wdoc serve` dev server: axum + a notify file watcher, driven on a

@@ -235,7 +235,25 @@ cli wcl_cli_ref {
   subcommand cmd_wskill {
     name = "wskill"
     description = "wskill helpers. Scaffold a wskill with `wcl init wskill`."
-    code_example { lang = "console"  code = "wcl wskill graph docs/wskills/wcl" }
+    code_example { lang = "console"  code = "wcl wskill check docs/wskills/wcl" }
+
+    subcommand cmd_wskill_check {
+      name = "check"
+      description = "Validate one wskill or a collection, resolve artifact entries from each parsed model, build every declared projection in scratch space, and report per-view model coverage. Writes no generated output."
+      remarks = "This is the expensive gate: unlike `lint`, it exercises the template/rendering layer. Exit `0` when every artifact builds, or `2` when a model, artifact, or projection cannot be read or built."
+      cli_arg arg_entry { name = "entry"  required = false  description = "A wskill folder, an entry `.wcl`, or a directory containing wskills."  remarks = "Default: the current directory." }
+      code_example { lang = "console"  code = "wcl wskill check docs/wskills" }
+    }
+
+    subcommand cmd_wskill_install {
+      name = "install"
+      description = "Render every declared AI-skill artifact and install its skill folders and agents into a repository's `.claude/skills/` and `.claude/agents/` directories. Accepts one wskill or a collection."
+      remarks = "Rendering completes in scratch space before any destination write, so cross-wskill name collisions cannot partially install. Collection mode owns the complete generated set and removes stale generated skills/agents; hand-authored skills and `.claude/agents/README.md` are preserved. Exit `0` on success, `1` for drift or a name collision, and `2` for a render/tool failure."
+      cli_arg arg_entry { name = "entry"  required = false  description = "A wskill folder, an entry `.wcl`, or a directory containing wskills."  remarks = "Default: the current directory." }
+      cli_switch sw_repo  { long = "--repo"  value_name = "PATH"  description = "Repository root that owns `.claude/`."  remarks = "Default: the current directory." }
+      cli_switch sw_check { long = "--check"  description = "Render in scratch space and compare against the repository without writing."  remarks = "Detects artifact drift, agent-name collisions, and — in collection mode — stale generated output." }
+      code_example { lang = "console"  code = "wcl wskill install docs/wskills --repo . --check" }
+    }
 
     subcommand cmd_wskill_graph {
       name = "graph"

@@ -3414,6 +3414,7 @@ dependencies = [
  "rust-embed",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.19",
  "tokio",
  "tower 0.5.3",
  "wcl_lang",

@@ -46,12 +46,12 @@ jobs:
       - run: just ci::fmt-check
       - run: just ci::workspace-lint
       - run: just ci::workspace-test
-      # Every declared artifact entry file must exist. (The three wskill
-      # drift gates that used to sit here died with the copies they policed —
-      # the base schema and the fourteen shared templates, embedded in the
-      # binary now, crates/wcl_wskill/lib/. They policed exactly those; the
-      # per-topic projection entries they never covered are unaffected.)
-      - run: just ci::wskill-artifact-check
+      # Cheap model lint stays separate from the projection build on cost.
+      # Warnings remain advisory; mechanically certain errors fail CI.
+      - run: just ci::wskill-lint
+      # Resolve artifacts from each parsed model, build every projection in
+      # scratch space, and report per-view coverage.
+      - run: just ci::wskill-check
       - run: just ci::wcl-refcheck
       # The WAD schema heredoc in the scaffold template is canonical — fail
       # on drift between it and the live copy under .wad/.
@@ -69,10 +69,8 @@ jobs:
       # structural gates against the current binary — the moral equivalent
       # of the old "verified tarball".
       - run: just ci::wplan-template-check
-      # Every wskill's skill projection must build and match the committed
-      # .claude/skills + .claude/agents artifacts (drift, agent-name
-      # collisions, stale generated files) — the book-only docs-build below
-      # never exercises `wcl wdoc skill`.
+      # Compare rendered skill/agent output to the committed `.claude/` tree;
+      # also catches cross-wskill agent collisions and stale generated files.
       - run: just ci::skills-check
       # The docs/ site is the largest real-world wdoc consumer — building it
       # catches renderer regressions that unit tests miss, and broken doc

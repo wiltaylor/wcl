@@ -370,7 +370,36 @@ wcl wad spec --from v1.2 --id spec_billing --title "Billing split" wad.wcl
 wskill helpers. Scaffold a wskill with `wcl init wskill`.
 
 ```console
-wcl wskill graph docs/wskills/wcl
+wcl wskill check docs/wskills/wcl
+```
+
+### wcl wskill check
+
+Validate one wskill or a collection, resolve artifact entries from each parsed model, build every declared projection in scratch space, and report per-view model coverage. Writes no generated output.
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| entry | optional | A wskill folder, an entry `.wcl`, or a directory containing wskills. |
+
+```console
+wcl wskill check docs/wskills
+```
+
+### wcl wskill install
+
+Render every declared AI-skill artifact and install its skill folders and agents into a repository's `.claude/skills/` and `.claude/agents/` directories. Accepts one wskill or a collection.
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| entry | optional | A wskill folder, an entry `.wcl`, or a directory containing wskills. |
+
+| Switch | Value | Description |
+| --- | --- | --- |
+| --repo | PATH | Repository root that owns `.claude/`. |
+| --check | — | Render in scratch space and compare against the repository without writing. |
+
+```console
+wcl wskill install docs/wskills --repo . --check
 ```
 
 ### wcl wskill graph

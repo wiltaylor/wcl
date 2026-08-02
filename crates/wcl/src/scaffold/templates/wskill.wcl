@@ -81,15 +81,15 @@ and declare your own — nothing shadows, so what you don't import is yours to w
 
 ```bash
 just                 # list recipes
-just wskill-check    # validate against the schema
+just wskill-check    # build every projection and report coverage
 just render          # build out/book (site) and out/skill (SKILL.md + references)
 just book-serve      # live-preview the book
 ```
 
-Install the rendered skill into a repo by copying it:
+Render and install the skill and any agents into a repo:
 
 ```bash
-cp -r out/skill <repo>/.claude/skills/<name>
+wcl wskill install . --repo <repo>
 ```
 
 ## Editing
@@ -311,20 +311,16 @@ file "justfile" {
 # ${answer("topic_name")} wskill — build recipes.
 #
 # Self-contained: uses the `wcl` CLI directly, so this wskill stands alone. Install
-# the rendered skill by copying out/skill into a repo's .claude/skills/<name>/.
+# the rendered skill and any agents with `wcl wskill install . --repo <repo>`.
 
 [default, private]
 main:
 	@just --list
 
-# Validate the wskill model and every projection template against the schema
+# Validate the model, build every declared projection, and report coverage
 [group('check')]
 wskill-check:
-	wcl check wskill.wcl
-	wcl check wdoc/book/main.wcl
-	wcl check wdoc/skill/main.wcl
-	@[ ! -f wdoc/presentation/main.wcl ] || wcl check wdoc/presentation/main.wcl
-	@[ ! -f wdoc/training/main.wcl ] || wcl check wdoc/training/main.wcl
+	wcl wskill check .
 
 # Render the human-readable book projection to out/book
 [group('render')]

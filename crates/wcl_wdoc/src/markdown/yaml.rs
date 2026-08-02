@@ -138,7 +138,10 @@ pub(crate) fn agent_front_matter(agent: &Block<'_>, name: &str) -> Result<String
         body.push_str(&yaml_key("model"));
         emit_value(&mut body, &Value::Utf8(model), 0);
     }
-    Ok(format!("---\n{body}---\n"))
+    Ok(format!(
+        "---\n{}\n{body}---\n",
+        super::skill::GENERATED_AGENT_MARKER
+    ))
 }
 
 /// Append the value half of a `key:` entry (the key text is already in
