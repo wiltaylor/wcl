@@ -1,0 +1,5142 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>wskill audit — prototype</title>
+<style>
+  :root {
+    --bg:#0d1117; --panel:#161b22; --line:#30363d; --fg:#e6edf3; --dim:#8b949e;
+    --add:#3fb950; --del:#f85149; --warn:#d29922; --cand:#a371f7; --link:#58a6ff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
+  h1 { margin:0 0 4px; font-size:14px; font-weight:600; }
+  h1 .rev { color:var(--link); }
+  .subject { color:var(--dim); font-size:12px; }
+  .top { display:flex; gap:18px; margin-top:10px; flex-wrap:wrap; }
+  .top b { font-weight:600; }
+  .add { color:var(--add); } .del { color:var(--del); }
+  .warn { color:var(--warn); } .cand { color:var(--cand); } .dim { color:var(--dim); }
+  nav { display:flex; gap:2px; padding:0 20px; background:var(--panel);
+        border-bottom:1px solid var(--line); }
+  nav button { background:none; border:none; border-bottom:2px solid transparent;
+    color:var(--dim); padding:9px 14px; font:inherit; cursor:pointer; }
+  nav button.on { color:var(--fg); border-bottom-color:var(--link); }
+  main { padding:18px 20px 60px; }
+  .pane { display:none; } .pane.on { display:block; }
+  section { margin-bottom:22px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em;
+       color:var(--dim); margin:0 0 8px; font-weight:600; }
+  .row { display:flex; gap:10px; align-items:baseline; padding:3px 8px;
+         border-left:2px solid transparent; }
+  .row:hover { background:#1c2128; }
+  .row.a { border-left-color:var(--add); } .row.r { border-left-color:var(--del); }
+  .row.h { border-left-color:var(--warn); } .row.c { border-left-color:var(--cand); }
+  .kind { color:var(--dim); width:74px; flex:none; }
+  .id { color:var(--fg); width:230px; flex:none; }
+  .nm { color:var(--dim); flex:1; overflow:hidden; text-overflow:ellipsis;
+        white-space:nowrap; }
+  .tag { font-size:11px; padding:0 6px; border-radius:9px; border:1px solid var(--line);
+         color:var(--dim); flex:none; }
+  .tag.bad { color:var(--warn); border-color:#5a4412; background:#2a2008; }
+  .tag.ok { color:var(--add); border-color:#1f4429; background:#0f2915; }
+  table { border-collapse:collapse; width:100%; max-width:820px; }
+  td,th { text-align:left; padding:5px 10px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:600; font-size:11px; text-transform:uppercase; }
+  td.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .verdict { padding:10px 14px; border:1px solid var(--line); border-left:3px solid var(--warn);
+             background:var(--panel); margin-bottom:16px; }
+  .grp { margin-bottom:10px; }
+  .grp .src { color:var(--link); }
+  .grp .edge { padding-left:18px; }
+  svg { width:100%; height:660px; background:#0a0d12; border:1px solid var(--line); }
+  .ctl { margin-bottom:10px; display:flex; gap:14px; align-items:center; color:var(--dim); }
+  .legend span { margin-right:14px; }
+  .sw { display:inline-block; width:9px; height:9px; border-radius:50%;
+        margin-right:5px; vertical-align:middle; }
+  .hbar { display:flex; gap:14px; align-items:baseline; padding-left:16px;
+          border-left:1px solid var(--line); }
+  .hm { color:var(--dim); font-size:12px; }
+  .note { color:var(--dim); font-size:12px; max-width:820px; margin-top:6px; }
+</style>
+
+<header>
+  <h1>wcl wskill audit <span class="rev" id="range"></span></h1>
+  <div class="subject" id="subject"></div>
+  <div class="top" id="top"></div>
+</header>
+<nav>
+  <button data-p="log" class="on">Changed</button>
+  <button data-p="graph">Graph</button>
+</nav>
+<main>
+  <div class="pane on" id="log"></div>
+  <div class="pane" id="graph"></div>
+</main>
+
+<script>
+const D = {
+ "health": {
+  "metrics": [
+   {
+    "label": "Units",
+    "before": 44,
+    "after": 69,
+    "delta": 25,
+    "good_down": false,
+    "verdict": "grew"
+   },
+   {
+    "label": "Related edges",
+    "before": 93,
+    "after": 234,
+    "delta": 141,
+    "good_down": false,
+    "verdict": "grew"
+   },
+   {
+    "label": "Edges per unit",
+    "before": 2.11,
+    "after": 3.39,
+    "delta": 1.28,
+    "good_down": true,
+    "verdict": "worse"
+   },
+   {
+    "label": "Unpinned + unreferenced",
+    "before": 22,
+    "after": 16,
+    "delta": -6,
+    "good_down": true,
+    "verdict": "better"
+   },
+   {
+    "label": "Hub-shaped units (>=6 in)",
+    "before": 3,
+    "after": 11,
+    "delta": 8,
+    "good_down": true,
+    "verdict": "worse"
+   },
+   {
+    "label": "Units over the 5-link cap",
+    "before": 0,
+    "after": 10,
+    "delta": 10,
+    "good_down": true,
+    "verdict": "worse"
+   },
+   {
+    "label": "Edges with no reason in prose",
+    "before": 92,
+    "after": 208,
+    "delta": 116,
+    "good_down": true,
+    "verdict": "worse"
+   },
+   {
+    "label": "Dangling related ids",
+    "before": 0,
+    "after": 0,
+    "delta": 0,
+    "good_down": true,
+    "verdict": "\u2014"
+   },
+   {
+    "label": "Indexes",
+    "before": 1,
+    "after": 1,
+    "delta": 0,
+    "good_down": false,
+    "verdict": "\u2014"
+   },
+   {
+    "label": "Body-less indexes (unlinkable)",
+    "before": 0,
+    "after": 0,
+    "delta": 0,
+    "good_down": true,
+    "verdict": "\u2014"
+   }
+  ],
+  "worse": 4
+ },
+ "before_rev": "99518181~1",
+ "after_rev": "99518181",
+ "counts": {
+  "units_before": 44,
+  "units_after": 69,
+  "edges_before": 93,
+  "edges_after": 234,
+  "added_units": 30,
+  "removed_units": 5,
+  "added_edges": 160,
+  "removed_edges": 19,
+  "new_hubs": 8,
+  "new_over_cap": 10,
+  "orphans": 16,
+  "dangling": 0,
+  "bare_edges": 208
+ },
+ "added_units": [
+  {
+   "kind": "concept",
+   "id": "block_expressions",
+   "name": "Block Expressions",
+   "summary": "A { ... } expression holds let bindings followed by a tail expression, which is the block's value.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "let_bindings",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/block_expressions.wcl",
+   "line": 1,
+   "words": 67
+  },
+  {
+   "kind": "concept",
+   "id": "block_schema",
+   "name": "Block Schema",
+   "summary": "Declaring nestable blocks with @block, @inline, @child/@children, and @default.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "document_schema",
+    "ref_integrity",
+    "child_count_constraints",
+    "fields_blocks",
+    "records"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/block_schema.wcl",
+   "line": 1,
+   "words": 180
+  },
+  {
+   "kind": "concept",
+   "id": "blocks",
+   "name": "Blocks",
+   "summary": "A block is a named group of fields that can nest other blocks.",
+   "audience": "both",
+   "related": [
+    "fields",
+    "fields_blocks",
+    "schema",
+    "namespaces"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/blocks.wcl",
+   "line": 1,
+   "words": 155
+  },
+  {
+   "kind": "concept",
+   "id": "child_count_constraints",
+   "name": "Child-count Constraints",
+   "summary": "Constraining nested children with max_children and required_children on @block.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "block_schema",
+    "document_schema",
+    "ref_integrity"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/child_count_constraints.wcl",
+   "line": 1,
+   "words": 88
+  },
+  {
+   "kind": "concept",
+   "id": "document_schema",
+   "name": "Document Schema",
+   "summary": "Marking a document root with @document, and how schemas merge per namespace.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "block_schema",
+    "ref_integrity",
+    "child_count_constraints",
+    "records"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/document_schema.wcl",
+   "line": 1,
+   "words": 193
+  },
+  {
+   "kind": "concept",
+   "id": "fields",
+   "name": "Fields",
+   "summary": "A field binds a name to a value with `=`.",
+   "audience": "both",
+   "related": [
+    "blocks",
+    "fields_blocks",
+    "expressions",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/fields.wcl",
+   "line": 1,
+   "words": 52
+  },
+  {
+   "kind": "concept",
+   "id": "fn_items",
+   "name": "fn Items",
+   "summary": "The `fn` item form \u2014 a reusable named function declaration.",
+   "audience": "both",
+   "related": [
+    "functions",
+    "function_literals",
+    "higher_order_functions",
+    "function_types",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/fn_items.wcl",
+   "line": 1,
+   "words": 103
+  },
+  {
+   "kind": "concept",
+   "id": "function_calls",
+   "name": "Function Calls",
+   "summary": "Parentheses call a function or constructor with lazily-evaluated arguments.",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "member_access",
+    "functions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/function_calls.wcl",
+   "line": 1,
+   "words": 70
+  },
+  {
+   "kind": "concept",
+   "id": "function_literals",
+   "name": "Function Literals",
+   "summary": "Inline `fn(params) -> Return body` function values.",
+   "audience": "both",
+   "related": [
+    "functions",
+    "fn_items",
+    "higher_order_functions",
+    "function_types",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/function_literals.wcl",
+   "line": 1,
+   "words": 62
+  },
+  {
+   "kind": "concept",
+   "id": "function_types",
+   "name": "Function Types",
+   "summary": "The `fn(T1, T2, ...) -> R` type for fields that hold callables.",
+   "audience": "both",
+   "related": [
+    "functions",
+    "function_literals",
+    "fn_items",
+    "higher_order_functions",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/function_types.wcl",
+   "line": 1,
+   "words": 89
+  },
+  {
+   "kind": "concept",
+   "id": "heredocs",
+   "name": "Heredocs",
+   "summary": "`<<TAG ... TAG` multi-line strings interpret escapes and strip common indentation.",
+   "audience": "both",
+   "related": [
+    "strings",
+    "string_literals",
+    "string_escapes",
+    "raw_heredocs",
+    "string_interpolation",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/heredocs.wcl",
+   "line": 1,
+   "words": 80
+  },
+  {
+   "kind": "concept",
+   "id": "higher_order_functions",
+   "name": "Higher-order Functions",
+   "summary": "Functions that take and return other functions.",
+   "audience": "both",
+   "related": [
+    "functions",
+    "function_literals",
+    "fn_items",
+    "function_types",
+    "lists"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/higher_order_functions.wcl",
+   "line": 1,
+   "words": 79
+  },
+  {
+   "kind": "concept",
+   "id": "if_else",
+   "name": "if / else",
+   "summary": "An if is an expression; branches must agree on a type, else if chains for multi-way branches.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "match_expr",
+    "if_let",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/if_else.wcl",
+   "line": 1,
+   "words": 69
+  },
+  {
+   "kind": "concept",
+   "id": "if_let",
+   "name": "if let",
+   "summary": "Binds and branches in a single step when you only care about a single variant or pattern.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "match_expr",
+    "patterns",
+    "optionals"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/if_let.wcl",
+   "line": 1,
+   "words": 74
+  },
+  {
+   "kind": "concept",
+   "id": "let_bindings",
+   "name": "let bindings",
+   "summary": "A let names a reusable value or function; resolves by name but is not document data.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "block_expressions",
+    "functions",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/let_bindings.wcl",
+   "line": 1,
+   "words": 147
+  },
+  {
+   "kind": "concept",
+   "id": "match_expr",
+   "name": "match",
+   "summary": "Tests a value against a sequence of patterns, returning the body of the first that matches.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "patterns",
+    "if_let",
+    "unions",
+    "optionals"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/match.wcl",
+   "line": 1,
+   "words": 151
+  },
+  {
+   "kind": "concept",
+   "id": "member_access",
+   "name": "Member Access",
+   "summary": "A dotted path reads a field from records, variants, and composites.",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "function_calls",
+    "fields"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/member_access.wcl",
+   "line": 1,
+   "words": 59
+  },
+  {
+   "kind": "concept",
+   "id": "numeric_promotion",
+   "name": "Numeric Promotion",
+   "summary": "Arithmetic and comparison widen mixed numeric operands to a common type.",
+   "audience": "both",
+   "related": [
+    "numbers",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/numeric_promotion.wcl",
+   "line": 1,
+   "words": 74
+  },
+  {
+   "kind": "fact",
+   "id": "patterns",
+   "name": "Patterns",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "match_expr",
+    "control_flow",
+    "unions",
+    "optionals"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/patterns.wcl",
+   "line": 1,
+   "words": 83
+  },
+  {
+   "kind": "concept",
+   "id": "qualified_kinds",
+   "name": "Qualified Block Kinds",
+   "summary": "Block and table kinds are namespace-scoped; a ::-qualified kind picks a schema from a specific namespace.",
+   "audience": "both",
+   "related": [
+    "namespaces",
+    "use_declarations",
+    "imports",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/qualified_kinds.wcl",
+   "line": 1,
+   "words": 207
+  },
+  {
+   "kind": "concept",
+   "id": "raw_heredocs",
+   "name": "Raw Heredocs",
+   "summary": "Single-quoted opening tag takes the body verbatim \u2014 no escapes, no interpolation.",
+   "audience": "both",
+   "related": [
+    "strings",
+    "string_literals",
+    "string_escapes",
+    "heredocs",
+    "string_interpolation",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/raw_heredocs.wcl",
+   "line": 1,
+   "words": 103
+  },
+  {
+   "kind": "concept",
+   "id": "ref_integrity",
+   "name": "Referential Integrity",
+   "summary": "Validating that id fields name an existing block with @ref.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "block_schema",
+    "document_schema",
+    "references",
+    "connections"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/ref_integrity.wcl",
+   "line": 1,
+   "words": 117
+  },
+  {
+   "kind": "concept",
+   "id": "self_parent",
+   "name": "self & parent",
+   "summary": "Keywords that navigate the enclosing scope \u2014 self is the current block, parent the one around it.",
+   "audience": "both",
+   "related": [
+    "references",
+    "fields_blocks",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/self_parent.wcl",
+   "line": 1,
+   "words": 255
+  },
+  {
+   "kind": "concept",
+   "id": "string_escapes",
+   "name": "String Escapes",
+   "summary": "Double-quoted strings interpret backslash escapes; raw heredocs take bytes verbatim.",
+   "audience": "both",
+   "related": [
+    "strings",
+    "string_literals",
+    "heredocs",
+    "raw_heredocs",
+    "string_interpolation",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/string_escapes.wcl",
+   "line": 1,
+   "words": 75
+  },
+  {
+   "kind": "concept",
+   "id": "string_interpolation",
+   "name": "String Interpolation",
+   "summary": "Opt-in with a `$` prefix; `${ ... }` slots splice evaluated expressions into the string.",
+   "audience": "both",
+   "related": [
+    "strings",
+    "string_literals",
+    "string_escapes",
+    "heredocs",
+    "raw_heredocs",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/string_interpolation.wcl",
+   "line": 1,
+   "words": 94
+  },
+  {
+   "kind": "concept",
+   "id": "string_literals",
+   "name": "String Literals",
+   "summary": "UTF-8 by default; ascii/utf16/utf32 prefixes select another encoding.",
+   "audience": "both",
+   "related": [
+    "strings",
+    "string_escapes",
+    "heredocs",
+    "raw_heredocs",
+    "string_interpolation",
+    "symbols",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/string_literals.wcl",
+   "line": 1,
+   "words": 127
+  },
+  {
+   "kind": "concept",
+   "id": "symbol_set",
+   "name": "Symbol Sets",
+   "summary": "A symbol_set names a closed vocabulary of symbols \u2014 an enum-like type.",
+   "audience": "both",
+   "related": [
+    "symbols",
+    "unions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/symbol_set.wcl",
+   "line": 1,
+   "words": 107
+  },
+  {
+   "kind": "concept",
+   "id": "try_catch",
+   "name": "try / catch",
+   "summary": "Evaluates a body; on failure the rendered message binds to the catch name and the handler's value is the result.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "block_expressions",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/try_catch.wcl",
+   "line": 1,
+   "words": 144
+  },
+  {
+   "kind": "concept",
+   "id": "type_aliases",
+   "name": "Type Aliases",
+   "summary": "type Name = TypeRef declares a transparent alias; constraint decorators travel to every field using it.",
+   "audience": "both",
+   "related": [
+    "records",
+    "type_constraints",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/type_aliases.wcl",
+   "line": 1,
+   "words": 100
+  },
+  {
+   "kind": "concept",
+   "id": "use_declarations",
+   "name": "use Declarations",
+   "summary": "use pulls qualified names from other namespaces into local scope so they can be written bare.",
+   "audience": "both",
+   "related": [
+    "namespaces",
+    "qualified_kinds",
+    "imports"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/use_declarations.wcl",
+   "line": 1,
+   "words": 175
+  }
+ ],
+ "removed_units": [
+  {
+   "kind": "fact",
+   "id": "builtins_collections",
+   "name": "Collection builtins",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "lists",
+    "expressions",
+    "functions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/builtins_collections.wcl",
+   "line": 1,
+   "words": 222
+  },
+  {
+   "kind": "fact",
+   "id": "builtins_numeric",
+   "name": "Math builtins",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "numbers",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/builtins_numeric.wcl",
+   "line": 1,
+   "words": 152
+  },
+  {
+   "kind": "fact",
+   "id": "builtins_records",
+   "name": "Record builtins",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "records",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/builtins_records.wcl",
+   "line": 1,
+   "words": 145
+  },
+  {
+   "kind": "fact",
+   "id": "builtins_reflection",
+   "name": "Reflection builtins",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "schema",
+    "namespaces"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/builtins_reflection.wcl",
+   "line": 1,
+   "words": 124
+  },
+  {
+   "kind": "fact",
+   "id": "builtins_strings",
+   "name": "String builtins",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "strings",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/builtins_strings.wcl",
+   "line": 1,
+   "words": 186
+  }
+ ],
+ "added_edges": [
+  [
+   "block_expressions",
+   "control_flow"
+  ],
+  [
+   "block_expressions",
+   "expressions"
+  ],
+  [
+   "block_expressions",
+   "let_bindings"
+  ],
+  [
+   "block_schema",
+   "child_count_constraints"
+  ],
+  [
+   "block_schema",
+   "document_schema"
+  ],
+  [
+   "block_schema",
+   "fields_blocks"
+  ],
+  [
+   "block_schema",
+   "records"
+  ],
+  [
+   "block_schema",
+   "ref_integrity"
+  ],
+  [
+   "block_schema",
+   "schema"
+  ],
+  [
+   "blocks",
+   "fields"
+  ],
+  [
+   "blocks",
+   "fields_blocks"
+  ],
+  [
+   "blocks",
+   "namespaces"
+  ],
+  [
+   "blocks",
+   "schema"
+  ],
+  [
+   "child_count_constraints",
+   "block_schema"
+  ],
+  [
+   "child_count_constraints",
+   "document_schema"
+  ],
+  [
+   "child_count_constraints",
+   "ref_integrity"
+  ],
+  [
+   "child_count_constraints",
+   "schema"
+  ],
+  [
+   "control_flow",
+   "block_expressions"
+  ],
+  [
+   "control_flow",
+   "if_else"
+  ],
+  [
+   "control_flow",
+   "if_let"
+  ],
+  [
+   "control_flow",
+   "let_bindings"
+  ],
+  [
+   "control_flow",
+   "match_expr"
+  ],
+  [
+   "control_flow",
+   "patterns"
+  ],
+  [
+   "control_flow",
+   "try_catch"
+  ],
+  [
+   "document_schema",
+   "block_schema"
+  ],
+  [
+   "document_schema",
+   "child_count_constraints"
+  ],
+  [
+   "document_schema",
+   "records"
+  ],
+  [
+   "document_schema",
+   "ref_integrity"
+  ],
+  [
+   "document_schema",
+   "schema"
+  ],
+  [
+   "expressions",
+   "function_calls"
+  ],
+  [
+   "expressions",
+   "member_access"
+  ],
+  [
+   "expressions",
+   "numeric_promotion"
+  ],
+  [
+   "expressions",
+   "operators"
+  ],
+  [
+   "fields",
+   "blocks"
+  ],
+  [
+   "fields",
+   "expressions"
+  ],
+  [
+   "fields",
+   "fields_blocks"
+  ],
+  [
+   "fields",
+   "schema"
+  ],
+  [
+   "fields_blocks",
+   "blocks"
+  ],
+  [
+   "fields_blocks",
+   "fields"
+  ],
+  [
+   "fn_items",
+   "expressions"
+  ],
+  [
+   "fn_items",
+   "function_literals"
+  ],
+  [
+   "fn_items",
+   "function_types"
+  ],
+  [
+   "fn_items",
+   "functions"
+  ],
+  [
+   "fn_items",
+   "higher_order_functions"
+  ],
+  [
+   "function_calls",
+   "expressions"
+  ],
+  [
+   "function_calls",
+   "functions"
+  ],
+  [
+   "function_calls",
+   "member_access"
+  ],
+  [
+   "function_literals",
+   "expressions"
+  ],
+  [
+   "function_literals",
+   "fn_items"
+  ],
+  [
+   "function_literals",
+   "function_types"
+  ],
+  [
+   "function_literals",
+   "functions"
+  ],
+  [
+   "function_literals",
+   "higher_order_functions"
+  ],
+  [
+   "function_types",
+   "expressions"
+  ],
+  [
+   "function_types",
+   "fn_items"
+  ],
+  [
+   "function_types",
+   "function_literals"
+  ],
+  [
+   "function_types",
+   "functions"
+  ],
+  [
+   "function_types",
+   "higher_order_functions"
+  ],
+  [
+   "functions",
+   "fn_items"
+  ],
+  [
+   "functions",
+   "function_literals"
+  ],
+  [
+   "functions",
+   "function_types"
+  ],
+  [
+   "functions",
+   "higher_order_functions"
+  ],
+  [
+   "heredocs",
+   "expressions"
+  ],
+  [
+   "heredocs",
+   "raw_heredocs"
+  ],
+  [
+   "heredocs",
+   "string_escapes"
+  ],
+  [
+   "heredocs",
+   "string_interpolation"
+  ],
+  [
+   "heredocs",
+   "string_literals"
+  ],
+  [
+   "heredocs",
+   "strings"
+  ],
+  [
+   "higher_order_functions",
+   "fn_items"
+  ],
+  [
+   "higher_order_functions",
+   "function_literals"
+  ],
+  [
+   "higher_order_functions",
+   "function_types"
+  ],
+  [
+   "higher_order_functions",
+   "functions"
+  ],
+  [
+   "higher_order_functions",
+   "lists"
+  ],
+  [
+   "if_else",
+   "control_flow"
+  ],
+  [
+   "if_else",
+   "expressions"
+  ],
+  [
+   "if_else",
+   "if_let"
+  ],
+  [
+   "if_else",
+   "match_expr"
+  ],
+  [
+   "if_let",
+   "control_flow"
+  ],
+  [
+   "if_let",
+   "match_expr"
+  ],
+  [
+   "if_let",
+   "optionals"
+  ],
+  [
+   "if_let",
+   "patterns"
+  ],
+  [
+   "let_bindings",
+   "block_expressions"
+  ],
+  [
+   "let_bindings",
+   "control_flow"
+  ],
+  [
+   "let_bindings",
+   "expressions"
+  ],
+  [
+   "let_bindings",
+   "functions"
+  ],
+  [
+   "match_expr",
+   "control_flow"
+  ],
+  [
+   "match_expr",
+   "if_let"
+  ],
+  [
+   "match_expr",
+   "optionals"
+  ],
+  [
+   "match_expr",
+   "patterns"
+  ],
+  [
+   "match_expr",
+   "unions"
+  ],
+  [
+   "member_access",
+   "expressions"
+  ],
+  [
+   "member_access",
+   "fields"
+  ],
+  [
+   "member_access",
+   "function_calls"
+  ],
+  [
+   "namespaces",
+   "qualified_kinds"
+  ],
+  [
+   "namespaces",
+   "use_declarations"
+  ],
+  [
+   "numbers",
+   "numeric_promotion"
+  ],
+  [
+   "numeric_promotion",
+   "expressions"
+  ],
+  [
+   "numeric_promotion",
+   "numbers"
+  ],
+  [
+   "patterns",
+   "control_flow"
+  ],
+  [
+   "patterns",
+   "match_expr"
+  ],
+  [
+   "patterns",
+   "optionals"
+  ],
+  [
+   "patterns",
+   "unions"
+  ],
+  [
+   "qualified_kinds",
+   "imports"
+  ],
+  [
+   "qualified_kinds",
+   "namespaces"
+  ],
+  [
+   "qualified_kinds",
+   "schema"
+  ],
+  [
+   "qualified_kinds",
+   "use_declarations"
+  ],
+  [
+   "raw_heredocs",
+   "expressions"
+  ],
+  [
+   "raw_heredocs",
+   "heredocs"
+  ],
+  [
+   "raw_heredocs",
+   "string_escapes"
+  ],
+  [
+   "raw_heredocs",
+   "string_interpolation"
+  ],
+  [
+   "raw_heredocs",
+   "string_literals"
+  ],
+  [
+   "raw_heredocs",
+   "strings"
+  ],
+  [
+   "records",
+   "type_aliases"
+  ],
+  [
+   "ref_integrity",
+   "block_schema"
+  ],
+  [
+   "ref_integrity",
+   "connections"
+  ],
+  [
+   "ref_integrity",
+   "document_schema"
+  ],
+  [
+   "ref_integrity",
+   "references"
+  ],
+  [
+   "ref_integrity",
+   "schema"
+  ],
+  [
+   "schema",
+   "block_schema"
+  ],
+  [
+   "schema",
+   "child_count_constraints"
+  ],
+  [
+   "schema",
+   "document_schema"
+  ],
+  [
+   "schema",
+   "ref_integrity"
+  ],
+  [
+   "self_parent",
+   "expressions"
+  ],
+  [
+   "self_parent",
+   "fields_blocks"
+  ],
+  [
+   "self_parent",
+   "references"
+  ],
+  [
+   "string_escapes",
+   "expressions"
+  ],
+  [
+   "string_escapes",
+   "heredocs"
+  ],
+  [
+   "string_escapes",
+   "raw_heredocs"
+  ],
+  [
+   "string_escapes",
+   "string_interpolation"
+  ],
+  [
+   "string_escapes",
+   "string_literals"
+  ],
+  [
+   "string_escapes",
+   "strings"
+  ],
+  [
+   "string_interpolation",
+   "expressions"
+  ],
+  [
+   "string_interpolation",
+   "heredocs"
+  ],
+  [
+   "string_interpolation",
+   "raw_heredocs"
+  ],
+  [
+   "string_interpolation",
+   "string_escapes"
+  ],
+  [
+   "string_interpolation",
+   "string_literals"
+  ],
+  [
+   "string_interpolation",
+   "strings"
+  ],
+  [
+   "string_literals",
+   "expressions"
+  ],
+  [
+   "string_literals",
+   "heredocs"
+  ],
+  [
+   "string_literals",
+   "raw_heredocs"
+  ],
+  [
+   "string_literals",
+   "string_escapes"
+  ],
+  [
+   "string_literals",
+   "string_interpolation"
+  ],
+  [
+   "string_literals",
+   "strings"
+  ],
+  [
+   "string_literals",
+   "symbols"
+  ],
+  [
+   "strings",
+   "heredocs"
+  ],
+  [
+   "strings",
+   "raw_heredocs"
+  ],
+  [
+   "strings",
+   "string_escapes"
+  ],
+  [
+   "strings",
+   "string_interpolation"
+  ],
+  [
+   "strings",
+   "string_literals"
+  ],
+  [
+   "symbol_set",
+   "symbols"
+  ],
+  [
+   "symbol_set",
+   "unions"
+  ],
+  [
+   "symbols",
+   "symbol_set"
+  ],
+  [
+   "try_catch",
+   "block_expressions"
+  ],
+  [
+   "try_catch",
+   "control_flow"
+  ],
+  [
+   "try_catch",
+   "expressions"
+  ],
+  [
+   "type_aliases",
+   "records"
+  ],
+  [
+   "type_aliases",
+   "schema"
+  ],
+  [
+   "type_aliases",
+   "type_constraints"
+  ],
+  [
+   "use_declarations",
+   "imports"
+  ],
+  [
+   "use_declarations",
+   "namespaces"
+  ],
+  [
+   "use_declarations",
+   "qualified_kinds"
+  ]
+ ],
+ "removed_edges": [
+  [
+   "builtins_collections",
+   "expressions"
+  ],
+  [
+   "builtins_collections",
+   "functions"
+  ],
+  [
+   "builtins_collections",
+   "lists"
+  ],
+  [
+   "builtins_numeric",
+   "expressions"
+  ],
+  [
+   "builtins_numeric",
+   "numbers"
+  ],
+  [
+   "builtins_records",
+   "expressions"
+  ],
+  [
+   "builtins_records",
+   "records"
+  ],
+  [
+   "builtins_reflection",
+   "namespaces"
+  ],
+  [
+   "builtins_reflection",
+   "schema"
+  ],
+  [
+   "builtins_strings",
+   "expressions"
+  ],
+  [
+   "builtins_strings",
+   "strings"
+  ],
+  [
+   "control_flow",
+   "functions"
+  ],
+  [
+   "control_flow",
+   "optionals"
+  ],
+  [
+   "control_flow",
+   "unions"
+  ],
+  [
+   "expressions",
+   "control_flow"
+  ],
+  [
+   "expressions",
+   "numbers"
+  ],
+  [
+   "expressions",
+   "strings"
+  ],
+  [
+   "functions",
+   "lists"
+  ],
+  [
+   "schema",
+   "references"
+  ]
+ ],
+ "new_hubs": [
+  {
+   "id": "control_flow",
+   "before": 5,
+   "after": 11
+  },
+  {
+   "id": "fields_blocks",
+   "before": 4,
+   "after": 8
+  },
+  {
+   "id": "functions",
+   "before": 3,
+   "after": 7
+  },
+  {
+   "id": "namespaces",
+   "before": 4,
+   "after": 6
+  },
+  {
+   "id": "references",
+   "before": 5,
+   "after": 6
+  },
+  {
+   "id": "strings",
+   "before": 3,
+   "after": 6
+  },
+  {
+   "id": "symbols",
+   "before": 5,
+   "after": 7
+  },
+  {
+   "id": "unions",
+   "before": 4,
+   "after": 6
+  }
+ ],
+ "new_over_cap": [
+  {
+   "id": "block_schema",
+   "before": 0,
+   "after": 6
+  },
+  {
+   "id": "control_flow",
+   "before": 4,
+   "after": 8
+  },
+  {
+   "id": "functions",
+   "before": 3,
+   "after": 6
+  },
+  {
+   "id": "heredocs",
+   "before": 0,
+   "after": 6
+  },
+  {
+   "id": "raw_heredocs",
+   "before": 0,
+   "after": 6
+  },
+  {
+   "id": "schema",
+   "before": 4,
+   "after": 7
+  },
+  {
+   "id": "string_escapes",
+   "before": 0,
+   "after": 6
+  },
+  {
+   "id": "string_interpolation",
+   "before": 0,
+   "after": 6
+  },
+  {
+   "id": "string_literals",
+   "before": 0,
+   "after": 7
+  },
+  {
+   "id": "strings",
+   "before": 2,
+   "after": 7
+  }
+ ],
+ "orphans": [
+  {
+   "kind": "concept",
+   "id": "comments",
+   "name": "Comments",
+   "summary": "Line comments with `//` or `#`, preserved across fmt and edits.",
+   "audience": "both",
+   "related": [
+    "fields_blocks"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/comments.wcl",
+   "line": 2,
+   "words": 80
+  },
+  {
+   "kind": "example",
+   "id": "ex_heredoc",
+   "name": "Raw heredoc for backslash-heavy text",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 41,
+   "words": 59
+  },
+  {
+   "kind": "example",
+   "id": "ex_interface",
+   "name": "A structural interface",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 119,
+   "words": 55
+  },
+  {
+   "kind": "example",
+   "id": "ex_match",
+   "name": "Matching a union with guards",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 84,
+   "words": 67
+  },
+  {
+   "kind": "example",
+   "id": "ex_optionals",
+   "name": "Optional fields and the ?? default",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 101,
+   "words": 67
+  },
+  {
+   "kind": "example",
+   "id": "ex_pipe_table",
+   "name": "Pipe-table rows",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 139,
+   "words": 63
+  },
+  {
+   "kind": "example",
+   "id": "ex_records",
+   "name": "Declaring and constructing a record",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 4,
+   "words": 55
+  },
+  {
+   "kind": "example",
+   "id": "ex_schema_block",
+   "name": "web",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 59,
+   "words": 87
+  },
+  {
+   "kind": "example",
+   "id": "ex_unions",
+   "name": "A union with three variant forms",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 21,
+   "words": 72
+  },
+  {
+   "kind": "fact",
+   "id": "field_decorators",
+   "name": "Schema decorators",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "schema",
+    "fields_blocks",
+    "connections"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/field_decorators.wcl",
+   "line": 1,
+   "words": 194
+  },
+  {
+   "kind": "procedure",
+   "id": "inspect_values",
+   "name": "Inspect and edit values with eval, set and diff",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "cli",
+    "references"
+   ],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/processes/inspect_values.wcl",
+   "line": 1,
+   "words": 279
+  },
+  {
+   "kind": "fact",
+   "id": "number_literals",
+   "name": "Number literals: radixes and width suffixes",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "numbers",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/number_literals.wcl",
+   "line": 1,
+   "words": 125
+  },
+  {
+   "kind": "fact",
+   "id": "primitive_types",
+   "name": "WCL primitive types",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "numbers",
+    "strings",
+    "booleans",
+    "symbols",
+    "identifiers"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/primitive_types.wcl",
+   "line": 1,
+   "words": 172
+  },
+  {
+   "kind": "procedure",
+   "id": "scaffold_init",
+   "name": "Scaffold a new project with wcl init",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "cli"
+   ],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/processes/scaffold_init.wcl",
+   "line": 1,
+   "words": 233
+  },
+  {
+   "kind": "concept",
+   "id": "self_parent",
+   "name": "self & parent",
+   "summary": "Keywords that navigate the enclosing scope \u2014 self is the current block, parent the one around it.",
+   "audience": "both",
+   "related": [
+    "references",
+    "fields_blocks",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/self_parent.wcl",
+   "line": 1,
+   "words": 255
+  },
+  {
+   "kind": "procedure",
+   "id": "validate_format",
+   "name": "Validate and format a WCL file",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "cli",
+    "schema"
+   ],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/processes/validate_format.wcl",
+   "line": 1,
+   "words": 227
+  }
+ ],
+ "dangling": [],
+ "units_after": {
+  "block_expressions": {
+   "kind": "concept",
+   "id": "block_expressions",
+   "name": "Block Expressions",
+   "summary": "A { ... } expression holds let bindings followed by a tail expression, which is the block's value.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "let_bindings",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/block_expressions.wcl",
+   "line": 1,
+   "words": 67
+  },
+  "block_schema": {
+   "kind": "concept",
+   "id": "block_schema",
+   "name": "Block Schema",
+   "summary": "Declaring nestable blocks with @block, @inline, @child/@children, and @default.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "document_schema",
+    "ref_integrity",
+    "child_count_constraints",
+    "fields_blocks",
+    "records"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/block_schema.wcl",
+   "line": 1,
+   "words": 180
+  },
+  "blocks": {
+   "kind": "concept",
+   "id": "blocks",
+   "name": "Blocks",
+   "summary": "A block is a named group of fields that can nest other blocks.",
+   "audience": "both",
+   "related": [
+    "fields",
+    "fields_blocks",
+    "schema",
+    "namespaces"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/blocks.wcl",
+   "line": 1,
+   "words": 155
+  },
+  "booleans": {
+   "kind": "concept",
+   "id": "booleans",
+   "name": "Booleans",
+   "summary": "The bool type with exactly two values, true and false.",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "control_flow"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/booleans.wcl",
+   "line": 1,
+   "words": 101
+  },
+  "child_count_constraints": {
+   "kind": "concept",
+   "id": "child_count_constraints",
+   "name": "Child-count Constraints",
+   "summary": "Constraining nested children with max_children and required_children on @block.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "block_schema",
+    "document_schema",
+    "ref_integrity"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/child_count_constraints.wcl",
+   "line": 1,
+   "words": 88
+  },
+  "cli": {
+   "kind": "concept",
+   "id": "cli",
+   "name": "CLI Reference",
+   "summary": "The wcl binary: parse, check, eval, set, fmt, repl, lsp, init, wdoc, and diff.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "imports"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/cli.wcl",
+   "line": 1,
+   "words": 701
+  },
+  "comments": {
+   "kind": "concept",
+   "id": "comments",
+   "name": "Comments",
+   "summary": "Line comments with `//` or `#`, preserved across fmt and edits.",
+   "audience": "both",
+   "related": [
+    "fields_blocks"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/comments.wcl",
+   "line": 2,
+   "words": 80
+  },
+  "connections": {
+   "kind": "concept",
+   "id": "connections",
+   "name": "Connections",
+   "summary": "Typed relationships between block instances, populated by arrow statements.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "references",
+    "symbols"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/connections.wcl",
+   "line": 1,
+   "words": 342
+  },
+  "control_flow": {
+   "kind": "concept",
+   "id": "control_flow",
+   "name": "Control Flow",
+   "summary": "if/else, match with patterns, if let, let bindings, blocks, and try/catch.",
+   "audience": "both",
+   "related": [
+    "if_else",
+    "match_expr",
+    "if_let",
+    "let_bindings",
+    "block_expressions",
+    "try_catch",
+    "patterns",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/control_flow.wcl",
+   "line": 1,
+   "words": 138
+  },
+  "document_schema": {
+   "kind": "concept",
+   "id": "document_schema",
+   "name": "Document Schema",
+   "summary": "Marking a document root with @document, and how schemas merge per namespace.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "block_schema",
+    "ref_integrity",
+    "child_count_constraints",
+    "records"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/document_schema.wcl",
+   "line": 1,
+   "words": 193
+  },
+  "expressions": {
+   "kind": "concept",
+   "id": "expressions",
+   "name": "Expressions",
+   "summary": "The expression grammar \u2014 operators, member access, calls, and constructor forms.",
+   "audience": "both",
+   "related": [
+    "member_access",
+    "function_calls",
+    "operators",
+    "numeric_promotion",
+    "functions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/expressions.wcl",
+   "line": 1,
+   "words": 161
+  },
+  "fields": {
+   "kind": "concept",
+   "id": "fields",
+   "name": "Fields",
+   "summary": "A field binds a name to a value with `=`.",
+   "audience": "both",
+   "related": [
+    "blocks",
+    "fields_blocks",
+    "expressions",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/fields.wcl",
+   "line": 1,
+   "words": 52
+  },
+  "fields_blocks": {
+   "kind": "concept",
+   "id": "fields_blocks",
+   "name": "Fields & Blocks",
+   "summary": "The structural backbone \u2014 fields bind names to values, blocks group and nest them.",
+   "audience": "both",
+   "related": [
+    "fields",
+    "blocks",
+    "schema",
+    "expressions",
+    "namespaces"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/fields_blocks.wcl",
+   "line": 1,
+   "words": 69
+  },
+  "fn_items": {
+   "kind": "concept",
+   "id": "fn_items",
+   "name": "fn Items",
+   "summary": "The `fn` item form \u2014 a reusable named function declaration.",
+   "audience": "both",
+   "related": [
+    "functions",
+    "function_literals",
+    "higher_order_functions",
+    "function_types",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/fn_items.wcl",
+   "line": 1,
+   "words": 103
+  },
+  "function_calls": {
+   "kind": "concept",
+   "id": "function_calls",
+   "name": "Function Calls",
+   "summary": "Parentheses call a function or constructor with lazily-evaluated arguments.",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "member_access",
+    "functions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/function_calls.wcl",
+   "line": 1,
+   "words": 70
+  },
+  "function_literals": {
+   "kind": "concept",
+   "id": "function_literals",
+   "name": "Function Literals",
+   "summary": "Inline `fn(params) -> Return body` function values.",
+   "audience": "both",
+   "related": [
+    "functions",
+    "fn_items",
+    "higher_order_functions",
+    "function_types",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/function_literals.wcl",
+   "line": 1,
+   "words": 62
+  },
+  "function_types": {
+   "kind": "concept",
+   "id": "function_types",
+   "name": "Function Types",
+   "summary": "The `fn(T1, T2, ...) -> R` type for fields that hold callables.",
+   "audience": "both",
+   "related": [
+    "functions",
+    "function_literals",
+    "fn_items",
+    "higher_order_functions",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/function_types.wcl",
+   "line": 1,
+   "words": 89
+  },
+  "functions": {
+   "kind": "concept",
+   "id": "functions",
+   "name": "Functions",
+   "summary": "First-class function values \u2014 literals, fn items, higher-order, and function types.",
+   "audience": "both",
+   "related": [
+    "function_literals",
+    "fn_items",
+    "higher_order_functions",
+    "function_types",
+    "expressions",
+    "control_flow"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/functions.wcl",
+   "line": 1,
+   "words": 90
+  },
+  "heredocs": {
+   "kind": "concept",
+   "id": "heredocs",
+   "name": "Heredocs",
+   "summary": "`<<TAG ... TAG` multi-line strings interpret escapes and strip common indentation.",
+   "audience": "both",
+   "related": [
+    "strings",
+    "string_literals",
+    "string_escapes",
+    "raw_heredocs",
+    "string_interpolation",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/heredocs.wcl",
+   "line": 1,
+   "words": 80
+  },
+  "higher_order_functions": {
+   "kind": "concept",
+   "id": "higher_order_functions",
+   "name": "Higher-order Functions",
+   "summary": "Functions that take and return other functions.",
+   "audience": "both",
+   "related": [
+    "functions",
+    "function_literals",
+    "fn_items",
+    "function_types",
+    "lists"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/higher_order_functions.wcl",
+   "line": 1,
+   "words": 79
+  },
+  "identifiers": {
+   "kind": "concept",
+   "id": "identifiers",
+   "name": "Identifiers",
+   "summary": "The naming rule for fields, types, kinds, labels, and bindings, plus reserved words.",
+   "audience": "both",
+   "related": [
+    "namespaces",
+    "symbols"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/identifiers.wcl",
+   "line": 1,
+   "words": 346
+  },
+  "if_else": {
+   "kind": "concept",
+   "id": "if_else",
+   "name": "if / else",
+   "summary": "An if is an expression; branches must agree on a type, else if chains for multi-way branches.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "match_expr",
+    "if_let",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/if_else.wcl",
+   "line": 1,
+   "words": 69
+  },
+  "if_let": {
+   "kind": "concept",
+   "id": "if_let",
+   "name": "if let",
+   "summary": "Binds and branches in a single step when you only care about a single variant or pattern.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "match_expr",
+    "patterns",
+    "optionals"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/if_let.wcl",
+   "line": 1,
+   "words": 74
+  },
+  "imports": {
+   "kind": "concept",
+   "id": "imports",
+   "name": "Imports & Modules",
+   "summary": "Pull another file's declarations into the document \u2014 disk and system forms.",
+   "audience": "both",
+   "related": [
+    "namespaces",
+    "identifiers",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/imports.wcl",
+   "line": 1,
+   "words": 287
+  },
+  "interfaces": {
+   "kind": "concept",
+   "id": "interfaces",
+   "name": "Interfaces",
+   "summary": "Structural contracts \u2014 a set of fields a type must have, satisfied automatically.",
+   "audience": "both",
+   "related": [
+    "records",
+    "references",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/interfaces.wcl",
+   "line": 1,
+   "words": 136
+  },
+  "let_bindings": {
+   "kind": "concept",
+   "id": "let_bindings",
+   "name": "let bindings",
+   "summary": "A let names a reusable value or function; resolves by name but is not document data.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "block_expressions",
+    "functions",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/let_bindings.wcl",
+   "line": 1,
+   "words": 147
+  },
+  "lists": {
+   "kind": "concept",
+   "id": "lists",
+   "name": "Lists",
+   "summary": "Ordered, homogeneous sequences \u2014 list<T> \u2014 and the collection builtins over them.",
+   "audience": "both",
+   "related": [
+    "tables",
+    "tensors",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/lists.wcl",
+   "line": 1,
+   "words": 371
+  },
+  "match_expr": {
+   "kind": "concept",
+   "id": "match_expr",
+   "name": "match",
+   "summary": "Tests a value against a sequence of patterns, returning the body of the first that matches.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "patterns",
+    "if_let",
+    "unions",
+    "optionals"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/match.wcl",
+   "line": 1,
+   "words": 151
+  },
+  "member_access": {
+   "kind": "concept",
+   "id": "member_access",
+   "name": "Member Access",
+   "summary": "A dotted path reads a field from records, variants, and composites.",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "function_calls",
+    "fields"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/member_access.wcl",
+   "line": 1,
+   "words": 59
+  },
+  "namespaces": {
+   "kind": "concept",
+   "id": "namespaces",
+   "name": "Namespaces",
+   "summary": "Scope declarations under a dotted path; use and :: control how names resolve.",
+   "audience": "both",
+   "related": [
+    "use_declarations",
+    "qualified_kinds",
+    "imports",
+    "identifiers",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/namespaces.wcl",
+   "line": 1,
+   "words": 173
+  },
+  "numbers": {
+   "kind": "concept",
+   "id": "numbers",
+   "name": "Numbers",
+   "summary": "Fixed-width signed and unsigned integers plus two float widths, with literal suffixes.",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "lists",
+    "numeric_promotion"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/numbers.wcl",
+   "line": 1,
+   "words": 181
+  },
+  "numeric_promotion": {
+   "kind": "concept",
+   "id": "numeric_promotion",
+   "name": "Numeric Promotion",
+   "summary": "Arithmetic and comparison widen mixed numeric operands to a common type.",
+   "audience": "both",
+   "related": [
+    "numbers",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/numeric_promotion.wcl",
+   "line": 1,
+   "words": 74
+  },
+  "optionals": {
+   "kind": "concept",
+   "id": "optionals",
+   "name": "Optionals",
+   "summary": "Values that may be present or absent \u2014 the none literal and the ? type suffix.",
+   "audience": "both",
+   "related": [
+    "unions",
+    "control_flow"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/optionals.wcl",
+   "line": 1,
+   "words": 347
+  },
+  "qualified_kinds": {
+   "kind": "concept",
+   "id": "qualified_kinds",
+   "name": "Qualified Block Kinds",
+   "summary": "Block and table kinds are namespace-scoped; a ::-qualified kind picks a schema from a specific namespace.",
+   "audience": "both",
+   "related": [
+    "namespaces",
+    "use_declarations",
+    "imports",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/qualified_kinds.wcl",
+   "line": 1,
+   "words": 207
+  },
+  "raw_heredocs": {
+   "kind": "concept",
+   "id": "raw_heredocs",
+   "name": "Raw Heredocs",
+   "summary": "Single-quoted opening tag takes the body verbatim \u2014 no escapes, no interpolation.",
+   "audience": "both",
+   "related": [
+    "strings",
+    "string_literals",
+    "string_escapes",
+    "heredocs",
+    "string_interpolation",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/raw_heredocs.wcl",
+   "line": 1,
+   "words": 103
+  },
+  "records": {
+   "kind": "concept",
+   "id": "records",
+   "name": "Records",
+   "summary": "Named records via the type keyword \u2014 fixed sets of named, typed fields.",
+   "audience": "both",
+   "related": [
+    "unions",
+    "interfaces",
+    "schema",
+    "type_aliases"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/records.wcl",
+   "line": 1,
+   "words": 245
+  },
+  "ref_integrity": {
+   "kind": "concept",
+   "id": "ref_integrity",
+   "name": "Referential Integrity",
+   "summary": "Validating that id fields name an existing block with @ref.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "block_schema",
+    "document_schema",
+    "references",
+    "connections"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/ref_integrity.wcl",
+   "line": 1,
+   "words": 117
+  },
+  "references": {
+   "kind": "concept",
+   "id": "references",
+   "name": "References",
+   "summary": "&T fields that accept any value structurally satisfying an interface.",
+   "audience": "both",
+   "related": [
+    "interfaces",
+    "schema",
+    "connections"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/references.wcl",
+   "line": 1,
+   "words": 231
+  },
+  "schema": {
+   "kind": "concept",
+   "id": "schema",
+   "name": "Schema & Decorators",
+   "summary": "Decorators that describe a document's legal structure, validated by wcl check.",
+   "audience": "both",
+   "related": [
+    "block_schema",
+    "document_schema",
+    "ref_integrity",
+    "child_count_constraints",
+    "records",
+    "fields_blocks",
+    "connections"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/schema.wcl",
+   "line": 1,
+   "words": 124
+  },
+  "self_parent": {
+   "kind": "concept",
+   "id": "self_parent",
+   "name": "self & parent",
+   "summary": "Keywords that navigate the enclosing scope \u2014 self is the current block, parent the one around it.",
+   "audience": "both",
+   "related": [
+    "references",
+    "fields_blocks",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/self_parent.wcl",
+   "line": 1,
+   "words": 255
+  },
+  "string_escapes": {
+   "kind": "concept",
+   "id": "string_escapes",
+   "name": "String Escapes",
+   "summary": "Double-quoted strings interpret backslash escapes; raw heredocs take bytes verbatim.",
+   "audience": "both",
+   "related": [
+    "strings",
+    "string_literals",
+    "heredocs",
+    "raw_heredocs",
+    "string_interpolation",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/string_escapes.wcl",
+   "line": 1,
+   "words": 75
+  },
+  "string_interpolation": {
+   "kind": "concept",
+   "id": "string_interpolation",
+   "name": "String Interpolation",
+   "summary": "Opt-in with a `$` prefix; `${ ... }` slots splice evaluated expressions into the string.",
+   "audience": "both",
+   "related": [
+    "strings",
+    "string_literals",
+    "string_escapes",
+    "heredocs",
+    "raw_heredocs",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/string_interpolation.wcl",
+   "line": 1,
+   "words": 94
+  },
+  "string_literals": {
+   "kind": "concept",
+   "id": "string_literals",
+   "name": "String Literals",
+   "summary": "UTF-8 by default; ascii/utf16/utf32 prefixes select another encoding.",
+   "audience": "both",
+   "related": [
+    "strings",
+    "string_escapes",
+    "heredocs",
+    "raw_heredocs",
+    "string_interpolation",
+    "symbols",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/string_literals.wcl",
+   "line": 1,
+   "words": 127
+  },
+  "strings": {
+   "kind": "concept",
+   "id": "strings",
+   "name": "Strings",
+   "summary": "UTF-8 by default, with encoding prefixes, heredocs, and opt-in interpolation.",
+   "audience": "both",
+   "related": [
+    "string_literals",
+    "string_escapes",
+    "heredocs",
+    "raw_heredocs",
+    "string_interpolation",
+    "symbols",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/strings.wcl",
+   "line": 1,
+   "words": 131
+  },
+  "symbol_set": {
+   "kind": "concept",
+   "id": "symbol_set",
+   "name": "Symbol Sets",
+   "summary": "A symbol_set names a closed vocabulary of symbols \u2014 an enum-like type.",
+   "audience": "both",
+   "related": [
+    "symbols",
+    "unions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/symbol_set.wcl",
+   "line": 1,
+   "words": 107
+  },
+  "symbols": {
+   "kind": "concept",
+   "id": "symbols",
+   "name": "Symbols",
+   "summary": "Identifier-like :name values for tags and enum-like choices, plus symbol_set vocabularies.",
+   "audience": "both",
+   "related": [
+    "unions",
+    "identifiers",
+    "symbol_set"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/symbols.wcl",
+   "line": 1,
+   "words": 193
+  },
+  "tables": {
+   "kind": "concept",
+   "id": "tables",
+   "name": "Tables",
+   "summary": "Pipe-row syntax for writing many records of the same shape compactly.",
+   "audience": "both",
+   "related": [
+    "lists",
+    "records"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/tables.wcl",
+   "line": 1,
+   "words": 175
+  },
+  "tensors": {
+   "kind": "concept",
+   "id": "tensors",
+   "name": "Tensors",
+   "summary": "Shape-carrying N-dimensional arrays \u2014 tensor<T, [dims...]>.",
+   "audience": "both",
+   "related": [
+    "lists",
+    "numbers"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/tensors.wcl",
+   "line": 1,
+   "words": 264
+  },
+  "try_catch": {
+   "kind": "concept",
+   "id": "try_catch",
+   "name": "try / catch",
+   "summary": "Evaluates a body; on failure the rendered message binds to the catch name and the handler's value is the result.",
+   "audience": "both",
+   "related": [
+    "control_flow",
+    "block_expressions",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/try_catch.wcl",
+   "line": 1,
+   "words": 144
+  },
+  "type_aliases": {
+   "kind": "concept",
+   "id": "type_aliases",
+   "name": "Type Aliases",
+   "summary": "type Name = TypeRef declares a transparent alias; constraint decorators travel to every field using it.",
+   "audience": "both",
+   "related": [
+    "records",
+    "type_constraints",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/type_aliases.wcl",
+   "line": 1,
+   "words": 100
+  },
+  "unions": {
+   "kind": "concept",
+   "id": "unions",
+   "name": "Unions",
+   "summary": "Tagged variant sets \u2014 a value that is exactly one of several alternatives.",
+   "audience": "both",
+   "related": [
+    "records",
+    "symbols",
+    "control_flow"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/unions.wcl",
+   "line": 1,
+   "words": 323
+  },
+  "use_declarations": {
+   "kind": "concept",
+   "id": "use_declarations",
+   "name": "use Declarations",
+   "summary": "use pulls qualified names from other namespaces into local scope so they can be written bare.",
+   "audience": "both",
+   "related": [
+    "namespaces",
+    "qualified_kinds",
+    "imports"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/use_declarations.wcl",
+   "line": 1,
+   "words": 175
+  },
+  "field_decorators": {
+   "kind": "fact",
+   "id": "field_decorators",
+   "name": "Schema decorators",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "schema",
+    "fields_blocks",
+    "connections"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/field_decorators.wcl",
+   "line": 1,
+   "words": 194
+  },
+  "number_literals": {
+   "kind": "fact",
+   "id": "number_literals",
+   "name": "Number literals: radixes and width suffixes",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "numbers",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/number_literals.wcl",
+   "line": 1,
+   "words": 125
+  },
+  "operators": {
+   "kind": "fact",
+   "id": "operators",
+   "name": "Operators",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "optionals",
+    "references"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/operators.wcl",
+   "line": 1,
+   "words": 100
+  },
+  "patterns": {
+   "kind": "fact",
+   "id": "patterns",
+   "name": "Patterns",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "match_expr",
+    "control_flow",
+    "unions",
+    "optionals"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/patterns.wcl",
+   "line": 1,
+   "words": 83
+  },
+  "primitive_types": {
+   "kind": "fact",
+   "id": "primitive_types",
+   "name": "WCL primitive types",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "numbers",
+    "strings",
+    "booleans",
+    "symbols",
+    "identifiers"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/primitive_types.wcl",
+   "line": 1,
+   "words": 172
+  },
+  "type_constraints": {
+   "kind": "fact",
+   "id": "type_constraints",
+   "name": "Type & field constraints",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "records",
+    "schema",
+    "fields_blocks"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/type_constraints.wcl",
+   "line": 1,
+   "words": 117
+  },
+  "inspect_values": {
+   "kind": "procedure",
+   "id": "inspect_values",
+   "name": "Inspect and edit values with eval, set and diff",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "cli",
+    "references"
+   ],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/processes/inspect_values.wcl",
+   "line": 1,
+   "words": 279
+  },
+  "scaffold_init": {
+   "kind": "procedure",
+   "id": "scaffold_init",
+   "name": "Scaffold a new project with wcl init",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "cli"
+   ],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/processes/scaffold_init.wcl",
+   "line": 1,
+   "words": 233
+  },
+  "validate_format": {
+   "kind": "procedure",
+   "id": "validate_format",
+   "name": "Validate and format a WCL file",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "cli",
+    "schema"
+   ],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/processes/validate_format.wcl",
+   "line": 1,
+   "words": 227
+  },
+  "ex_records": {
+   "kind": "example",
+   "id": "ex_records",
+   "name": "Declaring and constructing a record",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 4,
+   "words": 55
+  },
+  "ex_unions": {
+   "kind": "example",
+   "id": "ex_unions",
+   "name": "A union with three variant forms",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 21,
+   "words": 72
+  },
+  "ex_heredoc": {
+   "kind": "example",
+   "id": "ex_heredoc",
+   "name": "Raw heredoc for backslash-heavy text",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 41,
+   "words": 59
+  },
+  "ex_schema_block": {
+   "kind": "example",
+   "id": "ex_schema_block",
+   "name": "web",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 59,
+   "words": 87
+  },
+  "ex_match": {
+   "kind": "example",
+   "id": "ex_match",
+   "name": "Matching a union with guards",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 84,
+   "words": 67
+  },
+  "ex_optionals": {
+   "kind": "example",
+   "id": "ex_optionals",
+   "name": "Optional fields and the ?? default",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 101,
+   "words": 67
+  },
+  "ex_interface": {
+   "kind": "example",
+   "id": "ex_interface",
+   "name": "A structural interface",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 119,
+   "words": 55
+  },
+  "ex_pipe_table": {
+   "kind": "example",
+   "id": "ex_pipe_table",
+   "name": "Pipe-table rows",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 139,
+   "words": 63
+  }
+ },
+ "indexes_after": {
+  "quick_start": {
+   "kind": "index",
+   "id": "quick_start",
+   "name": "Quick Start",
+   "summary": "Get WCL running in a few minutes: declare a type, write data, check and evaluate.",
+   "audience": "both",
+   "related": [],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/reference/quickstart.wcl",
+   "line": 4,
+   "words": 243,
+   "pinned": []
+  }
+ },
+ "units_before": {
+  "booleans": {
+   "kind": "concept",
+   "id": "booleans",
+   "name": "Booleans",
+   "summary": "The bool type with exactly two values, true and false.",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "control_flow"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/booleans.wcl",
+   "line": 1,
+   "words": 101
+  },
+  "cli": {
+   "kind": "concept",
+   "id": "cli",
+   "name": "CLI Reference",
+   "summary": "The wcl binary: parse, check, eval, set, fmt, repl, lsp, init, wdoc, and diff.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "imports"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/cli.wcl",
+   "line": 1,
+   "words": 701
+  },
+  "comments": {
+   "kind": "concept",
+   "id": "comments",
+   "name": "Comments",
+   "summary": "Line comments with `//` or `#`, preserved across fmt and edits.",
+   "audience": "both",
+   "related": [
+    "fields_blocks"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/comments.wcl",
+   "line": 2,
+   "words": 80
+  },
+  "connections": {
+   "kind": "concept",
+   "id": "connections",
+   "name": "Connections",
+   "summary": "Typed relationships between block instances, populated by arrow statements.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "references",
+    "symbols"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/connections.wcl",
+   "line": 1,
+   "words": 342
+  },
+  "control_flow": {
+   "kind": "concept",
+   "id": "control_flow",
+   "name": "Control Flow",
+   "summary": "if/else, match with patterns, if let, let bindings, blocks, and try/catch.",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "optionals",
+    "unions",
+    "functions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/control_flow.wcl",
+   "line": 1,
+   "words": 600
+  },
+  "expressions": {
+   "kind": "concept",
+   "id": "expressions",
+   "name": "Expressions",
+   "summary": "The expression grammar \u2014 operators, member access, calls, and constructor forms.",
+   "audience": "both",
+   "related": [
+    "numbers",
+    "strings",
+    "control_flow",
+    "functions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/expressions.wcl",
+   "line": 1,
+   "words": 357
+  },
+  "fields_blocks": {
+   "kind": "concept",
+   "id": "fields_blocks",
+   "name": "Fields & Blocks",
+   "summary": "The structural backbone \u2014 fields bind names to values, blocks group and nest them.",
+   "audience": "both",
+   "related": [
+    "schema",
+    "expressions",
+    "namespaces"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/fields_blocks.wcl",
+   "line": 1,
+   "words": 209
+  },
+  "functions": {
+   "kind": "concept",
+   "id": "functions",
+   "name": "Functions",
+   "summary": "First-class function values \u2014 literals, fn items, higher-order, and function types.",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "control_flow",
+    "lists"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/functions.wcl",
+   "line": 1,
+   "words": 298
+  },
+  "identifiers": {
+   "kind": "concept",
+   "id": "identifiers",
+   "name": "Identifiers",
+   "summary": "The naming rule for fields, types, kinds, labels, and bindings, plus reserved words.",
+   "audience": "both",
+   "related": [
+    "namespaces",
+    "symbols"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/identifiers.wcl",
+   "line": 1,
+   "words": 346
+  },
+  "imports": {
+   "kind": "concept",
+   "id": "imports",
+   "name": "Imports & Modules",
+   "summary": "Pull another file's declarations into the document \u2014 disk and system forms.",
+   "audience": "both",
+   "related": [
+    "namespaces",
+    "identifiers",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/imports.wcl",
+   "line": 1,
+   "words": 287
+  },
+  "interfaces": {
+   "kind": "concept",
+   "id": "interfaces",
+   "name": "Interfaces",
+   "summary": "Structural contracts \u2014 a set of fields a type must have, satisfied automatically.",
+   "audience": "both",
+   "related": [
+    "records",
+    "references",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/interfaces.wcl",
+   "line": 1,
+   "words": 136
+  },
+  "lists": {
+   "kind": "concept",
+   "id": "lists",
+   "name": "Lists",
+   "summary": "Ordered, homogeneous sequences \u2014 list<T> \u2014 and the collection builtins over them.",
+   "audience": "both",
+   "related": [
+    "tables",
+    "tensors",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/lists.wcl",
+   "line": 1,
+   "words": 371
+  },
+  "namespaces": {
+   "kind": "concept",
+   "id": "namespaces",
+   "name": "Namespaces",
+   "summary": "Scope declarations under a dotted path; use and :: control how names resolve.",
+   "audience": "both",
+   "related": [
+    "imports",
+    "identifiers",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/namespaces.wcl",
+   "line": 1,
+   "words": 492
+  },
+  "numbers": {
+   "kind": "concept",
+   "id": "numbers",
+   "name": "Numbers",
+   "summary": "Fixed-width signed and unsigned integers plus two float widths, with literal suffixes.",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "lists"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/numbers.wcl",
+   "line": 1,
+   "words": 231
+  },
+  "optionals": {
+   "kind": "concept",
+   "id": "optionals",
+   "name": "Optionals",
+   "summary": "Values that may be present or absent \u2014 the none literal and the ? type suffix.",
+   "audience": "both",
+   "related": [
+    "unions",
+    "control_flow"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/optionals.wcl",
+   "line": 1,
+   "words": 347
+  },
+  "records": {
+   "kind": "concept",
+   "id": "records",
+   "name": "Records",
+   "summary": "Named records via the type keyword \u2014 fixed sets of named, typed fields.",
+   "audience": "both",
+   "related": [
+    "unions",
+    "interfaces",
+    "schema"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/records.wcl",
+   "line": 1,
+   "words": 316
+  },
+  "references": {
+   "kind": "concept",
+   "id": "references",
+   "name": "References",
+   "summary": "&T fields that accept any value structurally satisfying an interface.",
+   "audience": "both",
+   "related": [
+    "interfaces",
+    "schema",
+    "connections"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/references.wcl",
+   "line": 1,
+   "words": 231
+  },
+  "schema": {
+   "kind": "concept",
+   "id": "schema",
+   "name": "Schema & Decorators",
+   "summary": "Decorators that describe a document's legal structure, validated by wcl check.",
+   "audience": "both",
+   "related": [
+    "records",
+    "fields_blocks",
+    "connections",
+    "references"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/schema.wcl",
+   "line": 1,
+   "words": 672
+  },
+  "strings": {
+   "kind": "concept",
+   "id": "strings",
+   "name": "Strings",
+   "summary": "UTF-8 by default, with encoding prefixes, heredocs, and opt-in interpolation.",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "symbols"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/strings.wcl",
+   "line": 1,
+   "words": 460
+  },
+  "symbols": {
+   "kind": "concept",
+   "id": "symbols",
+   "name": "Symbols",
+   "summary": "Identifier-like :name values for tags and enum-like choices, plus symbol_set vocabularies.",
+   "audience": "both",
+   "related": [
+    "unions",
+    "identifiers"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/symbols.wcl",
+   "line": 1,
+   "words": 275
+  },
+  "tables": {
+   "kind": "concept",
+   "id": "tables",
+   "name": "Tables",
+   "summary": "Pipe-row syntax for writing many records of the same shape compactly.",
+   "audience": "both",
+   "related": [
+    "lists",
+    "records"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/tables.wcl",
+   "line": 1,
+   "words": 175
+  },
+  "tensors": {
+   "kind": "concept",
+   "id": "tensors",
+   "name": "Tensors",
+   "summary": "Shape-carrying N-dimensional arrays \u2014 tensor<T, [dims...]>.",
+   "audience": "both",
+   "related": [
+    "lists",
+    "numbers"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/tensors.wcl",
+   "line": 1,
+   "words": 264
+  },
+  "unions": {
+   "kind": "concept",
+   "id": "unions",
+   "name": "Unions",
+   "summary": "Tagged variant sets \u2014 a value that is exactly one of several alternatives.",
+   "audience": "both",
+   "related": [
+    "records",
+    "symbols",
+    "control_flow"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/concepts/unions.wcl",
+   "line": 1,
+   "words": 323
+  },
+  "builtins_collections": {
+   "kind": "fact",
+   "id": "builtins_collections",
+   "name": "Collection builtins",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "lists",
+    "expressions",
+    "functions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/builtins_collections.wcl",
+   "line": 1,
+   "words": 222
+  },
+  "builtins_numeric": {
+   "kind": "fact",
+   "id": "builtins_numeric",
+   "name": "Math builtins",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "numbers",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/builtins_numeric.wcl",
+   "line": 1,
+   "words": 152
+  },
+  "builtins_records": {
+   "kind": "fact",
+   "id": "builtins_records",
+   "name": "Record builtins",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "records",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/builtins_records.wcl",
+   "line": 1,
+   "words": 145
+  },
+  "builtins_reflection": {
+   "kind": "fact",
+   "id": "builtins_reflection",
+   "name": "Reflection builtins",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "schema",
+    "namespaces"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/builtins_reflection.wcl",
+   "line": 1,
+   "words": 124
+  },
+  "builtins_strings": {
+   "kind": "fact",
+   "id": "builtins_strings",
+   "name": "String builtins",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "strings",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/builtins_strings.wcl",
+   "line": 1,
+   "words": 186
+  },
+  "field_decorators": {
+   "kind": "fact",
+   "id": "field_decorators",
+   "name": "Schema decorators",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "schema",
+    "fields_blocks",
+    "connections"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/field_decorators.wcl",
+   "line": 1,
+   "words": 194
+  },
+  "number_literals": {
+   "kind": "fact",
+   "id": "number_literals",
+   "name": "Number literals: radixes and width suffixes",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "numbers",
+    "expressions"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/number_literals.wcl",
+   "line": 1,
+   "words": 125
+  },
+  "operators": {
+   "kind": "fact",
+   "id": "operators",
+   "name": "Operators",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "expressions",
+    "optionals",
+    "references"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/operators.wcl",
+   "line": 1,
+   "words": 100
+  },
+  "primitive_types": {
+   "kind": "fact",
+   "id": "primitive_types",
+   "name": "WCL primitive types",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "numbers",
+    "strings",
+    "booleans",
+    "symbols",
+    "identifiers"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/primitive_types.wcl",
+   "line": 1,
+   "words": 172
+  },
+  "type_constraints": {
+   "kind": "fact",
+   "id": "type_constraints",
+   "name": "Type & field constraints",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "records",
+    "schema",
+    "fields_blocks"
+   ],
+   "has_body": true,
+   "file": "docs/wskills/wcl/data/facts/type_constraints.wcl",
+   "line": 1,
+   "words": 117
+  },
+  "inspect_values": {
+   "kind": "procedure",
+   "id": "inspect_values",
+   "name": "Inspect and edit values with eval, set and diff",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "cli",
+    "references"
+   ],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/processes/inspect_values.wcl",
+   "line": 1,
+   "words": 279
+  },
+  "scaffold_init": {
+   "kind": "procedure",
+   "id": "scaffold_init",
+   "name": "Scaffold a new project with wcl init",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "cli"
+   ],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/processes/scaffold_init.wcl",
+   "line": 1,
+   "words": 233
+  },
+  "validate_format": {
+   "kind": "procedure",
+   "id": "validate_format",
+   "name": "Validate and format a WCL file",
+   "summary": "",
+   "audience": "both",
+   "related": [
+    "cli",
+    "schema"
+   ],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/processes/validate_format.wcl",
+   "line": 1,
+   "words": 227
+  },
+  "ex_records": {
+   "kind": "example",
+   "id": "ex_records",
+   "name": "Declaring and constructing a record",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 4,
+   "words": 55
+  },
+  "ex_unions": {
+   "kind": "example",
+   "id": "ex_unions",
+   "name": "A union with three variant forms",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 21,
+   "words": 72
+  },
+  "ex_heredoc": {
+   "kind": "example",
+   "id": "ex_heredoc",
+   "name": "Raw heredoc for backslash-heavy text",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 41,
+   "words": 59
+  },
+  "ex_schema_block": {
+   "kind": "example",
+   "id": "ex_schema_block",
+   "name": "web",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 59,
+   "words": 87
+  },
+  "ex_match": {
+   "kind": "example",
+   "id": "ex_match",
+   "name": "Matching a union with guards",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 84,
+   "words": 67
+  },
+  "ex_optionals": {
+   "kind": "example",
+   "id": "ex_optionals",
+   "name": "Optional fields and the ?? default",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 101,
+   "words": 67
+  },
+  "ex_interface": {
+   "kind": "example",
+   "id": "ex_interface",
+   "name": "A structural interface",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 119,
+   "words": 55
+  },
+  "ex_pipe_table": {
+   "kind": "example",
+   "id": "ex_pipe_table",
+   "name": "Pipe-table rows",
+   "summary": "",
+   "audience": "both",
+   "related": [],
+   "has_body": false,
+   "file": "docs/wskills/wcl/data/reference/examples.wcl",
+   "line": 139,
+   "words": 63
+  }
+ },
+ "edges_before": [
+  [
+   "booleans",
+   "control_flow"
+  ],
+  [
+   "booleans",
+   "expressions"
+  ],
+  [
+   "builtins_collections",
+   "expressions"
+  ],
+  [
+   "builtins_collections",
+   "functions"
+  ],
+  [
+   "builtins_collections",
+   "lists"
+  ],
+  [
+   "builtins_numeric",
+   "expressions"
+  ],
+  [
+   "builtins_numeric",
+   "numbers"
+  ],
+  [
+   "builtins_records",
+   "expressions"
+  ],
+  [
+   "builtins_records",
+   "records"
+  ],
+  [
+   "builtins_reflection",
+   "namespaces"
+  ],
+  [
+   "builtins_reflection",
+   "schema"
+  ],
+  [
+   "builtins_strings",
+   "expressions"
+  ],
+  [
+   "builtins_strings",
+   "strings"
+  ],
+  [
+   "cli",
+   "imports"
+  ],
+  [
+   "cli",
+   "schema"
+  ],
+  [
+   "comments",
+   "fields_blocks"
+  ],
+  [
+   "connections",
+   "references"
+  ],
+  [
+   "connections",
+   "schema"
+  ],
+  [
+   "connections",
+   "symbols"
+  ],
+  [
+   "control_flow",
+   "expressions"
+  ],
+  [
+   "control_flow",
+   "functions"
+  ],
+  [
+   "control_flow",
+   "optionals"
+  ],
+  [
+   "control_flow",
+   "unions"
+  ],
+  [
+   "expressions",
+   "control_flow"
+  ],
+  [
+   "expressions",
+   "functions"
+  ],
+  [
+   "expressions",
+   "numbers"
+  ],
+  [
+   "expressions",
+   "strings"
+  ],
+  [
+   "field_decorators",
+   "connections"
+  ],
+  [
+   "field_decorators",
+   "fields_blocks"
+  ],
+  [
+   "field_decorators",
+   "schema"
+  ],
+  [
+   "fields_blocks",
+   "expressions"
+  ],
+  [
+   "fields_blocks",
+   "namespaces"
+  ],
+  [
+   "fields_blocks",
+   "schema"
+  ],
+  [
+   "functions",
+   "control_flow"
+  ],
+  [
+   "functions",
+   "expressions"
+  ],
+  [
+   "functions",
+   "lists"
+  ],
+  [
+   "identifiers",
+   "namespaces"
+  ],
+  [
+   "identifiers",
+   "symbols"
+  ],
+  [
+   "imports",
+   "identifiers"
+  ],
+  [
+   "imports",
+   "namespaces"
+  ],
+  [
+   "imports",
+   "schema"
+  ],
+  [
+   "inspect_values",
+   "cli"
+  ],
+  [
+   "inspect_values",
+   "references"
+  ],
+  [
+   "interfaces",
+   "records"
+  ],
+  [
+   "interfaces",
+   "references"
+  ],
+  [
+   "interfaces",
+   "schema"
+  ],
+  [
+   "lists",
+   "expressions"
+  ],
+  [
+   "lists",
+   "tables"
+  ],
+  [
+   "lists",
+   "tensors"
+  ],
+  [
+   "namespaces",
+   "identifiers"
+  ],
+  [
+   "namespaces",
+   "imports"
+  ],
+  [
+   "namespaces",
+   "schema"
+  ],
+  [
+   "number_literals",
+   "expressions"
+  ],
+  [
+   "number_literals",
+   "numbers"
+  ],
+  [
+   "numbers",
+   "expressions"
+  ],
+  [
+   "numbers",
+   "lists"
+  ],
+  [
+   "operators",
+   "expressions"
+  ],
+  [
+   "operators",
+   "optionals"
+  ],
+  [
+   "operators",
+   "references"
+  ],
+  [
+   "optionals",
+   "control_flow"
+  ],
+  [
+   "optionals",
+   "unions"
+  ],
+  [
+   "primitive_types",
+   "booleans"
+  ],
+  [
+   "primitive_types",
+   "identifiers"
+  ],
+  [
+   "primitive_types",
+   "numbers"
+  ],
+  [
+   "primitive_types",
+   "strings"
+  ],
+  [
+   "primitive_types",
+   "symbols"
+  ],
+  [
+   "records",
+   "interfaces"
+  ],
+  [
+   "records",
+   "schema"
+  ],
+  [
+   "records",
+   "unions"
+  ],
+  [
+   "references",
+   "connections"
+  ],
+  [
+   "references",
+   "interfaces"
+  ],
+  [
+   "references",
+   "schema"
+  ],
+  [
+   "scaffold_init",
+   "cli"
+  ],
+  [
+   "schema",
+   "connections"
+  ],
+  [
+   "schema",
+   "fields_blocks"
+  ],
+  [
+   "schema",
+   "records"
+  ],
+  [
+   "schema",
+   "references"
+  ],
+  [
+   "strings",
+   "expressions"
+  ],
+  [
+   "strings",
+   "symbols"
+  ],
+  [
+   "symbols",
+   "identifiers"
+  ],
+  [
+   "symbols",
+   "unions"
+  ],
+  [
+   "tables",
+   "lists"
+  ],
+  [
+   "tables",
+   "records"
+  ],
+  [
+   "tensors",
+   "lists"
+  ],
+  [
+   "tensors",
+   "numbers"
+  ],
+  [
+   "type_constraints",
+   "fields_blocks"
+  ],
+  [
+   "type_constraints",
+   "records"
+  ],
+  [
+   "type_constraints",
+   "schema"
+  ],
+  [
+   "unions",
+   "control_flow"
+  ],
+  [
+   "unions",
+   "records"
+  ],
+  [
+   "unions",
+   "symbols"
+  ],
+  [
+   "validate_format",
+   "cli"
+  ],
+  [
+   "validate_format",
+   "schema"
+  ]
+ ],
+ "edges_after": [
+  [
+   "block_expressions",
+   "control_flow"
+  ],
+  [
+   "block_expressions",
+   "expressions"
+  ],
+  [
+   "block_expressions",
+   "let_bindings"
+  ],
+  [
+   "block_schema",
+   "child_count_constraints"
+  ],
+  [
+   "block_schema",
+   "document_schema"
+  ],
+  [
+   "block_schema",
+   "fields_blocks"
+  ],
+  [
+   "block_schema",
+   "records"
+  ],
+  [
+   "block_schema",
+   "ref_integrity"
+  ],
+  [
+   "block_schema",
+   "schema"
+  ],
+  [
+   "blocks",
+   "fields"
+  ],
+  [
+   "blocks",
+   "fields_blocks"
+  ],
+  [
+   "blocks",
+   "namespaces"
+  ],
+  [
+   "blocks",
+   "schema"
+  ],
+  [
+   "booleans",
+   "control_flow"
+  ],
+  [
+   "booleans",
+   "expressions"
+  ],
+  [
+   "child_count_constraints",
+   "block_schema"
+  ],
+  [
+   "child_count_constraints",
+   "document_schema"
+  ],
+  [
+   "child_count_constraints",
+   "ref_integrity"
+  ],
+  [
+   "child_count_constraints",
+   "schema"
+  ],
+  [
+   "cli",
+   "imports"
+  ],
+  [
+   "cli",
+   "schema"
+  ],
+  [
+   "comments",
+   "fields_blocks"
+  ],
+  [
+   "connections",
+   "references"
+  ],
+  [
+   "connections",
+   "schema"
+  ],
+  [
+   "connections",
+   "symbols"
+  ],
+  [
+   "control_flow",
+   "block_expressions"
+  ],
+  [
+   "control_flow",
+   "expressions"
+  ],
+  [
+   "control_flow",
+   "if_else"
+  ],
+  [
+   "control_flow",
+   "if_let"
+  ],
+  [
+   "control_flow",
+   "let_bindings"
+  ],
+  [
+   "control_flow",
+   "match_expr"
+  ],
+  [
+   "control_flow",
+   "patterns"
+  ],
+  [
+   "control_flow",
+   "try_catch"
+  ],
+  [
+   "document_schema",
+   "block_schema"
+  ],
+  [
+   "document_schema",
+   "child_count_constraints"
+  ],
+  [
+   "document_schema",
+   "records"
+  ],
+  [
+   "document_schema",
+   "ref_integrity"
+  ],
+  [
+   "document_schema",
+   "schema"
+  ],
+  [
+   "expressions",
+   "function_calls"
+  ],
+  [
+   "expressions",
+   "functions"
+  ],
+  [
+   "expressions",
+   "member_access"
+  ],
+  [
+   "expressions",
+   "numeric_promotion"
+  ],
+  [
+   "expressions",
+   "operators"
+  ],
+  [
+   "field_decorators",
+   "connections"
+  ],
+  [
+   "field_decorators",
+   "fields_blocks"
+  ],
+  [
+   "field_decorators",
+   "schema"
+  ],
+  [
+   "fields",
+   "blocks"
+  ],
+  [
+   "fields",
+   "expressions"
+  ],
+  [
+   "fields",
+   "fields_blocks"
+  ],
+  [
+   "fields",
+   "schema"
+  ],
+  [
+   "fields_blocks",
+   "blocks"
+  ],
+  [
+   "fields_blocks",
+   "expressions"
+  ],
+  [
+   "fields_blocks",
+   "fields"
+  ],
+  [
+   "fields_blocks",
+   "namespaces"
+  ],
+  [
+   "fields_blocks",
+   "schema"
+  ],
+  [
+   "fn_items",
+   "expressions"
+  ],
+  [
+   "fn_items",
+   "function_literals"
+  ],
+  [
+   "fn_items",
+   "function_types"
+  ],
+  [
+   "fn_items",
+   "functions"
+  ],
+  [
+   "fn_items",
+   "higher_order_functions"
+  ],
+  [
+   "function_calls",
+   "expressions"
+  ],
+  [
+   "function_calls",
+   "functions"
+  ],
+  [
+   "function_calls",
+   "member_access"
+  ],
+  [
+   "function_literals",
+   "expressions"
+  ],
+  [
+   "function_literals",
+   "fn_items"
+  ],
+  [
+   "function_literals",
+   "function_types"
+  ],
+  [
+   "function_literals",
+   "functions"
+  ],
+  [
+   "function_literals",
+   "higher_order_functions"
+  ],
+  [
+   "function_types",
+   "expressions"
+  ],
+  [
+   "function_types",
+   "fn_items"
+  ],
+  [
+   "function_types",
+   "function_literals"
+  ],
+  [
+   "function_types",
+   "functions"
+  ],
+  [
+   "function_types",
+   "higher_order_functions"
+  ],
+  [
+   "functions",
+   "control_flow"
+  ],
+  [
+   "functions",
+   "expressions"
+  ],
+  [
+   "functions",
+   "fn_items"
+  ],
+  [
+   "functions",
+   "function_literals"
+  ],
+  [
+   "functions",
+   "function_types"
+  ],
+  [
+   "functions",
+   "higher_order_functions"
+  ],
+  [
+   "heredocs",
+   "expressions"
+  ],
+  [
+   "heredocs",
+   "raw_heredocs"
+  ],
+  [
+   "heredocs",
+   "string_escapes"
+  ],
+  [
+   "heredocs",
+   "string_interpolation"
+  ],
+  [
+   "heredocs",
+   "string_literals"
+  ],
+  [
+   "heredocs",
+   "strings"
+  ],
+  [
+   "higher_order_functions",
+   "fn_items"
+  ],
+  [
+   "higher_order_functions",
+   "function_literals"
+  ],
+  [
+   "higher_order_functions",
+   "function_types"
+  ],
+  [
+   "higher_order_functions",
+   "functions"
+  ],
+  [
+   "higher_order_functions",
+   "lists"
+  ],
+  [
+   "identifiers",
+   "namespaces"
+  ],
+  [
+   "identifiers",
+   "symbols"
+  ],
+  [
+   "if_else",
+   "control_flow"
+  ],
+  [
+   "if_else",
+   "expressions"
+  ],
+  [
+   "if_else",
+   "if_let"
+  ],
+  [
+   "if_else",
+   "match_expr"
+  ],
+  [
+   "if_let",
+   "control_flow"
+  ],
+  [
+   "if_let",
+   "match_expr"
+  ],
+  [
+   "if_let",
+   "optionals"
+  ],
+  [
+   "if_let",
+   "patterns"
+  ],
+  [
+   "imports",
+   "identifiers"
+  ],
+  [
+   "imports",
+   "namespaces"
+  ],
+  [
+   "imports",
+   "schema"
+  ],
+  [
+   "inspect_values",
+   "cli"
+  ],
+  [
+   "inspect_values",
+   "references"
+  ],
+  [
+   "interfaces",
+   "records"
+  ],
+  [
+   "interfaces",
+   "references"
+  ],
+  [
+   "interfaces",
+   "schema"
+  ],
+  [
+   "let_bindings",
+   "block_expressions"
+  ],
+  [
+   "let_bindings",
+   "control_flow"
+  ],
+  [
+   "let_bindings",
+   "expressions"
+  ],
+  [
+   "let_bindings",
+   "functions"
+  ],
+  [
+   "lists",
+   "expressions"
+  ],
+  [
+   "lists",
+   "tables"
+  ],
+  [
+   "lists",
+   "tensors"
+  ],
+  [
+   "match_expr",
+   "control_flow"
+  ],
+  [
+   "match_expr",
+   "if_let"
+  ],
+  [
+   "match_expr",
+   "optionals"
+  ],
+  [
+   "match_expr",
+   "patterns"
+  ],
+  [
+   "match_expr",
+   "unions"
+  ],
+  [
+   "member_access",
+   "expressions"
+  ],
+  [
+   "member_access",
+   "fields"
+  ],
+  [
+   "member_access",
+   "function_calls"
+  ],
+  [
+   "namespaces",
+   "identifiers"
+  ],
+  [
+   "namespaces",
+   "imports"
+  ],
+  [
+   "namespaces",
+   "qualified_kinds"
+  ],
+  [
+   "namespaces",
+   "schema"
+  ],
+  [
+   "namespaces",
+   "use_declarations"
+  ],
+  [
+   "number_literals",
+   "expressions"
+  ],
+  [
+   "number_literals",
+   "numbers"
+  ],
+  [
+   "numbers",
+   "expressions"
+  ],
+  [
+   "numbers",
+   "lists"
+  ],
+  [
+   "numbers",
+   "numeric_promotion"
+  ],
+  [
+   "numeric_promotion",
+   "expressions"
+  ],
+  [
+   "numeric_promotion",
+   "numbers"
+  ],
+  [
+   "operators",
+   "expressions"
+  ],
+  [
+   "operators",
+   "optionals"
+  ],
+  [
+   "operators",
+   "references"
+  ],
+  [
+   "optionals",
+   "control_flow"
+  ],
+  [
+   "optionals",
+   "unions"
+  ],
+  [
+   "patterns",
+   "control_flow"
+  ],
+  [
+   "patterns",
+   "match_expr"
+  ],
+  [
+   "patterns",
+   "optionals"
+  ],
+  [
+   "patterns",
+   "unions"
+  ],
+  [
+   "primitive_types",
+   "booleans"
+  ],
+  [
+   "primitive_types",
+   "identifiers"
+  ],
+  [
+   "primitive_types",
+   "numbers"
+  ],
+  [
+   "primitive_types",
+   "strings"
+  ],
+  [
+   "primitive_types",
+   "symbols"
+  ],
+  [
+   "qualified_kinds",
+   "imports"
+  ],
+  [
+   "qualified_kinds",
+   "namespaces"
+  ],
+  [
+   "qualified_kinds",
+   "schema"
+  ],
+  [
+   "qualified_kinds",
+   "use_declarations"
+  ],
+  [
+   "raw_heredocs",
+   "expressions"
+  ],
+  [
+   "raw_heredocs",
+   "heredocs"
+  ],
+  [
+   "raw_heredocs",
+   "string_escapes"
+  ],
+  [
+   "raw_heredocs",
+   "string_interpolation"
+  ],
+  [
+   "raw_heredocs",
+   "string_literals"
+  ],
+  [
+   "raw_heredocs",
+   "strings"
+  ],
+  [
+   "records",
+   "interfaces"
+  ],
+  [
+   "records",
+   "schema"
+  ],
+  [
+   "records",
+   "type_aliases"
+  ],
+  [
+   "records",
+   "unions"
+  ],
+  [
+   "ref_integrity",
+   "block_schema"
+  ],
+  [
+   "ref_integrity",
+   "connections"
+  ],
+  [
+   "ref_integrity",
+   "document_schema"
+  ],
+  [
+   "ref_integrity",
+   "references"
+  ],
+  [
+   "ref_integrity",
+   "schema"
+  ],
+  [
+   "references",
+   "connections"
+  ],
+  [
+   "references",
+   "interfaces"
+  ],
+  [
+   "references",
+   "schema"
+  ],
+  [
+   "scaffold_init",
+   "cli"
+  ],
+  [
+   "schema",
+   "block_schema"
+  ],
+  [
+   "schema",
+   "child_count_constraints"
+  ],
+  [
+   "schema",
+   "connections"
+  ],
+  [
+   "schema",
+   "document_schema"
+  ],
+  [
+   "schema",
+   "fields_blocks"
+  ],
+  [
+   "schema",
+   "records"
+  ],
+  [
+   "schema",
+   "ref_integrity"
+  ],
+  [
+   "self_parent",
+   "expressions"
+  ],
+  [
+   "self_parent",
+   "fields_blocks"
+  ],
+  [
+   "self_parent",
+   "references"
+  ],
+  [
+   "string_escapes",
+   "expressions"
+  ],
+  [
+   "string_escapes",
+   "heredocs"
+  ],
+  [
+   "string_escapes",
+   "raw_heredocs"
+  ],
+  [
+   "string_escapes",
+   "string_interpolation"
+  ],
+  [
+   "string_escapes",
+   "string_literals"
+  ],
+  [
+   "string_escapes",
+   "strings"
+  ],
+  [
+   "string_interpolation",
+   "expressions"
+  ],
+  [
+   "string_interpolation",
+   "heredocs"
+  ],
+  [
+   "string_interpolation",
+   "raw_heredocs"
+  ],
+  [
+   "string_interpolation",
+   "string_escapes"
+  ],
+  [
+   "string_interpolation",
+   "string_literals"
+  ],
+  [
+   "string_interpolation",
+   "strings"
+  ],
+  [
+   "string_literals",
+   "expressions"
+  ],
+  [
+   "string_literals",
+   "heredocs"
+  ],
+  [
+   "string_literals",
+   "raw_heredocs"
+  ],
+  [
+   "string_literals",
+   "string_escapes"
+  ],
+  [
+   "string_literals",
+   "string_interpolation"
+  ],
+  [
+   "string_literals",
+   "strings"
+  ],
+  [
+   "string_literals",
+   "symbols"
+  ],
+  [
+   "strings",
+   "expressions"
+  ],
+  [
+   "strings",
+   "heredocs"
+  ],
+  [
+   "strings",
+   "raw_heredocs"
+  ],
+  [
+   "strings",
+   "string_escapes"
+  ],
+  [
+   "strings",
+   "string_interpolation"
+  ],
+  [
+   "strings",
+   "string_literals"
+  ],
+  [
+   "strings",
+   "symbols"
+  ],
+  [
+   "symbol_set",
+   "symbols"
+  ],
+  [
+   "symbol_set",
+   "unions"
+  ],
+  [
+   "symbols",
+   "identifiers"
+  ],
+  [
+   "symbols",
+   "symbol_set"
+  ],
+  [
+   "symbols",
+   "unions"
+  ],
+  [
+   "tables",
+   "lists"
+  ],
+  [
+   "tables",
+   "records"
+  ],
+  [
+   "tensors",
+   "lists"
+  ],
+  [
+   "tensors",
+   "numbers"
+  ],
+  [
+   "try_catch",
+   "block_expressions"
+  ],
+  [
+   "try_catch",
+   "control_flow"
+  ],
+  [
+   "try_catch",
+   "expressions"
+  ],
+  [
+   "type_aliases",
+   "records"
+  ],
+  [
+   "type_aliases",
+   "schema"
+  ],
+  [
+   "type_aliases",
+   "type_constraints"
+  ],
+  [
+   "type_constraints",
+   "fields_blocks"
+  ],
+  [
+   "type_constraints",
+   "records"
+  ],
+  [
+   "type_constraints",
+   "schema"
+  ],
+  [
+   "unions",
+   "control_flow"
+  ],
+  [
+   "unions",
+   "records"
+  ],
+  [
+   "unions",
+   "symbols"
+  ],
+  [
+   "use_declarations",
+   "imports"
+  ],
+  [
+   "use_declarations",
+   "namespaces"
+  ],
+  [
+   "use_declarations",
+   "qualified_kinds"
+  ],
+  [
+   "validate_format",
+   "cli"
+  ],
+  [
+   "validate_format",
+   "schema"
+  ]
+ ],
+ "over_cap_after": {
+  "block_schema": 6,
+  "control_flow": 8,
+  "functions": 6,
+  "heredocs": 6,
+  "raw_heredocs": 6,
+  "schema": 7,
+  "string_escapes": 6,
+  "string_interpolation": 6,
+  "string_literals": 7,
+  "strings": 7
+ },
+ "pins_after": [],
+ "indeg_after": {
+  "expressions": 26,
+  "identifiers": 4,
+  "patterns": 3,
+  "schema": 19,
+  "fields_blocks": 8,
+  "function_types": 4,
+  "references": 6,
+  "imports": 4,
+  "symbols": 7,
+  "connections": 4,
+  "function_literals": 4,
+  "unions": 6,
+  "numeric_promotion": 2,
+  "ref_integrity": 4,
+  "qualified_kinds": 2,
+  "higher_order_functions": 4,
+  "control_flow": 11,
+  "namespaces": 6,
+  "document_schema": 4,
+  "let_bindings": 2,
+  "string_escapes": 5,
+  "child_count_constraints": 3,
+  "lists": 4,
+  "heredocs": 5,
+  "match_expr": 4,
+  "strings": 6,
+  "records": 8,
+  "optionals": 4,
+  "functions": 7,
+  "try_catch": 1,
+  "type_constraints": 1,
+  "block_expressions": 3,
+  "member_access": 2,
+  "blocks": 2,
+  "fields": 3,
+  "string_literals": 5,
+  "use_declarations": 2,
+  "string_interpolation": 5,
+  "if_let": 3,
+  "raw_heredocs": 5,
+  "operators": 1,
+  "if_else": 1,
+  "numbers": 4,
+  "block_schema": 4,
+  "symbol_set": 1,
+  "type_aliases": 1,
+  "cli": 3,
+  "fn_items": 4,
+  "tables": 1,
+  "tensors": 1,
+  "function_calls": 2,
+  "booleans": 1,
+  "interfaces": 2
+ }
+};
+const SUBJECT = "docs(wskill/wcl): atomize language reference, complete builtins, data-drive grouping";
+const U = D.units_after, IDX = D.indexes_after, PINS = new Set(D.pins_after);
+const c = D.counts;
+const el = (h) => { const d=document.createElement('div'); d.innerHTML=h; return d.firstElementChild; };
+const esc = (s) => (s||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+
+document.getElementById('range').textContent = D.before_rev + '..' + D.after_rev;
+document.getElementById('subject').textContent = SUBJECT;
+document.getElementById('top').innerHTML = `
+  <span><b class="add">+${c.added_units}</b> <b class="del">−${c.removed_units}</b> units</span>
+  <span><b class="add">+${c.added_edges}</b> <b class="del">−${c.removed_edges}</b> edges</span>
+  <span><b class="warn">${c.new_hubs}</b> new hubs</span>
+  <span><b class="warn">${c.orphans}</b> unpinned</span>
+  <span><b class="cand">${c.bare_edges}</b> edges with no reason</span>
+  <span class="dim">${c.units_before} → ${c.units_after} units</span>`;
+document.getElementById('top').innerHTML +=
+  `<span class="hbar"><b class="${D.health.worse?'del':'add'}">${D.health.worse}</b>
+     <span class="dim">of ${D.health.metrics.length} metrics worse</span>` +
+   D.health.metrics.filter(m=>m.verdict==='worse').map(m =>
+     `<span class="hm">${esc(m.label.replace(/ \(.*/,''))}
+        <b class="del">${m.before} → ${m.after}</b></span>`).join('') + `</span>`;
+
+/* ---------- A · changelog ---------------------------------------------- */
+const HUBS = Object.fromEntries(D.new_hubs.map(h=>[h.id,h]));
+const findings = (id) => {
+  let t = PINS.has(id) ? '<span class="tag ok">pinned</span>'
+                       : '<span class="tag bad">⚠ unpinned</span>';
+  if (D.over_cap_after[id]) t += `<span class="tag bad">⚠ over cap (${D.over_cap_after[id]})</span>`;
+  if (HUBS[id]) t += `<span class="tag bad">⚠ hub · ${HUBS[id].before} → ${HUBS[id].after} in</span>`;
+  return t;
+};
+const row = (cls, kind, id, name, tags='') =>
+  `<div class="row ${cls}"><span class="kind">${kind}</span>
+     <span class="id">${esc(id)}</span><span class="nm">${esc(name)}</span>${tags}</div>`;
+
+let log = '';
+log += `<section><h2>New units — ${c.added_units}</h2>` +
+  D.added_units.map(u => row('a', u.kind, u.id, u.name,
+    findings(u.id) + `<span class="tag">${u.related.length} out</span>` +
+    (u.has_body ? '' : '<span class="tag bad">no body</span>'))).join('') + '</section>';
+
+log += `<section><h2>Removed units — ${c.removed_units}</h2>` +
+  D.removed_units.map(u => row('r', u.kind, u.id, u.name,
+    `<span class="tag">${u.related.length} out</span>`)).join('') + '</section>';
+
+log += `<section><h2>Shape changes — units that crossed a threshold</h2>` +
+  D.new_hubs.map(h => row('h', (U[h.id]||{}).kind || '?', h.id, (U[h.id]||{}).name || '',
+    findings(h.id))).join('') +
+  D.new_over_cap.map(h => row('h', (U[h.id]||{}).kind||'?', h.id, (U[h.id]||{}).name||'',
+    `<span class="tag bad">over cap · ${h.before} → ${h.after} related</span>`)).join('') +
+  '</section>';
+
+const byS = {};
+for (const [s,t] of D.added_edges) (byS[s] = byS[s]||[]).push(t);
+log += `<section><h2>Edges added — ${c.added_edges}</h2>` +
+  Object.entries(byS).sort((a,b)=>b[1].length-a[1].length).map(([s,ts]) =>
+    `<div class="grp"><div class="row"><span class="kind">${(U[s]||{}).kind||'gone'}</span>
+      <span class="id src">${esc(s)}</span>
+      <span class="nm">${esc((U[s]||{}).name||'')}</span>
+      <span class="tag ${ts.length>5?'bad':''}">${ts.length} new</span></div>` +
+     ts.map(t => `<div class="row edge a"><span class="kind"></span>
+        <span class="id">→ ${esc(t)}</span>
+        <span class="nm">${esc((U[t]||IDX[t]||{}).name||'?')}</span>
+        <span class="tag cand">no reason recorded</span></div>`).join('') +
+     '</div>').join('') + '</section>';
+
+const byR = {};
+for (const [s,t] of D.removed_edges) (byR[s] = byR[s]||[]).push(t);
+log += `<section><h2>Edges removed — ${c.removed_edges}</h2>` +
+  Object.entries(byR).map(([s,ts]) =>
+    `<div class="grp"><div class="row"><span class="kind">${(U[s]||{}).kind||'gone'}</span>
+      <span class="id src">${esc(s)}</span><span class="nm"></span></div>` +
+     ts.map(t => `<div class="row edge r"><span class="kind"></span>
+       <span class="id">→ ${esc(t)}</span></div>`).join('') + '</div>').join('') + '</section>';
+document.getElementById('log').innerHTML = log;
+
+/* ---------- union graph: before ∪ after -------------------------------- */
+const UB = D.units_before;
+const ids = [...new Set([...Object.keys(U), ...Object.keys(UB)])];
+const addedSet = new Set(D.added_units.map(u=>u.id));
+const goneSet  = new Set(D.removed_units.map(u=>u.id));
+const N = ids.map((id,i) => { const u = U[id] || UB[id];
+  return { id, kind:u.kind, added:addedSet.has(id), gone:goneSet.has(id),
+    deg: (D.indeg_after[id]||0) + (U[id]?U[id].related.length:0),
+    x: 480 + 380*Math.cos(i*2.4), y: 330 + 260*Math.sin(i*2.4), vx:0, vy:0 }; });
+const P = Object.fromEntries(N.map(n=>[n.id,n]));
+const ekey = (e)=>e.join('>');
+const afterE = new Set(D.edges_after.map(ekey)), beforeE = new Set(D.edges_before.map(ekey));
+const E = [];
+for (const k of new Set([...afterE, ...beforeE])) {
+  const [s0,t0] = k.split('>');
+  if (!P[s0] || !P[t0]) continue;
+  E.push({ s:P[s0], t:P[t0], added: afterE.has(k) && !beforeE.has(k),
+           gone: beforeE.has(k) && !afterE.has(k) });
+}
+for (let step=0;step<600;step++) {
+  for (const a of N) { a.vx += (480-a.x)*0.004; a.vy += (330-a.y)*0.004; }
+  for (let i=0;i<N.length;i++) for (let j=i+1;j<N.length;j++) {
+    const a=N[i],b=N[j]; let dx=b.x-a.x, dy=b.y-a.y, d2=Math.max(dx*dx+dy*dy,25);
+    const f = Math.min(2600/d2, 3); a.vx-=dx*f/Math.sqrt(d2); a.vy-=dy*f/Math.sqrt(d2);
+    b.vx+=dx*f/Math.sqrt(d2); b.vy+=dy*f/Math.sqrt(d2);
+  }
+  for (const e of E) { const dx=e.t.x-e.s.x, dy=e.t.y-e.s.y, d=Math.hypot(dx,dy)||1;
+    const f=Math.max(Math.min((d-70)*0.06,4),-4);
+    e.s.vx+=dx/d*f; e.s.vy+=dy/d*f; e.t.vx-=dx/d*f; e.t.vy-=dy/d*f; }
+  for (const a of N) { a.vx*=0.75; a.vy*=0.75;
+    a.x+=Math.max(-8,Math.min(8,a.vx)); a.y+=Math.max(-8,Math.min(8,a.vy)); }
+}
+{ const xs=N.map(n=>n.x), ys=N.map(n=>n.y);
+  const x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys), y1=Math.max(...ys);
+  const k=Math.min(880/(x1-x0||1), 580/(y1-y0||1));
+  for (const n of N) { n.x=(n.x-x0)*k+40; n.y=(n.y-y0)*k+40; } }
+const touched = (n) => n.added || n.gone ||
+  E.some(e => (e.added||e.gone) && (e.s===n||e.t===n));
+const svg = (only) => `<svg viewBox="0 0 960 660">` +
+  E.filter(e=>!only||e.added||e.gone).map(e =>
+    `<line x1="${e.s.x}" y1="${e.s.y}" x2="${e.t.x}" y2="${e.t.y}"
+      stroke="${e.gone?'#f85149':e.added?'#3fb950':'#21262d'}"
+      stroke-width="${e.added||e.gone?1.4:0.8}"
+      ${e.gone?'stroke-dasharray="4 3"':''}/>`).join('') +
+  N.filter(n=>!only||touched(n)).map(n =>
+    `<circle cx="${n.x}" cy="${n.y}" r="${3+Math.min(n.deg,12)*0.7}"
+      fill="${n.gone?'#3d1416':n.added?'#3fb950':'#30363d'}"
+      stroke="${n.gone?'#f85149':n.added?'#7ee787':'#484f58'}"
+      ${n.gone?'stroke-dasharray="3 2"':''}/>
+     <title>${esc(n.id)} — ${n.kind}${n.gone?' (removed)':''}, deg ${n.deg}</title>` +
+    (n.added||n.gone||n.deg>=10 ? `<text x="${n.x+8}" y="${n.y+3}" font-size="9"
+       fill="${n.gone?'#f85149':n.added?'#7ee787':'#8b949e'}">${esc(n.id)}</text>` : '')).join('') +
+  `</svg>`;
+const gp = document.getElementById('graph');
+const draw = (only) => { gp.innerHTML =
+  `<div class="ctl"><label><input type="checkbox" id="only" ${only?'checked':''}> only what changed</label>
+   <span class="legend"><span><i class="sw" style="background:#3fb950"></i>added</span>
+   <span><i class="sw" style="background:#30363d"></i>unchanged</span>
+   <span><i class="sw" style="background:#3d1416;border:1px dashed #f85149"></i>removed</span></span>
+   </div>` + svg(only) +
+  `<div class="note">The <b>union graph</b>: before ∪ after. Removed units and edges are ghosted in
+   red rather than absent — the editor's live graph cannot do this, since it renders only what
+   currently exists.</div>`;
+  gp.querySelector('#only').onchange = (ev) => draw(ev.target.checked); };
+draw(true);
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on', x===b));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on', p.id===b.dataset.p));
+});
+</script>

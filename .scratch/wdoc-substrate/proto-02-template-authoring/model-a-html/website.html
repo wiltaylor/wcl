@@ -1,0 +1,58 @@
+{# MODEL A — the `website` template as an external .html file.
+   Compare with crates/wcl_wdoc/lib/website.wcl (255 lines of WCL, of which
+   ~110 are the layout; the rest is CSS and head helpers). #}
+
+{% slots %}
+  banner?  : blocks
+  hero?    : blocks
+  sidebar? : blocks
+  footer?  : blocks
+  content  : blocks
+{% endslots %}
+
+<header class="ws-header">
+  <a class="ws-brand" href="{{ site.home_href | default("index.html") }}">{{ site.title }}</a>
+
+  {% if site.menu %}
+    <ul class="menu">
+      {% for m in site.menu %}{{ menu_item(m) }}{% endfor %}
+    </ul>
+  {% else %}
+    <ul class="menu">
+      {% for p in site.pages %}<li><a href="{{ p.href }}">{{ p.name }}</a></li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if site.search or site.theme_toggle %}
+    <div class="ws-controls">
+      {% if site.search %}<input class="wdoc-search" placeholder="Search…">{% endif %}
+      {% if site.theme_toggle %}<button class="theme-toggle" onclick="wdocToggleTheme()">◐ Theme</button>{% endif %}
+    </div>
+  {% endif %}
+</header>
+
+{% if slot.banner %}<div class="ws-banner">{{ slot.banner }}</div>{% endif %}
+{% if slot.hero %}<section class="ws-hero">{{ slot.hero }}</section>{% endif %}
+
+<div class="ws-layout">
+  <main class="ws-main">{{ slot.content }}</main>
+  {% if slot.sidebar %}<aside class="ws-aside">{{ slot.sidebar }}</aside>{% endif %}
+</div>
+
+<footer class="ws-footer">
+  {% if slot.footer %}{{ slot.footer }}{% else %}{{ site.title }}{% endif %}
+</footer>
+
+{# Recursive macro — a nested menu of any depth. Handlebars/Jinja both do
+   this; it is the same shape as `wdoc_part_menu_tree` in WCL. #}
+{% macro menu_item(m) %}
+  <li>
+    {% if m.href %}<a href="{{ m.href }}">{{ m.label }}</a>
+    {% else %}<span class="menu-group">{{ m.label }}</span>{% endif %}
+    {% if m.children %}
+      <ul class="menu-sub">
+        {% for c in m.children %}{{ menu_item(c) }}{% endfor %}
+      </ul>
+    {% endif %}
+  </li>
+{% endmacro %}

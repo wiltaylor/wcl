@@ -1,0 +1,60 @@
+// V5 — S3 ONLY. The SVG subject with the free fixes AND a shortened
+// union name (`Svg::` for `SvgFundamental::`), but NO constructor DSL.
+//
+// 05 decision 11 regenerates these unions from WCL anyway, so the name is
+// already in play at zero cost. This isolates what the DSL adds ON TOP of
+// the rename — which is what the silent-transposition risk in finding 3
+// has to be worth.
+//
+// `Svg` here is a local re-declaration of the same shapes, so the file
+// evaluates standalone; run.py diffs its value against V0's S3.
+import <wdoc.wcl>
+import "fixtures.wcl"
+
+@document
+type Proto { s3: list<SvgFundamental> }
+
+// >>> S3 chart axes + gridlines + title
+let v5_chart_axes = fn(px: f64, py: f64, pw: f64, ph: f64) -> list<Svg> [
+  Svg::Line { x1: px, y1: py + ph, x2: px + pw, y2: py + ph, class: ["wdoc-axis"] },
+  Svg::Line { x1: px, y1: py, x2: px, y2: py + ph, class: ["wdoc-axis"] },
+]
+
+let v5_chart_gridlines = fn(px: f64, py: f64, pw: f64, ph: f64, ymin: f64, ymax: f64, nticks: i64) -> list<Svg>
+  flatten(map(range(0, nticks + 1), fn(k: i64) -> list<Svg> {
+    let yy = py + ph - ph * k / nticks;
+    let val = ymin + (ymax - ymin) * k / nticks;
+    [
+      Svg::Line { x1: px, y1: yy, x2: px + pw, y2: yy, class: ["wdoc-grid"] },
+      Svg::Label {
+        content: chart_fmt(val), x: px - 6.0, y: yy, font_size: 10.0,
+        fit_width: 32.0, fit_height: 12.0, class: ["wdoc-axis-label"],
+      },
+    ]
+  }))
+
+let v5_chart_title = fn(cx: f64, cy: f64, cw: f64, text: utf8) -> list<Svg>
+  if text == "" { [] } else {
+    [ Svg::Label {
+        content: text, x: cx, y: cy + 11.0, font_size: 13.0,
+        fit_width: cw, fit_height: 16.0, class: ["wdoc-chart-title"],
+      } ]
+  }
+// <<< S3
+
+// The rename, standing in for regenerating the union under a shorter name.
+union Svg {
+  Rect    { x: f64? y: f64? width: f64? height: f64? rx: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
+  Circle  { cx: f64? cy: f64? r: f64? fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
+  Line    { x1: f64? y1: f64? x2: f64? y2: f64? stroke: utf8? dash: utf8? id: identifier? class: list<utf8>? }
+  Label   { content: utf8 x: f64? y: f64? font_size: f64? fit_width: f64? fit_height: f64? fill: utf8? id: identifier? class: list<utf8>? }
+  Polygon { points: utf8 fill: utf8? stroke: utf8? id: identifier? class: list<utf8>? }
+  Polyline { points: utf8 stroke: utf8? dash: utf8? id: identifier? class: list<utf8>? }
+  Link    { href: utf8 children: list<Svg> }
+}
+
+s3 = flatten([
+  v5_chart_axes(40.0, 20.0, 300.0, 160.0),
+  v5_chart_gridlines(40.0, 20.0, 300.0, 160.0, 0.0, 100.0, 4),
+  v5_chart_title(0.0, 0.0, 380.0, "Throughput"),
+])

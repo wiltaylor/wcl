@@ -1,0 +1,225 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>wskill audit — prototype</title>
+<style>
+  :root {
+    --bg:#0d1117; --panel:#161b22; --line:#30363d; --fg:#e6edf3; --dim:#8b949e;
+    --add:#3fb950; --del:#f85149; --warn:#d29922; --cand:#a371f7; --link:#58a6ff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
+  h1 { margin:0 0 4px; font-size:14px; font-weight:600; }
+  h1 .rev { color:var(--link); }
+  .subject { color:var(--dim); font-size:12px; }
+  .top { display:flex; gap:18px; margin-top:10px; flex-wrap:wrap; }
+  .top b { font-weight:600; }
+  .add { color:var(--add); } .del { color:var(--del); }
+  .warn { color:var(--warn); } .cand { color:var(--cand); } .dim { color:var(--dim); }
+  nav { display:flex; gap:2px; padding:0 20px; background:var(--panel);
+        border-bottom:1px solid var(--line); }
+  nav button { background:none; border:none; border-bottom:2px solid transparent;
+    color:var(--dim); padding:9px 14px; font:inherit; cursor:pointer; }
+  nav button.on { color:var(--fg); border-bottom-color:var(--link); }
+  main { padding:18px 20px 60px; }
+  .pane { display:none; } .pane.on { display:block; }
+  section { margin-bottom:22px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em;
+       color:var(--dim); margin:0 0 8px; font-weight:600; }
+  .row { display:flex; gap:10px; align-items:baseline; padding:3px 8px;
+         border-left:2px solid transparent; }
+  .row:hover { background:#1c2128; }
+  .row.a { border-left-color:var(--add); } .row.r { border-left-color:var(--del); }
+  .row.h { border-left-color:var(--warn); } .row.c { border-left-color:var(--cand); }
+  .kind { color:var(--dim); width:74px; flex:none; }
+  .id { color:var(--fg); width:230px; flex:none; }
+  .nm { color:var(--dim); flex:1; overflow:hidden; text-overflow:ellipsis;
+        white-space:nowrap; }
+  .tag { font-size:11px; padding:0 6px; border-radius:9px; border:1px solid var(--line);
+         color:var(--dim); flex:none; }
+  .tag.bad { color:var(--warn); border-color:#5a4412; background:#2a2008; }
+  .tag.ok { color:var(--add); border-color:#1f4429; background:#0f2915; }
+  table { border-collapse:collapse; width:100%; max-width:820px; }
+  td,th { text-align:left; padding:5px 10px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:600; font-size:11px; text-transform:uppercase; }
+  td.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .verdict { padding:10px 14px; border:1px solid var(--line); border-left:3px solid var(--warn);
+             background:var(--panel); margin-bottom:16px; }
+  .grp { margin-bottom:10px; }
+  .grp .src { color:var(--link); }
+  .grp .edge { padding-left:18px; }
+  svg { width:100%; height:660px; background:#0a0d12; border:1px solid var(--line); }
+  .ctl { margin-bottom:10px; display:flex; gap:14px; align-items:center; color:var(--dim); }
+  .legend span { margin-right:14px; }
+  .sw { display:inline-block; width:9px; height:9px; border-radius:50%;
+        margin-right:5px; vertical-align:middle; }
+  .hbar { display:flex; gap:14px; align-items:baseline; padding-left:16px;
+          border-left:1px solid var(--line); }
+  .hm { color:var(--dim); font-size:12px; }
+  .note { color:var(--dim); font-size:12px; max-width:820px; margin-top:6px; }
+</style>
+
+<header>
+  <h1>wcl wskill audit <span class="rev" id="range"></span></h1>
+  <div class="subject" id="subject"></div>
+  <div class="top" id="top"></div>
+</header>
+<nav>
+  <button data-p="log" class="on">Changed</button>
+  <button data-p="graph">Graph</button>
+</nav>
+<main>
+  <div class="pane on" id="log"></div>
+  <div class="pane" id="graph"></div>
+</main>
+
+<script>
+const D = __DATA__;
+const SUBJECT = __SUBJECT__;
+const U = D.units_after, IDX = D.indexes_after, PINS = new Set(D.pins_after);
+const c = D.counts;
+const el = (h) => { const d=document.createElement('div'); d.innerHTML=h; return d.firstElementChild; };
+const esc = (s) => (s||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+
+document.getElementById('range').textContent = D.before_rev + '..' + D.after_rev;
+document.getElementById('subject').textContent = SUBJECT;
+document.getElementById('top').innerHTML = `
+  <span><b class="add">+${c.added_units}</b> <b class="del">−${c.removed_units}</b> units</span>
+  <span><b class="add">+${c.added_edges}</b> <b class="del">−${c.removed_edges}</b> edges</span>
+  <span><b class="warn">${c.new_hubs}</b> new hubs</span>
+  <span><b class="warn">${c.orphans}</b> unpinned</span>
+  <span><b class="cand">${c.bare_edges}</b> edges with no reason</span>
+  <span class="dim">${c.units_before} → ${c.units_after} units</span>`;
+document.getElementById('top').innerHTML +=
+  `<span class="hbar"><b class="${D.health.worse?'del':'add'}">${D.health.worse}</b>
+     <span class="dim">of ${D.health.metrics.length} metrics worse</span>` +
+   D.health.metrics.filter(m=>m.verdict==='worse').map(m =>
+     `<span class="hm">${esc(m.label.replace(/ \(.*/,''))}
+        <b class="del">${m.before} → ${m.after}</b></span>`).join('') + `</span>`;
+
+/* ---------- A · changelog ---------------------------------------------- */
+const HUBS = Object.fromEntries(D.new_hubs.map(h=>[h.id,h]));
+const findings = (id) => {
+  let t = PINS.has(id) ? '<span class="tag ok">pinned</span>'
+                       : '<span class="tag bad">⚠ unpinned</span>';
+  if (D.over_cap_after[id]) t += `<span class="tag bad">⚠ over cap (${D.over_cap_after[id]})</span>`;
+  if (HUBS[id]) t += `<span class="tag bad">⚠ hub · ${HUBS[id].before} → ${HUBS[id].after} in</span>`;
+  return t;
+};
+const row = (cls, kind, id, name, tags='') =>
+  `<div class="row ${cls}"><span class="kind">${kind}</span>
+     <span class="id">${esc(id)}</span><span class="nm">${esc(name)}</span>${tags}</div>`;
+
+let log = '';
+log += `<section><h2>New units — ${c.added_units}</h2>` +
+  D.added_units.map(u => row('a', u.kind, u.id, u.name,
+    findings(u.id) + `<span class="tag">${u.related.length} out</span>` +
+    (u.has_body ? '' : '<span class="tag bad">no body</span>'))).join('') + '</section>';
+
+log += `<section><h2>Removed units — ${c.removed_units}</h2>` +
+  D.removed_units.map(u => row('r', u.kind, u.id, u.name,
+    `<span class="tag">${u.related.length} out</span>`)).join('') + '</section>';
+
+log += `<section><h2>Shape changes — units that crossed a threshold</h2>` +
+  D.new_hubs.map(h => row('h', (U[h.id]||{}).kind || '?', h.id, (U[h.id]||{}).name || '',
+    findings(h.id))).join('') +
+  D.new_over_cap.map(h => row('h', (U[h.id]||{}).kind||'?', h.id, (U[h.id]||{}).name||'',
+    `<span class="tag bad">over cap · ${h.before} → ${h.after} related</span>`)).join('') +
+  '</section>';
+
+const byS = {};
+for (const [s,t] of D.added_edges) (byS[s] = byS[s]||[]).push(t);
+log += `<section><h2>Edges added — ${c.added_edges}</h2>` +
+  Object.entries(byS).sort((a,b)=>b[1].length-a[1].length).map(([s,ts]) =>
+    `<div class="grp"><div class="row"><span class="kind">${(U[s]||{}).kind||'gone'}</span>
+      <span class="id src">${esc(s)}</span>
+      <span class="nm">${esc((U[s]||{}).name||'')}</span>
+      <span class="tag ${ts.length>5?'bad':''}">${ts.length} new</span></div>` +
+     ts.map(t => `<div class="row edge a"><span class="kind"></span>
+        <span class="id">→ ${esc(t)}</span>
+        <span class="nm">${esc((U[t]||IDX[t]||{}).name||'?')}</span>
+        <span class="tag cand">no reason recorded</span></div>`).join('') +
+     '</div>').join('') + '</section>';
+
+const byR = {};
+for (const [s,t] of D.removed_edges) (byR[s] = byR[s]||[]).push(t);
+log += `<section><h2>Edges removed — ${c.removed_edges}</h2>` +
+  Object.entries(byR).map(([s,ts]) =>
+    `<div class="grp"><div class="row"><span class="kind">${(U[s]||{}).kind||'gone'}</span>
+      <span class="id src">${esc(s)}</span><span class="nm"></span></div>` +
+     ts.map(t => `<div class="row edge r"><span class="kind"></span>
+       <span class="id">→ ${esc(t)}</span></div>`).join('') + '</div>').join('') + '</section>';
+document.getElementById('log').innerHTML = log;
+
+/* ---------- union graph: before ∪ after -------------------------------- */
+const UB = D.units_before;
+const ids = [...new Set([...Object.keys(U), ...Object.keys(UB)])];
+const addedSet = new Set(D.added_units.map(u=>u.id));
+const goneSet  = new Set(D.removed_units.map(u=>u.id));
+const N = ids.map((id,i) => { const u = U[id] || UB[id];
+  return { id, kind:u.kind, added:addedSet.has(id), gone:goneSet.has(id),
+    deg: (D.indeg_after[id]||0) + (U[id]?U[id].related.length:0),
+    x: 480 + 380*Math.cos(i*2.4), y: 330 + 260*Math.sin(i*2.4), vx:0, vy:0 }; });
+const P = Object.fromEntries(N.map(n=>[n.id,n]));
+const ekey = (e)=>e.join('>');
+const afterE = new Set(D.edges_after.map(ekey)), beforeE = new Set(D.edges_before.map(ekey));
+const E = [];
+for (const k of new Set([...afterE, ...beforeE])) {
+  const [s0,t0] = k.split('>');
+  if (!P[s0] || !P[t0]) continue;
+  E.push({ s:P[s0], t:P[t0], added: afterE.has(k) && !beforeE.has(k),
+           gone: beforeE.has(k) && !afterE.has(k) });
+}
+for (let step=0;step<600;step++) {
+  for (const a of N) { a.vx += (480-a.x)*0.004; a.vy += (330-a.y)*0.004; }
+  for (let i=0;i<N.length;i++) for (let j=i+1;j<N.length;j++) {
+    const a=N[i],b=N[j]; let dx=b.x-a.x, dy=b.y-a.y, d2=Math.max(dx*dx+dy*dy,25);
+    const f = Math.min(2600/d2, 3); a.vx-=dx*f/Math.sqrt(d2); a.vy-=dy*f/Math.sqrt(d2);
+    b.vx+=dx*f/Math.sqrt(d2); b.vy+=dy*f/Math.sqrt(d2);
+  }
+  for (const e of E) { const dx=e.t.x-e.s.x, dy=e.t.y-e.s.y, d=Math.hypot(dx,dy)||1;
+    const f=Math.max(Math.min((d-70)*0.06,4),-4);
+    e.s.vx+=dx/d*f; e.s.vy+=dy/d*f; e.t.vx-=dx/d*f; e.t.vy-=dy/d*f; }
+  for (const a of N) { a.vx*=0.75; a.vy*=0.75;
+    a.x+=Math.max(-8,Math.min(8,a.vx)); a.y+=Math.max(-8,Math.min(8,a.vy)); }
+}
+{ const xs=N.map(n=>n.x), ys=N.map(n=>n.y);
+  const x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys), y1=Math.max(...ys);
+  const k=Math.min(880/(x1-x0||1), 580/(y1-y0||1));
+  for (const n of N) { n.x=(n.x-x0)*k+40; n.y=(n.y-y0)*k+40; } }
+const touched = (n) => n.added || n.gone ||
+  E.some(e => (e.added||e.gone) && (e.s===n||e.t===n));
+const svg = (only) => `<svg viewBox="0 0 960 660">` +
+  E.filter(e=>!only||e.added||e.gone).map(e =>
+    `<line x1="${e.s.x}" y1="${e.s.y}" x2="${e.t.x}" y2="${e.t.y}"
+      stroke="${e.gone?'#f85149':e.added?'#3fb950':'#21262d'}"
+      stroke-width="${e.added||e.gone?1.4:0.8}"
+      ${e.gone?'stroke-dasharray="4 3"':''}/>`).join('') +
+  N.filter(n=>!only||touched(n)).map(n =>
+    `<circle cx="${n.x}" cy="${n.y}" r="${3+Math.min(n.deg,12)*0.7}"
+      fill="${n.gone?'#3d1416':n.added?'#3fb950':'#30363d'}"
+      stroke="${n.gone?'#f85149':n.added?'#7ee787':'#484f58'}"
+      ${n.gone?'stroke-dasharray="3 2"':''}/>
+     <title>${esc(n.id)} — ${n.kind}${n.gone?' (removed)':''}, deg ${n.deg}</title>` +
+    (n.added||n.gone||n.deg>=10 ? `<text x="${n.x+8}" y="${n.y+3}" font-size="9"
+       fill="${n.gone?'#f85149':n.added?'#7ee787':'#8b949e'}">${esc(n.id)}</text>` : '')).join('') +
+  `</svg>`;
+const gp = document.getElementById('graph');
+const draw = (only) => { gp.innerHTML =
+  `<div class="ctl"><label><input type="checkbox" id="only" ${only?'checked':''}> only what changed</label>
+   <span class="legend"><span><i class="sw" style="background:#3fb950"></i>added</span>
+   <span><i class="sw" style="background:#30363d"></i>unchanged</span>
+   <span><i class="sw" style="background:#3d1416;border:1px dashed #f85149"></i>removed</span></span>
+   </div>` + svg(only) +
+  `<div class="note">The <b>union graph</b>: before ∪ after. Removed units and edges are ghosted in
+   red rather than absent — the editor's live graph cannot do this, since it renders only what
+   currently exists.</div>`;
+  gp.querySelector('#only').onchange = (ev) => draw(ev.target.checked); };
+draw(true);
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on', x===b));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on', p.id===b.dataset.p));
+});
+</script>

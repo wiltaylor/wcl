@@ -1,0 +1,71 @@
+// MODEL B — a terse WCL element DSL.
+//
+// Templates stay in WCL and stay typed; the fix is purely that constructing
+// an element stops costing 8 lines. Nothing new to parse, nothing new to
+// check — WCL's own type checker already does the work.
+//
+// The constructor set (this is the whole DSL):
+//
+//   el(tag, sel, attrs, kids)   the general form
+//   div/span/a/ul/li/nav/…      one alias per tag, sel + kids
+//   txt("…")                    escaped text
+//   raw("…")                    unescaped (the existing escape hatch)
+//   when(cond, kids)            [] when false — kills `if x { [..] } else { [] }`
+//
+// `sel` is an emmet-ish selector string: ".ws-header", "#main.wide".
+// Attrs are a record, not a list of pairs: `{ href: p.href }`.
+//
+// Compare: crates/wcl_wdoc/lib/website.wcl:146-173 — 28 lines for this header.
+
+namespace wdoc
+
+// ── The docs website ───────────────────────────────────────────────────
+
+let website_header = fn(c: TemplateCtx) -> El
+  header(".ws-header", [
+    a(".ws-brand", { href: c.home_href ?? "index.html" }, [txt(c.title)]),
+    if len(c.menu) == 0 {
+      ul(".menu", map(c.pages, fn(p: PageRef) -> El
+        li([a({ href: p.href }, [txt(p.name)])]))
+      )
+    } else {
+      menu_tree(c.menu)
+    },
+    when(c.search || c.theme_toggle, [
+      div(".ws-controls", [
+        when(c.search, [search_box()]),
+        when(c.theme_toggle, [theme_toggle()]),
+      ]),
+    ]),
+  ])
+
+// A slot is a SYMBOL, not a string. This is the whole argument for model B:
+// `slot(c, :heor)` is a symbol-set violation and WCL already rejects it.
+// No new checker, no new error-reporting path, no new line-number plumbing.
+symbol_set WebsiteSlot = :banner | :hero | :sidebar | :footer | :content
+
+let website_layout = fn(c: TemplateCtx) -> list<El>
+  flatten([
+    [website_header(c)],
+    when_slot(c, :banner, fn(s: Slot) -> El div(".ws-banner", [s])),
+    when_slot(c, :hero,   fn(s: Slot) -> El section(".ws-hero", [s])),
+    [div(".ws-layout", [
+       main(".ws-main", [slot(c, :content)]),
+       when_slot(c, :sidebar, fn(s: Slot) -> El aside(".ws-aside", [s])),
+     ])],
+    [footer(".ws-footer", [slot_or(c, :footer, txt(c.title))])],
+  ])
+
+// Recursive nesting: an ordinary recursive fn. No macro concept needed.
+let menu_tree = fn(items: list<MenuEntry>) -> El
+  ul(".menu", map(items, fn(m: MenuEntry) -> El
+    li([
+      if m.href == "" { span(".menu-group", [txt(m.label)]) }
+                 else { a({ href: m.href }, [txt(m.label)]) },
+      when(len(m.children) > 0, [menu_tree(m.children)]),
+    ])))
+
+template website {
+  slots = [:banner?, :hero?, :sidebar?, :footer?, :content]
+  render = website_layout
+}

@@ -1,0 +1,62 @@
+// V4 — THE SAME SUBJECT UNDER TICKET 05's CONTENT IR.
+//
+// Not an alternative DSL. It is the control: what does the constructor
+// question even look like once decision 1 has landed? `callout` is one
+// of the six content blocks that reach for markup today, and 05 makes it
+// a semantic variant whose `<div>`s move backend-side.
+//
+// Run for its line count, not for value equality — it is a different IR
+// by design, so run.py does not diff it against V0.
+import <wdoc.wcl>
+import "fixtures.wcl"
+
+@document
+type Proto { s4: list<Content>  s4_dsl: list<Content> }
+
+// A slice of the content IR sketched in ticket 05 decision 9: one
+// variant per document concept, no generic container.
+union Content {
+  Heading   { level: i64 text: utf8 id: identifier? }
+  Paragraph { spans: list<utf8> }
+  Prose     { text: utf8 }
+  Code      { source: utf8 language: utf8 filename: utf8? }
+  Callout   { kind: symbol heading: utf8 body: utf8 icon: utf8? id: identifier? class: list<utf8>? }
+  Drawing   { shapes: list<SvgFundamental> }
+}
+
+// >>> S4 callout lower, content IR
+let v4_callout = fn(c: Callout) -> list<Content> {
+  let cls = if c.class == none { [] } else { c.class };
+  let kind =
+    if list_contains(cls, "warning") { :warning }
+    else if list_contains(cls, "error") { :error }
+    else if list_contains(cls, "success") { :success }
+    else if list_contains(cls, "tip") { :tip }
+    else if list_contains(cls, "info") { :info }
+    else { :note };
+  [ Content::Callout {
+      kind: kind, heading: c.heading, body: c.body, icon: c.icon,
+      id: c.id, class: cls,
+  } ]
+}
+// <<< S4
+
+// >>> S4DSL the same thing with a constructor DSL over the content IR
+let callout_of = fn(kind: symbol, heading: utf8, body: utf8, icon: utf8, id: identifier, cls: list<utf8>) -> Content
+  Content::Callout { kind: kind, heading: heading, body: body, icon: icon, id: id, class: cls }
+
+let v4_callout_dsl = fn(c: Callout) -> list<Content> {
+  let cls = if c.class == none { [] } else { c.class };
+  let kind =
+    if list_contains(cls, "warning") { :warning }
+    else if list_contains(cls, "error") { :error }
+    else if list_contains(cls, "success") { :success }
+    else if list_contains(cls, "tip") { :tip }
+    else if list_contains(cls, "info") { :info }
+    else { :note };
+  [ callout_of(kind, c.heading, c.body, c.icon, c.id, cls) ]
+}
+// <<< S4DSL
+
+s4 = v4_callout(fx_callout)
+s4_dsl = v4_callout_dsl(fx_callout)

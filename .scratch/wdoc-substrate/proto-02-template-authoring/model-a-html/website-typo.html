@@ -1,0 +1,39 @@
+{# MODEL A — the same website layout with FIVE deliberate mistakes.
+
+   Every one of these is silent today:
+     • `wdoc_region(c, "heor")` returns "" — the hero just vanishes.
+     • A bad field on `c` is a WCL resolution error only if the field is
+       reached; a region name is never checked at all.
+
+   The check pass must name all five, with line numbers, before rendering. #}
+
+{% slots %}
+  hero?   : blocks
+  footer? : blocks
+  content : blocks
+{% endslots %}
+
+<header class="ws-header">
+  {# 1. field typo on the supplied site context #}
+  <a class="ws-brand" href="index.html">{{ site.titel }}</a>
+
+  <ul class="menu">
+    {# 2. `p` is a PageRef {name, href} — `label` is a MenuEntry field #}
+    {% for p in site.pages %}<li><a href="{{ p.href }}">{{ p.label }}</a></li>{% endfor %}
+  </ul>
+</header>
+
+{# 3. THE ticket-02 case: a mistyped slot name #}
+{% if slot.heor %}<section class="ws-hero">{{ slot.heor }}</section>{% endif %}
+
+<div class="ws-layout">
+  {# 4. unknown filter #}
+  <main class="ws-main">{{ slot.content | frist_of("h1") }}</main>
+</div>
+
+{# 5. macro arity #}
+<footer class="ws-footer">{{ credit(site.title, site.home_title) }}</footer>
+
+{% macro credit(who) %}
+  <small>Built by {{ who }}</small>
+{% endmacro %}

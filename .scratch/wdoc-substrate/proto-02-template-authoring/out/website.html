@@ -1,0 +1,79 @@
+
+
+
+
+<header class="ws-header">
+  <a class="ws-brand" href="index.html">WCL</a>
+
+  
+    <ul class="menu">
+      
+  <li>
+    <a href="index.html">Docs</a>
+    
+    
+  </li>
+
+  <li>
+    <span class="menu-group">Reference</span>
+    
+      <ul class="menu-sub">
+        
+  <li>
+    <a href="sites.html">Sites</a>
+    
+    
+  </li>
+
+  <li>
+    <a href="pages.html">Pages</a>
+    
+    
+  </li>
+
+      </ul>
+    
+  </li>
+
+  <li>
+    <a href="https://github.com/wiltaylor/wcl">GitHub</a>
+    
+    
+  </li>
+
+    </ul>
+  
+
+  
+    <div class="ws-controls">
+      <input class="wdoc-search" placeholder="Search…">
+      <button class="theme-toggle" onclick="wdocToggleTheme()">◐ Theme</button>
+    </div>
+  
+</header>
+
+
+<section class="ws-hero"><h1 id="configuration-that-checks-itself">Configuration that checks itself</h1>
+<p>A typed language for documents.</p></section>
+
+<div class="ws-layout">
+  <main class="ws-main"><h1 id="sites">Sites</h1>
+<p>A site gathers pages and renders them through a template.</p>
+<div class="wdoc-callout note"><p>A page not in the toc is still built.</p></div>
+<h2 id="declaring-a-site">Declaring a site</h2>
+<pre class="wdoc-code" data-lang="wcl"><code>site docs {
+  template = :book
+}</code></pre>
+<h2 id="templates">Templates</h2>
+<p>Four ship in the stdlib: webpage, book, website, presentation.</p>
+<h3 id="regions">Regions</h3>
+<p>A region renders independently of the page body.</p></main>
+  
+</div>
+
+<footer class="ws-footer">
+  <p>MIT licensed.</p>
+</footer>
+
+
+

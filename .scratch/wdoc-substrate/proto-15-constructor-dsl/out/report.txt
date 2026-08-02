@@ -1,0 +1,129 @@
+==========================================================================
+1. FAITHFULNESS — is the V0 copy the shipped stdlib?
+==========================================================================
+   v0_toc(fixture) == book_toc(fixture)   YES
+
+==========================================================================
+2. EQUIVALENCE — every variant builds the same value as today
+   (after none-dropping `class`, which is the Rust-side fix)
+==========================================================================
+   V1  honest (free fixes)    s1:ok  s2:ok  s3:ok  s4:ok
+   V2  per-tag DSL            s1:ok  s2:ok  s3:ok  s4:ok
+   V3  generic el() DSL       s1:ok  s2:ok  s3:ok  s4:ok
+   → all variants are behaviour-identical
+
+==========================================================================
+3. WEIGHT — non-whitespace characters of authored code
+   (comments stripped; `chars` is primary, `lines` shown for scale)
+==========================================================================
+   subject                                 V0          V1          V2          V3
+   ------------------------------------------------------------------------------
+   S1 website_header                      732         637         342         391
+   S2 book_toc (recursive)               1041         930         569         611
+   S3 chart axes/grid/title (SVG)         963         864         635         635
+   S4 callout lower                      1087         998         740         748
+   ------------------------------------------------------------------------------
+   SUBJECT TOTAL                         3823        3429        2286        2385
+   + DSL definitions                        0           0        1745        1088
+   = ALL-IN                              3823        3429        4031        3473
+
+   deltas, subject code only:
+     V1  honest (free fixes)    vs today   -394  (-11%)   vs honest     +0  ( +0%)
+     V2  per-tag DSL            vs today  -1537  (-41%)   vs honest  -1143  (-34%)
+     V3  generic el() DSL       vs today  -1438  (-38%)   vs honest  -1044  (-31%)
+
+==========================================================================
+4. PER-VOCABULARY — where does the DSL actually pay?
+==========================================================================
+   S1 HTML, tree-shaped                      today   732 → honest   637 → DSL   342
+      of the 390 saved: 95 (24%) is the FREE FIXES, 295 (75%) is the DSL
+   S2 HTML, tree-shaped + conditional class  today  1041 → honest   930 → DSL   569
+      of the 472 saved: 111 (23%) is the FREE FIXES, 361 (76%) is the DSL
+   S3 SVG, field-shaped                      today   963 → honest   864 → DSL   635
+      of the 328 saved: 99 (30%) is the FREE FIXES, 229 (69%) is the DSL
+   S4 content block reaching for markup      today  1087 → honest   998 → DSL   740
+      of the 347 saved: 89 (25%) is the FREE FIXES, 258 (74%) is the DSL
+
+==========================================================================
+5. CONTENT IR (ticket 05 decision 1) — the control
+==========================================================================
+   callout today (HTML tree)             1087 chars
+   callout as a Content variant           392 chars   (-64%)
+   ... with a constructor DSL over it     536 chars   (+144 vs no DSL)
+   DSL and non-DSL build the same value: YES
+   value: [Content::Callout { body: "This **matters**.", class: ["warning"], heading: "Careful", icon: none, id: none, kind: :warning }]
+
+==========================================================================
+6. CORPUS — how often does the unsolved half actually occur?
+==========================================================================
+   `attrs: [` sites, all .wcl in repo            40
+   ... with any `if` in them                    1
+   ... conditionally-PRESENT attribute          0   <- the 'unsolved half'
+   conditional `class` sites                    11
+
+==========================================================================
+7. AMORTISATION — the DSL is paid once and spent per site
+==========================================================================
+   HtmlFundamental::Element construction sites, repo-wide   258
+   SvgFundamental::* construction sites, repo-wide          71
+   top files:
+       51  docs/pages/wcl/landing-parts.wcl
+       36  crates/wcl_wdoc/lib/templates.wcl
+       36  crates/wcl/src/scaffold/templates/website.wcl
+       30  crates/wcl/src/scaffold/templates/wskill.wcl
+       17  docs/wskills/wdoc/wdoc/training/main.wcl
+       15  crates/wcl_wdoc/lib/website.wcl
+
+   measured saving over 14 HTML sites in the subjects   1110 chars  (79/site)
+   generic-DSL definition cost, paid once             1088 chars
+   break-even                                        ~14 sites
+   projected over the 258 real sites               ~19,368 chars saved
+
+==========================================================================
+8. SAFETY — what each form catches
+==========================================================================
+   long form, misspelled field        CAUGHT  wcl::eval::variant_shape_mismatch
+   DSL, two f64 args transposed       SILENT  SvgFundamental::Label { class: ["wdoc-axis-label"], content: "50", fill: none, fit_height:
+   DSL, one argument short            CAUGHT  wcl::eval::builtin_arity
+
+   `SvgFundamental::Label` has 7 fields, 4 of them f64. Transposing
+   `font_size` and `fit_width` renders the axis label at triple size
+   in a third of its box, and nothing objects.
+
+==========================================================================
+9. THE FREE THIRD OPTION — how much of the win is just the prefix?
+==========================================================================
+   05 decision 11 regenerates these unions anyway, so their NAMES are
+   in play. `HtmlFundamental::` is 17 chars; `Html::` is 6.
+
+   prefix occurrences in the honest subjects   22 Html + 5 Svg
+   chars recovered by shortening the names     297
+   the generic DSL's saving over honest        1044
+   → renaming alone buys 28% of the DSL's win, with ZERO safety loss
+
+   repo-wide, renaming both unions saves ~6,457 chars (construction + `Raw`/list-type mentions)
+
+==========================================================================
+10. SVG PRICED — what does the DSL add ON TOP of the free rename?
+==========================================================================
+   V5 rename builds the same value as today:  YES
+
+   today                                     963
+   + free fixes                              864   (  -99)
+   + union rename (free under 05 d.11)       765   (  -99)
+   + positional constructors                 635   ( -130)  <- the risky step
+
+   marginal saving of the SVG DSL, over 5 sites   130 chars  (26/site)
+   SVG constructor definitions, paid once         304 chars
+   break-even                                    ~12 sites   (of 71 in the repo)
+   projected over 71 sites                       ~1,542 chars
+
+   exposure: 56 of 71 SVG sites are Label/Rect/Circle/Line —
+   variants whose supplied fields are 4-6 interchangeable f64s.
+
+   the same sum for HTML, for contrast:
+     marginal saving over the rename   68/site x 258 sites = ~16,530 chars
+     SVG equivalent                    26/site x 71 sites = ~1,542 chars
+   -> HTML pays 10x more, and its arguments are heterogeneous TYPES
+      (utf8 / list<utf8> / list<list<utf8>> / list<Html>) — a transposition
+      there breaks the output loudly, not subtly.

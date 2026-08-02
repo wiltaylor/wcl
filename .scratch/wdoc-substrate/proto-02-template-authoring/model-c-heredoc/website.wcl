@@ -1,0 +1,86 @@
+// MODEL C — heredoc-with-slots, promoted to first class.
+//
+// This is what people ALREADY do (website.wcl's own doc comment recommends
+// it: "paste the design, mark ${c.content}"). The change is that the `${…}`
+// slots become checked rather than string-interpolated, and the heredoc's
+// HTML is parsed rather than concatenated.
+//
+// It reads beautifully — right up to the first loop.
+
+namespace wdoc
+
+// ── Where model C is at its best ───────────────────────────────────────
+//
+// A static shell with holes. Nothing beats this; it IS the pasted design.
+
+let website_shell = fn(c: TemplateCtx, header: Html, body: Html) -> Html
+  html$<<HTML
+    <header class="ws-header">
+      <a class="ws-brand" href="${c.home_href ?? "index.html"}">${c.title}</a>
+      ${header}
+      <div class="ws-controls">
+        ${when(c.search, search_box())}
+        ${when(c.theme_toggle, theme_toggle())}
+      </div>
+    </header>
+
+    ${slot_wrap(c, :banner, "div.ws-banner")}
+    ${slot_wrap(c, :hero, "section.ws-hero")}
+
+    <div class="ws-layout">
+      <main class="ws-main">${slot(c, :content)}</main>
+      ${slot_wrap(c, :sidebar, "aside.ws-aside")}
+    </div>
+
+    <footer class="ws-footer">${slot_or(c, :footer, c.title)}</footer>
+    HTML
+
+// ── Where it breaks ────────────────────────────────────────────────────
+//
+// The menu. A heredoc cannot loop, so the loop moves OUTSIDE and the HTML
+// gets chopped into three fragments that only make sense read together:
+
+let website_menu = fn(c: TemplateCtx) -> Html
+  join([
+    html$<<HTML
+      <ul class="menu">
+      HTML,
+    join(map(c.menu, fn(m: MenuEntry) -> Html
+      html$<<HTML
+        <li><a href="${m.href}">${m.label}</a></li>
+        HTML)),
+    html$<<HTML
+      </ul>
+      HTML,
+  ])
+
+// Three problems, all structural, none fixable by polish:
+//
+//   1. NO FRAGMENT IS WELL-FORMED HTML. `<ul class="menu">` alone cannot be
+//      parsed, so the "parse the heredoc, check the HTML" promise — the one
+//      thing that distinguishes model C from today's string concatenation —
+//      is exactly what you lose at every loop. You are back to concatenating
+//      strings, just with nicer syntax around it.
+//
+//   2. The nesting is now INVERTED against the output. Reading top to
+//      bottom you see open-tag, unrelated WCL, close-tag. The pasted-design
+//      property — the thing model C exists for — is gone.
+//
+//   3. It gets worse with depth. The book's toc tree is a RECURSIVE loop,
+//      so the same chopping happens at every level; see book.wcl.
+//
+// Model A's answer to the same markup:
+//
+//   <ul class="menu">
+//     {% for m in site.menu %}<li><a href="{{ m.href }}">{{ m.label }}</a></li>{% endfor %}
+//   </ul>
+//
+// — one well-formed fragment, loop inside, still parseable, still pasteable.
+// The moment you add `{% for %}` to model C to fix this, model C IS model A
+// with the HTML in a WCL string literal instead of its own file.
+
+template website {
+  slots = [:banner?, :hero?, :sidebar?, :footer?, :content]
+  render = fn(c: TemplateCtx) -> Html
+    website_shell(c, website_menu(c), slot(c, :content))
+}

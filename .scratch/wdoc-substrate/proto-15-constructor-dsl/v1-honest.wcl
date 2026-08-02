@@ -1,0 +1,170 @@
+// V1 — HONEST BASELINE. Ticket 05's two free fixes and nothing else:
+//   (a) the dead `: none` arguments deleted (optional variant fields
+//       already default to `none` — verified);
+//   (b) `class` as a none-dropping list, so the conditional-class
+//       branch collapses.
+//
+// (b) is written `if x { "c" } else { none }` because an else-less `if`
+// DOES NOT PARSE today (`unexpected token` at the closing brace). The
+// dropping itself is a consumer-side change: `["a", none]` evaluates
+// fine today and stays `["a", none]` in the value. run.py normalises it
+// away when diffing against V0, which is exactly the Rust change.
+import <wdoc.wcl>
+import "fixtures.wcl"
+
+@document
+type Proto { s1: HtmlFundamental  s2: list<HtmlFundamental>  s3: list<SvgFundamental>  s4: list<HtmlFundamental> }
+
+// >>> DSL
+// (none — free fixes only)
+// <<< DSL
+
+// >>> S1 website_header
+let v1_website_header = fn(c: TemplateCtx) -> HtmlFundamental
+  HtmlFundamental::Element {
+    tag: "header", class: ["ws-header"],
+    children: flatten([
+      [ HtmlFundamental::Element {
+          tag: "a", class: ["ws-brand"],
+          attrs: [["href", if c.home_href == "" { "index.html" } else { c.home_href }]],
+          children: [ HtmlFundamental::Raw { html: c.title } ],
+      } ],
+      if len(c.menu) == 0 {
+        [ HtmlFundamental::Element {
+            tag: "ul", class: ["menu"],
+            children: map(c.pages, fn(p: PageRef) -> HtmlFundamental
+              HtmlFundamental::Element {
+                tag: "li",
+                children: [ HtmlFundamental::Element {
+                  tag: "a", attrs: [["href", p.href]],
+                  children: [ HtmlFundamental::Raw { html: p.name } ],
+                } ],
+              }),
+        } ]
+      } else {
+        wdoc_part_menu_tree(c.menu)
+      },
+      website_header_controls(c),
+    ]),
+  }
+// <<< S1
+
+// >>> S2 book_toc
+let v1_toc_link = fn(e: TocEntry) -> HtmlFundamental
+  if e.href == "" {
+    HtmlFundamental::Element {
+      tag: "span", class: ["book-section"],
+      children: [ HtmlFundamental::Raw { html: e.title } ],
+    }
+  } else {
+    HtmlFundamental::Element {
+      tag: "a",
+      class: ["book-chapter", if e.current { "current" } else { none }],
+      attrs: [["href", e.href]],
+      children: [ HtmlFundamental::Raw { html: e.title } ],
+    }
+  }
+
+let v1_toc_toggle = HtmlFundamental::Element {
+  tag: "span", class: ["book-toc-toggle"], children: [],
+}
+
+let v1_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
+  if len(entries) == 0 { [] }
+  else {
+    [ HtmlFundamental::Element {
+        tag: "ul", class: ["book-toc"],
+        children: map(entries, fn(e: TocEntry) -> HtmlFundamental {
+          let has_children = len(e.children) > 0;
+          HtmlFundamental::Element {
+            tag: "li",
+            class: [
+              if has_children { "book-branch" } else { none },
+              if has_children && toc_active(e) { "open" } else { none },
+            ],
+            children: flatten([
+              [ HtmlFundamental::Element {
+                  tag: "div", class: ["book-toc-row"],
+                  children: [ v1_toc_toggle, v1_toc_link(e) ],
+              } ],
+              v1_toc(e.children),
+            ]),
+          }
+        }),
+      } ]
+  }
+// <<< S2
+
+// >>> S3 chart axes + gridlines + title
+let v1_chart_axes = fn(px: f64, py: f64, pw: f64, ph: f64) -> list<SvgFundamental> [
+  SvgFundamental::Line { x1: px, y1: py + ph, x2: px + pw, y2: py + ph, class: ["wdoc-axis"] },
+  SvgFundamental::Line { x1: px, y1: py, x2: px, y2: py + ph, class: ["wdoc-axis"] },
+]
+
+let v1_chart_gridlines = fn(px: f64, py: f64, pw: f64, ph: f64, ymin: f64, ymax: f64, nticks: i64) -> list<SvgFundamental>
+  flatten(map(range(0, nticks + 1), fn(k: i64) -> list<SvgFundamental> {
+    let yy = py + ph - ph * k / nticks;
+    let val = ymin + (ymax - ymin) * k / nticks;
+    [
+      SvgFundamental::Line { x1: px, y1: yy, x2: px + pw, y2: yy, class: ["wdoc-grid"] },
+      SvgFundamental::Label {
+        content: chart_fmt(val), x: px - 6.0, y: yy, font_size: 10.0,
+        fit_width: 32.0, fit_height: 12.0, class: ["wdoc-axis-label"],
+      },
+    ]
+  }))
+
+let v1_chart_title = fn(cx: f64, cy: f64, cw: f64, text: utf8) -> list<SvgFundamental>
+  if text == "" { [] } else {
+    [ SvgFundamental::Label {
+        content: text, x: cx, y: cy + 11.0, font_size: 13.0,
+        fit_width: cw, fit_height: 16.0, class: ["wdoc-chart-title"],
+      } ]
+  }
+// <<< S3
+
+// >>> S4 callout lower
+let v1_callout = fn(c: Callout) -> list<HtmlFundamental> {
+  let cls = if c.class == none { [] } else { c.class };
+  let kind_icon =
+    if list_contains(cls, "warning") { "lucide.triangle-alert" }
+    else if list_contains(cls, "error") { "lucide.circle-x" }
+    else if list_contains(cls, "success") { "lucide.circle-check" }
+    else if list_contains(cls, "tip") { "lucide.lightbulb" }
+    else if list_contains(cls, "info") { "lucide.info" }
+    else if list_contains(cls, "note") { "lucide.info" }
+    else { "" };
+  let icon_name = if c.icon == none { kind_icon } else { c.icon };
+  let title = HtmlFundamental::Paragraph { class: ["callout-title"], spans: [c.heading] };
+  let head_children =
+    if icon_name == "" { [title] }
+    else { [ HtmlFundamental::Icon { name: icon_name, class: ["callout-icon"] }, title ] };
+  [
+    HtmlFundamental::Element {
+      tag: "div", id: c.id, class: flatten([["callout"], cls]),
+      children: [
+        HtmlFundamental::Element {
+          tag: "div", class: ["callout-heading"], children: head_children,
+        },
+        HtmlFundamental::Element {
+          tag: "div", class: ["callout-body"],
+          children: [
+            HtmlFundamental::Element {
+              tag: "p", children: [HtmlFundamental::Inline { text: c.body }],
+            },
+          ],
+        },
+      ],
+    },
+  ]
+}
+// <<< S4
+
+s1 = v1_website_header(fx_ctx)
+s2 = v1_toc(fx_toc)
+s3 = flatten([
+  v1_chart_axes(40.0, 20.0, 300.0, 160.0),
+  v1_chart_gridlines(40.0, 20.0, 300.0, 160.0, 0.0, 100.0, 4),
+  v1_chart_title(0.0, 0.0, 380.0, "Throughput"),
+])
+s4 = v1_callout(fx_callout)

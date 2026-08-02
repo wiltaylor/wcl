@@ -1,0 +1,41 @@
+// Shared fixture data for every variant. Bare records — field access is
+// structural, so these stand in for `TocEntry` / `PageRef` / `TemplateCtx`
+// without needing the real constructors.
+
+let fx_toc = [
+  { title: "Introduction", href: "intro.html", current: false, children: [] },
+  { title: "Guide", href: "", current: false, children: [
+    { title: "Install", href: "install.html", current: true, children: [] },
+    { title: "Configure", href: "configure.html", current: false, children: [] },
+  ] },
+  { title: "Reference", href: "reference.html", current: false, children: [
+    { title: "Blocks", href: "blocks.html", current: false, children: [] },
+  ] },
+]
+
+let fx_pages = [
+  { name: "Home", href: "index.html" },
+  { name: "Docs", href: "docs.html" },
+]
+
+// A TemplateCtx-shaped record. `menu` empty so the flat-link branch of
+// `website_header` runs; `search`/`theme_toggle` off so the controls
+// cluster is empty (both branches of the real fn are exercised across
+// the two fixtures below).
+let fx_ctx = {
+  title: "Example Site",
+  home_href: "",
+  pages: fx_pages,
+  menu: [],
+  search: false,
+  theme_toggle: false,
+  content: "<p>body</p>",
+}
+
+let fx_callout = {
+  heading: "Careful",
+  body: "This **matters**.",
+  id: none,
+  class: ["warning"],
+  icon: none,
+}

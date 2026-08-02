@@ -1,0 +1,128 @@
+// V3 — ONE GENERIC CONSTRUCTOR. `el(tag, cls, kids)` with the tag as a
+// string argument, plus `ela(…)` when there are attributes. No per-tag
+// family to learn.
+//
+// This is also where ticket 05 decision 7's "one DSL across all three
+// vocabularies" gets tested. It cannot be one FUNCTION: `el` returns
+// `HtmlFundamental`, and WCL has no generics (ticket 14 took syntax-only
+// generics; there is no substitution and no way to write `el<T>`). So
+// the SVG half below is a SEPARATE, parallel family — `sline`/`slabel` —
+// and "generic across three vocabularies" can only ever mean "the same
+// naming convention applied three times".
+import <wdoc.wcl>
+import "fixtures.wcl"
+
+@document
+type Proto { s1: HtmlFundamental  s2: list<HtmlFundamental>  s3: list<SvgFundamental>  s4: list<HtmlFundamental> }
+
+// >>> DSL
+let raw = fn(h: utf8) -> HtmlFundamental HtmlFundamental::Raw { html: h }
+let inl = fn(t: utf8) -> HtmlFundamental HtmlFundamental::Inline { text: t }
+let icon = fn(n: utf8, cls: list<utf8>) -> HtmlFundamental HtmlFundamental::Icon { name: n, class: cls }
+let para = fn(cls: list<utf8>, spans: list<utf8>) -> HtmlFundamental
+  HtmlFundamental::Paragraph { class: cls, spans: spans }
+
+let el = fn(tag: utf8, cls: list<utf8>, kids: list<HtmlFundamental>) -> HtmlFundamental
+  HtmlFundamental::Element { tag: tag, class: cls, children: kids }
+let ela = fn(tag: utf8, cls: list<utf8>, attrs: list<list<utf8>>, kids: list<HtmlFundamental>) -> HtmlFundamental
+  HtmlFundamental::Element { tag: tag, class: cls, attrs: attrs, children: kids }
+let eli = fn(tag: utf8, id: identifier, cls: list<utf8>, kids: list<HtmlFundamental>) -> HtmlFundamental
+  HtmlFundamental::Element { tag: tag, id: id, class: cls, children: kids }
+
+// Parallel family, not the same function — see the header note.
+let sline = fn(x1: f64, y1: f64, x2: f64, y2: f64, cls: list<utf8>) -> SvgFundamental
+  SvgFundamental::Line { x1: x1, y1: y1, x2: x2, y2: y2, class: cls }
+let slabel = fn(t: utf8, x: f64, y: f64, size: f64, fw: f64, fh: f64, cls: list<utf8>) -> SvgFundamental
+  SvgFundamental::Label { content: t, x: x, y: y, font_size: size, fit_width: fw, fit_height: fh, class: cls }
+// <<< DSL
+
+// >>> S1 website_header
+let v3_website_header = fn(c: TemplateCtx) -> HtmlFundamental
+  el("header", ["ws-header"], flatten([
+    [ ela("a", ["ws-brand"], [["href", if c.home_href == "" { "index.html" } else { c.home_href }]], [raw(c.title)]) ],
+    if len(c.menu) == 0 {
+      [ el("ul", ["menu"], map(c.pages, fn(p: PageRef) -> HtmlFundamental
+          el("li", [], [ ela("a", [], [["href", p.href]], [raw(p.name)]) ]))) ]
+    } else { wdoc_part_menu_tree(c.menu) },
+    website_header_controls(c),
+  ]))
+// <<< S1
+
+// >>> S2 book_toc
+let v3_toc_link = fn(e: TocEntry) -> HtmlFundamental
+  if e.href == "" { el("span", ["book-section"], [raw(e.title)]) }
+  else {
+    ela("a", ["book-chapter", if e.current { "current" } else { none }],
+      [["href", e.href]], [raw(e.title)])
+  }
+
+let v3_toc_toggle = el("span", ["book-toc-toggle"], [])
+
+let v3_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
+  if len(entries) == 0 { [] }
+  else {
+    [ el("ul", ["book-toc"], map(entries, fn(e: TocEntry) -> HtmlFundamental {
+        let branch = len(e.children) > 0;
+        el("li", [
+            if branch { "book-branch" } else { none },
+            if branch && toc_active(e) { "open" } else { none },
+          ],
+          flatten([
+            [ el("div", ["book-toc-row"], [ v3_toc_toggle, v3_toc_link(e) ]) ],
+            v3_toc(e.children),
+          ]))
+      })) ]
+  }
+// <<< S2
+
+// >>> S3 chart axes + gridlines + title
+let v3_chart_axes = fn(px: f64, py: f64, pw: f64, ph: f64) -> list<SvgFundamental> [
+  sline(px, py + ph, px + pw, py + ph, ["wdoc-axis"]),
+  sline(px, py, px, py + ph, ["wdoc-axis"]),
+]
+
+let v3_chart_gridlines = fn(px: f64, py: f64, pw: f64, ph: f64, ymin: f64, ymax: f64, nticks: i64) -> list<SvgFundamental>
+  flatten(map(range(0, nticks + 1), fn(k: i64) -> list<SvgFundamental> {
+    let yy = py + ph - ph * k / nticks;
+    let val = ymin + (ymax - ymin) * k / nticks;
+    [
+      sline(px, yy, px + pw, yy, ["wdoc-grid"]),
+      slabel(chart_fmt(val), px - 6.0, yy, 10.0, 32.0, 12.0, ["wdoc-axis-label"]),
+    ]
+  }))
+
+let v3_chart_title = fn(cx: f64, cy: f64, cw: f64, text: utf8) -> list<SvgFundamental>
+  if text == "" { [] }
+  else { [ slabel(text, cx, cy + 11.0, 13.0, cw, 16.0, ["wdoc-chart-title"]) ] }
+// <<< S3
+
+// >>> S4 callout lower
+let v3_callout = fn(c: Callout) -> list<HtmlFundamental> {
+  let cls = if c.class == none { [] } else { c.class };
+  let kind_icon =
+    if list_contains(cls, "warning") { "lucide.triangle-alert" }
+    else if list_contains(cls, "error") { "lucide.circle-x" }
+    else if list_contains(cls, "success") { "lucide.circle-check" }
+    else if list_contains(cls, "tip") { "lucide.lightbulb" }
+    else if list_contains(cls, "info") { "lucide.info" }
+    else if list_contains(cls, "note") { "lucide.info" }
+    else { "" };
+  let icon_name = if c.icon == none { kind_icon } else { c.icon };
+  let title = para(["callout-title"], [c.heading]);
+  let head_children =
+    if icon_name == "" { [title] } else { [ icon(icon_name, ["callout-icon"]), title ] };
+  [ eli("div", c.id, flatten([["callout"], cls]), [
+      el("div", ["callout-heading"], head_children),
+      el("div", ["callout-body"], [ el("p", [], [inl(c.body)]) ]),
+    ]) ]
+}
+// <<< S4
+
+s1 = v3_website_header(fx_ctx)
+s2 = v3_toc(fx_toc)
+s3 = flatten([
+  v3_chart_axes(40.0, 20.0, 300.0, 160.0),
+  v3_chart_gridlines(40.0, 20.0, 300.0, 160.0, 0.0, 100.0, 4),
+  v3_chart_title(0.0, 0.0, 380.0, "Throughput"),
+])
+s4 = v3_callout(fx_callout)

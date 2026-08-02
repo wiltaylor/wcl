@@ -1,0 +1,147 @@
+
+
+
+
+<nav class="book-sidebar">
+  <div class="book-title">WCL</div>
+  
+  <input class="wdoc-search" placeholder="Search…">
+  <button class="theme-toggle" onclick="wdocToggleTheme()">◐ Theme</button>
+
+  
+  
+    <ul class="book-toc">
+      
+        <li class="">
+          <div class="book-toc-row">
+            <span class="book-toc-toggle"></span>
+            
+              <a class="book-chapter " href="index.html">Getting started</a>
+            
+          </div>
+          
+  
+
+        </li>
+      
+        <li class="book-branch open">
+          <div class="book-toc-row">
+            <span class="book-toc-toggle"></span>
+            
+              <span class="book-section">Reference</span>
+            
+          </div>
+          
+  
+    <ul class="book-toc">
+      
+        <li class="">
+          <div class="book-toc-row">
+            <span class="book-toc-toggle"></span>
+            
+              <a class="book-chapter current" href="sites.html">Sites</a>
+            
+          </div>
+          
+  
+
+        </li>
+      
+        <li class="">
+          <div class="book-toc-row">
+            <span class="book-toc-toggle"></span>
+            
+              <a class="book-chapter " href="pages.html">Pages</a>
+            
+          </div>
+          
+  
+
+        </li>
+      
+    </ul>
+  
+
+        </li>
+      
+        <li class="book-branch ">
+          <div class="book-toc-row">
+            <span class="book-toc-toggle"></span>
+            
+              <span class="book-section">Appendix</span>
+            
+          </div>
+          
+  
+    <ul class="book-toc">
+      
+        <li class="">
+          <div class="book-toc-row">
+            <span class="book-toc-toggle"></span>
+            
+              <a class="book-chapter " href="glossary.html">Glossary</a>
+            
+          </div>
+          
+  
+
+        </li>
+      
+    </ul>
+  
+
+        </li>
+      
+    </ul>
+  
+
+
+  
+    <div class="book-sidebar-footer">
+      
+        <a class="book-footer-btn" href="https://github.com/wiltaylor/wcl" title="GitHub" aria-label="GitHub"><svg class='wdoc-icon'></svg></a>
+      
+    </div>
+  
+</nav>
+
+<main class="book-content">
+  <div class="book-measure">
+    <h1 id="sites">Sites</h1>
+<p>A site gathers pages and renders them through a template.</p>
+<div class="wdoc-callout note"><p>A page not in the toc is still built.</p></div>
+<h2 id="declaring-a-site">Declaring a site</h2>
+<pre class="wdoc-code" data-lang="wcl"><code>site docs {
+  template = :book
+}</code></pre>
+<h2 id="templates">Templates</h2>
+<p>Four ship in the stdlib: webpage, book, website, presentation.</p>
+<h3 id="regions">Regions</h3>
+<p>A region renders independently of the page body.</p>
+
+    
+    
+      <nav class="book-pagenav">
+        <a class="book-nav book-nav-prev" href="index.html">← Getting started</a>
+        <a class="book-nav book-nav-next" href="pages.html">Pages →</a>
+      </nav>
+    
+  </div>
+</main>
+
+
+
+  <aside class="book-rail">
+    <div class="book-rail-title">On this page</div>
+    <nav class="book-onpage">
+      
+        <a class="book-onpage-link level-2" href="#Declaring a site">Declaring a site</a>
+      
+        <a class="book-onpage-link level-2" href="#Templates">Templates</a>
+      
+    </nav>
+  </aside>
+
+
+
+

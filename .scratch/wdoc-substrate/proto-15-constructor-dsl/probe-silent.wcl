@@ -1,0 +1,33 @@
+// The safety probe. Two ways to get a chart label wrong.
+//
+// `SvgFundamental::Label` has SEVEN fields, four of them `f64`. The
+// long form names them; a positional constructor does not.
+import <wdoc.wcl>
+
+@document
+type Probe {
+  long_form_typo: SvgFundamental
+  dsl_swapped: SvgFundamental
+  dsl_wrong_arity: SvgFundamental
+}
+
+let slabel = fn(t: utf8, x: f64, y: f64, size: f64, fw: f64, fh: f64, cls: list<utf8>) -> SvgFundamental
+  SvgFundamental::Label {
+    content: t, x: x, y: y, font_size: size,
+    fit_width: fw, fit_height: fh, class: cls,
+  }
+
+// A misspelled field in the long form.
+long_form_typo = SvgFundamental::Label {
+  content: "50", x: 34.0, y: 140.0, font_sze: 10.0,
+  fit_width: 32.0, fit_height: 12.0, class: ["wdoc-axis-label"],
+}
+
+// The same intent through the DSL, with `size` and `fw` transposed —
+// the axis label meant `font_size: 10, fit_width: 32` and gets
+// `font_size: 32, fit_width: 10`. Triple-size text in a third of the
+// box. Nothing objects.
+dsl_swapped = slabel("50", 34.0, 140.0, 32.0, 10.0, 12.0, ["wdoc-axis-label"])
+
+// Arity, for contrast — the one positional mistake the language does catch.
+dsl_wrong_arity = slabel("50", 34.0, 140.0, 10.0, 32.0, ["wdoc-axis-label"])

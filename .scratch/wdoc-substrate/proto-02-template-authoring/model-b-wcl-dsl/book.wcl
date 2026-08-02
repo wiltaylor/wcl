@@ -1,0 +1,89 @@
+// MODEL B at the acid test — the book's recursive sidebar tree.
+//
+// This is the case where model B pulls AHEAD of model A, and it is worth
+// being clear about why: `toc_active` is a recursive predicate returning
+// `bool`. Model A's macros return markup, so it cannot express this and the
+// value has to be supplied precomputed. Model B is just WCL, so a recursive
+// bool fn is a recursive bool fn.
+
+namespace wdoc
+
+let toc_active = fn(e: TocEntry) -> bool
+  e.current || any(e.children, toc_active)
+
+let toc_tree = fn(entries: list<TocEntry>) -> list<El>
+  when(len(entries) > 0, [
+    ul(".book-toc", map(entries, fn(e: TocEntry) -> El
+      li(sel_if(len(e.children) > 0, ".book-branch", toc_active(e), ".open"), [
+        div(".book-toc-row", [
+          span(".book-toc-toggle", []),
+          if e.href == "" {
+            span(".book-section", [txt(e.title)])
+          } else {
+            a(sel_if(true, ".book-chapter", e.current, ".current"),
+              { href: e.href }, [txt(e.title)])
+          },
+        ]),
+        toc_tree(e.children),
+      ]))),
+  ])
+
+// …and this is where model B's honesty problem shows. `sel_if` above is a
+// helper invented purely to keep the class-list conditional on one line.
+// The real WCL is:
+//
+//   class: if has_children {
+//            if toc_active(e) { ["book-branch", "open"] } else { ["book-branch"] }
+//          } else { none }
+//
+// The DSL shortens ELEMENT CONSTRUCTION. It does nothing for conditional
+// attributes, which is where a good half of real template noise actually
+// lives — and `sel_if(true, ".book-chapter", e.current, ".current")` reads
+// worse than model A's `class="book-chapter {% if e.current %}current{% endif %}"`.
+
+// Prev/next: unchanged from today. Real computation, expressed as such.
+let book_pageflow = fn(entries: list<TocEntry>) -> list<TocEntry>
+  flatten(map(entries, fn(e: TocEntry) -> list<TocEntry>
+    flatten([ when(e.href != "", [e]), book_pageflow(e.children) ])))
+
+let book_pagenav = fn(toc: list<TocEntry>) -> list<El> {
+  let flow = book_pageflow(toc);
+  let idx = index_where(flow, fn(e: TocEntry) -> bool e.current);
+  when(idx >= 0, [
+    nav(".book-pagenav", flatten([
+      when(idx > 0, [nav_link(at(flow, idx - 1), ".book-nav-prev", "← {}")]),
+      when(idx < len(flow) - 1, [nav_link(at(flow, idx + 1), ".book-nav-next", "{} →")]),
+    ])),
+  ])
+}
+
+// NOTE the cost this preserves. `book_pagenav(c.toc)` is called ONCE PER
+// PAGE and re-walks the whole toc each time — the 26082 `book_pageflow`
+// calls for 161 pages that ticket 11 measured as 36% of a build.
+//
+// Model B makes that pathology EASY to keep writing, because "just write a
+// fn" is the model. Model A makes it hard to write at all, which is why its
+// book template ended up with prev/next supplied — the constraint produced
+// the faster design by accident.
+
+let book_layout = fn(c: TemplateCtx) -> list<El>
+  flatten([
+    [nav(".book-sidebar", flatten([
+       [div(".book-title", [txt(c.title)])],
+       when(c.home_href != "", [a(".book-home", { href: c.home_href }, [txt(c.home_title)])]),
+       when(c.search, [search_box()]),
+       when(c.theme_toggle, [theme_toggle()]),
+       toc_tree(c.toc),
+       sidebar_footer(c),
+     ]))],
+    [main(".book-content", [div(".book-measure", flatten([
+       [slot(c, :content)],
+       book_pagenav(c.toc),
+     ]))])],
+    book_rail(c),
+  ])
+
+template book {
+  slots = [:content]
+  render = book_layout
+}

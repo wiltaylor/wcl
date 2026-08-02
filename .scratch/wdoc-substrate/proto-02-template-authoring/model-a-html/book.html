@@ -1,0 +1,87 @@
+{# MODEL A — the `book` template. THE HARD CASE.
+   Compare with the `wdoc_part_*` family in crates/wcl_wdoc/lib/templates.wcl:
+   book_toc / toc_active / book_pageflow / book_pagenav / wdoc_part_sidebar /
+   wdoc_part_book_rail — ~200 lines of WCL, and 36% of a full build.
+
+   Read the two ⚠ comments below — they are the finding this template exists
+   to produce, not decoration. #}
+
+{% slots %}
+  content : blocks
+{% endslots %}
+
+<nav class="book-sidebar">
+  <div class="book-title">{{ site.title }}</div>
+  {% if site.home_href %}<a class="book-home" href="{{ site.home_href }}">← {{ site.home_title }}</a>{% endif %}
+  {% if site.search %}<input class="wdoc-search" placeholder="Search…">{% endif %}
+  {% if site.theme_toggle %}<button class="theme-toggle" onclick="wdocToggleTheme()">◐ Theme</button>{% endif %}
+
+  {{ toc_tree(site.toc) }}
+
+  {% if site.footer %}
+    <div class="book-sidebar-footer">
+      {% for b in site.footer %}
+        <a class="book-footer-btn" href="{{ b.href }}" title="{{ b.label }}" aria-label="{{ b.label }}">{{ b.icon | default(b.label) }}</a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</nav>
+
+<main class="book-content">
+  <div class="book-measure">
+    {{ slot.content }}
+
+    {# ⚠ FINDING 3a. In WCL today this is `book_pagenav(c.toc)`: flatten the
+       toc into reading order (recursive), fold to find the current index,
+       then index ±1. That is COMPUTATION, and it runs once per page — the
+       26082 `book_pageflow` calls ticket 11 measured. Here prev/next arrive
+       as supplied page-local context, computed once for the whole site. The
+       template does layout only. #}
+    {% if page.prev or page.next %}
+      <nav class="book-pagenav">
+        {% if page.prev %}<a class="book-nav book-nav-prev" href="{{ page.prev.href }}">← {{ page.prev.title }}</a>{% endif %}
+        {% if page.next %}<a class="book-nav book-nav-next" href="{{ page.next.href }}">{{ page.next.title }} →</a>{% endif %}
+      </nav>
+    {% endif %}
+  </div>
+</main>
+
+{# The on-this-page rail. Ticket 01 killed `render/headings.rs` and
+   `first_h1_text` — the rail is now DERIVED from the page's block tree by
+   query, in the template, instead of pre-extracted in Rust. #}
+{% if page.blocks | where("h2") %}
+  <aside class="book-rail">
+    <div class="book-rail-title">On this page</div>
+    <nav class="book-onpage">
+      {% for h in page.blocks | where("h2") %}
+        <a class="book-onpage-link level-2" href="#{{ h.text }}">{{ h.text }}</a>
+      {% endfor %}
+    </nav>
+  </aside>
+{% endif %}
+
+{# The recursive sidebar tree. A macro handles the nesting fine.
+   ⚠ FINDING 3b. `e.active` — "the current page is somewhere in this subtree"
+   — is a RECURSIVE PREDICATE (`toc_active` in WCL). A macro returns markup,
+   not a bool, so a template language of this shape cannot compute it. It is
+   supplied on the TocEntry instead. Every hard bit of the book template turns
+   out to be of this kind. #}
+{% macro toc_tree(entries) %}
+  {% if entries %}
+    <ul class="book-toc">
+      {% for e in entries %}
+        <li class="{% if e.children %}book-branch {% if e.active %}open{% endif %}{% endif %}">
+          <div class="book-toc-row">
+            <span class="book-toc-toggle"></span>
+            {% if e.href %}
+              <a class="book-chapter {% if e.current %}current{% endif %}" href="{{ e.href }}">{{ e.title }}</a>
+            {% else %}
+              <span class="book-section">{{ e.title }}</span>
+            {% endif %}
+          </div>
+          {{ toc_tree(e.children) }}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endmacro %}
