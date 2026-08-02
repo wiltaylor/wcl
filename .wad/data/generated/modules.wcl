@@ -75,7 +75,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_wskill {
     name = "wskill"
     kind = "module"
-    summary = "1 file, 3 pub items"
+    summary = "1 file, 4 pub items"
   }
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
@@ -1049,13 +1049,13 @@ code_item code_api_cli_commands {
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_cli_commands_wskill_fns_run_audit {
-      signature = "fn run_audit(entry: &Path, range: &str, format: crate::ReportFo…"
+    code_member m_n_api_cli_commands_wskill_fns_run_op {
+      signature = "fn run_op(entry: &Path, inline: &[String], file: Option<&Path>,…"
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_cli_commands_wskill_fns_run_op {
-      signature = "fn run_op(entry: &Path, inline: &[String], file: Option<&Path>,…"
+    code_member m_n_api_cli_commands_wskill_fns_run_audit {
+      signature = "fn run_audit(entry: &Path, range: &str, format: crate::ReportFo…"
       kind = "fn"
       visibility = "crate"
     }
