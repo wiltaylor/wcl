@@ -655,7 +655,7 @@ impl<'a> Decorator<'a> {
         let schema = self.doc.decorator_schema(schema_name)?;
         let slot = schema.field(slot_name)?;
         // If the slot is union-typed, dispatch the decorator's args.
-        if let TypeRef::Named(path) = slot.type_ref()
+        if let TypeRef::Named { path, .. } = slot.type_ref()
             && let Some(union) = self.doc.union_decl(&path.join("."))
         {
             return Some(self.dispatch_into_union(union));
@@ -1492,7 +1492,7 @@ impl<'a> TypeField<'a> {
     pub(crate) fn element_type_fqn_segments(&self) -> Option<Vec<String>> {
         fn peel(ty: &TypeRef) -> Option<&[String]> {
             match ty {
-                TypeRef::Named(segs) => Some(segs),
+                TypeRef::Named { path: segs, .. } => Some(segs),
                 TypeRef::List(inner) | TypeRef::Reference(inner) => peel(inner),
                 _ => None,
             }
@@ -1691,7 +1691,7 @@ impl<'a> Field<'a> {
     /// schema-typed value" — so call this once per field and keep the
     /// result.
     pub fn value_typed(&self, type_fqn: &str) -> Result<Value, EvalError> {
-        let ty = TypeRef::Named(type_fqn.split('.').map(str::to_string).collect());
+        let ty = TypeRef::named(type_fqn.split('.').map(str::to_string).collect());
         let value = self.doc.eval_in_scope(&self.ast.expr, &self.scope)?;
         variant_dispatch::coerce_value_to_type(self.doc, value, &ty, self.ast.span)
     }
@@ -1816,7 +1816,7 @@ impl<'a> Field<'a> {
         // and the declared inner is a named path. For anything
         // unresolvable (raw blocks, lists, etc.) we trust the
         // navigator and skip both checks.
-        if let TypeRef::Named(path) = inner.as_ref()
+        if let TypeRef::Named { path, .. } = inner.as_ref()
             && let Some(target_decl) = dataref_concrete_type(&target_dr, self.doc)
         {
             let key = path.join(".");

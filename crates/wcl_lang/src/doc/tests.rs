@@ -228,7 +228,7 @@ fn type_decls_are_queryable() {
     assert_eq!(fields[2].name(), "link");
     assert_eq!(
         fields[2].type_ref(),
-        &TypeRef::Reference(Box::new(TypeRef::Named(vec!["User".into()])))
+        &TypeRef::Reference(Box::new(TypeRef::named(vec!["User".into()])))
     );
     assert!(fields[2].optional());
     assert!(doc.type_decl("Empty").unwrap().fields().count() == 0);
@@ -380,7 +380,7 @@ fn variant_type_ref_body_resolves() {
     let shape = doc.union_decl("Shape").unwrap();
     let v = shape.variant("Polygon").unwrap();
     match v.body() {
-        VariantBodyView::TypeRef(t) => assert_eq!(*t, TypeRef::Named(vec!["Point".into()])),
+        VariantBodyView::TypeRef(t) => assert_eq!(*t, TypeRef::named(vec!["Point".into()])),
         _ => panic!("expected TypeRef body"),
     }
 }

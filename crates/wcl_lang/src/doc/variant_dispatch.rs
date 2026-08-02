@@ -190,7 +190,7 @@ pub(super) fn table_row_to_variant<'a>(
 fn type_may_coerce(doc: &Document, ty: &crate::value::TypeRef) -> bool {
     use crate::value::{BuiltinType, TypeRef};
     match ty {
-        TypeRef::Named(path) => doc.union_fqn_for_path(path).is_some(),
+        TypeRef::Named { path, .. } => doc.union_fqn_for_path(path).is_some(),
         TypeRef::List(inner) => type_may_coerce(doc, inner),
         // Strings coerce to identifiers on identifier-declared slots
         // (quoted refs join like bare ones — see `str == id` templates).
@@ -226,7 +226,7 @@ pub(crate) fn coerce_value_to_type(
     if !type_may_coerce(doc, ty) {
         let list_needs_units = matches!((&value, ty),
             (Value::List(items), TypeRef::List(inner))
-                if matches!(inner.as_ref(), TypeRef::Named(_))
+                if matches!(inner.as_ref(), TypeRef::Named { .. })
                     && items.iter().any(|v| matches!(v, Value::PendingUnit { .. })));
         if !list_needs_units {
             return Ok(value);
@@ -247,7 +247,7 @@ pub(crate) fn coerce_value_to_type(
             }
             Ok(Value::List(std::sync::Arc::new(out)))
         }
-        (Value::Record { ty: rty, fields }, TypeRef::Named(path)) => {
+        (Value::Record { ty: rty, fields }, TypeRef::Named { path, .. }) => {
             // Resolve via the memoised union lookup (namespace-aware:
             // own namespace, then imported library namespaces) so a
             // stdlib field typed `: SomeUnion` under `namespace wdoc`

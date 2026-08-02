@@ -124,7 +124,14 @@ where
 #[test]
 fn type_refs_round_trip() {
     round_trip(&TypeRef::Builtin(BuiltinType::Utf8));
-    round_trip(&TypeRef::Named(vec!["company".into(), "User".into()]));
+    round_trip(&TypeRef::named(vec!["company".into(), "User".into()]));
+    round_trip(&TypeRef::Named {
+        path: vec!["content".into()],
+        args: vec![
+            TypeRef::named(vec!["SvgBlock".into()]),
+            TypeRef::Builtin(BuiltinType::U32),
+        ],
+    });
     round_trip(&TypeRef::List(Box::new(TypeRef::Builtin(BuiltinType::I32))));
     round_trip(&TypeRef::Tensor {
         element: Box::new(TypeRef::Builtin(BuiltinType::F32)),

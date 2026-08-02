@@ -1635,7 +1635,19 @@ impl Printer {
     fn print_type_ref(&mut self, t: &TypeRef) {
         match t {
             TypeRef::Builtin(b) => self.push(builtin_name(*b)),
-            TypeRef::Named(path) => self.push(&path.join(".")),
+            TypeRef::Named { path, args } => {
+                self.push(&path.join("."));
+                if !args.is_empty() {
+                    self.push("<");
+                    for (i, a) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.push(", ");
+                        }
+                        self.print_type_ref(a);
+                    }
+                    self.push(">");
+                }
+            }
             TypeRef::Reference(inner) => {
                 self.push("&");
                 self.print_type_ref(inner);

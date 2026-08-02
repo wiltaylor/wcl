@@ -4124,7 +4124,7 @@ code_item code_api_host_bindings {
       deps = [n_api_host_bindings_BuiltinType]
     }
     code_member m_n_api_host_bindings_TypeRef_Named {
-      signature = "Named(Vec<String>)"
+      signature = "Named{ path: Vec<String>, #[serde(default, skip_serializing_if …"
       kind = "variant"
     }
     code_member m_n_api_host_bindings_TypeRef_Reference {
@@ -4143,6 +4143,18 @@ code_item code_api_host_bindings {
     code_member m_n_api_host_bindings_TypeRef_Function {
       signature = "Function{ params: Vec<TypeRef>, return_ty: Box<TypeRef>, }"
       kind = "variant"
+    }
+    code_member m_n_api_host_bindings_TypeRef_named {
+      signature = "fn named(path: Vec<String>) -> Self"
+      kind = "method"
+    }
+    code_member m_n_api_host_bindings_TypeRef_type_args {
+      signature = "fn type_args(&self) -> &[TypeRef]"
+      kind = "method"
+    }
+    code_member m_n_api_host_bindings_TypeRef_same_ignoring_type_args {
+      signature = "fn same_ignoring_type_args(&self, other: &TypeRef) -> bool"
+      kind = "method"
     }
     code_member m_n_api_host_bindings_TypeRef_impl_std__fmt__Display {
       signature = "impl std::fmt::Display"

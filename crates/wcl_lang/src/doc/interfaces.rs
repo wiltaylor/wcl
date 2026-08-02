@@ -24,7 +24,7 @@ pub(super) fn dataref_concrete_type<'a>(
         DataKind::Field(f) => {
             let ty = f.declared_type_ref()?;
             match ty {
-                TypeRef::Named(path) => doc.type_decl(&path.join(".")),
+                TypeRef::Named { path, .. } => doc.type_decl(&path.join(".")),
                 _ => None,
             }
         }

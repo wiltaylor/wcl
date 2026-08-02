@@ -599,7 +599,7 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         let resolved_ty = block.doc.resolve_alias(declared.type_ref());
 
         // Union path — preserved verbatim.
-        if let crate::value::TypeRef::Named(path) = &resolved_ty
+        if let crate::value::TypeRef::Named { path, .. } = &resolved_ty
             && let Some(union_decl) = block.doc.union_decl(&path.join("."))
         {
             let expected_fqn = union_decl.ast.name.clone();

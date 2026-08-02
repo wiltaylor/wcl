@@ -533,7 +533,19 @@ impl BuiltinType {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TypeRef {
     Builtin(BuiltinType),
-    Named(Vec<String>),
+    /// A reference to a declared type by path, optionally carrying type
+    /// arguments (`content<SvgBlock>`).
+    ///
+    /// The arguments are **syntax only**: the parser accepts them, the
+    /// printer round-trips them, and consumers may read them as
+    /// metadata. Nothing checks their arity and nothing substitutes
+    /// them — a named type resolves by `path` alone, exactly as it did
+    /// before arguments existed. Full generics are a separate effort.
+    Named {
+        path: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        args: Vec<TypeRef>,
+    },
     Reference(Box<TypeRef>),
     List(Box<TypeRef>),
     Tensor {
@@ -544,6 +556,70 @@ pub enum TypeRef {
         params: Vec<TypeRef>,
         return_ty: Box<TypeRef>,
     },
+}
+
+impl TypeRef {
+    /// A named type reference with no type arguments — the shape every
+    /// construction site outside the parser wants.
+    pub fn named(path: Vec<String>) -> Self {
+        TypeRef::Named {
+            path,
+            args: Vec::new(),
+        }
+    }
+
+    /// The type arguments written on a named reference, empty for every
+    /// other shape. Metadata for consumers: nothing here participates in
+    /// resolution or checking.
+    pub fn type_args(&self) -> &[TypeRef] {
+        match self {
+            TypeRef::Named { args, .. } => args,
+            _ => &[],
+        }
+    }
+
+    /// Structural equality that ignores type arguments at every level.
+    ///
+    /// Arguments are metadata: nothing resolves or substitutes them, so
+    /// two references differing only in their arguments name the *same*
+    /// type. Any check deciding whether two declarations mean the same
+    /// type must ask this rather than `==` — plain equality would give
+    /// the arguments the meaning syntax-only generics must not carry,
+    /// making `S<A>` and `S<B>` distinct types by the back door.
+    pub fn same_ignoring_type_args(&self, other: &TypeRef) -> bool {
+        match (self, other) {
+            (TypeRef::Named { path: a, .. }, TypeRef::Named { path: b, .. }) => a == b,
+            (TypeRef::Reference(a), TypeRef::Reference(b))
+            | (TypeRef::List(a), TypeRef::List(b)) => a.same_ignoring_type_args(b),
+            (
+                TypeRef::Tensor {
+                    element: a,
+                    dims: a_dims,
+                },
+                TypeRef::Tensor {
+                    element: b,
+                    dims: b_dims,
+                },
+            ) => a_dims == b_dims && a.same_ignoring_type_args(b),
+            (
+                TypeRef::Function {
+                    params: a,
+                    return_ty: a_ret,
+                },
+                TypeRef::Function {
+                    params: b,
+                    return_ty: b_ret,
+                },
+            ) => {
+                a.len() == b.len()
+                    && a.iter()
+                        .zip(b.iter())
+                        .all(|(x, y)| x.same_ignoring_type_args(y))
+                    && a_ret.same_ignoring_type_args(b_ret)
+            }
+            _ => self == other,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -565,7 +641,14 @@ impl std::fmt::Display for TypeRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TypeRef::Builtin(b) => write!(f, "{}", b.name()),
-            TypeRef::Named(path) => write!(f, "{}", path.join(".")),
+            TypeRef::Named { path, args } => {
+                write!(f, "{}", path.join("."))?;
+                if !args.is_empty() {
+                    let parts: Vec<String> = args.iter().map(|t| t.to_string()).collect();
+                    write!(f, "<{}>", parts.join(", "))?;
+                }
+                Ok(())
+            }
             TypeRef::Reference(inner) => write!(f, "&{inner}"),
             TypeRef::List(inner) => write!(f, "list<{inner}>"),
             TypeRef::Tensor { element, dims } => {

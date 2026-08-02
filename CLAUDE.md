@@ -114,6 +114,7 @@ for navigability; name resolution is order-independent across imports).
 Deliberate, comment-documented gaps (not bugs), tracked so the list stays honest:
 
 - **Richer value-type introspection in interface checking** — `crates/wcl_lang/src/doc/eval.rs` `check_value_implements_iface` structurally introspects variant-with-record and bare-record values; closures, lists, tensors, and scalars get a pass-through until the language carries runtime type tags for them.
+- **Type arguments on `TypeRef::Named` are syntax only** — `content<SvgBlock>` parses (`crates/wcl_lang/src/parser/types.rs` `parse_type_args`), prints, and is readable via `TypeRef::type_args()`, but nothing checks arity, nothing substitutes, and there is no `type Foo<T>` declaration form. A named type resolves by `path` alone, so `content<Nonsense>` parses and only fails later (if at all). This is enough for slot derivation, which emits both a typed field and a `@children(X)` decorator and lets the decorator do the child-kind checking. Full generics are a separate effort.
 
 New deferred items get tracked alongside the slice that introduces them.
 
