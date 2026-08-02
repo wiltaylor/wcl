@@ -1,8 +1,14 @@
 # tilemaps
 
-A `tilemap` draws a 2D grid of indexed tiles cropped from a shared spritesheet. A `tileset` names that spritesheet plus its slice geometry and hangs off the document root (like `iconset`); tile index N maps to sheet column `N % columns`, row `N / columns`. The tilemap is a diagram shape, so anything drawn after it overlays on top.
+A `tilemap` draws a 2D grid of indexed tiles cropped from a shared spritesheet. A `tileset`
+names that spritesheet plus its slice geometry and hangs off the document root (like
+`iconset`); tile index N maps to sheet column `N % columns`, row `N / columns`. The tilemap is
+a diagram shape, so anything drawn after it overlays on top.
 
-A symbolic level map painted from Kenney's CC0 "Platformer Pack", with a label overlaid on top:
+
+A symbolic level map painted from Kenney's CC0 "Platformer Pack", with a label overlaid on
+top:
+
 
 ```wcl
 diagram {
@@ -65,7 +71,9 @@ tileset platformer {
 }
 ```
 
-The set's tiles, by index — a single numeric `tiles` row doubles as a palette of what the sheet can paint:
+The set's tiles, by index — a single numeric `tiles` row doubles as a palette of what the
+sheet can paint:
+
 
 ```wcl
 diagram {
@@ -83,7 +91,11 @@ diagram {
 
 ## Symbolic and numeric maps
 
-For map-like authoring, declare a glyph legend with `tile` children and supply `map` — a list of utf8 rows; each character resolves through the legend to a tile index (an unmapped glyph draws nothing). Or write raw index rows with `tiles` (one inner list per row); `-1`, the default `empty` index, leaves a cell blank.
+For map-like authoring, declare a glyph legend with `tile` children and supply `map` — a list
+of utf8 rows; each character resolves through the legend to a tile index (an unmapped glyph
+draws nothing). Or write raw index rows with `tiles` (one inner list per row); `-1`, the
+default `empty` index, leaves a cell blank.
+
 
 The numeric form — raw index rows, `-1` for a blank cell:
 
@@ -131,11 +143,12 @@ A `tile` child of a tilemap that binds one legend glyph to a tile `index`.
 | `glyph` | `utf8` | yes | Single character used in `map` (the inline label). |
 | `index` | `i64` | yes | Tile index the glyph stands for. |
 
-`scale` sizes the display; `image-rendering: pixelated` is the default, and `smooth = true` opts into the browser's smoothing. The sheet is copied to `_wdoc/`, so tiles resolve when served.
+`scale` sizes the display; `image-rendering: pixelated` is the default, and `smooth = true`
+opts into the browser's smoothing. The sheet is copied to `_wdoc/`, so tiles resolve when
+served.
+
 
 ## Related
-
-- [dopesheet](../references/fact_dopesheets.md)
 
 - [image](../references/fact_images.md)
 

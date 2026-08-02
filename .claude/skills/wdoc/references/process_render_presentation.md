@@ -24,7 +24,10 @@ site talk {
 }
 ```
 
-Set `default_template = :presentation` on the `site`. The whole site renders into a single `index.html` navigated with the keyboard — ← → move between sections, ↑ ↓ between the slides within one.
+Set `default_template = :presentation` on the `site`. The whole site renders into a single
+`index.html` navigated with the keyboard — ← → move between sections, ↑ ↓ between the slides
+within one.
+
 
 ### Step 2: Lay out the deck grid
 
@@ -42,7 +45,9 @@ site talk {
 }
 ```
 
-Declare a `deck` block on the site: each `section` is a column of the 2-D grid and each `slide` names a page belonging to this site. Each `slide` must sit on its own line.
+Declare a `deck` block on the site: each `section` is a column of the 2-D grid and each
+`slide` names a page belonging to this site. Each `slide` must sit on its own line.
+
 
 ### Step 3: Add reveals and speaker notes
 
@@ -55,7 +60,10 @@ page topic {
 }
 ```
 
-Inside a slide page, a `fragment { … }` is a step-reveal group (hidden until the presenter advances with Space) and a `notes { … }` holds speaker notes (hidden in the deck, shown in the overlay toggled with **s**).
+Inside a slide page, a `fragment { … }` is a step-reveal group (hidden until the presenter
+advances with Space) and a `notes { … }` holds speaker notes (hidden in the deck, shown in
+the overlay toggled with **s**).
+
 
 ### Step 4: Build and present
 
@@ -63,19 +71,13 @@ Inside a slide page, a `fragment { … }` is a step-reveal group (hidden until t
 $ wcl wdoc build talk.wcl --out out/talk
 ```
 
-Render with the ordinary `build` target (or iterate under `wcl wdoc serve`). Open `out/talk/index.html` and drive the deck with the arrow keys.
+Render with the ordinary `build` target (or iterate under `wcl wdoc serve`). Open
+`out/talk/index.html` and drive the deck with the arrow keys.
+
 
 > [!TIP]
 > **Verification**
 >
 > `out/talk/index.html` opens as a deck: arrow keys move between slides, Space reveals fragments, and **s** toggles the notes overlay.
-
-## Related
-
-- [Templates](../references/concept_templates.md)
-
-- [Built-in site templates](../references/fact_template_kinds.md)
-
-- [Sites](../references/concept_sites.md)
 
 [← Back to SKILL.md](../SKILL.md)

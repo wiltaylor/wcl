@@ -9,8 +9,4 @@ and pointers to further learning are cross-reference blocks to other wskills —
 bare URLs in prose.
 
 
-## Related
-
-- [Separation of Data and Presentation](../references/concept_datapresentation.md)
-
 [← Back to SKILL.md](../SKILL.md)

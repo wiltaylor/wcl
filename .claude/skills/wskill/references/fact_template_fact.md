@@ -1,6 +1,9 @@
 # Template — fact
 
-A **fact** is a container of values: a default, a limit, a lookup table, a version matrix, an option list, a glossary. The test is that nobody argues with it — you would cite it, not explain it. A fact whose body is mostly prose is usually a concept in disguise.
+A **fact** is a container of values: a default, a limit, a lookup table, a version matrix, an
+option list, a glossary. The test is that nobody argues with it — you would cite it, not
+explain it. A fact whose body is mostly prose is usually a concept in disguise.
+
 
 ## Skeleton
 
@@ -37,7 +40,9 @@ EXAMPLE
 | `related` | The concept the values belong to, and little else |
 | `body` | Lead with one sentence of context, then the table. A fact with no table or code block is rare and probably misfiled |
 
-There is no `summary` field on a fact: the `title` carries it, so make the title specific enough to stand alone in an index.
+There is no `summary` field on a fact: the `title` carries it, so make the title specific
+enough to stand alone in an index.
+
 
 ## Filled example
 
@@ -71,7 +76,5 @@ fact exit_codes {
 ## Related
 
 - [Fact](../references/concept_fact.md)
-
-- [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
 
 [← Back to SKILL.md](../SKILL.md)

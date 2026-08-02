@@ -1,6 +1,11 @@
 # swim-lane flowcharts
 
-wdoc has no dedicated swim-lane block — you **compose** one from primitives already in the diagram toolkit: draw each lane as a translucent `rect` band with a `label`, place `process` / `decision` nodes inside their lane by `x` / `y`, and wire them with `:flow` edges that cross between lanes. Use a translucent grey fill (e.g. `"#7f7f7f1a"`) so the bands read on both light and dark themes.
+wdoc has no dedicated swim-lane block — you **compose** one from primitives already in the
+diagram toolkit: draw each lane as a translucent `rect` band with a `label`, place `process` /
+`decision` nodes inside their lane by `x` / `y`, and wire them with `:flow` edges that cross
+between lanes. Use a translucent grey fill (e.g. `"#7f7f7f1a"`) so the bands read on both
+light and dark themes.
+
 
 ## Horizontal lanes (flow left → right)
 
@@ -94,7 +99,9 @@ diagram {
 
 ## Vertical lanes (flow top → bottom)
 
-The same idea rotated 90°: lanes are columns and the flow runs downward. Swap the band rectangles to full-height columns and place nodes by lane column:
+The same idea rotated 90°: lanes are columns and the flow runs downward. Swap the band
+rectangles to full-height columns and place nodes by lane column:
+
 
 ```wcl
 diagram {
@@ -180,14 +187,16 @@ diagram {
 
 ![diagram](../_wdoc/fact_swimlanes-diagram-2.svg)
 
-Because the lanes are ordinary shapes, everything else composes: give a node an `icon`, swap `process` for a `decision` diamond at a branch, or add a `boundary` to group a sub-flow. For a single "X and everything it talks to" picture instead of lanes, reach for the `:radial` [layout mode](../references/fact_layout_modes.md).
+Because the lanes are ordinary shapes, everything else composes: give a node an `icon`, swap
+`process` for a `decision` diamond at a branch, or add a `boundary` to group a sub-flow. For a
+single "X and everything it talks to" picture instead of lanes, reach for the `:radial`
+[layout mode](../references/fact_layout_modes.md).
+
 
 ## Related
 
 - [flowchart shapes](../references/fact_flowcharts.md)
 
 - [diagram](../references/fact_diagrams.md)
-
-- [Connections](../references/concept_connections.md)
 
 [← Back to SKILL.md](../SKILL.md)

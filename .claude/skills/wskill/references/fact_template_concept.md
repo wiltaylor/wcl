@@ -1,6 +1,9 @@
 # Template — concept
 
-A **concept** captures one idea the reader must understand: a model, a pattern, a principle, an explanation of \*why\*. If the note is a value, a named thing, or a task, it is a different kind — check [the decision guide](../references/fact_unit_decision_guide.md) first.
+A **concept** captures one idea the reader must understand: a model, a pattern, a principle,
+an explanation of \*why\*. If the note is a value, a named thing, or a task, it is a different
+kind — check [the decision guide](../references/fact_unit_decision_guide.md) first.
+
 
 ## Skeleton
 
@@ -68,7 +71,5 @@ concept fast_forward {
 ## Related
 
 - [Concept](../references/concept_concept.md)
-
-- [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
 
 [← Back to SKILL.md](../SKILL.md)

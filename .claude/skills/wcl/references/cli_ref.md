@@ -420,7 +420,7 @@ wcl wskill graph docs/wskills/wcl --rev HEAD~1
 
 ### wcl wskill lint
 
-Run every wskill rule over the model and report the findings — errors, warnings and curator candidates from one pass. Reads the data model only: no build, no editor, and lint never writes.
+Run every wskill rule over the model and report the findings — errors, warnings and curator candidates from one pass. Reads the data model only unless `--fix` is explicitly requested.
 
 | Argument | Required | Description |
 | --- | --- | --- |
@@ -431,9 +431,11 @@ Run every wskill rule over the model and report the findings — errors, warning
 | --format | FORMAT | Output format: `text` (default, one line per finding) or `json` (an array of finding objects). |
 | --severity | LIST | Report only these severities: `error`, `warn`, `candidate` (comma-separated, repeatable). Default: all three. |
 | --deny | SEVERITY | Fail on findings this certain or more: `error` (default), `warn`, `candidate`. |
+| --fix | RULE | Apply every available autofix, or one rule with `--fix=<rule>`; findings are recomputed after the ops apply. |
+| --dry-run | — | Print the structural ops `--fix` would apply and write nothing. |
 
 ```console
-wcl wskill lint docs/wskills/wcl --severity error --deny error
+wcl wskill lint docs/wskills/wcl --fix=bare-related --dry-run
 ```
 
 ### wcl wskill audit

@@ -1,6 +1,8 @@
 # WAD vocabularies (kinds.wcl)
 
-The symbol_sets the kind fields draw from — extend them in the instance's `schema/kinds.wcl` (add members; don't rename, data references them):
+The symbol_sets the kind fields draw from — extend them in the instance's `schema/kinds.wcl`
+(add members; don't rename, data references them):
+
 
 | Set | Members |
 | --- | --- |
@@ -23,10 +25,8 @@ The symbol_sets the kind fields draw from — extend them in the instance's `sch
 | DocKind | site book skill reference readme guide changelog other |
 | WadSection | overview context externals systems infrastructure build_deploy documentation personas sysadmin standards domain specs |
 
-There is deliberately no RaciRole set — a `raci_entry` row carries four id-lists, which renders the matrix directly.
+There is deliberately no RaciRole set — a `raci_entry` row carries four id-lists, which
+renders the matrix directly.
 
-## Related
-
-- [WAD folder layout](../references/fact_wad_layout.md)
 
 [← Back to SKILL.md](../SKILL.md)

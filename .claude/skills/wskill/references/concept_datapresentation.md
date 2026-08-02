@@ -20,12 +20,4 @@ optional presentation deck and training book. Change a block once and it appears
 hand-duplicated nowhere, in every view on the next render.
 
 
-## Related
-
-- [What is it?](../references/concept_wskill_concept.md)
-
-- [Different Views](../references/concept_views.md)
-
-- [Components: one look for every unit](../references/concept_components_look_feel.md)
-
 [← Back to SKILL.md](../SKILL.md)

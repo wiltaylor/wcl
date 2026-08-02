@@ -22,12 +22,4 @@ built deck, arrow keys move between sections and slides, Space steps through rev
 `s` toggles the speaker notes.
 
 
-## Related
-
-- [Different Views](../references/concept_views.md)
-
-- [The training view](../references/concept_training_view.md)
-
-- [Creating the presentation view](../references/process_creating_presentation.md)
-
 [← Back to SKILL.md](../SKILL.md)

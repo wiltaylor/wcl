@@ -15,7 +15,9 @@ edge   = :uses
 
 ## The symbol type
 
-A free-form field accepting any symbol has type `symbol`. There is no validation on which symbols may appear — anything that lexes as `:name` is valid.
+A free-form field accepting any symbol has type `symbol`. There is no validation on which
+symbols may appear — anything that lexes as `:name` is valid.
+
 
 ```wcl
 type Tag {
@@ -32,10 +34,6 @@ t = { name: "release", kind: :stable }
 ```
 
 ## Related
-
-- [Unions](../references/concept_unions.md)
-
-- [Identifiers](../references/concept_identifiers.md)
 
 - [Symbol Sets](../references/concept_symbol_set.md)
 

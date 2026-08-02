@@ -1,8 +1,15 @@
 # iconset / icon_def / icon
 
-Full **Lucide** and **Bootstrap Icons** packs ship compiled into the binary — no runtime disk read, and only used icons land in the output sprite (`_wdoc/icons.svg`). Icons paint with `currentColor`, so colour follows the surrounding text or class.
+Full **Lucide** and **Bootstrap Icons** packs ship compiled into the binary — no runtime disk
+read, and only used icons land in the output sprite (`_wdoc/icons.svg`). Icons paint with
+`currentColor`, so colour follows the surrounding text or class.
 
-An `icon` is a placeable block — a legal `diagram` / `container` child positioned by `x` / `y` like a `rect`. The same `icon` / `icon_size` / `icon_pos` / `icon_class` fields also make any box-like shape (`rect` / `circle` / `container` / `process` / `decision` / `terminator`) wear a badge.
+
+An `icon` is a placeable block — a legal `diagram` / `container` child positioned by `x` / `y`
+like a `rect`. The same `icon` / `icon_size` / `icon_pos` / `icon_class` fields also make any
+box-like shape (`rect` / `circle` / `container` / `process` / `decision` / `terminator`) wear
+a badge.
+
 
 ```wcl
 p "Status: :lucide.check: ready"
@@ -30,11 +37,17 @@ Status: :lucide.check: ready
 
 ## Three ways to use an icon
 
-Inline as a `:lucide.check:` pattern in a `p` or `span`; as a placeable `icon` block (a legal `diagram` / `container` child, positioned by `x` / `y` like a `rect`); or as a badge on a box-like shape (`rect` / `circle` / `container` / `process` / `decision` / `terminator`) via `icon` / `icon_size` / `icon_pos` / `icon_class`.
+Inline as a `:lucide.check:` pattern in a `p` or `span`; as a placeable `icon` block (a legal
+`diagram` / `container` child, positioned by `x` / `y` like a `rect`); or as a badge on a
+box-like shape (`rect` / `circle` / `container` / `process` / `decision` / `terminator`) via
+`icon` / `icon_size` / `icon_pos` / `icon_class`.
+
 
 Inline, a bare `:lucide.check:` pattern reads from the named pack and flows with the prose:
 
-A placeable `icon` block sits inside a `diagram`, positioned like any other shape; add it as a badge with `icon` / `icon_pos` on a shape:
+A placeable `icon` block sits inside a `diagram`, positioned like any other shape; add it as a
+badge with `icon` / `icon_pos` on a shape:
+
 
 ```wcl
 diagram {
@@ -101,7 +114,11 @@ An `icon_def` child of an `iconset` overrides an individual icon within the set 
 | `background` | `utf8` | no | Per-icon override of the set's default background. |
 | `class` | `list<utf8>` | no | Per-icon classes added on top of the set defaults. |
 
-Declare an `iconset` to rename a pack or set default styling; per-icon `icon_def` children override individual icons within the set. A bare `:name:` then reads from that set. (An `iconset` is a document-root declaration, so this one is shown as source rather than a live preview.)
+Declare an `iconset` to rename a pack or set default styling; per-icon `icon_def` children
+override individual icons within the set. A bare `:name:` then reads from that set. (An
+`iconset` is a document-root declaration, so this one is shown as source rather than a live
+preview.)
+
 
 ```wcl
 iconset ui {
@@ -114,12 +131,12 @@ iconset ui {
 p "We :heart: WCL."
 ```
 
-As a shape badge, `icon_pos` accepts `:center`, `:top_left` (default), `:top_right`, `:bottom_left`, `:bottom_right`, `:left`, `:right`.
+As a shape badge, `icon_pos` accepts `:center`, `:top_left` (default), `:top_right`,
+`:bottom_left`, `:bottom_right`, `:left`, `:right`.
+
 
 ## Related
 
 - [diagram](../references/fact_diagrams.md)
-
-- [tree](../references/fact_tree.md)
 
 [← Back to SKILL.md](../SKILL.md)

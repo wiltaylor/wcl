@@ -2,7 +2,11 @@
 
 _UTF-8 by default; ascii/utf16/utf32 prefixes select another encoding, heredocs carry multi-line and verbatim text._
 
-String literals are UTF-8 by default. A prefix selects another encoding, heredocs carry multi-line and verbatim bodies, and a `$` prefix opts a literal into [interpolation](../references/concept_string_interpolation.md). The builtins that search, split, join and slice text are in the String functions reference.
+String literals are UTF-8 by default. A prefix selects another encoding, heredocs carry
+multi-line and verbatim bodies, and a `$` prefix opts a literal into
+[interpolation](../references/concept_string_interpolation.md). The builtins that search, split, join and slice
+text are in the String functions reference.
+
 
 ## Literals
 
@@ -73,7 +77,9 @@ latex = <<'TEX'
 TEX
 ```
 
-Opt a string into expression interpolation with a `$` prefix — see [String Interpolation](../references/concept_string_interpolation.md).
+Opt a string into expression interpolation with a `$` prefix — see
+[String Interpolation](../references/concept_string_interpolation.md).
+
 
 ## Examples
 
@@ -96,7 +102,5 @@ TEX
 ## Related
 
 - [String Interpolation](../references/concept_string_interpolation.md)
-
-- [Symbols](../references/concept_symbols.md)
 
 [← Back to SKILL.md](../SKILL.md)

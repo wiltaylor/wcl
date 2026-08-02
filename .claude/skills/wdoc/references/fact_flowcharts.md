@@ -1,8 +1,16 @@
 # flowchart shapes
 
-Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare the shapes and the edges, and the renderer ranks them topologically and elbow-routes the connections. The three stdlib shapes lower to SVG primitives and take the same fields, differing only in the figure drawn: `process` is a rectangle (an action/step), `decision` a diamond (a yes/no branch), and `terminator` an oval (a start/end node). See [connections](../references/concept_connections.md).
+Flowchart shapes plus the layered auto-layout mode turn a `diagram` into a flowchart: declare
+the shapes and the edges, and the renderer ranks them topologically and elbow-routes the
+connections. The three stdlib shapes lower to SVG primitives and take the same fields,
+differing only in the figure drawn: `process` is a rectangle (an action/step), `decision` a
+diamond (a yes/no branch), and `terminator` an oval (a start/end node). See
+[connections](../references/concept_connections.md).
 
-The three shapes side by side — `process` (rectangle), `decision` (diamond), `terminator` (oval):
+
+The three shapes side by side — `process` (rectangle), `decision` (diamond), `terminator`
+(oval):
+
 
 ```wcl
 diagram {
@@ -192,7 +200,10 @@ An oval node — a start or end point of the flow.
 
 ### GraphNode (shared base)
 
-`process` / `decision` / `terminator` all extend `GraphNode`, so they share the same fields (`id`, `width`, `height`, `fill`, …) — only the figure drawn differs, as the demo below shows three nodes built with identical fields:
+`process` / `decision` / `terminator` all extend `GraphNode`, so they share the same fields
+(`id`, `width`, `height`, `fill`, …) — only the figure drawn differs, as the demo below shows
+three nodes built with identical fields:
+
 
 ```wcl
 diagram {
@@ -246,11 +257,18 @@ The shared base of the flowchart shapes — the fields (`id`, `width`, `height`,
 
 ## Layered auto-layout
 
-Set `layout = :layered` on the diagram. Shapes are topologically ranked from the connection graph and stacked top-to-bottom; elbow routing then connects them with right-angled paths, and `layer_gap` controls the spacing between ranks.
+Set `layout = :layered` on the diagram. Shapes are topologically ranked from the connection
+graph and stacked top-to-bottom; elbow routing then connects them with right-angled paths, and
+`layer_gap` controls the spacing between ranks.
+
 
 ## Radial layout and boundaries
 
-Set `layout = :radial` for an "X and everything it talks to" shape: one `hub` shape sits at the centre and the rest ring around it (pairs well with `routing = :straight`). A `boundary` draws a labelled box behind a set of shapes named in `members` — it owns no layout, so it works on `:radial` and `:force` where a `container` cannot.
+Set `layout = :radial` for an "X and everything it talks to" shape: one `hub` shape sits at
+the centre and the rest ring around it (pairs well with `routing = :straight`). A `boundary`
+draws a labelled box behind a set of shapes named in `members` — it owns no layout, so it
+works on `:radial` and `:force` where a `container` cannot.
+
 
 ```wcl
 diagram {
@@ -311,9 +329,5 @@ diagram {
 ## Related
 
 - [diagram](../references/fact_diagrams.md)
-
-- [sequence_diagram](../references/fact_sequence_diagrams.md)
-
-- [state_diagram](../references/fact_state_diagrams.md)
 
 [← Back to SKILL.md](../SKILL.md)

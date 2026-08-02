@@ -52,8 +52,6 @@ never triggers, sharpen the `description` in the `skill` block — it is the tri
 
 ## Related
 
-- [Anatomy of the AI skill](../references/concept_skill_anatomy.md)
-
 - [Setting up AI skill generation](../references/process_setup_ai_skill.md)
 
 [← Back to SKILL.md](../SKILL.md)

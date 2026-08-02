@@ -1,8 +1,14 @@
 # sequence_diagram
 
-A `sequence_diagram` draws a runtime interaction coordinate-free: `participant`s rank left-to-right and `message`s top-to-bottom **in declaration order**, lifelines extend past the last message, and the height follows the content (only `width` is declared). It is a page-level block, not a `diagram` shape.
+A `sequence_diagram` draws a runtime interaction coordinate-free: `participant`s rank
+left-to-right and `message`s top-to-bottom **in declaration order**, lifelines extend past the
+last message, and the height follows the content (only `width` is declared). It is a
+page-level block, not a `diagram` shape.
 
-A page-level block drawing a runtime interaction; `participant`s rank left-to-right and `message`s flow top-to-bottom in declaration order.
+
+A page-level block drawing a runtime interaction; `participant`s rank left-to-right and
+`message`s flow top-to-bottom in declaration order.
+
 
 ```wcl
 sequence_diagram {
@@ -84,9 +90,16 @@ sequence_diagram {
 
 ## Participants, messages, notes
 
-A `participant`'s `kind` picks the head: `:box` (default), `:actor` (stick figure), `:external` (dashed box); `link` makes it clickable. A `message`'s `kind` picks the arrow: `:sync` (solid line, filled head, default), `:async` (solid, open head), `:reply` (dashed, open head); the same `from` and `to` renders a self-message loop. A `note` is a margin annotation drawn at the row of the message named by `at`.
+A `participant`'s `kind` picks the head: `:box` (default), `:actor` (stick figure),
+`:external` (dashed box); `link` makes it clickable. A `message`'s `kind` picks the arrow:
+`:sync` (solid line, filled head, default), `:async` (solid, open head), `:reply` (dashed,
+open head); the same `from` and `to` renders a self-message loop. A `note` is a margin
+annotation drawn at the row of the message named by `at`.
 
-One figure exercising all three participant kinds, the three arrow kinds, a self-message, and a note:
+
+One figure exercising all three participant kinds, the three arrow kinds, a self-message, and
+a note:
+
 
 ```wcl
 sequence_diagram {
@@ -167,14 +180,12 @@ A margin annotation drawn at the row of the message named by `at`.
 | `at` | `utf8` | yes | Id of the message this note is anchored beside. |
 | `text` | `utf8` | yes | The note text. |
 
-Like every `@children` slot, the `participants` / `messages` lists accept computed splices, so a repeated scenario model can generate its figure. See [data views](../references/concept_data_views.md).
+Like every `@children` slot, the `participants` / `messages` lists accept computed splices, so
+a repeated scenario model can generate its figure. See [data views](../references/concept_data_views.md).
+
 
 ## Related
 
 - [diagram](../references/fact_diagrams.md)
-
-- [flowchart shapes](../references/fact_flowcharts.md)
-
-- [state_diagram](../references/fact_state_diagrams.md)
 
 [← Back to SKILL.md](../SKILL.md)

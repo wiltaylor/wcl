@@ -1,8 +1,16 @@
 # @schemaless
 
-`@schemaless` switches schema validation off. On a **type** it short-circuits every check for instances of that block: unknown fields, disallowed nested kinds, child quotas, table-row arity. On a **field** it exempts only that field from the value-versus-type check, leaving the rest of the block validated.
+`@schemaless` switches schema validation off. On a **type** it short-circuits every check for
+instances of that block: unknown fields, disallowed nested kinds, child quotas, table-row
+arity. On a **field** it exempts only that field from the value-versus-type check, leaving the
+rest of the block validated.
 
-Reach for it when a slot legitimately holds a value the declared type can't describe — a computed reference, or cells whose scalar type is decided at render time. It is an escape hatch, not a convenience: a `@schemaless` type gets no help from `wcl check`, so every mistake in it surfaces later, at consume time.
+
+Reach for it when a slot legitimately holds a value the declared type can't describe — a
+computed reference, or cells whose scalar type is decided at render time. It is an escape
+hatch, not a convenience: a `@schemaless` type gets no help from `wcl check`, so every mistake
+in it surfaces later, at consume time.
+
 
 ```wcl
 // Whole block: `from` resolves to a body reference, not a static scalar.
@@ -18,11 +26,5 @@ type Project {
   @schemaless rows: list<list<utf8>>?
 }
 ```
-
-## Related
-
-- [Block Schema](../references/concept_block_schema.md)
-
-- [@block](../references/fact_dec_block.md)
 
 [← Back to SKILL.md](../SKILL.md)

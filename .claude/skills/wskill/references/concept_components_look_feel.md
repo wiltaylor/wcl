@@ -26,12 +26,4 @@ heading, summary line, projected body, examples, related links — for free. Tak
 list and declare your own. Nothing shadows, so what you don't import is yours to write.
 
 
-## Related
-
-- [Separation of Data and Presentation](../references/concept_datapresentation.md)
-
-- [Custom projections (schema extension modules)](../references/concept_custom_projection.md)
-
-- [Different Views](../references/concept_views.md)
-
 [← Back to SKILL.md](../SKILL.md)

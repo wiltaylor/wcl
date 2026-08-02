@@ -1,6 +1,9 @@
 # Built-in site templates
 
-A `site`'s `default_template` (or a page's `template`) names one of four built-in projections. The first three render HTML/PDF/Markdown with `wcl wdoc build`; `:ai_skill` is a Markdown-only target rendered with `wcl wdoc skill`.
+A `site`'s `default_template` (or a page's `template`) names one of four built-in projections.
+The first three render HTML/PDF/Markdown with `wcl wdoc build`; `:ai_skill` is a Markdown-only
+target rendered with `wcl wdoc skill`.
+
 
 | Template | What it produces | Render command |
 | --- | --- | --- |
@@ -11,10 +14,6 @@ A `site`'s `default_template` (or a page's `template`) names one of four built-i
 
 ## Related
 
-- [Sites](../references/concept_sites.md)
-
 - [Templates](../references/concept_templates.md)
-
-- [Skill folders](../references/concept_skills.md)
 
 [← Back to SKILL.md](../SKILL.md)

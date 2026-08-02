@@ -4,7 +4,7 @@ description: "Reference and processes for WCL. A typed configuration and schema 
 allowed-tools: []
 disable-model-invocation: false
 metadata:
-  wskill_schema_version: 1.4.0
+  wskill_schema_version: 1.5.0
 ---
 
 # WCL

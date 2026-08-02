@@ -1,6 +1,10 @@
 # Template — research
 
-A **research** unit is a dated finding from an investigation: what was asked, what was found, when it was last verified, and what backs it. It is the one unit kind that carries an expiry — `checked` plus `status` say whether it can still be trusted. Its `audience` defaults to `:ai`, so findings reach the skill and stay out of the book unless you opt in with `:both`.
+A **research** unit is a dated finding from an investigation: what was asked, what was found,
+when it was last verified, and what backs it. It is the one unit kind that carries an expiry —
+`checked` plus `status` say whether it can still be trusted. Its `audience` defaults to `:ai`,
+so findings reach the skill and stay out of the book unless you opt in with `:both`.
+
 
 ## Skeleton
 
@@ -43,7 +47,9 @@ research <id> {
 | `status` | `:stale` when the date is old and nobody re-checked; `:superseded` with `superseded_by` when a newer unit replaces it |
 | `source_ids` / `locators` | Where it came from. A finding with neither is an assertion |
 
-Research is a staging area, not the destination: once a finding is settled, fold it into a concept, fact or procedure and leave the research unit as the provenance record.
+Research is a staging area, not the destination: once a finding is settled, fold it into a
+concept, fact or procedure and leave the research unit as the provenance record.
+
 
 ## Filled example
 
@@ -71,11 +77,5 @@ research skill_frontmatter_limits {
 - `summary` states the finding, not the activity.
 - Something backs it: a source id, a locator, or a described measurement.
 - `applies_to` pins the version or subject when the finding is version-sensitive.
-
-## Related
-
-- [Capturing research into a wskill](../references/process_capturing_research.md)
-
-- [Researching a topic into a wskill](../references/process_researching_a_topic.md)
 
 [← Back to SKILL.md](../SKILL.md)

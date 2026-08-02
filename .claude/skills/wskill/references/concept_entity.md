@@ -33,6 +33,4 @@ concept, not inside the entity.
 
 - [Process](../references/concept_process.md)
 
-- [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
-
 [← Back to SKILL.md](../SKILL.md)

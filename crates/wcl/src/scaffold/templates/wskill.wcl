@@ -1533,7 +1533,7 @@ import "./data/research/research.wcl"
 ${match answer("include_presentation") { "yes" => "", _ => "// " }}import "./data/presentation/main.wcl"
 ${match answer("include_training") { "yes" => "", _ => "// " }}import "./data/training/main.wcl"
 
-schema_version = "1.4.0"
+schema_version = "1.5.0"
 
 topic ${answer("topic_id")} {
   name    = "${answer("topic_name")}"

@@ -23,7 +23,12 @@ artifact slides { kind = :presentation  entry = "wdoc/presentation/main.wcl"  ou
 import "./data/presentation/main.wcl"
 ```
 
-A scaffold created with the presentation answer set to `yes` already has the artifact, the data import, and the `wdoc/presentation/` template. Enabling later: uncomment the artifact line and the data import, and copy `wdoc/presentation/main.wcl` + a starter `data/presentation/main.wcl` from a fresh scaffold (`wcl init wskill /tmp/t --defaults -D include_presentation=yes`).
+A scaffold created with the presentation answer set to `yes` already has the artifact, the
+data import, and the `wdoc/presentation/` template. Enabling later: uncomment the artifact
+line and the data import, and copy `wdoc/presentation/main.wcl` + a starter
+`data/presentation/main.wcl` from a fresh scaffold
+(`wcl init wskill /tmp/t --defaults -D include_presentation=yes`).
+
 
 ### Step 2: Author the deck data
 
@@ -48,7 +53,11 @@ presentation intro {
 }
 ```
 
-One `presentation` block; each `pres_section` is a deck column, each `pres_slide` one slide (author one slide per line). Prefer `unit = <id>` over restating content — if a slide needs substance the model lacks, capture the unit first. Keep it an introduction: 8–15 slides is plenty.
+One `presentation` block; each `pres_section` is a deck column, each `pres_slide` one slide
+(author one slide per line). Prefer `unit = <id>` over restating content — if a slide needs
+substance the model lacks, capture the unit first. Keep it an introduction: 8–15 slides is
+plenty.
+
 
 ### Step 3: Render and present
 
@@ -56,7 +65,10 @@ One `presentation` block; each `pres_section` is a deck column, each `pres_slide
 $ just presentation-build     # → out/presentation/index.html
 ```
 
-Open the built single-file deck: ← → move between sections, ↑ ↓ within one, Space steps through reveals, `s` toggles the speaker notes. The projection prepends a title slide from the topic automatically.
+Open the built single-file deck: ← → move between sections, ↑ ↓ within one, Space steps
+through reveals, `s` toggles the speaker notes. The projection prepends a title slide from
+the topic automatically.
+
 
 > [!TIP]
 > **Verification**
@@ -66,9 +78,5 @@ Open the built single-file deck: ← → move between sections, ↑ ↓ within o
 ## Related
 
 - [The presentation view](../references/concept_presentation_view.md)
-
-- [Different Views](../references/concept_views.md)
-
-- [Adding content to a wskill](../references/process_adding_content.md)
 
 [← Back to SKILL.md](../SKILL.md)

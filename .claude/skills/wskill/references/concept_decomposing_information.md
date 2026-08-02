@@ -30,10 +30,6 @@ forcing it into prose.
 
 ## Related
 
-- [Atomic Note](../references/concept_atomic_note.md)
-
-- [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
-
 - [Structured data](../references/concept_structured_data.md)
 
 [← Back to SKILL.md](../SKILL.md)

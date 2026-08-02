@@ -20,11 +20,12 @@ radixes, width suffixes, and digit grouping.
 | 128-bit | `i128` | `u128` | — |
 | platform default size | `isize` | `usize` | — |
 
-The platform-default size (`isize` / `usize`) is the pointer width of the machine WCL runs on — 64-bit on most desktops/servers, 32-bit on smaller targets — so its exact width changes depending on the platform.
+The platform-default size (`isize` / `usize`) is the pointer width of the machine WCL runs on
+— 64-bit on most desktops/servers, 32-bit on smaller targets — so its exact width changes
+depending on the platform.
+
 
 ## Related
-
-- [Lists](../references/concept_lists.md)
 
 - [Numeric Promotion](../references/concept_numeric_promotion.md)
 

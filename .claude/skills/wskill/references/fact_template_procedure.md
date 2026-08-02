@@ -1,6 +1,10 @@
 # Template — process (procedure)
 
-A **process** is a repeatable task written as ordered steps, for someone who already knows the topic and wants the reliable sequence. The block is `procedure`; `process` is its user-facing name. Every step carries a number, an optional title, and up to two addressable body fragments: `body screen { … }` for what is on screen, `body steps { … }` for what to do.
+A **process** is a repeatable task written as ordered steps, for someone who already knows the
+topic and wants the reliable sequence. The block is `procedure`; `process` is its user-facing
+name. Every step carries a number, an optional title, and up to two addressable body
+fragments: `body screen { … }` for what is on screen, `body steps { … }` for what to do.
+
 
 ## Skeleton
 
@@ -90,7 +94,5 @@ SH
 ## Related
 
 - [Process](../references/concept_process.md)
-
-- [Which unit kind? — the decision guide](../references/fact_unit_decision_guide.md)
 
 [← Back to SKILL.md](../SKILL.md)

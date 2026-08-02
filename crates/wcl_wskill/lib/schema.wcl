@@ -1,7 +1,9 @@
 // wskill base schema — embedded in the toolchain, reached with
 // `import <wskill.wcl>` (or `import <wskill/schema.wcl>` on its own).
 //
-// Schema version: 1.4.0 (mirror it in `schema_version` in wskill.wcl).
+// Schema version: 1.5.0 (mirror it in `schema_version` in wskill.wcl).
+// 1.5.0 is additive over 1.4.0: a research worklist `question` may name the
+// provisional index node whose scope it investigates.
 // 1.4.0 is additive over 1.3.0: `related` accepts an optional reason, and
 // body-carrying indexes become linkable content units in every projection.
 // 1.3.0 is additive over 1.2.0: multiple skills per wskill (`skill` gains
@@ -274,6 +276,7 @@ type Question {
   kind:     QuestionKind?        // omit to infer from the presence of options
   context:  utf8?                // why it's asked / what the answer unblocks
   unit:     identifier?          // unit the answer should update, when known
+  index:    identifier?          // provisional index node this research item covers
   // Choices, as `option <id> { label = … }` children (the answer stdlib's
   // block; `label` falls back to the option's id).
   @children("option") options: list<AnswerOption>

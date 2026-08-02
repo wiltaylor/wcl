@@ -33,12 +33,6 @@ The view is optional. Ship it by declaring `artifact training { kind = :training
 
 ## Related
 
-- [Different Views](../references/concept_views.md)
-
-- [The presentation view](../references/concept_presentation_view.md)
-
 - [Process](../references/concept_process.md)
-
-- [Creating the training view](../references/process_creating_training_book.md)
 
 [← Back to SKILL.md](../SKILL.md)

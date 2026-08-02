@@ -20,7 +20,10 @@ Produce a paginated PDF or a folder of Markdown files (one per page) from the sa
 $ wcl wdoc pdf site.wcl --out out
 ```
 
-Render each `site` to `out/<name>.pdf` — a pure-Rust PDF, no browser or external tools. Prose, headings and more paginate onto A4 by default; pass `--page-size letter` for US Letter.
+Render each `site` to `out/<name>.pdf` — a pure-Rust PDF, no browser or external tools.
+Prose, headings and more paginate onto A4 by default; pass `--page-size letter` for US
+Letter.
+
 
 ### Step 2: Render Markdown
 
@@ -28,7 +31,10 @@ Render each `site` to `out/<name>.pdf` — a pure-Rust PDF, no browser or extern
 $ wcl wdoc markdown site.wcl --out out/md
 ```
 
-Render every page to one `.md` file per page under `out/md`. Diagrams, terminals and wireframes are written as standalone `.svg` files the Markdown references; equations stay as LaTeX and videos are skipped — aimed at AI / text consumers.
+Render every page to one `.md` file per page under `out/md`. Diagrams, terminals and
+wireframes are written as standalone `.svg` files the Markdown references; equations stay as
+LaTeX and videos are skipped — aimed at AI / text consumers.
+
 
 ### Step 3: Pick a single site
 
@@ -36,7 +42,9 @@ Render every page to one `.md` file per page under `out/md`. Diagrams, terminals
 $ wcl wdoc markdown site.wcl --out out/md --site book
 ```
 
-When a document declares several sites, pass `--site <name>` to render just one; otherwise each site renders into its own subdirectory.
+When a document declares several sites, pass `--site <name>` to render just one; otherwise
+each site renders into its own subdirectory.
+
 
 > [!TIP]
 > **Verification**
@@ -44,8 +52,6 @@ When a document declares several sites, pass `--site <name>` to render just one;
 > `out/<name>.pdf` opens as a paginated document, and `out/md/` holds one `.md` per page with referenced `.svg` assets alongside.
 
 ## Related
-
-- [Pages](../references/concept_pages.md)
 
 - [Sites](../references/concept_sites.md)
 

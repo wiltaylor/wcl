@@ -2,7 +2,9 @@
 
 _The `column` layout block and its content (any wdoc block, per-slot widths)._
 
-`column` lays wdoc content out in side-by-side columns on a page, instead of stacking it sequentially. The `widths` list gives a CSS percentage for each child slot — one entry per child, summing to about `100`.
+`column` lays wdoc content out in side-by-side columns on a page, instead of stacking it
+sequentially. The `widths` list gives a CSS percentage for each child slot — one entry per
+child, summing to about `100`.
 
 
 ```wcl
@@ -37,7 +39,8 @@ column {
 
 ## Children
 
-Columns can hold any wdoc content — paragraphs, headings, callouts, code blocks, diagrams, charts, even other columns. Apply a shared `class` to the column itself to style the group.
+Columns can hold any wdoc content — paragraphs, headings, callouts, code blocks, diagrams,
+charts, even other columns. Apply a shared `class` to the column itself to style the group.
 
 
 > [!NOTE]
@@ -60,9 +63,5 @@ A `column` block: side-by-side layout of its child blocks, one `widths` percenta
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
 | `children` | `WdocBlock` | yes | Any wdoc blocks — each consecutive block fills the next column slot. |
-
-## Related
-
-- [Formatting](../references/concept_formatting.md)
 
 [← Back to SKILL.md](../SKILL.md)

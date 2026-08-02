@@ -2,11 +2,16 @@
 
 _Shape-carrying N-dimensional arrays — tensor<T, \[dims...\]>._
 
-A `tensor<T, [dims...]>` is an N-dimensional array. Unlike a `list<list<...>>`, it carries an explicit shape, so its rank and per-axis sizes are visible to the type system and to any host consuming the value.
+A `tensor<T, [dims...]>` is an N-dimensional array. Unlike a `list<list<...>>`, it carries an
+explicit shape, so its rank and per-axis sizes are visible to the type system and to any host
+consuming the value.
+
 
 ## Shape
 
-The second type argument is a list of dimensions. Dimensions may be **fixed integers** or **symbolic names** that the host program resolves.
+The second type argument is a list of dimensions. Dimensions may be **fixed integers** or
+**symbolic names** that the host program resolves.
+
 
 ```wcl
 type Model {
@@ -18,7 +23,9 @@ type Model {
 
 ## Construction
 
-Build a tensor from a flat list of elements plus a shape. The data length must match the product of the dimensions.
+Build a tensor from a flat list of elements plus a shape. The data length must match the
+product of the dimensions.
+
 
 ```wcl
 m = tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [2, 3])   // 2x3 matrix
@@ -42,11 +49,5 @@ m_t = tensor_reshape(m, [3, 2])     // re-view the same numbers as 3x2
 > **When to reach for a tensor**
 >
 > Use a tensor when the data is genuinely rectangular and the rank matters (matrices, images, batches). For ragged or one-dimensional data, a list<T> is simpler.
-
-## Related
-
-- [Lists](../references/concept_lists.md)
-
-- [Numbers](../references/concept_numbers.md)
 
 [← Back to SKILL.md](../SKILL.md)

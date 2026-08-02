@@ -52,8 +52,6 @@ missing card means the entry file isn't at `wskills/<name>/wdoc/book/main.wcl`.
 
 ## Related
 
-- [Creating a new wskill](../references/process_creating_a_wskill.md)
-
 - [Different Views](../references/concept_views.md)
 
 [← Back to SKILL.md](../SKILL.md)

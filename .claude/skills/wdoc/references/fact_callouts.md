@@ -1,6 +1,9 @@
 # callout
 
-A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are selected by `class`, each shipping a default colour and icon — `note`, `info`, `tip`, `warning`, `error`, `success`.
+A `callout` is an admonition: an icon, a coloured heading, and a body. Six built-in types are
+selected by `class`, each shipping a default colour and icon — `note`, `info`, `tip`,
+`warning`, `error`, `success`.
+
 
 ```wcl
 callout "Note" {
@@ -80,7 +83,10 @@ callout "Success" {
 
 ## Custom types
 
-For a custom type, give a `class` an `accent` colour and list it in the callout's `class` — that sets the accent (heading, border, icon) with no CSS — and the `icon` field picks any glyph. See [styling](../references/concept_styling.md).
+For a custom type, give a `class` an `accent` colour and list it in the callout's `class` —
+that sets the accent (heading, border, icon) with no CSS — and the `icon` field picks any
+glyph. See [styling](../references/concept_styling.md).
+
 
 ```wcl
 callout "Deploying" {
@@ -118,13 +124,5 @@ callout "Error"   { class = ["error"]   body = "A failure or hard constraint." }
 ```
 
 **Expected:** Four admonitions, each with its type's icon and accent colour.
-
-## Related
-
-- [table](../references/fact_tables_block.md)
-
-- [list / li](../references/fact_lists_block.md)
-
-- [Formatting](../references/concept_formatting.md)
 
 [← Back to SKILL.md](../SKILL.md)

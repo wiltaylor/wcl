@@ -4,7 +4,10 @@ _Marking a document root with @document, and how schemas merge per namespace._
 
 ## Composing document schemas
 
-Several `@document` schemas can govern the same namespace, and they **merge**: a top-level field or block is legal if **any** of them declares it. This lets you import a library that ships its own `@document` and still add your own top-level tags.
+Several `@document` schemas can govern the same namespace, and they **merge**: a top-level
+field or block is legal if **any** of them declares it. This lets you import a library that
+ships its own `@document` and still add your own top-level tags.
+
 
 ```wcl
 import <wdoc.wcl>            // brings in wdoc's library @document
@@ -21,7 +24,10 @@ project_meta info { owner = "Wil" }   // your tag, alongside wdoc pages
 page index { text { span "Hello" {} } }
 ```
 
-Imported (library) `@document` schemas merge silently. Only a **second root-authored** `@document` in the same namespace is an error — you get one root schema, which composes with whatever the imports provide.
+Imported (library) `@document` schemas merge silently. Only a **second root-authored**
+`@document` in the same namespace is an error — you get one root schema, which composes with
+whatever the imports provide.
+
 
 > [!NOTE]
 > **Reflection**
@@ -52,15 +58,5 @@ service "api" { port = 9090u32  region = "eu-west-1" }
 ```
 
 **Expected:** Each `service` block contributes a `Service`; `web`'s port defaults to 80.
-
-## Related
-
-- [Block Schema](../references/concept_block_schema.md)
-
-- [Referential Integrity](../references/concept_ref_integrity.md)
-
-- [Child-count Constraints](../references/concept_child_count_constraints.md)
-
-- [Records](../references/concept_records.md)
 
 [← Back to SKILL.md](../SKILL.md)

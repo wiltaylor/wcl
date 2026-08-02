@@ -1,6 +1,11 @@
 # Spec blocks & the status lifecycle
 
-A `spec` is a work package: the implementation detail an AI coding agent needs to build part of the system. `wcl wad spec --from <rev>` can seed one mechanically (baseline sha + exact change list + TODO intent fields); the intent — the typed `context`, ordered `instructions`, and checkable `acceptance` — is authored by the LLM/human decomposing the change. The `body` is for extras (diagrams, long-form rationale) the typed fields don't carry.
+A `spec` is a work package: the implementation detail an AI coding agent needs to build part
+of the system. `wcl wad spec --from <rev>` can seed one mechanically (baseline sha + exact
+change list + TODO intent fields); the intent — the typed `context`, ordered `instructions`,
+and checkable `acceptance` — is authored by the LLM/human decomposing the change. The `body`
+is for extras (diagrams, long-form rationale) the typed fields don't carry.
+
 
 | Block | Fields | Notes |
 | --- | --- | --- |
@@ -15,9 +20,5 @@ A `spec` is a work package: the implementation detail an AI coding agent needs t
 | :blocked | an implementer started and cannot proceed — record why in the body | implementer |
 | :complete | landed and confirmed by the user | author, after user confirmation |
 | :abandoned | won't happen — revert the data or keep it with an ADR explaining | author |
-
-## Related
-
-- [Specs and the change workflow](../references/concept_spec_lifecycle.md)
 
 [← Back to SKILL.md](../SKILL.md)

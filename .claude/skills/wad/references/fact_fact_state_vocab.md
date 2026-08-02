@@ -8,8 +8,4 @@
 | Surface state kinds | :empty :loading :error :populated :custom | Screens must cover the first four (surface_states gate); :custom for extras |
 | Signoff | :pending -> :done \| :not_applicable | :not_applicable needs a note saying why; check-full blocks while any is :pending |
 
-## Related
-
-- [Implementation vs verification](../references/concept_role_split.md)
-
 [← Back to SKILL.md](../SKILL.md)

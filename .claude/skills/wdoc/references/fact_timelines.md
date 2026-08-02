@@ -1,8 +1,14 @@
 # timeline
 
-`timeline` is a **real-time axis** — dates are ISO strings (`"2026-03-15"` / `"…14:30"`) and tick boundaries land on real calendar dates. A `unit` (`:minutes`..`:years`) sets granularity; omit it for auto-fit from the event span. It is a diagram shape, so it lives inside a `diagram` sharing its size.
+`timeline` is a **real-time axis** — dates are ISO strings (`"2026-03-15"` / `"…14:30"`) and
+tick boundaries land on real calendar dates. A `unit` (`:minutes`..`:years`) sets granularity;
+omit it for auto-fit from the event span. It is a diagram shape, so it lives inside a
+`diagram` sharing its size.
 
-A real-time axis placed inside a `diagram`; dates are ISO strings, a `unit` sets granularity, and it holds point `items`, labelled `phases`, and rich event `card` children.
+
+A real-time axis placed inside a `diagram`; dates are ISO strings, a `unit` sets granularity,
+and it holds point `items`, labelled `phases`, and rich event `card` children.
+
 
 ```wcl
 diagram {
@@ -49,11 +55,18 @@ diagram {
 
 ## Items and phases
 
-`items` are point events, each `{ label, on }` (with optional `side: :near|:far`). `phases` are labelled spans, each `{ label, from, to }`, drawn as a band that cycles the `wdoc-series-N` palette. Set `direction = :vertical` to read top-to-bottom with items alternating sides.
+`items` are point events, each `{ label, on }` (with optional `side: :near|:far`). `phases`
+are labelled spans, each `{ label, from, to }`, drawn as a band that cycles the
+`wdoc-series-N` palette. Set `direction = :vertical` to read top-to-bottom with items
+alternating sides.
+
 
 ## Event cards
 
-A timeline also accepts rich-text `card` children — each pinned to a date with `on` and filled with formatted wdoc content (text, lists, callouts, images). `width` / `height` size the box and `side: :near|:far` forces which side of the axis it sits on.
+A timeline also accepts rich-text `card` children — each pinned to a date with `on` and filled
+with formatted wdoc content (text, lists, callouts, images). `width` / `height` size the box
+and `side: :near|:far` forces which side of the axis it sits on.
+
 
 ```wcl
 diagram {
@@ -84,8 +97,6 @@ diagram {
 ![diagram](../_wdoc/fact_timelines-diagram-2.svg)
 
 ## Related
-
-- [charts](../references/fact_charts.md)
 
 - [diagram](../references/fact_diagrams.md)
 

@@ -16,13 +16,13 @@
 | harness_defined | Surface/walkthrough specs say how to run their work | Unexecutable walkthroughs mid-DAG |
 | signoffs_complete | No phase signoff is :pending (check-full tier only) | Silently skipped planning phases |
 
-Evaluate one gate: `wcl eval gates.wcl gates.<id>.ok` - exit 0 with `true` on pass, non-zero with the gate message on failure. `just check` evaluates all of them.
+Evaluate one gate: `wcl eval gates.wcl gates.<id>.ok` - exit 0 with `true` on pass, non-zero
+with the gate message on failure. `just check` evaluates all of them.
+
 
 ## Related
 
 - [Gates are blocks, not lets](../references/concept_gates.md)
-
-- [The spec DAG and build waves](../references/concept_dag_waves.md)
 
 - [File ownership](../references/concept_ownership.md)
 

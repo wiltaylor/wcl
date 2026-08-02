@@ -2,7 +2,10 @@
 
 _The `:ai_skill` target: the `skill { }` block, folder layout, front matter, and `file` blocks._
 
-`wcl wdoc skill <file> --out <dir>` renders a document to an agent / Claude **skill folder** — a `SKILL.md` plus the conventional `references/`, `scripts/` and `assets/` subfolders. It's a Markdown-backed target (the [Markdown output](../references/concept_markdown.md) mapping applies), but the \*folder layout\* and `SKILL.md` front matter follow the skill convention.
+`wcl wdoc skill <file> --out <dir>` renders a document to an agent / Claude **skill folder** —
+a `SKILL.md` plus the conventional `references/`, `scripts/` and `assets/` subfolders. It's a
+Markdown-backed target (the [Markdown output](../references/concept_markdown.md) mapping applies), but the
+\*folder layout\* and `SKILL.md` front matter follow the skill convention.
 
 
 ```console
@@ -11,7 +14,9 @@ wcl wdoc skill docs/my-skill.wcl --out ./my-skill
 
 ## Opting in
 
-A `site` becomes a skill by setting `default_template = :ai_skill` and declaring a `skill { }` block. The `skill` block supplies the required front-matter `name` and `description` (and an optional `license`) that the backend writes onto `SKILL.md`.
+A `site` becomes a skill by setting `default_template = :ai_skill` and declaring a `skill { }`
+block. The `skill` block supplies the required front-matter `name` and `description` (and an
+optional `license`) that the backend writes onto `SKILL.md`.
 
 
 ```wcl
@@ -39,7 +44,10 @@ page usage {
 
 ## Folder layout
 
-The site's `start` page (`start = true`) becomes `SKILL.md` at the folder root; every other page is written under `references/<name>.md`. Internal links between pages resolve into that layout automatically — a link to the start page points at `SKILL.md`, a link to any other page at `references/<name>.md`.
+The site's `start` page (`start = true`) becomes `SKILL.md` at the folder root; every other
+page is written under `references/<name>.md`. Internal links between pages resolve into that
+layout automatically — a link to the start page points at `SKILL.md`, a link to any other page
+at `references/<name>.md`.
 
 
 ```text
@@ -54,12 +62,17 @@ my-skill/
 
 ## Front matter
 
-`SKILL.md`'s YAML header is built from the `skill { }` block. To add extra keys (for example `allowed-tools`), author a `frontmatter` block on the start page — its keys are merged after the canonical `name` / `description` / `license` (which the `skill` block owns).
+`SKILL.md`'s YAML header is built from the `skill { }` block. To add extra keys (for example
+`allowed-tools`), author a `frontmatter` block on the start page — its keys are merged after
+the canonical `name` / `description` / `license` (which the `skill` block owns).
 
 
 ## Shipping files
 
-A `file` block copies an arbitrary file from beside the document into the output and keeps its basename, so the path is stable and hand-linkable. `dir` names the target subfolder (`scripts`, `assets`, …). Set `as` to render a link to it; omit `as` to ship it silently and reference it by its path yourself.
+A `file` block copies an arbitrary file from beside the document into the output and keeps its
+basename, so the path is stable and hand-linkable. `dir` names the target subfolder
+(`scripts`, `assets`, …). Set `as` to render a link to it; omit `as` to ship it silently and
+reference it by its path yourself.
 
 
 ```wcl
@@ -79,7 +92,10 @@ page overview { start = true
 
 ## Sharing pages with a website
 
-A `:ai_skill` site can live in the same document as a `:webpage` or `:book` site. `wcl wdoc build` / `pdf` / `markdown` skip the skill site, and `wcl wdoc skill` builds only it — so one source feeds both a hosted site and a skill. Because a page joins a site through its `sites = [ … ]` list, the \*same\* reference page can belong to both.
+A `:ai_skill` site can live in the same document as a `:webpage` or `:book` site.
+`wcl wdoc build` / `pdf` / `markdown` skip the skill site, and `wcl wdoc skill` builds only it
+— so one source feeds both a hosted site and a skill. Because a page joins a site through its
+`sites = [ … ]` list, the \*same\* reference page can belong to both.
 
 
 ```wcl
@@ -145,10 +161,6 @@ page overview { start = true
 
 - [Sites](../references/concept_sites.md)
 
-- [Templates](../references/concept_templates.md)
-
 - [Markdown output](../references/concept_markdown.md)
-
-- [Including sub-sites](../references/concept_includes.md)
 
 [← Back to SKILL.md](../SKILL.md)

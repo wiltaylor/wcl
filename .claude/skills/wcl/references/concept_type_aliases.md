@@ -4,7 +4,10 @@ _type Name = TypeRef declares a transparent alias; constraint decorators travel 
 
 ## Type aliases
 
-`type Name = TypeRef` declares a transparent alias — a readable name for any type, resolved wherever the name is used (transitively). Constraint decorators on the alias travel with it: every field declared with the alias is validated by `wcl check`.
+`type Name = TypeRef` declares a transparent alias — a readable name for any type, resolved
+wherever the name is used (transitively). Constraint decorators on the alias travel with it:
+every field declared with the alias is validated by `wcl check`.
+
 
 ```wcl
 @min(1) @max(65535)
@@ -18,11 +21,5 @@ type Service {
   port: Port        # rejects 0u16 and 70000-ish values
 }
 ```
-
-## Related
-
-- [Records](../references/concept_records.md)
-
-- [Type & field constraints](../references/fact_type_constraints.md)
 
 [← Back to SKILL.md](../SKILL.md)

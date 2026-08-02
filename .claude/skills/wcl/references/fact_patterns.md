@@ -17,8 +17,4 @@ Patterns destructure and test values in `match`, `if let`, and guard arms.
 
 - [match](../references/concept_match_expr.md)
 
-- [Unions](../references/concept_unions.md)
-
-- [Optionals](../references/concept_optionals.md)
-
 [← Back to SKILL.md](../SKILL.md)

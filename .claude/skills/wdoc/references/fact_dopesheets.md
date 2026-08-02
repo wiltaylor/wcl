@@ -1,6 +1,9 @@
 # dopesheet
 
-`dopesheet` plays a range of frames from a sprite sheet at a set `fps` — a placeable SVG block, a legal child of any `diagram` or `container`. Here the whole sheet loops at 12 fps (click the coin to pause):
+`dopesheet` plays a range of frames from a sprite sheet at a set `fps` — a placeable SVG
+block, a legal child of any `diagram` or `container`. Here the whole sheet loops at 12 fps
+(click the coin to pause):
+
 
 ```wcl
 diagram {
@@ -48,9 +51,17 @@ diagram {
 
 ## Frame geometry and playback
 
-Describe the frame grid with `frame_width` / `frame_height`, plus `offset_x` / `offset_y` and `stride_x` / `stride_y` for padding or gaps; `columns` defaults to as many frames as fit across the sheet. `from` / `to` pick an inclusive sub-range. `scale` enlarges pixel art; `image-rendering: pixelated` is the default, so set `smooth = true` for non-pixel sources. Autoplay, loop, and controls are on by default — click to pause or resume. (The sample sheet is truezipp's CC0 "Pixel Coins Asset".)
+Describe the frame grid with `frame_width` / `frame_height`, plus `offset_x` / `offset_y` and
+`stride_x` / `stride_y` for padding or gaps; `columns` defaults to as many frames as fit
+across the sheet. `from` / `to` pick an inclusive sub-range. `scale` enlarges pixel art;
+`image-rendering: pixelated` is the default, so set `smooth = true` for non-pixel sources.
+Autoplay, loop, and controls are on by default — click to pause or resume. (The sample sheet
+is truezipp's CC0 "Pixel Coins Asset".)
 
-Just the first three frames (`from` / `to`), spelt-out grid geometry, and `autoplay = false` so it starts paused — click to play:
+
+Just the first three frames (`from` / `to`), spelt-out grid geometry, and `autoplay = false`
+so it starts paused — click to play:
+
 
 ```wcl
 diagram {
@@ -76,8 +87,6 @@ diagram {
 ![diagram](../_wdoc/fact_dopesheets-diagram-2.svg)
 
 ## Related
-
-- [tilemaps](../references/fact_tilemaps.md)
 
 - [image](../references/fact_images.md)
 

@@ -2,12 +2,16 @@
 
 _Class blocks, stylesheets, and themes — how a site looks._
 
-Two layers control how a site looks: `class` blocks style individual elements, and a site `theme` sets the palette every built-in element draws from. Classes always win over theme defaults via the cascade, so you theme broadly and override locally.
+Two layers control how a site looks: `class` blocks style individual elements, and a site
+`theme` sets the palette every built-in element draws from. Classes always win over theme
+defaults via the cascade, so you theme broadly and override locally.
 
 
 ## Classes
 
-A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's `class` field (or a span's). Fields cover text, box, and SVG paint properties; per-mode overrides go in `dark { }` / `light { }` sub-blocks.
+A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's
+`class` field (or a span's). Fields cover text, box, and SVG paint properties; per-mode
+overrides go in `dark { }` / `light { }` sub-blocks.
 
 
 ```wcl
@@ -32,12 +36,20 @@ p "highlighted paragraph" { class = ["accent"] }
 | Callout | `accent` — sets a callout's accent colour (heading, border, icon) when the class is on a `callout` |
 | Modes | `dark { … }`, `light { … }` for prefers-color-scheme overrides |
 
-Hyphenated class names may be written bare — `class wdoc-series-1 { fill = "#88c0d0" }` — or quoted; both are equivalent. This is how you override built-in classes like the chart palette or callout styles. Set `sites = [:foo]` on a class to scope it to one site in a multi-site document; omit the field and the class applies everywhere.
+Hyphenated class names may be written bare — `class wdoc-series-1 { fill = "#88c0d0" }` — or
+quoted; both are equivalent. This is how you override built-in classes like the chart palette
+or callout styles. Set `sites = [:foo]` on a class to scope it to one site in a multi-site
+document; omit the field and the class applies everywhere.
 
 
 ## Themes
 
-A theme is a complete colour palette plus the rules that map it onto every built-in element — page background, links, headings, code, charts, callouts, tables, inline emphasis. Set `theme = :<name>` on a `site` — a symbol naming a `theme` block. Seven built-in palettes ship (`forge` is the default, plus `nord`, `tokyonight`, `gruvbox`, `catppuccin`, `rose`, and `paper`), each with co-ordinated dark and light variants and its own typography. `theme_toggle = true` adds a light/dark toggle button.
+A theme is a complete colour palette plus the rules that map it onto every built-in element —
+page background, links, headings, code, charts, callouts, tables, inline emphasis. Set
+`theme = :<name>` on a `site` — a symbol naming a `theme` block. Seven built-in palettes ship
+(`forge` is the default, plus `nord`, `tokyonight`, `gruvbox`, `catppuccin`, `rose`, and
+`paper`), each with co-ordinated dark and light variants and its own typography.
+`theme_toggle = true` adds a light/dark toggle button.
 
 
 ```wcl
@@ -49,7 +61,10 @@ site mysite {
 }
 ```
 
-Independently of the theme, `accent = :cyan` (or `:red`/`:orange`/`:yellow`/`:green`/`:blue`/`:purple`/`:pink`) picks the hue used for links and current-chapter highlights. Default is `:blue`. A custom theme is just a `theme` block holding a `dark` and a `light` `palette` sub-block.
+Independently of the theme, `accent = :cyan` (or
+`:red`/`:orange`/`:yellow`/`:green`/`:blue`/`:purple`/`:pink`) picks the hue used for links
+and current-chapter highlights. Default is `:blue`. A custom theme is just a `theme` block
+holding a `dark` and a `light` `palette` sub-block.
 
 
 ```wcl
@@ -230,7 +245,5 @@ An `inline_pattern` block: a custom inline text pattern recognised in prose, map
 ## Related
 
 - [Sites](../references/concept_sites.md)
-
-- [Formatting](../references/concept_formatting.md)
 
 [← Back to SKILL.md](../SKILL.md)

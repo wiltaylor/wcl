@@ -1,6 +1,10 @@
 # Template — example
 
-An **example** is a worked sample that belongs to another unit. It is not a section of its own: `unit` names the concept, entity or fact it illustrates, and the templates render it on that unit's page, after the body. Use it when a sample is long enough to interrupt the prose, and inline `code` blocks otherwise.
+An **example** is a worked sample that belongs to another unit. It is not a section of its
+own: `unit` names the concept, entity or fact it illustrates, and the templates render it on
+that unit's page, after the body. Use it when a sample is long enough to interrupt the prose,
+and inline `code` blocks otherwise.
+
 
 ## Skeleton
 
@@ -60,11 +64,5 @@ CODE
 - The sample runs. Paste it into the real tool before committing it.
 - `expected` states the outcome.
 - It illustrates one thing; two ideas mean two examples.
-
-## Related
-
-- [Template — concept](../references/fact_template_concept.md)
-
-- [Writing style for wskill content](../references/fact_writing_style.md)
 
 [← Back to SKILL.md](../SKILL.md)

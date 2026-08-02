@@ -2,12 +2,18 @@
 
 _Render content from WCL data: wdoc_component / slot / repeater / instance, body & project, partial & collect._
 
-A \*data view\* renders document content — cards, tables, charts, diagrams — from a WCL **data structure** rather than hand-authored blocks. Declare the data once, then derive every view from it. The primary tool is a **component**: a reusable fragment of ordinary wdoc markup with named **slots**.
+A \*data view\* renders document content — cards, tables, charts, diagrams — from a WCL
+**data structure** rather than hand-authored blocks. Declare the data once, then derive every
+view from it. The primary tool is a **component**: a reusable fragment of ordinary wdoc markup
+with named **slots**.
 
 
 ## Components
 
-Declare a `wdoc_component` with `wdoc_slot`s and a `wdoc_body` of ordinary markup. Reference slots in any `$"…${slot}…"` interpolated string or as a bare identifier in a field (`class = [status]`). A slot with a `default` is optional. Instantiate the component by its own name.
+Declare a `wdoc_component` with `wdoc_slot`s and a `wdoc_body` of ordinary markup. Reference
+slots in any `$"…${slot}…"` interpolated string or as a bare identifier in a field
+(`class = [status]`). A slot with a `default` is optional. Instantiate the component by its
+own name.
 
 
 ```wcl
@@ -56,7 +62,10 @@ dv_metric {
 
 ## Repeating over data
 
-`wdoc_repeater` renders its body once per element of `each`, binding the element to the symbol named by `as`. Combined with a component it stamps one card per data row; with no component its body is just markup with the loop variable in scope. A slot can hold a whole list, and a repeater inside a component body can iterate it.
+`wdoc_repeater` renders its body once per element of `each`, binding the element to the symbol
+named by `as`. Combined with a component it stamps one card per data row; with no component
+its body is just markup with the loop variable in scope. A slot can hold a whole list, and a
+repeater inside a component body can iterate it.
 
 
 ```wcl
@@ -96,7 +105,10 @@ wdoc_repeater {
 
 ## Generating pages and navigation
 
-A `wdoc_repeater` is the single iteration concept at every level. At the **document root**, give it a `page` block and it emits one rendered page per element — the page's interpolated label becomes the route. Inside a `toc` (or a `chapter`), give it a `chapter` block and it emits one navigation entry per element.
+A `wdoc_repeater` is the single iteration concept at every level. At the **document root**,
+give it a `page` block and it emits one rendered page per element — the page's interpolated
+label becomes the route. Inside a `toc` (or a `chapter`), give it a `chapter` block and it
+emits one navigation entry per element.
 
 
 ```wcl
@@ -127,7 +139,9 @@ site docbook {
 
 ## Render by reference
 
-A `wdoc_instance` renders the component named by the **value** of its `component` field — so a repeater can emit a \*different\* component per element. The instance's like-named fields fill the target's slots (falling back to each slot's `default`).
+A `wdoc_instance` renders the component named by the **value** of its `component` field — so a
+repeater can emit a \*different\* component per element. The instance's like-named fields fill
+the target's slots (falling back to each slot's `default`).
 
 
 ```wcl
@@ -139,7 +153,8 @@ wdoc_repeater { each = widgets  as = :row
 
 ## Content slots (layout wrappers)
 
-A `wdoc_content` block in a component body marks where the instance's \*own\* nested blocks render — so a component can frame arbitrary content.
+A `wdoc_content` block in a component body marks where the instance's \*own\* nested blocks
+render — so a component can frame arbitrary content.
 
 
 ```wcl
@@ -177,7 +192,10 @@ Anything nested in the instance renders at the content slot.
 
 ## Partials (scatter and collect)
 
-A `partial` tags a body of blocks; a `collect` with the same tag gathers every matching partial — across the whole document and its imported files — and renders their bodies, in document order, at the collect site. A partial is **invisible where it's defined** unless you set `show_here = true`. It's the appendix / glossary / collected-sidebars pattern.
+A `partial` tags a body of blocks; a `collect` with the same tag gathers every matching
+partial — across the whole document and its imported files — and renders their bodies, in
+document order, at the collect site. A partial is **invisible where it's defined** unless you
+set `show_here = true`. It's the appendix / glossary / collected-sidebars pattern.
 
 
 ```wcl
@@ -197,7 +215,11 @@ collect aside
 
 ## Content fragments on data (body and project)
 
-A `body` attaches a chunk of renderable content to a **data record** as a \*property\* — without that record being a renderable block — and a `project` renders it elsewhere by **reference**. Declare your own block type with a `@child("body")` slot, author the content inside each record, then `project` it from a repeater. Because `body` is `@by_ref`, `from = s.overview` resolves to \*that\* record's fragment, and `${…}` inside the body resolves against the record.
+A `body` attaches a chunk of renderable content to a **data record** as a \*property\* — without
+that record being a renderable block — and a `project` renders it elsewhere by **reference**.
+Declare your own block type with a `@child("body")` slot, author the content inside each
+record, then `project` it from a repeater. Because `body` is `@by_ref`, `from = s.overview`
+resolves to \*that\* record's fragment, and `${…}` inside the body resolves against the record.
 
 
 ```wcl
@@ -227,7 +249,11 @@ page fleet {
 
 ## Documenting schema types
 
-The built-in `type_table` component documents a schema type by reflecting it — `type_table { type = Image }` renders a table of the type's properties (name, type, required, description), including inherited fields. Descriptions and visibility are authored on the schema with `@doc("…")` and `@hidden`. `block_reference { type = MyDoc }` walks a document's `@child` / `@children` slots and emits an `h3` plus a `type_table` for each.
+The built-in `type_table` component documents a schema type by reflecting it —
+`type_table { type = Image }` renders a table of the type's properties (name, type, required,
+description), including inherited fields. Descriptions and visibility are authored on the
+schema with `@doc("…")` and `@hidden`. `block_reference { type = MyDoc }` walks a document's
+`@child` / `@children` slots and emits an `h3` plus a `type_table` for each.
 
 
 ## Block reference
@@ -347,11 +373,5 @@ wdoc_repeater { each = inventory  as = :h
 ```
 
 **Expected:** One metric card per inventory entry, each reading its label, value, and status from the data row.
-
-## Related
-
-- [Including sub-sites](../references/concept_includes.md)
-
-- [Connections](../references/concept_connections.md)
 
 [← Back to SKILL.md](../SKILL.md)

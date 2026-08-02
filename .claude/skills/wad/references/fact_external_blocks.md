@@ -13,10 +13,8 @@
 | `api_ref` | `name`, `kind` (openapi/docs/repo…), `location`, `notes?` | integration references |
 | `security_note` | `title`, `detail`, `severity?` | what to watch at the boundary |
 
-Never invent contacts or security posture — these come from the user or the vendor, and the interview asks for them explicitly.
+Never invent contacts or security posture — these come from the user or the vendor, and the
+interview asks for them explicitly.
 
-## Related
-
-- [The twelve views](../references/concept_twelve_views.md)
 
 [← Back to SKILL.md](../SKILL.md)

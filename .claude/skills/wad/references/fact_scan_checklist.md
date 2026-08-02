@@ -19,10 +19,4 @@ what to read → what to emit → what to ask the user when the code can't answe
 | documentation | docs/ folders, static-site configs, README links and badges, publishing workflows (Pages / Netlify / Read the Docs) | doc_item per published artefact (source, built_by from the rendering container, hosted_on from the deploy workflow, url) | Is documentation published anywhere outside the repo — wikis, hosted API docs, internal portals — and who maintains it? |
 | overview | everything still empty after the probes above | targeted mini-interview using the interview question bank, restricted to the gaps; unanswered items become open questions in an article, never guesses | Why is the system the way it is? (back-fill the load-bearing decisions as ADRs) |
 
-## Related
-
-- [Document an existing system (the scan)](../references/process_documenting_existing_system.md)
-
-- [Interview question bank (per view)](../references/fact_interview_question_bank.md)
-
 [← Back to SKILL.md](../SKILL.md)

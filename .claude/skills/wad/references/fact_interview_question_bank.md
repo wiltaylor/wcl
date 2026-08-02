@@ -99,10 +99,4 @@ only when relevant. (These are data — `interview_q` blocks — so tooling can 
 | --- | --- | --- |
 | What coding/style standards apply, and what enforces each (CI, linter, review)? | `standard (kind :coding / :style) + rule (enforced_by)` |  |
 
-## Related
-
-- [Design a new system (the interview)](../references/process_designing_new_system.md)
-
-- [Codebase scan checklist (per view)](../references/fact_scan_checklist.md)
-
 [← Back to SKILL.md](../SKILL.md)

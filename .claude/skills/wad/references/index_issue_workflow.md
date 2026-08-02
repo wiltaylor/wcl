@@ -2,7 +2,9 @@
 
 _Raise a bug or feature against an existing codebase and break it into a build-ready plan._
 
-Start with the pipeline runbook; recon is its heart. Trivial single-file changes skip the pipeline entirely - fix them directly (see the issue-mode concept's when-NOT-to-use rule).
+Start with the pipeline runbook; recon is its heart. Trivial single-file changes skip the
+pipeline entirely - fix them directly (see the issue-mode concept's when-NOT-to-use rule).
+
 
 ## Related
 

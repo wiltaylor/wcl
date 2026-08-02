@@ -21,7 +21,9 @@ $ wcl eval site.wcl service.web.port
 80
 ```
 
-Run `wcl eval site.wcl <dotted.path>` (aliased `wcl get`) to resolve a path from the document root and print its value. Add `--json` for machine-readable output.
+Run `wcl eval site.wcl <dotted.path>` (aliased `wcl get`) to resolve a path from the
+document root and print its value. Add `--json` for machine-readable output.
+
 
 ### Step 2: Edit a field with set
 
@@ -34,7 +36,9 @@ $ wcl set site.wcl service.web.port 9090u32
 >
 > The value is parsed as a WCL expression — quote shell-special characters, e.g. `wcl set site.wcl name '"alpha"'`.
 
-Run `wcl set site.wcl <path> <value>` to rewrite the field. `wcl set` follows the import chain and edits the file that actually declares the field.
+Run `wcl set site.wcl <path> <value>` to rewrite the field. `wcl set` follows the import
+chain and edits the file that actually declares the field.
+
 
 ### Step 3: Confirm the change with diff
 
@@ -45,7 +49,10 @@ modified "service:web" {
 }
 ```
 
-Run `wcl diff <old> <new>` over the evaluated views to see exactly what changed. Either side may be a `<rev>:<path>` git specifier, so you can diff the working tree against a committed version.
+Run `wcl diff <old> <new>` over the evaluated views to see exactly what changed. Either side
+may be a `<rev>:<path>` git specifier, so you can diff the working tree against a committed
+version.
+
 
 > [!TIP]
 > **Verification**
@@ -55,7 +62,5 @@ Run `wcl diff <old> <new>` over the evaluated views to see exactly what changed.
 ## Related
 
 - [wcl](../references/entity_wcl_cli.md)
-
-- [References](../references/concept_references.md)
 
 [← Back to SKILL.md](../SKILL.md)

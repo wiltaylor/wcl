@@ -41,12 +41,4 @@ Two standard modules ship with every wskill — the [presentation](../references
 and [training](../references/concept_training_view.md) views use exactly this mechanism.
 
 
-## Related
-
-- [Structured data](../references/concept_structured_data.md)
-
-- [Components: one look for every unit](../references/concept_components_look_feel.md)
-
-- [Creating a schema extension](../references/process_creating_schema_extension.md)
-
 [← Back to SKILL.md](../SKILL.md)

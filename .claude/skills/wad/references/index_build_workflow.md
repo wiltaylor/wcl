@@ -2,7 +2,10 @@
 
 _Execute a rendered plan: orchestrate implementation, verification, review, fix and merge agents over the spec DAG until every spec is merged and every scenario passes._
 
-Read the roles fact first, then the orchestrator loop - everything else is the loop's sub-runbooks. A run is complete when every spec is :merged AND every scenario passes on trunk, never at the last merge.
+Read the roles fact first, then the orchestrator loop - everything else is the loop's
+sub-runbooks. A run is complete when every spec is :merged AND every scenario passes on trunk,
+never at the last merge.
+
 
 ## Related
 

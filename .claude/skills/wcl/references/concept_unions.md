@@ -2,11 +2,16 @@
 
 _Tagged variant sets — a value that is exactly one of several alternatives._
 
-A `union` is a tagged set of variants — a value that is exactly one of several alternatives. Each variant carries its own payload (or none), and pattern matching dispatches on the tag.
+A `union` is a tagged set of variants — a value that is exactly one of several alternatives.
+Each variant carries its own payload (or none), and pattern matching dispatches on the tag.
+
 
 ## Variant body forms
 
-Three shapes are accepted: a **record** body with named fields (space- or newline-separated, no commas), a **typeref** body for a single positional payload, or a **unit** body written `none`.
+Three shapes are accepted: a **record** body with named fields (space- or newline-separated,
+no commas), a **typeref** body for a single positional payload, or a **unit** body written
+`none`.
+
 
 ```wcl
 union Shape {
@@ -18,7 +23,9 @@ union Shape {
 
 ## Constructing variants
 
-Use `Union::Variant` syntax — record payloads in braces, typeref payloads in parentheses, unit constructors bare.
+Use `Union::Variant` syntax — record payloads in braces, typeref payloads in parentheses, unit
+constructors bare.
+
 
 ```wcl
 a = Shape::Circle { radius: 5.0, stroke: 0.5 }
@@ -26,7 +33,10 @@ b = Shape::Polygon(7)
 c = Shape::Empty
 ```
 
-An **optional** (`field?`) member of a record body defaults to `none` when omitted, so `stroke: none` says nothing that leaving `stroke` out doesn't. Only required fields have to be supplied.
+An **optional** (`field?`) member of a record body defaults to `none` when omitted, so
+`stroke: none` says nothing that leaving `stroke` out doesn't. Only required fields have to be
+supplied.
+
 
 ```wcl
 union Outline {
@@ -39,7 +49,10 @@ b = Outline::Circle { radius: 5.0, stroke: none }  // identical, and the `stroke
 
 ## Inferring the variant from shape
 
-When the expected type is a union — a union-typed field, an element of a `list<Union>`, or a function parameter — you can drop the `Union::Variant` tag and write a bare record. The variant is inferred from the record's field shape.
+When the expected type is a union — a union-typed field, an element of a `list<Union>`, or a
+function parameter — you can drop the `Union::Variant` tag and write a bare record. The
+variant is inferred from the record's field shape.
+
 
 ```wcl
 // `series: list<ChartSeries>` — the variant is inferred per element.
@@ -49,13 +62,20 @@ series = [
 ]
 ```
 
-The match is by field-name set (and field types when two variants share a name set), so it only works when the shape is unambiguous; a bare record matching no variant is a build error. Reach for the explicit `Union::Variant { ... }` form to disambiguate.
+The match is by field-name set (and field types when two variants share a name set), so it
+only works when the shape is unambiguous; a bare record matching no variant is a build error.
+Reach for the explicit `Union::Variant { ... }` form to disambiguate.
 
-A bare record must therefore carry the **full** field set, optional members included — the shape is what picks the variant. Only the explicit form can omit them.
+
+A bare record must therefore carry the **full** field set, optional members included — the
+shape is what picks the variant. Only the explicit form can omit them.
+
 
 ## extends
 
-A union can `extends` another, inheriting its variants and adding more — useful when a host wants to extend an open vocabulary without modifying the base declaration.
+A union can `extends` another, inheriting its variants and adding more — useful when a host
+wants to extend an open vocabulary without modifying the base declaration.
+
 
 ```wcl
 union BaseShape {
@@ -94,11 +114,5 @@ c = Shape::Empty
 ```
 
 **Expected:** Three values, each a different variant of `Shape`.
-
-## Related
-
-- [Records](../references/concept_records.md)
-
-- [Symbols](../references/concept_symbols.md)
 
 [← Back to SKILL.md](../SKILL.md)

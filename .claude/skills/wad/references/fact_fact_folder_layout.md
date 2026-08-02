@@ -25,10 +25,4 @@
 | wdoc/agent/main.wcl | Agent projection - one self-contained .md brief per spec plus index.md |
 | out/ | Generated output - never hand-edited |
 
-## Related
-
-- [The gated pipeline](../references/concept_pipeline.md)
-
-- [Starting a plan](../references/process_proc_starting_a_plan.md)
-
 [← Back to SKILL.md](../SKILL.md)

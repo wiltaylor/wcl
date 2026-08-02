@@ -2,7 +2,9 @@
 
 _The `page` block: id, title, the sites it joins, and the start page._
 
-A `page` block declares one rendered HTML page. Each page joins one or more sites (its `sites` field) and holds the content blocks that make up its body. A page's `title` sets its heading-bar / navigation label, and `start = true` marks the document entry page.
+A `page` block declares one rendered HTML page. Each page joins one or more sites (its `sites`
+field) and holds the content blocks that make up its body. A page's `title` sets its
+heading-bar / navigation label, and `start = true` marks the document entry page.
 
 
 ## A page
@@ -23,7 +25,9 @@ page index { sites = [:mysite]  start = true
 
 ## Cross-page links
 
-Inside any `p` or `span`, write a markdown-style link where the URL is a bare page name for an in-site link, or `site_name:page_name` for a cross-site link. Links to unknown pages are build errors, so renaming a page can't silently break navigation.
+Inside any `p` or `span`, write a markdown-style link where the URL is a bare page name for an
+in-site link, or `site_name:page_name` for a cross-site link. Links to unknown pages are build
+errors, so renaming a page can't silently break navigation.
 
 
 ```wcl
@@ -74,10 +78,6 @@ WCL
 
 ## Related
 
-- [wdoc Overview](../references/concept_overview.md)
-
 - [Sites](../references/concept_sites.md)
-
-- [Templates](../references/concept_templates.md)
 
 [← Back to SKILL.md](../SKILL.md)

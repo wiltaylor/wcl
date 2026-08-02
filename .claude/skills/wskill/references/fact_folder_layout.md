@@ -39,14 +39,4 @@ a `main.wcl` aggregator) — the layout above is the contract, not a limit. The 
 entries contain no topic content; everything a reader sees comes from `data/`.
 
 
-## Related
-
-- [What is it?](../references/concept_wskill_concept.md)
-
-- [Creating a new wskill](../references/process_creating_a_wskill.md)
-
-- [Structured data](../references/concept_structured_data.md)
-
-- [Custom projections (schema extension modules)](../references/concept_custom_projection.md)
-
 [← Back to SKILL.md](../SKILL.md)

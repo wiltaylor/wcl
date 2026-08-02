@@ -1,12 +1,12 @@
 procedure building_the_index {
   title = "Building the wskill index"
-  purpose = "Curate the wskill's navigation by writing `index` blocks that group units into a meaningful tree."
+  purpose = "Declare the wskill's shape during scoping by writing a bodied `index` tree, then place units under the node whose scope owns them."
   related = []
   audience = :both
 
   step add {
     n = 1
-    title = "Add an index block"
+    title = "Author the scoped index tree"
     body screen {
       code "wcl" {
         source = <<DOC
@@ -14,6 +14,7 @@ procedure building_the_index {
           index commands {
             name    = "Commands"
             summary = "The everyday command set."
+            body { p "Tasks performed directly with the CLI; excludes configuration concepts and file-format reference." }
             related = [git_add, git_commit, status_fact]
           }
         DOC
@@ -21,9 +22,12 @@ procedure building_the_index {
     }
     body steps {
       p <<DOC
-        Add an `index` block (in `data/indexes.wcl` or its own file). Give it a `name` — the sidebar
-        heading — and a `summary`, then list the unit ids it groups in `related`. Each id resolves
-        to a link to that unit's page; an id that matches no unit is simply dropped.
+        Use this procedure while scoping, before units are written. Add an `index` block (in
+        `data/indexes.wcl` or its own file) for each real topic area. Give every node a `name`, a
+        `summary`, and exactly one `body` stating what belongs in the area and what does not. The body
+        makes the node a reader-facing area page and supplies the research brief and distillation
+        contract. If you cannot write that scope, the node should not exist. As units are authored,
+        list their ids in the owning node's `related`; each id resolves to its page.
       DOC
     }
   }
@@ -44,9 +48,9 @@ procedure building_the_index {
     }
     body steps {
       p <<DOC
-        An index may hold child `index` blocks one level deep — write them inside the parent. The
-        book renders them nested under the parent chapter. Document gathering is direct-only, so a
-        nested index is not also listed at the top level.
+        An index may hold child `index` blocks one level deep — write them inside the parent, and give
+        every child its own body too. The book renders them nested under the parent chapter. Document
+        gathering is direct-only, so a nested index is not also listed at the top level.
       DOC
     }
   }
@@ -66,5 +70,5 @@ procedure building_the_index {
   add -> nest
   nest -> audience
 
-  verification = "Each `index` appears as a chapter in the book sidebar (and, when `:ai`/`:both`, as a section in `SKILL.md`), listing links to the units it pins."
+  verification = "Every index node has one scope body; each appears as an area page and a chapter in the book sidebar (and, when `:ai`/`:both`, in the skill projection), listing links to the units it owns."
 }

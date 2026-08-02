@@ -1,6 +1,10 @@
 # terminal
 
-A `terminal` renders a monospace character grid as inline SVG, drawn with a bundled Nerd Font. The grid is populated three ways: authored text primitives, an inline ANSI-bearing `text` field, or replay of an `asciinema` recording. `cols` / `rows` size the grid; `chrome` toggles the window frame; `title` labels it.
+A `terminal` renders a monospace character grid as inline SVG, drawn with a bundled Nerd Font.
+The grid is populated three ways: authored text primitives, an inline ANSI-bearing `text`
+field, or replay of an `asciinema` recording. `cols` / `rows` size the grid; `chrome` toggles
+the window frame; `title` labels it.
+
 
 ```wcl
 terminal {
@@ -78,7 +82,11 @@ terminal {
 
 ## Primitives
 
-`term_text` is the one base primitive — styled text at a 1-based `(row, col)` carrying `fg` / `bg` and `bold` / `italic` / `underline`. Higher-level helpers (`term_box`, `term_glyph`, `term_fill`) lower to runs of `term_text`. Colours are strings: an ANSI name (`"red"`), a 256-palette index (`"208"`), or a hex (`"#ff5fd2"`). All four side by side:
+`term_text` is the one base primitive — styled text at a 1-based `(row, col)` carrying `fg` /
+`bg` and `bold` / `italic` / `underline`. Higher-level helpers (`term_box`, `term_glyph`,
+`term_fill`) lower to runs of `term_text`. Colours are strings: an ANSI name (`"red"`), a
+256-palette index (`"208"`), or a hex (`"#ff5fd2"`). All four side by side:
+
 
 ```wcl
 terminal {
@@ -183,7 +191,11 @@ Fills a rectangular region of the grid with a repeated character and colour, for
 
 ## Inline ANSI and asciinema replay
 
-Set `text = "…"` and the bundled `avt` virtual terminal evaluates it — ANSI sequences, cursor movement, and styling all apply (a bare `\n` is a newline). Set `source = "rec.cast"` for asciinema replay; frames replay at the recording's pace (override with `speed`) and stop at the end unless `loop = true`.
+Set `text = "…"` and the bundled `avt` virtual terminal evaluates it — ANSI sequences, cursor
+movement, and styling all apply (a bare `\n` is a newline). Set `source = "rec.cast"` for
+asciinema replay; frames replay at the recording's pace (override with `speed`) and stop at
+the end unless `loop = true`.
+
 
 ```wcl
 terminal {
@@ -198,7 +210,10 @@ terminal {
 
 ## TUI widgets
 
-Inside a `terminal`, stdlib TUI controls compose a small interface — each lowers to runs of `term_text`. Place each from its own `(row, col)`; container widgets position their children relative to themselves.
+Inside a `terminal`, stdlib TUI controls compose a small interface — each lowers to runs of
+`term_text`. Place each from its own `(row, col)`; container widgets position their children
+relative to themselves.
+
 
 ```wcl
 terminal {
@@ -245,7 +260,9 @@ terminal {
 
 ### tui_progress
 
-A two-tone progress bar; `value` runs `0`–`max` (default `100`), the `@inline` label sits to its left, and `show_value` appends a percentage.
+A two-tone progress bar; `value` runs `0`–`max` (default `100`), the `@inline` label sits to
+its left, and `show_value` appends a percentage.
+
 
 ```wcl
 terminal {
@@ -276,7 +293,9 @@ terminal {
 
 ### tui_button
 
-A solid accent-fill button; the `@inline` label is centred, `width` pads it, `accent` colours the fill.
+A solid accent-fill button; the `@inline` label is centred, `width` pads it, `accent` colours
+the fill.
+
 
 ```wcl
 terminal {
@@ -309,7 +328,9 @@ terminal {
 
 ### tui_input
 
-A single-line field with a left accent bar. With no `value` the `@inline` placeholder shows muted; `focused = true` draws a cursor.
+A single-line field with a left accent bar. With no `value` the `@inline` placeholder shows
+muted; `focused = true` draws a cursor.
+
 
 ```wcl
 terminal {
@@ -342,7 +363,9 @@ terminal {
 
 ### tui_dropdown
 
-A drop-down with a disclosure caret (`▾` closed, `▴` open). With `open = true` and an `items` list, the options drop below the field and the selected one is highlighted.
+A drop-down with a disclosure caret (`▾` closed, `▴` open). With `open = true` and an `items`
+list, the options drop below the field and the selected one is highlighted.
+
 
 ```wcl
 terminal {
@@ -405,7 +428,9 @@ terminal {
 
 ### tui_radio
 
-A radio button — like a checkbox but round; `selected = true` marks the active choice in a group you lay out yourself.
+A radio button — like a checkbox but round; `selected = true` marks the active choice in a
+group you lay out yourself.
+
 
 ```wcl
 terminal {
@@ -437,7 +462,9 @@ terminal {
 
 ### tui_spinner
 
-A single static spinner frame — pick the `kind` (`:braille` default, `:circle`, `:line`) and which `frame` to show, with an optional `@inline` label.
+A single static spinner frame — pick the `kind` (`:braille` default, `:circle`, `:line`) and
+which `frame` to show, with an optional `@inline` label.
+
 
 ```wcl
 terminal {
@@ -465,7 +492,9 @@ terminal {
 
 ### tui_panel
 
-A bordered container: it draws a box (optional `title`) and renders its child controls inset by one cell. Child positions are **relative to the panel**.
+A bordered container: it draws a box (optional `title`) and renders its child controls inset
+by one cell. Child positions are **relative to the panel**.
+
 
 ```wcl
 terminal {
@@ -513,7 +542,9 @@ terminal {
 
 ### tui_group
 
-A borderless container — an optional `title` then its children. Use it to offset a cluster of controls without drawing a box.
+A borderless container — an optional `title` then its children. Use it to offset a cluster of
+controls without drawing a box.
+
 
 ```wcl
 terminal {
@@ -554,9 +585,16 @@ terminal {
 
 ## Custom TUI widgets
 
-TUI widgets are user-extensible. Declare a `@block("name") type … extends TuiWidget` with a `lower` returning `list<TermFundamental>`, and it plugs into the renderer like the built-ins — a legal child of any `terminal` (or container). Lay it out from its own top-left `(1, 1)`; the renderer offsets it by the widget's placement. Build the output from the shared `term_run` / `term_repeat` helpers, since styled text is the only thing the renderer paints.
+TUI widgets are user-extensible. Declare a `@block("name") type … extends TuiWidget` with a
+`lower` returning `list<TermFundamental>`, and it plugs into the renderer like the built-ins —
+a legal child of any `terminal` (or container). Lay it out from its own top-left `(1, 1)`; the
+renderer offsets it by the widget's placement. Build the output from the shared `term_run` /
+`term_repeat` helpers, since styled text is the only thing the renderer paints.
 
-Here's a `kbd` keycap — a coloured background run with the key label on top, the accent overridable per instance:
+
+Here's a `kbd` keycap — a coloured background run with the key label on top, the accent
+overridable per instance:
+
 
 ```wcl
 terminal {
@@ -600,11 +638,5 @@ terminal { cols = 30  rows = 1  chrome = false
   kbd "K"    { row = 1  col = 8  accent = "blue" }
 }
 ```
-
-## Related
-
-- [Wireframes](../references/fact_wireframe.md)
-
-- [diagram](../references/fact_diagrams.md)
 
 [← Back to SKILL.md](../SKILL.md)

@@ -26,7 +26,9 @@ ok
 >
 > 0 = valid, 1 = parse error, 2 = schema violation. Script against these for CI gates.
 
-Run `wcl check config.wcl`. A clean run prints `ok` and exits 0; fix any reported parse or schema errors before moving on.
+Run `wcl check config.wcl`. A clean run prints `ok` and exits 0; fix any reported parse or
+schema errors before moving on.
+
 
 ### Step 2: Format in place
 
@@ -34,7 +36,10 @@ Run `wcl check config.wcl`. A clean run prints `ok` and exits 0; fix any reporte
 $ wcl fmt config.wcl --in-place
 ```
 
-Run `wcl fmt config.wcl --in-place` to rewrite the file in canonical form. Indentation, brace style, number radix and string delimiters are normalised; comments and blank-line groupings survive.
+Run `wcl fmt config.wcl --in-place` to rewrite the file in canonical form. Indentation,
+brace style, number radix and string delimiters are normalised; comments and blank-line
+groupings survive.
+
 
 ### Step 3: Re-check the formatted file
 
@@ -43,7 +48,9 @@ $ wcl check config.wcl
 ok
 ```
 
-Formatting never changes meaning, but re-run `wcl check` as a cheap confirmation that the rewrite is still valid.
+Formatting never changes meaning, but re-run `wcl check` as a cheap confirmation that the
+rewrite is still valid.
+
 
 > [!TIP]
 > **Verification**
@@ -53,7 +60,5 @@ Formatting never changes meaning, but re-run `wcl check` as a cheap confirmation
 ## Related
 
 - [wcl](../references/entity_wcl_cli.md)
-
-- [Block Schema](../references/concept_block_schema.md)
 
 [← Back to SKILL.md](../SKILL.md)

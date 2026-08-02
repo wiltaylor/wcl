@@ -60,10 +60,4 @@ the skills, shipped once per wskill.
 
 - [Different Views](../references/concept_views.md)
 
-- [Setting up AI skill generation](../references/process_setup_ai_skill.md)
-
-- [Building and installing the AI skill](../references/process_installing_the_skill.md)
-
-- [Capturing research into a wskill](../references/process_capturing_research.md)
-
 [← Back to SKILL.md](../SKILL.md)
