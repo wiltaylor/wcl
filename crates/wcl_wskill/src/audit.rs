@@ -12,10 +12,11 @@
 //! - **Every node of either revision is here**, each carrying a [`Change`].
 //!   A consumer that wants the after-state filters `change != Removed`; one
 //!   drawing the audit ghosts the removals.
-//! - **Findings ride the changed nodes and are scoped to the range**
-//!   ([`NodeDelta::findings`]): what is *newly* wrong, not everything that is
-//!   wrong. A standing lint run answers the second question and this one must
-//!   not, or the range's own damage drowns in the corpus's backlog.
+//! - **Findings ride the nodes and are scoped to the range**
+//!   ([`NodeDelta::findings`]): everything wrong with a node the range
+//!   touched, and only what it newly broke in one it didn't. The corpus's
+//!   standing backlog belongs to a standing lint run, or the range's own
+//!   damage drowns in it.
 //! - **Health is [summary data](Audit::health), not a report.** A health
 //!   report names no unit — it is the shape of a gate, not of a review — so
 //!   the metrics ride the header beside the counts and the named nodes stay
@@ -202,8 +203,11 @@ impl std::fmt::Display for Aspect {
 /// One node of the union graph: a unit or an index, from either revision.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct NodeDelta {
-    #[serde(flatten)]
-    pub node: NodeKeyFields,
+    /// Which node this is. Flattened into `{kind, id, …}` beside the row's
+    /// own fields — the same spelling of identity [`Finding`] carries, so a
+    /// consumer joining findings to rows reads one shape.
+    #[serde(flatten, serialize_with = "crate::model::node_key_fields")]
+    pub node: NodeKey,
     pub change: Change,
     pub title: String,
     /// Where it is written, relative to [`Graph::root`] — read from the
@@ -216,23 +220,22 @@ pub struct NodeDelta {
     pub span: Option<Span>,
     /// What differs, for a [`Change::Modified`] node; empty otherwise.
     pub changed: Vec<Aspect>,
-    /// The findings **new in this range** — an after-revision finding whose
-    /// exact match did not fire before.
+    /// What is wrong with this node, scoped to the range in two different
+    /// ways because the two kinds of row ask different questions:
     ///
-    /// New rather than current, uniformly, because the audit's question is
-    /// what this range did. An over-cap unit that was already over cap is
-    /// not what the range broke; a unit left dangling by another unit's
-    /// deletion is, even though nothing in it was touched.
+    /// - A node the range **touched** carries everything currently wrong
+    ///   with it. The reviewer is reading a unit this change wrote, and
+    ///   "it was already over cap" does not make the cap acceptable now.
+    /// - A node the range **left alone** carries only what the range newly
+    ///   broke — an after-revision finding whose exact match did not fire
+    ///   before. A unit left dangling by someone else's deletion is this
+    ///   range's doing even though nothing in it was touched; the corpus's
+    ///   standing backlog is not, and a standing lint run is where that
+    ///   lives.
+    ///
+    /// A removed node carries none: it cannot be wrong any more, and what
+    /// its deletion broke is reported on whatever still points at it.
     pub findings: Vec<Finding>,
-}
-
-/// A node's identity, serialized as `{kind, id}` beside its own fields —
-/// the shape [`Finding`] already uses, so a consumer joining findings to
-/// rows reads one spelling of identity.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct NodeKeyFields {
-    pub kind: String,
-    pub id: String,
 }
 
 impl NodeDelta {
@@ -240,13 +243,6 @@ impl NodeDelta {
     /// broke something in it.
     pub fn is_news(&self) -> bool {
         self.change != Change::Unchanged || !self.findings.is_empty()
-    }
-
-    pub fn key(&self) -> NodeKey {
-        NodeKey {
-            kind: self.node.kind.clone(),
-            id: self.node.id.clone(),
-        }
     }
 }
 
@@ -261,6 +257,26 @@ pub struct EdgeDelta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_id: Option<String>,
     pub change: Change,
+}
+
+impl EdgeDelta {
+    /// The node that **wrote** this edge, which is not always the one it is
+    /// drawn from: a pin is drawn from the top-level index (sub-indexes are
+    /// not nodes of the graph) but written in the level whose list holds it.
+    ///
+    /// That distinction is the difference between a nested pin's churn being
+    /// reported under the sub-index a reviewer just watched change and being
+    /// reported under a top-level index that did not change at all — where,
+    /// not being news, it would not be reported anywhere.
+    pub fn writer(&self) -> NodeKey {
+        match (self.kind, &self.index_id) {
+            (EdgeKind::Pin, Some(id)) => NodeKey {
+                kind: INDEX_KIND.to_string(),
+                id: id.clone(),
+            },
+            _ => self.from.clone(),
+        }
+    }
 }
 
 /// How many of each thing moved. Nodes are counted per family because "+30
@@ -312,8 +328,17 @@ impl Metric {
         self.before != self.after
     }
 
-    /// One end of the metric, formatted the way its own kind reads.
-    pub fn format(&self, value: f64) -> String {
+    /// The two ends, each formatted the way this metric's own kind reads —
+    /// two decimals for a ratio, none for a count.
+    pub fn before_text(&self) -> String {
+        self.text(self.before)
+    }
+
+    pub fn after_text(&self) -> String {
+        self.text(self.after)
+    }
+
+    fn text(&self, value: f64) -> String {
         if self.ratio {
             format!("{value:.2}")
         } else {
@@ -350,9 +375,9 @@ impl Audit {
     /// what makes the two readings comparable.
     pub fn across(entry: &Path, range: &Range) -> Result<Audit, Error> {
         let baseline = range.baseline(entry)?;
-        let before = Graph::open_at_rev(entry, &baseline)?;
+        let before = graph_at(entry, &baseline)?;
         let after = match &range.after {
-            Some(rev) => Graph::open_at_rev(entry, rev)?,
+            Some(rev) => graph_at(entry, rev)?,
             None => Graph::open(entry)?,
         };
         Ok(Audit::of(&before, &after))
@@ -386,12 +411,30 @@ impl Audit {
         self.nodes.iter().filter(|n| n.is_news())
     }
 
-    /// The edges this range added or removed whose source is `node` — the
-    /// link churn a changelog row reports under itself.
+    /// The edges this range added or removed that `node` wrote — the link
+    /// churn a changelog row reports under itself. Keyed on
+    /// [`EdgeDelta::writer`], not on `from`, so a nested pin lands on the
+    /// sub-index that holds it.
     pub fn edge_news<'a>(&'a self, node: &'a NodeKey) -> impl Iterator<Item = &'a EdgeDelta> {
         self.edges
             .iter()
-            .filter(move |e| e.change != Change::Unchanged && &e.from == node)
+            .filter(move |e| e.change != Change::Unchanged && &e.writer() == node)
+    }
+}
+
+/// One end of the range, where a wskill that isn't there yet is an answer
+/// and not a failure.
+///
+/// Auditing the commit that *created* a wskill is the reviewing agent's
+/// commonest case — the whole folder is the range's output — and under the
+/// default `HEAD~1` its baseline necessarily predates the folder. Refusing
+/// that would make the default unusable on exactly the change it exists to
+/// review. The symmetric case, a wskill deleted before the compared
+/// revision, reads as every node removed, which is also what happened.
+fn graph_at(entry: &Path, rev: &str) -> Result<Graph, Error> {
+    match Graph::open_at_rev(entry, rev) {
+        Err(Error::Absent { sha, .. }) => Ok(Graph::absent(entry, &sha)),
+        other => other,
     }
 }
 
@@ -520,11 +563,9 @@ fn diff_nodes(
 
     let seen: HashSet<(String, &'static str, &str)> =
         before_findings.iter().map(finding_key).collect();
-    let mut fresh: HashMap<NodeKey, Vec<Finding>> = HashMap::new();
+    let mut current: HashMap<&NodeKey, Vec<&Finding>> = HashMap::new();
     for f in after_findings {
-        if !seen.contains(&finding_key(f)) {
-            fresh.entry(f.node.clone()).or_default().push(f.clone());
-        }
+        current.entry(&f.node).or_default().push(f);
     }
 
     let mut out: Vec<NodeDelta> = Vec::new();
@@ -540,45 +581,44 @@ fn diff_nodes(
                 }
             }
         };
-        out.push(delta(node, change, changed, fresh.remove(key)));
+        // See [`NodeDelta::findings`]: everything wrong with a node the
+        // range touched, only what it newly broke in one it didn't.
+        let findings = current
+            .get(key)
+            .into_iter()
+            .flatten()
+            .filter(|f| change != Change::Unchanged || !seen.contains(&finding_key(f)))
+            .map(|f| (*f).clone())
+            .collect();
+        out.push(delta(node, change, changed, findings));
     }
-    // The removals — the half a live graph cannot show. Their findings are
-    // not carried: a node that no longer exists cannot be newly wrong, and
-    // what its deletion broke is reported on whatever still points at it.
+    // The removals — the half a live graph cannot show.
     for (key, node) in old.iter() {
         if !new.contains_key(key) {
-            out.push(delta(node, Change::Removed, Vec::new(), None));
+            out.push(delta(node, Change::Removed, Vec::new(), Vec::new()));
         }
     }
 
     out.sort_by(|a, b| {
-        (a.change, &a.file, a.span.map(|s| s.start), a.key()).cmp(&(
+        (a.change, &a.file, a.span.map(|s| s.start), &a.node).cmp(&(
             b.change,
             &b.file,
             b.span.map(|s| s.start),
-            b.key(),
+            &b.node,
         ))
     });
     out
 }
 
-fn delta(
-    node: &Node,
-    change: Change,
-    changed: Vec<Aspect>,
-    findings: Option<Vec<Finding>>,
-) -> NodeDelta {
+fn delta(node: &Node, change: Change, changed: Vec<Aspect>, findings: Vec<Finding>) -> NodeDelta {
     NodeDelta {
-        node: NodeKeyFields {
-            kind: node.key.kind.clone(),
-            id: node.key.id.clone(),
-        },
+        node: node.key.clone(),
         change,
         title: node.title.to_string(),
         file: node.anchor.file.clone(),
         span: Some(node.anchor.span),
         changed,
-        findings: findings.unwrap_or_default(),
+        findings,
     }
 }
 
@@ -952,6 +992,29 @@ mod tests {
         assert!(!audit.news().any(|n| n.node.id == "gamma"));
     }
 
+    /// A unit the range TOUCHED carries everything wrong with it, standing
+    /// or not: the reviewer is reading a unit this change wrote, and "it was
+    /// already unpinned" does not make it pinned now.
+    #[test]
+    fn a_changed_unit_carries_its_standing_findings_too() {
+        let td = mini_wskill();
+        let audit = audit_after(&td, |root| {
+            // `gamma` is unpinned before and after — and now edited.
+            write(
+                root,
+                "data/concepts/gamma.wcl",
+                "research gamma {\n  name = \"Gamma, rewritten\"\n}\n",
+            );
+        });
+        let gamma = node(&audit, "gamma");
+        assert_eq!(gamma.change, Change::Modified);
+        assert_eq!(
+            gamma.findings.iter().map(|f| f.rule).collect::<Vec<_>>(),
+            [Rule::Unindexed],
+            "a changed row shows what is wrong with it now"
+        );
+    }
+
     /// The other half of scoping: an untouched unit the range *broke* is
     /// news, even though its own source did not change.
     #[test]
@@ -1003,7 +1066,7 @@ mod tests {
         assert_eq!(alpha.title, "Alpha, renamed");
         // The link it grew is reported under it.
         let grew: Vec<String> = audit
-            .edge_news(&alpha.key())
+            .edge_news(&alpha.node)
             .map(|e| format!("{} {}", e.change.marker(), e.to))
             .collect();
         assert_eq!(grew, ["+ research:gamma"]);
@@ -1049,6 +1112,49 @@ mod tests {
         assert_eq!(beta.file, Path::new("data/concepts/gamma.wcl"));
     }
 
+    /// A nested pin's churn belongs to the sub-index that holds it, not to
+    /// the top-level index the graph draws the edge from — which is often
+    /// not news at all, and would swallow the line.
+    #[test]
+    fn a_nested_pin_is_reported_under_the_sub_index_that_wrote_it() {
+        let td = mini_wskill();
+        write(
+            td.path(),
+            "data/indexes.wcl",
+            "index lang {\n  name = \"Language\"\n  related = [alpha]\n\n  \
+             index lang_sub {\n    name = \"Sub\"\n    related = []\n  }\n}\n",
+        );
+        let audit = audit_after(&td, |root| {
+            write(
+                root,
+                "data/indexes.wcl",
+                "index lang {\n  name = \"Language\"\n  related = [alpha]\n\n  \
+                 index lang_sub {\n    name = \"Sub\"\n    related = [beta]\n  }\n}\n",
+            );
+        });
+        // The top-level index did not change; the sub-index did.
+        assert_eq!(node(&audit, "lang").change, Change::Unchanged);
+        let sub = node(&audit, "lang_sub");
+        assert_eq!(sub.change, Change::Modified);
+        let churn: Vec<String> = audit
+            .edge_news(&sub.node)
+            .map(|e| format!("{} {} {}", e.change.marker(), e.kind, e.to))
+            .collect();
+        assert_eq!(churn, ["+ pin concept:beta"]);
+        // The edge is still DRAWN from the top-level index — the model says
+        // sub-indexes are not nodes, and the audit does not contradict it.
+        assert_eq!(
+            audit
+                .edges
+                .iter()
+                .find(|e| e.change == Change::Added)
+                .unwrap()
+                .from
+                .to_string(),
+            "index:lang"
+        );
+    }
+
     /// Health is a fixed strip of comparable numbers, each oriented so that
     /// lower is better.
     #[test]
@@ -1063,8 +1169,8 @@ mod tests {
         });
         let links = metric(&audit, "edges_per_unit");
         assert!(links.ratio);
-        assert_eq!(links.format(links.before), "0.33");
-        assert_eq!(links.format(links.after), "0.67");
+        assert_eq!(links.before_text(), "0.33");
+        assert_eq!(links.after_text(), "0.67");
         assert!(links.worse && links.moved());
         // Every metric is present on both sides, in one fixed order.
         let keys: Vec<&str> = audit.health.iter().map(|m| m.key).collect();

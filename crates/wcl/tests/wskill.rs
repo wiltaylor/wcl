@@ -366,10 +366,7 @@ fn audit_reports_the_union_of_both_revisions() {
     // scoped to the range, not to the corpus.
     assert!(!text.contains("concept:alpha \""), "{text}");
     let summary = String::from_utf8(out.stderr).unwrap();
-    assert!(
-        summary.contains("3 nodes changed, 2 new findings"),
-        "{summary}"
-    );
+    assert!(summary.contains("3 nodes changed, 2 findings"), "{summary}");
 }
 
 /// The default range is the previous commit against the working tree, so an
@@ -507,6 +504,43 @@ fn audit_emits_the_union_graph_as_json() {
     assert_eq!(unindexed["before"], 1.0);
     assert_eq!(unindexed["after"], 2.0);
     assert_eq!(unindexed["worse"], true);
+}
+
+/// Auditing the commit that *created* a wskill is the commonest review of
+/// all — the whole folder is the range's output — and its baseline
+/// necessarily predates the folder. That reads as everything added, not as
+/// a broken invocation.
+#[test]
+fn audit_reads_a_baseline_before_the_wskill_as_all_added() {
+    let tmp = TempDir::new().unwrap();
+    // A repo whose first commit has no wskill in it at all.
+    git(tmp.path(), &["init", "-q"]);
+    std::fs::write(tmp.path().join("README.md"), "before the wskill\n").unwrap();
+    commit(tmp.path(), "empty repo");
+    let dest = scaffolded_wskill(&tmp);
+    write_units(&dest, BASELINE);
+    commit(tmp.path(), "create the wskill");
+
+    let out = audit_out(&[dest.to_str().unwrap(), "--range", "HEAD~1..HEAD"]);
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        text.contains("  units +2   indexes +1   edges +2\n"),
+        "everything is added and nothing removed: {text}"
+    );
+    assert!(text.contains("+ concept:alpha \"Alpha\""), "{text}");
+    assert!(text.contains("+ index:reference \"Reference\""), "{text}");
+    // The baseline is still named by its sha, so the audit is reproducible
+    // even though nothing was read from it.
+    let sha = text
+        .lines()
+        .next()
+        .expect("a header")
+        .split_whitespace()
+        .last();
+    assert!(
+        sha.is_some_and(|r| r.split("..").next().is_some_and(|b| b.len() == 8)),
+        "{text}"
+    );
 }
 
 /// A range git cannot resolve is a tool failure (2), like an unreadable
