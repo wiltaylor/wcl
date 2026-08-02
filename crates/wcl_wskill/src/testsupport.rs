@@ -50,6 +50,7 @@ type UnitBody {
 type Concept {
   @inline(0) id: identifier
   name: utf8
+  summary: utf8?
   @default([]) related: list<identifier>
   @default(:book) audience: Audience
   @child("body") body: UnitBody?
