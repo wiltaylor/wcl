@@ -396,7 +396,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_kinds {
     name = "kinds"
     kind = "module"
-    summary = "1 file, 17 pub items"
+    summary = "1 file, 14 pub items"
   }
   code_node n_cg_wcl_wdoc_layered {
     name = "layered"
@@ -454,7 +454,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "15 files, 230 pub items"
+    summary = "15 files, 227 pub items"
     deps = [n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
@@ -518,7 +518,7 @@ code_item code_crate_wcl_wdoc {
     name = "video"
     kind = "module"
     summary = "1 file, 6 pub items"
-    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
+    deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_render]
   }
   code_node n_cg_wcl_wdoc_visibility {
     name = "visibility"
@@ -7096,13 +7096,31 @@ code_item code_api_wdoc_html_renderer {
       signature = "page_heading: Option<String>"
       kind = "field"
     }
+    code_member m_n_api_wdoc_html_renderer_Rendered_duplicate_id {
+      signature = "duplicate_id: Option<(String, String)>"
+      kind = "field"
+    }
+  }
+  code_node n_api_wdoc_html_renderer_CollectionTemplateInput {
+    name = "CollectionTemplateInput"
+    kind = "struct"
+    summary = "src/render/html.rs"
+    code_member m_n_api_wdoc_html_renderer_CollectionTemplateInput_pages {
+      signature = "pages: &'a [Block<'a>]"
+      kind = "field"
+    }
+    code_member m_n_api_wdoc_html_renderer_CollectionTemplateInput_deck {
+      signature = "deck: &'a [DeckSectionNode]"
+      kind = "field"
+      deps = [n_api_wdoc_html_renderer_DeckSectionNode]
+    }
   }
   code_node n_api_wdoc_html_renderer_lower_fns {
     name = "lower"
     kind = "fns"
     summary = "src/render/lower.rs"
     code_member m_n_api_wdoc_html_renderer_lower_fns_BlockRenderer {
-      signature = "type BlockRenderer = dyn Fn(&[Value], Option<&str>, &str) -> St…"
+      signature = "type BlockRenderer = dyn Fn(&[Value], Option<&str>, Option<&str…"
       kind = "type"
       visibility = "crate"
     }
@@ -7151,23 +7169,24 @@ code_item code_api_wdoc_html_renderer {
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_wdoc_html_renderer_lower_fns_lookup_block_lower_named {
-      signature = "fn lookup_block_lower_named( doc: &Document, block: &Block<'_>,…"
-      kind = "fn"
-      visibility = "crate"
-    }
     code_member m_n_api_wdoc_html_renderer_lower_fns_lookup_type_lower {
       signature = "fn lookup_type_lower(doc: &Document, kind: &str) -> Option<FnVa…"
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_wdoc_html_renderer_lower_fns_lookup_type_lower_named {
-      signature = "fn lookup_type_lower_named(doc: &Document, kind: &str, field: &…"
+    code_member m_n_api_wdoc_html_renderer_lower_fns_lower_to_values {
+      signature = "fn lower_to_values(doc: &Document, block: &Block<'_>, kind: &st…"
       kind = "fn"
       visibility = "crate"
     }
+    code_member m_n_api_wdoc_html_renderer_lower_fns_lower_block {
+      signature = "fn lower_block(doc: &Document, block: &Block<'_>, kind: &str) -…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wdoc_html_renderer_Lowered]
+    }
     code_member m_n_api_wdoc_html_renderer_lower_fns_more {
-      signature = "… +18 more"
+      signature = "… +15 more"
       kind = "overflow"
     }
   }
@@ -7470,86 +7489,10 @@ code_item code_api_wdoc_html_renderer {
       kind = "overflow"
     }
   }
-  code_node n_api_wdoc_html_renderer_edges_fns {
-    name = "edges"
-    kind = "fns"
-    summary = "src/render/svg/edges.rs"
-    code_member m_n_api_wdoc_html_renderer_edges_fns_all_edges {
-      signature = "fn all_edges(block: &Block<'_>) -> Vec<Value>"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_edge_id_pairs {
-      signature = "fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)>"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_render_edges {
-      signature = "fn render_edges( block: &Block<'_>, positions: &ShapePositions,…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_svg_fns]
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_edge_label_extent {
-      signature = "fn edge_label_extent(label: &str) -> (f64, f64)"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_polyline_bbox {
-      signature = "fn polyline_bbox(points: &[(f64, f64)]) -> Option<(f64, f64, f6…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_gather_edges_recursive {
-      signature = "fn gather_edges_recursive(block: &Block<'_>, out: &mut Vec<Valu…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_AnchorMap {
-      signature = "type AnchorMap = HashMap<(String, Side), SidedAnchor>"
-      kind = "type"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_DestAnchorMap {
-      signature = "type DestAnchorMap = HashMap<(String, Side, String), SidedAncho…"
-      kind = "type"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_facing_side {
-      signature = "fn facing_side(from: (f64, f64), to: (f64, f64)) -> Side"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_build_shared_anchors {
-      signature = "fn build_shared_anchors( items: &[Value], positions: &ShapePosi…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_svg_fns]
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_centroid_of {
-      signature = "fn centroid_of(points: &[(f64, f64)]) -> (f64, f64)"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_pick_anchor_toward {
-      signature = "fn pick_anchor_toward( anchors: &[SidedAnchor], target: (f64, f…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_pick_closest_to {
-      signature = "fn pick_closest_to(anchors: &[SidedAnchor], target: (f64, f64))…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_more {
-      signature = "… +10 more"
-      kind = "overflow"
-    }
-  }
   code_node n_api_wdoc_html_renderer_more {
-    name = "… +8 more"
+    name = "… +9 more"
     kind = "overflow"
-    summary = "8 further public items — see the source."
+    summary = "9 further public items — see the source."
   }
 }
 
@@ -7874,16 +7817,6 @@ code_item code_api_wcl_wdoc_kinds {
       kind = "const"
       visibility = "crate"
     }
-    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_SEQUENCE_DIAGRAM {
-      signature = "const SEQUENCE_DIAGRAM: &str"
-      kind = "const"
-      visibility = "crate"
-    }
-    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_STATE_DIAGRAM {
-      signature = "const STATE_DIAGRAM: &str"
-      kind = "const"
-      visibility = "crate"
-    }
     code_member m_n_api_wcl_wdoc_kinds_kinds_fns_TERMINAL {
       signature = "const TERMINAL: &str"
       kind = "const"
@@ -7909,14 +7842,25 @@ code_item code_api_wcl_wdoc_kinds {
       kind = "const"
       visibility = "crate"
     }
-    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_VIDEO {
-      signature = "const VIDEO: &str"
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_DEMO {
+      signature = "const DEMO: &str"
       kind = "const"
       visibility = "crate"
     }
-    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_more {
-      signature = "… +4 more"
-      kind = "overflow"
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_REPEATER {
+      signature = "const REPEATER: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_INSTANCE {
+      signature = "const INSTANCE: &str"
+      kind = "const"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_CONTENT {
+      signature = "const CONTENT: &str"
+      kind = "const"
+      visibility = "crate"
     }
   }
 }
@@ -9235,16 +9179,11 @@ code_item code_api_wcl_wdoc_video {
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_wcl_wdoc_video_video_fns_uses_video {
-      signature = "fn uses_video(block: &Block<'_>) -> bool"
-      kind = "fn"
-      visibility = "crate"
-    }
     code_member m_n_api_wcl_wdoc_video_video_fns_render_html {
-      signature = "fn render_html(block: &Block<'_>, registry: &VideoRegistry) -> …"
+      signature = "fn render_html(payload: VideoPayload<'_>, registry: &VideoRegis…"
       kind = "fn"
       visibility = "crate"
-      deps = [n_api_wcl_wdoc_video_VideoRegistry]
+      deps = [n_api_wcl_wdoc_video_VideoPayload, n_api_wcl_wdoc_video_VideoRegistry]
     }
   }
   code_node n_api_wcl_wdoc_video_VideoRegistry {
@@ -9253,6 +9192,11 @@ code_item code_api_wcl_wdoc_video {
     summary = "src/video.rs"
     code_member m_n_api_wcl_wdoc_video_VideoRegistry_new {
       signature = "fn new(base_dir: Option<PathBuf>) -> Self"
+      kind = "method"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_video_VideoRegistry_is_used {
+      signature = "fn is_used(&self) -> bool"
       kind = "method"
       visibility = "crate"
     }
@@ -9265,6 +9209,39 @@ code_item code_api_wcl_wdoc_video {
       signature = "fn copy_used_assets(&self, out_dir: &Path) -> Result<(), BuildE…"
       kind = "method"
       visibility = "crate"
+    }
+  }
+  code_node n_api_wcl_wdoc_video_VideoPayload {
+    name = "VideoPayload"
+    kind = "struct"
+    summary = "src/video.rs"
+    code_member m_n_api_wcl_wdoc_video_VideoPayload_source {
+      signature = "source: &'a str"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_video_VideoPayload_poster {
+      signature = "poster: Option<&'a str>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_video_VideoPayload_title {
+      signature = "title: Option<&'a str>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_video_VideoPayload_width {
+      signature = "width: Option<f64>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_video_VideoPayload_height {
+      signature = "height: Option<f64>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_video_VideoPayload_id {
+      signature = "id: Option<&'a str>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_video_VideoPayload_class {
+      signature = "class: &'a [String]"
+      kind = "field"
     }
   }
 }

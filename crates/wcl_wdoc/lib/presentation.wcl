@@ -18,9 +18,9 @@
 // slide, then on to the next slide); `s` toggles the speaker `notes`.
 //
 // Unlike `webpage` / `book`, the whole deck is rendered once into a single
-// `index.html` — the build feeds every slide's rendered body to the
-// `presentation` template via `TemplateCtx.deck` (each slide already
-// rendered to HTML, embedded with `Raw`). See `crates/wcl_wdoc/src/build.rs`.
+// `index.html`. It is an ordinary collection template: `TemplateCtx.deck`
+// orders typed `PageHandle`s, and placing their slots forces only those
+// authored bodies after template evaluation.
 
 // ── Deck grid blocks (declared inside the `site` block) ─────────────
 //
@@ -51,21 +51,13 @@ type Deck {
 
 // ── Context handed to the `presentation` template ───────────────────
 //
-// Built by the renderer (the deck's slides already lowered to HTML), and
-// reachable as `TemplateCtx.deck`. Empty for non-deck pages.
-
-// One slide in the resolved deck: its rendered body HTML (embed via
-// `Raw`), its rendered speaker-notes HTML, and its page name.
-type DeckSlide {
-  content: utf8
-  notes:   utf8
-  title:   utf8
-}
+// Built by the renderer from member handles and reachable as
+// `TemplateCtx.deck`. Empty when the site declares no explicit deck order.
 
 // One section in the resolved deck: a display title and its slides.
 type DeckSection {
   title:  utf8
-  slides: list<DeckSlide>
+  slides: list<PageHandle>
 }
 
 // ── In-slide content blocks ─────────────────────────────────────────
@@ -137,10 +129,10 @@ let deck_chrome = raw(
 
 // One slide → `<div class="deck-slide">` holding the rendered body and a
 // hidden speaker-notes aside.
-let deck_slide_el = fn(s: DeckSlide) -> Html
+let deck_slide_el = fn(s: PageHandle) -> Html
   el("div", ["deck-slide"], [
-    el("div", ["deck-slide-inner"], [raw(s.content)]),
-    el("aside", ["deck-notes"], [raw(s.notes)]),
+    el("div", ["deck-slide-inner"], slot(s, :content)),
+    el("aside", ["deck-notes"], slot(s, :notes)),
   ])
 
 // One section → `<section class="deck-section">` holding its slides.
@@ -161,19 +153,32 @@ let wdoc_part_presentation_css = fn() -> list<Html> [
 // The slide grid (`<div class="deck">`): one `<section>` per deck section,
 // each holding its slides. Driven by the bundled `presentation.js` player.
 let wdoc_part_deck = fn(c: TemplateCtx) -> list<Html> [
-  el("div", ["deck"], map(c.deck, deck_section_el)),
+  el("div", ["deck"], if len(c.deck) == 0 {
+    error("a presentation site needs a deck block")
+  } else {
+    map(c.deck, deck_section_el)
+  }),
 ]
 
 // The static deck chrome: the progress bar, slide counter, and nav-hint
 // arrows (the player updates them as you navigate).
 let wdoc_part_deck_chrome = fn() -> list<Html> [deck_chrome]
 
-// The full default `presentation` layout: style, deck grid, deck chrome.
+// The presentation layout owns its browser player just like any other
+// template-owned asset. The host copies this bundled script when the returned
+// HTML requests it; deck metadata itself does not opt a collection into it.
+let wdoc_part_presentation_player = fn() -> list<Html> [
+  raw("<!--wdoc:bundled-script:presentation.js-->"),
+]
+
+// The full default `presentation` layout: style, deck grid, deck chrome,
+// and its player asset.
 let wdoc_presentation_layout = fn(c: TemplateCtx) -> list<Html>
   flatten([
     wdoc_part_presentation_css(),
     wdoc_part_deck(c),
     wdoc_part_deck_chrome(),
+    wdoc_part_presentation_player(),
   ])
 
 // Stdlib `presentation` template: a single-file slide deck. The whole
@@ -181,6 +186,7 @@ let wdoc_presentation_layout = fn(c: TemplateCtx) -> list<Html>
 // slides within a section (driven by the bundled `presentation.js`).
 template presentation {
   slot content: content*
+  slot notes: content* = fn(c: SlotOwner) -> list<Html> []
   render = fn(c: TemplateCtx) -> list<Html>
     wdoc_presentation_layout(c)
 }

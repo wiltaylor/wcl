@@ -5801,9 +5801,8 @@ page usage { h1 "Usage" {} }
 
 #[test]
 fn custom_template_reuses_deck() {
-    // Overriding `template presentation` (the deck build path is keyed to
-    // that name) to compose the deck parts plus extra chrome still renders
-    // the slide grid and the deck progress/counter scaffolding.
+    // A custom collection template can compose the deck parts plus extra
+    // chrome while declaring the two per-member slots those parts place.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("site.wcl");
     write_fixture(
@@ -5811,6 +5810,7 @@ fn custom_template_reuses_deck() {
         r#"
 template presentation {
   slot content: content*
+  slot notes: content* = fn(c: SlotOwner) -> list<Html> []
   render = fn(c: TemplateCtx) -> list<Html>
     flatten([
       wdoc_presentation_layout(c),
@@ -9648,6 +9648,167 @@ page index {
 // ── Presentation decks ─────────────────────────────────────────────
 
 #[test]
+fn user_collection_template_renders_members_to_one_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("collection.wcl");
+    write_fixture(
+        &src,
+        r#"
+template digest {
+  slot content: content*
+  slot aside: content* = fn(c: SlotOwner) -> list<Html> []
+  slot intro: content
+  render = fn(c: TemplateCtx) -> list<Html> flatten([
+    [el("header", [], slot(c, :intro))],
+    map(c.members, fn(member: PageHandle) -> Html
+      ela("article", [], [["data-member", member.name], ["data-title", member.title]], flatten([
+        slot(member, :content),
+        [el("aside", [], slot(member, :aside))],
+      ]))),
+  ])
+}
+site {
+  default_template = :digest
+  intro { h1 "Weekly digest" {} }
+  deck { section "Ordering only" {
+    slide second
+    slide first
+  } }
+}
+page first  {
+  title = "First headline"
+  p "First story"
+  aside { p "First aside" }
+}
+page second { p "Second story" }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(build_ok(&src, out.path()), 1);
+
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert!(index.contains("Weekly digest"), "{index}");
+    assert!(
+        index.contains("data-member=\"first\" data-title=\"First headline\"><p>First story</p>"),
+        "{index}"
+    );
+    assert!(
+        index.contains("data-member=\"second\" data-title=\"second\"><p>Second story</p>"),
+        "{index}"
+    );
+    assert!(index.contains("<aside><p>First aside</p>"), "{index}");
+    assert!(!index.contains("presentation.js"), "{index}");
+    assert!(!out.path().join("_wdoc/presentation.js").exists());
+    assert!(!out.path().join("first.html").exists());
+    assert!(!out.path().join("second.html").exists());
+}
+
+#[test]
+fn collection_slot_requirements_follow_their_arity() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("collection-slots.wcl");
+    write_fixture(
+        &src,
+        r#"
+template digest {
+  slot content: content*
+  slot aside: content*
+  slot intro: content
+  render = fn(c: TemplateCtx) -> list<Html> []
+}
+site { default_template = :digest  intro { h1 "Intro" {} } }
+page complete {
+  p "Body"
+  aside { p "Aside" }
+}
+page missing  { p "No aside" }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadPage(message)) => {
+            assert!(message.contains("page `missing`"), "{message}");
+            assert!(message.contains("required slot `aside`"), "{message}");
+        }
+        Err(_) => panic!("expected BadPage for missing per-member slot"),
+        Ok(_) => panic!("expected missing per-member slot error"),
+    }
+
+    write_fixture(
+        &src,
+        r#"
+template digest {
+  slot content: content*
+  slot intro: content
+  render = fn(c: TemplateCtx) -> list<Html> []
+}
+site { default_template = :digest }
+page member { p "Body" }
+"#,
+    );
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadPage(message)) => {
+            assert!(message.contains("site: required slot `intro`"), "{message}");
+        }
+        Err(_) => panic!("expected BadPage for missing site slot"),
+        Ok(_) => panic!("expected missing site slot error"),
+    }
+}
+
+#[test]
+fn collection_template_forces_only_placed_members() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("lazy-collection.wcl");
+    write_fixture(
+        &src,
+        r#"
+template first_only {
+  slot content: content*
+  render = fn(c: TemplateCtx) -> list<Html>
+    map(take(c.members, 1), fn(member: PageHandle) -> Html
+      el("article", [], slot(member, :content)))
+}
+site { default_template = :first_only }
+page placed   { p "Placed member" }
+page unplaced { image "missing.png" {} }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert!(index.contains("Placed member"), "{index}");
+    assert!(!index.contains("missing.png"), "{index}");
+}
+
+#[test]
+fn only_a_repeated_content_slot_declares_a_collection() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("ordinary-repeated-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template ordinary {
+  slot content: content
+  slot aside: content*
+  render = fn(c: TemplateCtx) -> list<Html>
+    flatten([slot(c, :content), slot(c, :aside)])
+}
+site { default_template = :ordinary }
+page first  { p "First" {}  aside { p "First aside" } }
+page second { p "Second" {} aside { p "Second aside" } }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(build_ok(&src, out.path()), 2);
+    assert!(out.path().join("first.html").exists());
+    assert!(out.path().join("second.html").exists());
+    assert!(!out.path().join("index.html").exists());
+}
+
+#[test]
 fn presentation_site_renders_single_deck_file() {
     // A `presentation` site renders all its slides into one index.html,
     // grouped into the `deck` grid (sections = columns, slides = rows).
@@ -9695,11 +9856,42 @@ page topic  { h2 "Topic" {} }
     assert!(index.contains("Hello"), "{index}");
     assert!(index.contains("Agenda"), "{index}");
     assert!(index.contains("Topic"), "{index}");
+    assert!(!index.contains("<span class=\"heading-marker\""), "{index}");
     // The keyboard-nav player is written and linked exactly once.
     assert!(out.path().join("_wdoc").join("presentation.js").exists());
     assert_eq!(index.matches("_wdoc/presentation.js").count(), 1, "{index}");
     // No standalone per-slide files are written.
     assert!(!out.path().join("title.html").exists());
+}
+
+#[test]
+fn presentation_rejects_duplicate_ids_across_placed_members() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("duplicate-deck-ids.wcl");
+    write_fixture(
+        &src,
+        r#"
+site {
+  default_template = :presentation
+  deck { section "S" {
+    slide one
+    slide two
+  } }
+}
+page one { h1 "One" { id = shared } }
+page two { h1 "Two" { id = shared } }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::DuplicateId { page, id }) => {
+            assert_eq!(page, "two");
+            assert_eq!(id, "shared");
+        }
+        Err(err) => panic!("expected DuplicateId, got {}", err.render_plain()),
+        Ok(_) => panic!("expected DuplicateId"),
+    }
 }
 
 #[test]
@@ -9775,11 +9967,11 @@ page only { h1 "Only" {} }
 "#,
     );
     let out = TempDir::new().expect("mkdir out");
-    match build(&src, out.path(), None) {
-        Err(BuildError::BadTemplate(msg)) => assert!(msg.contains("deck"), "got: {msg}"),
-        Err(_) => panic!("expected BadTemplate"),
-        Ok(_) => panic!("expected BadTemplate, got Ok"),
-    }
+    let err = match build(&src, out.path(), None) {
+        Err(err) => err,
+        Ok(_) => panic!("missing deck must fail"),
+    };
+    assert!(err.render_plain().contains("needs a deck"));
 }
 
 #[test]

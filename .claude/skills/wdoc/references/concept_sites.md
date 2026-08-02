@@ -88,6 +88,7 @@ A `site` block configuring one output target — its template, title, theme, nav
 | `sidebar_footer` | `sidebar_footer` | no | Pinned buttons at the bottom of the `book` sidebar. |
 | `deck` | `deck` | no | Slide grid for the `presentation` template. |
 | `skill` | `skill` | no | Skill metadata for the `:ai_skill` target — populates SKILL.md's front matter. |
+| `children` | `WdocBlock` | yes | Site-level content for non-repeated slots on a collection template. |
 
 ## Related
 

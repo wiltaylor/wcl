@@ -166,7 +166,7 @@ template website {
   slot banner: content?
   slot hero: content?
   slot sidebar: content?
-  slot footer: content = fn(c: TemplateCtx) -> list<Html> [raw(c.title)]
+  slot footer: content = fn(c: SlotOwner) -> list<Html> [raw(c.title)]
   render = fn(c: TemplateCtx) -> list<Html>
     wdoc_website_layout(c)
 }
