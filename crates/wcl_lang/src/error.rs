@@ -10,6 +10,10 @@ pub struct SchemaDiagnosticSource {
     text: String,
 }
 
+// Retained for callers that attach provenance directly to a cloned
+// `SchemaViolation`; document-wide validation carries sources alongside
+// errors so it does not currently exercise these helpers.
+#[allow(dead_code)]
 impl SchemaDiagnosticSource {
     fn from_named_source(source: NamedSource<String>) -> Self {
         Self {
@@ -526,6 +530,7 @@ impl EvalError {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn with_schema_source(self, source: NamedSource<String>) -> Self {
         match self {
             Self::SchemaViolation {
@@ -547,6 +552,7 @@ impl EvalError {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn schema_source(&self) -> Option<NamedSource<String>> {
         match self {
             Self::SchemaViolation {

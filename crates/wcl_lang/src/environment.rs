@@ -255,12 +255,16 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
 }
 
 fn schemaless_decorator_schema() -> ast::TypeDecl {
+    let mut reason = synthetic_field("reason", TypeRef::Builtin(BuiltinType::Utf8), true);
+    reason
+        .decorators
+        .push(synthetic_decorator("inline", vec![ast::Expr::U64(0)]));
     ast::TypeDecl {
         name: vec!["Schemaless".to_string()],
         extends: Vec::new(),
         alias: None,
         fields: vec![
-            synthetic_field("reason", TypeRef::Builtin(BuiltinType::Utf8), true),
+            reason,
             synthetic_field("annotations", TypeRef::Builtin(BuiltinType::Bool), true),
         ],
         decorators: vec![synthetic_decorator(

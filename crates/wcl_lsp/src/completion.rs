@@ -292,8 +292,6 @@ mod tests {
     fn at_prefix_filters_decorators_by_the_following_position() {
         let root = Document::open(
             r#"
-            @decorator("applies_to")
-            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
             @decorator("type_only") @applies_to(on = [:type])
             type TypeOnly {}
             @decorator("block_only") @applies_to(on = [:block])
@@ -313,8 +311,6 @@ mod tests {
     fn at_prefix_filters_a_second_decorator_by_the_following_position() {
         let root = Document::open(
             r#"
-            @decorator("applies_to")
-            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
             @decorator("type_only") @applies_to(on = [:type])
             type TypeOnly {}
             @decorator("block_only") @applies_to(on = [:block])
@@ -335,8 +331,6 @@ mod tests {
     fn an_inapplicable_root_decorator_does_not_shadow_a_legal_local_one() {
         let root = Document::open(
             r#"
-            @decorator("applies_to")
-            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
             @decorator("shared") @applies_to(on = [:block])
             type RootShared {}
             "#,
@@ -359,8 +353,6 @@ mod tests {
     fn a_qualified_same_name_decorator_is_not_applicability_metadata() {
         let root = Document::open(
             r#"
-            @decorator("applies_to")
-            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
             @decorator("qualified") @vendor.applies_to(on = [:block])
             type Qualified {}
             "#,
@@ -381,8 +373,6 @@ mod tests {
     fn at_prefix_filters_block_decorators_by_kind() {
         let root = Document::open(
             r#"
-            @decorator("applies_to")
-            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
             @block("vm") type Vm {}
             @block("network") type Network {}
             @decorator("vm_only")
@@ -405,8 +395,6 @@ mod tests {
     fn at_prefix_falls_back_to_the_full_list_for_uncertain_contexts() {
         let root = Document::open(
             r#"
-            @decorator("applies_to")
-            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
             @decorator("type_only") @applies_to(on = [:type])
             type TypeOnly {}
             @decorator("block_only") @applies_to(on = [:block])

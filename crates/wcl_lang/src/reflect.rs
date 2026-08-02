@@ -734,11 +734,6 @@ mod tests {
     fn decorators_for_kind_returns_composable_applicable_schema_references() {
         let v = eval_field(
             r#"
-            @decorator("applies_to")
-            type AppliesTo {
-              on: list<symbol>
-              kinds: list<utf8>?
-            }
             @block("svc") type Svc {}
 
             # Offered for services.
@@ -817,8 +812,6 @@ mod tests {
             @block("param") type Param { @inline(0) name: identifier }
             widget card { param title }
 
-            @decorator("applies_to")
-            type AppliesTo { on: list<symbol>  kinds: list<utf8>? }
             @decorator("card_note")
             @applies_to(on = [:block], kinds = ["card"])
             type CardNote {}
