@@ -41,8 +41,9 @@ fn file_field(ws: &Workspace, v: &serde_json::Value) -> Result<PathBuf, String> 
 // `POST /api/block/source` — read a block's source + slot classification
 // ---------------------------------------------------------------------------
 
-/// Body: `{ file, span: {start, end} }` → the block's exact source slice
-/// plus the block's cells ([`super::cell`]): positional `labels` and named
+/// Body: `{ file, span: {start, end} }` → the block's exact source slice,
+/// its direct prose `body` child when present, plus the block's cells
+/// ([`super::cell`]): positional `labels` and named
 /// `fields`, each carrying the state its form control is chosen from
 /// (`text` slots are inline-editable; `computed` ones lock the client to
 /// the fragment editor).
@@ -80,6 +81,17 @@ fn block_source(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::Val
             _ => None,
         })
         .collect();
+    let body = block.items.iter().find_map(|item| match item {
+        Item::Block(child) if child.kind == "body" => {
+            text.get(child.span.start..child.span.end).map(|source| {
+                serde_json::json!({
+                    "source": source,
+                    "span": super::span_json(child.span),
+                })
+            })
+        }
+        _ => None,
+    });
     Ok(serde_json::json!({
         "ok": true,
         "kind": block.kind,
@@ -87,6 +99,7 @@ fn block_source(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::Val
         "etag": crate::edit::content_etag(&text),
         "cells": super::cell::block_cells(block),
         "connections": connections,
+        "body": body,
         "visibility": visibility_json(block),
     }))
 }
@@ -1170,6 +1183,24 @@ mod tests {
         )
         .expect("source");
         assert_eq!(v["cells"]["fields"]["rows"]["state"], "computed", "{v:#}");
+    }
+
+    #[test]
+    fn source_includes_a_direct_body_for_an_authoring_surface() {
+        let doc =
+            "index guide {\n  name = \"Guide\"\n\n  body {\n    p \"A useful route.\"\n  }\n}\n";
+        let (_td, ws) = workspace_with(doc);
+        let index = span_of(doc, kind_is("index"));
+
+        let v = block_source(
+            &ws,
+            &serde_json::json!({ "file": "main.wcl", "span": span_json(index) }),
+        )
+        .expect("source");
+        assert_eq!(
+            v["body"]["source"],
+            "body {\n    p \"A useful route.\"\n  }"
+        );
     }
 
     #[test]

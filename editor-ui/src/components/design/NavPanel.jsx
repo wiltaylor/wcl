@@ -7,9 +7,12 @@
    canvas iframe to its page. */
 
 import { For, Show, createSignal } from 'solid-js';
-import { ArrowDown, ArrowUp, FilePlus, FolderPlus, Pencil, Pin, PinOff, Trash2 } from 'lucide-solid';
+import { ArrowDown, ArrowUp, FilePlus, FileText, FolderPlus, Pencil, Pin, PinOff, Trash2 } from 'lucide-solid';
 import { Badge, Button, IconButton, Input, Modal, Select, Checkbox, toast } from '@forge/ui';
+import { CodeEditor } from '@forge/code';
 
+import { api } from '../../api';
+import { wclLanguage } from '../../lang/wcl';
 import {
   busy,
   commitNavOp,
@@ -23,7 +26,7 @@ import AddUnitDialog from './AddUnitDialog';
 export default function NavPanel() {
   const model = () => navModel();
   const wskill = () => model()?.wskill && model()?.site_type === 'book';
-  /** { type: 'rename'|'add_section'|'add_page'|'add_unit', ... } | null */
+  /** { type: 'rename'|'body'|'add_section'|'add_page'|'add_unit', ... } | null */
   const [dialog, setDialog] = createSignal(null);
 
   // ------------------------------------------------------------------
@@ -59,6 +62,24 @@ export default function NavPanel() {
     return (model()?.units ?? []).filter((u) => !pinned.has(u.id));
   };
 
+  const openIndexBody = async (entry) => {
+    setDialog({ type: 'body', entry, source: null });
+    const res = await api.blockSource({ file: entry.source.file, span: entry.source.span });
+    if (!res.ok) {
+      toast(res.error, { tone: 'danger', duration: 6000 });
+      setDialog(null);
+      return;
+    }
+    setDialog((current) =>
+      current?.type === 'body' && current.entry.id === entry.id
+        ? {
+            ...current,
+            source: res.body?.source ?? 'body {\n  p "Describe this section."\n}',
+          }
+        : current,
+    );
+  };
+
   // ------------------------------------------------------------------
   // Dialogs
   // ------------------------------------------------------------------
@@ -69,6 +90,13 @@ export default function NavPanel() {
     let res = { ok: true };
     if (d.type === 'rename') {
       res = await bindingOp(d.entry, 'rename', { title: d.title });
+    } else if (d.type === 'body') {
+      if (!d.source) return;
+      res = await commitNavOp({
+        op: 'set_index_body',
+        index_id: d.entry.id,
+        source: d.source,
+      });
     } else if (d.type === 'add_section') {
       if (wskill()) {
         if (!d.id) return toast('The section needs an id', { tone: 'danger', duration: 4000 });
@@ -138,6 +166,13 @@ export default function NavPanel() {
                 fallback={
                   <>
                     <Show when={e().source}>
+                      <Show when={e().kind === 'index'}>
+                        <IconButton
+                          icon={FileText}
+                          label={e().page ? 'Edit body' : 'Add body'}
+                          onClick={() => openIndexBody(e())}
+                        />
+                      </Show>
                       <IconButton
                         icon={Pencil}
                         label="Rename"
@@ -245,6 +280,7 @@ export default function NavPanel() {
         title={
           {
             rename: 'Rename entry',
+            body: d()?.entry?.page ? 'Edit section body' : 'Add section body',
             add_section: 'Add section',
             add_page: 'Add page',
           }[d()?.type] ?? ''
@@ -253,13 +289,24 @@ export default function NavPanel() {
           <>
             <Button onClick={() => setDialog(null)}>Cancel</Button>
             <Button variant="primary" onClick={submitDialog} disabled={busy()}>
-              {d()?.type === 'rename' ? 'Rename' : 'Add'}
+              {d()?.type === 'rename' ? 'Rename' : d()?.type === 'body' ? 'Save body' : 'Add'}
             </Button>
           </>
         }
       >
         <Show when={d()?.type === 'rename'}>
           <Input value={d().title} onInput={(e) => setD({ title: e.currentTarget.value })} placeholder="Title" />
+        </Show>
+        <Show
+          when={d()?.type === 'body' && d()?.source !== null}
+          fallback={d()?.type === 'body' ? <div class="ed-empty">Reading the body…</div> : null}
+        >
+          <CodeEditor
+            value={d().source}
+            onChange={(source) => setD({ source })}
+            language={wclLanguage}
+            height="320px"
+          />
         </Show>
         <Show when={d()?.type === 'add_section'}>
           <div class="ed-form">
