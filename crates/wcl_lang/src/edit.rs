@@ -65,6 +65,39 @@ pub fn block_at_span(items: &[Item], span: Span) -> Option<&ast::Block> {
     None
 }
 
+/// The first `kind` block whose first inline label is `label`, at any depth.
+///
+/// The id-addressed counterpart of [`find_block_by_span`], and what every
+/// writer that must survive a reformat uses: a span read before one commit is
+/// stale by the next, but a block's kind and label are how it is *named*.
+pub fn find_block_by_kind_label<'a>(
+    items: &'a mut [Item],
+    kind: &str,
+    label: &str,
+) -> Option<&'a mut ast::Block> {
+    for item in items {
+        if let Item::Block(b) = item {
+            if b.kind == kind && block_label(b).as_deref() == Some(label) {
+                return Some(b);
+            }
+            if let Some(found) = find_block_by_kind_label(&mut b.items, kind, label) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+/// A block's first inline label when it is a plain identifier or string —
+/// how a block is named (`concept alpha`, `chapter "Start"`). `None` when it
+/// has no labels, or the first one is a computed expression.
+pub fn block_label(b: &ast::Block) -> Option<String> {
+    match b.labels.first()? {
+        Expr::Identifier(s, _) | Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 /// Set an existing field's value, or append a new `name = expr` field item to
 /// `block` if no field with that name exists yet. Used to edit a scalar/text
 /// property (and to set an optional field for the first time).

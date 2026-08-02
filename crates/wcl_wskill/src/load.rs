@@ -30,19 +30,20 @@ const PLUMBING_KINDS: &[&str] = &[
     "wskill_ref",
 ];
 
-/// How much of a block's label a content-block preview keeps.
-const PREVIEW_CHARS: usize = 60;
-
 /// Blocks whose strings are literal content rather than prose, and so are
-/// not counted by [`body_words`]: a code sample, a terminal session, a
-/// LaTeX formula.
+/// not counted by the word count: a code sample, a terminal session, a
+/// LaTeX formula. See [`Reading::Prose`].
 const VERBATIM_KINDS: &[&str] = &["code", "terminal", "math"];
 
 /// The audience a unit kind gets when neither the block nor its schema says
 /// (the base schema defaults every kind but `research` to `:book`).
-const DEFAULT_AUDIENCE: &str = "book";
+///
+/// Public because a host synthesizing a node the format has no block for —
+/// a training view's syllabus — must give it the same default rather than
+/// pick its own.
+pub const DEFAULT_AUDIENCE: &str = "book";
 
-/// Why a model could not be read.
+/// Why a model could not be read, or an [op](crate::ops) did not apply.
 #[derive(Debug)]
 pub enum Error {
     /// A file could not be read, or the entry does not exist.
@@ -51,12 +52,16 @@ pub enum Error {
     Parse(Box<wcl_lang::ParseError>),
     /// A git operation failed — see [`wcl_wdoc::git`].
     Git(String),
+    /// An op was refused: it named something that isn't there, or asked for
+    /// a write the format doesn't allow. The message is written for the
+    /// person who asked, and a host shows it verbatim.
+    Op(String),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Io(msg) | Error::Git(msg) => write!(f, "{msg}"),
+            Error::Io(msg) | Error::Git(msg) | Error::Op(msg) => write!(f, "{msg}"),
             Error::Parse(e) => write!(f, "{e}"),
         }
     }
@@ -70,17 +75,26 @@ impl From<wcl_lang::ParseError> for Error {
     }
 }
 
+/// An op refusal from its message — the shorthand `?`/`into()` at every
+/// refusal site in [`crate::ops`].
+impl From<String> for Error {
+    fn from(msg: String) -> Self {
+        Error::Op(msg)
+    }
+}
+
+impl From<&str> for Error {
+    fn from(msg: &str) -> Self {
+        Error::Op(msg.to_string())
+    }
+}
+
 impl Graph {
     /// Read the model of the wskill at `entry` — a `.wcl` entry document or
     /// the wskill directory itself (whose [`ROOT_MARKER`] is then the entry).
     pub fn open(entry: &Path) -> Result<Graph, Error> {
         let entry_file = resolve_entry(entry)?;
-        let root = Registry::owner_dir(&entry_file).unwrap_or_else(|| {
-            entry_file
-                .parent()
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| PathBuf::from("."))
-        });
+        let root = root_for(&entry_file);
         let doc = wcl_wdoc::open_doc_for_edit(&entry_file)?;
         Graph::from_document(&doc, &root, &entry_file)
     }
@@ -130,6 +144,21 @@ impl Graph {
     pub fn from_document(doc: &Document, root: &Path, entry: &Path) -> Result<Graph, Error> {
         Builder::new(doc, root, entry).build()
     }
+}
+
+/// The wskill root an entry document belongs to: the nearest directory above
+/// it holding a [`ROOT_MARKER`], else its own directory.
+///
+/// Public because a host that opened the document itself still has to answer
+/// this before calling [`Graph::from_document`], and answering it twice is
+/// how the two readings drift.
+pub fn root_for(entry: &Path) -> PathBuf {
+    Registry::owner_dir(entry).unwrap_or_else(|| {
+        entry
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
+    })
 }
 
 /// The entry file for a path naming either an entry document or a wskill
@@ -239,6 +268,19 @@ impl<'a> Builder<'a> {
                 .unwrap_or_else(|| id.clone());
             let related = related_links(&b);
 
+            // Body blocks, the searchable prose and the word count all come
+            // from the parse: the model lists what is *written*, not what an
+            // evaluation would produce.
+            let (blocks, text, words) = match self.ast_block_at(&file, b.span()) {
+                Some(blk) => (
+                    self.content_blocks(blk, &file),
+                    body_text(blk),
+                    body_words(blk),
+                ),
+                None => (Vec::new(), String::new(), 0),
+            };
+            let summary = field_string(&b, "summary");
+
             if is_index {
                 let children = self.index_children(&b, &id, &file);
                 for link in &related {
@@ -248,14 +290,12 @@ impl<'a> Builder<'a> {
                         unit: link.id.clone(),
                     });
                 }
-                let blocks = self
-                    .ast_block_at(&file, b.span())
-                    .map(|blk| self.content_blocks(blk, &file))
-                    .unwrap_or_default();
                 indexes.push(Index {
                     audience: self.audience_of(&b, &kind),
                     id,
                     title,
+                    summary,
+                    text,
                     anchor,
                     visibility,
                     pinned: related.into_iter().map(|l| l.id).collect(),
@@ -264,15 +304,13 @@ impl<'a> Builder<'a> {
                     children,
                 });
             } else {
-                let (blocks, words) = self
-                    .ast_block_at(&file, b.span())
-                    .map(|blk| (self.content_blocks(blk, &file), body_words(blk)))
-                    .unwrap_or_default();
                 units.push(Unit {
                     audience: self.audience_of(&b, &kind),
                     id,
                     kind,
                     title,
+                    summary,
+                    text,
                     anchor,
                     visibility,
                     related,
@@ -362,6 +400,8 @@ impl<'a> Builder<'a> {
             let ast_block = self.ast_block_at(file, c.span());
             out.push(Index {
                 title: field_string(&c, "name").unwrap_or_else(|| id.clone()),
+                summary: field_string(&c, "summary"),
+                text: ast_block.map(body_text).unwrap_or_default(),
                 audience: self.audience_of(&c, "index"),
                 id,
                 anchor: self.anchor(file, c.span()),
@@ -406,11 +446,7 @@ impl<'a> Builder<'a> {
     fn content_block(&self, b: &ast::Block, file: &Path) -> ContentBlock {
         ContentBlock {
             kind: b.kind.clone(),
-            preview: crate::registry::ast_label(b)
-                .unwrap_or_default()
-                .chars()
-                .take(PREVIEW_CHARS)
-                .collect(),
+            preview: crate::registry::ast_label(b).unwrap_or_default(),
             anchor: self.anchor(file, b.span),
             visibility: visibility_of(b),
         }
@@ -542,6 +578,112 @@ fn visibility_of(block: &ast::Block) -> Visibility {
     }
 }
 
+/// What a body walk is being read FOR. Two readings sit on one walk over the
+/// same literals — which is where the searchable prose and the word count
+/// meet, rather than drifting as two traversals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reading {
+    /// Everything a reader could search for, verbatim blocks included: a
+    /// hit they can't find is a hit that isn't there.
+    Search,
+    /// Only what the author wrote to EXPLAIN. Skips the block's own label
+    /// (an id is not prose) and the contents of a [`VERBATIM_KINDS`] block
+    /// (a hundred lines of sample code say nothing about how much a unit
+    /// explains, and this reading's only consumer divides links by it).
+    Prose,
+}
+
+/// The literal strings a block's subtree carries, in source order, one entry
+/// per line: its string labels, its string-valued fields (through lists,
+/// interpolations and record literals), then the same again for every nested
+/// block — a unit's `body` paragraphs, its tables, a procedure's steps.
+///
+/// Field names, kinds, identifiers and symbols are deliberately out: they are
+/// the author's structure, not their words, and searching "related" should
+/// hit the unit whose prose says it rather than every unit that declares the
+/// field. Strings a *computed* field would produce are likewise absent —
+/// this reads the source, not an evaluation.
+fn body_literals(block: &ast::Block, reading: Reading) -> Vec<String> {
+    fn expr(e: &ast::Expr, out: &mut Vec<String>) {
+        match e {
+            ast::Expr::Utf8(s) | ast::Expr::Ascii(s) => push_lines(s, out),
+            ast::Expr::InterpolatedString { parts, .. } => {
+                for part in parts {
+                    match part {
+                        ast::TemplatePart::Literal(s) => push_lines(s, out),
+                        ast::TemplatePart::Expr(inner) => expr(inner, out),
+                    }
+                }
+            }
+            ast::Expr::ListLit { elements, .. } => {
+                for el in elements {
+                    expr(el, out);
+                }
+            }
+            // A bare record literal is a value like any other — a `wdoc`
+            // block field can hold a list of them (chart series, table rows),
+            // and their strings are as much prose as a paragraph's.
+            ast::Expr::Record { fields, .. } => {
+                for f in fields {
+                    expr(&f.value, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    fn walk(b: &ast::Block, out: &mut Vec<String>, reading: Reading, top: bool) {
+        let skip_verbatim = reading == Reading::Prose && VERBATIM_KINDS.contains(&b.kind.as_str());
+        if !top && skip_verbatim {
+            return;
+        }
+        if !(top && reading == Reading::Prose) {
+            for label in &b.labels {
+                expr(label, out);
+            }
+        }
+        for item in &b.items {
+            match item {
+                Item::Field(f) => expr(&f.expr, out),
+                Item::Block(c) => walk(c, out, reading, false),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(block, &mut out, reading, true);
+    out
+}
+
+/// One literal, split on its own newlines so a heredoc body arrives as lines
+/// — a reader shows the matching line as a hit's snippet.
+fn push_lines(s: &str, out: &mut Vec<String>) {
+    for line in s.lines() {
+        let line = line.trim();
+        if !line.is_empty() {
+            out.push(line.to_string());
+        }
+    }
+}
+
+/// A block's searchable prose, newline-joined.
+///
+/// Nothing is truncated: a hit a reader can't see is a hit they can't find.
+/// The cost is bounded by what a wskill is — the largest one in this repo
+/// (189 units) contributes ~138 KB.
+fn body_text(b: &ast::Block) -> String {
+    body_literals(b, Reading::Search).join("\n")
+}
+
+/// The prose word count of a block — the denominator of the words-per-link
+/// screen, and the only body measurement the model takes: a curator that
+/// wants the prose itself reads [`Unit::text`](crate::Unit::text) or the file.
+fn body_words(b: &ast::Block) -> usize {
+    body_literals(b, Reading::Prose)
+        .iter()
+        .map(|line| line.split_whitespace().count())
+        .sum()
+}
+
 /// A `related` list may be rewritten only when it is absent or a literal
 /// list — a computed expression must not be clobbered by a pin/unpin write.
 fn related_editable_of(block: Option<&ast::Block>) -> bool {
@@ -585,66 +727,6 @@ fn link_of(v: &Value) -> Option<Link> {
         .map(value_string)
         .filter(|s| !s.is_empty());
     Some(Link { id, why })
-}
-
-/// The prose word count of a block: every literal string below it — its own
-/// text fields (`summary` and the like) and its body's prose —
-/// whitespace-split.
-///
-/// Three things are deliberately out. Field names, kinds, identifiers and
-/// symbols: they are the author's structure, not their words. The block's own
-/// label: an id is not prose. And the contents of a [`VERBATIM_KINDS`] block:
-/// a hundred lines of sample code say nothing about how much a unit
-/// *explains*, and this number's only consumer divides links by it.
-///
-/// (The editor's search index walks the same literals for a different
-/// purpose — `block_text` in `crates/wcl/src/editor/graph.rs`. Issue #56
-/// rebuilds that endpoint on this crate, which is where the two meet.)
-fn body_words(block: &ast::Block) -> usize {
-    fn expr_words(e: &ast::Expr, n: &mut usize) {
-        match e {
-            ast::Expr::Utf8(s) | ast::Expr::Ascii(s) => *n += s.split_whitespace().count(),
-            ast::Expr::InterpolatedString { parts, .. } => {
-                for part in parts {
-                    match part {
-                        ast::TemplatePart::Literal(s) => *n += s.split_whitespace().count(),
-                        ast::TemplatePart::Expr(inner) => expr_words(inner, n),
-                    }
-                }
-            }
-            ast::Expr::ListLit { elements, .. } => {
-                for el in elements {
-                    expr_words(el, n);
-                }
-            }
-            ast::Expr::Record { fields, .. } => {
-                for f in fields {
-                    expr_words(&f.value, n);
-                }
-            }
-            _ => {}
-        }
-    }
-    fn block_words(b: &ast::Block, n: &mut usize, top: bool) {
-        if !top {
-            if VERBATIM_KINDS.contains(&b.kind.as_str()) {
-                return;
-            }
-            for label in &b.labels {
-                expr_words(label, n);
-            }
-        }
-        for item in &b.items {
-            match item {
-                Item::Field(f) => expr_words(&f.expr, n),
-                Item::Block(c) => block_words(c, n, false),
-                _ => {}
-            }
-        }
-    }
-    let mut n = 0;
-    block_words(block, &mut n, true);
-    n
 }
 
 /// A course block's `n` (its position); missing / non-numeric sorts last.

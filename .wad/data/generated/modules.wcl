@@ -126,7 +126,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_edit {
     name = "edit"
     kind = "module"
-    summary = "1 file, 19 pub items"
+    summary = "1 file, 21 pub items"
     deps = [n_cg_wcl_lang_ast]
   }
   code_node n_cg_wcl_lang_environment {
@@ -149,7 +149,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_lexer {
     name = "lexer"
     kind = "module"
-    summary = "3 files, 8 pub items"
+    summary = "3 files, 9 pub items"
     deps = [n_cg_wcl_lang_ast, n_cg_wcl_lang_numeric]
   }
   code_node n_cg_wcl_lang_math {
@@ -3746,6 +3746,14 @@ code_item code_api_formatter {
       signature = "fn block_at_span(items: &[Item], span: Span) -> Option<&ast::Bl…"
       kind = "fn"
     }
+    code_member m_n_api_formatter_edit_fns_find_block_by_kind_label {
+      signature = "fn find_block_by_kind_label<'a>( items: &'a mut [Item], kind: &…"
+      kind = "fn"
+    }
+    code_member m_n_api_formatter_edit_fns_block_label {
+      signature = "fn block_label(b: &ast::Block) -> Option<String>"
+      kind = "fn"
+    }
     code_member m_n_api_formatter_edit_fns_set_or_insert_field {
       signature = "fn set_or_insert_field(block: &mut ast::Block, name: &str, expr…"
       kind = "fn"
@@ -3778,16 +3786,8 @@ code_item code_api_formatter {
       signature = "fn insert_block_after_span(items: &mut Vec<Item>, after: Span, …"
       kind = "fn"
     }
-    code_member m_n_api_formatter_edit_fns_replace_block_by_span {
-      signature = "fn replace_block_by_span(items: &mut [Item], span: Span, block:…"
-      kind = "fn"
-    }
-    code_member m_n_api_formatter_edit_fns_remove_block_by_span {
-      signature = "fn remove_block_by_span(items: &mut Vec<Item>, span: Span) -> b…"
-      kind = "fn"
-    }
     code_member m_n_api_formatter_edit_fns_more {
-      signature = "… +6 more"
+      signature = "… +8 more"
       kind = "overflow"
     }
   }
@@ -4742,6 +4742,15 @@ code_item code_api_lexer {
       signature = "fn next_token(&mut self) -> Result<Token, LexError>"
       kind = "method"
       deps = [n_api_lexer_Token, n_api_lexer_LexError]
+    }
+  }
+  code_node n_api_lexer_lexer_fns {
+    name = "lexer"
+    kind = "fns"
+    summary = "src/lexer.rs"
+    code_member m_n_api_lexer_lexer_fns_is_identifier {
+      signature = "fn is_identifier(s: &str) -> bool"
+      kind = "fn"
     }
   }
 }

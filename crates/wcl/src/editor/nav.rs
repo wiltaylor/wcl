@@ -6,16 +6,19 @@
 //! through the same parse → mutate → [`crate::edit::commit`] pipeline as
 //! `/api/block/ops`. The model is site-type-aware:
 //!
-//! - **wskill book** — built from the data model, not the toc repeaters:
-//!   `index` blocks are the sections, an index's `related` id list is its
-//!   child entries (source order = menu order), nested `index` children are
-//!   sub-branches. Ops rewrite `index` blocks and `related` lists.
+//! - **wskill book** — an **adapter** over [`wcl_wskill`]: the library says
+//!   what the indexes, their pins and the units are ([`wcl_wskill::Graph`])
+//!   and owns every structural op ([`wcl_wskill::ops`]); this module adds
+//!   the book projection's page names, the source bindings, and the commit.
 //! - **plain book** — the `site.toc` `chapter` tree, literal chapters only;
 //!   a `wdoc_repeater` shows as a read-only synthetic entry.
 //! - **website** — the `site.menu` `item` tree, same mechanics.
 //! - **presentation** — the `site.deck` `section` / `slide` grid.
+//!
+//! The static-site half is genuinely this module's: a `toc` / `menu` / `deck`
+//! is wdoc page structure, not wskill data, and its ops are span-addressed
+//! because its entries have no ids to be named by.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -24,11 +27,13 @@ use axum::http::{StatusCode, Uri};
 use axum::response::Response;
 
 use wcl_lang::ast::{self, Expr, Item};
-use wcl_lang::{Document, Span, Value, edit as ast_edit, format as wcl_format, parse_for_edit};
+use wcl_lang::{Document, Span, edit as ast_edit, format as wcl_format, parse_for_edit};
+use wcl_wskill::ops::{self as wops, Dir, IndexHome, NodeRef, Op};
 
+use super::graph::open_graph;
 use super::kinds::{self, KindModel};
 use super::preview::Sessions;
-use super::util::{first_label, value_string};
+use super::util::{anchor_json, first_label, value_string};
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::{json_error, parse_json_body, query_param};
 
@@ -55,13 +60,12 @@ pub(super) async fn handle_nav(State(state): State<Arc<EditorState>>, uri: Uri) 
 fn nav(ws: &Workspace, entry: &str, site: Option<&str>) -> Result<serde_json::Value, String> {
     let entry_abs = ws.abs(entry)?;
     let doc = wcl_wdoc::open_doc_for_edit(&entry_abs).map_err(super::err_str)?;
-    let model = KindModel::new(&doc);
     let wskill = kinds::is_wskill(&doc);
     let site_type = kinds::site_kind(&doc, site);
 
     let pages = declared_pages(ws, &doc, &entry_abs);
     if wskill && site_type == "book" {
-        let (nav, units) = wskill_nav(ws, &model, &doc, &entry_abs)?;
+        let (nav, units) = wskill_nav(ws, &open_graph(&doc, &entry_abs)?)?;
         return Ok(serde_json::json!({
             "ok": true,
             "site_type": site_type,
@@ -118,10 +122,12 @@ fn source_binding(ws: &Workspace, file: &Path, span: Span) -> serde_json::Value 
 }
 
 // ---------------------------------------------------------------------------
-// The wskill model: index blocks + related lists
+// The wskill model — an adapter over `wcl_wskill::Graph`
 // ---------------------------------------------------------------------------
 
-/// The page-name prefix a wskill book's repeaters use for a unit kind.
+/// The page-name prefix a wskill book's repeaters use for a unit kind. The
+/// one piece of *projection* knowledge in this branch: the model says what a
+/// unit is, the book template decides what its page is called.
 fn page_prefix(kind: &str) -> &str {
     match kind {
         // The book template names procedure pages `process_<id>`.
@@ -132,109 +138,65 @@ fn page_prefix(kind: &str) -> &str {
 
 fn wskill_nav(
     ws: &Workspace,
-    model: &KindModel<'_>,
-    doc: &Document,
-    entry_abs: &Path,
+    model: &wcl_wskill::Graph,
 ) -> Result<(Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
-    // Unit registry: id → (kind, title, file, span). Kinds come from the
-    // same kind model the add-unit palette reads.
-    let kind_names: Vec<String> = model.unit_kind_names();
-    let mut units: HashMap<String, (String, String, PathBuf, Span)> = HashMap::new();
-    let mut unit_order: Vec<String> = Vec::new();
-    for (path, b) in doc.blocks_with_source() {
-        let kind = b.kind().to_string();
-        if !kind_names.contains(&kind) {
-            continue;
-        }
-        let Some(id) = first_label(&b) else { continue };
-        let title = ["name", "title"]
-            .iter()
-            .find_map(|f| b.field(f).and_then(|f| f.value().ok().cloned()))
-            .as_ref()
-            .map(value_string)
-            .unwrap_or_else(|| id.clone());
-        let file = path
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| entry_abs.to_path_buf());
-        if !units.contains_key(&id) {
-            unit_order.push(id.clone());
-        }
-        units.insert(id.clone(), (kind, title, file, b.span()));
-    }
-
-    let mut nav: Vec<serde_json::Value> = Vec::new();
-    for (path, b) in doc.blocks_with_source() {
-        if b.kind() != "index" {
-            continue;
-        }
-        let file = path.unwrap_or(entry_abs);
-        nav.push(index_entry(ws, &b, file, &units));
-    }
-
-    let units_json: Vec<serde_json::Value> = unit_order
+    let nav: Vec<serde_json::Value> = model
+        .indexes
         .iter()
-        .filter_map(|id| {
-            let (kind, title, file, span) = units.get(id)?;
-            Some(serde_json::json!({
-                "id": id,
-                "kind": kind,
-                "title": title,
-                "page": format!("{}_{id}", page_prefix(kind)),
-                "source": source_binding(ws, file, *span),
-            }))
+        .map(|i| index_entry(ws, model, i))
+        .collect();
+    let units: Vec<serde_json::Value> = model
+        .units
+        .iter()
+        .map(|u| {
+            serde_json::json!({
+                "id": u.id,
+                "kind": u.kind,
+                "title": u.title,
+                "page": format!("{}_{}", page_prefix(&u.kind), u.id),
+                "source": anchor_json(ws, &model.root, &u.anchor),
+            })
         })
         .collect();
-    Ok((nav, units_json))
+    Ok((nav, units))
 }
 
 fn index_entry(
     ws: &Workspace,
-    b: &wcl_lang::Block<'_>,
-    file: &Path,
-    units: &HashMap<String, (String, String, PathBuf, Span)>,
+    model: &wcl_wskill::Graph,
+    index: &wcl_wskill::Index,
 ) -> serde_json::Value {
-    let id = first_label(b).unwrap_or_default();
-    let title = b
-        .field("name")
-        .and_then(|f| f.value().ok().cloned())
-        .as_ref()
-        .map(value_string)
-        .unwrap_or_else(|| id.clone());
-    // A content index (with a body) is its own page; a nav index is a
-    // heading whose children are the pinned unit pages.
-    let has_body = b.blocks().any(|c| c.kind() == "body");
-    let mut children: Vec<serde_json::Value> = Vec::new();
-    if let Some(related) = b.field("related").and_then(|f| f.value().ok().cloned())
-        && let Value::List(ids) = related
-    {
-        for rid in ids.iter().map(value_string) {
-            children.push(match units.get(&rid) {
-                Some((kind, title, ufile, uspan)) => serde_json::json!({
-                    "kind": "unit",
-                    "unit": { "kind": kind, "id": rid },
-                    "title": title,
-                    "page": format!("{}_{rid}", page_prefix(kind)),
-                    "source": source_binding(ws, ufile, *uspan),
-                }),
-                None => serde_json::json!({
-                    "kind": "unit",
-                    "unit": { "kind": null, "id": rid },
-                    "title": rid,
-                    "page": null,
-                    "missing": true,
-                }),
-            });
-        }
-    }
-    for child in b.blocks().filter(|c| c.kind() == "index") {
-        children.push(index_entry(ws, &child, file, units));
-    }
+    // A pinned id that names nothing is shown as missing rather than
+    // dropped — a dangling link is the author's to see and fix.
+    let mut children: Vec<serde_json::Value> = index
+        .pinned
+        .iter()
+        .map(|rid| match model.unit(rid) {
+            Some(u) => serde_json::json!({
+                "kind": "unit",
+                "unit": { "kind": u.kind, "id": rid },
+                "title": u.title,
+                "page": format!("{}_{rid}", page_prefix(&u.kind)),
+                "source": anchor_json(ws, &model.root, &u.anchor),
+            }),
+            None => serde_json::json!({
+                "kind": "unit",
+                "unit": { "kind": null, "id": rid },
+                "title": rid,
+                "page": null,
+                "missing": true,
+            }),
+        })
+        .collect();
+    children.extend(index.children.iter().map(|c| index_entry(ws, model, c)));
     serde_json::json!({
         "kind": "index",
-        "id": id,
-        "title": title,
-        "page": has_body.then(|| format!("index_{id}")),
-        "source": source_binding(ws, file, b.span()),
+        "id": index.id,
+        "title": index.title,
+        // A content index (with a body) is its own page; a nav index is a
+        // heading whose children are the pinned unit pages.
+        "page": index.has_body().then(|| format!("index_{}", index.id)),
+        "source": anchor_json(ws, &model.root, &index.anchor),
         "children": children,
     })
 }
@@ -373,6 +335,10 @@ fn static_entry(ws: &Workspace, b: &ast::Block, entry_abs: &Path) -> serde_json:
 /// - `move_index { index_id, dir }` — swap with the adjacent `index` sibling
 /// - `promote_index { index_id }` — a sub-index becomes its parent's next
 ///   sibling; `demote_index { index_id }` nests it under the index above
+///
+/// Every one of those is [`wcl_wskill::ops`]'s; this module translates the
+/// request into an [`Op`], commits what it returns, and marks the previews
+/// stale.
 pub(super) async fn handle_nav_op(State(state): State<Arc<EditorState>>, body: String) -> Response {
     let v = match parse_json_body(&body) {
         Ok(v) => v,
@@ -420,11 +386,7 @@ pub(super) fn nav_op(
         }
         "move" => {
             let (file, span) = op_target(ws, v)?;
-            let down = match crate::edit::str_field(v, "dir")? {
-                "down" => true,
-                "up" => false,
-                other => return Err(format!("bad move dir `{other}`")),
-            };
+            let down = move_dir(v)? == Dir::Down;
             edit_file(&entry_abs, &file, |src| {
                 if !ast_edit::move_block_by_span(&mut src.items, span, down) {
                     return Err("the entry is already at the edge".into());
@@ -434,22 +396,55 @@ pub(super) fn nav_op(
         }
         "add_section" => add_section(ws, &entry_abs, v),
         "add_page" => add_page(&entry_abs, v),
-        // A training view's levels are the course itself, ordered by each
-        // lesson's `n` rather than pinned by a `related` list — so they
-        // reorder by rewriting `n`, and have nothing to pin or unpin.
-        "pin_unit" | "unpin_unit" if is_syllabus_level(&entry_abs, v)? => Err(
-            "a course has no pins — a lesson belongs to it by existing; reorder it instead"
-                .to_string(),
-        ),
-        "pin_unit" => related_op(&entry_abs, v, RelatedOp::Pin),
-        "unpin_unit" => related_op(&entry_abs, v, RelatedOp::Unpin),
-        "reorder_children" if is_syllabus_level(&entry_abs, v)? => syllabus_reorder(&entry_abs, v),
-        "reorder_children" => related_op(&entry_abs, v, RelatedOp::Reorder),
         "create_index" => create_index(ws, &entry_abs, v),
-        "delete_index" => delete_index(&entry_abs, v),
-        "move_index" => move_index(&entry_abs, v),
-        "promote_index" => promote_index(&entry_abs, v),
-        "demote_index" => demote_index(&entry_abs, v),
+        // Everything below is the wskill op vocabulary, defined once in
+        // `wcl_wskill::ops` and addressed by id.
+        "pin_unit" => wskill_op(
+            &entry_abs,
+            Op::PinUnit {
+                index: index_ref(v)?,
+                unit: NodeRef::new(crate::edit::str_field(v, "unit_id")?),
+            },
+        ),
+        "unpin_unit" => wskill_op(
+            &entry_abs,
+            Op::UnpinUnit {
+                index: index_ref(v)?,
+                unit: NodeRef::new(crate::edit::str_field(v, "unit_id")?),
+            },
+        ),
+        "reorder_children" => wskill_op(
+            &entry_abs,
+            Op::ReorderChildren {
+                index: index_ref(v)?,
+                order: id_list(v, "order")?,
+            },
+        ),
+        "delete_index" => wskill_op(
+            &entry_abs,
+            Op::DeleteIndex {
+                index: index_ref(v)?,
+            },
+        ),
+        "move_index" => wskill_op(
+            &entry_abs,
+            Op::MoveIndex {
+                index: index_ref(v)?,
+                dir: move_dir(v)?,
+            },
+        ),
+        "promote_index" => wskill_op(
+            &entry_abs,
+            Op::PromoteIndex {
+                index: index_ref(v)?,
+            },
+        ),
+        "demote_index" => wskill_op(
+            &entry_abs,
+            Op::DemoteIndex {
+                index: index_ref(v)?,
+            },
+        ),
         other => Err(format!("unknown nav op `{other}`")),
     };
     if result.is_ok() {
@@ -488,20 +483,19 @@ fn add_section(
 ) -> Result<serde_json::Value, String> {
     let title = crate::edit::str_field(v, "title")?;
     match v.get("id").and_then(serde_json::Value::as_str) {
-        // Wskill: a new `index` block appended to the target file.
+        // Wskill: a new `index` block appended to the target file — the same
+        // library op `create_index` runs, with the panel naming the file
+        // rather than placement deriving it.
         Some(id) => {
-            let file = crate::edit::str_field(v, "file")?;
-            let file_abs = ws.abs(file)?;
-            let block = ast_edit::build_block(
-                "index",
-                &[],
-                vec![Expr::Identifier(id.to_string(), Span::new(0, 0))],
-                vec![("name".to_string(), ast_edit::string_literal_expr(title))],
-            );
-            edit_file(entry_abs, &file_abs, |src| {
-                ast_edit::append_top_level_block(src, block);
-                Ok(())
-            })
+            let file_abs = ws.abs(crate::edit::str_field(v, "file")?)?;
+            wskill_op(
+                entry_abs,
+                Op::CreateIndex {
+                    id: id.to_string(),
+                    name: title.to_string(),
+                    home: IndexHome::InFile(file_abs),
+                },
+            )
         }
         // Static sites: a `chapter` / `item` / `section` inserted into the
         // container (or a parent entry) span.
@@ -634,438 +628,104 @@ fn page_sites_field(
     )))
 }
 
-enum RelatedOp {
-    Pin,
-    Unpin,
-    Reorder,
-}
-
-/// Does this block's subtree contain an `index` with the given id?
-/// (Sub-indexes nest inside their parent block, so the owning *file* must
-/// be found by searching recursively — the block itself is then relocated
-/// by the equally recursive `find_block_by_kind_label`.)
-fn subtree_has_index(b: &wcl_lang::Block<'_>, id: &str) -> bool {
-    (b.kind() == "index" && first_label(b).as_deref() == Some(id))
-        || b.blocks().any(|c| subtree_has_index(&c, id))
-}
-
-/// The file declaring the `index` with `id` — sub-indexes nest inside their
-/// parent block, so the search recurses (the block itself is relocated by the
-/// equally recursive [`super::util::find_block_by_kind_label`]). Index ids
-/// are assumed document-unique; first match wins.
-fn index_file_in(doc: &Document, entry_abs: &Path, index_id: &str) -> Result<PathBuf, String> {
-    doc.blocks_with_source()
-        .find(|(_, b)| subtree_has_index(b, index_id))
-        .map(|(p, _)| {
-            p.map(Path::to_path_buf)
-                .unwrap_or_else(|| entry_abs.to_path_buf())
-        })
-        .ok_or_else(|| format!("no `index` with id `{index_id}`"))
-}
-
-/// [`index_file_in`] for a caller with no document open yet.
-fn index_file(entry_abs: &Path, index_id: &str) -> Result<PathBuf, String> {
-    let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
-    index_file_in(&doc, entry_abs, index_id)
-}
-
-/// Rewrite an index's `related` list: pin (append), unpin (remove), or
-/// reorder (replace with the posted order, which must be a permutation).
-/// `index_id` may name an index at any nesting depth.
-fn related_op(
-    entry_abs: &Path,
-    v: &serde_json::Value,
-    op: RelatedOp,
-) -> Result<serde_json::Value, String> {
-    let index_id = crate::edit::str_field(v, "index_id")?;
-    let ifile = index_file(entry_abs, index_id)?;
-
-    let ident = |s: &str| Expr::Identifier(s.to_string(), Span::new(0, 0));
-    edit_file(entry_abs, &ifile, |src| {
-        let block = super::util::find_block_by_kind_label(&mut src.items, "index", index_id)
-            .ok_or_else(|| format!("could not relocate index `{index_id}`"))?;
-        let current: Vec<String> = block
-            .items
-            .iter()
-            .find_map(|it| match it {
-                Item::Field(f) if f.name == "related" => Some(&f.expr),
-                _ => None,
-            })
-            .map(|e| match e {
-                Expr::ListLit { elements, .. } => elements
-                    .iter()
-                    .filter_map(|e| match e {
-                        Expr::Identifier(s, _) => Some(s.clone()),
-                        Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
-                        _ => None,
-                    })
-                    .collect(),
-                _ => Vec::new(),
-            })
-            .unwrap_or_default();
-        let next: Vec<String> = match op {
-            RelatedOp::Pin => {
-                let unit_id = crate::edit::str_field(v, "unit_id")?;
-                if current.iter().any(|s| s == unit_id) {
-                    return Err(format!("`{unit_id}` is already pinned"));
-                }
-                let mut n = current;
-                n.push(unit_id.to_string());
-                n
-            }
-            RelatedOp::Unpin => {
-                let unit_id = crate::edit::str_field(v, "unit_id")?;
-                if !current.iter().any(|s| s == unit_id) {
-                    return Err(format!("`{unit_id}` is not pinned here"));
-                }
-                current.into_iter().filter(|s| s != unit_id).collect()
-            }
-            RelatedOp::Reorder => {
-                let order: Vec<String> = v
-                    .get("order")
-                    .and_then(serde_json::Value::as_array)
-                    .ok_or("missing `order`")?
-                    .iter()
-                    .filter_map(|s| s.as_str().map(str::to_string))
-                    .collect();
-                let mut sorted_a = current.clone();
-                let mut sorted_b = order.clone();
-                sorted_a.sort();
-                sorted_b.sort();
-                if sorted_a != sorted_b {
-                    return Err("`order` must be a permutation of the current list".into());
-                }
-                order
-            }
-        };
-        ast_edit::set_or_insert_field(
-            block,
-            "related",
-            Expr::ListLit {
-                elem_trivia: next.iter().map(|_| Default::default()).collect(),
-                elements: next.iter().map(|s| ident(s)).collect(),
-                trailing_trivia: Vec::new(),
-                span: Span::new(0, 0),
-            },
-        );
-        Ok(())
-    })
-}
-
 // ---------------------------------------------------------------------------
-// Index structure: create / delete / reorder / promote / demote
+// The wskill op vocabulary — translated, applied, committed
 // ---------------------------------------------------------------------------
-//
-// The pin ops above edit an index's CONTENTS; these edit the index tree
-// itself — the wskill book's sidebar headings. All are id-addressed (spans
-// shift under every reformat) and rewrite exactly one file: an index and its
-// sub-indexes are one block subtree, so nesting never crosses files.
 
-/// Is this AST item the `index` block labelled `id`?
-fn is_index_item(it: &Item, id: &str) -> bool {
-    matches!(it, Item::Block(b)
-        if b.kind == "index" && super::util::ast_label(b).as_deref() == Some(id))
+/// `index_id` as the id-addressed reference the ops speak. The wire carries
+/// bare ids because an index kind is always `index`; the kind rides along so
+/// a refusal names what it looked for.
+fn index_ref(v: &serde_json::Value) -> Result<NodeRef, String> {
+    Ok(NodeRef::kinded(
+        "index",
+        crate::edit::str_field(v, "index_id")?,
+    ))
 }
 
-/// Does this AST block's subtree declare an `index` with `id`?
-fn ast_subtree_has_index(b: &ast::Block, id: &str) -> bool {
-    (b.kind == "index" && super::util::ast_label(b).as_deref() == Some(id))
-        || b.items
-            .iter()
-            .any(|it| matches!(it, Item::Block(c) if ast_subtree_has_index(c, id)))
-}
-
-/// The items list OWNING the `index` block with `id`, and its position in it
-/// — the handle every structural op needs (its siblings are right there).
-fn index_slot<'a>(items: &'a mut Vec<Item>, id: &str) -> Option<(&'a mut Vec<Item>, usize)> {
-    if let Some(i) = items.iter().position(|it| is_index_item(it, id)) {
-        return Some((items, i));
-    }
-    // Descend into the one child whose subtree holds it (chosen immutably,
-    // so the mutable reborrow below is the only live borrow).
-    let child = items
+fn id_list(v: &serde_json::Value, key: &str) -> Result<Vec<String>, String> {
+    Ok(v.get(key)
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| format!("missing `{key}`"))?
         .iter()
-        .position(|it| matches!(it, Item::Block(b) if ast_subtree_has_index(b, id)))?;
-    match &mut items[child] {
-        Item::Block(b) => index_slot(&mut b.items, id),
-        _ => None,
+        .filter_map(|s| s.as_str().map(str::to_string))
+        .collect())
+}
+
+fn move_dir(v: &serde_json::Value) -> Result<Dir, String> {
+    match crate::edit::str_field(v, "dir")? {
+        "down" => Ok(Dir::Down),
+        "up" => Ok(Dir::Up),
+        other => Err(format!("bad move dir `{other}`")),
     }
 }
 
-/// The id of the `index` block whose DIRECT children include `id`, if any —
-/// `None` means `id` is a top-level index.
-fn parent_index_id(items: &[Item], id: &str) -> Option<String> {
-    for it in items {
-        let Item::Block(b) = it else { continue };
-        if b.kind == "index"
-            && b.items.iter().any(|c| is_index_item(c, id))
-            && let Some(label) = super::util::ast_label(b)
-        {
-            return Some(label);
-        }
-        if let Some(found) = parent_index_id(&b.items, id) {
-            return Some(found);
-        }
-    }
-    None
+/// Apply one library op against the wskill behind `entry_abs` and commit the
+/// files it rewrites. The document is dropped before the commit, which
+/// rewrites the very files it was read from.
+fn wskill_op(entry_abs: &Path, op: Op) -> Result<serde_json::Value, String> {
+    let changes = {
+        let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
+        let model = open_graph(&doc, entry_abs)?;
+        wops::apply(&model, &op).map_err(|e| e.to_string())?
+    };
+    crate::edit::commit(
+        entry_abs,
+        changes.into_iter().map(|c| (c.file, c.text)).collect(),
+    )?;
+    Ok(serde_json::json!({ "ok": true }))
 }
 
-/// The position of the adjacent `index` sibling in `dir`, skipping anything
-/// else at that level (fields, a `body` block, units sharing the file).
-fn index_sibling(items: &[Item], pos: usize, down: bool) -> Option<usize> {
-    let is_index = |i: &usize| matches!(&items[*i], Item::Block(b) if b.kind == "index");
-    if down {
-        (pos + 1..items.len()).find(is_index)
-    } else {
-        (0..pos).rev().find(is_index)
-    }
-}
-
-fn relocate_err(id: &str) -> String {
-    format!("could not relocate index `{id}`")
-}
-
-/// A new `index` block: nested inside `parent_id`, else placed by the same
-/// convention `unit_create` uses (beside the existing indexes).
+/// A new `index` block: nested inside `parent_id` (the library op), else
+/// placed by the same convention `unit_create` uses — where a first-of-its-
+/// kind block LANDS is an editor convention, so the adapter answers it and
+/// the library still says what an index is and validates the id.
 fn create_index(
     ws: &Workspace,
     entry_abs: &Path,
     v: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let id = crate::edit::str_field(v, "id")?;
-    if !super::util::is_identifier(id) {
-        return Err(format!(
-            "`{id}` is not a valid id (letters, digits, `_`, not starting with a digit)"
-        ));
-    }
     let name = crate::edit::str_field(v, "name")?;
-    let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
-    if index_file_in(&doc, entry_abs, id).is_ok() {
-        return Err(format!("an `index` with id `{id}` already exists"));
-    }
-    let block = ast_edit::build_block(
-        "index",
-        &[],
-        vec![Expr::Identifier(id.to_string(), Span::new(0, 0))],
-        vec![("name".to_string(), ast_edit::string_literal_expr(name))],
-    );
-
-    match v
+    let parent = v
         .get("parent_id")
         .and_then(serde_json::Value::as_str)
-        .filter(|s| !s.is_empty())
-    {
-        Some(parent) => {
-            drop(doc);
-            let file = index_file(entry_abs, parent)?;
-            edit_file(entry_abs, &file, |src| {
-                if let Some(gp) = parent_index_id(&src.items, parent) {
-                    return Err(format!(
-                        "`{parent}` is itself nested under `{gp}` — sub-indexes nest one level deep"
-                    ));
-                }
-                let pblock = super::util::find_block_by_kind_label(&mut src.items, "index", parent)
-                    .ok_or_else(|| relocate_err(parent))?;
-                pblock.items.push(Item::Block(block));
-                Ok(())
-            })
-        }
-        None => {
-            // Placed and staged inside this scope so the model's borrow
-            // ends here; the document itself is released just below, before
-            // the commit rewrites the files it was read from.
-            let (file, changes) = {
-                let model = KindModel::new(&doc);
-                let placement = super::placement::place_unit(&model, &doc, entry_abs, "index")?;
-                let mut changes: Vec<(PathBuf, String)> = Vec::new();
-                let file = super::placement::write_new_block(
-                    placement,
-                    id,
-                    block,
-                    entry_abs,
-                    &mut changes,
-                )?;
-                (file, changes)
-            };
-            drop(doc);
-            crate::edit::commit(entry_abs, changes)?;
-            Ok(serde_json::json!({
-                "ok": true,
-                "id": id,
-                "file": ws.rel(&file)?,
-            }))
-        }
+        .filter(|s| !s.is_empty());
+    if let Some(parent) = parent {
+        return wskill_op(
+            entry_abs,
+            Op::CreateIndex {
+                id: id.to_string(),
+                name: name.to_string(),
+                home: IndexHome::Under(NodeRef::kinded("index", parent)),
+            },
+        );
     }
-}
-
-/// Remove an index and everything nested in it. Its pins are just ids in a
-/// `related` list, so nothing dangles elsewhere — the units stay put.
-fn delete_index(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let id = crate::edit::str_field(v, "index_id")?;
-    let file = index_file(entry_abs, id)?;
-    edit_file(entry_abs, &file, |src| {
-        let (items, pos) = index_slot(&mut src.items, id).ok_or_else(|| relocate_err(id))?;
-        items.remove(pos);
-        Ok(())
-    })
-}
-
-/// Swap an index with its adjacent `index` sibling. Top-level order is
-/// document order, so an index at the edge of ITS file can't move further
-/// here — the files' import order decides that.
-fn move_index(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let id = crate::edit::str_field(v, "index_id")?;
-    let down = match crate::edit::str_field(v, "dir")? {
-        "down" => true,
-        "up" => false,
-        other => return Err(format!("bad move dir `{other}`")),
-    };
-    let file = index_file(entry_abs, id)?;
-    edit_file(entry_abs, &file, |src| {
-        let (items, pos) = index_slot(&mut src.items, id).ok_or_else(|| relocate_err(id))?;
-        let target = index_sibling(items, pos, down).ok_or_else(|| {
-            format!(
-                "`{id}` is already the {} index at its level",
-                if down { "last" } else { "first" }
-            )
-        })?;
-        items.swap(pos, target);
-        Ok(())
-    })
-}
-
-/// Lift a sub-index out to its parent's level, placed right after it.
-fn promote_index(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let id = crate::edit::str_field(v, "index_id")?;
-    let file = index_file(entry_abs, id)?;
-    edit_file(entry_abs, &file, |src| {
-        let parent = parent_index_id(&src.items, id)
-            .ok_or_else(|| format!("`{id}` is already a top-level index"))?;
-        let (items, pos) = index_slot(&mut src.items, id).ok_or_else(|| relocate_err(id))?;
-        let block = items.remove(pos);
-        let (pitems, ppos) =
-            index_slot(&mut src.items, &parent).ok_or_else(|| relocate_err(&parent))?;
-        pitems.insert(ppos + 1, block);
-        Ok(())
-    })
-}
-
-/// Nest an index under the one above it. Sub-indexes render one level deep,
-/// so an already-nested index refuses rather than building a tree nothing
-/// projects.
-fn demote_index(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let id = crate::edit::str_field(v, "index_id")?;
-    let file = index_file(entry_abs, id)?;
-    edit_file(entry_abs, &file, |src| {
-        if let Some(parent) = parent_index_id(&src.items, id) {
-            return Err(format!(
-                "`{id}` is already nested under `{parent}` — sub-indexes nest one level deep"
-            ));
-        }
-        let (items, pos) = index_slot(&mut src.items, id).ok_or_else(|| relocate_err(id))?;
-        let target = index_sibling(items, pos, false).ok_or_else(|| {
-            format!("no index above `{id}` to nest it under — move it down first")
-        })?;
-        let block = items.remove(pos);
-        match &mut items[target] {
-            Item::Block(b) => b.items.push(block),
-            _ => return Err(relocate_err(id)),
-        }
-        Ok(())
-    })
-}
-
-// ---------------------------------------------------------------------------
-// The training syllabus: course order as `n`, not a `related` list
-// ---------------------------------------------------------------------------
-
-/// Whether `index_id` names a syllabus level — the synthetic course node, or a
-/// `module` block. Both order their lessons by `n`.
-fn is_syllabus_level(entry_abs: &Path, v: &serde_json::Value) -> Result<bool, String> {
-    let index_id = crate::edit::str_field(v, "index_id")?;
-    if index_id == super::graph::SYLLABUS_ID {
-        return Ok(true);
-    }
-    let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
-    Ok(doc
-        .blocks()
-        .any(|b| b.kind() == "module" && first_label(&b).as_deref() == Some(index_id)))
-}
-
-/// Reorder a syllabus level by rewriting its lessons' `n` to `1..=len` in the
-/// posted order. `order` must be a permutation of the level's current lessons,
-/// so a stale client can't drop one. Lessons may live in several files; every
-/// touched file lands in ONE commit, so the course is never half-renumbered.
-fn syllabus_reorder(entry_abs: &Path, v: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let index_id = crate::edit::str_field(v, "index_id")?;
-    let order: Vec<String> = v
-        .get("order")
-        .and_then(serde_json::Value::as_array)
-        .ok_or("missing `order`")?
-        .iter()
-        .filter_map(|s| s.as_str().map(str::to_string))
-        .collect();
 
     let doc = wcl_wdoc::open_doc_for_edit(entry_abs).map_err(super::err_str)?;
-    let (top, modules) = super::graph::course_structure(&doc);
-    let current: Vec<String> = if index_id == super::graph::SYLLABUS_ID {
-        top
-    } else {
-        modules
-            .into_iter()
-            .find(|m| m.id == index_id)
-            .map(|m| m.lessons)
-            .ok_or_else(|| format!("no `module` with id `{index_id}`"))?
+    wops::check_new_index_id(&open_graph(&doc, entry_abs)?, id).map_err(|e| e.to_string())?;
+    // Placed and staged inside this scope so the model's borrow ends here;
+    // the document itself is released just below, before the commit rewrites
+    // the files it was read from.
+    let (file, changes) = {
+        let model = KindModel::new(&doc);
+        let placement = super::placement::place_unit(&model, &doc, entry_abs, "index")?;
+        let mut changes: Vec<(PathBuf, String)> = Vec::new();
+        let file = super::placement::write_new_block(
+            placement,
+            id,
+            wops::index_block(id, name),
+            entry_abs,
+            &mut changes,
+        )?;
+        (file, changes)
     };
-    let (mut a, mut b) = (current.clone(), order.clone());
-    a.sort();
-    b.sort();
-    if a != b {
-        return Err("`order` must be a permutation of the level's lessons".into());
-    }
-
-    // Every lesson's declaring file + span, so the renumber can address them
-    // wherever they were authored.
-    let mut sites: HashMap<String, (PathBuf, Span)> = HashMap::new();
-    for (path, blk) in doc.blocks_with_source() {
-        if blk.kind() != "lesson" {
-            continue;
-        }
-        if let Some(id) = first_label(&blk) {
-            let file = path
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| entry_abs.to_path_buf());
-            sites.entry(id).or_insert((file, blk.span()));
-        }
-    }
-
-    // Group the renumbering by file, then mutate each file once.
-    let mut per_file: HashMap<PathBuf, Vec<(Span, u32)>> = HashMap::new();
-    for (i, id) in order.iter().enumerate() {
-        let (file, span) = sites
-            .get(id)
-            .ok_or_else(|| format!("no `lesson` with id `{id}`"))?;
-        per_file
-            .entry(file.clone())
-            .or_default()
-            .push((*span, i as u32 + 1));
-    }
-
-    let mut writes: Vec<(PathBuf, String)> = Vec::new();
-    for (file, mut spans) in per_file {
-        let text = crate::edit::read(&file)?;
-        let mut src = parse_for_edit(&text, file.display().to_string()).map_err(super::err_str)?;
-        // Descending span order keeps every span valid while mutating.
-        spans.sort_by_key(|(sp, _)| std::cmp::Reverse(sp.start));
-        for (span, n) in spans {
-            let blk = ast_edit::find_block_by_span(&mut src.items, span)
-                .ok_or("a lesson moved on disk — reload the graph")?;
-            ast_edit::set_or_insert_field(blk, "n", Expr::U32(n));
-        }
-        writes.push((file, wcl_format::to_source(&src)));
-    }
-    crate::edit::commit(entry_abs, writes)?;
-    Ok(serde_json::json!({ "ok": true }))
+    drop(doc);
+    crate::edit::commit(entry_abs, changes)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "id": id,
+        "file": ws.rel(&file)?,
+    }))
 }
 
 #[cfg(test)]
@@ -1084,6 +744,155 @@ mod tests {
 
     fn read(ws: &Workspace, rel: &str) -> String {
         std::fs::read_to_string(ws.root_dir().join(rel)).unwrap()
+    }
+
+    /// A pinned id naming nothing is shown as a missing entry rather than
+    /// dropped — a dangling link is the author's to see and fix — and an
+    /// index with a `body` is a page of its own.
+    #[test]
+    fn wskill_nav_reports_dangling_pins_and_body_pages() {
+        let (_td, ws) = workspace_built_by(|root| {
+            write_mini_wskill(root);
+            let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
+            let main = main.replace(
+                "@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n}",
+                "@block(\"body\") @schemaless\ntype UnitBody {\n}\n\n@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n  @child(\"body\") body: UnitBody?\n}",
+            );
+            std::fs::write(root.join("main.wcl"), main).unwrap();
+            std::fs::write(
+                root.join("data/indexes.wcl"),
+                "index lang {\n  name = \"Language\"\n  related = [alpha, ghost]\n\n  \
+                 body {\n    p \"Read these in order.\"\n  }\n}\n",
+            )
+            .unwrap();
+        });
+
+        let v = nav(&ws, "main.wcl", Some("book")).expect("nav");
+        let lang = &v["nav"][0];
+        assert_eq!(lang["page"], "index_lang", "a body makes it a page");
+        let children = lang["children"].as_array().unwrap();
+        assert_eq!(children[0]["title"], "Alpha");
+        assert_eq!(children[1]["title"], "ghost");
+        assert_eq!(children[1]["missing"], true, "{v:#}");
+        assert_eq!(children[1]["unit"]["kind"], serde_json::Value::Null);
+    }
+
+    /// Creating a top-level index is the one wskill nav op the adapter still
+    /// answers half of: the library validates the id and builds the block,
+    /// placement (an editor convention) picks the file.
+    #[test]
+    fn create_index_places_a_new_top_level_index() {
+        let (_td, ws) = workspace_built_by(write_mini_wskill);
+
+        let res = op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "create_index",
+                "id": "usage", "name": "Using it",
+            }),
+        )
+        .expect("create_index");
+        // Beside the index it learnt from — a one-per-file layout, so its
+        // own file — and never in the projection entry.
+        assert_eq!(res["file"], "data/usage.wcl");
+        assert!(read(&ws, "data/usage.wcl").contains("index usage"));
+        assert!(read(&ws, "data/usage.wcl").contains("name = \"Using it\""));
+
+        // The library's validation still applies on the adapter's path.
+        for (id, msg) in [("lang", "already exists"), ("9bad", "not a valid id")] {
+            let e = op(
+                &ws,
+                serde_json::json!({
+                    "entry": "main.wcl", "op": "create_index",
+                    "id": id, "name": "Nope",
+                }),
+            )
+            .unwrap_err();
+            assert!(e.contains(msg), "{id}: {e}");
+        }
+    }
+
+    /// The index tree's structural ops, driven through the endpoint: they are
+    /// the library's, addressed by id, and each rewrites one file.
+    #[test]
+    fn index_tree_ops_nest_and_unnest() {
+        let (_td, ws) = workspace_built_by(write_mini_wskill_nested);
+        let ids = || {
+            let v = nav(&ws, "main.wcl", Some("book")).expect("nav");
+            v["nav"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|n| n["id"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(), ["lang"], "the sub-index is nested to begin with");
+
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "promote_index", "index_id": "lang_sub",
+            }),
+        )
+        .expect("promote");
+        assert_eq!(ids(), ["lang", "lang_sub"]);
+
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "demote_index", "index_id": "lang_sub",
+            }),
+        )
+        .expect("demote");
+        assert_eq!(ids(), ["lang"]);
+
+        // Nesting is one level deep, and the refusal says so.
+        let e = op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "create_index",
+                "id": "deep", "name": "Deep", "parent_id": "lang_sub",
+            }),
+        )
+        .unwrap_err();
+        assert!(e.contains("one level deep"), "{e}");
+
+        op(
+            &ws,
+            serde_json::json!({
+                "entry": "main.wcl", "op": "delete_index", "index_id": "lang",
+            }),
+        )
+        .expect("delete");
+        assert!(ids().is_empty(), "the subtree goes with it");
+    }
+
+    /// A `related` list written as an expression is readable but must never
+    /// be rewritten — the nav ops used to overwrite it silently.
+    #[test]
+    fn a_computed_pin_list_refuses_every_write() {
+        let (_td, ws) = workspace_built_by(|root| {
+            write_mini_wskill(root);
+            std::fs::write(
+                root.join("data/indexes.wcl"),
+                "index lang {\n  name = \"Language\"\n  related = concat([alpha], [beta])\n}\n",
+            )
+            .unwrap();
+        });
+        for body in [
+            serde_json::json!({
+                "entry": "main.wcl", "op": "pin_unit",
+                "index_id": "lang", "unit_id": "alpha",
+            }),
+            serde_json::json!({
+                "entry": "main.wcl", "op": "reorder_children",
+                "index_id": "lang", "order": ["beta", "alpha"],
+            }),
+        ] {
+            let e = op(&ws, body.clone()).unwrap_err();
+            assert!(e.contains("computed"), "{body}: {e}");
+        }
+        assert!(read(&ws, "data/indexes.wcl").contains("concat([alpha], [beta])"));
     }
 
     #[test]

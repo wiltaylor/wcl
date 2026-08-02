@@ -593,6 +593,18 @@ fn is_ident_cont(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
 }
 
+/// Whether `s` can be written as a bare WCL identifier.
+///
+/// Every writer that builds source needs this — the formatter deciding
+/// whether a key needs quoting, an editing UI validating a new block id.
+/// It lives here, on the lexer's own [`is_ident_start`] / [`is_ident_cont`],
+/// so a caller's idea of an identifier cannot drift from what the lexer
+/// will actually accept back.
+pub fn is_identifier(s: &str) -> bool {
+    let mut bytes = s.bytes();
+    matches!(bytes.next(), Some(c) if is_ident_start(c)) && bytes.all(is_ident_cont)
+}
+
 /// Returns true if `b` is the kind of byte that *cannot* end a value
 /// expression — whitespace or a punctuation token that opens a fresh
 /// value context. Used to decide whether a `-` immediately followed by

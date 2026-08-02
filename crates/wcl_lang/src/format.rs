@@ -1734,25 +1734,11 @@ fn join_path(parts: &[String]) -> String {
 /// `@schemaless` block) round-trip through the quoted form; identifier keys
 /// are unchanged.
 fn field_key(name: &str) -> String {
-    if is_bare_ident(name) {
+    if crate::is_identifier(name) {
         name.to_string()
     } else {
         format!("\"{}\"", EscapeString(name))
     }
-}
-
-/// Whether `name` is a valid bare WCL identifier — mirrors the lexer's
-/// `is_ident_start` / `is_ident_cont` (ASCII letter/underscore start, then
-/// ASCII alphanumeric/underscore).
-fn is_bare_ident(name: &str) -> bool {
-    let mut bytes = name.bytes();
-    let Some(first) = bytes.next() else {
-        return false;
-    };
-    if !(first.is_ascii_alphabetic() || first == b'_') {
-        return false;
-    }
-    bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 /// Greedy-wrap single-line prose at `width` columns, breaking only at

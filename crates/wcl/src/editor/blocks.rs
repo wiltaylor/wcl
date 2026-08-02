@@ -289,61 +289,27 @@ pub(super) fn block_ops(
                 ast_edit::set_or_remove_decorator(block, "except", named);
                 tracked.push(("edited", span));
             }
+            // The graph view drags an edge between RENDERED nodes, so it can
+            // only name the from-side by span — but the edge write itself is
+            // the curator's id-addressed op. Resolve the span to the
+            // `(kind, id)` the op vocabulary speaks, then call the very
+            // function `wcl_wskill::ops::apply` calls; the resolved ref is
+            // what the self-link check and every refusal then name, so the
+            // message is about the node rather than about a byte range.
+            //
+            // It calls the leaf rather than `ops::apply` because these
+            // arrive INSIDE a batch: deleting a unit removes every inbound
+            // link and the block itself in one commit, against one parse, and
+            // the response's `span_map` is computed over that same mutated
+            // AST. `apply` would re-read the file and commit on its own.
             "related_add" | "related_remove" => {
                 let span = span_field(op, "span")?;
                 let id = crate::edit::str_field(op, "id")?;
-                if !is_identifier(id) {
-                    return Err(format!("`{id}` is not a valid unit id"));
-                }
                 let block = find_block(&mut src.items, span)?;
-                if ast_label(block).as_deref() == Some(id) {
-                    return Err("a unit cannot relate to itself".into());
-                }
-                let current: Vec<String> = match block.items.iter().find_map(|it| match it {
-                    Item::Field(f) if f.name == "related" => Some(&f.expr),
-                    _ => None,
-                }) {
-                    Some(Expr::ListLit { elements, .. }) => elements
-                        .iter()
-                        .filter_map(|e| match e {
-                            Expr::Identifier(s, _) => Some(s.clone()),
-                            Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
-                            _ => None,
-                        })
-                        .collect(),
-                    Some(_) => {
-                        return Err(
-                            "the block's related list is computed — edit its source instead".into(),
-                        );
-                    }
-                    None => Vec::new(),
-                };
-                let next: Vec<String> = if name == "related_add" {
-                    if current.iter().any(|s| s == id) {
-                        return Err(format!("already related to `{id}`"));
-                    }
-                    let mut n = current;
-                    n.push(id.to_string());
-                    n
-                } else {
-                    if !current.iter().any(|s| s == id) {
-                        return Err(format!("`{id}` is not in the related list"));
-                    }
-                    current.into_iter().filter(|s| s != id).collect()
-                };
-                ast_edit::set_or_insert_field(
-                    block,
-                    "related",
-                    Expr::ListLit {
-                        elem_trivia: next.iter().map(|_| Default::default()).collect(),
-                        elements: next
-                            .into_iter()
-                            .map(|s| Expr::Identifier(s, Span::new(0, 0)))
-                            .collect(),
-                        trailing_trivia: Vec::new(),
-                        span: Span::new(0, 0),
-                    },
-                );
+                let from = wcl_wskill::ops::node_ref(block)
+                    .ok_or("the block has no id, so nothing can relate to it")?;
+                wcl_wskill::ops::edit_related(block, &from, id, name == "related_add")
+                    .map_err(|e| e.to_string())?;
                 tracked.push(("edited", span));
             }
             // A diagram/procedure wires its children with `a -> b` connection

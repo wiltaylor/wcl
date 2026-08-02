@@ -52,6 +52,7 @@ pub use environment::{
 pub use error::{ArithmeticFault, EvalError, ParseError, SchemaViolationKind, SyntaxError};
 pub use lexer::{
     LexError, Lexer, NumberLit, StringEncoding, StringLit, StringPart, Token, TokenKind,
+    is_identifier,
 };
 pub use profile::{Profile, ProfileKey, ProfileNode};
 pub use symbols::{SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};

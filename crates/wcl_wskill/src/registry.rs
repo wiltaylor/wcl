@@ -118,15 +118,10 @@ fn first_site_name(entry: &Path) -> Option<String> {
     })
 }
 
-/// A block's first inline label, when it is a plain identifier or string —
-/// how every wskill block is named (`concept alpha`, `artifact book`). The
-/// crate's one label reader.
-pub(crate) fn ast_label(b: &wcl_lang::ast::Block) -> Option<String> {
-    match b.labels.first()? {
-        Expr::Identifier(s, _) | Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
-        _ => None,
-    }
-}
+/// A block's first inline label — how every wskill block is named
+/// (`concept alpha`, `artifact book`). Naming a block is a language fact, so
+/// the reader is `wcl_lang::edit`'s; the crate reads it under this name.
+pub(crate) use wcl_lang::edit::block_label as ast_label;
 
 fn field_expr<'a>(b: &'a wcl_lang::ast::Block, name: &str) -> Option<&'a Expr> {
     b.items.iter().find_map(|it| match it {

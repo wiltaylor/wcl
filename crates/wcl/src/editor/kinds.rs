@@ -158,15 +158,6 @@ impl<'a> Kind<'a> {
             .unwrap_or(false)
     }
 
-    /// A field's declared `@default`, rendered as a string.
-    pub(super) fn field_default(&self, name: &str) -> Option<String> {
-        self.schema
-            .effective_fields()
-            .into_iter()
-            .find(|f| f.name() == name)
-            .and_then(|f| f.default_value().as_ref().map(value_string))
-    }
-
     fn id_field_decl(&self) -> Option<TypeField<'a>> {
         self.schema
             .effective_fields()
@@ -355,15 +346,6 @@ impl<'a> KindModel<'a> {
         self.kinds
             .iter()
             .filter(|k| !UNIT_KIND_DENYLIST.contains(&k.kind.as_str()))
-    }
-
-    /// The addable-unit kind names, minus `index` (which the nav model
-    /// owns rather than the unit registry).
-    pub(super) fn unit_kind_names(&self) -> Vec<String> {
-        self.unit_kinds()
-            .map(|k| k.kind.clone())
-            .filter(|k| k != "index")
-            .collect()
     }
 
     /// Describe any `@block` kind, gathered or not: the gathered entry when
@@ -781,7 +763,7 @@ type D {
         let model = KindModel::new(&doc);
         assert!(model.get("topic").is_some(), "still a gathered kind");
         assert!(
-            !model.unit_kind_names().contains(&"topic".to_string()),
+            !model.unit_kinds().any(|k| k.kind == "topic"),
             "but not an addable unit"
         );
     }

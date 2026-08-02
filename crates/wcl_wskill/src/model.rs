@@ -123,8 +123,9 @@ pub struct Topic {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ContentBlock {
     pub kind: String,
-    /// The block's first label, truncated — enough to recognise it in a
-    /// list, never the rendered content.
+    /// The block's first label — enough to recognise it in a list, never the
+    /// rendered content. Whole: how much of it a list can show is the
+    /// reader's business, not the model's.
     pub preview: String,
     pub anchor: Anchor,
     pub visibility: Visibility,
@@ -164,6 +165,12 @@ pub struct Unit {
     pub id: String,
     pub kind: String,
     pub title: String,
+    /// The unit's one-line description (`summary`), when it declares one.
+    pub summary: Option<String>,
+    /// Every literal string the block's subtree carries, newline-joined —
+    /// the unit's prose as a searchable blob. See [`Index::text`] for why it
+    /// is only the content.
+    pub text: String,
     /// The `audience` routing symbol (`book` / `ai` / `both`) — the block's
     /// own field, else its schema's declared default.
     pub audience: String,
@@ -212,6 +219,17 @@ impl Unit {
 pub struct Index {
     pub id: String,
     pub title: String,
+    /// The index's one-line description (`summary`), when it declares one.
+    pub summary: Option<String>,
+    /// Every literal string the block's subtree carries, newline-joined: the
+    /// index's own prose, as a blob a search can match against.
+    ///
+    /// Deliberately only the *content* — field names, block kinds,
+    /// identifiers and symbols stay out, or searching "related" would hit
+    /// every block that declares the field rather than the one whose prose
+    /// says the word. Strings a *computed* field would produce are likewise
+    /// absent: this reads the source, not an evaluation.
+    pub text: String,
     pub audience: String,
     pub anchor: Anchor,
     pub visibility: Visibility,
@@ -332,6 +350,16 @@ impl Graph {
     /// An index by id, at any nesting level.
     pub fn index(&self, id: &str) -> Option<&Index> {
         self.index_levels().find(|i| i.id == id)
+    }
+
+    /// The index whose DIRECT children include `id` — `None` when `id` is a
+    /// top-level index (or no index at all). Nesting is what the structural
+    /// ops (promote / demote / create-under) are defined against.
+    pub fn parent_index(&self, id: &str) -> Option<&Index> {
+        self.indexes
+            .iter()
+            .flat_map(Index::levels)
+            .find(|i| i.children.iter().any(|c| c.id == id))
     }
 
     /// Every index level that pins `unit_id`, at any nesting depth.
