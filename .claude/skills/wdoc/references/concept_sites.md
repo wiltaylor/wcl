@@ -42,6 +42,10 @@ The `@document` root: the set of tags legal at the top level of a wdoc document 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
 | `classes` | `class` | yes |  |
+| `bases` | `base` | yes |  |
+| `font_faces` | `font_face` | yes |  |
+| `media` | `media` | yes |  |
+| `keyframes` | `keyframes` | yes |  |
 | `stylesheets` | `stylesheet` | yes |  |
 | `pages` | `page` | yes |  |
 | `patterns` | `inline_pattern` | yes |  |

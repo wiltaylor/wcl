@@ -346,12 +346,12 @@ impl<'a> UnionDecl<'a> {
     }
 
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
-        let doc = self.doc;
-        self.ast
-            .decorators
-            .iter()
-            .zip(self.cells.decorators.iter())
-            .map(move |(ast, cell)| Decorator { ast, cell, doc })
+        iter_decorators(
+            &self.ast.decorators,
+            &self.cells.decorators,
+            self.doc,
+            self.file_ns,
+        )
     }
 
     /// The doc comment (contiguous `#` / `//` lines) directly above this
@@ -418,12 +418,12 @@ pub struct UnionVariant<'a> {
 
 impl<'a> UnionVariant<'a> {
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
-        let doc = self.doc;
-        self.ast
-            .decorators
-            .iter()
-            .zip(self.decorator_cells.iter())
-            .map(move |(ast, cell)| Decorator { ast, cell, doc })
+        iter_decorators(
+            &self.ast.decorators,
+            self.decorator_cells,
+            self.doc,
+            self.file_ns,
+        )
     }
 
     /// The doc comment (contiguous `#` / `//` lines) directly above this
@@ -693,6 +693,23 @@ pub struct Decorator<'a> {
     ast: &'a ast::Decorator,
     cell: &'a DecoratorCell,
     doc: &'a Document,
+    /// Namespace of the source that carries this decorator. Bare names
+    /// resolve relative to their use site, not the root document.
+    file_ns: &'a [String],
+}
+
+fn iter_decorators<'a>(
+    ast: &'a [ast::Decorator],
+    cells: &'a [DecoratorCell],
+    doc: &'a Document,
+    file_ns: &'a [String],
+) -> impl Iterator<Item = Decorator<'a>> + 'a {
+    ast.iter().zip(cells).map(move |(ast, cell)| Decorator {
+        ast,
+        cell,
+        doc,
+        file_ns,
+    })
 }
 
 impl<'a> Decorator<'a> {
@@ -721,6 +738,22 @@ impl<'a> Decorator<'a> {
 
     pub fn span(&self) -> Span {
         self.ast.span
+    }
+
+    /// Span of the dotted decorator name, excluding `@` and arguments.
+    pub fn name_span(&self) -> Span {
+        let start = self.ast.span.start + 1;
+        let name_len = self.ast.name.iter().map(String::len).sum::<usize>()
+            + self.ast.name.len().saturating_sub(1);
+        Span::new(start, start + name_len)
+    }
+
+    /// The decorator schema selected by this decorator's authored name.
+    /// A dotted prefix is a namespace qualifier; a bare name prefers this
+    /// decorator's use-site namespace before the root and first match.
+    pub fn schema(&self) -> Option<TypeDecl<'a>> {
+        let (name, qualifier) = self.ast.name.split_last()?;
+        self.doc.decorator_schema_in(qualifier, name, self.file_ns)
     }
 
     /// Evaluate every positional argument. The result is cached so
@@ -778,13 +811,12 @@ impl<'a> Decorator<'a> {
     /// no registered schema, the schema doesn't declare the named slot, or
     /// the slot is absent and has no default.
     pub fn resolved_arg_value(&self, slot_name: &str) -> Option<Result<Value, EvalError>> {
-        let schema_name = self.ast.name.last()?;
-        let schema = self.doc.decorator_schema(schema_name)?;
+        let schema = self.schema()?;
         let slot = schema.field(slot_name)?;
-        // If the slot is union-typed, dispatch the decorator's args.
-        if let TypeRef::Named { path, .. } = slot.type_ref()
-            && let Some(union) = self.doc.union_decl(&path.join("."))
-        {
+        // Resolve a union slot from the decorator schema's namespace, not
+        // the decorator use site's. Two libraries may both call the union
+        // `Choice`, just as they may both declare this decorator name.
+        if let ResolvedType::Union(union) = slot.resolved_type() {
             return Some(self.dispatch_into_union(union));
         }
         if let Some(v) = self.named_arg(slot_name) {
@@ -976,12 +1008,12 @@ impl<'a> SymbolSetDecl<'a> {
     }
 
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
-        let doc = self.doc;
-        self.ast
-            .decorators
-            .iter()
-            .zip(self.cells.decorators.iter())
-            .map(move |(ast, cell)| Decorator { ast, cell, doc })
+        iter_decorators(
+            &self.ast.decorators,
+            &self.cells.decorators,
+            self.doc,
+            self.file_ns,
+        )
     }
 
     /// The doc comment (contiguous `#` / `//` lines) directly above this
@@ -1002,6 +1034,7 @@ impl<'a> SymbolSetDecl<'a> {
     pub fn symbols(&self) -> impl Iterator<Item = SymbolEntry<'a>> + 'a {
         let doc = self.doc;
         let cells = self.symbol_decorator_cells();
+        let file_ns = self.file_ns;
         self.ast
             .symbols
             .iter()
@@ -1010,6 +1043,7 @@ impl<'a> SymbolSetDecl<'a> {
                 ast: s,
                 decorator_cells: &cells[i],
                 doc,
+                file_ns,
             })
     }
 
@@ -1023,16 +1057,17 @@ pub struct SymbolEntry<'a> {
     ast: &'a ast::SymbolEntry,
     decorator_cells: &'a [DecoratorCell],
     doc: &'a Document,
+    file_ns: &'a [String],
 }
 
 impl<'a> SymbolEntry<'a> {
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
-        let doc = self.doc;
-        self.ast
-            .decorators
-            .iter()
-            .zip(self.decorator_cells.iter())
-            .map(move |(ast, cell)| Decorator { ast, cell, doc })
+        iter_decorators(
+            &self.ast.decorators,
+            self.decorator_cells,
+            self.doc,
+            self.file_ns,
+        )
     }
 
     pub fn name(&self) -> &'a str {
@@ -1110,12 +1145,12 @@ impl<'a> TypeDecl<'a> {
     }
 
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
-        let doc = self.doc;
-        self.ast
-            .decorators
-            .iter()
-            .zip(self.cells.decorators.iter())
-            .map(move |(ast, cell)| Decorator { ast, cell, doc })
+        iter_decorators(
+            &self.ast.decorators,
+            &self.cells.decorators,
+            self.doc,
+            self.file_ns,
+        )
     }
 
     /// The doc comment (contiguous `#` / `//` lines) directly above this
@@ -1442,12 +1477,12 @@ impl<'a> InterfaceDecl<'a> {
     }
 
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
-        let doc = self.doc;
-        self.ast
-            .decorators
-            .iter()
-            .zip(self.cells.decorators.iter())
-            .map(move |(ast, cell)| Decorator { ast, cell, doc })
+        iter_decorators(
+            &self.ast.decorators,
+            &self.cells.decorators,
+            self.doc,
+            self.file_ns,
+        )
     }
 
     /// The doc comment (contiguous `#` / `//` lines) directly above this
@@ -1587,12 +1622,12 @@ pub struct TypeField<'a> {
 
 impl<'a> TypeField<'a> {
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
-        let doc = self.doc;
-        self.ast
-            .decorators
-            .iter()
-            .zip(self.decorator_cells.iter())
-            .map(move |(ast, cell)| Decorator { ast, cell, doc })
+        iter_decorators(
+            &self.ast.decorators,
+            self.decorator_cells,
+            self.doc,
+            self.file_ns,
+        )
     }
 
     /// The doc comment (contiguous `#` / `//` lines) directly above this
@@ -1802,6 +1837,7 @@ pub struct Field<'a> {
     pub(super) ast: &'a ast::Field,
     pub(super) cells: &'a ItemCells,
     pub(super) doc: &'a Document,
+    pub(super) file_ns: &'a [String],
     pub(super) scope: Scope<'a>,
 }
 
@@ -1822,12 +1858,12 @@ impl<'a> Field<'a> {
     }
 
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
-        let doc = self.doc;
-        self.ast
-            .decorators
-            .iter()
-            .zip(self.cells.decorators.iter())
-            .map(move |(ast, cell)| Decorator { ast, cell, doc })
+        iter_decorators(
+            &self.ast.decorators,
+            &self.cells.decorators,
+            self.doc,
+            self.file_ns,
+        )
     }
 
     pub fn name(&self) -> &'a str {
@@ -2233,12 +2269,12 @@ impl<'a> Block<'a> {
     }
 
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
-        let doc = self.doc;
-        self.ast
-            .decorators
-            .iter()
-            .zip(self.cells.decorators.iter())
-            .map(move |(ast, cell)| Decorator { ast, cell, doc })
+        iter_decorators(
+            &self.ast.decorators,
+            &self.cells.decorators,
+            self.doc,
+            self.file_ns,
+        )
     }
 
     pub fn kind(&self) -> &'a str {
@@ -2605,7 +2641,14 @@ impl<'a> Block<'a> {
     pub fn field(&self, name: &str) -> Option<Field<'a>> {
         let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
-            if let Some(f) = find_field(src.items, src.cells, name, self.doc, &child_scope) {
+            if let Some(f) = find_field(
+                src.items,
+                src.cells,
+                name,
+                self.doc,
+                src.file_ns,
+                &child_scope,
+            ) {
                 return Some(f);
             }
         }
@@ -2648,7 +2691,7 @@ impl<'a> Block<'a> {
         let scope = self.child_scope();
         self.realize_and_sources()
             .into_iter()
-            .flat_map(move |src| iter_fields(src.items, src.cells, doc, scope.clone()))
+            .flat_map(move |src| iter_fields(src.items, src.cells, doc, src.file_ns, scope.clone()))
     }
 
     pub fn blocks(&self) -> impl Iterator<Item = Block<'a>> + 'a {

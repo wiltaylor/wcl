@@ -17,6 +17,7 @@ pub(super) fn find_field<'a>(
     cells: &'a [ItemCells],
     name: &str,
     doc: &'a Document,
+    file_ns: &'a [String],
     scope: &Scope<'a>,
 ) -> Option<Field<'a>> {
     items
@@ -27,6 +28,7 @@ pub(super) fn find_field<'a>(
                 ast: f,
                 cells,
                 doc,
+                file_ns,
                 scope: scope.clone(),
             }),
             _ => None,
@@ -85,6 +87,7 @@ pub(super) fn iter_fields<'a>(
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
     doc: &'a Document,
+    file_ns: &'a [String],
     scope: Scope<'a>,
 ) -> impl Iterator<Item = Field<'a>> + 'a {
     items
@@ -95,6 +98,7 @@ pub(super) fn iter_fields<'a>(
                 ast: f,
                 cells,
                 doc,
+                file_ns,
                 scope: scope.clone(),
             }),
             _ => None,

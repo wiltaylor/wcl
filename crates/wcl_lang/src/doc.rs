@@ -1273,6 +1273,7 @@ impl Document {
                             ast: f,
                             cells: &src.cells[idx],
                             doc: self,
+                            file_ns: src.file_ns,
                             scope: Scope::root(),
                         });
                     }
@@ -1342,7 +1343,7 @@ impl Document {
         let doc = self;
         self.all_sources()
             .into_iter()
-            .flat_map(move |src| iter_fields(src.items, src.cells, doc, Scope::root()))
+            .flat_map(move |src| iter_fields(src.items, src.cells, doc, src.file_ns, Scope::root()))
     }
 
     pub fn blocks(&self) -> impl Iterator<Item = Block<'_>> + '_ {
@@ -1875,6 +1876,18 @@ impl Document {
             .map(|(_, schema)| schema)
             .filter(|schema| schema.decorator_applies_to("block", Some(kind)))
             .collect()
+    }
+
+    /// Namespace-aware decorator lookup. `qualifier` is the dotted
+    /// namespace written before the decorator name (empty for bare), and
+    /// `context_ns` is the namespace of the site carrying the decorator.
+    pub fn decorator_schema_in(
+        &self,
+        qualifier: &[String],
+        name: &str,
+        context_ns: &[String],
+    ) -> Option<TypeDecl<'_>> {
+        self.find_schema_ns(BuiltinDecorator::Decorator, qualifier, name, context_ns)
     }
 
     /// Look up the type that schemas a table of the given name, i.e.
@@ -2416,7 +2429,9 @@ impl Document {
         // `@document` schema for that source's namespace, if any.
         for src in self.all_sources() {
             out.extend(crate::doc::schema_check::validate_item_decorators(
-                self, src.items,
+                self,
+                src.items,
+                src.file_ns,
             ));
             let schemas = self.doc_schemas_for_ns(src.file_ns);
 
@@ -2426,7 +2441,7 @@ impl Document {
             let root_union_slots = schemas.union_slots();
 
             // Walk the top-level fields in this source.
-            for f in iter_fields(src.items, src.cells, self, Scope::root()) {
+            for f in iter_fields(src.items, src.cells, self, src.file_ns, Scope::root()) {
                 if has_schemaless(&f.ast.decorators) {
                     continue;
                 }

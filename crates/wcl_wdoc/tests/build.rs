@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
+use wcl_lang::DeclName;
 use wcl_wdoc::{
     BuildError, BuildOptions, RebuildOutcome, build, build_incremental, build_with_options,
+    open_doc_for_edit,
 };
 
 fn examples_dir() -> PathBuf {
@@ -169,6 +171,46 @@ page index {{ p "Retired fields" }}
         Err(_) => panic!("expected 52 schema violations for tag + retired fields"),
         Ok(_) => panic!("tag and retired class shorthand fields were accepted"),
     }
+}
+
+#[test]
+fn wdoc_file_decorator_resolves_in_qualified_and_bare_forms() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("decorators.wcl");
+    write_fixture(
+        &src,
+        r#"
+@block("thing")
+@wdoc.file("qualified.wcl")
+@file("bare.wcl")
+type Thing { @inline(0) id: identifier }
+"#,
+    );
+    let doc = open_doc_for_edit(&src).expect("open with wdoc standard library");
+    let paths: Vec<_> = doc
+        .type_decl("Thing")
+        .expect("Thing declaration")
+        .decorators()
+        .filter(|decorator| decorator.name() == "file")
+        .map(|decorator| {
+            assert_eq!(
+                decorator.schema().expect("file schema").full_name(),
+                "wdoc.FilePlacement"
+            );
+            decorator
+                .resolved_arg_value("path")
+                .expect("path slot")
+                .expect("path evaluates")
+        })
+        .collect();
+
+    assert_eq!(
+        paths,
+        vec![
+            wcl_lang::Value::Utf8("qualified.wcl".to_string()),
+            wcl_lang::Value::Utf8("bare.wcl".to_string()),
+        ]
+    );
 }
 
 #[test]

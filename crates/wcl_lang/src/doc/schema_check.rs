@@ -258,9 +258,13 @@ pub(super) fn has_by_ref(decorators: &[ast::Decorator]) -> bool {
 }
 
 /// Require every decorator on one AST node to resolve through the document's
-/// decorator-schema registry. Dotted names retain the existing resolution
-/// rule for now: their final segment identifies the decorator schema.
-pub(super) fn validate_decorators(doc: &Document, decorators: &[ast::Decorator]) -> Vec<EvalError> {
+/// decorator-schema registry. A dotted prefix selects a namespace; a bare
+/// name resolves relative to the namespace of the source carrying the node.
+pub(super) fn validate_decorators(
+    doc: &Document,
+    decorators: &[ast::Decorator],
+    context_ns: &[String],
+) -> Vec<EvalError> {
     use crate::error::SchemaViolationKind as Kind;
 
     if has_annotation_exemption(decorators) {
@@ -270,21 +274,23 @@ pub(super) fn validate_decorators(doc: &Document, decorators: &[ast::Decorator])
     decorators
         .iter()
         .filter_map(|decorator| {
-            let name = decorator
+            let (name, qualifier) = decorator
                 .name
-                .last()
+                .split_last()
                 .expect("parsed decorator names have at least one segment");
-            doc.decorator_schema(name).is_none().then(|| {
-                EvalError::schema_violation_named(
-                    Kind::UndeclaredDecorator,
-                    format!(
-                        "decorator '{}' has no @decorator declaration",
-                        decorator.name.join(".")
-                    ),
-                    decorator.name.join("."),
-                    decorator.name_span,
-                )
-            })
+            doc.decorator_schema_in(qualifier, name, context_ns)
+                .is_none()
+                .then(|| {
+                    EvalError::schema_violation_named(
+                        Kind::UndeclaredDecorator,
+                        format!(
+                            "decorator '{}' has no @decorator declaration",
+                            decorator.name.join(".")
+                        ),
+                        decorator.name.join("."),
+                        decorator.name_span,
+                    )
+                })
         })
         .collect()
 }
@@ -292,51 +298,55 @@ pub(super) fn validate_decorators(doc: &Document, decorators: &[ast::Decorator])
 /// Walk every decorator-carrying position in an AST item list. This is a
 /// source-level pass rather than part of block validation because schema
 /// declarations, function items, and document fields are peers of blocks.
-pub(super) fn validate_item_decorators(doc: &Document, items: &[ast::Item]) -> Vec<EvalError> {
+pub(super) fn validate_item_decorators(
+    doc: &Document,
+    items: &[ast::Item],
+    context_ns: &[String],
+) -> Vec<EvalError> {
     let mut errors = Vec::new();
     for item in items {
         match item {
             ast::Item::Field(field) => {
-                errors.extend(validate_decorators(doc, &field.decorators));
+                errors.extend(validate_decorators(doc, &field.decorators, context_ns));
             }
             ast::Item::Let(binding) if binding.fn_syntax => {
-                errors.extend(validate_decorators(doc, &binding.decorators));
+                errors.extend(validate_decorators(doc, &binding.decorators, context_ns));
             }
             ast::Item::Block(block) => {
-                errors.extend(validate_decorators(doc, &block.decorators));
-                errors.extend(validate_item_decorators(doc, &block.items));
+                errors.extend(validate_decorators(doc, &block.decorators, context_ns));
+                errors.extend(validate_item_decorators(doc, &block.items, context_ns));
             }
             ast::Item::TypeDecl(decl) => {
-                errors.extend(validate_decorators(doc, &decl.decorators));
+                errors.extend(validate_decorators(doc, &decl.decorators, context_ns));
                 for field in &decl.fields {
-                    errors.extend(validate_decorators(doc, &field.decorators));
+                    errors.extend(validate_decorators(doc, &field.decorators, context_ns));
                 }
             }
             ast::Item::InterfaceDecl(decl) => {
-                errors.extend(validate_decorators(doc, &decl.decorators));
+                errors.extend(validate_decorators(doc, &decl.decorators, context_ns));
                 for field in &decl.fields {
-                    errors.extend(validate_decorators(doc, &field.decorators));
+                    errors.extend(validate_decorators(doc, &field.decorators, context_ns));
                 }
             }
             ast::Item::UnionDecl(decl) => {
-                errors.extend(validate_decorators(doc, &decl.decorators));
+                errors.extend(validate_decorators(doc, &decl.decorators, context_ns));
                 for variant in &decl.variants {
-                    errors.extend(validate_decorators(doc, &variant.decorators));
+                    errors.extend(validate_decorators(doc, &variant.decorators, context_ns));
                     if let ast::VariantBody::Record { fields, .. } = &variant.body {
                         for field in fields {
-                            errors.extend(validate_decorators(doc, &field.decorators));
+                            errors.extend(validate_decorators(doc, &field.decorators, context_ns));
                         }
                     }
                 }
             }
             ast::Item::SymbolSetDecl(decl) => {
-                errors.extend(validate_decorators(doc, &decl.decorators));
+                errors.extend(validate_decorators(doc, &decl.decorators, context_ns));
                 for symbol in &decl.symbols {
-                    errors.extend(validate_decorators(doc, &symbol.decorators));
+                    errors.extend(validate_decorators(doc, &symbol.decorators, context_ns));
                 }
             }
             ast::Item::ConnectionDecl(decl) => {
-                errors.extend(validate_decorators(doc, &decl.decorators));
+                errors.extend(validate_decorators(doc, &decl.decorators, context_ns));
             }
             ast::Item::Let(_)
             | ast::Item::NamespaceDecl(_)
