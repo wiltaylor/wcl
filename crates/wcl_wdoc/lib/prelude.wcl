@@ -61,3 +61,4 @@ import <comment.wcl>          // @comment review notes (the wcl editor preview p
 import <file_placement.wcl>   // @wdoc::file object placement hint for editor tooling
 import <edit_object.wcl>      // edit_object button (the wcl editor preview pane)
 import <edit_field.wcl>       // edit_field inline-editing binding (Design mode)
+import <content.wcl>          // the semantic content IR (generates the Rust enum)

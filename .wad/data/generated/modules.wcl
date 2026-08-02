@@ -323,6 +323,12 @@ code_item code_crate_wcl_wdoc {
     summary = "1 file, 7 pub items"
     deps = [n_cg_wcl_wdoc_build, n_cg_wcl_wdoc_sidecar, n_cg_wcl_wdoc_xc_wcl_lang]
   }
+  code_node n_cg_wcl_wdoc_content {
+    name = "content"
+    kind = "module"
+    summary = "1 file, 2 pub items"
+    deps = [n_cg_wcl_wdoc_xc_wcl_lang]
+  }
   code_node n_cg_wcl_wdoc_demo {
     name = "demo"
     kind = "module"
@@ -5958,6 +5964,69 @@ code_item code_api_wcl_wdoc_comments {
     code_member m_n_api_wcl_wdoc_comments_comments_fns_edit {
       signature = "fn edit(root: &Path, id: &str, body: &str) -> Result<bool, Buil…"
       kind = "fn"
+    }
+  }
+}
+
+code_item code_api_wcl_wdoc_content {
+  container = wcl_wdoc
+  name      = "Public surface — content"
+  summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_wdoc::content)."
+  kind      = :module_api
+  code_node n_api_wcl_wdoc_content_At {
+    name = "At"
+    kind = "struct"
+    summary = "src/content.rs"
+    code_member m_n_api_wcl_wdoc_content_At_owner {
+      signature = "owner: &'static str"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_content_At_field {
+      signature = "field: &'static str"
+      kind = "field"
+    }
+  }
+  code_node n_api_wcl_wdoc_content_ContentError {
+    name = "ContentError"
+    kind = "enum"
+    summary = "src/content.rs"
+    code_member m_n_api_wcl_wdoc_content_ContentError_NotAVariant {
+      signature = "NotAVariant{ /// The union that was expected. owner: &'static s…"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_wdoc_content_ContentError_NotARecord {
+      signature = "NotARecord{ /// The record type that was expected. owner: &'sta…"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_wdoc_content_ContentError_NotASymbol {
+      signature = "NotASymbol{ /// The symbol set that was expected. owner: &'stat…"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_wdoc_content_ContentError_UnknownVariant {
+      signature = "UnknownVariant{ /// The union that was read. owner: &'static st…"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_wdoc_content_ContentError_UnknownSymbol {
+      signature = "UnknownSymbol{ /// The symbol set that was read. owner: &'stati…"
+      kind = "variant"
+    }
+    code_member m_n_api_wcl_wdoc_content_ContentError_MissingField {
+      signature = "MissingField{ /// The field that was missing. at: At, }"
+      kind = "variant"
+      deps = [n_api_wcl_wdoc_content_At]
+    }
+    code_member m_n_api_wcl_wdoc_content_ContentError_FieldType {
+      signature = "FieldType{ /// The field that was read. at: At, /// The declare…"
+      kind = "variant"
+      deps = [n_api_wcl_wdoc_content_At]
+    }
+    code_member m_n_api_wcl_wdoc_content_ContentError_impl_std__fmt__Display {
+      signature = "impl std::fmt::Display"
+      kind = "impl"
+    }
+    code_member m_n_api_wcl_wdoc_content_ContentError_impl_std__error__Error {
+      signature = "impl std::error::Error"
+      kind = "impl"
     }
   }
 }
