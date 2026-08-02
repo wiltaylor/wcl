@@ -81,6 +81,25 @@ export function shortSha(sha) {
   return (sha ?? '').slice(0, 8);
 }
 
+/** Where a row's `file` + `span` can be opened, and how far they can be
+    trusted once there.
+
+    A row is anchored where the AFTER revision writes it, so the offsets are
+    only the working tree's when the after end IS the working tree
+    (`range.after === null`). Audit `a..b` with `b` a commit and every
+    surviving row's span addresses `b` — following it into the working-tree
+    file would select the wrong bytes with total confidence, which is the
+    caller's half of the rule `NodeDelta::span` states. A removal has no
+    current file at all: the path is where it WAS written.
+
+    Returns `'span'` (open and select), `'file'` (open, select nothing) or
+    `'none'`. */
+export function openTarget(data, node) {
+  if (node?.change === 'removed') return 'none';
+  if (!node?.file) return 'none';
+  return data?.range?.after || !node.span ? 'file' : 'span';
+}
+
 /** `<before>..<after>`, naming the working tree for what it is — an audit
     of uncommitted output must say so, or its reader cannot reproduce it. */
 export function rangeLabel(data) {

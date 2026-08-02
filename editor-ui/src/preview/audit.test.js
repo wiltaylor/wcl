@@ -9,6 +9,7 @@ import {
   graphModel,
   healthTally,
   newsRows,
+  openTarget,
   rangeLabel,
   sectionOf,
   severityTally,
@@ -52,6 +53,8 @@ const data = {
       title: 'Beta',
       change: 'removed',
       changed: [],
+      file: 'data/concepts/beta.wcl',
+      span: { start: 0, end: 30 },
       graphed: true,
       news: true,
       findings: [],
@@ -78,6 +81,8 @@ const data = {
       title: 'Gamma',
       change: 'modified',
       changed: ['title', 'related'],
+      file: 'data/concepts/gamma.wcl',
+      span: { start: 0, end: 42 },
       graphed: true,
       news: true,
       findings: [{ severity: 'candidate', rule: 'link-density', message: 'hub-shaped' }],
@@ -159,6 +164,31 @@ describe('the changelog', () => {
   it('reads an unchanged node with findings as broken by the range', () => {
     expect(sectionOf({ change: 'unchanged' })).toBe('broken');
     expect(sectionOf({ change: 'added' })).toBe('added');
+  });
+});
+
+describe('following a row to its source', () => {
+  const row = (id) => data.nodes.find((n) => n.id === id);
+
+  it('selects the block only when the spans are the working tree’s', () => {
+    // `after: null` — the audit's other end IS the file on disk.
+    expect(openTarget(data, row('gamma'))).toBe('span');
+  });
+
+  it('opens without selecting when the after end is a commit', () => {
+    // Every surviving row is anchored where revision `b` writes it, so
+    // those byte offsets address `b` and not the working-tree file.
+    const committed = { ...data, range: { before: 'aaa', after: 'bbb' } };
+    expect(openTarget(committed, row('gamma'))).toBe('file');
+  });
+
+  it('leads nowhere for a removal — the path is where it WAS written', () => {
+    expect(openTarget(data, row('beta'))).toBe('none');
+  });
+
+  it('opens without selecting when a node carries no span at all', () => {
+    expect(openTarget(data, { ...row('gamma'), span: undefined })).toBe('file');
+    expect(openTarget(data, { ...row('gamma'), file: '' })).toBe('none');
   });
 });
 

@@ -34,6 +34,7 @@ import {
   graphModel,
   healthTally,
   newsRows,
+  openTarget,
   rangeLabel,
   severityTally,
   worseMetrics,
@@ -88,12 +89,20 @@ export default function AuditView() {
     run();
   });
 
+  /* Follow a row to its source — as far as the range honestly allows. A
+     span only addresses the working tree when the after end IS the working
+     tree; against a commit the file is opened without a selection rather
+     than pointing confidently at the wrong bytes. */
   const openCode = async (n) => {
-    if (n.change === 'removed') return;
+    const target = openTarget(data(), n);
+    if (target === 'none') return;
     exitDesign();
     const res = await openFile(n.file);
-    if (res.ok && n.span) revealSpan(n.file, n.span.start, n.span.end);
-    else if (!res.ok) toast(res.error, { tone: 'danger', duration: 6000 });
+    if (!res.ok) {
+      toast(res.error, { tone: 'danger', duration: 6000 });
+      return;
+    }
+    if (target === 'span') revealSpan(n.file, n.span.start, n.span.end);
   };
 
   return (
@@ -211,9 +220,18 @@ function HeaderStrip(props) {
 // A · the changelog
 // ---------------------------------------------------------------------------
 
-/** The marker a row wears, matching the CLI's — one vocabulary for what
-    happened to a node, whichever surface reports it. */
+/** The marker a row wears. The view's own glyphs, not the model's — one of
+    the four sections (`broken`) is not a `Change` at all, and a rendered
+    row uses the typographic minus the CLI's plain-text one cannot. */
 const MARKER = { added: '+', removed: '−', modified: '~', broken: '!' };
+
+/** What following a row does, so the row can say so before it is clicked
+    rather than after ({@link openTarget}). */
+const OPEN_HINT = {
+  none: 'Removed in this range — there is no current file to open',
+  file: 'Open the file (the span addresses the compared commit, not the working tree)',
+  span: 'Open the file at this block',
+};
 
 function Changelog(props) {
   const sections = () => newsRows(props.data);
@@ -229,7 +247,14 @@ function Changelog(props) {
               {s.label} — {s.rows.length}
             </h2>
             <For each={s.rows}>
-              {(row) => <Row row={row} section={s.key} onOpen={props.onOpen} />}
+              {(row) => (
+                <Row
+                  row={row}
+                  section={s.key}
+                  target={openTarget(props.data, row.node)}
+                  onOpen={props.onOpen}
+                />
+              )}
             </For>
           </section>
         )}
@@ -244,9 +269,9 @@ function Row(props) {
     <div class="ed-audit-rowgroup">
       <div
         class="ed-audit-row"
-        classList={{ [`is-${props.section}`]: true }}
+        classList={{ [`is-${props.section}`]: true, 'is-inert': props.target === 'none' }}
         onClick={() => props.onOpen(n())}
-        title={n().change === 'removed' ? 'Removed — no file to open' : n().file}
+        title={`${n().file}\n${OPEN_HINT[props.target]}`}
       >
         <span class="ed-audit-marker">{MARKER[props.section]}</span>
         <span class="ed-audit-kind">{n().kind}</span>
@@ -364,8 +389,11 @@ function UnionGraph(props) {
             <i class="ed-audit-sw is-removed" /> removed
           </span>
         </span>
+        {/* Say what is drawn, or the header's link counts (which include
+            pins) read as a promise this pane doesn't keep. */}
         <span class="ed-audit-dim">
-          before ∪ after — a removal is ghosted, never absent
+          before ∪ after, unit links only — a removal is ghosted, never absent; index
+          pins are changelog rows
         </span>
       </div>
       <Show when={viewBox()}>
