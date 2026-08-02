@@ -424,7 +424,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_native {
     name = "native"
     kind = "module"
-    summary = "1 file, 2 pub items"
+    summary = "1 file, 3 pub items"
     deps = [n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_node_table {
@@ -448,7 +448,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "15 files, 223 pub items"
+    summary = "15 files, 224 pub items"
     deps = [n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
@@ -8585,6 +8585,11 @@ code_item code_api_wcl_wdoc_native {
     }
     code_member m_n_api_wcl_wdoc_native_native_fns_native_errors {
       signature = "fn native_errors(doc: &Document) -> Vec<Report>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_native_native_fns_has_wdoc_native_declaration {
+      signature = "fn has_wdoc_native_declaration(doc: &Document) -> bool"
       kind = "fn"
       visibility = "crate"
     }

@@ -436,6 +436,14 @@ pub(crate) fn native_errors(doc: &Document) -> Vec<Report> {
     out
 }
 
+/// Whether the document has any of the wdoc stdlib's native block
+/// declarations in scope. The registry cross-check only has meaning once
+/// this premise holds; otherwise every registry entry looks undeclared.
+pub(crate) fn has_wdoc_native_declaration(doc: &Document) -> bool {
+    doc.type_decls()
+        .any(|decl| is_wdoc_ns(&decl) && decl.decorators().any(|d| d.full_name() == "native"))
+}
+
 /// The other direction: a kind this build dispatches in Rust that no stdlib
 /// type declared at all. Split out so it can be tested against a registry
 /// the document can't produce — every kind IS declared, which is the point.
@@ -477,14 +485,17 @@ mod tests {
     use super::*;
     use wcl_lang::{Environment, disk_loader};
 
+    fn open_raw(src: &str) -> Document {
+        let loader = crate::schema_registry().loader(disk_loader());
+        Document::open_at_with_loader(src, "native-test.wcl", None, &Environment::new(), loader)
+            .expect("open native fixture")
+    }
+
     /// Open a fixture through the embedded wdoc registry — the same
     /// schema every real build sees, so the stdlib's own declarations are
     /// under test alongside the fixture's.
     fn open_wdoc(extra: &str) -> Document {
-        let src = format!("import <wdoc.wcl>\n{extra}");
-        let loader = crate::schema_registry().loader(disk_loader());
-        Document::open_at_with_loader(&src, "native-test.wcl", None, &Environment::new(), loader)
-            .expect("open native fixture")
+        open_raw(&format!("import <wdoc.wcl>\n{extra}"))
     }
 
     /// The same, in wdoc's own namespace — the position a stdlib
@@ -499,6 +510,25 @@ mod tests {
 
     fn messages(doc: &Document) -> Vec<String> {
         native_errors(doc).iter().map(|r| r.to_string()).collect()
+    }
+
+    fn assert_missing_stdlib(src: &str) {
+        let errs = crate::build::contract_errors(&open_raw(src));
+        assert_eq!(errs.len(), 1, "{errs:#?}");
+        assert!(
+            errs[0].to_string().contains("import <wdoc.wcl>"),
+            "{errs:#?}"
+        );
+    }
+
+    #[test]
+    fn a_document_without_the_wdoc_stdlib_gets_one_actionable_error() {
+        assert_missing_stdlib("// nothing here\n");
+    }
+
+    #[test]
+    fn a_partial_wdoc_import_gets_the_same_actionable_error() {
+        assert_missing_stdlib("import <wdoc/core.wcl>\n");
     }
 
     #[test]
@@ -586,25 +616,30 @@ mod tests {
 
     #[test]
     fn a_kind_no_type_declares_is_reported() {
-        // The reverse cross-check, driven directly: nothing accounted for
-        // `terminal`, so the registry and the schema disagree about it.
-        let accounted: Vec<&str> = NATIVE_DISPATCH
-            .iter()
-            .map(|n| n.kind)
-            .filter(|k| *k != "terminal")
-            .collect();
-        let errs: Vec<String> = undeclared_errors(&accounted)
+        // Keep the full stdlib in scope but replace one imported module with
+        // an empty namespace, reproducing a kind whose declaration vanished.
+        // Driving the shared gate proves the missing-stdlib guard does not
+        // hide the registry's per-kind regression diagnostic.
+        let mut registry = crate::schema_registry();
+        registry.register("wdoc/markdown_source.wcl", "namespace wdoc\n");
+        let loader = registry.loader(disk_loader());
+        let doc = Document::open_at_with_loader(
+            "import <wdoc.wcl>\n",
+            "native-test.wcl",
+            None,
+            &Environment::new(),
+            loader,
+        )
+        .expect("open stdlib with one missing native declaration");
+        let errs: Vec<String> = crate::build::contract_errors(&doc)
             .iter()
             .map(|r| r.to_string())
             .collect();
         assert_eq!(errs.len(), 1, "{errs:#?}");
         assert!(
-            errs[0].contains("terminal") && errs[0].contains("no `@native` block type declares"),
+            errs[0].contains("markdown_source")
+                && errs[0].contains("no `@native` block type declares"),
             "{errs:#?}"
-        );
-        assert!(
-            undeclared_errors(&NATIVE_DISPATCH.iter().map(|n| n.kind).collect::<Vec<_>>())
-                .is_empty()
         );
     }
 

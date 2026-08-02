@@ -567,14 +567,21 @@ pub(crate) fn reserved_kind_errors(doc: &Document) -> Vec<Report> {
 }
 
 /// Every schema-level contract a document must satisfy before any backend
-/// renders it: no root-authored re-declaration of a Rust-dispatched kind
-/// ([`reserved_kind_errors`]), and a coherent rendering declaration on every
-/// block type ([`crate::native::native_errors`]).
+/// renders it: the wdoc stdlib is in scope, no root-authored re-declaration of
+/// a Rust-dispatched kind ([`reserved_kind_errors`]), and a coherent rendering
+/// declaration on every block type ([`crate::native::native_errors`]).
 ///
 /// The four entry points (HTML / Markdown / PDF / skill) call this one
 /// function right after `schema_errors`, so a fifth cannot pick up half the
 /// contract — before it existed the skill target ran neither check.
 pub(crate) fn contract_errors(doc: &Document) -> Vec<Report> {
+    if !crate::native::has_wdoc_native_declaration(doc) {
+        return vec![miette::miette!(
+            labels = vec![miette::LabeledSpan::at(0..0, "add the import here")],
+            code = "wdoc::missing_stdlib",
+            "this document does not import the wdoc stdlib — add `import <wdoc.wcl>`",
+        )];
+    }
     let mut out = reserved_kind_errors(doc);
     out.extend(crate::native::native_errors(doc));
     out
