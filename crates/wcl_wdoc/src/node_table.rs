@@ -4,11 +4,10 @@
 //! diagrams, where an edge attaches to a specific row (a foreign-key
 //! column, a class field) rather than the whole box.
 //!
-//! Like `card`, it is special-cased in the renderer (its WCL `lower` is a
-//! stub): each row's body is HTML — produced by the block renderer +
-//! inline engine ([`render_block`]) — wrapped in an SVG `<foreignObject>`.
-//! The frame, row separators and per-row port markers are SVG primitives
-//! drawn around those rows.
+//! Like `card`, it is `@native` (see [`crate::native`]): each row's body is
+//! HTML — produced by the block renderer + inline engine ([`render_block`])
+//! — wrapped in an SVG `<foreignObject>`. The frame, row separators and
+//! per-row port markers are SVG primitives drawn around those rows.
 //!
 //! Per-row connectivity reuses the existing edge machinery: each row with
 //! an `id` is registered as its own sub-shape in `collect_shape_positions`

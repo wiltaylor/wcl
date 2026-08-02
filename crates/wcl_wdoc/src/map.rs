@@ -1,10 +1,10 @@
 //! The `map` block: a zoomable, pinned game-guide map placed inside a
 //! `diagram`.
 //!
-//! Like `tilemap` / `image`, a map is special-cased in the renderer (its
-//! WCL `lower` is a stub) — the tile crops, the icon `<use>` markers, and
-//! the HTML cards overlaid on the SVG aren't expressible in WCL. The map
-//! reuses existing machinery rather than adding new fundamentals:
+//! Like `tilemap` / `image`, a map is `@native` (see [`crate::native`]) —
+//! the tile crops, the icon `<use>` markers, and the HTML cards overlaid on
+//! the SVG aren't expressible in WCL. The map reuses existing machinery
+//! rather than adding new fundamentals:
 //!
 //! - tile / image copying → the threaded [`ImageRegistry`] (every tile is
 //!   just an image; `register()` returns a `_wdoc/…` URL + records it);

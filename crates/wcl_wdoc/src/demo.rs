@@ -1,9 +1,9 @@
 //! The `demo` block: an example source listing plus a live preview of the
 //! same children, rendered under both the light and the dark palette.
 //!
-//! Special-cased in Rust (its WCL `lower` is a stub) because it must reach
-//! the children's source text ([`Block::to_source`]) and re-render the same
-//! children into palette-scoped wrappers — neither is expressible in WCL.
+//! `@native` (see [`crate::native`]) because it must reach the children's
+//! source text ([`Block::to_source`]) and re-render the same children into
+//! palette-scoped wrappers — neither is expressible in WCL.
 //! The scoped `.wdoc-theme-light` / `.wdoc-theme-dark` classes are emitted by
 //! [`crate::render::theme`]; CSS custom properties inherit, so each wrapper
 //! re-themes its own subtree regardless of the reader's global theme toggle.

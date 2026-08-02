@@ -308,7 +308,10 @@ type WfGrid extends Widget {
 // graph (reusing the layered solver); a node with an explicit `x`/`y` pins
 // itself. Links route between ports with the shared orthogonal edge router.
 // `wf_node` / `wf_link` are internal children (not standalone shapes), so —
-// like `node_row` — they're plain blocks the graph renderer reads directly.
+// like an `li` under a `list` — they extend no block interface at all: they
+// declare neither a `lower` nor `@native`, and the graph renderer reads them
+// directly. (A `node_row` looks similar but *is* an `SvgBlock`, so it has to
+// say which of the two it is, and says `@native`.)
 
 @block("wf_node")
 type WfNode {

@@ -447,7 +447,7 @@ WCL
       | "`@hidden`" | "Drops the field from the generated table." |
   }
 
-  p "Function-typed fields (every block's `lower` hook) are skipped automatically. This very page's [Pages](wdoc_pages) and [Images](wdoc_images) field tables are generated this way."
+  p "Function-typed fields (a lowered block's `lower` hook) are skipped automatically. This very page's [Pages](wdoc_pages) and [Images](wdoc_images) field tables are generated this way."
 
   h2 "Documenting your own schema"
 

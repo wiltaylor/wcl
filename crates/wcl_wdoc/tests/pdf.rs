@@ -519,8 +519,9 @@ fn online_video_renders_a_link_in_pdf() {
 #[test]
 fn local_video_has_no_link_in_pdf() {
     // A local video gets only its poster — never a link (a path to a local
-    // file is useless in a distributed PDF). With no poster it adds nothing,
-    // so the surrounding prose is all that remains.
+    // file is useless in a distributed PDF). With no poster there is nothing
+    // to show, but `video` declares itself native on :pdf, so it names itself
+    // instead of vanishing between the paragraphs either side of it.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("local.wcl");
     write_fixture(
@@ -536,6 +537,13 @@ fn local_video_has_no_link_in_pdf() {
     assert!(
         !blob.contains("clip.mp4"),
         "a local video path is never linked"
+    );
+    // Page text is Flate-compressed, so the italic serif font program — which
+    // is embedded only when an italic run is laid out, and nothing else on
+    // this page is italic — is the evidence the name was written.
+    assert!(
+        blob.contains("NotoSerif-Italic"),
+        "the video names itself rather than disappearing"
     );
 }
 

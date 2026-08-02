@@ -3,7 +3,7 @@ page wdoc_primitives { sites = [:reference]  title = "Primitive Shapes"
   h1 "Primitive Shapes"
 
 
-  p "Primitive shapes are what everything is broken down into for rendering. Higher-level blocks (flowchart nodes, charts, cards, …) all lower to these, so targeting a new backend only means re-implementing the primitives."
+  p "Primitive shapes are what everything is broken down into for rendering. Every higher-level block that lowers (flowchart nodes, charts, and any shape you declare yourself) expands into these, so targeting a new backend means re-implementing the primitives plus the `@native` kinds."
 
   callout "Lowered or native — every block declares which" {
     class = ["info"]

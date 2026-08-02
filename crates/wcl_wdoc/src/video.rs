@@ -6,10 +6,10 @@
 //! The `source` is classified into one of four kinds: a local file
 //! (`<video>`, copied into `_wdoc/` like an `image`), a YouTube or Vimeo
 //! URL (an embed `<iframe>`, with YouTube posters auto-derived), or any
-//! other web URL (a generic embed `<iframe>`). Like `image` it's
-//! special-cased in the renderer, so its WCL `lower` is a never-called
-//! stub. The asset copy reuses `image`'s deterministic `_wdoc/` naming
-//! ([`is_external`], [`sanitize`], [`fnv1a`]).
+//! other web URL (a generic embed `<iframe>`). Like `image` it is `@native`
+//! (see [`crate::native`]) rather than lowered in WCL. The asset copy reuses
+//! `image`'s deterministic `_wdoc/` naming ([`is_external`], [`sanitize`],
+//! [`fnv1a`]).
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;

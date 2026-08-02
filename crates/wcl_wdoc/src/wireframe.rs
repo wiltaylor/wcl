@@ -6,14 +6,14 @@
 //! from composable blocks. Each widget `extends SvgBlock`, so it is a **diagram
 //! shape**: a legal child of any `diagram` / `container`, placed with `x`/`y`
 //! (or anchors) and connectable by edges. Like `card` / `map`, the family is
-//! special-cased in the renderer — [`render_wireframe_shape`] measures the
+//! `@native` (see [`crate::native`]) — [`render_wireframe_shape`] measures the
 //! widget tree bottom-up and emits a single positioned SVG `<g>`, dispatched
 //! from `render_shape` (and the same module sizes the widget for the diagram's
 //! layout solvers via [`measured_size`] / [`wireframe_bbox`]).
 //!
 //! The renderer walks the **raw block tree** — reading fields directly and
-//! recursing into container children via `block.blocks()` — so it never
-//! depends on the WCL `lower` (now a stub). A widget's size is its measured
+//! recursing into container children via `block.blocks()` — so it needs no
+//! `lower` at all. A widget's size is its measured
 //! content; `x`/`y`/anchors only position the group inside the diagram.
 //!
 //! Theming follows the terminal pattern: neutral colours are the document's

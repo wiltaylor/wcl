@@ -4,11 +4,11 @@
 //! look. A node carries a `title` (its positional label) plus an optional
 //! `icon` and `color`.
 //!
-//! Like `card` / `node_table`, it is special-cased in the renderer (its
-//! WCL `lower` is a stub): the guides, icons and labels are SVG primitives
-//! drawn here. The whole tree is a positioned shape (anchor-aware like
-//! `rect`); its height is *derived* — one `row_height` per node — because
-//! the renderer can't measure content.
+//! Like `card` / `node_table`, it is `@native` (see [`crate::native`]):
+//! the guides, icons and labels are SVG primitives drawn here. The whole
+//! tree is a positioned shape (anchor-aware like `rect`); its height is
+//! *derived* — one `row_height` per node — because the renderer can't
+//! measure content.
 //!
 //! Per-node connectivity reuses the edge machinery: a node with an `id` is
 //! registered as its own sub-shape (see `collect_shape_positions` in
