@@ -374,12 +374,12 @@ JS
 
 // One syllabus entry. A lesson carries the completion mark the runtime fills
 // in; a module heading (a TOC entry with no page) renders as a label.
-let tr_nav_entry = fn(e: TocEntry) -> Html
+let tr_nav_entry = fn(e: TocEntry, current_href: utf8) -> Html
   if e.href == "" {
     el("li", ["tr-nav-module"], [raw(e.title)])
   } else {
     el("li", ["tr-nav-item"], [
-        ela("a", if e.current { ["current"] } else { none }, [["href", e.href]], [
+        ela("a", if e.href == current_href { ["current"] } else { none }, [["href", e.href]], [
             el("span", ["tr-nav-mark"], [raw("○")]),
             el("span", [], [raw(e.title)]),
           ]),
@@ -388,9 +388,12 @@ let tr_nav_entry = fn(e: TocEntry) -> Html
 
 // The syllabus rail: module headings and their lessons, flattened to one list
 // (the course is two levels deep by construction).
-let tr_nav_items = fn(entries: list<TocEntry>) -> list<Html>
+let tr_nav_items = fn(entries: list<TocEntry>, current_href: utf8) -> list<Html>
   flatten(map(entries, fn(e: TocEntry) -> list<Html>
-    flatten([[tr_nav_entry(e)], map(e.children, tr_nav_entry)])))
+    flatten([
+      [tr_nav_entry(e, current_href)],
+      map(e.children, fn(child: TocEntry) -> Html tr_nav_entry(child, current_href)),
+    ])))
 
 let tr_nav = fn(c: TemplateCtx) -> list<Html> [
   el("nav", ["tr-nav"], [
@@ -399,7 +402,7 @@ let tr_nav = fn(c: TemplateCtx) -> list<Html> [
           el("div", ["tr-progress-label"], [raw("Not started")]),
           el("div", ["tr-progress-bar"], [ el("div", ["tr-progress-fill"], []) ]),
         ]),
-      el("ul", [], tr_nav_items(c.toc)),
+      el("ul", [], tr_nav_items(c.toc, format("{}.html", c.page_name))),
       ela("button", ["tr-reset"], [["type", "button"]], [raw("Reset progress")]),
     ]),
 ]
