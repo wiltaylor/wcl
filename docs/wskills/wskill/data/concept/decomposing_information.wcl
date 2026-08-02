@@ -1,19 +1,17 @@
 concept decomposing_information {
-  name     = "Decomposing information"
-  summary  = "Break a topic into atomic notes — one idea each — then file each as the unit kind that fits it: concept, entity, fact or process."
+  name = "Decomposing information"
+  summary = "Break a topic into atomic notes — one idea each — then file each as the unit kind that fits it: concept, entity, fact or process."
   audience = :both
-  related  = [atomic_note, unit_decision_guide, structured_data]
+  related = [structured_data]
   body {
-    p <<BODY
+    p <<DOC
       Knowledge goes into a wskill as atomic notes: each unit captures exactly one idea, thing,
       value or task. Before writing anything, break the topic down into these single-idea pieces —
       if a note tries to hold two ideas, split it. Atomic notes stay easy to link, reuse and keep
       current, and they are what the templates project into the book and the skill.
-    BODY
+    DOC
 
-    p <<BODY
-      Once a piece is atomic, file it as one of the four unit kinds — pick by what it *is*:
-    BODY
+    p "Once a piece is atomic, file it as one of the four unit kinds — pick by what it *is*:\n"
 
     list {
       li "**Concept** — an idea or mental model: a pattern, a principle, a way of thinking about the topic."
@@ -22,18 +20,18 @@ concept decomposing_information {
       li "**Process** — a repeatable task as ordered steps, written for someone who already knows the topic."
     }
 
-    p <<BODY
+    p <<DOC
       When in doubt, run the note through the [decision guide](fact_unit_decision_guide) —
       its flowchart and symptom table settle the edge cases (and name the classic mistake:
       entities are reserved for concrete named things, never a catch-all). Prefer the smaller,
       more specific kind and link the pieces together with `related` — the web of links, not a
       folder hierarchy, is what makes the model navigable.
-    BODY
+    DOC
 
-    p <<BODY
+    p <<DOC
       Each kind is a format with defined fields — [structured data](concept_structured_data). When a
       topic has a shape the four built-in kinds don't capture, define a new schema for it rather than
       forcing it into prose.
-    BODY
+    DOC
   }
 }

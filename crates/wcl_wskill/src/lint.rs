@@ -8,8 +8,9 @@
 //! there is one [`Rule`] vocabulary and one [`Finding`], and the only thing a
 //! caller chooses is which severities it cares about.
 //!
-//! **Lint never writes.** It takes `&Graph` and returns findings; the fix
-//! path is an op list applied elsewhere.
+//! **The rule engine never writes.** It takes `&Graph` and returns findings;
+//! an autofix is a shared structural op attached to a finding for a host to
+//! dry-run or apply through its validating commit path.
 //!
 //! The three tiers are drawn by how certain a rule is, not by how much it
 //! matters:
@@ -32,6 +33,7 @@ use std::path::PathBuf;
 use wcl_lang::Span;
 
 use crate::model::{Anchor, Graph, Index, NodeKey, Unit};
+use crate::ops::{NodeRef, Op};
 
 /// The `related` cap for a content unit. The guidance is 3–5 links, so 5 is
 /// the last legal value; indexes are explicitly exempt (a curated index is a
@@ -122,6 +124,9 @@ pub enum Rule {
     Unindexed,
     /// A unit that renders in none of the declared projections.
     NoProjection,
+    /// A reasonless edge awaiting either mechanical removal or an author's
+    /// reason, depending on whether its target is named in the source prose.
+    BareRelated,
     /// Hub screen: many links over little prose.
     LinkDensity,
     /// Hub screen: the targets are named after the source.
@@ -137,13 +142,14 @@ pub enum Rule {
 
 impl Rule {
     /// Every rule, in severity order.
-    pub const ALL: [Rule; 11] = [
+    pub const ALL: [Rule; 12] = [
         Rule::DanglingRelated,
         Rule::DuplicateId,
         Rule::RelatedBodylessIndex,
         Rule::RelatedOverCap,
         Rule::Unindexed,
         Rule::NoProjection,
+        Rule::BareRelated,
         Rule::LinkDensity,
         Rule::NamePrefixCluster,
         Rule::DuplicateReason,
@@ -159,6 +165,7 @@ impl Rule {
             Rule::RelatedOverCap => "related-over-cap",
             Rule::Unindexed => "unindexed",
             Rule::NoProjection => "no-projection",
+            Rule::BareRelated => "bare-related",
             Rule::LinkDensity => "link-density",
             Rule::NamePrefixCluster => "name-prefix-cluster",
             Rule::DuplicateReason => "duplicate-reason",
@@ -176,8 +183,23 @@ impl Rule {
                 Severity::Error
             }
             Rule::RelatedOverCap | Rule::Unindexed | Rule::NoProjection => Severity::Warn,
-            _ => Severity::Candidate,
+            Rule::BareRelated
+            | Rule::LinkDensity
+            | Rule::NamePrefixCluster
+            | Rule::DuplicateReason
+            | Rule::BodylessIndex
+            | Rule::MirroredPin => Severity::Candidate,
         }
+    }
+
+    /// Whether this rule can attach structural ops to its findings.
+    pub fn has_autofix(&self) -> bool {
+        matches!(self, Rule::BareRelated)
+    }
+
+    /// The rule named by a CLI slug.
+    pub fn parse(s: &str) -> Option<Rule> {
+        Rule::ALL.into_iter().find(|rule| rule.slug() == s)
     }
 }
 
@@ -212,6 +234,11 @@ pub struct Finding {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
     pub message: String,
+    /// The shared structural op that fixes this occurrence, when it is
+    /// mechanically safe. Findings keep their established JSON shape: the
+    /// op is execution metadata for hosts, not a second wire format.
+    #[serde(skip)]
+    pub fix: Option<Op>,
 }
 
 impl Finding {
@@ -223,6 +250,7 @@ impl Finding {
             file: anchor.file.clone(),
             span: Some(anchor.span),
             message,
+            fix: None,
         }
     }
 }
@@ -241,6 +269,7 @@ pub fn lint(graph: &Graph) -> Vec<Finding> {
     ctx.over_cap(&mut out);
     ctx.unindexed(&mut out);
     ctx.no_projection(&mut out);
+    ctx.bare_related(&mut out);
     ctx.link_density(&mut out);
     ctx.clustering(&mut out);
     ctx.duplicate_reasons(&mut out);
@@ -440,6 +469,55 @@ impl<'a> Ctx<'a> {
                         }
                     ),
                 ));
+            }
+        }
+    }
+
+    /// The migration filter for reasonless edges. Evidence in prose keeps
+    /// the edge as an ordinary candidate finding for an author to reason;
+    /// no evidence attaches the same `related_remove` op every host uses.
+    fn bare_related(&self, out: &mut Vec<Finding>) {
+        for unit in &self.graph.units {
+            for link in &unit.related {
+                if link.why.is_some() {
+                    continue;
+                }
+                let title = self
+                    .units
+                    .get(link.id.as_str())
+                    .map(|target| target.title.as_str())
+                    .or_else(|| {
+                        self.indexes
+                            .get(link.id.as_str())
+                            .map(|target| target.title.as_str())
+                    });
+                let mentioned = mentions_name(&unit.prose, &link.id)
+                    || title.is_some_and(|title| mentions_name(&unit.prose, title));
+                let mut finding = Finding::new(
+                    Rule::BareRelated,
+                    unit.key(),
+                    &unit.anchor,
+                    if mentioned {
+                        format!(
+                            "bare `related` edge to `{}` is mentioned in the prose; author its reason",
+                            link.id
+                        )
+                    } else if !unit.related_editable {
+                        format!(
+                            "bare `related` edge to `{}` has no prose mention; its computed list cannot be autofixed",
+                            link.id
+                        )
+                    } else {
+                        format!("bare `related` edge to `{}` has no prose mention", link.id)
+                    },
+                );
+                if !mentioned && unit.related_editable {
+                    finding.fix = Some(Op::RelatedRemove {
+                        from: NodeRef::kinded(unit.kind.clone(), unit.id.clone()),
+                        to: NodeRef::new(link.id.clone()),
+                    });
+                }
+                out.push(finding);
             }
         }
     }
@@ -646,6 +724,26 @@ fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
     a.intersection(b).count() as f64 / union as f64
 }
 
+/// Case-insensitive whole-name matching. Identifiers and titles count when
+/// they stand alone in prose (including Markdown link destinations), not as
+/// a coincidental fragment such as id `op` inside "option".
+fn mentions_name(text: &str, name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    let text = text.to_lowercase();
+    let name = name.to_lowercase();
+    text.match_indices(&name).any(|(start, matched)| {
+        let before = text[..start].chars().next_back();
+        let after = text[start + matched.len()..].chars().next();
+        !before.is_some_and(name_char) && !after.is_some_and(name_char)
+    })
+}
+
+fn name_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -669,18 +767,86 @@ mod tests {
             .collect()
     }
 
-    /// The fixture as authored: a nav index with no body, and one unit no
-    /// index pins. Nothing else — a clean-ish corpus must not be noisy, or
-    /// no one reads the output.
+    /// The fixture as authored: a nav index with no body, one unit no index
+    /// pins, and one unsupported bare edge awaiting the migration autofix.
     #[test]
-    fn a_clean_fixture_reports_only_its_two_screens() {
+    fn the_fixture_reports_its_standing_findings() {
         let td = mini_wskill();
         assert_eq!(
             found(&td),
             [
                 ("unindexed".to_string(), "gamma".to_string()),
+                ("bare-related".to_string(), "alpha".to_string()),
                 ("bodyless-index".to_string(), "lang".to_string()),
             ]
+        );
+    }
+
+    /// A bare edge with prose evidence survives for an author pass; one
+    /// without evidence carries the shared structural op that removes it.
+    #[test]
+    fn bare_related_edges_are_filtered_by_target_mentions() {
+        let td = mini_wskill();
+        write(
+            td.path(),
+            "data/concepts/beta.wcl",
+            "concept beta {\n  name = \"Second Idea\"\n}\n",
+        );
+        write(
+            td.path(),
+            "data/concepts/gamma.wcl",
+            "research gamma {\n  name = \"Third Idea\"\n}\n\n\
+             concept delta {\n  name = \"Delta\"\n}\n\n\
+             concept epsilon {\n  name = \"Epsilon\"\n}\n",
+        );
+        write(
+            td.path(),
+            "data/concepts/alpha.wcl",
+            "concept alpha {\n  name = \"Alpha\"\n  related = [beta, gamma, delta, epsilon]\n\n  \
+             body {\n    p \"Read the SECOND IDEA, then use gamma; deltaRay is not the \
+             target's whole name.\"\n    code wcl { source = \"epsilon\" }\n  }\n}\n",
+        );
+        let graph = crate::Graph::open(td.path()).expect("graph");
+        let findings: Vec<Finding> = lint(&graph)
+            .into_iter()
+            .filter(|f| f.rule == Rule::BareRelated)
+            .collect();
+
+        assert_eq!(
+            findings
+                .iter()
+                .map(|f| (f.node.id.as_str(), f.message.as_str(), f.fix.is_some()))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    "alpha",
+                    "bare `related` edge to `beta` is mentioned in the prose; author its reason",
+                    false,
+                ),
+                (
+                    "alpha",
+                    "bare `related` edge to `gamma` is mentioned in the prose; author its reason",
+                    false,
+                ),
+                (
+                    "alpha",
+                    "bare `related` edge to `delta` has no prose mention",
+                    true,
+                ),
+                (
+                    "alpha",
+                    "bare `related` edge to `epsilon` has no prose mention",
+                    true,
+                ),
+            ]
+        );
+        assert_eq!(
+            findings[2].fix.as_ref().map(crate::ops::to_json),
+            Some(serde_json::json!({
+                "op": "related_remove",
+                "from": "concept:alpha",
+                "to": "delta",
+            }))
         );
     }
 

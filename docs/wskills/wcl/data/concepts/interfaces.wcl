@@ -1,24 +1,34 @@
 concept interfaces {
-  name     = "Interfaces"
-  summary  = "Structural contracts — a set of fields a type must have, satisfied automatically."
-  related  = [records, references]
+  name = "Interfaces"
+  summary = "Structural contracts — a set of fields a type must have, satisfied automatically."
+  related = [references]
   audience = :both
   body {
-    p "An `interface` declares a structural contract — a set of fields a type must have to satisfy it. Any type with the right fields satisfies it automatically, with no explicit `implements`."
+    p <<DOC
+      An `interface` declares a structural contract — a set of fields a type must have to satisfy
+      it. Any type with the right fields satisfies it automatically, with no explicit `implements`.
+    DOC
     h2 "Declaring an interface"
-    code "wcl" { source = <<'SRC'
-interface Drawable {
-  x: f64
-  y: f64
-}
+    code "wcl" {
+      source = <<DOC
+        interface Drawable {
+          x: f64
+          y: f64
+        }
 
-interface Sized extends Drawable {
-  width:  f64
-  height: f64
-}
-SRC
+        interface Sized extends Drawable {
+          width:  f64
+          height: f64
+        }
+      DOC
     }
-    callout "Structural, not nominal" { class = ["info"]  body = "A type need not be declared as a parent or implement anything explicitly. If it happens to have all the interface's fields with compatible types, it satisfies the interface." }
-    p "Interfaces have one common consumer: **reference fields** (`&T`), which accept any value that structurally satisfies the interface. See [References](concept_references)."
+    callout "Structural, not nominal" {
+      class = ["info"]
+      body = "A type need not be declared as a parent or implement anything explicitly. If it happens to have all the interface's fields with compatible types, it satisfies the interface."
+    }
+    p <<DOC
+      Interfaces have one common consumer: **reference fields** (`&T`), which accept any value that
+      structurally satisfies the interface. See [References](concept_references).
+    DOC
   }
 }

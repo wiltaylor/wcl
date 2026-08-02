@@ -1,21 +1,12 @@
 fact patterns {
-  title    = "Patterns"
-  related  = [match_expr, unions, optionals]
+  title = "Patterns"
+  related = [match_expr]
   audience = :both
   body {
     p "Patterns destructure and test values in `match`, `if let`, and guard arms."
     table {
       header = ["Pattern", "Matches"]
-      rows = [
-        ["`_`", "Anything (wildcard)"],
-        ["`name`", "Anything, binding the value to `name`"],
-        ["`name @ inner`", "Match `inner`, also bind whole as `name`"],
-        ["Literal (`42`, `\"hi\"`, `:red`)", "Equality with a literal"],
-        ["`Union::Variant {...}`", "A specific variant; `..` ignores remaining fields"],
-        ["`Union::Variant(x)`", "Typeref variant, binding payload to `x`"],
-        ["`Union::Variant`", "Unit variant"],
-        ["`pat1 | pat2`", "Either pattern matches"],
-      ]
+      rows = [["`_`", "Anything (wildcard)"], ["`name`", "Anything, binding the value to `name`"], ["`name @ inner`", "Match `inner`, also bind whole as `name`"], ["Literal (`42`, `\"hi\"`, `:red`)", "Equality with a literal"], ["`Union::Variant {...}`", "A specific variant; `..` ignores remaining fields"], ["`Union::Variant(x)`", "Typeref variant, binding payload to `x`"], ["`Union::Variant`", "Unit variant"], ["`pat1 | pat2`", "Either pattern matches"]]
     }
   }
 }

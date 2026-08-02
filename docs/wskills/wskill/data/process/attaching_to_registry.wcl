@@ -2,7 +2,7 @@ procedure attaching_to_registry {
   title = "Attaching a wskill to a registry"
   purpose = "Add a wskill to a collection so its views are discovered, built, and linked from the landing page."
   preconditions = ["A registry/collection repo (scaffold one with `wcl init wskill-registry`)."]
-  related = [creating_a_wskill, views]
+  related = [views]
   audience = :both
 
   step place {

@@ -2,62 +2,98 @@ procedure render_presentation {
   title = "Render a slide deck"
   purpose = "Turn a site into a keyboard-navigated slide deck with the `:presentation` template and a `deck` grid."
   preconditions = ["A WCL file declaring the pages that will become slides"]
-  related = [templates, template_kinds, sites]
+  related = []
   audience = :both
 
-  step opt_in { n = 1
+  step opt_in {
+    n = 1
     title = "Opt the site into the presentation template"
-    body screen { code "wcl" { source = <<'SRC'
-site talk {
-  default_template = :presentation
-  title            = "My talk"
-  theme            = :nord
-}
-SRC
-    } }
-    body steps { p "Set `default_template = :presentation` on the `site`. The whole site renders into a single `index.html` navigated with the keyboard — ← → move between sections, ↑ ↓ between the slides within one." }
-  }
-
-  step deck { n = 2
-    title = "Lay out the deck grid"
-    body screen { code "wcl" { source = <<'SRC'
-site talk {
-  default_template = :presentation
-  title            = "My talk"
-  deck {
-    section "Intro" {
-      slide title_slide
-      slide agenda
+    body screen {
+      code "wcl" {
+        source = <<DOC
+          site talk {
+            default_template = :presentation
+            title            = "My talk"
+            theme            = :nord
+          }
+        DOC
+      }
     }
-    section "Main" { slide topic }
-  }
-}
-SRC
-    } }
-    body steps { p "Declare a `deck` block on the site: each `section` is a column of the 2-D grid and each `slide` names a page belonging to this site. Each `slide` must sit on its own line." }
+    body steps {
+      p <<DOC
+        Set `default_template = :presentation` on the `site`. The whole site renders into a single
+        `index.html` navigated with the keyboard — ← → move between sections, ↑ ↓ between the slides
+        within one.
+      DOC
+    }
   }
 
-  step enrich { n = 3
+  step deck {
+    n = 2
+    title = "Lay out the deck grid"
+    body screen {
+      code "wcl" {
+        source = <<DOC
+          site talk {
+            default_template = :presentation
+            title            = "My talk"
+            deck {
+              section "Intro" {
+                slide title_slide
+                slide agenda
+              }
+              section "Main" { slide topic }
+            }
+          }
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Declare a `deck` block on the site: each `section` is a column of the 2-D grid and each
+        `slide` names a page belonging to this site. Each `slide` must sit on its own line.
+      DOC
+    }
+  }
+
+  step enrich {
+    n = 3
     title = "Add reveals and speaker notes"
-    body screen { code "wcl" { source = <<'SRC'
-page topic {
-  h2 "Key points"
-  fragment { p "Revealed on the first Space" }
-  fragment { p "…then this one" }
-  notes { p "Reminder: mention the benchmark numbers." }
-}
-SRC
-    } }
-    body steps { p "Inside a slide page, a `fragment { … }` is a step-reveal group (hidden until the presenter advances with Space) and a `notes { … }` holds speaker notes (hidden in the deck, shown in the overlay toggled with **s**)." }
+    body screen {
+      code "wcl" {
+        source = <<DOC
+          page topic {
+            h2 "Key points"
+            fragment { p "Revealed on the first Space" }
+            fragment { p "…then this one" }
+            notes { p "Reminder: mention the benchmark numbers." }
+          }
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Inside a slide page, a `fragment { … }` is a step-reveal group (hidden until the presenter
+        advances with Space) and a `notes { … }` holds speaker notes (hidden in the deck, shown in
+        the overlay toggled with **s**).
+      DOC
+    }
   }
 
-  step build { n = 4
+  step build {
+    n = 4
     title = "Build and present"
-    body screen { code "console" { source = <<'SH'
-$ wcl wdoc build talk.wcl --out out/talk
-SH
-    } }
-    body steps { p "Render with the ordinary `build` target (or iterate under `wcl wdoc serve`). Open `out/talk/index.html` and drive the deck with the arrow keys." }
+    body screen {
+      code "console" {
+        source = "$ wcl wdoc build talk.wcl --out out/talk\n"
+      }
+    }
+    body steps {
+      p <<DOC
+        Render with the ordinary `build` target (or iterate under `wcl wdoc serve`). Open
+        `out/talk/index.html` and drive the deck with the arrow keys.
+      DOC
+    }
   }
 
   opt_in -> deck

@@ -1,26 +1,46 @@
 concept imports {
-  name     = "Imports & Modules"
-  summary  = "Pull another file's declarations into the document — disk and system forms."
-  related  = [namespaces, identifiers]
+  name = "Imports & Modules"
+  summary = "Pull another file's declarations into the document — disk and system forms."
+  related = [namespaces]
   audience = :both
   body {
-    p "An `import` pulls another file's declarations into the current document. There are two forms, distinguished by how the path is written."
+    p <<DOC
+      An `import` pulls another file's declarations into the current document. There are two forms,
+      distinguished by how the path is written.
+    DOC
     h2 "Disk imports"
     p "A quoted path imports a file from disk, resolved relative to the importing file."
-    code "wcl" { source = <<'SRC'
-import "./pages/values.wcl"
-import "../shared/types.wcl"
-SRC
+    code "wcl" {
+      source = <<DOC
+        import "./pages/values.wcl"
+        import "../shared/types.wcl"
+      DOC
     }
     h2 "System imports"
-    p "An angle-bracket path imports a **system** module — a file provided by the host program through a registry, not the filesystem. wdoc's standard library is served this way: a single `import <wdoc.wcl>` pulls in the whole stdlib."
-    code "wcl" { source = <<'SRC'
-import <wdoc.wcl>
-SRC
+    p <<DOC
+      An angle-bracket path imports a **system** module — a file provided by the host program
+      through a registry, not the filesystem. wdoc's standard library is served this way: a single
+      `import <wdoc.wcl>` pulls in the whole stdlib.
+    DOC
+    code "wcl" {
+      source = "import <wdoc.wcl>\n"
     }
-    callout "Import the wdoc stdlib once, at the root" { class = ["info"]  body = "Start the document you pass to wcl wdoc build with import <wdoc.wcl>, and the stdlib is in scope there and in every page file it imports. Imported page files do not repeat the line." }
+    callout "Import the wdoc stdlib once, at the root" {
+      class = ["info"]
+      body = "Start the document you pass to wcl wdoc build with import <wdoc.wcl>, and the stdlib is in scope there and in every page file it imports. Imported page files do not repeat the line."
+    }
     h2 "How imports compose"
-    p "Top-level imports are eager; an `import` inside a block is lazy. Imported declarations participate fully in the importer — in structural validation and name resolution — so a type or `let` declared in an imported file is usable as if local. An imported file keeps its own declaring `namespace`. See [Namespaces](concept_namespaces)."
-    p "An `import` inside a block also splices the imported file's top-level block instances into the enclosing block as children — exactly as if written inline — so you can factor a nested subtree into its own file. The spliced instances are validated against the parent's `@child` / `@children` slots like any literal child."
+    p <<DOC
+      Top-level imports are eager; an `import` inside a block is lazy. Imported declarations
+      participate fully in the importer — in structural validation and name resolution — so a type
+      or `let` declared in an imported file is usable as if local. An imported file keeps its own
+      declaring `namespace`. See [Namespaces](concept_namespaces).
+    DOC
+    p <<DOC
+      An `import` inside a block also splices the imported file's top-level block instances into the
+      enclosing block as children — exactly as if written inline — so you can factor a nested
+      subtree into its own file. The spliced instances are validated against the parent's `@child` /
+      `@children` slots like any literal child.
+    DOC
   }
 }

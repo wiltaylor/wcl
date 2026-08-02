@@ -1,35 +1,40 @@
 concept symbols {
-  name     = "Symbols"
-  summary  = "Identifier-like :name values for tags and enum-like choices, plus symbol_set vocabularies."
-  related  = [unions, identifiers, symbol_set]
+  name = "Symbols"
+  summary = "Identifier-like :name values for tags and enum-like choices, plus symbol_set vocabularies."
+  related = [symbol_set]
   audience = :both
   body {
-    p <<PROSE
-A **symbol** is an identifier-like value written `:name` — no space between the
-colon and the name. Symbols are used for tags, enum-like choices, and any time you
-want a typed name rather than a string.
-PROSE
-    code "wcl" { source = <<'SRC'
-shade  = :amber
-accent = :cyan
-edge   = :uses
-SRC
+    p <<DOC
+      A **symbol** is an identifier-like value written `:name` — no space between the
+      colon and the name. Symbols are used for tags, enum-like choices, and any time you
+      want a typed name rather than a string.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        shade  = :amber
+        accent = :cyan
+        edge   = :uses
+      DOC
     }
     h2 "The symbol type"
-    p "A free-form field accepting any symbol has type `symbol`. There is no validation on which symbols may appear — anything that lexes as `:name` is valid."
-    code "wcl" { source = <<'SRC'
-type Tag {
-  name: utf8
-  kind: symbol
-}
+    p <<DOC
+      A free-form field accepting any symbol has type `symbol`. There is no validation on which
+      symbols may appear — anything that lexes as `:name` is valid.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        type Tag {
+          name: utf8
+          kind: symbol
+        }
 
-@document
-type Doc {
-  t: Tag
-}
+        @document
+        type Doc {
+          t: Tag
+        }
 
-t = { name: "release", kind: :stable }
-SRC
+        t = { name: "release", kind: :stable }
+      DOC
     }
   }
 }

@@ -1,23 +1,23 @@
 import <wdoc.wcl>
 
 concept wskill_concept {
-  name     = "What is it?"
-  summary  = "A wskill is a self-contained, shareable unit of knowledge on one topic — one data model projected into up to four views."
+  name = "What is it?"
+  summary = "A wskill is a self-contained, shareable unit of knowledge on one topic — one data model projected into up to four views."
   audience = :both
-  related  = [why_use_wskill, datapresentation, views, decomposing_information]
+  related = [views]
   body {
-    p <<BODY
+    p <<DOC
       A wskill is one folder that captures everything about a specific topic — the ideas, the
       concrete things, the values, the tasks — as a single structured data model. It is
       self-contained: someone can pick the folder up and learn the topic from it, or follow its
       processes to get work done, without anything outside it.
-    BODY
+    DOC
 
-    p <<BODY
+    p <<DOC
       The same data projects into up to [four views](concept_views): a reference **book** for
       humans, an **AI skill** an agent like Claude Code loads to do the topic's work for you,
       and optionally an overview **presentation deck** and a hands-on **training book**.
       Capture once, render everywhere — nothing is hand-duplicated between views.
-    BODY
+    DOC
   }
 }

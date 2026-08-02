@@ -2,7 +2,7 @@ concept views {
   name = "Different Views"
   summary = "One data model, four projections: the book and the AI skill are standard; the presentation deck and the training book are optional."
   audience = :both
-  related = [datapresentation, presentation_view, training_view, skill_anatomy]
+  related = []
   body {
     p <<DOC
       A wskill's data renders into up to four *views*, each declared as an `artifact` block in

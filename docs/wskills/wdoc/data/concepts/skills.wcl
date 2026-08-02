@@ -1,103 +1,131 @@
 import <wdoc.wcl>
 
 concept skills {
-  name     = "Skill folders"
-  summary  = "The `:ai_skill` target: the `skill { }` block, folder layout, front matter, and `file` blocks."
-  related  = [sites, templates, markdown, includes]
+  name = "Skill folders"
+  summary = "The `:ai_skill` target: the `skill { }` block, folder layout, front matter, and `file` blocks."
+  related = [sites, markdown]
   audience = :both
   body {
-    p <<PROSE
-`wcl wdoc skill <file> --out <dir>` renders a document to an agent / Claude **skill folder** — a `SKILL.md` plus the conventional `references/`, `scripts/` and `assets/` subfolders. It's a Markdown-backed target (the [Markdown output](concept_markdown) mapping applies), but the *folder layout* and `SKILL.md` front matter follow the skill convention.
-PROSE
-    code "console" { source = <<'SRC'
-wcl wdoc skill docs/my-skill.wcl --out ./my-skill
-SRC
+    p <<DOC
+      `wcl wdoc skill <file> --out <dir>` renders a document to an agent / Claude **skill folder** —
+      a `SKILL.md` plus the conventional `references/`, `scripts/` and `assets/` subfolders. It's a
+      Markdown-backed target (the [Markdown output](concept_markdown) mapping applies), but the
+      *folder layout* and `SKILL.md` front matter follow the skill convention.
+    DOC
+    code "console" {
+      source = "wcl wdoc skill docs/my-skill.wcl --out ./my-skill\n"
     }
 
     h2 "Opting in"
-    p <<PROSE
-A `site` becomes a skill by setting `default_template = :ai_skill` and declaring a `skill { }` block. The `skill` block supplies the required front-matter `name` and `description` (and an optional `license`) that the backend writes onto `SKILL.md`.
-PROSE
-    code "wcl" { source = <<'SRC'
-import <wdoc.wcl>
+    p <<DOC
+      A `site` becomes a skill by setting `default_template = :ai_skill` and declaring a `skill { }`
+      block. The `skill` block supplies the required front-matter `name` and `description` (and an
+      optional `license`) that the backend writes onto `SKILL.md`.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        import <wdoc.wcl>
 
-site my_skill {
-  default_template = :ai_skill
-  skill {
-    name        = "demo-skill"
-    description = "What this skill does and when to use it."
-    license     = "MIT"
-  }
-}
+        site my_skill {
+          default_template = :ai_skill
+          skill {
+            name        = "demo-skill"
+            description = "What this skill does and when to use it."
+            license     = "MIT"
+          }
+        }
 
-page overview { start = true
-  h1 "Demo Skill"
-  p "Instructions… see the [usage guide](usage)."
-}
+        page overview { start = true
+          h1 "Demo Skill"
+          p "Instructions… see the [usage guide](usage)."
+        }
 
-page usage {
-  h1 "Usage"
-  p "Details. Back to the [overview](overview)."
-}
-SRC
+        page usage {
+          h1 "Usage"
+          p "Details. Back to the [overview](overview)."
+        }
+      DOC
     }
 
     h2 "Folder layout"
-    p <<PROSE
-The site's `start` page (`start = true`) becomes `SKILL.md` at the folder root; every other page is written under `references/<name>.md`. Internal links between pages resolve into that layout automatically — a link to the start page points at `SKILL.md`, a link to any other page at `references/<name>.md`.
-PROSE
-    code "text" { source = <<'SRC'
-my-skill/
-  SKILL.md            # the start page
-  references/
-    usage.md          # every other page
-  scripts/            # files declared with dir = "scripts"
-  assets/             # files declared with dir = "assets"
-  _wdoc/              # generated diagram / terminal SVGs
-SRC
+    p <<DOC
+      The site's `start` page (`start = true`) becomes `SKILL.md` at the folder root; every other
+      page is written under `references/<name>.md`. Internal links between pages resolve into that
+      layout automatically — a link to the start page points at `SKILL.md`, a link to any other page
+      at `references/<name>.md`.
+    DOC
+    code "text" {
+      source = <<DOC
+        my-skill/
+          SKILL.md            # the start page
+          references/
+            usage.md          # every other page
+          scripts/            # files declared with dir = "scripts"
+          assets/             # files declared with dir = "assets"
+          _wdoc/              # generated diagram / terminal SVGs
+      DOC
     }
 
     h2 "Front matter"
-    p <<PROSE
-`SKILL.md`'s YAML header is built from the `skill { }` block. To add extra keys (for example `allowed-tools`), author a `frontmatter` block on the start page — its keys are merged after the canonical `name` / `description` / `license` (which the `skill` block owns).
-PROSE
+    p <<DOC
+      `SKILL.md`'s YAML header is built from the `skill { }` block. To add extra keys (for example
+      `allowed-tools`), author a `frontmatter` block on the start page — its keys are merged after
+      the canonical `name` / `description` / `license` (which the `skill` block owns).
+    DOC
 
     h2 "Shipping files"
-    p <<PROSE
-A `file` block copies an arbitrary file from beside the document into the output and keeps its basename, so the path is stable and hand-linkable. `dir` names the target subfolder (`scripts`, `assets`, …). Set `as` to render a link to it; omit `as` to ship it silently and reference it by its path yourself.
-PROSE
-    code "wcl" { source = <<'SRC'
-page overview { start = true
-  h1 "Demo Skill"
-  // Renders a link: [run setup](scripts/setup.sh)
-  file "src/setup.sh" { dir = "scripts"  as = "run setup" }
-  // Shipped silently to assets/logo.svg
-  file "src/logo.svg" { dir = "assets" }
-}
-SRC
+    p <<DOC
+      A `file` block copies an arbitrary file from beside the document into the output and keeps its
+      basename, so the path is stable and hand-linkable. `dir` names the target subfolder
+      (`scripts`, `assets`, …). Set `as` to render a link to it; omit `as` to ship it silently and
+      reference it by its path yourself.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        page overview { start = true
+          h1 "Demo Skill"
+          // Renders a link: [run setup](scripts/setup.sh)
+          file "src/setup.sh" { dir = "scripts"  as = "run setup" }
+          // Shipped silently to assets/logo.svg
+          file "src/logo.svg" { dir = "assets" }
+        }
+      DOC
     }
-    callout "Not an HTML template" { class = ["note"]  body = "`:ai_skill` is a Markdown-only target. Building a skill site with `wcl wdoc build` (HTML) fails with a message pointing you at `wcl wdoc skill`. The `file` block works on the HTML, Markdown and skill targets — a `dir`-less `file` lands in the `_wdoc/` asset folder on the first two. It is **not** implemented for PDF: a PDF is one self-contained document with no output folder beside it to copy into, so a `file` on a page being built to PDF is refused until you waive it with `@except(backends=[:pdf])`." }
+    callout "Not an HTML template" {
+      class = ["note"]
+      body = "`:ai_skill` is a Markdown-only target. Building a skill site with `wcl wdoc build` (HTML) fails with a message pointing you at `wcl wdoc skill`. The `file` block works on the HTML, Markdown and skill targets — a `dir`-less `file` lands in the `_wdoc/` asset folder on the first two. It is **not** implemented for PDF: a PDF is one self-contained document with no output folder beside it to copy into, so a `file` on a page being built to PDF is refused until you waive it with `@except(backends=[:pdf])`."
+    }
 
     h2 "Sharing pages with a website"
-    p <<PROSE
-A `:ai_skill` site can live in the same document as a `:webpage` or `:book` site. `wcl wdoc build` / `pdf` / `markdown` skip the skill site, and `wcl wdoc skill` builds only it — so one source feeds both a hosted site and a skill. Because a page joins a site through its `sites = [ … ]` list, the *same* reference page can belong to both.
-PROSE
-    code "wcl" { source = <<'SRC'
-site handbook  { default_template = :book }
-site assistant { default_template = :ai_skill
-  skill { name = "handbook"  description = "Project handbook for agents." }
-}
+    p <<DOC
+      A `:ai_skill` site can live in the same document as a `:webpage` or `:book` site.
+      `wcl wdoc build` / `pdf` / `markdown` skip the skill site, and `wcl wdoc skill` builds only it
+      — so one source feeds both a hosted site and a skill. Because a page joins a site through its
+      `sites = [ … ]` list, the *same* reference page can belong to both.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        site handbook  { default_template = :book }
+        site assistant { default_template = :ai_skill
+          skill { name = "handbook"  description = "Project handbook for agents." }
+        }
 
-// Shared: appears in the book *and* the skill's references/.
-page deploys { sites = [:handbook, :assistant]
-  h1 "Deploys"
-  p "…"
-}
-SRC
+        // Shared: appears in the book *and* the skill's references/.
+        page deploys { sites = [:handbook, :assistant]
+          h1 "Deploys"
+          p "…"
+        }
+      DOC
     }
 
     h2 "Block reference"
-    block_doc { type = SkillConfig  description = "A `skill` block: the `:ai_skill` front-matter — the required `name` and `description` (plus optional `license`) written onto `SKILL.md`." }
-    block_doc { type = FileObj  description = "A `file` block: copies a file from beside the document into the output (keeping its basename), into the `dir` subfolder, optionally rendering a link via `as`." }
+    block_doc {
+      type = SkillConfig
+      description = "A `skill` block: the `:ai_skill` front-matter — the required `name` and `description` (plus optional `license`) written onto `SKILL.md`."
+    }
+    block_doc {
+      type = FileObj
+      description = "A `file` block: copies a file from beside the document into the output (keeping its basename), into the `dir` subfolder, optionally rendering a link via `as`."
+    }
   }
 }

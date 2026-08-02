@@ -1,61 +1,118 @@
 procedure updating_a_wskill {
-  title   = "Updating a wskill when its source changes"
+  title = "Updating a wskill when its source changes"
   purpose = "Keep a wskill faithful to its upstream — check each source for drift, and update and re-pin the units only when the source has actually moved."
   preconditions = ["The wskill declares its `source`s and a pinned `topic.version`"]
-  related = [wskill_concept, selfcontained, datapresentation, creating_a_wskill]
+  related = []
   audience = :both
 
-  step start { n = 1  shape = :terminator
+  step start {
+    n = 1
+    shape = :terminator
     title = "Start a review"
-    body steps { p "Begin when you are notified the upstream moved, or on a regular cadence. The goal is to detect drift between the live source and what the wskill already records — not to re-read everything from scratch." }
+    body steps {
+      p <<DOC
+        Begin when you are notified the upstream moved, or on a regular cadence. The goal is to
+        detect drift between the live source and what the wskill already records — not to re-read
+        everything from scratch.
+      DOC
+    }
   }
 
-  step compare { n = 2
+  step compare {
+    n = 2
     title = "Compare against each source"
-    body screen { code "wcl" { source = <<'WCL'
-source upstream {
-  kind             = "docs"
-  locator          = "https://example.com/manual"
-  covers           = "the reference this wskill summarises"
-  last_checked     = "2026-06-24"
-  reflects_version = "4.2"
-}
-WCL
-    } }
-    body steps { p "For each `source` block, compare the live upstream against the `reflects_version` it carried when last checked, and refresh `last_checked` to today. The sources are update-workflow metadata, not topic content — they exist precisely so a review can tell at a glance what each unit was last reconciled against." }
+    body screen {
+      code "wcl" {
+        source = <<DOC
+          source upstream {
+            kind             = "docs"
+            locator          = "https://example.com/manual"
+            covers           = "the reference this wskill summarises"
+            last_checked     = "2026-06-24"
+            reflects_version = "4.2"
+          }
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        For each `source` block, compare the live upstream against the `reflects_version` it carried
+        when last checked, and refresh `last_checked` to today. The sources are update-workflow
+        metadata, not topic content — they exist precisely so a review can tell at a glance what
+        each unit was last reconciled against.
+      DOC
+    }
   }
 
-  step changed { n = 3  shape = :decision
+  step changed {
+    n = 3
+    shape = :decision
     title = "Source changed?"
-    body steps { p "If the upstream still matches every source's `reflects_version`, the wskill is already faithful — take the **no** branch and stop. If anything moved, take the **yes** branch to bring the affected units back in line." }
+    body steps {
+      p <<DOC
+        If the upstream still matches every source's `reflects_version`, the wskill is already
+        faithful — take the **no** branch and stop. If anything moved, take the **yes** branch to
+        bring the affected units back in line.
+      DOC
+    }
   }
 
-  step update { n = 4
+  step update {
+    n = 4
     title = "Update the affected units"
-    body steps { p "Fold each change into the model: edit the `concept`, `entity`, `fact` or `procedure` units the change touches, keeping each atomic and re-checking its `related` links. Only touch the units the source actually moved. Where a change raises something only the topic owner can settle (a policy choice, an ambiguity the source doesn't resolve), don't guess — capture it as a `question` block; the owner answers later via `wcl answer wskill.wcl`, and the next sweep folds each `:answered` question into real units and deletes the block. Sweep the `research` blocks too: a finding whose subject moved past its `applies_to` gets re-verified (update `checked`) or flipped to `status = :stale`; a finding replaced by new research becomes `:superseded` with `superseded_by` naming the replacement." }
+    body steps {
+      p <<DOC
+        Fold each change into the model: edit the `concept`, `entity`, `fact` or `procedure` units
+        the change touches, keeping each atomic and re-checking its `related` links. Only touch the
+        units the source actually moved. Where a change raises something only the topic owner can
+        settle (a policy choice, an ambiguity the source doesn't resolve), don't guess — capture it
+        as a `question` block; the owner answers later via `wcl answer wskill.wcl`, and the next
+        sweep folds each `:answered` question into real units and deletes the block. Sweep the
+        `research` blocks too: a finding whose subject moved past its `applies_to` gets re-verified
+        (update `checked`) or flipped to `status = :stale`; a finding replaced by new research
+        becomes `:superseded` with `superseded_by` naming the replacement.
+      DOC
+    }
   }
 
-  step reverify { n = 5
+  step reverify {
+    n = 5
     title = "Re-verify and re-pin"
-    body screen { code "console" { source = <<'SH'
-$ wcl check wskill.wcl
-OK
-$ just render        # rebuild the book + skill projections
-SH
-    } }
-    body steps { p "Run `wcl check wskill.wcl` and rebuild both projections so the change renders cleanly. Then re-pin the metadata: set each touched source's `reflects_version` to the upstream you reconciled against, and bump `topic.version` so consumers can tell the wskill has moved." }
+    body screen {
+      code "console" {
+        source = <<DOC
+          $ wcl check wskill.wcl
+          OK
+          $ just render        # rebuild the book + skill projections
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Run `wcl check wskill.wcl` and rebuild both projections so the change renders cleanly. Then
+        re-pin the metadata: set each touched source's `reflects_version` to the upstream you
+        reconciled against, and bump `topic.version` so consumers can tell the wskill has moved.
+      DOC
+    }
   }
 
-  step done { n = 6  shape = :terminator
+  step done {
+    n = 6
+    shape = :terminator
     title = "Up to date"
-    body steps { p "The wskill faithfully reflects its sources again, and the version pin records which upstream it now describes." }
+    body steps {
+      p <<DOC
+        The wskill faithfully reflects its sources again, and the version pin records which upstream
+        it now describes.
+      DOC
+    }
   }
 
-  start  -> compare
+  start -> compare
   compare -> changed
-  changed -> done   :no
+  changed -> done :no
   changed -> update :yes
-  update  -> reverify
+  update -> reverify
   reverify -> done
 
   verification = "`wcl check wskill.wcl` passes, every touched `source` has a current `last_checked` / `reflects_version`, and `topic.version` reflects the upstream the wskill now describes."

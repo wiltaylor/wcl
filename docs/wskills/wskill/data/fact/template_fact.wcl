@@ -1,68 +1,73 @@
 fact template_fact {
-  title    = "Template — fact"
+  title = "Template — fact"
   audience = :both
-  related  = [fact, unit_decision_guide]
+  related = [fact]
   body {
-    p "A **fact** is a container of values: a default, a limit, a lookup table, a version matrix, an option list, a glossary. The test is that nobody argues with it — you would cite it, not explain it. A fact whose body is mostly prose is usually a concept in disguise."
+    p <<DOC
+      A **fact** is a container of values: a default, a limit, a lookup table, a version matrix, an
+      option list, a glossary. The test is that nobody argues with it — you would cite it, not
+      explain it. A fact whose body is mostly prose is usually a concept in disguise.
+    DOC
 
     h2 "Skeleton"
-    code "wcl" { source = <<'SRC'
-// data/fact/<id>.wcl — then add `import "./<id>.wcl"` to data/fact/main.wcl
-fact <id> {
-  title    = "<What the values are>"
-  audience = :both
-  related  = [<up to ~5 ids>]
+    code "wcl" {
+      source = <<DOC
+        // data/fact/<id>.wcl — then add `import "./<id>.wcl"` to data/fact/main.wcl
+        fact <id> {
+          title    = "<What the values are>"
+          audience = :both
+          related  = [<up to ~5 ids>]
 
-  body {
-    p "<One sentence of context: what these values are and when they apply.>"
+          body {
+            p "<One sentence of context: what these values are and when they apply.>"
 
-    table {
-      header = ["<Column>", "<Column>"]
-      rows = [
-        ["<value>", "<meaning>"],
-      ]
-    }
+            table {
+              header = ["<Column>", "<Column>"]
+              rows = [
+                ["<value>", "<meaning>"],
+              ]
+            }
 
-    code "<lang>" { source = <<'EXAMPLE'
-<the values in use, if a sample helps>
-EXAMPLE
-    }
-  }
-}
-SRC
+            code "<lang>" { source = <<'EXAMPLE'
+        <the values in use, if a sample helps>
+        EXAMPLE
+            }
+          }
+        }
+      DOC
     }
 
     h2 "Fields"
     table {
       header = ["Field", "What goes in it"]
-      rows = [
-        ["`title`", "Names the values, not the topic — \"Default ports\", \"Escape sequences\", \"Exit codes\""],
-        ["`related`", "The concept the values belong to, and little else"],
-        ["`body`", "Lead with one sentence of context, then the table. A fact with no table or code block is rare and probably misfiled"],
-      ]
+      rows = [["`title`", "Names the values, not the topic — \"Default ports\", \"Escape sequences\", \"Exit codes\""], ["`related`", "The concept the values belong to, and little else"], ["`body`", "Lead with one sentence of context, then the table. A fact with no table or code block is rare and probably misfiled"]]
     }
-    p "There is no `summary` field on a fact: the `title` carries it, so make the title specific enough to stand alone in an index."
+    p <<DOC
+      There is no `summary` field on a fact: the `title` carries it, so make the title specific
+      enough to stand alone in an index.
+    DOC
 
     h2 "Filled example"
-    code "wcl" { source = <<'SRC'
-fact exit_codes {
-  title    = "Exit codes"
-  audience = :both
-  related  = [validate_format]
+    code "wcl" {
+      source = <<DOC
+        fact exit_codes {
+          title    = "Exit codes"
+          audience = :both
+          related  = [validate_format]
 
-  body {
-    p "`wcl check` distinguishes the two failure modes by exit code, so a script can tell a broken file from a schema violation."
-    table {
-      header = ["Code", "Meaning"]
-      rows = [
-        ["`0`", "Valid"],
-        ["`1`", "Parse error — the file is not WCL"],
-        ["`2`", "Schema violation — the file parses but breaks its @document"],
-      ]
-    }
-  }
-}
-SRC
+          body {
+            p "`wcl check` distinguishes the two failure modes by exit code, so a script can tell a broken file from a schema violation."
+            table {
+              header = ["Code", "Meaning"]
+              rows = [
+                ["`0`", "Valid"],
+                ["`1`", "Parse error — the file is not WCL"],
+                ["`2`", "Schema violation — the file parses but breaks its @document"],
+              ]
+            }
+          }
+        }
+      DOC
     }
 
     h2 "Done when"

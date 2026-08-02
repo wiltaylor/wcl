@@ -1,14 +1,18 @@
 concept member_access {
-  name     = "Member Access"
-  summary  = "A dotted path reads a field from records, variants, and composites."
-  related  = [function_calls, fields, blocks]
+  name = "Member Access"
+  summary = "A dotted path reads a field from records, variants, and composites."
+  related = []
   audience = :both
   body {
-    p "A dotted path reads a field. Access chains through records, variant payloads, and any composite that exposes named members."
-    code "wcl" { source = <<'SRC'
-region = service.metadata.region
-deep   = config.services.web.metadata.region
-SRC
+    p <<DOC
+      A dotted path reads a field. Access chains through records, variant payloads, and any
+      composite that exposes named members.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        region = service.metadata.region
+        deep   = config.services.web.metadata.region
+      DOC
     }
   }
 }

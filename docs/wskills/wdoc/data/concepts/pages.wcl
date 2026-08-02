@@ -1,38 +1,48 @@
 import <wdoc.wcl>
 
 concept pages {
-  name     = "Pages"
-  summary  = "The `page` block: id, title, the sites it joins, and the start page."
-  related  = [overview, sites, templates]
+  name = "Pages"
+  summary = "The `page` block: id, title, the sites it joins, and the start page."
+  related = [sites]
   audience = :both
   body {
-    p <<PROSE
-A `page` block declares one rendered HTML page. Each page joins one or more sites (its `sites` field) and holds the content blocks that make up its body. A page's `title` sets its heading-bar / navigation label, and `start = true` marks the document entry page.
-PROSE
+    p <<DOC
+      A `page` block declares one rendered HTML page. Each page joins one or more sites (its `sites`
+      field) and holds the content blocks that make up its body. A page's `title` sets its
+      heading-bar / navigation label, and `start = true` marks the document entry page.
+    DOC
 
     h2 "A page"
-    code "wcl" { source = <<'SRC'
-import <wdoc.wcl>
+    code "wcl" {
+      source = <<DOC
+        import <wdoc.wcl>
 
-page index { sites = [:mysite]  start = true
-  h1 "My project"
-  p "A short intro."
-}
-SRC
+        page index { sites = [:mysite]  start = true
+          h1 "My project"
+          p "A short intro."
+        }
+      DOC
     }
 
-    callout "Per-site page names" { class = ["note"]  body = "Page names are unique per site, so two different sites can each have a page called `index`. Once a document declares more than one site, every page must name its `sites` — a page carrying none is a build error, and a shared page says so with `sites = [:docs, :blog]`. A single-site document needs no `sites` field anywhere." }
+    callout "Per-site page names" {
+      class = ["note"]
+      body = "Page names are unique per site, so two different sites can each have a page called `index`. Once a document declares more than one site, every page must name its `sites` — a page carrying none is a build error, and a shared page says so with `sites = [:docs, :blog]`. A single-site document needs no `sites` field anywhere."
+    }
 
     h2 "Cross-page links"
-    p <<PROSE
-Inside any `p` or `span`, write a markdown-style link where the URL is a bare page name for an in-site link, or `site_name:page_name` for a cross-site link. Links to unknown pages are build errors, so renaming a page can't silently break navigation.
-PROSE
-    code "wcl" { source = <<'SRC'
-p "See [the about page](about) or jump to [the docs](docs:index)."
-SRC
+    p <<DOC
+      Inside any `p` or `span`, write a markdown-style link where the URL is a bare page name for an
+      in-site link, or `site_name:page_name` for a cross-site link. Links to unknown pages are build
+      errors, so renaming a page can't silently break navigation.
+    DOC
+    code "wcl" {
+      source = "p \"See [the about page](about) or jump to [the docs](docs:index).\"\n"
     }
 
     h2 "Block reference"
-    block_doc { type = Page  description = "A `page` block: one rendered page — its id, title, the sites it joins, the start-page flag, and the content blocks that make up its body." }
+    block_doc {
+      type = Page
+      description = "A `page` block: one rendered page — its id, title, the sites it joins, the start-page flag, and the content blocks that make up its body."
+    }
   }
 }

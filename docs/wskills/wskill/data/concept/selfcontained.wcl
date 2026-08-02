@@ -1,15 +1,15 @@
 concept selfcontained {
-  name     = "Self-Contained Content"
-  summary  = "Capture the information itself; never defer to an external source for it. Attribution citations are fine; the only learning pointers are cross-references."
+  name = "Self-Contained Content"
+  summary = "Capture the information itself; never defer to an external source for it. Attribution citations are fine; the only learning pointers are cross-references."
   audience = :both
-  related  = [datapresentation]
+  related = []
   body {
-    p <<BODY
+    p <<DOC
       A wskill must stand on its own: capture the substance here rather than deferring the
       reader to an outside source, which can't be projected or kept current (the validator
       flags the common deferral phrasings). Attribution for credit ("per RFC 9110") is fine,
       and pointers to further learning are cross-reference blocks to other wskills — never
       bare URLs in prose.
-    BODY
+    DOC
   }
 }

@@ -5,7 +5,7 @@
 fact unit_decision_guide {
   title = "Which unit kind? — the decision guide"
   audience = :both
-  related = [concept, entity, fact, process, capturing_research]
+  related = [concept, entity, fact, process]
   body {
     p <<DOC
       File every atomic note as the kind it *is* — not the kind that feels convenient. The most

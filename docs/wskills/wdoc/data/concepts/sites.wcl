@@ -1,33 +1,48 @@
 import <wdoc.wcl>
 
 concept sites {
-  name     = "Sites"
-  summary  = "The `site` block: one output target — template, title, theme, multi-site routing, and full-text search."
-  related  = [overview, pages, templates, styling]
+  name = "Sites"
+  summary = "The `site` block: one output target — template, title, theme, multi-site routing, and full-text search."
+  related = [pages, templates]
   audience = :both
   body {
-    p <<PROSE
-A `site` block configures one output site — its template, title, theme, and navigation. A document can declare several sites; each page joins one or more via its `sites` field, which is **required** once there is more than one site (a page carrying none is a build error). A single-site document needs no `sites` field anywhere.
-PROSE
-    code "wcl" { source = <<'SRC'
-site marketing {
-  default_template = :webpage
-  title            = "My project"
-  root             = true
-  theme            = :nord
-  theme_toggle     = true
-}
-SRC
+    p <<DOC
+      A `site` block configures one output site — its template, title, theme, and navigation. A
+      document can declare several sites; each page joins one or more via its `sites` field, which
+      is **required** once there is more than one site (a page carrying none is a build error). A
+      single-site document needs no `sites` field anywhere.
+    DOC
+    code "wcl" {
+      source = <<DOC
+        site marketing {
+          default_template = :webpage
+          title            = "My project"
+          root             = true
+          theme            = :nord
+          theme_toggle     = true
+        }
+      DOC
     }
 
     h2 "Search"
-    p <<PROSE
-Set `search = true` on a site to add client-side full-text search. The build writes a per-page text index to `_wdoc/search-index.json` and the `book` and `webpage` templates render a search box — in the sidebar and the nav respectively.
-PROSE
-    callout "Served, not opened" { class = ["note"]  body = "The widget fetches the index over HTTP, so search works when the site is hosted (or under `wcl wdoc serve`), not when a page is opened directly from disk." }
+    p <<DOC
+      Set `search = true` on a site to add client-side full-text search. The build writes a per-page
+      text index to `_wdoc/search-index.json` and the `book` and `webpage` templates render a search
+      box — in the sidebar and the nav respectively.
+    DOC
+    callout "Served, not opened" {
+      class = ["note"]
+      body = "The widget fetches the index over HTTP, so search works when the site is hosted (or under `wcl wdoc serve`), not when a page is opened directly from disk."
+    }
 
     h2 "Block reference"
-    block_doc { type = Site  description = "The `@document` root: the set of tags legal at the top level of a wdoc document — pages, sites, includes, templates, classes, and more." }
-    block_doc { type = SiteConfig  description = "A `site` block configuring one output target — its template, title, theme, navigation, search, and multi-site routing." }
+    block_doc {
+      type = Site
+      description = "The `@document` root: the set of tags legal at the top level of a wdoc document — pages, sites, includes, templates, classes, and more."
+    }
+    block_doc {
+      type = SiteConfig
+      description = "A `site` block configuring one output target — its template, title, theme, navigation, search, and multi-site routing."
+    }
   }
 }

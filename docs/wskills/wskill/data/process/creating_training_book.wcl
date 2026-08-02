@@ -1,72 +1,113 @@
 procedure creating_training_book {
-  title   = "Creating the training view"
+  title = "Creating the training view"
   purpose = "Ship the optional interactive course: declare the artifact, design the sections, author material, exercises and checks, render."
   preconditions = ["The reference content exists — lessons teach toward the book, they don't replace it."]
-  related = [training_view, views, adding_content, process]
+  related = [training_view]
   audience = :both
 
-  step enable { n = 1
+  step enable {
+    n = 1
     title = "Declare the artifact"
-    body screen { code "wcl" { source = <<'WCL'
-// wskill.wcl — uncomment (or add) the artifact line
-artifact training { kind = :training  entry = "wdoc/training/main.wcl"  output = "out/training" }
-// and make sure the data import is active:
-import "./data/training/main.wcl"
-WCL
-    } }
-    body steps { p "A scaffold created with the training answer set to `yes` already has everything wired. Enabling later: uncomment the artifact and data import, and copy `wdoc/training/main.wcl` + a starter `data/training/main.wcl` from a fresh scaffold (`wcl init wskill /tmp/t --defaults -D include_training=yes`)." }
+    body screen {
+      code "wcl" {
+        source = <<DOC
+          // wskill.wcl — uncomment (or add) the artifact line
+          artifact training { kind = :training  entry = "wdoc/training/main.wcl"  output = "out/training" }
+          // and make sure the data import is active:
+          import "./data/training/main.wcl"
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        A scaffold created with the training answer set to `yes` already has everything wired.
+        Enabling later: uncomment the artifact and data import, and copy `wdoc/training/main.wcl` +
+        a starter `data/training/main.wcl` from a fresh scaffold
+        (`wcl init wskill /tmp/t --defaults -D include_training=yes`).
+      DOC
+    }
   }
 
-  step design { n = 2
+  step design {
+    n = 2
     title = "Design the course"
-    body steps { p "Sequence the sections before writing any: what can the learner DO after each one (`objectives`), and what must come first (`prerequisites`)? Group into `module`s when the course has parts. Each section should teach a small cluster of reference units — note their ids for `related`, which the course renders as links back into the book." }
+    body steps {
+      p <<DOC
+        Sequence the sections before writing any: what can the learner DO after each one
+        (`objectives`), and what must come first (`prerequisites`)? Group into `module`s when the
+        course has parts. Each section should teach a small cluster of reference units — note their
+        ids for `related`, which the course renders as links back into the book.
+      DOC
+    }
   }
 
-  step author { n = 3
+  step author {
+    n = 3
     title = "Author material, exercises, and checks"
-    body screen { code "wcl" { source = <<'WCL'
-// data/training/main.wcl
-lesson getting_started {
-  n          = 1
-  title      = "Getting started"
-  objectives = ["First capability the learner gains"]
-  related    = [<unit_ids>]           // links back into the reference book
-  body { p "The lesson material — any wdoc blocks." }
-  exercise try_it {
-    title    = "Try it"
-    task     = "What to do, imperatively."
-    code     = "echo hello"
-    code_lang = "bash"
-    expected = "How the learner knows it worked."
-    hint     = "A nudge for when they get stuck."
-  }
-  check why_it_matters {                // multiple choice: graded in the page
-    prompt = "Why does this step come first?"
-    choice right { label = "The real reason"  correct = true  note = "Why that is right." }
-    choice wrong { label = "A plausible trap"  note = "Why that is wrong." }
-    explanation = "The point to take away, shown once answered."
-  }
-  check explain_it {                    // free text: graded against the rubric
-    prompt = "Explain the idea in your own words."
-    kind   = :text
-    rubric = "What a good answer covers — this is the grader's brief."
-  }
-}
-WCL
-    } }
-    body steps { p "The lesson `body` is the material: any wdoc blocks, so prose, `code`, `image` and `video` all work. Follow it with `exercise`s carrying an `expected` result, then `check`s — a multiple-choice check grades in the page, a `:text` check is graded against its `rubric`. Sections order by `n` within their module (or the course)." }
+    body screen {
+      code "wcl" {
+        source = <<DOC
+          // data/training/main.wcl
+          lesson getting_started {
+            n          = 1
+            title      = "Getting started"
+            objectives = ["First capability the learner gains"]
+            related    = [<unit_ids>]           // links back into the reference book
+            body { p "The lesson material — any wdoc blocks." }
+            exercise try_it {
+              title    = "Try it"
+              task     = "What to do, imperatively."
+              code     = "echo hello"
+              code_lang = "bash"
+              expected = "How the learner knows it worked."
+              hint     = "A nudge for when they get stuck."
+            }
+            check why_it_matters {                // multiple choice: graded in the page
+              prompt = "Why does this step come first?"
+              choice right { label = "The real reason"  correct = true  note = "Why that is right." }
+              choice wrong { label = "A plausible trap"  note = "Why that is wrong." }
+              explanation = "The point to take away, shown once answered."
+            }
+            check explain_it {                    // free text: graded against the rubric
+              prompt = "Explain the idea in your own words."
+              kind   = :text
+              rubric = "What a good answer covers — this is the grader's brief."
+            }
+          }
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        The lesson `body` is the material: any wdoc blocks, so prose, `code`, `image` and `video`
+        all work. Follow it with `exercise`s carrying an `expected` result, then `check`s — a
+        multiple-choice check grades in the page, a `:text` check is graded against its `rubric`.
+        Sections order by `n` within their module (or the course).
+      DOC
+    }
   }
 
-  step render { n = 4
+  step render {
+    n = 4
     title = "Render and walk it"
-    body screen { code "console" { source = <<'SH'
-$ just training-build          # → out/training/ (works with no server)
-$ wcl wdoc serve wdoc/training/main.wcl   # …plus answer capture and grading
-$ wcl wdoc training . --pending           # what is waiting on a grader
-$ wcl wdoc training . grade <id> "Feedback for the learner."
-SH
-    } }
-    body steps { p "Walk the built course as a learner would: do every exercise, then answer every check. An exercise you can't verify needs a better `expected`; a check whose distractors are obviously wrong teaches nothing; a `:text` rubric that doesn't say what a good answer contains can't be graded consistently. Serve the course to exercise the grading loop end to end." }
+    body screen {
+      code "console" {
+        source = <<DOC
+          $ just training-build          # → out/training/ (works with no server)
+          $ wcl wdoc serve wdoc/training/main.wcl   # …plus answer capture and grading
+          $ wcl wdoc training . --pending           # what is waiting on a grader
+          $ wcl wdoc training . grade <id> "Feedback for the learner."
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Walk the built course as a learner would: do every exercise, then answer every check. An
+        exercise you can't verify needs a better `expected`; a check whose distractors are obviously
+        wrong teaches nothing; a `:text` rubric that doesn't say what a good answer contains can't
+        be graded consistently. Serve the course to exercise the grading loop end to end.
+      DOC
+    }
   }
 
   enable -> design

@@ -474,11 +474,15 @@ pub fn declared_related(block: &ast::Block) -> Option<Vec<String>> {
     // silently rewritten without its reasons.
     elements
         .iter()
-        .map(|e| match e {
-            Expr::Identifier(s, _) | Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
-            _ => None,
-        })
+        .map(|e| bare_related_id(e).map(str::to_owned))
         .collect()
+}
+
+fn bare_related_id(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::Identifier(id, _) | Expr::Utf8(id) | Expr::Ascii(id) => Some(id),
+        _ => None,
+    }
 }
 
 /// Rewrite a block's `related` field to exactly `ids`.
@@ -538,21 +542,53 @@ impl Wording {
 /// Add or remove one id in a block's `related` list — the single rewrite,
 /// which every op that touches the field goes through.
 fn rewrite_related(block: &mut ast::Block, id: &str, add: bool, words: Wording) -> Result<()> {
+    if !add {
+        return remove_bare_related(block, id, words);
+    }
+
     let current = declared_related(block).ok_or_else(|| words.computed())?;
-    let next: Vec<String> = if add {
-        if current.iter().any(|s| s == id) {
-            return Err(words.already(id));
-        }
-        let mut n = current;
-        n.push(id.to_string());
-        n
-    } else {
-        if !current.iter().any(|s| s == id) {
-            return Err(words.absent(id));
-        }
-        current.into_iter().filter(|s| s != id).collect()
-    };
+    if current.iter().any(|s| s == id) {
+        return Err(words.already(id));
+    }
+    let mut next = current;
+    next.push(id.to_string());
     set_related(block, &next);
+    Ok(())
+}
+
+/// Remove bare occurrences of `id` from a literal list in place. Keeping the
+/// surviving AST elements is important for mixed lists: reconstructing the
+/// list from ids would erase the `why` fields on annotated links.
+fn remove_bare_related(block: &mut ast::Block, id: &str, words: Wording) -> Result<()> {
+    let Some(expr) = block.items.iter_mut().find_map(|item| match item {
+        Item::Field(field) if field.name == "related" => Some(&mut field.expr),
+        _ => None,
+    }) else {
+        return Err(words.absent(id));
+    };
+    let Expr::ListLit {
+        elements,
+        elem_trivia,
+        ..
+    } = expr
+    else {
+        return Err(words.computed());
+    };
+
+    let indexes: Vec<usize> = elements
+        .iter()
+        .enumerate()
+        .filter_map(|(i, element)| (bare_related_id(element) == Some(id)).then_some(i))
+        .collect();
+    if indexes.is_empty() {
+        return Err(words.absent(id));
+    }
+    for i in indexes.into_iter().rev() {
+        elements.remove(i);
+        if i < elem_trivia.len() {
+            elem_trivia.remove(i);
+        }
+    }
     Ok(())
 }
 
@@ -1714,10 +1750,10 @@ mod tests {
     }
 
     /// An annotated link (`{id, why}` — the `Link` form the model already
-    /// reads) must not be rewritten: `set_related` writes bare ids, so a
-    /// rewrite would drop the author's reasons. The refusal is the
-    /// computed-list one, because it is the same rule — "I can read this, I
-    /// must not write it".
+    /// reads) prevents whole-list rewrites such as adding a pin: that would
+    /// drop the author's reasons. The refusal is the computed-list one,
+    /// because it is the same rule — "I can read this, I must not replace
+    /// it".
     #[test]
     fn refuses_to_rewrite_an_annotated_related_list() {
         let td = mini_wskill();
@@ -1730,14 +1766,42 @@ mod tests {
         );
         let e = run(
             root,
-            Op::UnpinUnit {
+            Op::PinUnit {
                 index: NodeRef::new("lang"),
-                unit: NodeRef::new("beta"),
+                unit: NodeRef::new("gamma"),
             },
         )
         .unwrap_err();
         assert!(e.to_string().contains("computed"), "{e}");
         assert!(read(root, "data/indexes.wcl").contains("why:"), "untouched");
+    }
+
+    #[test]
+    fn removes_a_bare_link_without_dropping_annotated_siblings() {
+        let td = mini_wskill();
+        let root = td.path();
+        write(
+            root,
+            "data/concepts/alpha.wcl",
+            "concept alpha {\n  name = \"Alpha\"\n  related = [\n    { id: gamma, why: \"keep this reason\" },\n    beta,\n  ]\n}\n",
+        );
+
+        run(
+            root,
+            Op::RelatedRemove {
+                from: NodeRef::new("alpha"),
+                to: NodeRef::new("beta"),
+            },
+        )
+        .expect("remove bare link from mixed list");
+
+        let written = read(root, "data/concepts/alpha.wcl");
+        assert!(!written.contains("beta"), "bare link removed: {written}");
+        assert!(written.contains("gamma"), "annotated link kept: {written}");
+        assert!(
+            written.contains("keep this reason"),
+            "reason kept: {written}"
+        );
     }
 
     /// Pinning and relating are one rewrite of one field, in two

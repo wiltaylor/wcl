@@ -3,7 +3,7 @@ import <wdoc.wcl>
 concept why_use_wskill {
   name = "Why use this?"
   summary = "Preserve a topic's knowledge in a reusable format that serves both people and AI agents — and still works manually if you lose access to the agent."
-  related = [wskill_concept, selfcontained]
+  related = []
   body {
     p <<DOC
       The reason to use a wskill is to preserve knowledge in a reusable format. This matters

@@ -1,22 +1,49 @@
 import <wdoc.wcl>
 
 fact diagrams {
-  title    = "diagram"
-  related  = [flowcharts, sequence_diagrams, state_diagrams, charts, tree, images, icons]
+  title = "diagram"
+  related = [flowcharts, charts]
   audience = :both
   body {
-    p "A `diagram` is wdoc's drawing surface. It declares a `width` / `height` and holds shapes that break down into primitives and render as SVG. Connect two shapes by id with an `a -> b` edge; set `pan_zoom = true` for an interactive viewport; set a `layout` (`:layered` / `:radial` / `:force`) to place shapes automatically (see [layout modes](fact_layout_modes)). Higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a `diagram` too. The primitive shapes are catalogued below; see also the [connections](concept_connections) concept."
+    p <<DOC
+      A `diagram` is wdoc's drawing surface. It declares a `width` / `height` and holds shapes that
+      break down into primitives and render as SVG. Connect two shapes by id with an `a -> b` edge;
+      set `pan_zoom = true` for an interactive viewport; set a `layout` (`:layered` / `:radial` /
+      `:force`) to place shapes automatically (see [layout modes](fact_layout_modes)). Higher-level
+      families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a
+      `diagram` too. The primitive shapes are catalogued below; see also the
+      [connections](concept_connections) concept.
+    DOC
     demo {
       diagram = true
       diagram {
-        width = 320  height = 160  pan_zoom = true
-        zoom_min = 0.5  zoom_max = 4.0
-        rect { id = a  x = 20.0   y = 30.0  width = 80.0  height = 50.0  fill = "#88c0d0" }
-        rect { id = b  x = 210.0  y = 90.0  width = 80.0  height = 50.0  fill = "#a3be8c" }
+        width = 320
+        height = 160
+        pan_zoom = true
+        zoom_min = 0.5
+        zoom_max = 4.0
+        rect {
+          id = a
+          x = 20.0
+          y = 30.0
+          width = 80.0
+          height = 50.0
+          fill = "#88c0d0"
+        }
+        rect {
+          id = b
+          x = 210.0
+          y = 90.0
+          width = 80.0
+          height = 50.0
+          fill = "#a3be8c"
+        }
         a -> b
       }
     }
-    type_table { type = Diagram }
+    type_table {
+      type = Diagram
+    }
 
     h2 "Shapes"
     p "A diagram holds shapes that break down into primitives. They split across three pages:"
@@ -25,6 +52,10 @@ fact diagrams {
       li "[Composite shapes](fact_composite_shapes) — `container`, `card`, `node_table`: shapes that hold or lay out content."
       li "[Styling shapes with classes](fact_shape_styling) — paint shapes with theme-aware `class`es instead of baked-in `fill`s."
     }
-    p "Higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that live inside a `diagram` too; wiring is covered by the [connections](concept_connections) concept and placement by the [layout modes](fact_layout_modes)."
+    p <<DOC
+      Higher-level families (flowcharts, charts, trees, maps, tilemaps, wireframes) are shapes that
+      live inside a `diagram` too; wiring is covered by the
+      [connections](concept_connections) concept and placement by the [layout modes](fact_layout_modes).
+    DOC
   }
 }

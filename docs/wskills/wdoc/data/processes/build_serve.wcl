@@ -2,36 +2,60 @@ procedure build_serve {
   title = "Render a site and live-preview it"
   purpose = "Get a finished HTML build of a wdoc document, and a watch-rebuild server while you iterate on it."
   preconditions = ["A WCL file declaring at least one `page` block", "A `wcl` CLI on your PATH"]
-  related = [sites, pages]
+  related = [sites]
   audience = :both
 
-  step render { n = 1
+  step render {
+    n = 1
     title = "Render to a folder"
-    body screen { code "console" { source = <<'SH'
-$ wcl wdoc build site.wcl --out out
-SH
-    } }
-    body steps { p "Render every `page` block in `site.wcl` to `out/`. Each page lands at `out/<name>.html`; with several sites, each renders into its own `out/<name>/` subdirectory with a chooser index." }
+    body screen {
+      code "console" {
+        source = "$ wcl wdoc build site.wcl --out out\n"
+      }
+    }
+    body steps {
+      p <<DOC
+        Render every `page` block in `site.wcl` to `out/`. Each page lands at `out/<name>.html`;
+        with several sites, each renders into its own `out/<name>/` subdirectory with a chooser
+        index.
+      DOC
+    }
   }
 
-  step open { n = 2
+  step open {
+    n = 2
     title = "Open the output"
-    body screen { code "console" { source = <<'SH'
-$ ls out
-index.html  usage.html
-SH
-    } }
-    body steps { p "Open `out/index.html` in a browser to check the rendered result." }
+    body screen {
+      code "console" {
+        source = <<DOC
+          $ ls out
+          index.html  usage.html
+        DOC
+      }
+    }
+    body steps {
+      p "Open `out/index.html` in a browser to check the rendered result."
+    }
   }
 
-  step serve { n = 3
+  step serve {
+    n = 3
     title = "Switch to a live preview"
-    body screen { code "console" { source = <<'SH'
-$ wcl wdoc serve site.wcl
-Serving on http://127.0.0.1:8080
-SH
-    } }
-    body steps { p "Run `wcl wdoc serve` to start a dev server that watches the source for `.wcl` changes and re-renders on each save. Refresh the browser to see updates; pass `--addr` to change the bind address." }
+    body screen {
+      code "console" {
+        source = <<DOC
+          $ wcl wdoc serve site.wcl
+          Serving on http://127.0.0.1:8080
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Run `wcl wdoc serve` to start a dev server that watches the source for `.wcl` changes and
+        re-renders on each save. Refresh the browser to see updates; pass `--addr` to change the
+        bind address.
+      DOC
+    }
   }
 
   render -> open

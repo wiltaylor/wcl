@@ -1,52 +1,92 @@
 procedure setup_ai_skill {
-  title   = "Setting up AI skill generation"
+  title = "Setting up AI skill generation"
   purpose = "Configure the wskill so it projects into a Claude Code skill, and choose what the agent sees."
-  related = [structured_data, building_the_index, creating_a_wskill, installing_the_skill, skill_anatomy]
+  related = [building_the_index, installing_the_skill]
   audience = :both
 
-  step configure { n = 1
+  step configure {
+    n = 1
     title = "Configure the skill block"
-    body screen { code "wcl" { source = <<'WCL'
-// wskill.wcl
-skill {
-  allowed_tools = ["Bash", "Read"]
-  summary { overview = ["What the skill does and when to use it."] }
-  skill_param "$ARGUMENTS" { description = "..."  value = "..." }
-  skill_boundary { always = ["..."]  never = ["..."] }
-}
-WCL
-    } }
-    body steps { p "Add the single `skill` block in `wskill.wcl`. Its fields become `SKILL.md`'s front matter and intro: the `allowed_tools` / `disallowed_tools` / `disable_model_invocation` permissions, a `summary` overview, invocation `skill_param`s, and `skill_boundary` guardrails the agent must follow." }
+    body screen {
+      code "wcl" {
+        source = <<DOC
+          // wskill.wcl
+          skill {
+            allowed_tools = ["Bash", "Read"]
+            summary { overview = ["What the skill does and when to use it."] }
+            skill_param "$ARGUMENTS" { description = "..."  value = "..." }
+            skill_boundary { always = ["..."]  never = ["..."] }
+          }
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Add the single `skill` block in `wskill.wcl`. Its fields become `SKILL.md`'s front matter
+        and intro: the `allowed_tools` / `disallowed_tools` / `disable_model_invocation`
+        permissions, a `summary` overview, invocation `skill_param`s, and `skill_boundary`
+        guardrails the agent must follow.
+      DOC
+    }
   }
 
-  step tag { n = 2
+  step tag {
+    n = 2
     title = "Tag content for the skill"
-    body screen { code "wcl" { source = <<'WCL'
-concept fast_forward { audience = :both  ... }   // book + skill
-fact   port_table    { audience = :ai    ... }   // skill only
-WCL
-    } }
-    body steps { p "Every unit defaults to `audience = :book`, so it stays out of the skill. Mark the units the agent needs `:ai` (skill only) or `:both` (book and skill). Curate up — the skill stays lean because content has to opt in." }
+    body screen {
+      code "wcl" {
+        source = <<DOC
+          concept fast_forward { audience = :both  ... }   // book + skill
+          fact   port_table    { audience = :ai    ... }   // skill only
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Every unit defaults to `audience = :book`, so it stays out of the skill. Mark the units the
+        agent needs `:ai` (skill only) or `:both` (book and skill). Curate up — the skill stays lean
+        because content has to opt in.
+      DOC
+    }
   }
 
-  step nav { n = 3
+  step nav {
+    n = 3
     title = "Curate the skill navigation"
-    body steps { p "`SKILL.md` is index-driven: add an `index` with `audience = :ai` (or `:both`) whose `related` lists the units the agent should reach. Each such index is inlined into `SKILL.md` as a section linking straight to those units. See *Building the wskill index*." }
+    body steps {
+      p <<DOC
+        `SKILL.md` is index-driven: add an `index` with `audience = :ai` (or `:both`) whose
+        `related` lists the units the agent should reach. Each such index is inlined into `SKILL.md`
+        as a section linking straight to those units. See *Building the wskill index*.
+      DOC
+    }
   }
 
-  step build { n = 4
+  step build {
+    n = 4
     title = "Build and install the skill"
-    body screen { code "console" { source = <<'SH'
-$ wcl wskill check .
-$ wcl wskill install . --repo <repo>
-SH
-    } }
-    body steps { p "Run `wcl wskill check .` to build every declared projection in scratch space, then `wcl wskill install . --repo <repo>` to render and install `SKILL.md`, `references/*.md`, bundled files, and any agents. [Building and installing the AI skill](process_installing_the_skill) covers drift checking and how to verify the agent actually loads it." }
+    body screen {
+      code "console" {
+        source = <<DOC
+          $ wcl wskill check .
+          $ wcl wskill install . --repo <repo>
+        DOC
+      }
+    }
+    body steps {
+      p <<DOC
+        Run `wcl wskill check .` to build every declared projection in scratch space, then
+        `wcl wskill install . --repo <repo>` to render and install `SKILL.md`, `references/*.md`,
+        bundled files, and any agents.
+        [Building and installing the AI skill](process_installing_the_skill) covers drift checking
+        and how to verify the agent actually loads it.
+      DOC
+    }
   }
 
   configure -> tag
-  tag       -> nav
-  nav       -> build
+  tag -> nav
+  nav -> build
 
   verification = "`wcl wskill install . --repo <repo> --check` passes and the installed `SKILL.md` lists your `:ai`/`:both` indexes, with a `references/` page per `:ai`/`:both` unit."
 }

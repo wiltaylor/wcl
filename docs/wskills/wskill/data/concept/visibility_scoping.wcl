@@ -2,7 +2,7 @@ concept visibility_scoping {
   name = "Visibility scoping (@only / @except)"
   summary = "Gate individual blocks inside a body per site, template, or backend — finer-grained than the unit-level audience field."
   audience = :both
-  related = [views]
+  related = []
   body {
     p <<DOC
       Where `audience` selects whole units, wdoc's `@only` / `@except` decorators gate a single
