@@ -97,6 +97,25 @@ pub(crate) fn locate(
     offset: usize,
 ) -> Option<(LocatedSymbol, Span)> {
     let (word, span) = word_at(source, offset)?;
+    let (path, path_span) = dotted_path_at(source, span);
+
+    // Decorator name. Resolve the whole dotted path, not only the segment
+    // under the cursor: its prefix is a namespace qualifier and may be an
+    // alias. The AST supplies the namespace of this source as the bare-name
+    // lookup context even when `doc` is the workspace root document.
+    if preceding_non_ws(source, path_span.start) == Some(b'@') {
+        let segments: Vec<String> = path.split('.').map(str::to_string).collect();
+        let (name, qualifier) = segments.split_last()?;
+        let context_ns = ast.items.iter().find_map(|item| match item {
+            ast::Item::NamespaceDecl(ns) => Some(ns.path.as_slice()),
+            _ => None,
+        });
+        if let Some(td) = doc.decorator_schema_in(qualifier, name, context_ns.unwrap_or(&[])) {
+            return Some((LocatedSymbol::Decorator(td.full_name()), span));
+        }
+        return None;
+    }
+
     // If the cursor sits on the last segment of a dotted reference
     // (e.g. the `Color` in `shared.Color`), reconstruct the full
     // dotted form so we can resolve it against `find_symbol`
@@ -107,14 +126,6 @@ pub(crate) fn locate(
         && let Some(located) = classify(hit.record)
     {
         return Some((located, span));
-    }
-
-    // Decorator name → '@' immediately precedes the word.
-    if preceding_non_ws(source, span.start) == Some(b'@') {
-        if let Some(td) = doc.decorator_schema(&word) {
-            return Some((LocatedSymbol::Decorator(td.name_segments().join(".")), span));
-        }
-        return None;
     }
 
     // Block kinds are unique at the start of a Block; `block_schema`
@@ -181,6 +192,35 @@ pub(crate) fn locate(
     }
 
     None
+}
+
+/// The complete adjacent dotted identifier path containing `span`, plus
+/// its full source span. Unlike [`dotted_form`], this expands both left and
+/// right so clicking either `wdoc` or `file` in `@wdoc.file` resolves the
+/// same decorator.
+fn dotted_path_at(source: &str, span: Span) -> (String, Span) {
+    let bytes = source.as_bytes();
+    let mut start = span.start;
+    while start >= 2 && bytes[start - 1] == b'.' {
+        let mut previous = start - 1;
+        while previous > 0 && is_ident_byte(bytes[previous - 1]) {
+            previous -= 1;
+        }
+        if previous == start - 1 {
+            break;
+        }
+        start = previous;
+    }
+
+    let mut end = span.end;
+    while end + 1 < bytes.len() && bytes[end] == b'.' && is_ident_byte(bytes[end + 1]) {
+        end += 2;
+        while end < bytes.len() && is_ident_byte(bytes[end]) {
+            end += 1;
+        }
+    }
+
+    (source[start..end].to_string(), Span::new(start, end))
 }
 
 /// Open `source` per-file and resolve the identifier at `offset`,
@@ -404,6 +444,33 @@ mod tests {
         let cursor = src.find("@max_len").unwrap() + 2;
         let (sym, _) = locate(&d, &a, src, cursor).expect("locate found something");
         assert_eq!(sym, LocatedSymbol::Decorator("MaxLen".to_string()));
+    }
+
+    #[test]
+    fn locate_resolves_qualified_decorator_to_namespaced_schema() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let one = dir.path().join("one.wcl");
+        let two = dir.path().join("two.wcl");
+        let main = dir.path().join("main.wcl");
+        std::fs::write(
+            &one,
+            "namespace one\n@decorator(\"note\") type OneNote { code: i64 }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            &two,
+            "namespace two\n@decorator(\"note\") type TwoNote { message: utf8 }\n",
+        )
+        .unwrap();
+        let src = "import \"./one.wcl\"\nimport \"./two.wcl\"\n@two.note(message = \"selected\") type Target {}\n";
+        std::fs::write(&main, src).unwrap();
+        let d = Document::from_file(&main).expect("document with imports");
+        let a = ast(src);
+        let cursor = src.find("note(message").unwrap() + 2;
+
+        let (sym, _) = locate(&d, &a, src, cursor).expect("qualified decorator resolves");
+
+        assert_eq!(sym, LocatedSymbol::Decorator("two.TwoNote".to_string()));
     }
 
     #[test]

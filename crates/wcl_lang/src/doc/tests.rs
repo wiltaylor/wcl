@@ -975,6 +975,290 @@ fn declared_decorators_include_builtins_local_and_imported_schemas() {
 }
 
 #[test]
+fn qualified_decorator_resolves_schema_in_named_namespace() {
+    let doc = open_with_libs(
+        r#"
+        import <one.wcl>
+        import <two.wcl>
+        @two.note(message = "selected") type Target {}
+        "#,
+        &[
+            (
+                "one.wcl",
+                r#"namespace one
+                @decorator("note") type OneNote { code: i64 }
+                "#,
+            ),
+            (
+                "two.wcl",
+                r#"namespace two
+                @decorator("note") type TwoNote { message: utf8 }
+                "#,
+            ),
+        ],
+    );
+    let decorator = doc
+        .type_decl("Target")
+        .expect("target type")
+        .decorators()
+        .next()
+        .expect("decorator");
+
+    assert_eq!(
+        decorator.schema().expect("qualified schema").full_name(),
+        "two.TwoNote"
+    );
+    assert_eq!(
+        decorator
+            .resolved_arg_value("message")
+            .expect("declared slot")
+            .expect("argument evaluates"),
+        Value::Utf8("selected".to_string())
+    );
+    assert!(decorator.resolved_arg_value("code").is_none());
+}
+
+#[test]
+fn qualified_decorator_dispatches_union_slot_in_schema_namespace() {
+    let doc = open_with_libs(
+        r#"
+        import <one.wcl>
+        import <two.wcl>
+        @two.select(message = "selected") type Target {}
+        "#,
+        &[
+            (
+                "one.wcl",
+                r#"namespace one
+                union Choice { One { code: i64 } }
+                @decorator("select") type Select { value: Choice }
+                "#,
+            ),
+            (
+                "two.wcl",
+                r#"namespace two
+                union Choice { Two { message: utf8 } }
+                @decorator("select") type Select { value: Choice }
+                "#,
+            ),
+        ],
+    );
+    let decorator = doc
+        .type_decl("Target")
+        .expect("target type")
+        .decorators()
+        .next()
+        .expect("decorator");
+
+    let value = decorator
+        .resolved_arg_value("value")
+        .expect("union slot")
+        .expect("dispatch succeeds");
+    assert!(
+        matches!(
+            value,
+            Value::Variant { ref union, ref variant, .. }
+                if union.iter().map(String::as_str).eq(["Choice"]) && variant == "Two"
+        ),
+        "{value:?}"
+    );
+}
+
+#[test]
+fn bare_decorator_prefers_schema_in_use_site_namespace() {
+    let doc = open_with_libs(
+        "import <other.wcl>\nimport <app_schema.wcl>\nimport <app_data.wcl>\n\
+         @decorator(\"note\") type RootNote { root: utf8 }\n",
+        &[
+            (
+                "other.wcl",
+                r#"namespace other
+                @decorator("note") type OtherNote { other: utf8 }
+                "#,
+            ),
+            (
+                "app_schema.wcl",
+                r#"namespace app
+                @decorator("note") type AppNote { local: utf8 }
+                "#,
+            ),
+            (
+                "app_data.wcl",
+                r#"namespace app
+                @note(local = "selected") type Target {}
+                "#,
+            ),
+        ],
+    );
+    let decorator = doc
+        .type_decl("app.Target")
+        .expect("imported target type")
+        .decorators()
+        .next()
+        .expect("decorator");
+
+    assert_eq!(
+        decorator
+            .schema()
+            .expect("same-namespace schema")
+            .full_name(),
+        "app.AppNote"
+    );
+    assert_eq!(
+        decorator
+            .resolved_arg_value("local")
+            .expect("declared slot")
+            .expect("argument evaluates"),
+        Value::Utf8("selected".to_string())
+    );
+}
+
+#[test]
+fn bare_decorator_falls_back_to_first_schema_when_context_and_root_have_none() {
+    let doc = open_with_libs(
+        r#"
+        import <one.wcl>
+        import <two.wcl>
+        @note(code = 1) type Target {}
+        "#,
+        &[
+            (
+                "one.wcl",
+                r#"namespace one
+                @decorator("note") type OneNote { code: i64 }
+                "#,
+            ),
+            (
+                "two.wcl",
+                r#"namespace two
+                @decorator("note") type TwoNote { message: utf8 }
+                "#,
+            ),
+        ],
+    );
+    let decorator = doc
+        .type_decl("Target")
+        .expect("target type")
+        .decorators()
+        .next()
+        .expect("decorator");
+
+    assert_eq!(
+        decorator
+            .schema()
+            .expect("first fallback schema")
+            .full_name(),
+        "one.OneNote"
+    );
+}
+
+#[test]
+fn bare_decorator_prefers_root_authored_schema_before_imported_fallback() {
+    let doc = open_with_libs(
+        r#"
+        import <other.wcl>
+        import <app_data.wcl>
+        @decorator("note") type RootNote { root: utf8 }
+        "#,
+        &[
+            (
+                "other.wcl",
+                r#"namespace other
+                @decorator("note") type OtherNote { other: utf8 }
+                "#,
+            ),
+            (
+                "app_data.wcl",
+                r#"namespace app
+                @note(root = "selected") type Target {}
+                "#,
+            ),
+        ],
+    );
+    let decorator = doc
+        .type_decl("app.Target")
+        .expect("imported target type")
+        .decorators()
+        .next()
+        .expect("decorator");
+
+    assert_eq!(
+        decorator
+            .schema()
+            .expect("root fallback schema")
+            .full_name(),
+        "RootNote"
+    );
+}
+
+#[test]
+fn qualified_decorator_expands_namespace_alias() {
+    let doc = open_with_libs(
+        r#"
+        import <one.wcl>
+        import <two.wcl>
+        use one as annotations
+        @annotations.note(code = 7) type Target {}
+        "#,
+        &[
+            (
+                "one.wcl",
+                r#"namespace one
+                @decorator("note") type OneNote { code: i64 }
+                "#,
+            ),
+            (
+                "two.wcl",
+                r#"namespace two
+                @decorator("note") type TwoNote { message: utf8 }
+                "#,
+            ),
+        ],
+    );
+    let decorator = doc
+        .type_decl("Target")
+        .expect("target type")
+        .decorators()
+        .next()
+        .expect("decorator");
+
+    assert_eq!(
+        decorator.schema().expect("aliased schema").full_name(),
+        "one.OneNote"
+    );
+}
+
+#[test]
+fn unknown_decorator_qualifier_is_spanned_on_full_name() {
+    let src = r#"
+        @document type Root { @children("item") items: list<Item> }
+        @block("item") type Item { value: utf8 }
+        @missing.note item { value = "ok" }
+    "#;
+    let doc = Document::open(src, "test.wcl").expect("opens");
+
+    let error = doc
+        .schema_errors()
+        .into_iter()
+        .find(|error| {
+            matches!(
+                error,
+                EvalError::SchemaViolation {
+                    kind: crate::error::SchemaViolationKind::UndeclaredDecorator,
+                    ..
+                }
+            )
+        })
+        .expect("unknown decorator violation");
+    let EvalError::SchemaViolation { span, .. } = error else {
+        unreachable!()
+    };
+
+    assert_eq!(span.offset(), src.find("missing.note").unwrap());
+    assert_eq!(span.len(), "missing.note".len());
+}
+
+#[test]
 fn inline_slot_helper() {
     let doc = open("type Q { @inline(2) f: utf8 }");
     let q = doc.type_decl("Q").unwrap();

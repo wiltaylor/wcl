@@ -449,7 +449,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "15 files, 227 pub items"
+    summary = "15 files, 231 pub items"
     deps = [n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
@@ -2693,7 +2693,7 @@ code_item code_api_doc_view {
       kind = "method"
     }
     code_member m_n_api_doc_view_Document_more {
-      signature = "… +80 more"
+      signature = "… +81 more"
       kind = "overflow"
     }
   }
@@ -3502,6 +3502,14 @@ code_item code_api_doc_view {
     }
     code_member m_n_api_doc_view_Decorator_span {
       signature = "fn span(&self) -> Span"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_Decorator_name_span {
+      signature = "fn name_span(&self) -> Span"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_Decorator_schema {
+      signature = "fn schema(&self) -> Option<TypeDecl<'a>>"
       kind = "method"
     }
     code_member m_n_api_doc_view_Decorator_positional {
@@ -6837,6 +6845,26 @@ code_item code_api_wdoc_html_renderer {
       kind = "fn"
       visibility = "crate"
     }
+    code_member m_n_api_wdoc_html_renderer_css_fns_render_base {
+      signature = "fn render_base(block: &Block<'_>) -> Option<String>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_css_fns_render_font_face {
+      signature = "fn render_font_face(block: &Block<'_>) -> Option<String>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_css_fns_render_media {
+      signature = "fn render_media(block: &Block<'_>) -> Option<String>"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wdoc_html_renderer_css_fns_render_keyframes {
+      signature = "fn render_keyframes(block: &Block<'_>) -> Option<String>"
+      kind = "fn"
+      visibility = "crate"
+    }
     code_member m_n_api_wdoc_html_renderer_css_fns_push_css {
       signature = "fn push_css(out: &mut String, prop: &str, value: Option<&str>)"
       kind = "fn"
@@ -9326,11 +9354,16 @@ code_item code_mod_wdoc_stdlib {
   code_node n_wdoc_stdlib_core {
     name = "core"
     members = [
+      "base",
       "class",
       "dark",
       "file",
+      "font_face",
       "frontmatter",
+      "keyframes",
       "light",
+      "media",
+      "nest",
       "page",
       "stylesheet",
       "terminal",

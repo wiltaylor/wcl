@@ -10,16 +10,15 @@ defaults via the cascade, so you theme broadly and override locally.
 ## Classes
 
 A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's
-`class` field (or a span's). Fields cover text, box, and SVG paint properties; per-mode
-overrides go in `dark { }` / `light { }` sub-blocks.
+`class` field (or a span's). Declarations stay CSS text in `css`; SVG paint and callout accents
+retain short fields. Per-mode overrides go in `dark { }` / `light { }` sub-blocks.
 
 
 ```wcl
 class accent {
-  color = "var(--wdoc-accent)"
-  bold  = true
-  dark  { color = "#88c0d0" }
-  light { color = "#5e81ac" }
+  css = "color:var(--wdoc-accent);font-weight:bold;"
+  dark  { css = "color:#88c0d0;" }
+  light { css = "color:#5e81ac;" }
 }
 
 // Use the class on a block:
@@ -30,10 +29,10 @@ p "highlighted paragraph" { class = ["accent"] }
 
 | Group | Fields |
 | --- | --- |
-| Text | `color`, `background`, `bold`, `italic`, `underline`, `font_size`, `font_family`, `text_align`, `text_transform`, `letter_spacing`, `line_height` |
-| Box | `padding`, `margin`, `border` |
-| SVG | `fill`, `stroke`, `stroke_width`, `stroke_linejoin`, `stroke_linecap`, `opacity` |
+| Declarations | `css` — raw CSS declarations for this rule |
+| SVG shorthand | `fill`, `stroke`, `stroke_width`, `opacity` |
 | Callout | `accent` — sets a callout's accent colour (heading, border, icon) when the class is on a `callout` |
+| Nesting | `nest "selector" { css = … }`; `&` explicitly references the parent class |
 | Modes | `dark { … }`, `light { … }` for prefers-color-scheme overrides |
 
 Hyphenated class names may be written bare — `class wdoc-series-1 { fill = "#88c0d0" }` — or
@@ -90,33 +89,18 @@ A `class` block: a named CSS class with text, box, SVG, and callout-accent field
 | --- | --- | --- | --- |
 | `name` | `identifier` | yes |  |
 | `sites` | `list<symbol>` | no |  |
-| `color` | `utf8` | no |  |
-| `background` | `utf8` | no |  |
-| `bold` | `bool` | no |  |
-| `italic` | `bool` | no |  |
-| `underline` | `bool` | no |  |
-| `font_weight` | `utf8` | no |  |
+| `css` | `utf8` | no |  |
 | `accent` | `utf8` | no |  |
-| `font_size` | `utf8` | no |  |
-| `line_height` | `utf8` | no |  |
-| `font_family` | `utf8` | no |  |
-| `text_align` | `utf8` | no |  |
-| `text_transform` | `utf8` | no |  |
-| `letter_spacing` | `utf8` | no |  |
-| `padding` | `utf8` | no |  |
-| `margin` | `utf8` | no |  |
-| `border` | `utf8` | no |  |
 | `fill` | `utf8` | no |  |
 | `stroke` | `utf8` | no |  |
 | `stroke_width` | `utf8` | no |  |
-| `stroke_linejoin` | `utf8` | no |  |
-| `stroke_linecap` | `utf8` | no |  |
 | `opacity` | `utf8` | no |  |
 
 #### Child blocks
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
+| `nests` | `nest` | yes |  |
 | `dark` | `dark` | no |  |
 | `light` | `light` | no |  |
 
@@ -124,54 +108,22 @@ The `dark` sub-block of a `class`: field overrides applied under a prefers-dark 
 
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
-| `color` | `utf8` | no |  |
-| `background` | `utf8` | no |  |
-| `bold` | `bool` | no |  |
-| `italic` | `bool` | no |  |
-| `underline` | `bool` | no |  |
-| `font_weight` | `utf8` | no |  |
+| `css` | `utf8` | no |  |
 | `accent` | `utf8` | no |  |
-| `font_size` | `utf8` | no |  |
-| `line_height` | `utf8` | no |  |
-| `font_family` | `utf8` | no |  |
-| `text_align` | `utf8` | no |  |
-| `text_transform` | `utf8` | no |  |
-| `letter_spacing` | `utf8` | no |  |
-| `padding` | `utf8` | no |  |
-| `margin` | `utf8` | no |  |
-| `border` | `utf8` | no |  |
 | `fill` | `utf8` | no |  |
 | `stroke` | `utf8` | no |  |
 | `stroke_width` | `utf8` | no |  |
-| `stroke_linejoin` | `utf8` | no |  |
-| `stroke_linecap` | `utf8` | no |  |
 | `opacity` | `utf8` | no |  |
 
 The `light` sub-block of a `class`: field overrides applied under a prefers-light colour scheme.
 
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
-| `color` | `utf8` | no |  |
-| `background` | `utf8` | no |  |
-| `bold` | `bool` | no |  |
-| `italic` | `bool` | no |  |
-| `underline` | `bool` | no |  |
-| `font_weight` | `utf8` | no |  |
+| `css` | `utf8` | no |  |
 | `accent` | `utf8` | no |  |
-| `font_size` | `utf8` | no |  |
-| `line_height` | `utf8` | no |  |
-| `font_family` | `utf8` | no |  |
-| `text_align` | `utf8` | no |  |
-| `text_transform` | `utf8` | no |  |
-| `letter_spacing` | `utf8` | no |  |
-| `padding` | `utf8` | no |  |
-| `margin` | `utf8` | no |  |
-| `border` | `utf8` | no |  |
 | `fill` | `utf8` | no |  |
 | `stroke` | `utf8` | no |  |
 | `stroke_width` | `utf8` | no |  |
-| `stroke_linejoin` | `utf8` | no |  |
-| `stroke_linecap` | `utf8` | no |  |
 | `opacity` | `utf8` | no |  |
 
 A `stylesheet` block: raw CSS injected verbatim into the rendered site, for styling beyond the `class` field set.

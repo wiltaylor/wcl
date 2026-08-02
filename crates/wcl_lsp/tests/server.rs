@@ -4,6 +4,8 @@
 //! coverage and publishing depends on the in-memory `ClientSocket`
 //! which we'd otherwise need to drain.
 
+use std::path::PathBuf;
+
 use tower_lsp::LanguageServer;
 use tower_lsp::LspService;
 use tower_lsp::lsp_types::{
@@ -34,6 +36,54 @@ async fn open(b: &Backend, uri: &Url, text: &str) {
         },
     })
     .await;
+}
+
+struct QualifiedDecoratorFixture {
+    _dir: tempfile::TempDir,
+    service: LspService<Backend>,
+    main_uri: Url,
+    decorator_position: Position,
+    selected_schema: PathBuf,
+}
+
+async fn qualified_decorator_fixture() -> QualifiedDecoratorFixture {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let one = dir.path().join("one.wcl");
+    let two = dir.path().join("two.wcl");
+    std::fs::write(
+        &one,
+        "namespace one\n@decorator(\"note\") type OneNote { code: i64 }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &two,
+        "namespace two\n@decorator(\"note\") type TwoNote { message: utf8 }\n",
+    )
+    .unwrap();
+    let src = "import \"./one.wcl\"\nimport \"./two.wcl\"\n@two.note(message = \"selected\") type Target {}\n";
+    std::fs::write(&main, src).unwrap();
+
+    let service = service();
+    let backend = service.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+    let main_uri = Url::from_file_path(&main).unwrap();
+    open(backend, &main_uri, src).await;
+    let needle_pos = src.find("note(message").unwrap();
+    let line = src[..needle_pos].matches('\n').count() as u32;
+    let line_start = src[..needle_pos].rfind('\n').map_or(0, |p| p + 1);
+    let character = (needle_pos - line_start + 2) as u32;
+
+    QualifiedDecoratorFixture {
+        _dir: dir,
+        service,
+        main_uri,
+        decorator_position: Position { line, character },
+        selected_schema: two,
+    }
 }
 
 #[tokio::test]
@@ -137,6 +187,66 @@ async fn hover_on_block_kind_returns_decl_snippet() {
     };
     assert!(body.contains("block kind"), "{body}");
     assert!(body.contains("type Config"), "{body}");
+}
+
+#[tokio::test]
+async fn hover_on_qualified_decorator_shows_qualified_schema() {
+    let fixture = qualified_decorator_fixture().await;
+
+    let response = fixture
+        .service
+        .inner()
+        .hover(HoverParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: fixture.main_uri.clone(),
+                },
+                position: fixture.decorator_position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        })
+        .await
+        .expect("hover request")
+        .expect("hover present");
+    let body = match response.contents {
+        tower_lsp::lsp_types::HoverContents::Markup(markup) => markup.value,
+        other => panic!("expected markdown, got {other:?}"),
+    };
+
+    assert!(body.contains("decorator** `two.TwoNote`"), "{body}");
+    assert!(body.contains("type TwoNote"), "{body}");
+    assert!(!body.contains("type OneNote"), "{body}");
+}
+
+#[tokio::test]
+async fn goto_definition_on_qualified_decorator_opens_qualified_schema() {
+    let fixture = qualified_decorator_fixture().await;
+
+    let response = fixture
+        .service
+        .inner()
+        .goto_definition(tower_lsp::lsp_types::GotoDefinitionParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: fixture.main_uri.clone(),
+                },
+                position: fixture.decorator_position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("goto request")
+        .expect("definition present");
+    let location = match response {
+        tower_lsp::lsp_types::GotoDefinitionResponse::Scalar(location) => location,
+        other => panic!("expected scalar location, got {other:?}"),
+    };
+
+    assert_eq!(
+        location.uri,
+        Url::from_file_path(fixture.selected_schema).unwrap()
+    );
 }
 
 async fn format_source(backend: &Backend, uri: Url) -> String {

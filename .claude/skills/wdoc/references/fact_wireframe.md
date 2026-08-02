@@ -96,7 +96,7 @@ diagram {
 | `title` | `utf8` | yes | Titlebar caption (the inline label). |
 | `controls` | `bool` | no | Show the titlebar dots + close glyph (default `true`). |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -148,7 +148,7 @@ diagram {
 | --- | --- | --- | --- |
 | `url` | `utf8` | yes | Address-bar URL (the inline label). |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -204,7 +204,7 @@ diagram {
 | `title` | `utf8` | no | Optional status-bar caption (the inline label). |
 | `orientation` | `symbol` | no | Frame orientation: `:portrait` (default) or `:landscape`. |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -259,7 +259,7 @@ diagram {
 | `title` | `utf8` | no | Optional status-bar caption (the inline label). |
 | `orientation` | `symbol` | no | Frame orientation: `:portrait` (default) or `:landscape`. |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -304,7 +304,7 @@ diagram {
 | --- | --- | --- | --- |
 | `title` | `utf8` | no | Optional group caption. |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -348,7 +348,7 @@ diagram {
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -391,7 +391,7 @@ diagram {
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -438,7 +438,7 @@ diagram {
 | --- | --- | --- | --- |
 | `columns` | `i64` | no | Number of equal-width columns (default 2); children flow across the rows. |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -509,7 +509,7 @@ diagram {
 | --- | --- | --- | --- |
 | `direction` | `symbol` | no | Layout flow: `:left_to_right` (default) or `:top_to_bottom`. |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -541,7 +541,7 @@ A titled node box with named `inputs` (left edge) and `outputs` (right edge) por
 | `outputs` | `list<utf8>` | no | Output port labels, listed down the right edge. |
 | `x` | `f64` | no | Optional explicit x placement (pins the node; otherwise auto-laid-out). |
 | `y` | `f64` | no | Optional explicit y placement (pins the node; otherwise auto-laid-out). |
-| `class` | `list<utf8>` | no | Extra CSS classes (read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 
 Within a `wf_node_graph`, wires one node's port to another (`"node.port"` → `"node.port"`; a bare `"node"` targets its first port).
 
@@ -575,7 +575,7 @@ diagram {
 | --- | --- | --- | --- |
 | `text` | `utf8` | yes | The label text (the inline label). |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -619,7 +619,7 @@ diagram {
 | `text` | `utf8` | yes | Button caption (the inline label). |
 | `icon` | `utf8` | no | Optional leading glyph as `pack.name`, e.g. `"lucide.check"`. |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -660,7 +660,7 @@ diagram {
 | `placeholder` | `utf8` | yes | Greyed prompt shown when empty (the inline label). |
 | `value` | `utf8` | no | Filled value (renders solid, replacing the placeholder). |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -693,7 +693,7 @@ diagram {
 | --- | --- | --- | --- |
 | `text` | `utf8` | yes | The selected option label (the inline label). |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -732,7 +732,7 @@ diagram {
 | `label` | `utf8` | yes | Checkbox caption (the inline label). |
 | `checked` | `bool` | no | On/off state; `true` fills the box with a tick. |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -773,7 +773,7 @@ diagram {
 | `label` | `utf8` | yes | Radio caption (the inline label). |
 | `selected` | `bool` | no | Whether this option is chosen. |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -812,7 +812,7 @@ diagram {
 | `label` | `utf8` | no | Optional trailing caption (the inline label). |
 | `on` | `bool` | no | Switch state; `true` slides the knob across. |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
@@ -836,7 +836,7 @@ anchors / `connect_points`) plus per-element theming hints:
 | Property | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | `identifier` | no | Optional HTML id (also the edge-connection / anchor name). |
-| `class` | `list<utf8>` | no | Extra CSS classes threaded onto the rendered element (and read for `background` / `color` / `border` overrides). |
+| `class` | `list<utf8>` | no | Extra CSS classes read for SVG `fill` / `stroke` box overrides. |
 | `disabled` | `bool` | no | When `true`, dims the control (renders at reduced opacity). |
 | `x` | `f64` | no | Top-left x placement in the diagram (or use anchors). |
 | `y` | `f64` | no | Top-left y placement in the diagram (or use anchors). |
