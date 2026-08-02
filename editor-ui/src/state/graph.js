@@ -17,7 +17,10 @@ const [revealedIndex, setRevealedIndex] = createSignal(null);
     uses it to show its drop affordance. */
 const [nodeDragging, setNodeDragging] = createSignal(null);
 /** The focused graph node's key — shared so the index panel can offer
-    per-section pin buttons for it. */
+    per-section pin buttons for it, and the whole "go to this unit"
+    protocol: the graph pans until the node is on screen and the index
+    panel reveals and scrolls to the rows that pin it, both by watching
+    this. Anything that picks a unit (a member row, a search hit) sets it. */
 const [focusedNode, setFocusedNode] = createSignal(null);
 /** The node whose content modal is open (key), if any. Shared because both
     the canvas (a node click) and the index panel (a row double-click) open
@@ -38,23 +41,6 @@ export {
   contentFor,
   setContentFor,
 };
-
-/** Navigate every graph-mode surface to one node — what picking a search
-    hit (or any "go here" gesture) means. Focus is the whole protocol: the
-    graph pans until the node is on screen and the index panel reveals and
-    scrolls to the rows that pin it, both by watching `focusedNode`. An
-    index has no graph node of its own, so it selects in the panel instead;
-    hosts that show a unit's own surface (the content modal) do that on top
-    of this call. */
-export function revealNode(node) {
-  if (!node) return;
-  if (node.type === 'index') {
-    setSelectedIndex(node.key);
-    setRevealedIndex(node.key);
-  } else {
-    setFocusedNode(node.key);
-  }
-}
 
 /** The selected index's node from the current payload. */
 export function selectedIndexNode() {
