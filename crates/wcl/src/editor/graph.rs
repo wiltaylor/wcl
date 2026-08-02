@@ -27,7 +27,7 @@ use wcl_lang::{Document, Span, Value, parse_for_edit};
 
 use super::blocks::visibility_json;
 use super::kinds::KindModel;
-use super::util::{ast_label, first_label, value_string};
+use super::util::{ast_label, field_string, first_label, value_string};
 
 use super::{EditorState, Workspace, run_blocking};
 use crate::serve::query_param;
@@ -56,6 +56,12 @@ struct NodeInfo {
     id: String,
     kind: String,
     title: String,
+    /// The unit's one-line description (`summary`), when it declares one —
+    /// a search field of its own, and the hit list's subtitle.
+    summary: String,
+    /// Every literal string the block carries, newline-joined — the prose
+    /// the find-a-unit box searches. See [`block_text`].
+    text: String,
     file: PathBuf,
     span: Span,
     visibility: serde_json::Value,
@@ -198,6 +204,7 @@ fn graph(
         let blocks = ast_block
             .map(|blk| content_blocks(ws, blk, &file, &sites))
             .unwrap_or_default();
+        let text = ast_block.map(block_text).unwrap_or_default();
         // The out-port is editable only when the `related` field is absent
         // or a literal list — a computed expression must not be clobbered.
         let related_editable = related_editable_of(ast_block);
@@ -226,6 +233,8 @@ fn graph(
             id,
             kind,
             title,
+            summary: field_string(&b, "summary").unwrap_or_default(),
+            text,
             file,
             span,
             visibility,
@@ -295,6 +304,10 @@ fn graph(
                 "id": n.id,
                 "kind": n.kind,
                 "title": n.title,
+                // The find-a-unit box's two extra search fields (id and
+                // title are above) — see `block_text`.
+                "summary": n.summary,
+                "text": n.text,
                 "file": rel(ws, &n.file),
                 "span": super::span_json(n.span),
                 "x": x, "y": y, "w": w, "h": h,
@@ -384,6 +397,9 @@ fn syllabus_nodes(
         "id": SYLLABUS_ID,
         "kind": "index",
         "title": "Course",
+        // Synthesized from the lesson data — no block, so no prose.
+        "summary": "",
+        "text": "",
         "file": rel(ws, entry_abs),
         "span": super::span_json(Span::new(0, 0)),
         "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0,
@@ -579,6 +595,70 @@ fn default_audience(model: &KindModel<'_>, kind: &str) -> String {
         .unwrap_or_else(|| "book".to_string())
 }
 
+/// Every literal string a block's subtree carries, in source order and
+/// newline-joined: its string labels, its scalar string fields and list
+/// elements, then the same again for every nested block — a unit's `body`
+/// paragraphs, its tables, a procedure's steps. This is the searchable
+/// prose behind the editor's find-a-unit box, so it is deliberately only
+/// the *content*: field names, block kinds, identifiers and symbols stay
+/// out, or searching "related" would hit every unit that declares the
+/// field rather than the one whose prose says the word. Nothing is
+/// truncated — a hit the box can't show is a hit the reader can't find.
+///
+/// The ids and names the box also searches ride on the node itself, so
+/// they need no extraction here (they land in the text as well, being
+/// string fields; the client attributes a hit to the narrowest source
+/// that carries it).
+fn block_text(b: &ast::Block) -> String {
+    let mut out = Vec::new();
+    collect_block_strings(b, &mut out);
+    out.join("\n")
+}
+
+fn collect_block_strings(b: &ast::Block, out: &mut Vec<String>) {
+    for label in &b.labels {
+        collect_expr_strings(label, out);
+    }
+    for item in &b.items {
+        match item {
+            Item::Field(f) => collect_expr_strings(&f.expr, out),
+            Item::Block(c) => collect_block_strings(c, out),
+            _ => {}
+        }
+    }
+}
+
+fn collect_expr_strings(e: &ast::Expr, out: &mut Vec<String>) {
+    match e {
+        ast::Expr::Utf8(s) | ast::Expr::Ascii(s) => push_text(s, out),
+        ast::Expr::InterpolatedString { parts, .. } => {
+            for part in parts {
+                match part {
+                    ast::TemplatePart::Literal(s) => push_text(s, out),
+                    ast::TemplatePart::Expr(inner) => collect_expr_strings(inner, out),
+                }
+            }
+        }
+        ast::Expr::ListLit { elements, .. } => {
+            for el in elements {
+                collect_expr_strings(el, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Push one literal, split on its own newlines so a heredoc body arrives as
+/// lines — the client shows the matching line as the hit's snippet.
+fn push_text(s: &str, out: &mut Vec<String>) {
+    for line in s.lines() {
+        let line = line.trim();
+        if !line.is_empty() {
+            out.push(line.to_string());
+        }
+    }
+}
+
 /// The unit's content blocks, flattened one level: direct children, with
 /// transparent containers (`body`, the addressable per-step `bodies`)
 /// spliced so the graph shows the blocks that actually render.
@@ -705,6 +785,49 @@ mod tests {
             .find(|b| b["preview"] == "Everywhere")
             .unwrap();
         assert_eq!(shown["views"]["deck"], true);
+    }
+
+    /// The find-a-unit box searches four fields; two of them (`summary` and
+    /// the body prose) exist only because the payload carries them.
+    #[test]
+    fn carries_the_searchable_summary_and_prose() {
+        let (_td, ws) = workspace_built_by(|root| {
+            write_mini_wskill(root);
+            std::fs::write(
+                root.join("data/concepts/alpha.wcl"),
+                "concept alpha {\n  name = \"Alpha\"\n  summary = \"Spans address bytes\"\n  \
+                 body {\n    p \"A span is a byte range into the source.\"\n    \
+                 table {\n      row \"start | end\"\n    }\n  }\n}\n",
+            )
+            .unwrap();
+            let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
+            let main = main.replace(
+                "@block(\"concept\")\ntype Concept {\n  @inline(0) id: identifier\n  name: utf8\n}",
+                "@block(\"body\") @schemaless\ntype UnitBody {\n}\n\n@block(\"concept\")\ntype Concept {\n  @inline(0) id: identifier\n  name: utf8\n  summary: utf8?\n  @child(\"body\") body: UnitBody?\n}",
+            );
+            std::fs::write(root.join("main.wcl"), main).unwrap();
+        });
+
+        let v = model(&ws, "book", "");
+        let alpha = node(&v, "alpha");
+        assert_eq!(alpha["summary"], "Spans address bytes");
+        let text = alpha["text"].as_str().unwrap();
+        // Nested block content is reachable, one line per literal.
+        assert!(
+            text.contains("A span is a byte range into the source."),
+            "{text}"
+        );
+        assert!(text.contains("start | end"), "{text}");
+        // Field names, block kinds and identifiers are schema vocabulary,
+        // not prose: searching "concept" must not match every concept.
+        assert!(!text.contains("summary"), "{text}");
+        assert!(!text.contains("concept"), "{text}");
+
+        // A unit with neither reports empty strings, never a missing key —
+        // the client reads all four fields off every node.
+        let beta = node(&v, "beta");
+        assert_eq!(beta["summary"], "");
+        assert!(beta["text"].is_string());
     }
 
     /// A unit kind belongs to the ONE view built from it: a lesson is not book

@@ -53,6 +53,7 @@ import {
   setSelectedIndex,
   subtreePinnedIds,
 } from '../../state/graph';
+import UnitSearch from './UnitSearch';
 
 const afterOp = (res) => {
   if (res.ok) reloadGraph({ keepPositions: true });
@@ -411,6 +412,12 @@ export default function IndexPanel() {
         />
       </div>
       <Show when={graphData()} fallback={<div class="ed-empty">Loading the graph…</div>}>
+        {/* Picking a hit focuses the unit, which is exactly what this panel
+            already watches: the containing index expands and scrolls to the
+            unit's row — so search doubles as "where is this filed?". */}
+        <div class="ed-index-search">
+          <UnitSearch placeholder="Find a unit…" />
+        </div>
         <div class="ed-index-viewfilter">
           <button
             type="button"
