@@ -57,6 +57,7 @@ pub use pdf::{PageSize, PdfError, pdf};
 pub use review::Handshake;
 pub use sidecar::owner_root;
 pub use sites::{EntryIncludeInfo, EntrySiteInfo, entry_site_info};
+pub use visibility::{DeclaredVisibility, declared_visibility};
 
 /// Highlight `source` as HTML `<span class="tok-…">` runs using the same
 /// syntect grammar + classed output the rendered code blocks use — so an

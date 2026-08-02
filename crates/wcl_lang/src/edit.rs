@@ -47,6 +47,24 @@ pub fn find_block_by_span(items: &mut [Item], span: Span) -> Option<&mut ast::Bl
     None
 }
 
+/// [`find_block_by_span`] for a reader: the [`ast::Block`] at `span`, without
+/// borrowing the tree mutably. Every span-addressed *read* of a parsed file
+/// (what a block declares, how a field was written) wants this — only a
+/// mutation wants the `&mut` form.
+pub fn block_at_span(items: &[Item], span: Span) -> Option<&ast::Block> {
+    for item in items {
+        if let Item::Block(b) = item {
+            if b.span == span {
+                return Some(b);
+            }
+            if let Some(found) = block_at_span(&b.items, span) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
 /// Set an existing field's value, or append a new `name = expr` field item to
 /// `block` if no field with that name exists yet. Used to edit a scalar/text
 /// property (and to set an optional field for the first time).

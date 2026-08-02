@@ -126,7 +126,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_edit {
     name = "edit"
     kind = "module"
-    summary = "1 file, 18 pub items"
+    summary = "1 file, 19 pub items"
     deps = [n_cg_wcl_lang_ast]
   }
   code_node n_cg_wcl_lang_environment {
@@ -511,7 +511,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_visibility {
     name = "visibility"
     kind = "module"
-    summary = "1 file, 2 pub items"
+    summary = "1 file, 4 pub items"
     deps = [n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_wireframe {
@@ -3719,6 +3719,10 @@ code_item code_api_formatter {
       signature = "fn find_block_by_span(items: &mut [Item], span: Span) -> Option…"
       kind = "fn"
     }
+    code_member m_n_api_formatter_edit_fns_block_at_span {
+      signature = "fn block_at_span(items: &[Item], span: Span) -> Option<&ast::Bl…"
+      kind = "fn"
+    }
     code_member m_n_api_formatter_edit_fns_set_or_insert_field {
       signature = "fn set_or_insert_field(block: &mut ast::Block, name: &str, expr…"
       kind = "fn"
@@ -3759,12 +3763,8 @@ code_item code_api_formatter {
       signature = "fn remove_block_by_span(items: &mut Vec<Item>, span: Span) -> b…"
       kind = "fn"
     }
-    code_member m_n_api_formatter_edit_fns_add_connection {
-      signature = "fn add_connection(block: &mut ast::Block, lhs: &str, rhs: &str,…"
-      kind = "fn"
-    }
     code_member m_n_api_formatter_edit_fns_more {
-      signature = "… +5 more"
+      signature = "… +6 more"
       kind = "overflow"
     }
   }
@@ -9138,10 +9138,28 @@ code_item code_api_wcl_wdoc_visibility {
       kind = "fn"
       visibility = "crate"
     }
+    code_member m_n_api_wcl_wdoc_visibility_visibility_fns_declared_visibility {
+      signature = "fn declared_visibility(block: &ast::Block) -> DeclaredVisibility"
+      kind = "fn"
+      deps = [n_api_wcl_wdoc_visibility_DeclaredVisibility]
+    }
     code_member m_n_api_wcl_wdoc_visibility_visibility_fns_classify_visibility {
       signature = "fn classify_visibility(block: &Block<'_>) -> (Vec<String>, bool)"
       kind = "fn"
       visibility = "crate"
+    }
+  }
+  code_node n_api_wcl_wdoc_visibility_DeclaredVisibility {
+    name = "DeclaredVisibility"
+    kind = "struct"
+    summary = "src/visibility.rs"
+    code_member m_n_api_wcl_wdoc_visibility_DeclaredVisibility_except_sites {
+      signature = "except_sites: Vec<String>"
+      kind = "field"
+    }
+    code_member m_n_api_wcl_wdoc_visibility_DeclaredVisibility_custom {
+      signature = "custom: bool"
+      kind = "field"
     }
   }
 }

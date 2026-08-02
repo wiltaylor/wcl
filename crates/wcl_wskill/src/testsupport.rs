@@ -67,6 +67,7 @@ type Index {
   @inline(0) id: identifier
   name: utf8
   @default([]) related: list<identifier>
+  @default(:both) audience: Audience
   @children("index") children: list<Index>?
 }
 

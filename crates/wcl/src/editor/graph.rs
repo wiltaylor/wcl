@@ -13,6 +13,12 @@
 //! book renders `!= :ai`, the skill `!= :book`, and indexes exist only in
 //! those two views. Layout is server-side via the deterministic diagram
 //! force solver ([`wcl_wdoc::layout_graph`]).
+//!
+//! **Superseded by [`wcl_wskill::Graph`]**, which owns this model as typed
+//! Rust so the CLI and the curator agent can read it without an editor. This
+//! endpoint keeps its own reading until issue #56 rebuilds it (and the nav
+//! ops) as a thin adapter — layout and serialisation over the library. Until
+//! then, a change to how the graph is *read* belongs in both.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

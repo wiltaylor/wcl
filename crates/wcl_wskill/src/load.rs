@@ -156,6 +156,16 @@ fn canon(p: &Path) -> PathBuf {
     std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
+/// One index pin, as it is collected during the walk: an index level names a
+/// unit, and the graph draws the edge from the TOP-LEVEL index (sub-indexes
+/// are not nodes) while attributing it to the level whose `related` list
+/// holds it — the level a write must target.
+struct Pin {
+    top_index: String,
+    owning_index: String,
+    unit: String,
+}
+
 /// One model read: the document, the per-file parses it needs, and the
 /// nodes accumulated so far.
 struct Builder<'a> {
@@ -166,9 +176,7 @@ struct Builder<'a> {
     asts: HashMap<PathBuf, ast::Source>,
     /// Unit kind → the `audience` its schema declares by default.
     audiences: HashMap<String, String>,
-    /// `(top-level index id, owning index id, unit id)` — the owner differs
-    /// from the top id for a pin inside a sub-index.
-    pins: Vec<(String, String, String)>,
+    pins: Vec<Pin>,
 }
 
 impl<'a> Builder<'a> {
@@ -229,7 +237,11 @@ impl<'a> Builder<'a> {
             if is_index {
                 let children = self.index_children(&b, &id, &file);
                 for rid in &related {
-                    self.pins.push((id.clone(), id.clone(), rid.clone()));
+                    self.pins.push(Pin {
+                        top_index: id.clone(),
+                        owning_index: id.clone(),
+                        unit: rid.clone(),
+                    });
                 }
                 indexes.push(Index {
                     audience: self.audience_of(&b, &kind),
@@ -282,14 +294,15 @@ impl<'a> Builder<'a> {
     /// The content kinds this document gathers: everything but wdoc's own
     /// infrastructure gathers, the wskill plumbing, and `index` (which is a
     /// nav structure, not a unit).
+    ///
+    /// Every gathered kind's declared `audience` default is recorded on the
+    /// way past — `index` included, since an index routes by audience just
+    /// like a unit does.
     fn unit_kinds(&mut self) -> Vec<String> {
         let mut out = Vec::new();
         for g in self.doc.gathered_kinds() {
             let kind = g.kind().to_string();
-            if g.schema().full_name().starts_with("wdoc.")
-                || PLUMBING_KINDS.contains(&kind.as_str())
-                || kind == "index"
-            {
+            if g.schema().full_name().starts_with("wdoc.") {
                 continue;
             }
             if let Some(default) = g
@@ -300,6 +313,9 @@ impl<'a> Builder<'a> {
                 .and_then(|f| f.default_value().as_ref().map(value_string))
             {
                 self.audiences.insert(kind.clone(), default);
+            }
+            if PLUMBING_KINDS.contains(&kind.as_str()) || kind == "index" {
+                continue;
             }
             out.push(kind);
         }
@@ -325,8 +341,11 @@ impl<'a> Builder<'a> {
             let Some(id) = first_label(&c) else { continue };
             let pinned = related_ids(&c);
             for rid in &pinned {
-                self.pins
-                    .push((top_id.to_string(), id.clone(), rid.clone()));
+                self.pins.push(Pin {
+                    top_index: top_id.to_string(),
+                    owning_index: id.clone(),
+                    unit: rid.clone(),
+                });
             }
             let children = self.index_children(&c, top_id, file);
             let ast_block = self.ast_block_at(file, c.span());
@@ -366,7 +385,7 @@ impl<'a> Builder<'a> {
     fn content_block(&self, b: &ast::Block, file: &Path) -> ContentBlock {
         ContentBlock {
             kind: b.kind.clone(),
-            preview: ast_label(b)
+            preview: crate::registry::ast_label(b)
                 .unwrap_or_default()
                 .chars()
                 .take(PREVIEW_CHARS)
@@ -397,14 +416,16 @@ impl<'a> Builder<'a> {
                 }
             }
         }
-        for (top_id, owner_id, unit_id) in &self.pins {
-            if let (Some(from), Some(to)) = (keys.get(top_id.as_str()), keys.get(unit_id.as_str()))
-            {
+        for pin in &self.pins {
+            if let (Some(from), Some(to)) = (
+                keys.get(pin.top_index.as_str()),
+                keys.get(pin.unit.as_str()),
+            ) {
                 out.push(Edge {
                     from: from.clone(),
                     to: to.clone(),
                     kind: EdgeKind::Pin,
-                    index_id: Some(owner_id.clone()),
+                    index_id: Some(pin.owning_index.clone()),
                 });
             }
         }
@@ -461,7 +482,7 @@ impl<'a> Builder<'a> {
     fn ast_block_at(&self, file: &Path, span: Span) -> Option<&ast::Block> {
         self.asts
             .get(&canon(file))
-            .and_then(|src| find_block_at(&src.items, span))
+            .and_then(|src| wcl_lang::edit::block_at_span(&src.items, span))
     }
 
     /// Parse `file` into the per-read cache, if it isn't there already.
@@ -487,60 +508,17 @@ fn rel_to(root: &Path, file: &Path) -> PathBuf {
         .unwrap_or(canon_file)
 }
 
-/// The block at exactly `span`, anywhere in the tree.
-fn find_block_at(items: &[Item], span: Span) -> Option<&ast::Block> {
-    for item in items {
-        if let Item::Block(b) = item {
-            if b.span == span {
-                return Some(b);
-            }
-            if let Some(found) = find_block_at(&b.items, span) {
-                return Some(found);
-            }
-        }
-    }
-    None
-}
-
-/// A block's `@except(sites = […])` visibility, and whether it carries
-/// visibility this reading cannot express.
+/// A block's declared site visibility. The classification is
+/// [`wcl_wdoc::declared_visibility`]'s — `@only` / `@except` is wdoc's
+/// vocabulary, and the editor's block endpoints read the same one, so the
+/// model and a rendered visibility stamp can't disagree about what is
+/// `custom`.
 fn visibility_of(block: &ast::Block) -> Visibility {
-    let mut vis = Visibility::default();
-    for d in &block.decorators {
-        let name = match d.name.as_slice() {
-            [n] => n.as_str(),
-            [ns, n] if ns == "wdoc" => n.as_str(),
-            _ => continue,
-        };
-        match name {
-            "only" => vis.custom = true,
-            "except" => {
-                if !d.positional.is_empty() {
-                    vis.custom = true;
-                }
-                for arg in &d.named {
-                    if arg.name != "sites" {
-                        vis.custom = true;
-                        continue;
-                    }
-                    match &arg.value {
-                        ast::Expr::ListLit { elements, .. }
-                            if elements.iter().all(|e| matches!(e, ast::Expr::Symbol(_))) =>
-                        {
-                            vis.except_sites
-                                .extend(elements.iter().filter_map(|e| match e {
-                                    ast::Expr::Symbol(s) => Some(s.clone()),
-                                    _ => None,
-                                }));
-                        }
-                        _ => vis.custom = true,
-                    }
-                }
-            }
-            _ => {}
-        }
+    let v = wcl_wdoc::declared_visibility(block);
+    Visibility {
+        except_sites: v.except_sites,
+        custom: v.custom,
     }
-    vis
 }
 
 /// A `related` list may be rewritten only when it is absent or a literal
@@ -578,13 +556,6 @@ fn first_label(b: &wcl_lang::Block<'_>) -> Option<String> {
         .ok()
         .and_then(|ls| ls.first().map(value_string))
         .filter(|s| !s.is_empty())
-}
-
-fn ast_label(b: &ast::Block) -> Option<String> {
-    match b.labels.first()? {
-        ast::Expr::Utf8(s) | ast::Expr::Ascii(s) | ast::Expr::Identifier(s, _) => Some(s.clone()),
-        _ => None,
-    }
 }
 
 /// A block field's value as a plain string, when it evaluates to a scalar.
@@ -635,8 +606,10 @@ mod tests {
             "the span must address the block: {:?}",
             alpha.anchor
         );
-        // The schema's `@default(:ai)` is the audience when the block is silent.
+        // The schema's `@default(:ai)` is the audience when the block is
+        // silent — for an index's kind as much as a unit's.
         assert_eq!(g.unit("gamma").expect("gamma").audience, "ai");
+        assert_eq!(g.index("lang").expect("index").audience, "both");
 
         // The index is not a unit; it pins two of them, in authored order.
         assert!(g.unit("lang").is_none());
@@ -811,7 +784,31 @@ mod tests {
         assert_eq!(course.modules.len(), 1);
         assert_eq!(course.modules[0].title, "Basics");
         assert_eq!(course.modules[0].lessons, ["nested"]);
-        // A lesson has a structural home, so it never reads as unindexed.
+
+        // No index pins a lesson, and this wskill declares no training
+        // artifact — so nothing renders them and the curator hears about it.
+        assert!(g.unindexed().iter().any(|u| u.id == "first"));
+
+        // Declare the training view and they have a structural home: its
+        // syllabus is built from the lesson data itself.
+        let registry = std::fs::read_to_string(td.path().join(crate::ROOT_MARKER)).unwrap();
+        write(
+            td.path(),
+            crate::ROOT_MARKER,
+            &format!(
+                "{registry}\nartifact course {{\n  kind = :training\n  \
+                 entry = \"wdoc/training/main.wcl\"\n}}\n"
+            ),
+        );
+        let g = Graph::open(td.path()).expect("graph");
+        let first = g.unit("first").expect("first");
+        assert_eq!(
+            g.organizing_views(first)
+                .iter()
+                .map(|v| v.id.as_str())
+                .collect::<Vec<_>>(),
+            ["course"]
+        );
         assert!(!g.unindexed().iter().any(|u| u.id == "first"));
     }
 
