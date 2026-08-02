@@ -8,13 +8,17 @@ a human-readable book and a Claude Code skill.
 
 ```
 wskill.wcl            # entry point: topic, version pin, meta, sources, data imports
-schema/base.wcl       # base block types (DO NOT hand-edit)
+schema/kinds.wcl      # topic-owned vocabularies (entity kinds, …) — extend freely
 schema/extensions.wcl # custom block types for this topic
 data/                 # the content: reference / processes
 assets/               # images, PDFs, data files referenced by pages (see assets/README.md)
-wdoc/book, wdoc/skill # projection templates (no content — pure structure)
+wdoc/book, wdoc/skill # projection entries (no content — pure structure)
 out/                  # generated outputs (gitignored)
 ```
+
+The base schema and the shared book template are **not** files here: they ship with the
+`wcl` binary and arrive through `import <wskill.wcl>` / `import <wskill/book.wcl>`, the
+way `import <wdoc.wcl>` already works.
 
 ## Build
 

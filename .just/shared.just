@@ -12,8 +12,8 @@
 # template. Open a recipe line with `{{heredoc}};` then call
 # `heredoc <file> <TERM>` as often as you like.
 #
-# The scaffold heredocs are the canonical copies of the wskill/WAD schemas and
-# templates, so both the sync and the check recipes need to read one out.
+# The scaffold heredoc is the canonical copy of the WAD schema, so both the
+# sync and the check recipe need to read it out.
 # Shared as a *command* rather than as a recipe because a recipe can only be
 # consumed for its stdout by shelling out to `just` — which norm 7 forbids and
 # which, from inside the ci module, would silently resolve against the PARENT
@@ -21,8 +21,7 @@
 # leave every drift check comparing nothing against nothing, and passing.
 heredoc := "heredoc() { out=$(sed -n \"/<<'$2'/,/^$2$/p\" \"$1\" | sed '1d;$d'); [ -n \"$out\" ] || { echo \"no heredoc $2 in $1\" >&2; return 1; }; printf '%s\\n' \"$out\"; }"
 
-# The scaffold templates whose heredocs are canonical
-wskill_template := "crates/wcl/src/scaffold/templates/wskill.wcl"
+# The scaffold template whose heredocs are canonical
 wad_template := "crates/wcl/src/scaffold/templates/wad.wcl"
 
 # ── External tooling guards ───────────────────────────────────────────────
@@ -80,76 +79,6 @@ fuzz-sweep: require-cargo-fuzz
         echo "==> fuzz $t" >&2; \
         (cd crates/wcl_lang && cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
     done
-
-# Fail when a live wskill base.wcl drifts from the scaffold heredoc (runs in ci)
-[group('quality')]
-wskill-schema-check:
-    @{{heredoc}}; for d in docs/wskills/*; do \
-        [ -d "$d/schema" ] || continue; \
-        diff <(heredoc {{wskill_template}} WSK_SCHEMA_BASE_WCL) "$d/schema/base.wcl" >/dev/null \
-            || { echo "wskill schema drift: $d/schema/base.wcl — run 'just wskill-schema-sync'"; exit 1; }; \
-        [ ! -f "$d/schema/training.wcl" ] || \
-            diff <(heredoc {{wskill_template}} WSK_SCHEMA_TRAINING_WCL) "$d/schema/training.wcl" >/dev/null \
-            || { echo "wskill schema drift: $d/schema/training.wcl — run 'just wskill-schema-sync'"; exit 1; }; \
-    done
-
-# The templates are topic-agnostic, so improvements to the meta wskill
-# (docs/wskills/wskill) must be back-ported or new scaffolds strand on stale
-# copies. wdoc/skill/main.wcl is exempt: its skill description is topic-tuned
-# in the live instance.
-
-# Fail when the wskill scaffold's wdoc templates drift from the live reference implementation (runs in ci)
-[group('quality')]
-wskill-template-check:
-    @{{heredoc}}; for pair in \
-        WSK_WDOC_COMPONENT_COMMON_WCL:component/common.wcl \
-        WSK_WDOC_COMPONENT_SKILL_MD_WCL:component/skill_md.wcl \
-        WSK_WDOC_COMPONENT_CONCEPT_WCL:component/concept.wcl \
-        WSK_WDOC_COMPONENT_ENTITY_WCL:component/entity.wcl \
-        WSK_WDOC_COMPONENT_FACT_WCL:component/fact.wcl \
-        WSK_WDOC_COMPONENT_RESEARCH_WCL:component/research.wcl \
-        WSK_WDOC_COMPONENT_PROCESS_WCL:component/process.wcl \
-        WSK_WDOC_COMPONENT_TYPE_INDEX_WCL:component/type_index.wcl \
-        WSK_WDOC_PAGES_OVERVIEW_WCL:pages/overview.wcl \
-        WSK_WDOC_PAGES_CONCEPTS_WCL:pages/concepts.wcl \
-        WSK_WDOC_PAGES_ENTITIES_WCL:pages/entities.wcl \
-        WSK_WDOC_PAGES_FACTS_WCL:pages/facts.wcl \
-        WSK_WDOC_PAGES_PROCESSES_WCL:pages/processes.wcl \
-        WSK_WDOC_BOOK_MAIN_WCL:book/main.wcl \
-    ; do \
-        term="${pair%%:*}"; path="${pair#*:}"; \
-        diff <(heredoc {{wskill_template}} "$term" | sed -z 's/\n*$/\n/') \
-             <(sed -z 's/\n*$/\n/' "docs/wskills/wskill/wdoc/$path") >/dev/null \
-            || { echo "wskill template drift: docs/wskills/wskill/wdoc/$path vs scaffold heredoc $term — back-port one side"; exit 1; }; \
-    done
-
-# The reference is docs/wskills/wskill/wdoc/. Per-topic exemptions cover
-# verified intentional divergence: skill/main.wcl everywhere (topic-tuned
-# description); wcl's common.wcl (builtins fn_signature superset), overview,
-# book (builtins/CLI projections); wdoc's book (index-nav TOC architecture).
-# Files a topic doesn't ship (wad: presentation/training) are skipped — a
-# deleted copy breaks that topic's book imports, which docs-build catches.
-
-# Fail when a topic's copy of a topic-agnostic wdoc template drifts from the reference (runs in ci)
-[group('quality')]
-wskill-crosstopic-check:
-    @fail=0; \
-    exempt_wcl="component/common.wcl pages/overview.wcl book/main.wcl"; \
-    exempt_wdoc="book/main.wcl"; \
-    exempt_wad=""; \
-    ref=docs/wskills/wskill/wdoc; \
-    for d in docs/wskills/*; do \
-        t=$(basename "$d"); [ "$t" = wskill ] && continue; [ -d "$d/wdoc" ] || continue; \
-        eval "exempt=\"\${exempt_$t:-} skill/main.wcl\""; \
-        for f in $(cd "$ref" && find . -type f -name '*.wcl' | sed 's|^\./||' | sort); do \
-            case " $exempt " in *" $f "*) continue;; esac; \
-            [ -f "$d/wdoc/$f" ] || continue; \
-            diff "$ref/$f" "$d/wdoc/$f" >/dev/null \
-                || { echo "cross-topic template drift: $d/wdoc/$f vs $ref/$f — sync from the reference (or add an exemption here if newly topic-tuned)"; fail=1; }; \
-        done; \
-    done; \
-    [ "$fail" -eq 0 ] && echo "wskill-crosstopic-check OK"; \
-    exit $fail
 
 # Entry paths are metadata (the registry landing and per-wskill justfiles
 # enumerate them), so a rename or deletion would otherwise dangle silently.

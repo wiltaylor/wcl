@@ -3,7 +3,7 @@
 // Build:  wcl wdoc build wdoc/presentation/main.wcl --out out/presentation
 //
 // Like the book/skill templates this contains NO topic content — only
-// projections over the `presentation` data (schema/presentation.wcl, authored
+// projections over the `presentation` data (`<wskill/presentation.wcl>`, authored
 // under data/presentation/). The deck opens with a generated title slide from
 // `topic`; every authored `pres_slide` becomes one slide. A slide that names a
 // `unit` pulls that concept/entity/fact/procedure's headline + summary onto

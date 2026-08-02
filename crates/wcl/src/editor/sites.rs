@@ -52,6 +52,23 @@ pub(crate) fn scan_sites(ws: &super::Workspace) -> Result<serde_json::Value, Str
     if let Some(rf) = ws.root_file() {
         candidates.insert(canon(rf));
     }
+    // A wskill's projection entries are candidates because its registry says
+    // so, not because they declare a `site` in their own text: since the
+    // shared templates were embedded, `wdoc/book/main.wcl` is two imports and
+    // its site arrives with `import <wskill/book.wcl>`. The prefilter above
+    // would never even parse it.
+    for registry in &registries {
+        let Some(reg) = read_wskill_registry(registry) else {
+            continue;
+        };
+        let dir = registry.parent().unwrap_or(registry);
+        for (_, _, entry) in &reg.artifacts {
+            let abs = canon(&dir.join(entry));
+            if abs.is_file() {
+                candidates.insert(abs);
+            }
+        }
+    }
 
     // Build every candidate's node tree, remembering which entries got
     // claimed as include members — those nest instead of listing as roots.
@@ -388,9 +405,17 @@ mod tests {
                  artifact ai_skill {\n  kind = :ai_skill\n  entry = \"wdoc/skill/main.wcl\"\n}\n",
             )
             .unwrap();
+            // The book entry declares no `site` of its own — it imports one,
+            // the way every wskill's does since the shared book template was
+            // embedded. It is a candidate because the registry names it.
             std::fs::write(
                 root.join("wdoc/book/main.wcl"),
-                "import <wdoc.wcl>\n\nsite book {\n  title = \"Demo Book\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n",
+                "import <wdoc.wcl>\nimport \"./projection.wcl\"\n",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("wdoc/book/projection.wcl"),
+                "site book {\n  title = \"Demo Book\"\n  root = true\n}\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n",
             )
             .unwrap();
             std::fs::write(

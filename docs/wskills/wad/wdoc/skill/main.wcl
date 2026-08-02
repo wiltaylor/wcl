@@ -10,16 +10,16 @@
 
 import <wdoc.wcl>
 import "../../wskill.wcl"
-import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
-import "../component/skill_md.wcl"  // skill_md_body (the SKILL.md body)
-import "../component/concept.wcl"   // concept_body
-import "../component/entity.wcl"    // entity_body
-import "../component/fact.wcl"      // fact_body
-import "../component/research.wcl"  // research_body
-import "../component/process.wcl"   // process_body
-import "../component/type_index.wcl" // shared unit-index page component
+import <wskill/component/common.wcl>    // UnitRef + shared per-unit sub-sections
+import <wskill/component/skill_md.wcl>  // skill_md_body (the SKILL.md body)
+import <wskill/component/concept.wcl>   // concept_body
+import <wskill/component/entity.wcl>    // entity_body
+import <wskill/component/fact.wcl>      // fact_body
+import <wskill/component/research.wcl>  // research_body
+import <wskill/component/process.wcl>   // process_body
+import <wskill/component/type_index.wcl> // shared unit-index page component
 
-// The single topic block, bound from its gather list (see base.wcl).
+// The single topic block, bound from its gather list (see `<wskill/schema.wcl>`).
 let topic = head(topics)
 let skill = head(skills)
 // Alias for use INSIDE the wdoc `skill { }` config block below, where a bare
@@ -50,7 +50,7 @@ let research_units = filter(research_units, fn(r: Research) -> bool { in_skill(r
 
 // Flattened cross-reference rows over the skill's audience-filtered units, so a
 // unit's `related` ids resolve to links (UnitRef + the components live in
-// component/common.wcl).
+// `<wskill/component/common.wcl>`).
 let all_units = flatten([
   map(concepts,   fn(c: Concept)   -> UnitRef { { id: c.id, name: c.name,  href: $"concept_${c.id}", related: c.related } }),
   map(entities,   fn(e: Entity)    -> UnitRef { { id: e.id, name: e.name,  href: $"entity_${e.id}",  related: e.related } }),

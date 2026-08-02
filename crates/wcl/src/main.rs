@@ -671,6 +671,11 @@ enum CommentFormat {
 }
 
 fn main() -> ExitCode {
+    // The binary is the toolchain's composition root: it ships wdoc's stdlib
+    // *and* the wskill library built on it, so `import <wskill.wcl>` resolves
+    // on every path that opens a document — the CLI's own loader, `wdoc build`,
+    // the editor's save pipeline, the LSP.
+    wcl_wskill::install_stdlib();
     let cli = Cli::parse();
     let code = match cli.command {
         Command::Parse { file, profile } => match open_document(&file, profile) {

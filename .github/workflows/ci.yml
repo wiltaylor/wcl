@@ -46,19 +46,15 @@ jobs:
       - run: just ci::fmt-check
       - run: just ci::workspace-lint
       - run: just ci::workspace-test
-      # Schema heredocs in the scaffold templates are canonical — fail on
-      # drift between them and the live copies (docs/wskills/*, .wad/).
-      - run: just ci::wskill-schema-check
-      # The wskill scaffold's wdoc templates must match the live reference
-      # implementation (docs/wskills/wskill) — improvements get back-ported
-      # instead of stranding new scaffolds on stale templates.
-      - run: just ci::wskill-template-check
-      # The other topics' copies of the topic-agnostic templates must match
-      # the reference too (per-topic exemptions cover intentional divergence),
-      # and every declared artifact entry file must exist.
-      - run: just ci::wskill-crosstopic-check
+      # Every declared artifact entry file must exist. (The three wskill
+      # drift gates that used to sit here died with the copies they policed —
+      # the base schema and the fourteen shared templates, embedded in the
+      # binary now, crates/wcl_wskill/lib/. They policed exactly those; the
+      # per-topic projection entries they never covered are unaffected.)
       - run: just ci::wskill-artifact-check
       - run: just ci::wcl-refcheck
+      # The WAD schema heredoc in the scaffold template is canonical — fail
+      # on drift between it and the live copy under .wad/.
       - run: just ci::wad-schema-check
       # The reference WAD (.wad/) is the first wcl-init-wad consumer —
       # validate its model and build its book like docs-build below.

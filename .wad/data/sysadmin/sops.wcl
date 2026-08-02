@@ -34,25 +34,30 @@ sop cut_pre_release {
 }
 
 sop sync_schema_copies {
-  title   = "Sync scaffold-owned schemas"
-  purpose = "Propagate the canonical wskill/WAD base schemas from the scaffold heredocs to every instance, and keep CI's drift gate green."
+  title   = "Sync the scaffold-owned WAD schema"
+  purpose = "Propagate the canonical WAD base schema from its scaffold heredoc to .wad/, and keep CI's drift gate green."
   kind    = :runbook
-  automation = "just wskill-schema-sync / just wad-schema-sync (checked by *-schema-check in CI)"
-  verification = "`just wskill-schema-check` and `just wad-schema-check` both exit 0."
+  automation = "just wad-schema-sync (checked by wad-schema-check in CI)"
+  verification = "`just wad-schema-check` exits 0."
   step edit_template { n = 1
     title = "Edit the scaffold heredoc"
-    body steps { p "The canonical copy lives in `crates/wcl/src/scaffold/templates/` — never edit an instance's `schema/base.wcl` directly." }
+    body steps { p "The canonical copy lives in `crates/wcl/src/scaffold/templates/wad.wcl` — never edit `.wad/schema/base.wcl` directly." }
   }
   step run_sync { n = 2
-    title = "Run the sync recipes"
-    body steps { p "Run `just wskill-schema-sync` and `just wad-schema-sync`; commit the regenerated copies together with the template change." }
+    title = "Run the sync recipe"
+    body steps { p "Run `just wad-schema-sync`; commit the regenerated copy together with the template change." }
   }
   step check { n = 3
-    title = "Run the drift checks"
-    body steps { p "`just wskill-schema-check && just wad-schema-check` — the same gates CI runs." }
+    title = "Run the drift check"
+    body steps { p "`just wad-schema-check` — the same gate CI runs." }
+  }
+  step wskill_note { n = 4
+    title = "Note: the wskill schema is not synced"
+    body steps { p "It has no copies to sync. The wskill base schema and the shared projection templates are embedded in the binary (`crates/wcl_wskill/lib/`) and reach a wskill by `import <wskill.wcl>`; editing them there is the whole propagation. The `wskill-schema-sync` / `-check` / `wskill-template-check` / `wskill-crosstopic-check` recipes died with the copies they policed." }
   }
   edit_template -> run_sync
   run_sync -> check
+  check -> wskill_note
 }
 
 sop cut_full_release {

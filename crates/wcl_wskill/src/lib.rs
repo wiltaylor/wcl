@@ -43,6 +43,7 @@ mod load;
 mod model;
 pub mod ops;
 mod registry;
+mod stdlib;
 #[cfg(test)]
 mod testsupport;
 
@@ -54,3 +55,4 @@ pub use model::{
     Unit, View, Visibility, routes_to, structural_view_kind,
 };
 pub use registry::{Artifact, ROOT_MARKER, Registry};
+pub use stdlib::{install_stdlib, schema_registry};

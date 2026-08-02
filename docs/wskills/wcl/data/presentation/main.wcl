@@ -1,5 +1,5 @@
 // The presentation view's deck — "WCL in a nutshell", the topic's introduction
-// as slides (schema/presentation.wcl). Slides feature existing units where
+// as slides (`<wskill/presentation.wcl>`). Slides feature existing units where
 // possible (`unit = <id>` pulls the headline + summary); detail stays in the book.
 presentation nutshell {
   title   = "WCL in a nutshell"

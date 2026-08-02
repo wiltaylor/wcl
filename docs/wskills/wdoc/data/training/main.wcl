@@ -1,4 +1,4 @@
-// The training view's course — "wdoc authoring tutorial" (schema/training.wcl).
+// The training view's course — "wdoc authoring tutorial" (`<wskill/training.wcl>`).
 // Ordered lessons with hands-on exercises; `related` links each lesson back to
 // the reference units it teaches.
 

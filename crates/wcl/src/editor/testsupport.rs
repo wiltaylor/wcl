@@ -42,6 +42,12 @@ pub(super) fn workspace_with(doc: &str) -> (tempfile::TempDir, Workspace) {
 /// `write` (one of the `write_mini_wskill*` builders, usually), plus a
 /// workspace over it.
 pub(super) fn workspace_built_by(write: impl FnOnce(&Path)) -> (tempfile::TempDir, Workspace) {
+    // `main` installs the wskill library into wdoc's registry (see there);
+    // a unit test never runs `main`, so a fixture that is a wskill would
+    // fail its `import <wskill.wcl>` with "no system import registered".
+    // Idempotent and cheap, so it is unconditional rather than a thing each
+    // wskill-shaped fixture has to remember.
+    wcl_wskill::install_stdlib();
     let td = tempfile::tempdir().unwrap();
     write(td.path());
     let ws = Workspace::at(td.path());

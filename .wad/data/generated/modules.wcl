@@ -120,7 +120,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_doc {
     name = "doc"
     kind = "module"
-    summary = "16 files, 68 pub items"
+    summary = "16 files, 69 pub items"
     deps = [n_cg_wcl_lang_ast, n_cg_wcl_lang_data, n_cg_wcl_lang_environment, n_cg_wcl_lang_error, n_cg_wcl_lang_lexer, n_cg_wcl_lang_numeric, n_cg_wcl_lang_parser, n_cg_wcl_lang_symbols, n_cg_wcl_lang_value]
   }
   code_node n_cg_wcl_lang_edit {
@@ -314,7 +314,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_build {
     name = "build"
     kind = "module"
-    summary = "1 file, 27 pub items"
+    summary = "1 file, 28 pub items"
     deps = [n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_card {
@@ -3097,6 +3097,10 @@ code_item code_api_doc_view {
       signature = "const SYSTEM_IMPORT_ROOT: &str"
       kind = "const"
     }
+    code_member m_n_api_doc_view_imports_fns_system_import_key {
+      signature = "fn system_import_key(importer: Option<&str>, path: &str) -> Str…"
+      kind = "fn"
+    }
   }
   code_node n_api_doc_view_views_fns {
     name = "views"
@@ -3653,6 +3657,18 @@ code_item code_api_registry {
     }
     code_member m_n_api_registry_Registry_is_empty {
       signature = "fn is_empty(&self) -> bool"
+      kind = "method"
+    }
+    code_member m_n_api_registry_Registry_get {
+      signature = "fn get(&self, name: &str) -> Option<&str>"
+      kind = "method"
+    }
+    code_member m_n_api_registry_Registry_iter {
+      signature = "fn iter(&self) -> impl Iterator<Item = (&str, &str)>"
+      kind = "method"
+    }
+    code_member m_n_api_registry_Registry_extend {
+      signature = "fn extend(&mut self, other: Registry)"
       kind = "method"
     }
     code_member m_n_api_registry_Registry_loader {
@@ -5710,6 +5726,10 @@ code_item code_api_wcl_wdoc_build {
       signature = "fn schema_registry() -> Registry"
       kind = "fn"
     }
+    code_member m_n_api_wcl_wdoc_build_build_fns_install_stdlib {
+      signature = "fn install_stdlib(extra: Registry)"
+      kind = "fn"
+    }
     code_member m_n_api_wcl_wdoc_build_build_fns_wdoc_environment {
       signature = "fn wdoc_environment(base_dir: Option<&Path>) -> Environment"
       kind = "fn"
@@ -5759,13 +5779,8 @@ code_item code_api_wcl_wdoc_build {
       signature = "const PAGES_MANIFEST_HREF: &str"
       kind = "const"
     }
-    code_member m_n_api_wcl_wdoc_build_build_fns_build_incremental {
-      signature = "fn build_incremental( file: &Path, out_dir: &Path, site_filter:…"
-      kind = "fn"
-      deps = [n_api_wcl_wdoc_build_BuildOptions, n_api_wcl_wdoc_build_RebuildOutcome, n_api_wcl_wdoc_build_BuildError]
-    }
     code_member m_n_api_wcl_wdoc_build_build_fns_more {
-      signature = "… +9 more"
+      signature = "… +10 more"
       kind = "overflow"
     }
   }

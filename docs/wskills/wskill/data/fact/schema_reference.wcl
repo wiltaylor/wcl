@@ -351,7 +351,7 @@ fact block_presentation {
   related = [structured_data, presentation_view]
   body {
     p <<DOC
-      The overview-deck view's data (schema/presentation.wcl): one `presentation` holding
+      The overview-deck view's data (`<wskill/presentation.wcl>`, in the prelude): one `presentation` holding
       `pres_section` columns of `pres_slide`s. A slide features an existing unit via `unit`, or
       carries its own short body.
     DOC
@@ -381,7 +381,7 @@ fact block_lesson {
   related = [structured_data, training_view]
   body {
     p <<DOC
-      The training view's data (schema/training.wcl): ordered `lesson`s (grouped into `module`s when
+      The training view's data (`<wskill/training.wcl>`, in the prelude): ordered `lesson`s (grouped into `module`s when
       the course has parts), each ending in `exercise`s with expected results.
     DOC
     type_table {
