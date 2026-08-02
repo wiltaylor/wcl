@@ -12,10 +12,15 @@ Label: `wayfinder:map`
 **Frontier (open, unblocked, unclaimed): none — every ticket is resolved.** Resolved: 01, 02, 03, 04,
 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15. Blocked: none.
 
-**The route is walked.** What remains is the **Not yet specified** section — migration sequencing
-(eight numbered sweeps now, the first bundling four), the blog gaps, and the questions later tickets
-deliberately handed forward. None of it is a decision this map still owes; the destination (a spec
-detailed enough to break into tickets) is reached.
+**The route is walked, and the destination is delivered: [`spec/`](spec/).** Nine files consolidating
+all 15 resolutions into a buildable spec — start at [`spec/README.md`](spec/README.md), which carries
+the dependency order, the non-negotiables and how to cut tickets from it.
+
+What remains beyond the spec is the **Not yet specified** section — migration sequencing (eight
+numbered sweeps, now written up as [`spec/07-migration.md`](spec/07-migration.md)), the blog gaps, and
+the questions later tickets deliberately handed forward. All of that is carried into
+[`spec/08-open.md`](spec/08-open.md), separated into *out of scope* / *deliberately not decided* /
+*open questions*. None of it is a decision this map still owes.
 
 Tickets live in `issues/NN-<slug>.md` — a `Status:` line (`open`/`claimed`/`resolved`) and a
 `Blocked by:` line near the top; a ticket is unblocked when every file it lists is `resolved`.
@@ -33,6 +38,8 @@ A **spec** for a refactored wdoc substrate — an honest block/type system, and 
 templating layer where you author real HTML templates and render wdoc content into declared
 slots — **with the in-repo wskills and WAD migrated onto it as the proof it works**. Detailed
 enough to break into tickets and hand to agents.
+
+**Delivered: [`spec/`](spec/).**
 
 ## Notes
 
