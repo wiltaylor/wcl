@@ -174,3 +174,131 @@ fn graph_reads_the_model_at_a_git_revision() {
         .assert()
         .failure();
 }
+
+/// `lint` over a scaffolded wskill: the shipped base schema, one authored
+/// error, and the exit codes a CI job and the curator both key off.
+#[test]
+fn lint_reports_findings_as_text_and_json() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    let dest_str = dest.to_str().unwrap();
+
+    // As scaffolded and authored: `beta` is pinned by no index (a warning)
+    // and the index carries no body (a candidate). Warnings never fail.
+    let out = wcl().args(["wskill", "lint", dest_str]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "warnings must not fail");
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        text.contains("warn [unindexed] concept:beta"),
+        "expected the unpinned unit: {text}"
+    );
+    assert!(
+        text.contains("data/reference/reference.wcl:"),
+        "a finding names the file and line it is written at: {text}"
+    );
+    // The summary goes to stderr, so it survives a pipe into grep.
+    let summary = String::from_utf8(out.stderr).unwrap();
+    assert!(summary.contains("0 errors, 1 warning,"), "{summary}");
+
+    // `--deny warn` escalates exactly those warnings.
+    wcl()
+        .args(["wskill", "lint", dest_str, "--deny", "warn"])
+        .assert()
+        .failure()
+        .code(1);
+
+    // Now author a `related` id naming nothing: an error, so exit 1.
+    write_reference(&dest, "[alpha]", "Beta");
+    let path = dest.join("data/reference/reference.wcl");
+    let src = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(
+        &path,
+        src.replace(
+            "concept beta {\n  name    = \"Beta\"",
+            "concept beta {\n  related = [nobody]\n  name    = \"Beta\"",
+        ),
+    )
+    .unwrap();
+
+    let out = wcl()
+        .args(["wskill", "lint", dest_str, "--format", "json"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "an error fails the run");
+    let findings: Vec<serde_json::Value> = serde_json::from_slice(&out.stdout).unwrap();
+    let dangling = findings
+        .iter()
+        .find(|f| f["rule"] == "dangling-related")
+        .unwrap_or_else(|| panic!("no dangling finding in {findings:#?}"));
+    assert_eq!(dangling["severity"], "error");
+    assert_eq!(
+        dangling["unit"],
+        serde_json::json!({"kind": "concept", "id": "beta"})
+    );
+    assert_eq!(dangling["file"], "data/reference/reference.wcl");
+    assert!(dangling["span"]["start"].is_number());
+    assert!(dangling["message"].as_str().unwrap().contains("nobody"));
+
+    // The curator's phase 1 asks for candidates only — and gets exit 0,
+    // because a severity it filtered out cannot fail its run.
+    let out = wcl()
+        .args([
+            "wskill",
+            "lint",
+            dest_str,
+            "--format",
+            "json",
+            "--severity",
+            "candidate",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let findings: Vec<serde_json::Value> = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(!findings.is_empty());
+    assert!(findings.iter().all(|f| f["severity"] == "candidate"));
+}
+
+/// A wskill that cannot be read is a tool failure (2), not a finding (1) —
+/// the caller's "did it pass?" must not depend on how it failed.
+#[test]
+fn lint_reports_an_unreadable_wskill_as_a_tool_failure() {
+    let tmp = TempDir::new().unwrap();
+    wcl()
+        .args(["wskill", "lint", tmp.path().join("nope").to_str().unwrap()])
+        .assert()
+        .failure()
+        .code(2);
+}
+
+/// Lint never writes: not to the wskill, not to a cache beside it.
+#[test]
+fn lint_writes_nothing() {
+    let tmp = TempDir::new().unwrap();
+    let dest = scaffolded_wskill(&tmp);
+    let before = tree_snapshot(&dest);
+    wcl()
+        .args(["wskill", "lint", dest.to_str().unwrap()])
+        .assert()
+        .success();
+    assert_eq!(before, tree_snapshot(&dest));
+}
+
+/// Every file under `dir` with its bytes — enough to catch a write, a
+/// deletion or a reformat.
+fn tree_snapshot(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for entry in std::fs::read_dir(&d).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                out.push((path.clone(), std::fs::read(&path).unwrap()));
+            }
+        }
+    }
+    out.sort();
+    out
+}
