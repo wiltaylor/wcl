@@ -166,7 +166,7 @@ fn unknown_qualified_decorator_reports_once_as_a_namespace_error() {
     assert!(matches!(
         errors[0],
         EvalError::SchemaViolation {
-            kind: SchemaViolationKind::UnknownDecorator,
+            kind: SchemaViolationKind::UndeclaredDecorator,
             ..
         }
     ));

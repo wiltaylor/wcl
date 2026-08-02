@@ -2676,7 +2676,7 @@ code_item code_api_doc_view {
       kind = "method"
     }
     code_member m_n_api_doc_view_Document_more {
-      signature = "… +83 more"
+      signature = "… +84 more"
       kind = "overflow"
     }
   }
@@ -4546,18 +4546,6 @@ code_item code_api_wcl_lang_error {
     }
     code_member m_n_api_wcl_lang_error_SchemaViolationKind_NoDocumentSchema {
       signature = "NoDocumentSchema"
-      kind = "variant"
-    }
-    code_member m_n_api_wcl_lang_error_SchemaViolationKind_MultipleDocumentSchemas {
-      signature = "MultipleDocumentSchemas"
-      kind = "variant"
-    }
-    code_member m_n_api_wcl_lang_error_SchemaViolationKind_DuplicateBlockKind {
-      signature = "DuplicateBlockKind"
-      kind = "variant"
-    }
-    code_member m_n_api_wcl_lang_error_SchemaViolationKind_DuplicateBlockId {
-      signature = "DuplicateBlockId"
       kind = "variant"
     }
     code_member m_n_api_wcl_lang_error_SchemaViolationKind_more {

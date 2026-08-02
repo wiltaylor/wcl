@@ -1972,10 +1972,6 @@ impl<'a> Field<'a> {
         self.doc.find_field_source_path(target)
     }
 
-    pub(crate) fn named_source(&self) -> miette::NamedSource<String> {
-        self.doc.named_source_for_field(self.ast)
-    }
-
     pub fn value(&self) -> Result<&'a Value, &'a EvalError> {
         let cell = self.field_cell();
         if let Some(cached) = cell.value.get() {
