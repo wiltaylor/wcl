@@ -31,9 +31,17 @@
 // a repeater body.
 
 // A reusable template. `name` is the kind authors instantiate.
+//
+// `@declares_kind` is the language's word for "instances of this type
+// declare block kinds of their own": it tells kind lookup to derive a
+// schema for `metric_card` from this instance's `wdoc_slot`s, so an
+// instance of it is validated like any other block — an undeclared slot
+// is an unknown field, an unfilled defaultless slot a missing required
+// one — with no component vocabulary inside the language.
 namespace wdoc
 
 @block("wdoc_component")
+@declares_kind(name = 0, params = "slots", body = "body")
 type WdocComponent {
   @inline(0) name: identifier
   @children("wdoc_slot") slots: list<WdocSlot>

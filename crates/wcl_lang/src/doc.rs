@@ -23,14 +23,15 @@ pub use gathers::{ChildFamily, GatheredKind};
 pub use imports::SYSTEM_IMPORT_ROOT;
 pub use loader::{FileLoader, Registry, disk_loader, overlay_loader};
 pub use views::{
-    Block, ChildKind, Connection, ConnectionDecl, DeclName, Decorator, Field, FieldShape,
-    InterfaceDecl, NamedArg, ResolvedType, RowView, SymbolEntry, SymbolSetDecl, TableView,
-    TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
+    Block, ChildKind, Connection, ConnectionDecl, DeclName, DeclaresKind, Decorator, Field,
+    FieldShape, InterfaceDecl, NamedArg, ResolvedType, RowView, SymbolEntry, SymbolSetDecl,
+    TableView, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
     VariantBodyView,
 };
 pub(crate) use views::{BuiltinDecorator, LetView, UnionChildKind};
 
 use crate::ast::{self, Span};
+use crate::ast::{synthetic_decorator, synthetic_field, synthetic_span};
 use crate::environment::Environment;
 use crate::error::{EvalError, ParseError};
 use crate::parser::Parser;
@@ -86,11 +87,27 @@ pub struct Document {
     /// every block-kind lookup. Same construction-time-only inputs as
     /// `ref_registry`.
     schema_index: std::sync::OnceLock<HashMap<(String, String), Vec<usize>>>,
-    /// Lazily-built index of `wdoc_component` name → position in
-    /// [`blocks`] order, replacing the per-call label-evaluating scan in
-    /// [`component_def`] (which wdoc expansion runs for every nested
-    /// block). Same construction-time-only inputs as `ref_registry`.
-    component_index: std::sync::OnceLock<HashMap<String, usize>>,
+    /// Lazily-built index of every kind an instance declares (see
+    /// [`TypeDecl::declares_kind`]): declared kind name → the declarer's
+    /// position in [`blocks`] order plus the `@block` schema derived
+    /// from its params. Both halves are built together because they come
+    /// from one scan and are demanded by the same lookups —
+    /// [`kind_declarer`](Self::kind_declarer) (which a host's expander
+    /// runs for every nested block) and the [`block_schema`] fallback.
+    ///
+    /// Unlike `synthetic_types`, these can't be built at construction
+    /// time: deriving one reads the declarer's labels and param blocks,
+    /// which is view-layer work. Same construction-time-only *inputs* as
+    /// `ref_registry`, so the once-built result stays sound.
+    declared_kinds: std::sync::OnceLock<HashMap<String, DeclaredKind>>,
+    /// Threads currently inside `build_declared_kinds`. Deriving a
+    /// schema evaluates the declarer's labels, and evaluation can
+    /// resolve a name through a block's schema — landing back in the
+    /// lookup that started the derivation. The derivation stands down
+    /// for a re-entrant call on the same thread (the kinds it would
+    /// answer for are exactly the ones still being built) rather than
+    /// recursing or deadlocking on the `OnceLock`.
+    deriving: std::sync::Mutex<HashSet<std::thread::ThreadId>>,
     /// Memo for `union_fqn_for_path`: source-written type path → the
     /// FQN of the union it resolves to (`None` = not a union). Argument
     /// coercion consults this **per function invocation per argument**;
@@ -142,6 +159,19 @@ pub struct Document {
     /// each block's label expression through the evaluator — the
     /// dominant cost of projection-heavy documents.
     conn_operand_index: std::sync::OnceLock<HashMap<String, ConnOperand>>,
+}
+
+/// One block kind declared by an *instance* — a block whose type carries
+/// `@declares_kind`. Owns the schema derived for it, which is what makes
+/// an instance of the kind an ordinary block as far as every generic
+/// check is concerned.
+struct DeclaredKind {
+    /// The declarer's position in `blocks()` order.
+    declarer: usize,
+    /// The derived `@block` type, plus its evaluation cells (a type
+    /// declaration is viewed through both).
+    ast: ast::TypeDecl,
+    cells: ItemCells,
 }
 
 /// Position of a type declaration found by a cached decorator scan:
@@ -261,11 +291,13 @@ pub struct SymbolHit<'a> {
 /// constructed view from the enclosing fn on a hit. The macro emits only the
 /// search loop — the caller supplies the miss tail (`None`, or a synthetic
 /// fallback). `cells`/`nocells` selects whether the view carries a `cells`
-/// borrow; an optional trailing field name (`is_imported`) is set from the
-/// source's import origin. Collapses the five `type_decl`/`interface`/
-/// `union_decl`/`symbol_set`/`connection_decl` lookups (M4).
+/// borrow; the optional trailing field names are `TypeDecl`'s two origin
+/// flags — `is_imported`, set from the source's import origin, and
+/// `is_derived`, false for every declaration a source *writes*. Collapses
+/// the five `type_decl`/`interface`/`union_decl`/`symbol_set`/
+/// `connection_decl` lookups (M4).
 macro_rules! find_decl {
-    ($self:ident, $fqn:ident, $variant:ident, cells $(, $imp:ident)?) => {
+    ($self:ident, $fqn:ident, $variant:ident, cells $(, $imp:ident, $der:ident)?) => {
         for src in $self.all_sources() {
             if let Some(rec) = src.symbols.lookup($fqn)
                 && matches!(rec.kind, SymbolKind::$variant)
@@ -276,7 +308,7 @@ macro_rules! find_decl {
                     file_ns: src.file_ns,
                     cells: &src.cells[rec.path.item_index],
                     doc: $self,
-                    $( $imp: src.path.is_some(), )?
+                    $( $imp: src.path.is_some(), $der: false, )?
                 });
             }
         }
@@ -406,7 +438,8 @@ impl Document {
             profile: None,
             ref_registry: std::sync::OnceLock::new(),
             schema_index: std::sync::OnceLock::new(),
-            component_index: std::sync::OnceLock::new(),
+            declared_kinds: std::sync::OnceLock::new(),
+            deriving: std::sync::Mutex::new(HashSet::new()),
             union_path_memo: std::sync::RwLock::new(HashMap::new()),
             document_schema_locs: std::sync::OnceLock::new(),
             root_let_index: std::sync::OnceLock::new(),
@@ -1416,7 +1449,7 @@ impl Document {
     }
 
     pub fn type_decl(&self, fqn: &str) -> Option<TypeDecl<'_>> {
-        find_decl!(self, fqn, TypeDecl, cells, is_imported);
+        find_decl!(self, fqn, TypeDecl, cells, is_imported, is_derived);
         // Synthetic types live in the root namespace (no file ns prefix)
         // and are not registered in the parser-built index.
         let target: Vec<&str> = fqn.split('.').collect();
@@ -1430,6 +1463,7 @@ impl Document {
                 cells: &self.synthetic_type_cells[i],
                 doc: self,
                 is_imported: false,
+                is_derived: false,
             })
     }
 
@@ -1446,6 +1480,7 @@ impl Document {
                         cells,
                         doc,
                         is_imported: src.path.is_some(),
+                        is_derived: false,
                     }),
                     _ => None,
                 })
@@ -1460,6 +1495,7 @@ impl Document {
                 cells,
                 doc,
                 is_imported: false,
+                is_derived: false,
             });
         mine_and_imports.chain(syn)
     }
@@ -1759,12 +1795,22 @@ impl Document {
     /// kinds resolve from the document's own namespace (local
     /// declarations preferred), so a user `@block("process")` shadows an
     /// imported one of the same kind.
+    ///
+    /// A kind no `@block`/`@table` type declares may still be declared
+    /// by an *instance* — see
+    /// [`derived_block_schema`](Self::derived_block_schema). Declared
+    /// types win: the collision is reported at the declarer
+    /// (`DeclaredKindCollision`) rather than silently resolved here.
     pub fn block_schema(&self, kind: &str) -> Option<TypeDecl<'_>> {
         self.find_schema(BuiltinDecorator::Block, kind)
+            .or_else(|| self.derived_block_schema(kind))
     }
 
     /// Namespace-aware block lookup: `qualifier` is the `::` namespace
     /// (empty for bare), `context_ns` the referencing site's namespace.
+    /// An instance-declared kind is unqualified — it is declared by a
+    /// block, not by a namespaced type — so only a bare lookup falls
+    /// back to the derivation.
     pub(crate) fn block_schema_in(
         &self,
         qualifier: &[String],
@@ -1772,6 +1818,12 @@ impl Document {
         context_ns: &[String],
     ) -> Option<TypeDecl<'_>> {
         self.find_schema_ns(BuiltinDecorator::Block, qualifier, kind, context_ns)
+            .or_else(|| {
+                qualifier
+                    .is_empty()
+                    .then(|| self.derived_block_schema(kind))
+                    .flatten()
+            })
     }
 
     /// Look up the type that schemas a decorator of the given name.
@@ -1823,6 +1875,7 @@ impl Document {
                         cells,
                         doc: self,
                         is_imported: src.path.is_some(),
+                        is_derived: false,
                     };
                     if td.decorators().any(|d| d.full_name() == dec_name) {
                         out.push(DeclLoc::Source {
@@ -1844,6 +1897,7 @@ impl Document {
                     cells,
                     doc: self,
                     is_imported: false,
+                    is_derived: false,
                 };
                 if td.decorators().any(|d| d.full_name() == dec_name) {
                     out.push(DeclLoc::Synthetic(i));
@@ -1864,6 +1918,7 @@ impl Document {
                         cells: &src.cells[item],
                         doc: self,
                         is_imported: src.path.is_some(),
+                        is_derived: false,
                     }
                 }
                 DeclLoc::Synthetic(i) => TypeDecl {
@@ -1872,6 +1927,7 @@ impl Document {
                     cells: &self.synthetic_type_cells[i],
                     doc: self,
                     is_imported: false,
+                    is_derived: false,
                 },
             })
             .collect()
@@ -2029,37 +2085,116 @@ impl Document {
         self.block_schema(kind).is_some() || self.table_schema(kind).is_some()
     }
 
-    /// The `wdoc_component` definition whose name (`@inline(0)` label)
-    /// equals `name`, if any. A component is instantiated by its own
-    /// name as a bare block; this resolves that instance kind back to its
-    /// declarative definition (slots + body). Served from a once-built
-    /// name → position index — expansion consults this for every nested
-    /// block, so the previous per-call label-evaluating scan over all
-    /// top-level blocks was O(blocks²) across a build.
-    pub fn component_def(&self, name: &str) -> Option<Block<'_>> {
+    /// The block that *declares* the kind `name`, if any: an instance of
+    /// a type carrying `@declares_kind` (wdoc's `wdoc_component`, and
+    /// whatever a host calls its own). A declared kind is instantiated by
+    /// its own name as a bare block; this resolves that instance kind
+    /// back to the declaration it came from — the params it takes and the
+    /// body it expands to.
+    ///
+    /// Served from the once-built [`declared_kinds`](Self::declared_kinds)
+    /// index — a host's expander consults this for every nested block, so
+    /// a per-call label-evaluating scan over all top-level blocks would be
+    /// O(blocks²) across a build.
+    pub fn kind_declarer(&self, name: &str) -> Option<Block<'_>> {
         if name.is_empty() {
             return None;
         }
-        let index = self.component_index.get_or_init(|| {
-            let mut map: HashMap<String, usize> = HashMap::new();
-            for (i, b) in self.blocks().enumerate() {
-                if b.kind() == "wdoc_component"
-                    && let Some(label) = block_first_label(&b)
-                {
-                    // First declaration wins, matching `find` semantics.
-                    map.entry(label).or_insert(i);
-                }
-            }
-            map
-        });
-        let pos = *index.get(name)?;
+        let pos = self.declared_kinds()?.get(name)?.declarer;
         self.blocks().nth(pos)
     }
 
-    /// `true` if `name` is the name of a declared `wdoc_component` — i.e.
-    /// a legal bare-block instance kind.
-    pub fn is_component_kind(&self, name: &str) -> bool {
-        self.component_def(name).is_some()
+    /// The `@block` schema derived from the declarer of `name`, if that
+    /// kind is instance-declared. One field per declared param —
+    /// optional when the param carries a `default` — so the generic
+    /// `UnknownField` / `required_fields` checks apply to instances of
+    /// it, and `@contextual` because what an instance emits is whatever
+    /// its declarer's body expands to.
+    ///
+    /// Deliberately absent from [`type_decls`](Self::type_decls), which
+    /// walks what the document *declares*; reach it through kind lookup
+    /// ([`block_schema`](Self::block_schema)) or here.
+    pub fn derived_block_schema(&self, name: &str) -> Option<TypeDecl<'_>> {
+        let declared = self.declared_kinds()?.get(name)?;
+        Some(TypeDecl {
+            ast: &declared.ast,
+            file_ns: &[],
+            cells: &declared.cells,
+            doc: self,
+            is_imported: false,
+            is_derived: true,
+        })
+    }
+
+    /// Every instance-declared kind, keyed by name. `None` only for a
+    /// re-entrant call from inside the derivation itself (see the
+    /// `deriving` field): the caller sees a document with no declared
+    /// kinds.
+    ///
+    /// That stand-down is invisible because of *what* runs during the
+    /// build — a schema lookup per top-level block and the evaluation of
+    /// a declarer's labels. Neither reports diagnostics: validation is
+    /// demanded by `schema_errors` / `Block::schema_errors`, which the
+    /// build never calls. A re-entrant lookup that missed *and* was
+    /// being validated would report `UnregisteredKind`, so keep it that
+    /// way — no diagnostic path may run inside `build_declared_kinds`.
+    fn declared_kinds(&self) -> Option<&HashMap<String, DeclaredKind>> {
+        if let Some(built) = self.declared_kinds.get() {
+            return Some(built);
+        }
+        let me = std::thread::current().id();
+        {
+            // A poisoned guard means a panic unwound through the few
+            // lines below, not that the set is unusable: recover it
+            // rather than letting an unrelated panic turn every later
+            // lookup into a silent miss.
+            let mut in_flight = self
+                .deriving
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !in_flight.insert(me) {
+                return None;
+            }
+        }
+        let built = self.build_declared_kinds();
+        self.deriving
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&me);
+        // Another thread may have won the race; either result is the
+        // same map, built from the same fixed inputs.
+        let _ = self.declared_kinds.set(built);
+        self.declared_kinds.get()
+    }
+
+    /// Scan the top-level blocks for instances of a `@declares_kind`
+    /// type and derive one schema per declared kind. First declaration
+    /// wins, matching every other kind lookup.
+    fn build_declared_kinds(&self) -> HashMap<String, DeclaredKind> {
+        let mut out: HashMap<String, DeclaredKind> = HashMap::new();
+        for (i, b) in self.blocks().enumerate() {
+            let Some(schema) = b.schema() else { continue };
+            let Some(contract) = schema.declares_kind() else {
+                continue;
+            };
+            let Some(name) = block_label_at(&b, contract.name_slot) else {
+                continue;
+            };
+            if out.contains_key(&name) {
+                continue;
+            }
+            let derived = derive_kind_schema(&b, &schema, &contract, &name);
+            let cells = ItemCells::build(&ast::Item::TypeDecl(derived.clone()), None);
+            out.insert(
+                name,
+                DeclaredKind {
+                    declarer: i,
+                    ast: derived,
+                    cells,
+                },
+            );
+        }
+        out
     }
 
     /// The host's [`Expander`](crate::Expander), consulted when a
@@ -2159,31 +2294,37 @@ impl Document {
             }
         }
 
-        // A `wdoc_component` whose name matches a registered
-        // `@block`/`@table` kind is incoherent: expansion dispatches the
-        // kind to the component while schema lookup validates instances
-        // against the block type (and several renderer kinds are
-        // special-cased in Rust, ignoring the component entirely). The
-        // collision itself is the error, at the component declaration.
-        for comp in self.blocks().filter(|b| b.kind() == "wdoc_component") {
-            let Some(name) = block_first_label(&comp) else {
+        // An instance-declared kind (`@declares_kind`) whose name matches
+        // a declared `@block`/`@table` kind is incoherent: expansion
+        // dispatches the kind to the declarer while schema lookup
+        // validates instances against the declared type (and a host may
+        // special-case the kind in Rust, ignoring the declarer
+        // entirely). The collision itself is the error, reported at the
+        // declaration. Both sides are looked up *without* the
+        // derivation, so a declared kind never collides with itself.
+        let declared_kinds: Vec<String> = self
+            .declared_kinds()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default();
+        for name in declared_kinds {
+            let colliding = self
+                .find_schema(BuiltinDecorator::Block, &name)
+                .or_else(|| self.find_schema(BuiltinDecorator::Table, &name));
+            let Some(t) = colliding else { continue };
+            let Some(declarer) = self.kind_declarer(&name) else {
                 continue;
             };
-            let colliding = self
-                .block_schema(&name)
-                .or_else(|| self.table_schema(&name));
-            if let Some(t) = colliding {
-                EvalError::push_schema_violation(
-                    &mut out,
-                    Kind::ComponentKindCollision,
-                    format!(
-                        "component '{name}' collides with the @block/@table kind \
-                         \"{name}\" declared by type '{}' — rename the component",
-                        t.full_name()
-                    ),
-                    comp.span(),
-                );
-            }
+            EvalError::push_schema_violation(
+                &mut out,
+                Kind::DeclaredKindCollision,
+                format!(
+                    "block '{}' declares the kind '{name}', which collides with the \
+                     @block/@table kind \"{name}\" declared by type '{}' — rename it",
+                    declarer.kind(),
+                    t.full_name()
+                ),
+                declarer.span(),
+            );
         }
 
         // Walk every source (the main file + every eagerly-imported
@@ -2901,11 +3042,102 @@ fn describe_datakind(k: &crate::data::DataKind<'_>) -> &'static str {
 /// are intended to cover the rest.
 /// First label of a block, as a string (identifier / utf8 / ascii).
 /// `None` if the block has no labels or the first isn't string-like.
-/// Used to resolve a `wdoc_component`'s `@inline(0)` name.
 fn block_first_label(b: &Block<'_>) -> Option<String> {
-    match b.labels().ok()?.into_iter().next()? {
+    block_label_at(b, 0)
+}
+
+/// Label at slot `n` of a block, as a string. Used to read a declared
+/// kind's name out of its declarer's `@inline(N)` label.
+fn block_label_at(b: &Block<'_>, n: usize) -> Option<String> {
+    match b.labels().ok()?.into_iter().nth(n)? {
         Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => Some(s),
         _ => None,
+    }
+}
+
+/// A param block carrying a field of this name declares a fallback, so
+/// the derived field is optional. The language's own word for a
+/// fallback value (`@default`), asked of the declarer's own vocabulary.
+const PARAM_DEFAULT_FIELD: &str = "default";
+
+/// Derive the `@block` schema for the kind `kind`, declared by the
+/// instance `declarer` (whose own type is `schema`, carrying `contract`).
+///
+/// One field per param block, in declaration order: optional when the
+/// param carries a `default`, listed in `required_fields` when it
+/// doesn't. Every field is `@schemaless` and nominally `utf8` — a param
+/// is filled with whatever the host's expansion binds it to, and the
+/// language has no business type-checking a value it does not interpret.
+/// The type carries `@contextual`: an instance emits whatever the
+/// declarer's body expands to, which is the host's business too.
+fn derive_kind_schema(
+    declarer: &Block<'_>,
+    schema: &TypeDecl<'_>,
+    contract: &DeclaresKind,
+    kind: &str,
+) -> ast::TypeDecl {
+    let param_kind = schema
+        .effective_field(&contract.params_field)
+        .and_then(|f| f.children_block_kind());
+    let mut fields: Vec<ast::TypeField> = Vec::new();
+    let mut required: Vec<String> = Vec::new();
+    if let Some(param_kind) = param_kind {
+        for p in declarer.blocks().filter(|b| b.kind() == param_kind) {
+            let Some(name) = block_first_label(&p) else {
+                continue;
+            };
+            if fields.iter().any(|f| f.name == name) {
+                continue;
+            }
+            let optional = p.field(PARAM_DEFAULT_FIELD).is_some();
+            if !optional {
+                required.push(name.clone());
+            }
+            let mut field = synthetic_field(
+                &name,
+                TypeRef::Builtin(crate::value::BuiltinType::Utf8),
+                optional,
+            );
+            field.decorators.push(synthetic_decorator(
+                BuiltinDecorator::Schemaless.as_str(),
+                Vec::new(),
+            ));
+            fields.push(field);
+        }
+    }
+
+    let mut block_dec = synthetic_decorator(
+        BuiltinDecorator::Block.as_str(),
+        vec![ast::Expr::Utf8(kind.to_string())],
+    );
+    if !required.is_empty() {
+        block_dec.named.push(ast::NamedArg {
+            name: "required_fields".to_string(),
+            value: ast::Expr::ListLit {
+                elements: required.into_iter().map(ast::Expr::Utf8).collect(),
+                elem_trivia: Vec::new(),
+                trailing_trivia: Vec::new(),
+                span: synthetic_span(),
+            },
+            span: synthetic_span(),
+            leading_trivia: Vec::new(),
+            trailing_comment: None,
+        });
+    }
+
+    ast::TypeDecl {
+        name: vec![kind.to_string()],
+        extends: Vec::new(),
+        alias: None,
+        fields,
+        decorators: vec![
+            block_dec,
+            synthetic_decorator(BuiltinDecorator::Contextual.as_str(), Vec::new()),
+        ],
+        span: declarer.span(),
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+        trailing_trivia: Vec::new(),
     }
 }
 

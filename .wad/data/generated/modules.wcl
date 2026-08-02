@@ -97,7 +97,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_ast {
     name = "ast"
     kind = "module"
-    summary = "1 file, 41 pub items"
+    summary = "1 file, 44 pub items"
   }
   code_node n_cg_wcl_lang_builtins {
     name = "builtins"
@@ -120,7 +120,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_doc {
     name = "doc"
     kind = "module"
-    summary = "16 files, 67 pub items"
+    summary = "16 files, 68 pub items"
     deps = [n_cg_wcl_lang_ast, n_cg_wcl_lang_data, n_cg_wcl_lang_environment, n_cg_wcl_lang_error, n_cg_wcl_lang_lexer, n_cg_wcl_lang_numeric, n_cg_wcl_lang_parser, n_cg_wcl_lang_symbols, n_cg_wcl_lang_value]
   }
   code_node n_cg_wcl_lang_edit {
@@ -1304,6 +1304,41 @@ code_item code_api_wcl_lang_ast {
       kind = "method"
     }
   }
+  code_node n_api_wcl_lang_ast_ast_fns {
+    name = "ast"
+    kind = "fns"
+    summary = "src/ast.rs"
+    code_member m_n_api_wcl_lang_ast_ast_fns_synthetic_span {
+      signature = "fn synthetic_span() -> Span"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wcl_lang_ast_Span]
+    }
+    code_member m_n_api_wcl_lang_ast_ast_fns_synthetic_decorator {
+      signature = "fn synthetic_decorator(name: &str, positional: Vec<Expr>) -> De…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wcl_lang_ast_Expr, n_api_wcl_lang_ast_Decorator]
+    }
+    code_member m_n_api_wcl_lang_ast_ast_fns_synthetic_field {
+      signature = "fn synthetic_field(name: &str, ty: crate::value::TypeRef, optio…"
+      kind = "fn"
+      visibility = "crate"
+      deps = [n_api_wcl_lang_ast_TypeField]
+    }
+    code_member m_n_api_wcl_lang_ast_ast_fns_UNARY_BP {
+      signature = "const UNARY_BP: u8"
+      kind = "const"
+    }
+    code_member m_n_api_wcl_lang_ast_ast_fns_CALL_BP {
+      signature = "const CALL_BP: u8"
+      kind = "const"
+    }
+    code_member m_n_api_wcl_lang_ast_ast_fns_MEMBER_BP {
+      signature = "const MEMBER_BP: u8"
+      kind = "const"
+    }
+  }
   code_node n_api_wcl_lang_ast_Trivia {
     name = "Trivia"
     kind = "enum"
@@ -1690,23 +1725,6 @@ code_item code_api_wcl_lang_ast {
     code_member m_n_api_wcl_lang_ast_BinOp_more {
       signature = "… +3 more"
       kind = "overflow"
-    }
-  }
-  code_node n_api_wcl_lang_ast_ast_fns {
-    name = "ast"
-    kind = "fns"
-    summary = "src/ast.rs"
-    code_member m_n_api_wcl_lang_ast_ast_fns_UNARY_BP {
-      signature = "const UNARY_BP: u8"
-      kind = "const"
-    }
-    code_member m_n_api_wcl_lang_ast_ast_fns_CALL_BP {
-      signature = "const CALL_BP: u8"
-      kind = "const"
-    }
-    code_member m_n_api_wcl_lang_ast_ast_fns_MEMBER_BP {
-      signature = "const MEMBER_BP: u8"
-      kind = "const"
     }
   }
   code_node n_api_wcl_lang_ast_UnaryOp {
@@ -3117,6 +3135,10 @@ code_item code_api_doc_view {
       signature = "Contextual"
       kind = "variant"
     }
+    code_member m_n_api_doc_view_BuiltinDecorator_DeclaresKind {
+      signature = "DeclaresKind"
+      kind = "variant"
+    }
     code_member m_n_api_doc_view_BuiltinDecorator_Inline {
       signature = "Inline"
       kind = "variant"
@@ -3141,12 +3163,8 @@ code_item code_api_doc_view {
       signature = "Dynamic"
       kind = "variant"
     }
-    code_member m_n_api_doc_view_BuiltinDecorator_Ref {
-      signature = "Ref"
-      kind = "variant"
-    }
     code_member m_n_api_doc_view_BuiltinDecorator_more {
-      signature = "… +2 more"
+      signature = "… +3 more"
       kind = "overflow"
     }
   }
@@ -3476,9 +3494,9 @@ code_item code_api_doc_view {
     }
   }
   code_node n_api_doc_view_more {
-    name = "… +16 more"
+    name = "… +17 more"
     kind = "overflow"
-    summary = "16 further public items — see the source."
+    summary = "17 further public items — see the source."
   }
 }
 
@@ -4466,8 +4484,8 @@ code_item code_api_wcl_lang_error {
       signature = "DuplicateBlockId"
       kind = "variant"
     }
-    code_member m_n_api_wcl_lang_error_SchemaViolationKind_ComponentKindCollision {
-      signature = "ComponentKindCollision"
+    code_member m_n_api_wcl_lang_error_SchemaViolationKind_DeclaredKindCollision {
+      signature = "DeclaredKindCollision"
       kind = "variant"
     }
     code_member m_n_api_wcl_lang_error_SchemaViolationKind_more {

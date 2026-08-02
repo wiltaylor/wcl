@@ -18,6 +18,39 @@ impl Span {
     }
 }
 
+/// The span every synthesised AST node carries: there is no source text
+/// behind it. Shared with the schema derivation in `doc.rs`, which
+/// fabricates type declarations the same way.
+pub(crate) fn synthetic_span() -> Span {
+    Span::new(0, 0)
+}
+
+/// A decorator with no named args, spanning nothing — the shape every
+/// synthesised `@block("x")` / `@contextual` / `@decorator("y")` takes.
+pub(crate) fn synthetic_decorator(name: &str, positional: Vec<Expr>) -> Decorator {
+    Decorator {
+        name: vec![name.to_string()],
+        positional,
+        named: Vec::new(),
+        span: synthetic_span(),
+    }
+}
+
+/// A field of a synthesised type: no decorators, no default, no span.
+pub(crate) fn synthetic_field(name: &str, ty: crate::value::TypeRef, optional: bool) -> TypeField {
+    TypeField {
+        name: name.to_string(),
+        ty,
+        ty_span: synthetic_span(),
+        optional,
+        decorators: Vec::new(),
+        span: synthetic_span(),
+        default_expr: None,
+        leading_trivia: Vec::new(),
+        trailing_comment: None,
+    }
+}
+
 /// Side-band formatting hints attached to each top-level [`Item`] in
 /// `leading_trivia`. The lexer collects these from the source between
 /// tokens; the parser hands them to the next Item it builds. The

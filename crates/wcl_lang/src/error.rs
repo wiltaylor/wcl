@@ -357,12 +357,12 @@ pub enum SchemaViolationKind {
     /// ambiguous. Kinds whose label isn't identifier-typed (`code wcl`,
     /// `li`, …) repeat freely.
     DuplicateBlockId,
-    /// A `wdoc_component`'s name collides with a registered
-    /// `@block`/`@table` kind. The dispatch paths disagree on the
-    /// winner (expansion prefers the component, schema lookup the
-    /// block type), so instances behave incoherently — the collision
-    /// itself is the error.
-    ComponentKindCollision,
+    /// A kind declared by a `@declares_kind` instance collides with a
+    /// kind declared by a `@block`/`@table` type. The dispatch paths
+    /// disagree on the winner (expansion prefers the declarer, schema
+    /// lookup the declared type), so instances behave incoherently —
+    /// the collision itself is the error.
+    DeclaredKindCollision,
     /// A `&Interface` reference field's target doesn't implement
     /// the interface (missing or differently-typed field), or a
     /// `&T` reference field's target isn't `T` and isn't a

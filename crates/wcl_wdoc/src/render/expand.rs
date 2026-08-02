@@ -37,7 +37,7 @@ pub(crate) fn block_tree_any<F: Fn(&Block<'_>) -> bool>(block: &Block<'_>, pred:
             || (depth < MAX_LOWER_DEPTH
                 && block
                     .doc()
-                    .component_def(block.kind())
+                    .kind_declarer(block.kind())
                     .is_some_and(|def| def.blocks().any(|b| go(&b, pred, depth + 1))))
     }
     go(block, pred, 0)
@@ -60,7 +60,7 @@ fn generated_children<'a>(block: &Block<'a>) -> Option<Vec<Block<'a>>> {
         "wdoc_instance" => Some(expand_instance_children(block)),
         kind => block
             .doc()
-            .component_def(kind)
+            .kind_declarer(kind)
             .map(|def| expand_component_children(block, &def)),
     }
 }
@@ -438,7 +438,7 @@ fn instance_component_name(instance: &Block<'_>) -> Option<String> {
 pub(crate) fn instance_target_def<'a>(instance: &Block<'a>) -> Option<Block<'a>> {
     instance
         .doc()
-        .component_def(&instance_component_name(instance)?)
+        .kind_declarer(&instance_component_name(instance)?)
 }
 
 /// Expand a `wdoc_instance` — the render-by-reference counterpart to writing

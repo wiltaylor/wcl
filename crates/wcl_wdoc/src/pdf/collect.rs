@@ -186,7 +186,7 @@ fn collect_block(
     }
     // A user-defined `wdoc_component` instance: expand its declarative
     // body with the instance's slots bound.
-    if let Some(def) = doc.component_def(kind) {
+    if let Some(def) = doc.kind_declarer(kind) {
         collect_component(doc, block, &def, patterns, base_dir, out);
         return;
     }

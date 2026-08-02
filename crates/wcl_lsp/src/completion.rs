@@ -48,6 +48,8 @@ const BUILTIN_DECORATORS: &[&str] = &[
     "inline",
     "default",
     "decorator",
+    "contextual",
+    "declares_kind",
 ];
 
 /// Builtin scalar / string type names the user can write in a type
