@@ -5095,14 +5095,20 @@ fn field_shape_names_the_remaining_forms() {
     assert_eq!(shape_of(&doc, "Thing", "inner").builtin(), None);
 }
 
-/// A cyclic alias can't be peeled; the walk is capped and stays
-/// permissive rather than hanging.
+/// A cyclic alias can't be peeled. The walk is capped rather than
+/// hanging, and says it gave up — guessing a shape here would be the
+/// silent misclassification the type exists to end.
 #[test]
-fn field_shape_survives_an_alias_cycle() {
+fn field_shape_says_so_when_an_alias_cycle_defeats_it() {
     let doc = Document::open(
         "type A = B\ntype B = A\ntype T { x: A }\n@document\ntype D { }\n",
         "test.wcl",
     )
     .expect("open");
-    assert!(matches!(shape_of(&doc, "T", "x"), FieldShape::Block(_)));
+    let shape = shape_of(&doc, "T", "x");
+    assert!(matches!(shape, FieldShape::Unresolved(_)), "{shape:?}");
+    // And it answers for nothing: not a scalar, not a list, not a fn.
+    assert_eq!(shape.builtin(), None);
+    assert!(shape.list_element().is_none());
+    assert!(!shape.is_function());
 }

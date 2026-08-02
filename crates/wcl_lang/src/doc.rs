@@ -1361,7 +1361,7 @@ impl Document {
                 other => other.clone(),
             }
         }
-        go(self, ty, 8)
+        go(self, ty, views::ALIAS_DEPTH)
     }
 
     /// The chain of alias declarations behind `ty`, outermost first —
@@ -1370,7 +1370,7 @@ impl Document {
     pub(crate) fn alias_chain(&self, ty: &crate::value::TypeRef) -> Vec<TypeDecl<'_>> {
         let mut out = Vec::new();
         let mut current = ty.clone();
-        for _ in 0..8 {
+        for _ in 0..views::ALIAS_DEPTH {
             let crate::value::TypeRef::Named { path, .. } = &current else {
                 break;
             };
