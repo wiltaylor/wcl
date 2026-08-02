@@ -291,22 +291,27 @@ impl Graph {
             .collect()
     }
 
-    /// Units no index pins and no projection organizes structurally — the
-    /// ones a reader can only reach by search.
+    /// Units no index pins and no *declared* projection organizes
+    /// structurally — the ones a reader can only reach by search.
     ///
-    /// A lesson is not unindexed: the training syllabus is built from the
-    /// lesson data itself (see [`structural_view_kind`]), so it has a home
-    /// without being pinned.
+    /// A lesson in a wskill that ships a training view is not unindexed: that
+    /// view's syllabus is built from the lesson data itself
+    /// ([`Graph::organizing_views`]). The same lesson in a wskill that
+    /// declares no training artifact IS unindexed — nothing renders it and no
+    /// index points at it, which is exactly the content a curator is hunting.
     pub fn unindexed(&self) -> Vec<&Unit> {
         self.units
             .iter()
             .filter(|u| {
-                structural_view_kind(&u.kind).is_none() && self.indexes_pinning(&u.id).is_empty()
+                self.organizing_views(u).is_empty() && self.indexes_pinning(&u.id).is_empty()
             })
             .collect()
     }
 
-    /// The views a unit is organized by structurally rather than by pinning.
+    /// The declared views that organize `unit` structurally rather than by
+    /// pinning — the training view for a lesson, the deck for a
+    /// presentation. Empty for reference content, and empty for a
+    /// view-owned kind whose view the registry doesn't declare.
     pub fn organizing_views(&self, unit: &Unit) -> Vec<&View> {
         let Some(owner) = structural_view_kind(&unit.kind) else {
             return Vec::new();

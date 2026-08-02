@@ -3,13 +3,14 @@
 // An "edit this object" button, rendered ONLY in the `wcl editor` preview
 // pane. Clicking it resolves one schema data object and opens its declaring
 // `.wcl` source in an editor tab at that instance, so editing a rendered unit
-// (a wskill concept / entity / fact / process) is one click from its content.
+// (a concept, an entity, a component — whatever the schema declares) is one
+// click from its content.
 //
 //   edit_object { kind = "concept" target = unit.id label = "Edit this concept" }
 //
 //   • `kind`   — the schema `@block`/`@table` kind to edit (e.g. "concept").
 //   • `target` — the instance id/label to open (matched against the object's
-//                inline label, which is its id for the wskill units); omit it
+//                inline label, which is its id for id-labelled units); omit it
 //                only when the document has exactly one instance of the kind.
 //   • `label`  — button text override (defaults to "Edit <kind>").
 //

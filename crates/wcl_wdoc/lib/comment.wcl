@@ -3,8 +3,9 @@
 // Review comments are NOT stored in the document source. The `wcl editor`
 // preview pane lets you click a rendered block (or the page) and leave a
 // note, persisting each one into a `comments.wcl` sidecar — one beside each
-// wskill's `wskill.wcl`, or beside the served root document for a page not
-// inside a wskill. Watchers ignore `comments.wcl`, so a note shows
+// owning document root (the host names the file that marks one), or beside
+// the served root document for a page not inside one. Watchers ignore
+// `comments.wcl`, so a note shows
 // client-side with no document rebuild.
 // `wcl wdoc comments` reads them back so an AI agent can act on the notes and
 // `wcl wdoc comments resolve <id>` to delete them. See
@@ -32,7 +33,7 @@ type Comment {
   id: utf8            // stable handle; survives edits so `resolve` can find it
   page: utf8          // the page name the comment is on
   page_file: utf8?    // the page's source file (disambiguates same-named pages
-                      // across different sites / wskills)
+                      // across different sites / sub-documents)
   loc: utf8?          // positional locator of the block within the page
   target: utf8?       // human description of the referenced block
   body: utf8          // the reviewer's note

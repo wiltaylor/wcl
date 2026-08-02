@@ -25,8 +25,6 @@ pub struct Artifact {
     pub kind: String,
     /// The entry document, relative to the wskill root.
     pub entry: String,
-    /// The declared output directory, relative to the wskill root.
-    pub output: Option<String>,
 }
 
 /// A wskill's `wskill.wcl`, read for identity and projections only.
@@ -57,11 +55,6 @@ impl Registry {
         wcl_wdoc::owner_root(from, ROOT_MARKER)
     }
 
-    /// Read the registry of the wskill owning `start`, if there is one.
-    pub fn find(start: &Path) -> Option<Registry> {
-        Self::read(&Self::owner_dir(start)?.join(ROOT_MARKER))
-    }
-
     /// Read one `wskill.wcl`. A file that doesn't parse yields `None` — the
     /// registry is metadata, and the build step is the authority on errors.
     pub fn read(file: &Path) -> Option<Registry> {
@@ -77,23 +70,18 @@ impl Registry {
             let Item::Block(b) = item else { continue };
             match b.kind.as_str() {
                 "topic" => {
-                    reg.topic_id = label_of(b);
+                    reg.topic_id = ast_label(b);
                     reg.topic_name = string_field(b, "name");
                 }
                 "artifact" => {
                     let (Some(id), Some(kind), Some(entry)) = (
-                        label_of(b),
+                        ast_label(b),
                         symbol_field(b, "kind"),
                         string_field(b, "entry"),
                     ) else {
                         continue;
                     };
-                    reg.artifacts.push(Artifact {
-                        id,
-                        kind,
-                        entry,
-                        output: string_field(b, "output"),
-                    });
+                    reg.artifacts.push(Artifact { id, kind, entry });
                 }
                 _ => {}
             }
@@ -125,12 +113,15 @@ fn first_site_name(entry: &Path) -> Option<String> {
     let src = std::fs::read_to_string(entry).ok()?;
     let ast = parse_for_edit(&src, entry.display().to_string()).ok()?;
     ast.items.iter().find_map(|i| match i {
-        Item::Block(b) if b.kind == "site" => label_of(b),
+        Item::Block(b) if b.kind == "site" => ast_label(b),
         _ => None,
     })
 }
 
-fn label_of(b: &wcl_lang::ast::Block) -> Option<String> {
+/// A block's first inline label, when it is a plain identifier or string —
+/// how every wskill block is named (`concept alpha`, `artifact book`). The
+/// crate's one label reader.
+pub(crate) fn ast_label(b: &wcl_lang::ast::Block) -> Option<String> {
     match b.labels.first()? {
         Expr::Identifier(s, _) | Expr::Utf8(s) | Expr::Ascii(s) => Some(s.clone()),
         _ => None,
@@ -161,12 +152,7 @@ fn symbol_field(b: &wcl_lang::ast::Block, name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn write(dir: &Path, rel: &str, text: &str) {
-        let path = dir.join(rel);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path, text).unwrap();
-    }
+    use crate::testsupport::write;
 
     #[test]
     fn reads_topic_and_artifacts_and_resolves_site_names() {
@@ -190,7 +176,7 @@ mod tests {
         assert_eq!(reg.topic_name.as_deref(), Some("Demo Topic"));
         assert_eq!(reg.artifacts.len(), 2);
         assert_eq!(reg.artifacts[0].kind, "book");
-        assert_eq!(reg.artifacts[0].output.as_deref(), Some("out/book"));
+        assert_eq!(reg.artifacts[0].entry, "wdoc/book/main.wcl");
 
         let views = reg.views(root);
         // The site name comes from the projection entry…

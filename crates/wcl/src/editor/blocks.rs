@@ -91,47 +91,14 @@ fn block_source(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::Val
     }))
 }
 
-/// The block's visibility state as the toggles UI understands it: the
-/// `@except(sites = [:…])` symbol list, plus a `custom` flag for anything
-/// richer (`@only`, positional args, `templates`/`backends` axes, computed
-/// lists) — the UI defers those to the fragment editor.
+/// The block's visibility state as the toggles UI understands it, as JSON.
+/// The classification itself is [`wcl_wdoc::declared_visibility`]'s — the
+/// `@only`/`@except` vocabulary is wdoc's, and the build's own anchor stamps
+/// read the same classifier, so a stamp can't disagree with what
+/// `set_visibility` will accept.
 pub(super) fn visibility_json(block: &ast::Block) -> serde_json::Value {
-    let mut except_sites: Vec<String> = Vec::new();
-    let mut custom = false;
-    for d in &block.decorators {
-        let name = match d.name.as_slice() {
-            [n] => n.as_str(),
-            [ns, n] if ns == "wdoc" => n.as_str(),
-            _ => continue,
-        };
-        match name {
-            "only" => custom = true,
-            "except" => {
-                if !d.positional.is_empty() {
-                    custom = true;
-                }
-                for arg in &d.named {
-                    if arg.name != "sites" {
-                        custom = true;
-                        continue;
-                    }
-                    match &arg.value {
-                        Expr::ListLit { elements, .. }
-                            if elements.iter().all(|e| matches!(e, Expr::Symbol(_))) =>
-                        {
-                            except_sites.extend(elements.iter().filter_map(|e| match e {
-                                Expr::Symbol(s) => Some(s.clone()),
-                                _ => None,
-                            }));
-                        }
-                        _ => custom = true,
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    serde_json::json!({ "except_sites": except_sites, "custom": custom })
+    let v = wcl_wdoc::declared_visibility(block);
+    serde_json::json!({ "except_sites": v.except_sites, "custom": v.custom })
 }
 
 // ---------------------------------------------------------------------------
