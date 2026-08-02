@@ -1101,7 +1101,7 @@ impl<'a> TypeDecl<'a> {
     /// into by the child walk. Its generated children come from the
     /// host's [`Expander`](crate::Expander) — see
     /// [`Block::expand_children`].
-    pub fn is_contextual(&self) -> bool {
+    pub(crate) fn is_contextual(&self) -> bool {
         crate::doc::schema_check::has_contextual(&self.ast.decorators)
     }
 
@@ -2966,7 +2966,7 @@ impl<'a> Block<'a> {
     // vocabulary in this predicate: an instance-declared kind has no
     // `@block` type to carry the decorator until `@declares_kind`
     // derives one for it.
-    pub fn is_contextual(&self) -> bool {
+    pub(crate) fn is_contextual(&self) -> bool {
         match self.schema() {
             Some(t) => t.is_contextual(),
             None => self.doc.is_component_kind(self.kind()),
@@ -2980,8 +2980,8 @@ impl<'a> Block<'a> {
     /// blocks a projection sees are exactly the ones the host's own
     /// renderer sees — including the diagnostics it records on the way.
     ///
-    /// Empty for a block that is not `@contextual` and beyond the
-    /// expansion-depth cap. Demanding the children of a `@contextual`
+    /// Empty for a block that is not `@contextual`, and for one past
+    /// the expansion-depth cap. Demanding the children of a `@contextual`
     /// block with no registered expander is a hard error: the language
     /// declines to guess at expansion semantics it does not own.
     pub fn expand_children(&self) -> Result<Vec<Block<'a>>, EvalError> {
@@ -3150,11 +3150,11 @@ impl<'a> RowView<'a> {
 /// contain another repetition or an instance). The expansion-depth cap
 /// inside [`Block::expand_children`] bounds the recursion.
 fn push_generated_matching<'a>(
-    generator: &Block<'a>,
+    contextual: &Block<'a>,
     kind: &str,
     out: &mut Vec<Block<'a>>,
 ) -> Result<(), EvalError> {
-    for child in generator.expand_children()? {
+    for child in contextual.expand_children()? {
         if child.kind() == kind {
             out.push(child);
         } else if child.is_contextual() {

@@ -43,6 +43,28 @@ pub(crate) fn block_tree_any<F: Fn(&Block<'_>) -> bool>(block: &Block<'_>, pred:
     go(block, pred, 0)
 }
 
+/// The blocks `block` generates, or `None` when it generates nothing and
+/// is authored content in its own right. **The one place that decides
+/// which kinds expand** — both the language's `@children` projections
+/// (through [`WdocExpander`]) and the render path's
+/// [`flatten_container_child`] ask here, so the two can't drift over what
+/// counts as a generator.
+///
+/// `wdoc_content` is deliberately absent: it is a placement marker, so it
+/// is `@contextual` (it may appear wherever a `WdocBlock` may) but the
+/// renderer — not an expansion — fills it with the instance's own
+/// children, and it must survive the flatten as itself.
+fn generated_children<'a>(block: &Block<'a>) -> Option<Vec<Block<'a>>> {
+    match block.kind() {
+        "wdoc_repeater" => Some(expand_repeater_children(block)),
+        "wdoc_instance" => Some(expand_instance_children(block)),
+        kind => block
+            .doc()
+            .component_def(kind)
+            .map(|def| expand_component_children(block, &def)),
+    }
+}
+
 /// wdoc's [`Expander`] — the one answer to "what does this
 /// `@contextual` block generate?", registered on every
 /// [`wdoc_environment`](crate::wdoc_environment) so the language's
@@ -54,19 +76,7 @@ pub struct WdocExpander;
 
 impl Expander for WdocExpander {
     fn expand<'a>(&self, block: &Block<'a>) -> Vec<Block<'a>> {
-        match block.kind() {
-            "wdoc_repeater" => expand_repeater_children(block),
-            "wdoc_instance" => expand_instance_children(block),
-            // `wdoc_content` is a placement marker, not a generator: it
-            // is `@contextual` because it may appear wherever a
-            // `WdocBlock` may, and the renderer — not the language —
-            // fills it with the instance's own children.
-            "wdoc_content" => Vec::new(),
-            kind => match block.doc().component_def(kind) {
-                Some(def) => expand_component_children(block, &def),
-                None => Vec::new(),
-            },
-        }
+        generated_children(block).unwrap_or_default()
     }
 }
 
@@ -99,26 +109,13 @@ fn flatten_container_child<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
     if child.binding_scope_depth() > MAX_LOWER_DEPTH {
         return;
     }
-    match child.kind() {
-        "wdoc_repeater" => {
-            for c in expand_repeater_children(&child) {
+    match generated_children(&child) {
+        Some(generated) => {
+            for c in generated {
                 flatten_container_child(c, out);
             }
         }
-        "wdoc_instance" => {
-            for c in expand_instance_children(&child) {
-                flatten_container_child(c, out);
-            }
-        }
-        kind => {
-            if let Some(def) = child.doc().component_def(kind) {
-                for c in expand_component_children(&child, &def) {
-                    flatten_container_child(c, out);
-                }
-            } else {
-                out.push(child);
-            }
-        }
+        None => out.push(child),
     }
 }
 

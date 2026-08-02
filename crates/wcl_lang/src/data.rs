@@ -100,8 +100,9 @@ impl<'a> DataKind<'a> {
         }
     }
 
-    /// Source span of the underlying AST node. `Document` and an empty
-    /// `BlockList`/`Table` fall back to the zero span.
+    /// Source span of the underlying AST node. `Document`, an empty
+    /// `BlockList`/`Table`, and `Error` (whose span rides on the error
+    /// itself, labelled) fall back to the zero span.
     pub(crate) fn span(&self) -> crate::ast::Span {
         match self {
             DataKind::Document(_) => crate::ast::Span::new(0, 0),
@@ -121,8 +122,6 @@ impl<'a> DataKind<'a> {
             DataKind::Variant(v) => v.span(),
             DataKind::Symbols(s) => s.span(),
             DataKind::Symbol(s) => s.span(),
-            // The error carries its own labelled span; this one only
-            // feeds `not_a_leaf`, which `Error` never reaches.
             DataKind::Error(_) => crate::ast::Span::new(0, 0),
         }
     }
@@ -508,12 +507,16 @@ impl<'a> DataRef<'a> {
                 let s = *s;
                 Box::new(s.symbols().map(|e| DataRef::new(DataKind::Symbol(e))))
             }
+            // Walking a failed reference yields the failure itself, not
+            // an empty list: a consumer that iterates a slot must not
+            // read "expander missing" as "no children" — the quietly
+            // incomplete answer this variant exists to prevent.
+            DataKind::Error(_) => Box::new(std::iter::once(self.clone())),
             DataKind::Document(_)
             | DataKind::Field(_)
             | DataKind::TypeField(_)
             | DataKind::Symbol(_)
-            | DataKind::VariantValue(_)
-            | DataKind::Error(_) => Box::new(std::iter::empty()),
+            | DataKind::VariantValue(_) => Box::new(std::iter::empty()),
             DataKind::VariantValueList(vs) => {
                 Box::new(vs.clone().into_iter().map(DataRef::from_variant_value))
             }

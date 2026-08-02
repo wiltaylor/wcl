@@ -234,8 +234,9 @@ skills-check: require-cargo
 # language: `wcl` opens every document with `wcl_wdoc::wdoc_environment` (that
 # is what supplies the expander `@contextual` block kinds need), so wdoc's own
 # builtins are callable too. They're documented with wdoc, not here — a new one
-# fails this check until it is either documented in the wcl wskill or listed
-# below as wdoc's.
+# fails this check until it is either documented in the wcl wskill or added to
+# this list as wdoc's. One name per line: `grep -vxF` takes a multi-line pattern
+# argument as one pattern per line, so a second entry must be a real newline.
 host_builtins := "included_sites"
 
 # Fail when the `wcl` wskill's builtin/subcommand reference drifts from the binary it documents (runs in ci)
