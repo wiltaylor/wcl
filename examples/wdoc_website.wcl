@@ -39,7 +39,7 @@ template landing {
       wdoc_head_meta("description", "Nimbus — ship faster."),
       [
         HtmlFundamental::Element {
-          tag: "style", id: none, class: none, attrs: none,
+          tag: "style",
           children: [ HtmlFundamental::Raw { html: landing_css } ],
         },
         HtmlFundamental::Raw { html: $<<HTML

@@ -27,28 +27,28 @@ type ChapterHeader extends WdocBlock {
     let kicker =
       if c.kicker == none { [] }
       else { [ HtmlFundamental::Element {
-        tag: "p", id: none, class: ["book-kicker"], attrs: none,
+        tag: "p", class: ["book-kicker"],
         children: [ HtmlFundamental::Raw { html: c.kicker ?? "" } ],
       } ] };
     let meta_items = flatten([
       if c.reading_time == none { [] } else { [ HtmlFundamental::Element {
-        tag: "span", id: none, class: ["book-meta-item"], attrs: none,
+        tag: "span", class: ["book-meta-item"],
         children: [ HtmlFundamental::Raw { html: c.reading_time ?? "" } ] } ] },
       if c.updated == none { [] } else { [ HtmlFundamental::Element {
-        tag: "span", id: none, class: ["book-meta-item"], attrs: none,
+        tag: "span", class: ["book-meta-item"],
         children: [ HtmlFundamental::Raw { html: c.updated ?? "" } ] } ] },
       if c.version == none { [] } else { [ HtmlFundamental::Element {
-        tag: "span", id: none, class: ["book-meta-item"], attrs: none,
+        tag: "span", class: ["book-meta-item"],
         children: [ HtmlFundamental::Raw { html: c.version ?? "" } ] } ] },
     ]);
     let meta =
       if len(meta_items) == 0 { [] }
       else { [ HtmlFundamental::Element {
-        tag: "div", id: none, class: ["book-meta"], attrs: none, children: meta_items,
+        tag: "div", class: ["book-meta"], children: meta_items,
       } ] };
     [
       HtmlFundamental::Element {
-        tag: "header", id: none, class: ["book-chapter-header"], attrs: none,
+        tag: "header", class: ["book-chapter-header"],
         children: flatten([
           kicker,
           [ HtmlFundamental::Paragraph { id: c.id, class: ["heading-1"], spans: [c.title] } ],

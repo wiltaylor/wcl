@@ -467,6 +467,16 @@ type Polygon extends SvgBlock {
 // fundamentals remain. Users add their own shapes by declaring the
 // same pair in user source.
 
+// ── Constructing a fundamental ─────────────────────────────────────
+//
+// Applies to BOTH unions below. An optional (`field?`) member defaults
+// to `none` when omitted, so writing `stroke: none` is dead weight, not
+// opting out — only required fields have to be supplied. A `class` list
+// additionally DROPS its `none` entries, which is what makes an
+// else-less `if` legal inline (`class: ["axis", if hi { "hot" }]`); a
+// list whose every entry is `none` emits no `class` attribute at all,
+// not an empty one. `Element.attrs` drops a `none` pair the same way.
+
 // `Rect.rx` rounds the corners (statechart state boxes). `Line.dash` /
 // `Polyline.dash` is an inline `stroke-dasharray` value (e.g. `"4 4"`)
 // — inline rather than a theme class so dashes survive the PDF

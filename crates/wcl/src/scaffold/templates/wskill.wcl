@@ -1389,10 +1389,10 @@ type Quiz extends WdocBlock {
     // after answering (hidden until then by the stylesheet).
     let choice_item = fn(c: Choice) -> HtmlFundamental {
       HtmlFundamental::Element {
-        tag: "li", id: none, class: ["quiz-choice"], attrs: none,
+        tag: "li", class: ["quiz-choice"],
         children: [
           HtmlFundamental::Element {
-            tag: "button", id: none, class: ["quiz-choice-btn"],
+            tag: "button", class: ["quiz-choice-btn"],
             attrs: [
               ["type", "button"],
               ["data-choice", $"${c.id}"],
@@ -1401,7 +1401,7 @@ type Quiz extends WdocBlock {
             children: [ HtmlFundamental::Inline { text: c.label } ],
           },
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["quiz-choice-note"], attrs: none,
+            tag: "div", class: ["quiz-choice-note"],
             children: [ HtmlFundamental::Inline { text: c.note ?? "" } ],
           },
         ],
@@ -1409,7 +1409,7 @@ type Quiz extends WdocBlock {
     };
 
     let prompt_el = HtmlFundamental::Element {
-      tag: "div", id: none, class: ["quiz-prompt"], attrs: none,
+      tag: "div", class: ["quiz-prompt"],
       children: [ HtmlFundamental::Inline { text: q.prompt } ],
     };
 
@@ -1417,26 +1417,26 @@ type Quiz extends WdocBlock {
     // The rubric doubles as the self-check when no server is grading.
     let text_body = [
       HtmlFundamental::Element {
-        tag: "textarea", id: none, class: ["quiz-answer"],
+        tag: "textarea", class: ["quiz-answer"],
         attrs: [["rows", "6"], ["placeholder", "Write your answer…"]],
         children: [],
       },
       HtmlFundamental::Element {
-        tag: "button", id: none, class: ["quiz-submit"], attrs: [["type", "button"]],
+        tag: "button", class: ["quiz-submit"], attrs: [["type", "button"]],
         children: [ HtmlFundamental::Raw { html: "Submit answer" } ],
       },
       HtmlFundamental::Element {
-        tag: "div", id: none, class: ["quiz-verdict"], attrs: none, children: [],
+        tag: "div", class: ["quiz-verdict"], children: [],
       },
       HtmlFundamental::Element {
-        tag: "div", id: none, class: ["quiz-rubric"], attrs: none,
+        tag: "div", class: ["quiz-rubric"],
         children: [
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["quiz-rubric-label"], attrs: none,
+            tag: "div", class: ["quiz-rubric-label"],
             children: [ HtmlFundamental::Raw { html: "A good answer covers" } ],
           },
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["quiz-rubric-body"], attrs: none,
+            tag: "div", class: ["quiz-rubric-body"],
             children: [ HtmlFundamental::Inline { text: q.rubric ?? "" } ],
           },
         ],
@@ -1445,7 +1445,7 @@ type Quiz extends WdocBlock {
 
     let choice_body = [
       HtmlFundamental::Element {
-        tag: "ul", id: none, class: ["quiz-choices"], attrs: none,
+        tag: "ul", class: ["quiz-choices"],
         children: map(q.choices, choice_item),
       },
     ];
@@ -1457,7 +1457,7 @@ type Quiz extends WdocBlock {
       else {
         [
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["quiz-explanation"], attrs: none,
+            tag: "div", class: ["quiz-explanation"],
             children: [ HtmlFundamental::Inline { text: q.explanation } ],
           },
         ]
@@ -2921,24 +2921,24 @@ JS
 let tr_nav_entry = fn(e: TocEntry) -> HtmlFundamental
   if e.href == "" {
     HtmlFundamental::Element {
-      tag: "li", id: none, class: ["tr-nav-module"], attrs: none,
+      tag: "li", class: ["tr-nav-module"],
       children: [ HtmlFundamental::Raw { html: e.title } ],
     }
   } else {
     HtmlFundamental::Element {
-      tag: "li", id: none, class: ["tr-nav-item"], attrs: none,
+      tag: "li", class: ["tr-nav-item"],
       children: [
         HtmlFundamental::Element {
-          tag: "a", id: none,
+          tag: "a",
           class: if e.current { ["current"] } else { none },
           attrs: [["href", e.href]],
           children: [
             HtmlFundamental::Element {
-              tag: "span", id: none, class: ["tr-nav-mark"], attrs: none,
+              tag: "span", class: ["tr-nav-mark"],
               children: [ HtmlFundamental::Raw { html: "○" } ],
             },
             HtmlFundamental::Element {
-              tag: "span", id: none, class: none, attrs: none,
+              tag: "span",
               children: [ HtmlFundamental::Raw { html: e.title } ],
             },
           ],
@@ -2955,33 +2955,33 @@ let tr_nav_items = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
 
 let tr_nav = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "nav", id: none, class: ["tr-nav"], attrs: none,
+    tag: "nav", class: ["tr-nav"],
     children: [
       HtmlFundamental::Element {
-        tag: "div", id: none, class: ["tr-nav-title"], attrs: none,
+        tag: "div", class: ["tr-nav-title"],
         children: [ HtmlFundamental::Raw { html: c.title } ],
       },
       HtmlFundamental::Element {
-        tag: "div", id: none, class: ["tr-progress"], attrs: none,
+        tag: "div", class: ["tr-progress"],
         children: [
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["tr-progress-label"], attrs: none,
+            tag: "div", class: ["tr-progress-label"],
             children: [ HtmlFundamental::Raw { html: "Not started" } ],
           },
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["tr-progress-bar"], attrs: none,
+            tag: "div", class: ["tr-progress-bar"],
             children: [ HtmlFundamental::Element {
-              tag: "div", id: none, class: ["tr-progress-fill"], attrs: none, children: [],
+              tag: "div", class: ["tr-progress-fill"], children: [],
             } ],
           },
         ],
       },
       HtmlFundamental::Element {
-        tag: "ul", id: none, class: none, attrs: none,
+        tag: "ul",
         children: tr_nav_items(c.toc),
       },
       HtmlFundamental::Element {
-        tag: "button", id: none, class: ["tr-reset"], attrs: [["type", "button"]],
+        tag: "button", class: ["tr-reset"], attrs: [["type", "button"]],
         children: [ HtmlFundamental::Raw { html: "Reset progress" } ],
       },
     ],
@@ -2992,20 +2992,20 @@ template training {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
       [ HtmlFundamental::Element {
-          tag: "style", id: none, class: none, attrs: none,
+          tag: "style",
           children: [ HtmlFundamental::Raw { html: training_css } ],
       } ],
       tr_nav(c),
       [ HtmlFundamental::Element {
-          tag: "main", id: none, class: ["tr-main"], attrs: none,
+          tag: "main", class: ["tr-main"],
           children: flatten([
             [ HtmlFundamental::Element {
-                tag: "div", id: none, class: ["tr-topbar"], attrs: none,
+                tag: "div", class: ["tr-topbar"],
                 children: wdoc_part_theme_toggle(c.theme_toggle),
             } ],
             [ HtmlFundamental::Raw { html: c.content } ],
             [ HtmlFundamental::Element {
-                tag: "div", id: none, class: ["tr-pagenav"], attrs: none,
+                tag: "div", class: ["tr-pagenav"],
                 children: wdoc_part_pagenav(c.toc),
             } ],
           ]),

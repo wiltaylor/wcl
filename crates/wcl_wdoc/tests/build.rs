@@ -208,7 +208,7 @@ type Inner extends SvgBlock {
   lower = fn(i: Inner) -> list<SvgFundamental> [
     SvgFundamental::Rect {
       x: 5.0, y: 5.0, width: 20.0, height: 20.0,
-      fill: i.fill, stroke: none, id: none, class: none,
+      fill: i.fill,
     }
   ]
 }
@@ -338,8 +338,7 @@ type Badge extends SvgBlock {
   lower = fn(b: Badge) -> list<SvgFundamental> [
     SvgFundamental::Label {
       content: b.text, x: b.x, y: b.y,
-      font_size: none, fit_width: none, fit_height: none,
-      fill: none, id: b.id, class: none,
+      id: b.id,
     }
   ]
 }
@@ -4122,7 +4121,6 @@ type DataTable extends WdocBlock {
   id: identifier?
   lower = fn(d: DataTable) -> list<HtmlFundamental> [
     HtmlFundamental::Table {
-      id: none, class: none,
       header: ["A", "B"],
       rows: [["1", "2"], ["3", "4"]],
     }
@@ -4436,7 +4434,7 @@ template custom {
     flatten([
       wdoc_head_stylesheet("theme.css"),
       [ HtmlFundamental::Element {
-          tag: "main", id: none, class: none, attrs: none,
+          tag: "main",
           children: [
             HtmlFundamental::Raw { html: c.content },
             HtmlFundamental::Head { children: [ HtmlFundamental::Raw { html: "<!--LEAK-->" } ] },
@@ -4505,7 +4503,7 @@ fn template_uses_user_defined_part_function() {
         r##"
 let footer = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "footer", id: none, class: ["ft"], attrs: [["data-x", "a\"b"]],
+    tag: "footer", class: ["ft"], attrs: [["data-x", "a\"b"]],
     children: [ HtmlFundamental::Raw { html: c.title } ],
   }
 ]
@@ -4513,7 +4511,7 @@ template mini {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
       [ HtmlFundamental::Element {
-          tag: "main", id: none, class: none, attrs: none,
+          tag: "main",
           children: [ HtmlFundamental::Raw { html: c.content } ],
       } ],
       footer(c),
@@ -4538,6 +4536,148 @@ page index {
     assert!(
         html.contains("<main><p><span>body text</span></p>"),
         "{html}"
+    );
+}
+
+#[test]
+fn omitted_optional_variant_field_matches_an_explicit_none() {
+    // Optional variant fields default to `none`, so the long form and the
+    // short one must render the same bytes. This is the rule the stdlib's
+    // 204 dead `: none` arguments were written against.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let long = tmp.path().join("long.wcl");
+    let short = tmp.path().join("short.wcl");
+    let page = |el: &str| {
+        format!(
+            r##"
+@block("probe")
+type Probe extends WdocBlock {{
+  lower = fn(p: Probe) -> list<HtmlFundamental> [ {el} ]
+}}
+site {{ title = "T" }}
+page index {{ probe {{}} }}
+"##
+        )
+    };
+    write_fixture(
+        &long,
+        page(
+            r#"HtmlFundamental::Element {
+                 tag: "div", id: none, class: none, attrs: none,
+                 children: [ HtmlFundamental::Raw { html: "x" } ],
+               }"#,
+        ),
+    );
+    write_fixture(
+        &short,
+        page(
+            r#"HtmlFundamental::Element {
+                 tag: "div",
+                 children: [ HtmlFundamental::Raw { html: "x" } ],
+               }"#,
+        ),
+    );
+
+    let out_long = TempDir::new().expect("mkdir out");
+    let out_short = TempDir::new().expect("mkdir out");
+    build_ok(&long, out_long.path());
+    build_ok(&short, out_short.path());
+    let a = std::fs::read_to_string(out_long.path().join("index.html")).expect("read");
+    let b = std::fs::read_to_string(out_short.path().join("index.html")).expect("read");
+    assert_eq!(a, b, "explicit `: none` changed the rendering");
+    assert!(a.contains("<div>x</div>"), "{a}");
+}
+
+#[test]
+fn class_and_attrs_drop_none_entries() {
+    // An else-less `if` yields `none`, so a conditional class / attribute
+    // is written inline. An untaken one must vanish — and a list whose
+    // entries are ALL untaken must emit no attribute at all, not `class=""`.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("cond.wcl");
+    write_fixture(
+        &src,
+        r##"
+@block("probe")
+type Probe extends WdocBlock {
+  on: bool
+  lower = fn(p: Probe) -> list<HtmlFundamental> [
+    HtmlFundamental::Element {
+      tag: "div",
+      class: ["base", if p.on { "hot" }],
+      attrs: [["data-keep", "1"], if p.on { ["data-hot", "1"] }],
+      children: [ HtmlFundamental::Raw { html: "x" } ],
+    },
+    HtmlFundamental::Element {
+      tag: "span",
+      class: [if p.on { "hot" }],
+      children: [ HtmlFundamental::Raw { html: "y" } ],
+    },
+  ]
+}
+site { title = "T" }
+page index {
+  probe { on = false }
+  probe { on = true }
+}
+"##,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Untaken: the `none` entries leave no trace, and the all-none list
+    // emits no `class` attribute.
+    assert!(
+        html.contains("<div class=\"base\" data-keep=\"1\">x</div>"),
+        "{html}"
+    );
+    assert!(html.contains("<span>y</span>"), "{html}");
+    // Taken: both the class and the attribute appear.
+    assert!(
+        html.contains("<div class=\"base hot\" data-keep=\"1\" data-hot=\"1\">x</div>"),
+        "{html}"
+    );
+    assert!(html.contains("<span class=\"hot\">y</span>"), "{html}");
+}
+
+#[test]
+fn svg_shape_class_drops_none_entries() {
+    // The same rule on the SVG side: a diagram shape's `class` list drops
+    // its `none` entries and emits no attribute when they are all none.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("shape.wcl");
+    write_fixture(
+        &src,
+        r##"
+@block("chip")
+type Chip extends SvgBlock {
+  on: bool
+  lower = fn(c: Chip) -> list<SvgFundamental> [
+    SvgFundamental::Rect {
+      x: 5.0, y: 5.0, width: 20.0, height: 20.0,
+      class: ["chip", if c.on { "hot" }],
+    },
+    SvgFundamental::Circle {
+      cx: 40.0, cy: 15.0, r: 5.0,
+      class: [if c.on { "hot" }],
+    },
+  ]
+}
+site { title = "T" }
+page index {
+  diagram { width = 100  height = 50  chip { on = false } }
+}
+"##,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(html.contains("class=\"chip\""), "{html}");
+    assert!(
+        !html.contains("class=\"\""),
+        "empty class attribute:\n{html}"
     );
 }
 
@@ -4588,7 +4728,7 @@ template blog {
     flatten([
       wdoc_webpage_layout(c),
       [ HtmlFundamental::Element {
-          tag: "footer", id: none, class: ["site-footer"], attrs: none,
+          tag: "footer", class: ["site-footer"],
           children: [ HtmlFundamental::Raw { html: "the footer" } ],
       } ],
     ])
@@ -4630,7 +4770,7 @@ template app_home {
     flatten([
       wdoc_part_webpage_css(),
       [ HtmlFundamental::Element {
-          tag: "header", id: none, class: ["hero"], attrs: none,
+          tag: "header", class: ["hero"],
           children: [ HtmlFundamental::Raw { html: c.title } ],
       } ],
       wdoc_part_navbar(c),
@@ -4713,7 +4853,7 @@ template presentation {
     flatten([
       wdoc_presentation_layout(c),
       [ HtmlFundamental::Element {
-          tag: "div", id: none, class: ["my-banner"], attrs: none,
+          tag: "div", class: ["my-banner"],
           children: [ HtmlFundamental::Raw { html: "BANNER" } ],
       } ],
     ])
@@ -6013,8 +6153,8 @@ type MyBadge extends TuiWidget {
   @inline(0) text: utf8
   row: i64  col: i64
   lower = fn(b: MyBadge) -> list<TermFundamental> [
-    TermFundamental::Text { content: "★", row: 1, col: 1, fg: "yellow", bg: none, bold: true },
-    TermFundamental::Text { content: b.text, row: 1, col: 3, fg: none, bg: none, bold: none },
+    TermFundamental::Text { content: "★", row: 1, col: 1, fg: "yellow", bold: true },
+    TermFundamental::Text { content: b.text, row: 1, col: 3 },
   ]
 }
 

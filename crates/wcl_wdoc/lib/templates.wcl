@@ -390,7 +390,7 @@ let home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
   if c.home_href == "" { [] }
   else {
     [ HtmlFundamental::Element {
-        tag: "a", id: none, class: [cls],
+        tag: "a", class: [cls],
         attrs: [["href", c.home_href]],
         children: [ HtmlFundamental::Raw { html: format("← {}", c.home_title) } ],
     } ]
@@ -402,19 +402,19 @@ let home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
 let menu_entry = fn(m: MenuEntry) -> HtmlFundamental
   if len(m.children) > 0 {
     HtmlFundamental::Element {
-      tag: "button", id: none, class: ["menu-toggle"],
+      tag: "button", class: ["menu-toggle"],
       attrs: [["type", "button"]],
       children: [ HtmlFundamental::Raw { html: m.label } ],
     }
   } else if m.href == "" {
     HtmlFundamental::Element {
-      tag: "span", id: none, class: ["menu-label"], attrs: none,
+      tag: "span", class: ["menu-label"],
       children: [ HtmlFundamental::Raw { html: m.label } ],
     }
   } else {
     HtmlFundamental::Element {
-      tag: "a", id: none,
-      class: if m.current { ["menu-link", "current"] } else { ["menu-link"] },
+      tag: "a",
+      class: ["menu-link", if m.current { "current" }],
       attrs: [["href", m.href]],
       children: [ HtmlFundamental::Raw { html: m.label } ],
     }
@@ -427,12 +427,11 @@ let site_menu = fn(entries: list<MenuEntry>) -> list<HtmlFundamental>
   if len(entries) == 0 { [] }
   else {
     [ HtmlFundamental::Element {
-        tag: "ul", id: none, class: ["menu"], attrs: none,
+        tag: "ul", class: ["menu"],
         children: map(entries, fn(e: MenuEntry) -> HtmlFundamental
           HtmlFundamental::Element {
-            tag: "li", id: none,
+            tag: "li",
             class: if len(e.children) > 0 { ["has-submenu"] } else { none },
-            attrs: none,
             children: flatten([ [menu_entry(e)], site_menu(e.children) ]),
           }),
       } ]
@@ -474,19 +473,19 @@ let wdoc_search_box = fn(enabled: bool) -> list<HtmlFundamental>
   if enabled {
     [
       HtmlFundamental::Element {
-        tag: "style", id: none, class: none, attrs: none,
+        tag: "style",
         children: [ HtmlFundamental::Raw { html: wdoc_search_css } ],
       },
       HtmlFundamental::Element {
-        tag: "div", id: none, class: ["wdoc-search"], attrs: none,
+        tag: "div", class: ["wdoc-search"],
         children: [
           HtmlFundamental::Element {
-            tag: "input", id: none, class: ["wdoc-search-input"],
+            tag: "input", class: ["wdoc-search-input"],
             attrs: [["type", "search"], ["placeholder", "Search…"], ["aria-label", "Search this site"]],
             children: [],
           },
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["wdoc-search-results"], attrs: none,
+            tag: "div", class: ["wdoc-search-results"],
             children: [],
           },
         ],
@@ -527,7 +526,7 @@ let wdoc_part_home_link = fn(c: TemplateCtx, cls: utf8) -> list<HtmlFundamental>
 // stdlib header / nav / content-card styling, or omit it and supply your own.
 let wdoc_part_webpage_css = fn() -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "style", id: none, class: none, attrs: none,
+    tag: "style",
     children: [ HtmlFundamental::Raw { html: webpage_css } ],
   },
 ]
@@ -535,7 +534,7 @@ let wdoc_part_webpage_css = fn() -> list<HtmlFundamental> [
 // The site title header (`<header class="site-header">`).
 let wdoc_part_header = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "header", id: none, class: ["site-header"], attrs: none,
+    tag: "header", class: ["site-header"],
     children: [ HtmlFundamental::Raw { html: c.title } ],
   },
 ]
@@ -545,14 +544,14 @@ let wdoc_part_header = fn(c: TemplateCtx) -> list<HtmlFundamental> [
 // a flat link per page when no `menu` is declared.
 let wdoc_part_navbar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "nav", id: none, class: ["site-nav"], attrs: none,
+    tag: "nav", class: ["site-nav"],
     children: flatten([
       home_link(c, "site-home"),
       wdoc_search_box(c.search),
       if len(c.menu) == 0 {
         map(c.pages, fn(p: PageRef) -> HtmlFundamental
           HtmlFundamental::Element {
-            tag: "a", id: none, class: none,
+            tag: "a",
             attrs: [["href", p.href]],
             children: [ HtmlFundamental::Raw { html: p.name } ],
           })
@@ -566,7 +565,7 @@ let wdoc_part_navbar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
 // The page content wrapped in the reading card (`<main class="site-main">`).
 let wdoc_part_content = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "main", id: none, class: ["site-main"], attrs: none,
+    tag: "main", class: ["site-main"],
     children: [ HtmlFundamental::Raw { html: c.content } ],
   },
 ]
@@ -602,13 +601,13 @@ template webpage {
 let book_toc_link = fn(e: TocEntry) -> HtmlFundamental
   if e.href == "" {
     HtmlFundamental::Element {
-      tag: "span", id: none, class: ["book-section"], attrs: none,
+      tag: "span", class: ["book-section"],
       children: [ HtmlFundamental::Raw { html: e.title } ],
     }
   } else {
     HtmlFundamental::Element {
-      tag: "a", id: none,
-      class: if e.current { ["book-chapter", "current"] } else { ["book-chapter"] },
+      tag: "a",
+      class: ["book-chapter", if e.current { "current" }],
       attrs: [["href", e.href]],
       children: [ HtmlFundamental::Raw { html: e.title } ],
     }
@@ -625,7 +624,7 @@ let toc_active = fn(e: TocEntry) -> bool
 // (so leaf and branch rows stay aligned); the chevron is drawn by CSS only
 // for branch `<li>`s, and the click handler ignores leaf rows.
 let book_toc_toggle = HtmlFundamental::Element {
-  tag: "span", id: none, class: ["book-toc-toggle"], attrs: none, children: [],
+  tag: "span", class: ["book-toc-toggle"], children: [],
 }
 
 // Render a list of TOC entries as a nested `<ul>` — recursive, so the tree
@@ -637,18 +636,15 @@ let book_toc = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
   if len(entries) == 0 { [] }
   else {
     [ HtmlFundamental::Element {
-        tag: "ul", id: none, class: ["book-toc"], attrs: none,
+        tag: "ul", class: ["book-toc"],
         children: map(entries, fn(e: TocEntry) -> HtmlFundamental {
           let has_children = len(e.children) > 0;
           HtmlFundamental::Element {
-            tag: "li", id: none,
-            class: if has_children {
-                if toc_active(e) { ["book-branch", "open"] } else { ["book-branch"] }
-              } else { none },
-            attrs: none,
+            tag: "li",
+            class: if has_children { ["book-branch", if toc_active(e) { "open" }] } else { none },
             children: flatten([
               [ HtmlFundamental::Element {
-                  tag: "div", id: none, class: ["book-toc-row"], attrs: none,
+                  tag: "div", class: ["book-toc-row"],
                   children: [ book_toc_toggle, book_toc_link(e) ],
               } ],
               book_toc(e.children),
@@ -684,7 +680,7 @@ let book_pagenav = fn(toc: list<TocEntry>) -> list<HtmlFundamental> {
     let prev = if idx > 0 {
       let p = at(flow, idx - 1);
       [ HtmlFundamental::Element {
-          tag: "a", id: none, class: ["book-nav", "book-nav-prev"],
+          tag: "a", class: ["book-nav", "book-nav-prev"],
           attrs: [["href", p.href]],
           children: [ HtmlFundamental::Raw { html: format("← {}", p.title) } ],
       } ]
@@ -692,14 +688,14 @@ let book_pagenav = fn(toc: list<TocEntry>) -> list<HtmlFundamental> {
     let next = if idx < n - 1 {
       let nx = at(flow, idx + 1);
       [ HtmlFundamental::Element {
-          tag: "a", id: none, class: ["book-nav", "book-nav-next"],
+          tag: "a", class: ["book-nav", "book-nav-next"],
           attrs: [["href", nx.href]],
           children: [ HtmlFundamental::Raw { html: format("{} →", nx.title) } ],
       } ]
     } else { [] };
     if len(prev) == 0 && len(next) == 0 { [] } else {
       [ HtmlFundamental::Element {
-          tag: "nav", id: none, class: ["book-pagenav"], attrs: none,
+          tag: "nav", class: ["book-pagenav"],
           children: flatten([prev, next]),
       } ]
     }
@@ -767,7 +763,7 @@ let book_css = <<CSS
 // reading column, and theme toggle. Include it for stdlib book styling.
 let wdoc_part_book_css = fn() -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "style", id: none, class: none, attrs: none,
+    tag: "style",
     children: [ HtmlFundamental::Raw { html: book_css } ],
   },
 ]
@@ -780,8 +776,8 @@ let wdoc_part_book_css = fn() -> list<HtmlFundamental> [
 // label as text so it is never empty.
 let book_footer_button = fn(b: FooterButton) -> HtmlFundamental
   HtmlFundamental::Element {
-    tag: "a", id: none,
-    class: if b.current { ["book-footer-btn", "current"] } else { ["book-footer-btn"] },
+    tag: "a",
+    class: ["book-footer-btn", if b.current { "current" }],
     attrs: [["href", b.href], ["title", b.label], ["aria-label", b.label]],
     children: if b.icon == "" {
         [ HtmlFundamental::Raw { html: b.label } ]
@@ -797,7 +793,7 @@ let wdoc_part_sidebar_footer = fn(c: TemplateCtx) -> list<HtmlFundamental>
   if len(c.footer) == 0 { [] }
   else {
     [ HtmlFundamental::Element {
-        tag: "div", id: none, class: ["book-sidebar-footer"], attrs: none,
+        tag: "div", class: ["book-sidebar-footer"],
         children: map(c.footer, book_footer_button),
       } ]
   }
@@ -810,10 +806,10 @@ let wdoc_part_sidebar_footer = fn(c: TemplateCtx) -> list<HtmlFundamental>
 // centres the current chapter.
 let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "nav", id: none, class: ["book-sidebar"], attrs: none,
+    tag: "nav", class: ["book-sidebar"],
     children: flatten([
       [ HtmlFundamental::Element {
-          tag: "div", id: none, class: ["book-title"], attrs: none,
+          tag: "div", class: ["book-title"],
           children: [ HtmlFundamental::Raw { html: c.title } ],
         } ],
       home_link(c, "book-home"),
@@ -832,10 +828,10 @@ let wdoc_part_sidebar = fn(c: TemplateCtx) -> list<HtmlFundamental> [
 // the fixed sidebar and rail.
 let wdoc_part_book_content = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "main", id: none, class: ["book-content"], attrs: none,
+    tag: "main", class: ["book-content"],
     children: [
       HtmlFundamental::Element {
-        tag: "div", id: none, class: ["book-measure"], attrs: none,
+        tag: "div", class: ["book-measure"],
         children: flatten([
           [ HtmlFundamental::Raw { html: c.content } ],
           book_pagenav(c.toc),
@@ -850,7 +846,7 @@ let wdoc_part_book_content = fn(c: TemplateCtx) -> list<HtmlFundamental> [
 // indent. The title is pre-escaped HTML, embedded via `Raw`.
 let book_onpage_link = fn(h: OnPageHeading) -> HtmlFundamental
   HtmlFundamental::Element {
-    tag: "a", id: none,
+    tag: "a",
     class: ["book-onpage-link", format("level-{}", h.level)],
     attrs: [["href", format("#{}", h.id)]],
     children: [ HtmlFundamental::Raw { html: h.title } ],
@@ -869,14 +865,14 @@ let wdoc_part_book_rail = fn(c: TemplateCtx) -> list<HtmlFundamental>
   if len(c.on_this_page) == 0 { [] }
   else {
     [ HtmlFundamental::Element {
-        tag: "aside", id: none, class: ["book-rail"], attrs: none,
+        tag: "aside", class: ["book-rail"],
         children: flatten([
           [ HtmlFundamental::Element {
-              tag: "div", id: none, class: ["book-rail-title"], attrs: none,
+              tag: "div", class: ["book-rail-title"],
               children: [ HtmlFundamental::Raw { html: "On this page" } ],
           } ],
           [ HtmlFundamental::Element {
-              tag: "nav", id: none, class: ["book-onpage"], attrs: none,
+              tag: "nav", class: ["book-onpage"],
               children: map(c.on_this_page, book_onpage_link),
           } ],
           [ book_rail_script ],
@@ -917,7 +913,7 @@ template book {
 // rules follow the system; the attribute (toggle) overrides them.
 let book_theme_toggle = [
   HtmlFundamental::Element {
-    tag: "button", id: none, class: ["theme-toggle"],
+    tag: "button", class: ["theme-toggle"],
     attrs: [["onclick", "wdocToggleTheme()"]],
     children: [ HtmlFundamental::Raw { html: "◐ Theme" } ],
   },

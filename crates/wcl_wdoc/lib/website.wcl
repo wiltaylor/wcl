@@ -60,7 +60,7 @@ let wdoc_region = fn(c: TemplateCtx, name: utf8) -> utf8 {
 let wdoc_head_stylesheet = fn(href: utf8) -> list<HtmlFundamental> [
   HtmlFundamental::Head { children: [
     HtmlFundamental::Element {
-      tag: "link", id: none, class: none,
+      tag: "link",
       attrs: [["rel", "stylesheet"], ["href", href]],
       children: [],
     },
@@ -71,7 +71,7 @@ let wdoc_head_stylesheet = fn(href: utf8) -> list<HtmlFundamental> [
 let wdoc_head_script = fn(src: utf8) -> list<HtmlFundamental> [
   HtmlFundamental::Head { children: [
     HtmlFundamental::Element {
-      tag: "script", id: none, class: none,
+      tag: "script",
       attrs: [["src", src], ["defer", ""]],
       children: [],
     },
@@ -88,7 +88,7 @@ let wdoc_head_font = fn(href: utf8) -> list<HtmlFundamental>
 let wdoc_head_meta = fn(name: utf8, content: utf8) -> list<HtmlFundamental> [
   HtmlFundamental::Head { children: [
     HtmlFundamental::Element {
-      tag: "meta", id: none, class: none,
+      tag: "meta",
       attrs: [["name", name], ["content", content]],
       children: [],
     },
@@ -134,7 +134,7 @@ let website_css = <<CSS
 // default header / hero / layout / footer styling, or drop it for your own.
 let wdoc_part_website_css = fn() -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "style", id: none, class: none, attrs: none,
+    tag: "style",
     children: [ HtmlFundamental::Raw { html: website_css } ],
   },
 ]
@@ -145,21 +145,21 @@ let wdoc_part_website_css = fn() -> list<HtmlFundamental> [
 // toggle — when the site enables them (`search` / `theme_toggle`).
 let website_header = fn(c: TemplateCtx) -> HtmlFundamental
   HtmlFundamental::Element {
-    tag: "header", id: none, class: ["ws-header"], attrs: none,
+    tag: "header", class: ["ws-header"],
     children: flatten([
       [ HtmlFundamental::Element {
-          tag: "a", id: none, class: ["ws-brand"],
+          tag: "a", class: ["ws-brand"],
           attrs: [["href", if c.home_href == "" { "index.html" } else { c.home_href }]],
           children: [ HtmlFundamental::Raw { html: c.title } ],
       } ],
       if len(c.menu) == 0 {
         [ HtmlFundamental::Element {
-            tag: "ul", id: none, class: ["menu"], attrs: none,
+            tag: "ul", class: ["menu"],
             children: map(c.pages, fn(p: PageRef) -> HtmlFundamental
               HtmlFundamental::Element {
-                tag: "li", id: none, class: none, attrs: none,
+                tag: "li",
                 children: [ HtmlFundamental::Element {
-                  tag: "a", id: none, class: none,
+                  tag: "a",
                   attrs: [["href", p.href]],
                   children: [ HtmlFundamental::Raw { html: p.name } ],
                 } ],
@@ -178,7 +178,7 @@ let website_header = fn(c: TemplateCtx) -> HtmlFundamental
 let website_header_controls = fn(c: TemplateCtx) -> list<HtmlFundamental>
   if c.search || c.theme_toggle {
     [ HtmlFundamental::Element {
-        tag: "div", id: none, class: ["ws-controls"], attrs: none,
+        tag: "div", class: ["ws-controls"],
         children: flatten([
           wdoc_part_search_box(c.search),
           wdoc_part_theme_toggle(c.theme_toggle),
@@ -193,7 +193,7 @@ let website_region_section = fn(c: TemplateCtx, name: utf8, tag: utf8, cls: utf8
   if html == "" { [] }
   else {
     [ HtmlFundamental::Element {
-        tag: tag, id: none, class: [cls], attrs: none,
+        tag: tag, class: [cls],
         children: [ HtmlFundamental::Raw { html: html } ],
     } ]
   }
@@ -204,18 +204,17 @@ let website_region_section = fn(c: TemplateCtx, name: utf8, tag: utf8, cls: utf8
 let website_body = fn(c: TemplateCtx) -> HtmlFundamental {
   let aside = wdoc_region(c, "sidebar");
   HtmlFundamental::Element {
-    tag: "div", id: none,
-    class: if aside == "" { ["ws-layout"] } else { ["ws-layout", "has-aside"] },
-    attrs: none,
+    tag: "div",
+    class: ["ws-layout", if aside != "" { "has-aside" }],
     children: flatten([
       [ HtmlFundamental::Element {
-          tag: "main", id: none, class: ["ws-main"], attrs: none,
+          tag: "main", class: ["ws-main"],
           children: [ HtmlFundamental::Raw { html: c.content } ],
       } ],
       if aside == "" { [] }
       else {
         [ HtmlFundamental::Element {
-            tag: "aside", id: none, class: ["ws-aside"], attrs: none,
+            tag: "aside", class: ["ws-aside"],
             children: [ HtmlFundamental::Raw { html: aside } ],
         } ]
       },
@@ -227,7 +226,7 @@ let website_body = fn(c: TemplateCtx) -> HtmlFundamental {
 let website_footer = fn(c: TemplateCtx) -> HtmlFundamental {
   let footer = wdoc_region(c, "footer");
   HtmlFundamental::Element {
-    tag: "footer", id: none, class: ["ws-footer"], attrs: none,
+    tag: "footer", class: ["ws-footer"],
     children: [ HtmlFundamental::Raw {
       html: if footer == "" { c.title } else { footer },
     } ],

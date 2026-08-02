@@ -19,7 +19,7 @@ type P extends WdocBlock {
   class: list<utf8>?
   lower = fn(p: P) -> list<HtmlFundamental> [
     HtmlFundamental::Element {
-      tag: "p", id: p.id, class: p.class, attrs: none,
+      tag: "p", id: p.id, class: p.class,
       children: [HtmlFundamental::Inline { text: p.text }],
     },
   ]

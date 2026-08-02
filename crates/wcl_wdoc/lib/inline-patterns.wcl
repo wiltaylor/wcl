@@ -57,7 +57,7 @@ inline_pattern autolink {
 inline_pattern icon {
   pattern = ":([a-z0-9][a-z0-9._-]*):"
   to_span = fn(g: list<utf8>) -> list<InlineSpan>
-    [InlineSpan::Icon { name: at(g, 1), class: none }]
+    [InlineSpan::Icon { name: at(g, 1) }]
 }
 
 // `$$…$$` → a display-style inline equation. Declared before the
@@ -68,7 +68,7 @@ inline_pattern icon {
 inline_pattern math_display {
   pattern = "\\$\\$([^\n]+?)\\$\\$"
   to_span = fn(g: list<utf8>) -> list<InlineSpan>
-    [InlineSpan::Math { latex: at(g, 1), display: true, class: none }]
+    [InlineSpan::Math { latex: at(g, 1), display: true }]
 }
 
 // `$…$` → a text-style inline equation. The body may not touch the
@@ -79,5 +79,5 @@ inline_pattern math_display {
 inline_pattern math {
   pattern = "\\$([^\\s$](?:[^$\n]*[^\\s$])?)\\$"
   to_span = fn(g: list<utf8>) -> list<InlineSpan>
-    [InlineSpan::Math { latex: at(g, 1), display: false, class: none }]
+    [InlineSpan::Math { latex: at(g, 1), display: false }]
 }

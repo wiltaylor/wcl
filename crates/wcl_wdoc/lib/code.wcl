@@ -31,17 +31,16 @@ type Code extends WdocBlock {
     let header = format("<div class=\"code-filename\">{}{}<span class=\"code-lang\">{}</span></div>", dots, name, c.language);
     [
       HtmlFundamental::Element {
-        tag: "figure", id: none, class: ["code-card"], attrs: none,
+        tag: "figure", class: ["code-card"],
         children: [
           HtmlFundamental::Raw { html: header },
           HtmlFundamental::Element {
             tag: "pre", id: c.id,
             class: flatten([["code-block"], if c.class == none { [] } else { c.class }]),
-            attrs: none,
             children: [
               HtmlFundamental::Element {
-                tag: "code", id: none,
-                class: [format("language-{}", c.language)], attrs: none,
+                tag: "code",
+                class: [format("language-{}", c.language)],
                 children: [
                   HtmlFundamental::Highlighted {
                     source: c.source, language: format("{}", c.language),

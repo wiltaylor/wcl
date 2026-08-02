@@ -140,14 +140,14 @@ let deck_chrome = HtmlFundamental::Raw {
 // hidden speaker-notes aside.
 let deck_slide_el = fn(s: DeckSlide) -> HtmlFundamental
   HtmlFundamental::Element {
-    tag: "div", id: none, class: ["deck-slide"], attrs: none,
+    tag: "div", class: ["deck-slide"],
     children: [
       HtmlFundamental::Element {
-        tag: "div", id: none, class: ["deck-slide-inner"], attrs: none,
+        tag: "div", class: ["deck-slide-inner"],
         children: [ HtmlFundamental::Raw { html: s.content } ],
       },
       HtmlFundamental::Element {
-        tag: "aside", id: none, class: ["deck-notes"], attrs: none,
+        tag: "aside", class: ["deck-notes"],
         children: [ HtmlFundamental::Raw { html: s.notes } ],
       },
     ],
@@ -156,7 +156,7 @@ let deck_slide_el = fn(s: DeckSlide) -> HtmlFundamental
 // One section → `<section class="deck-section">` holding its slides.
 let deck_section_el = fn(sec: DeckSection) -> HtmlFundamental
   HtmlFundamental::Element {
-    tag: "section", id: none, class: ["deck-section"], attrs: none,
+    tag: "section", class: ["deck-section"],
     children: map(sec.slides, deck_slide_el),
   }
 
@@ -169,7 +169,7 @@ let deck_section_el = fn(sec: DeckSection) -> HtmlFundamental
 // progress bar / counter / nav-hint / notes-overlay styling.
 let wdoc_part_presentation_css = fn() -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "style", id: none, class: none, attrs: none,
+    tag: "style",
     children: [ HtmlFundamental::Raw { html: presentation_css } ],
   },
 ]
@@ -178,7 +178,7 @@ let wdoc_part_presentation_css = fn() -> list<HtmlFundamental> [
 // each holding its slides. Driven by the bundled `presentation.js` player.
 let wdoc_part_deck = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "div", id: none, class: ["deck"], attrs: none,
+    tag: "div", class: ["deck"],
     children: map(c.deck, deck_section_el),
   },
 ]

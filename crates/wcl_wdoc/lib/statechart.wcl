@@ -148,7 +148,7 @@ let sc_state = fn(s: State, x: f64, y: f64, dir: symbol) -> list<SvgFundamental>
   let label = [
     SvgFundamental::Label {
       content: s.name ?? s.id, x: x + s.width / 2.0, y: y + s.height / 2.0,
-      font_size: none, fit_width: s.width - 12.0, fit_height: s.height - 8.0,
+      fit_width: s.width - 12.0, fit_height: s.height - 8.0,
       class: text_class,
     },
   ];

@@ -168,9 +168,8 @@ stylesheet "site-components" {
 // the inline-pattern engine, so Markdown keeps a real `[label](href)`.
 let lp_cta_el = fn(x: LpCta) -> HtmlFundamental
   HtmlFundamental::Element {
-    tag: "p", id: none,
-    class: if x.primary == true { ["lp-cta", "lp-cta-primary"] } else { ["lp-cta", "lp-cta-ghost"] },
-    attrs: none,
+    tag: "p",
+    class: ["lp-cta", if x.primary == true { "lp-cta-primary" } else { "lp-cta-ghost" }],
     children: [ HtmlFundamental::Inline { text: $"[${x.label}](${x.href})" } ],
   }
 
@@ -178,18 +177,18 @@ let lp_cta_el = fn(x: LpCta) -> HtmlFundamental
 let lp_feature_el = fn(f: LpFeature) -> HtmlFundamental {
   let icon_name = if f.icon == none { "lucide.sparkles" } else { f.icon };
   HtmlFundamental::Element {
-    tag: "article", id: none, class: ["lp-card"], attrs: none,
+    tag: "article", class: ["lp-card"],
     children: [
       HtmlFundamental::Element {
-        tag: "p", id: none, class: ["lp-card-icon"], attrs: none,
-        children: [ HtmlFundamental::Icon { name: icon_name, class: none } ],
+        tag: "p", class: ["lp-card-icon"],
+        children: [ HtmlFundamental::Icon { name: icon_name } ],
       },
       HtmlFundamental::Element {
-        tag: "h3", id: none, class: none, attrs: none,
+        tag: "h3",
         children: [ HtmlFundamental::Inline { text: f.title } ],
       },
       HtmlFundamental::Element {
-        tag: "p", id: none, class: none, attrs: none,
+        tag: "p",
         children: [ HtmlFundamental::Inline { text: f.body } ],
       },
     ],
@@ -200,14 +199,14 @@ let lp_feature_el = fn(f: LpFeature) -> HtmlFundamental {
 // with a title and a command line rendered as inline code.
 let lp_step_el = fn(s: LpStep) -> HtmlFundamental
   HtmlFundamental::Element {
-    tag: "li", id: none, class: none, attrs: none,
+    tag: "li",
     children: [
       HtmlFundamental::Element {
-        tag: "p", id: none, class: ["lp-step-title"], attrs: none,
+        tag: "p", class: ["lp-step-title"],
         children: [ HtmlFundamental::Inline { text: s.title } ],
       },
       HtmlFundamental::Element {
-        tag: "p", id: none, class: ["lp-cmd"], attrs: none,
+        tag: "p", class: ["lp-cmd"],
         children: [ HtmlFundamental::Inline { text: $"`${s.command}`" } ],
       },
     ],
@@ -217,15 +216,15 @@ let lp_step_el = fn(s: LpStep) -> HtmlFundamental
 let lp_footcol_el = fn(col: LpFootcol) -> HtmlFundamental {
   let links = if col.links == none { [] } else { col.links };
   HtmlFundamental::Element {
-    tag: "section", id: none, class: ["lp-footcol"], attrs: none,
+    tag: "section", class: ["lp-footcol"],
     children: flatten([
       [ HtmlFundamental::Element {
-          tag: "p", id: none, class: ["lp-foothead"], attrs: none,
+          tag: "p", class: ["lp-foothead"],
           children: [ HtmlFundamental::Inline { text: col.title } ],
       } ],
       map(links, fn(l: LpFootlink) -> HtmlFundamental
         HtmlFundamental::Element {
-          tag: "p", id: none, class: ["lp-footlink"], attrs: none,
+          tag: "p", class: ["lp-footlink"],
           children: [ HtmlFundamental::Inline { text: $"[${l.label}](${l.href})" } ],
         }),
     ]),
@@ -240,21 +239,21 @@ let lp_section_head = fn(eyebrow: utf8, title: utf8, lede: utf8, cls: utf8) -> l
     if eyebrow == none || eyebrow == "" { [] }
     else {
       [ HtmlFundamental::Element {
-          tag: "p", id: none, class: ["lp-eyebrow"], attrs: none,
+          tag: "p", class: ["lp-eyebrow"],
           children: [ HtmlFundamental::Inline { text: eyebrow } ],
       } ]
     },
     if title == none || title == "" { [] }
     else {
       [ HtmlFundamental::Element {
-          tag: "h2", id: none, class: none, attrs: none,
+          tag: "h2",
           children: [ HtmlFundamental::Inline { text: title } ],
       } ]
     },
     if lede == none || lede == "" { [] }
     else {
       [ HtmlFundamental::Element {
-          tag: "p", id: none, class: ["lp-lede"], attrs: none,
+          tag: "p", class: ["lp-lede"],
           children: [ HtmlFundamental::Inline { text: lede } ],
       } ]
     },
@@ -262,7 +261,7 @@ let lp_section_head = fn(eyebrow: utf8, title: utf8, lede: utf8, cls: utf8) -> l
   if len(parts) == 0 { [] }
   else {
     [ HtmlFundamental::Element {
-        tag: "header", id: none, class: [cls], attrs: none,
+        tag: "header", class: [cls],
         children: parts,
     } ]
   }
@@ -289,38 +288,38 @@ type LpHero extends WdocBlock {
     let ctas = if b.ctas == none { [] } else { b.ctas };
     [
       HtmlFundamental::Element {
-        tag: "section", id: b.id, class: ["lp-hero"], attrs: none,
+        tag: "section", id: b.id, class: ["lp-hero"],
         children: flatten([
           [ HtmlFundamental::Element {
-              tag: "div", id: none, class: ["lp-hero-bg"],
+              tag: "div", class: ["lp-hero-bg"],
               attrs: [["aria-hidden", "true"]], children: [],
           } ],
           if b.badge == none { [] }
           else {
             [ HtmlFundamental::Element {
-                tag: "p", id: none, class: ["lp-badge"], attrs: none,
+                tag: "p", class: ["lp-badge"],
                 children: [ HtmlFundamental::Inline { text: b.badge } ],
             } ]
           },
           [ HtmlFundamental::Element {
-              tag: "h1", id: none, class: none, attrs: none,
+              tag: "h1",
               children: [ HtmlFundamental::Inline { text: b.heading } ],
           } ],
           [ HtmlFundamental::Element {
-              tag: "p", id: none, class: ["lp-lede"], attrs: none,
+              tag: "p", class: ["lp-lede"],
               children: [ HtmlFundamental::Inline { text: b.lede } ],
           } ],
           if len(ctas) == 0 { [] }
           else {
             [ HtmlFundamental::Element {
-                tag: "nav", id: none, class: ["lp-ctas"], attrs: none,
+                tag: "nav", class: ["lp-ctas"],
                 children: map(ctas, lp_cta_el),
             } ]
           },
           if b.footnote == none { [] }
           else {
             [ HtmlFundamental::Element {
-                tag: "p", id: none, class: ["lp-hero-footnote"], attrs: none,
+                tag: "p", class: ["lp-hero-footnote"],
                 children: [ HtmlFundamental::Inline { text: b.footnote } ],
             } ]
           },
@@ -354,13 +353,13 @@ type LpFeatures extends WdocBlock {
     let items = if b.items == none { [] } else { b.items };
     [
       HtmlFundamental::Element {
-        tag: "section", id: b.id, class: ["lp-section"], attrs: none,
+        tag: "section", id: b.id, class: ["lp-section"],
         children: flatten([
           lp_section_head(b.eyebrow, b.title, b.lede, "lp-section-head"),
           if len(items) == 0 { [] }
           else {
             [ HtmlFundamental::Element {
-                tag: "section", id: none, class: ["lp-grid"], attrs: none,
+                tag: "section", class: ["lp-grid"],
                 children: map(items, lp_feature_el),
             } ]
           },
@@ -395,16 +394,16 @@ type LpSteps extends WdocBlock {
     let steps = if b.steps == none { [] } else { b.steps };
     [
       HtmlFundamental::Element {
-        tag: "section", id: b.id, class: ["lp-section"], attrs: none,
+        tag: "section", id: b.id, class: ["lp-section"],
         children: [
           HtmlFundamental::Element {
-            tag: "article", id: none, class: ["lp-steps-panel"], attrs: none,
+            tag: "article", class: ["lp-steps-panel"],
             children: flatten([
               lp_section_head(b.eyebrow, b.title, b.lede, "lp-section-head"),
               if len(steps) == 0 { [] }
               else {
                 [ HtmlFundamental::Element {
-                    tag: "ol", id: none, class: ["lp-steps"], attrs: none,
+                    tag: "ol", class: ["lp-steps"],
                     children: map(steps, lp_step_el),
                 } ]
               },
@@ -445,37 +444,37 @@ type LpFooter extends WdocBlock {
       if b.copyright == none { [] }
       else {
         [ HtmlFundamental::Element {
-            tag: "p", id: none, class: none, attrs: none,
+            tag: "p",
             children: [ HtmlFundamental::Inline { text: b.copyright } ],
         } ]
       },
       if b.note == none { [] }
       else {
         [ HtmlFundamental::Element {
-            tag: "p", id: none, class: none, attrs: none,
+            tag: "p",
             children: [ HtmlFundamental::Inline { text: b.note } ],
         } ]
       },
     ]);
     flatten([
       [ HtmlFundamental::Element {
-          tag: "nav", id: b.id, class: ["lp-footgrid"], attrs: none,
+          tag: "nav", id: b.id, class: ["lp-footgrid"],
           children: flatten([
             [ HtmlFundamental::Element {
-                tag: "header", id: none, class: ["lp-footbrand"], attrs: none,
+                tag: "header", class: ["lp-footbrand"],
                 children: [
                   HtmlFundamental::Element {
-                    tag: "p", id: none, class: ["lp-footlogo"], attrs: none,
+                    tag: "p", class: ["lp-footlogo"],
                     children: [
-                      HtmlFundamental::Icon { name: "lucide.layers", class: none },
+                      HtmlFundamental::Icon { name: "lucide.layers" },
                       HtmlFundamental::Element {
-                        tag: "span", id: none, class: none, attrs: none,
+                        tag: "span",
                         children: [ HtmlFundamental::Raw { html: brand } ],
                       },
                     ],
                   },
                   HtmlFundamental::Element {
-                    tag: "p", id: none, class: ["lp-foottag"], attrs: none,
+                    tag: "p", class: ["lp-foottag"],
                     children: [ HtmlFundamental::Inline { text: b.tagline } ],
                   },
                 ],
@@ -486,7 +485,7 @@ type LpFooter extends WdocBlock {
       if len(bottom) == 0 { [] }
       else {
         [ HtmlFundamental::Element {
-            tag: "section", id: none, class: ["lp-footbottom"], attrs: none,
+            tag: "section", class: ["lp-footbottom"],
             children: bottom,
         } ]
       },
@@ -513,7 +512,7 @@ type LpFootlink extends WdocBlock {
   id: identifier?
   lower = fn(l: LpFootlink) -> list<HtmlFundamental> [
     HtmlFundamental::Element {
-      tag: "p", id: none, class: ["lp-footlink"], attrs: none,
+      tag: "p", class: ["lp-footlink"],
       children: [ HtmlFundamental::Inline { text: $"[${l.label}](${l.href})" } ],
     },
   ]
