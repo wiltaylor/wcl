@@ -39,11 +39,11 @@ Fact-gathering only — no design decisions.
 
 ## Context
 
-Findings land at `.scratch/wdoc-substrate/research/11-wad-seam-findings.md` (dispatched as a background /research agent).
+Findings land at `spec/wdoc-substrate/research/11-wad-seam-findings.md` (dispatched as a background /research agent).
 
 ## Answer
 
-Findings: `.scratch/wdoc-substrate/research/11-wad-seam-findings.md` (728 lines, `path:line` cited).
+Findings: `spec/wdoc-substrate/research/11-wad-seam-findings.md` (728 lines, `path:line` cited).
 
 **WAD does not use the `TemplateCtx` / region seam at all.** Verified independently: zero hits for
 `TemplateCtx`, `wdoc_region`, `region`, `template` or `HtmlFundamental` anywhere under `.wad/` or

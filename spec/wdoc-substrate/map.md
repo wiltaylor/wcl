@@ -5,21 +5,22 @@ Label: `wayfinder:map`
 ## Resume
 
 ```
-/wayfinder .scratch/wdoc-substrate/map.md            # take the next frontier ticket
-/wayfinder .scratch/wdoc-substrate/map.md ticket 02  # take a specific one
+/wayfinder spec/wdoc-substrate/map.md            # take the next frontier ticket
+/wayfinder spec/wdoc-substrate/map.md ticket 02  # take a specific one
 ```
 
 **Frontier (open, unblocked, unclaimed): none — every ticket is resolved.** Resolved: 01, 02, 03, 04,
 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15. Blocked: none.
 
-**The route is walked, and the destination is delivered: [`spec/`](spec/).** Nine files consolidating
-all 15 resolutions into a buildable spec — start at [`spec/README.md`](spec/README.md), which carries
-the dependency order, the non-negotiables and how to cut tickets from it.
+**The route is walked, and the destination is delivered.** Nine files beside this one consolidate all
+15 resolutions into a buildable spec — start at [`README.md`](README.md), which carries the dependency
+order, the non-negotiables and how to cut tickets from it. The build tickets derived from it are
+GitHub issues #34–#76.
 
 What remains beyond the spec is the **Not yet specified** section — migration sequencing (eight
-numbered sweeps, now written up as [`spec/07-migration.md`](spec/07-migration.md)), the blog gaps, and
+numbered sweeps, now written up as [`07-migration.md`](07-migration.md)), the blog gaps, and
 the questions later tickets deliberately handed forward. All of that is carried into
-[`spec/08-open.md`](spec/08-open.md), separated into *out of scope* / *deliberately not decided* /
+[`08-open.md`](08-open.md), separated into *out of scope* / *deliberately not decided* /
 *open questions*. None of it is a decision this map still owes.
 
 Tickets live in `issues/NN-<slug>.md` — a `Status:` line (`open`/`claimed`/`resolved`) and a
@@ -39,7 +40,7 @@ templating layer where you author real HTML templates and render wdoc content in
 slots — **with the in-repo wskills and WAD migrated onto it as the proof it works**. Detailed
 enough to break into tickets and hand to agents.
 
-**Delivered: [`spec/`](spec/).**
+**Delivered: [`README.md`](README.md).**
 
 ## Notes
 

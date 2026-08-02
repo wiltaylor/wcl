@@ -1,7 +1,7 @@
 # 02 — The block type system
 
-Source: tickets [05](../issues/05-block-type-system.md) and [15](../issues/15-constructor-dsl.md),
-resting on the survey in [04](../issues/04-backend-survey.md).
+Source: tickets [05](issues/05-block-type-system.md) and [15](issues/15-constructor-dsl.md),
+resting on the survey in [04](issues/04-backend-survey.md).
 
 ## The problem, measured
 
@@ -55,7 +55,7 @@ class. Made cheap by templates already being HTML-only.
 **Where the current uses sit:** 57 of 63 `Element` uses and 38 of 45 `Raw` uses are in `templates.wcl`
 (36/26), `website.wcl` (15/8) and `presentation.wcl` (6/4). Exactly **six** content blocks reach for
 markup — `callout`, `chapter_header`, `code`, `footnotes`, `p`, `text` — and those are precisely the
-six that [04](../issues/04-backend-survey.md) measured as degrading badly.
+six that [04](issues/04-backend-survey.md) measured as degrading badly.
 
 *Rejected:* one union with semantic variants added (leaves `Element`/`Raw` as permanent holes the
 non-HTML backends keep guessing at); per-target lowers (a 3× authoring tax on 134 blocks to fix a
@@ -81,7 +81,7 @@ unrepresentable rather than discouraged.
 ~15–20, one per document concept.
 
 **Cost, stated honestly:** a new page-content concept costs ~3 backend arms. That cost is **already paid
-today** ([04](../issues/04-backend-survey.md): "adding a page block costs up to three plus the
+today** ([04](issues/04-backend-survey.md): "adding a page block costs up to three plus the
 fundamental-walker coverage"); the difference is that today you can skip them and nobody finds out.
 
 *Rejected:* a small core plus a generic `Container { role: symbol, children }` — the role is a
@@ -89,7 +89,7 @@ stringly-typed key each backend interprets or ignores, i.e. this map's own failu
 `BlockNode` converged on per-concept variants unaided.
 
 **Corollary:** `lower_recurse`'s HTML-onlyness dissolves. All four backends consume one IR, so the
-extension mechanism stops being HTML-only — [04](../issues/04-backend-survey.md)'s root-cause finding.
+extension mechanism stops being HTML-only — [04](issues/04-backend-survey.md)'s root-cause finding.
 
 ## 2.4 `@native` on the type; `lower` comes off the interface
 
@@ -139,7 +139,7 @@ three drifted per-backend degradations into one authored place; Wil declined the
 
 Waived per-instance by the existing `@except(backends = [:pdf])`. No new mechanism: **capability says
 *can't*, author intent says *don't want to***, and the build refuses to proceed until they agree.
-[04](../issues/04-backend-survey.md) found the axis expresses instance-scoped intent while nothing
+[04](issues/04-backend-survey.md) found the axis expresses instance-scoped intent while nothing
 expressed kind-scoped capability; this supplies the counterpart.
 
 Two consequences:
@@ -184,8 +184,8 @@ two declarations to keep in step.
 
 ## 2.10 The constructor DSL
 
-Source: ticket [15](../issues/15-constructor-dsl.md), prototyped executably at
-[`proto-15-constructor-dsl/`](../proto-15-constructor-dsl/).
+Source: ticket [15](issues/15-constructor-dsl.md), prototyped executably at
+[`proto-15-constructor-dsl/`](proto-15-constructor-dsl/).
 
 ### 2.10.1 Two free fixes
 

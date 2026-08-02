@@ -4,10 +4,10 @@ The in-repo consumers migrating onto the new substrate **is** the proof it works
 deliverable, not follow-up work. Nothing gets a compatibility shim.
 
 Source: the map's *Migration sequencing* fog, sharpened by tickets
-[05](../issues/05-block-type-system.md), [06](../issues/06-unit-kinds.md),
-[07](../issues/07-curator-contract.md), [08](../issues/08-wskill-cli.md),
-[12](../issues/12-template-selection.md), [13](../issues/13-css-authoring.md),
-[14](../issues/14-wdoc-lang-extraction.md) and [15](../issues/15-constructor-dsl.md).
+[05](issues/05-block-type-system.md), [06](issues/06-unit-kinds.md),
+[07](issues/07-curator-contract.md), [08](issues/08-wskill-cli.md),
+[12](issues/12-template-selection.md), [13](issues/13-css-authoring.md),
+[14](issues/14-wdoc-lang-extraction.md) and [15](issues/15-constructor-dsl.md).
 
 ## The eight sweeps
 

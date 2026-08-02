@@ -1,9 +1,9 @@
 # 06 — The editor
 
-Source: ticket [10](../issues/10-editor-review.md), with the breakage inventory from
-[11](../issues/11-wad-seam-survey.md) and the constraints handed on by
-[03](../issues/03-slot-contract.md), [07](../issues/07-curator-contract.md),
-[08](../issues/08-wskill-cli.md) and [09](../issues/09-research-flow.md).
+Source: ticket [10](issues/10-editor-review.md), with the breakage inventory from
+[11](issues/11-wad-seam-survey.md) and the constraints handed on by
+[03](issues/03-slot-contract.md), [07](issues/07-curator-contract.md),
+[08](issues/08-wskill-cli.md) and [09](issues/09-research-flow.md).
 
 The browser editor is **the human loop** for this whole effort — Wil does not hand-edit `.wcl`
 (see [08](08-open.md), Out of scope). So it is both the biggest breakage surface and the place the
@@ -85,7 +85,7 @@ editing them."*
 Prototyped against **real data** — the `wcl` wskill's unit graph extracted at two git revs and diffed,
 with `99518181 docs(wskill/wcl): atomize language reference…` as the subject: a genuine 30-unit
 authoring commit (**+30 −5 units, +160 −19 edges, 8 new hubs**). See
-[`proto-10-editor-review/`](../proto-10-editor-review/).
+[`proto-10-editor-review/`](proto-10-editor-review/).
 
 ### 6.3.1 The measurement that decided most of it
 

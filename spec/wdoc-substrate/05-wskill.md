@@ -1,7 +1,7 @@
 # 05 — The wskill format, CLI and curator
 
-Source: tickets [06](../issues/06-unit-kinds.md), [07](../issues/07-curator-contract.md),
-[08](../issues/08-wskill-cli.md), [09](../issues/09-research-flow.md).
+Source: tickets [06](issues/06-unit-kinds.md), [07](issues/07-curator-contract.md),
+[08](issues/08-wskill-cli.md), [09](issues/09-research-flow.md).
 
 This half of the map is about **how the agent authors** — the wskill format's data model, the tooling
 that keeps its graph honest, and the two authoring processes that produce it.

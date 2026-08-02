@@ -1,7 +1,7 @@
 # 04 — CSS authoring
 
-Source: ticket [13](../issues/13-css-authoring.md), validated by
-[`proto-13-css-authoring/`](../proto-13-css-authoring/).
+Source: ticket [13](issues/13-css-authoring.md), validated by
+[`proto-13-css-authoring/`](proto-13-css-authoring/).
 
 **Position 3 — typed selectors, raw declarations.** Structure is WCL and typed; declaration bodies stay
 CSS text. Every CSS heredoc dies.
@@ -36,7 +36,7 @@ CSS text. Every CSS heredoc dies.
   `css.rs:26`, converts field → CSS text). The lone exception is **`accent`**, which renames to
   `--callout-accent` (`css.rs:118`).
 - **WCL symbols cannot contain a hyphen** (`is_ident_cont`, `lexer.rs:592`) and **all 237 class names
-  are hyphenated**. So [02](../issues/02-template-authoring.md)'s winning argument — *a slot is a
+  are hyphenated**. So [02](issues/02-template-authoring.md)'s winning argument — *a slot is a
   symbol, so the typo is already an error* — **cannot be carried across to CSS**. That argument has now
   failed twice (03 killed it for slots by scoping them per-declarer; this kills it for classes on
   lexing grounds).
@@ -178,7 +178,7 @@ expressible**. A lint rejecting `//` inside a `css` value closes the rest.
 
 ## Prototype verdicts
 
-`python3 run.py` in [`proto-13-css-authoring/`](../proto-13-css-authoring/) converts the real corpus and
+`python3 run.py` in [`proto-13-css-authoring/`](proto-13-css-authoring/) converts the real corpus and
 round-trips it.
 
 - **Lossless — 477 rules in, 477 out, 0 lost, 0 spurious.** But only after the two amendments above

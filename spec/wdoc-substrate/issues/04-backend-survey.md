@@ -42,11 +42,11 @@ This is fact-gathering only — no design decisions.
 
 ## Context
 
-Findings land at `.scratch/wdoc-substrate/research/04-backend-survey-findings.md` (dispatched as a background /research agent).
+Findings land at `spec/wdoc-substrate/research/04-backend-survey-findings.md` (dispatched as a background /research agent).
 
 ## Answer
 
-Findings: `.scratch/wdoc-substrate/research/04-backend-survey-findings.md` (904 lines, every claim
+Findings: `spec/wdoc-substrate/research/04-backend-survey-findings.md` (904 lines, every claim
 cited `path:line`, all 134 `@block` rows present).
 
 **The special-casing is NOT the same set per backend.** Each of the three code backends runs its own

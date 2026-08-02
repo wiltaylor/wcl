@@ -1,8 +1,8 @@
 # 03 — The templating layer
 
-Source: tickets [01](../issues/01-content-seam.md), [02](../issues/02-template-authoring.md),
-[03](../issues/03-slot-contract.md), [12](../issues/12-template-selection.md), with the performance
-measurement from [11](../issues/11-wad-seam-survey.md).
+Source: tickets [01](issues/01-content-seam.md), [02](issues/02-template-authoring.md),
+[03](issues/03-slot-contract.md), [12](issues/12-template-selection.md), with the performance
+measurement from [11](issues/11-wad-seam-survey.md).
 
 ## The problem, measured
 
@@ -99,7 +99,7 @@ parse-and-check property that distinguishes C from string concatenation is exact
 every loop. Add `{% for %}` to fix it and C *is* A.
 
 **Model A — external `.html` + an expression language — is ruled out, not merely unchosen.** It works;
-[`proto-02-template-authoring/`](../proto-02-template-authoring/) runs it and catches five typos that
+[`proto-02-template-authoring/`](proto-02-template-authoring/) runs it and catches five typos that
 are silent today. But it means hand-writing a second language (lexer, parser, checker, span-carrying
 miette diagnostics, a `{% %}` dialect that grows forever) in a repo whose conventions are "no parser
 generators" and "keep the dependency list minimal". What paid for that was the paste-a-design story,
@@ -133,7 +133,7 @@ parity by Wil: **i18n**, **`baseof` inheritance**, and with it **themes** — se
 
 A **slot is an obligation** ("this layout does not work without a hero") — checkable, and a query
 cannot express it, because a query finding nothing returns nothing rather than saying the page is
-wrong. A **query is an opportunity**. Every query [01](../issues/01-content-seam.md) justified was a
+wrong. A **query is an opportunity**. Every query [01](issues/01-content-seam.md) justified was a
 *derivation* (`on_this_page`, `first_h1_text`), never placement. Query-only would also make the fill
 site invisible — you could never point at a block and say which hole it lands in.
 
@@ -175,7 +175,7 @@ declaration for the editor palette and Design mode's slot forms to introspect.
 `content<SvgBlock>` needs [01](01-language.md) §1.3's syntax-only generics, and the check is done by
 the `@children(SvgBlock)` the derivation emits alongside it.
 
-**`*` is an addition from [12](../issues/12-template-selection.md)** — write it in briefs as an explicit
+**`*` is an addition from [12](issues/12-template-selection.md)** — write it in briefs as an explicit
 addition so nobody reads it as part of the original grammar.
 
 ### 3.6.4 The default body is declared, filled implicitly, and `content` is reserved
@@ -262,7 +262,7 @@ the `website_footer`-falls-back-to-`c.title` case, and it stops being an `if` bu
 `slot(c, :hero)` returns a handle (§3.2); the reference errors at render if the rendering template
 declares no `hero`.
 
-**This corrects [02](../issues/02-template-authoring.md)**, which claimed the check "comes free — a slot
+**This corrects [02](issues/02-template-authoring.md)**, which claimed the check "comes free — a slot
 is a symbol, so `:heor` is already a symbol-set violation." That holds only if slot names live in one
 global symbol set, which §3.6.6 killed by scoping slots to their declaring template.
 

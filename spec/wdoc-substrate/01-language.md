@@ -1,7 +1,7 @@
 # 01 — Language (`wcl_lang`)
 
-Source: ticket [14](../issues/14-wdoc-lang-extraction.md), with items from
-[15](../issues/15-constructor-dsl.md) and [05](../issues/05-block-type-system.md).
+Source: ticket [14](issues/14-wdoc-lang-extraction.md), with items from
+[15](issues/15-constructor-dsl.md) and [05](issues/05-block-type-system.md).
 
 `wcl_lang` is the *language* crate and it hardcodes its consumer's vocabulary. `wdoc_component`,
 `wdoc_slot`, `wdoc_body`, `wdoc_repeater`, `wdoc_instance` and `wdoc_content` appear **by name** in the

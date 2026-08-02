@@ -1,6 +1,6 @@
 # The wdoc substrate — specification
 
-The deliverable of the [wdoc substrate refactor map](../map.md). Fifteen decision tickets, resolved
+The deliverable of the [wdoc substrate refactor map](map.md). Fifteen decision tickets, resolved
 one per session, consolidated into a buildable spec.
 
 **This document invents nothing.** Every decision here traces to a resolved ticket, and the ticket
@@ -101,9 +101,9 @@ Each part is written so its numbered decisions map onto work. Guidance:
   decisions were taken by Wil *against* the session's recommendation (03 decision 5 and 7, 12
   decisions 5–9, 14 decision 3, 15's first scope call) — those especially.
 - **Three prototypes are executable** and are the evidence for their parts:
-  [`proto-02-template-authoring/`](../proto-02-template-authoring/),
-  [`proto-13-css-authoring/`](../proto-13-css-authoring/),
-  [`proto-15-constructor-dsl/`](../proto-15-constructor-dsl/). Run them before disputing what they
+  [`proto-02-template-authoring/`](proto-02-template-authoring/),
+  [`proto-13-css-authoring/`](proto-13-css-authoring/),
+  [`proto-15-constructor-dsl/`](proto-15-constructor-dsl/). Run them before disputing what they
   found.
 
 ## Verification

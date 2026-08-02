@@ -25,6 +25,16 @@ Prefer these over re-deriving behaviour from source:
 - **Language / CLI / builtins reference** — the `wcl` wskill (`docs/wskills/wcl/`), a self-contained WCL model projected into a book (included in the site under `/wskills/wcl/`) and a skill. The `wdoc` block reference stays as a book at `docs/pages/reference/wdoc/*.wcl` (charts, diagrams, timelines, terminals, math, …). The landing (`docs/pages/wcl/index.wcl`) lists the wskills registry-style via `included_sites(...)`. Browse with `just docs-serve`; render to `docs/_site/` with `just docs-build`.
 - **Crate internals** — each crate's `src/lib.rs` carries `//!` module docs; run `cargo doc --open` for the API surface.
 - **Topic READMEs** — fuzz (`crates/wcl_lang/fuzz/README.md`), icon packs + licensing (`crates/wcl_wdoc/assets/icons/README.md`), editors (`editors/*/README.md`).
+- **In-flight refactor specs** — `spec/<effort>/`. Currently **`spec/wdoc-substrate/`**: a breaking
+  refactor of wdoc's block/type system and template layer (an honest content IR, `@native`, a typed
+  `slot` contract, CSS as blocks, a `wcl_wskill` crate), with the docs site, `examples/`, the four
+  wskills and WAD migrated onto it as the proof. Start at its `README.md` — that carries the
+  dependency order, the non-negotiables and the parts. `map.md` plus `issues/` are the wayfinder
+  decision trail behind every choice (read the ticket before re-opening a decision — each records what
+  was rejected and why); `proto-*/` are executable prototypes that are the evidence for their parts.
+  Build tickets are GitHub issues #34–#76. **If you are touching the block, template or CSS layers,
+  read the relevant spec part first** — the design is settled and several obvious-looking changes are
+  already ruled out with measurements.
 - **Auto-memory notes** (under `~/.claude/projects/-home-wil-dev-WCL/memory/`) — WCL authoring gotchas, wdoc theming, the wdoc PDF backend.
 
 ## What's implemented
