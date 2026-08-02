@@ -23,6 +23,12 @@ main:
 # One part is not side-effect-free: `wad-extract-check` regenerates the tracked
 # files under .wad/data/generated/, because freshness can't be judged without
 # re-running the extractors. See its own doc comment.
+#
+# `check` is a pure dependency list and must stay one. just runs each dependency
+# in its own shell, so nothing here can hold a lock across its siblings — the
+# machine-wide serialization lives on the parts instead (`ci_lock` in
+# ../shared.just). Putting a lock here as well would self-deadlock: flock is not
+# reentrant across processes.
 
 # Everything a change must pass before it can merge: fmt, lint, tests, schema and template drift, artifact freshness, doc builds
 [group('ci')]
