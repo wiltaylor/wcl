@@ -2,7 +2,9 @@
 
 `@decorator("name")` makes a type the schema for a user-defined `@name` decorator's arguments.
 This lets you declare your own decorators with typed, validated arguments rather than relying
-only on the built-in set.
+only on the built-in set. Slots marked `@inline(N)` accept positional arguments; other slots
+accept only `name = value`. Validation reports unknown or missing arguments, surplus
+positionals, type mismatches, and slot constraint violations at the decorator use site.
 
 
 ```wcl
