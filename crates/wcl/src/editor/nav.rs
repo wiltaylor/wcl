@@ -675,19 +675,23 @@ mod tests {
         std::fs::read_to_string(ws.root_dir().join(rel)).unwrap()
     }
 
+    fn write_mini_wskill_with_index_bodies(root: &Path) {
+        write_mini_wskill(root);
+        let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
+        let main = main.replace(
+            "@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n}",
+            "@block(\"body\") @schemaless\ntype UnitBody {\n}\n\n@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n  @child(\"body\") body: UnitBody?\n}",
+        );
+        std::fs::write(root.join("main.wcl"), main).unwrap();
+    }
+
     /// A pinned id naming nothing is shown as a missing entry rather than
     /// dropped — a dangling link is the author's to see and fix — and an
     /// index with a `body` is a page of its own.
     #[test]
     fn wskill_nav_reports_dangling_pins_and_body_pages() {
         let (_td, ws) = workspace_built_by(|root| {
-            write_mini_wskill(root);
-            let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
-            let main = main.replace(
-                "@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n}",
-                "@block(\"body\") @schemaless\ntype UnitBody {\n}\n\n@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n  @child(\"body\") body: UnitBody?\n}",
-            );
-            std::fs::write(root.join("main.wcl"), main).unwrap();
+            write_mini_wskill_with_index_bodies(root);
             std::fs::write(
                 root.join("data/indexes.wcl"),
                 "index lang {\n  name = \"Language\"\n  related = [alpha, ghost]\n\n  \
@@ -708,15 +712,7 @@ mod tests {
 
     #[test]
     fn nav_body_op_turns_an_index_heading_into_a_page() {
-        let (_td, ws) = workspace_built_by(|root| {
-            write_mini_wskill(root);
-            let main = std::fs::read_to_string(root.join("main.wcl")).unwrap();
-            let main = main.replace(
-                "@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n}",
-                "@block(\"body\") @schemaless\ntype UnitBody {\n}\n\n@block(\"index\")\ntype Index {\n  @inline(0) id: identifier\n  name: utf8\n  related: list<identifier>?\n  @child(\"body\") body: UnitBody?\n}",
-            );
-            std::fs::write(root.join("main.wcl"), main).unwrap();
-        });
+        let (_td, ws) = workspace_built_by(write_mini_wskill_with_index_bodies);
 
         let before = nav(&ws, "main.wcl", Some("book")).expect("nav");
         assert!(before["nav"][0]["page"].is_null(), "{before:#}");
