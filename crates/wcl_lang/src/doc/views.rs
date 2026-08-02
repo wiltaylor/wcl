@@ -742,10 +742,12 @@ impl<'a> Decorator<'a> {
 
     /// Span of the dotted decorator name, excluding `@` and arguments.
     pub fn name_span(&self) -> Span {
-        let start = self.ast.span.start + 1;
-        let name_len = self.ast.name.iter().map(String::len).sum::<usize>()
-            + self.ast.name.len().saturating_sub(1);
-        Span::new(start, start + name_len)
+        self.ast.name_span
+    }
+
+    /// Source spans index-aligned with this decorator's positional arguments.
+    pub fn positional_spans(&self) -> &'a [Span] {
+        &self.ast.positional_spans
     }
 
     /// The decorator schema selected by this decorator's authored name.
@@ -803,8 +805,9 @@ impl<'a> Decorator<'a> {
     /// decorator's positional + named args are dispatched into a
     /// `Value::Variant` by structural shape. Otherwise, the named
     /// arg is consulted first, then the positional arg at the slot's
-    /// declaration index — so `@block("books")` resolves the `name`
-    /// slot from positional[0] when no `name = ...` was written.
+    /// `@inline(N)` index — so `@block("books")` resolves the `name`
+    /// slot from positional[0] when no `name = ...` was written. A slot
+    /// without `@inline` is named-only.
     ///
     /// If neither a named nor positional argument fills the slot, its
     /// declared default is returned. Returns `None` when the decorator has
@@ -822,7 +825,7 @@ impl<'a> Decorator<'a> {
         if let Some(v) = self.named_arg(slot_name) {
             return Some(v);
         }
-        let slot_idx = schema.fields().position(|f| f.name() == slot_name)?;
+        let slot_idx = slot.inline_slot()? as usize;
         let positional = match self.positional() {
             Ok(v) => v,
             Err(e) => return Some(Err(e)),

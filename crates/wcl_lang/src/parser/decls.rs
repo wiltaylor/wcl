@@ -93,6 +93,7 @@ impl<'a> Parser<'a> {
         let start = at.span.start;
         let (name, name_span) = self.parse_path()?;
         let mut positional = Vec::new();
+        let mut positional_spans = Vec::new();
         let mut named = Vec::new();
         let mut end = name_span.end;
         if matches!(self.peek()?.kind, TokenKind::LParen) {
@@ -125,8 +126,9 @@ impl<'a> Parser<'a> {
                                 "unexpected positional arg",
                             ));
                         }
-                        let (value, _) = self.parse_expr()?;
+                        let (value, value_span) = self.parse_expr()?;
                         positional.push(value);
+                        positional_spans.push(value_span);
                     }
                     match self.peek()?.kind {
                         TokenKind::Comma => {
@@ -156,6 +158,7 @@ impl<'a> Parser<'a> {
             name,
             name_span,
             positional,
+            positional_spans,
             named,
             span: Span::new(start, end),
         })

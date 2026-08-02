@@ -2510,6 +2510,9 @@ impl Document {
         out: &mut Vec<EvalError>,
     ) {
         use crate::error::SchemaViolationKind as Kind;
+        for decorator in f.decorators() {
+            out.extend(schema_check::decorator_argument_errors(self, &decorator));
+        }
         if schemas.is_empty() {
             EvalError::push_schema_violation(
                 out,

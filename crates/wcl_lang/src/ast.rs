@@ -28,10 +28,12 @@ pub(crate) fn synthetic_span() -> Span {
 /// A decorator with no named args, spanning nothing — the shape every
 /// synthesised `@block("x")` / `@contextual` / `@decorator("y")` takes.
 pub(crate) fn synthetic_decorator(name: &str, positional: Vec<Expr>) -> Decorator {
+    let positional_spans = vec![synthetic_span(); positional.len()];
     Decorator {
         name: vec![name.to_string()],
         name_span: synthetic_span(),
         positional,
+        positional_spans,
         named: Vec::new(),
         span: synthetic_span(),
     }
@@ -439,6 +441,9 @@ pub struct Decorator {
     /// arguments. Decorator-level diagnostics point here.
     pub name_span: Span,
     pub positional: Vec<Expr>,
+    /// Source spans index-aligned with [`Self::positional`]. Synthetic
+    /// decorators carry empty spans for their synthetic arguments.
+    pub positional_spans: Vec<Span>,
     pub named: Vec<NamedArg>,
     pub span: Span,
 }

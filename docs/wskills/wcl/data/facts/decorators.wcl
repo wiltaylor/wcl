@@ -117,9 +117,10 @@ fact dec_inline {
   audience = :both
   body {
     p <<DOC
-      `@inline(slot)` binds a block's positional label to a field by zero-based slot index. Multiple
-      `@inline(n)` decorators expose multiple labels, so `route "GET" "/users"` fills slot `0` and
-      slot `1`.
+      `@inline(slot)` makes a schema field positional by zero-based slot index. On a block schema it
+      binds a positional label to the field; on a decorator schema it binds a positional argument.
+      Multiple `@inline(n)` decorators expose multiple positions, so `route "GET" "/users"` fills
+      slot `0` and slot `1`. A decorator slot without `@inline` is named-only.
     DOC
     code "wcl" {
       source = <<DOC
@@ -197,7 +198,9 @@ fact dec_decorator {
     p <<DOC
       `@decorator("name")` makes a type the schema for a user-defined `@name` decorator's arguments.
       This lets you declare your own decorators with typed, validated arguments rather than relying
-      only on the built-in set.
+      only on the built-in set. Slots marked `@inline(N)` accept positional arguments; other slots
+      accept only `name = value`. Validation reports unknown or missing arguments, surplus
+      positionals, type mismatches, and slot constraint violations at the decorator use site.
     DOC
     code "wcl" {
       source = <<DOC

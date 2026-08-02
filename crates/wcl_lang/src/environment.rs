@@ -352,11 +352,15 @@ fn synth_decorator_schema(
     field_name: &str,
     field_ty: TypeRef,
 ) -> ast::TypeDecl {
+    let mut field = synthetic_field(field_name, field_ty, false);
+    field
+        .decorators
+        .push(synthetic_decorator("inline", vec![ast::Expr::U64(0)]));
     ast::TypeDecl {
         name: vec![type_name.to_string()],
         extends: Vec::new(),
         alias: None,
-        fields: vec![synthetic_field(field_name, field_ty, false)],
+        fields: vec![field],
         decorators: vec![synthetic_decorator(
             "decorator",
             vec![ast::Expr::Utf8(decorator_name.to_string())],
@@ -501,10 +505,12 @@ impl DecoratorBuilder {
     }
 
     pub(crate) fn build(self) -> ast::Decorator {
+        let positional_spans = vec![synthetic_span(); self.positional.len()];
         ast::Decorator {
             name: self.name,
             name_span: synthetic_span(),
             positional: self.positional,
+            positional_spans,
             named: self.named,
             span: synthetic_span(),
         }

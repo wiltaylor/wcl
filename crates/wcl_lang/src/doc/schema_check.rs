@@ -19,6 +19,152 @@ use crate::value::Value;
 use super::cells::ItemCellKind;
 use super::{Block, BuiltinDecorator, DeclName, Document, TypeField};
 
+/// Check the values written into a declared decorator's positional slots.
+/// Slot numbers come from `@inline(N)`; declaration order is not positional.
+/// Undeclared decorators are left to the declaration validator.
+pub(super) fn decorator_argument_errors(
+    doc: &Document,
+    decorator: &super::Decorator<'_>,
+) -> Vec<EvalError> {
+    use crate::error::SchemaViolationKind as Kind;
+
+    let Some(schema) = decorator.schema() else {
+        return Vec::new();
+    };
+    let Ok(values) = decorator.positional() else {
+        return Vec::new();
+    };
+    let mut errors = Vec::new();
+    for (index, (value, span)) in values.iter().zip(decorator.positional_spans()).enumerate() {
+        let Some(slot) = schema
+            .fields()
+            .find(|field| field.inline_slot() == Some(index as u64))
+        else {
+            errors.push(EvalError::schema_violation(
+                Kind::UnknownField,
+                format!(
+                    "positional argument {} for decorator '@{}' has no @inline({}) slot in schema '{}'",
+                    index + 1,
+                    decorator.full_name(),
+                    index,
+                    schema.name(),
+                ),
+                *span,
+            ));
+            continue;
+        };
+        let declared_type = doc.resolve_alias(slot.type_ref());
+        if !crate::doc::value_matches_declared(value, &declared_type, slot.optional()) {
+            errors.push(EvalError::schema_violation_named(
+                Kind::FieldTypeMismatch,
+                format!(
+                    "argument for decorator '@{}' slot '{}' is declared as {} but the value is {}",
+                    decorator.full_name(),
+                    slot.name(),
+                    slot.type_ref(),
+                    value.type_name(),
+                ),
+                slot.name(),
+                *span,
+            ));
+        } else if let Some(error) =
+            crate::doc::symbol_set_membership_error(doc, &declared_type, value, slot.name(), *span)
+        {
+            errors.push(error);
+        } else if let Some(message) =
+            constraint_violation(doc, &slot.ast.decorators, slot.type_ref(), value)
+        {
+            errors.push(EvalError::schema_violation_named(
+                Kind::ConstraintViolation,
+                format!(
+                    "argument for decorator '@{}' slot '{}': {message}",
+                    decorator.full_name(),
+                    slot.name(),
+                ),
+                slot.name(),
+                *span,
+            ));
+        }
+    }
+    for named in decorator.named() {
+        let Some(slot) = schema.field(named.name()) else {
+            errors.push(EvalError::schema_violation_named(
+                Kind::UnknownField,
+                format!(
+                    "argument '{}' is not declared by decorator schema '{}'",
+                    named.name(),
+                    schema.name(),
+                ),
+                named.name(),
+                named.span(),
+            ));
+            continue;
+        };
+        let Ok(value) = named.value() else {
+            continue;
+        };
+        let declared_type = doc.resolve_alias(slot.type_ref());
+        if !crate::doc::value_matches_declared(&value, &declared_type, slot.optional()) {
+            errors.push(EvalError::schema_violation_named(
+                Kind::FieldTypeMismatch,
+                format!(
+                    "argument for decorator '@{}' slot '{}' is declared as {} but the value is {}",
+                    decorator.full_name(),
+                    slot.name(),
+                    slot.type_ref(),
+                    value.type_name(),
+                ),
+                slot.name(),
+                named.span(),
+            ));
+        } else if let Some(error) = crate::doc::symbol_set_membership_error(
+            doc,
+            &declared_type,
+            &value,
+            slot.name(),
+            named.span(),
+        ) {
+            errors.push(error);
+        } else if let Some(message) =
+            constraint_violation(doc, &slot.ast.decorators, slot.type_ref(), &value)
+        {
+            errors.push(EvalError::schema_violation_named(
+                Kind::ConstraintViolation,
+                format!(
+                    "argument for decorator '@{}' slot '{}': {message}",
+                    decorator.full_name(),
+                    slot.name(),
+                ),
+                slot.name(),
+                named.span(),
+            ));
+        }
+    }
+    let named_slots: HashSet<&str> = decorator.named().map(|arg| arg.name()).collect();
+    for slot in schema.fields() {
+        if slot.optional() || slot.default_value().is_some() {
+            continue;
+        }
+        let filled_by_name = named_slots.contains(slot.name());
+        let filled_positionally = slot
+            .inline_slot()
+            .is_some_and(|index| (index as usize) < values.len());
+        if !filled_by_name && !filled_positionally {
+            errors.push(EvalError::schema_violation_named(
+                Kind::MissingRequired,
+                format!(
+                    "decorator '@{}' is missing required argument '{}'",
+                    decorator.full_name(),
+                    slot.name(),
+                ),
+                slot.name(),
+                decorator.name_span(),
+            ));
+        }
+    }
+    errors
+}
+
 /// Check the constraint decorators that apply to a field's value: the
 /// field declaration's own registered `@min` / `@max` / `@non_empty`, plus those on
 /// every type-alias declaration its declared type goes through
@@ -569,6 +715,18 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     // every check inside the block (its contents are unrestricted).
     if has_schemaless(&block.ast.decorators) {
         return errs;
+    }
+
+    for decorator in block.decorators() {
+        errs.extend(decorator_argument_errors(block.doc, &decorator));
+    }
+    for field in block.fields() {
+        if has_schemaless(&field.ast.decorators) {
+            continue;
+        }
+        for decorator in field.decorators() {
+            errs.extend(decorator_argument_errors(block.doc, &decorator));
+        }
     }
 
     // Connection statements live alongside fields and nested blocks;

@@ -1780,6 +1780,11 @@ code_item code_api_wcl_lang_ast {
       kind = "field"
       deps = [n_api_wcl_lang_ast_Expr]
     }
+    code_member m_n_api_wcl_lang_ast_Decorator_positional_spans {
+      signature = "positional_spans: Vec<Span>"
+      kind = "field"
+      deps = [n_api_wcl_lang_ast_Span]
+    }
     code_member m_n_api_wcl_lang_ast_Decorator_named {
       signature = "named: Vec<NamedArg>"
       kind = "field"
@@ -3506,6 +3511,10 @@ code_item code_api_doc_view {
     }
     code_member m_n_api_doc_view_Decorator_name_span {
       signature = "fn name_span(&self) -> Span"
+      kind = "method"
+    }
+    code_member m_n_api_doc_view_Decorator_positional_spans {
+      signature = "fn positional_spans(&self) -> &'a [Span]"
       kind = "method"
     }
     code_member m_n_api_doc_view_Decorator_schema {
