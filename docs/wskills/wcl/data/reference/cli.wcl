@@ -5,8 +5,18 @@
 //
 // The book renders a top-level "CLI" section: wcl → its subcommands → the nested
 // subcommands of `wdoc`, `wad` and `wskill`.
+//
+// The id is `wcl_cli_ref`, not `wcl_cli`: the binary-as-a-thing is `entity wcl_cli`
+// (data/entities/wcl_cli.wcl), the target of ten `related = [wcl_cli]` links. Unit
+// kinds share ONE id namespace (`source` and the other plumbing kinds are outside
+// it), and the model resolves an id to the first unit that declares it — so two
+// units called `wcl_cli` would leave the graph, the editor's index panel and every
+// future template that folds `clis` into `all_units` pointing wherever declaration
+// order happened to land. `wcl wskill lint` reports it as `duplicate-id`.
+// Nothing addresses this block by id: the templates iterate `clis`, and the pages
+// are slugged from the subcommand ids.
 
-cli wcl_cli {
+cli wcl_cli_ref {
   name        = "wcl"
   version     = "0.31.0-alpha"
   description = "The WCL command-line interface — parse, check, evaluate, edit, format, diff, scaffold, the REPL, the language server, the browser editor, the wdoc generator, and the WAD helpers."
