@@ -171,7 +171,7 @@ template blog {
     flatten([
       wdoc_webpage_layout(c),
       [ HtmlFundamental::Element {
-          tag: "footer", id: none, class: ["site-footer"], attrs: none,
+          tag: "footer", class: ["site-footer"],
           children: [ HtmlFundamental::Raw { html: "© 2026 — built with wdoc" } ],
       } ],
     ])
@@ -192,7 +192,7 @@ template app_home {
     flatten([
       wdoc_part_webpage_css(),      // keep the stdlib styling…
       [ HtmlFundamental::Element {  // …a hero masthead instead of wdoc_part_header
-          tag: "header", id: none, class: ["hero"], attrs: none,
+          tag: "header", class: ["hero"],
           children: [ HtmlFundamental::Raw { html: c.title } ],
       } ],
       wdoc_part_navbar(c),          // …reuse the stdlib nav

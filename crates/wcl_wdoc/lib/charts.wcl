@@ -65,11 +65,11 @@ let chart_fmt = fn(v: f64) -> utf8 format("{}", round(v * 100.0) / 100.0)
 let chart_axes = fn(px: f64, py: f64, pw: f64, ph: f64) -> list<SvgFundamental> [
   SvgFundamental::Line {
     x1: px, y1: py + ph, x2: px + pw, y2: py + ph,
-    stroke: none, id: none, class: ["wdoc-axis"],
+    class: ["wdoc-axis"],
   },
   SvgFundamental::Line {
     x1: px, y1: py, x2: px, y2: py + ph,
-    stroke: none, id: none, class: ["wdoc-axis"],
+    class: ["wdoc-axis"],
   },
 ]
 
@@ -81,13 +81,13 @@ let chart_y_ticks = fn(px: f64, py: f64, pw: f64, ph: f64, ymin: f64, ymax: f64,
     [
       SvgFundamental::Line {
         x1: px, y1: yy, x2: px + pw, y2: yy,
-        stroke: none, id: none, class: ["wdoc-grid"],
+        class: ["wdoc-grid"],
       },
       SvgFundamental::Label {
         content: chart_fmt(val),
         x: px - 6.0, y: yy, font_size: 10.0,
         fit_width: 32.0, fit_height: 12.0,
-        fill: none, id: none, class: ["wdoc-axis-label"],
+        class: ["wdoc-axis-label"],
       },
     ]
   }))
@@ -101,7 +101,7 @@ let chart_cat_labels = fn(px: f64, py: f64, pw: f64, ph: f64, cats: list<utf8>) 
       content: at(cats, i),
       x: px + gw * i + gw / 2.0, y: py + ph + 12.0, font_size: 10.0,
       fit_width: gw, fit_height: 12.0,
-      fill: none, id: none, class: ["wdoc-axis-label"],
+      class: ["wdoc-axis-label"],
     }
   })
 }
@@ -114,14 +114,14 @@ let chart_axis_titles = fn(px: f64, py: f64, pw: f64, ph: f64, xlab: utf8, ylab:
       [ SvgFundamental::Label {
           content: xlab, x: px + pw / 2.0, y: py + ph + 26.0, font_size: 11.0,
           fit_width: pw, fit_height: 13.0,
-          fill: none, id: none, class: ["wdoc-axis-label"],
+          class: ["wdoc-axis-label"],
         } ]
     },
     if ylab == "" { [] } else {
       [ SvgFundamental::Label {
           content: ylab, x: px, y: py - 7.0, font_size: 11.0,
           fit_width: 90.0, fit_height: 13.0,
-          fill: none, id: none, class: ["wdoc-axis-label"],
+          class: ["wdoc-axis-label"],
         } ]
     },
   ])
@@ -132,7 +132,7 @@ let chart_title = fn(cx: f64, cy: f64, cw: f64, text: utf8) -> list<SvgFundament
     [ SvgFundamental::Label {
         content: text, x: cx, y: cy + 11.0, font_size: 13.0,
         fit_width: cw, fit_height: 16.0,
-        fill: none, id: none, class: ["wdoc-chart-title"],
+        class: ["wdoc-chart-title"],
       } ]
   }
 
@@ -146,13 +146,13 @@ let chart_legend = fn(px: f64, ly: f64, pw: f64, series: list<ChartSeries>) -> l
     [
       SvgFundamental::Rect {
         x: ix, y: ly - 9.0, width: 10.0, height: 10.0,
-        fill: none, stroke: none, id: none, class: [chart_series_class(j)],
+        class: [chart_series_class(j)],
       },
       SvgFundamental::Label {
         content: sj.name,
         x: ix + 15.0 + (slot - 19.0) / 2.0, y: ly - 4.0, font_size: 10.0,
         fit_width: slot - 19.0, fit_height: 12.0,
-        fill: none, id: none, class: ["wdoc-legend"],
+        class: ["wdoc-legend"],
       },
     ]
   }))
@@ -170,7 +170,7 @@ let chart_bars = fn(series: list<ChartSeries>, px: f64, py: f64, pw: f64, ph: f6
       SvgFundamental::Rect {
         x: px + gw * i + gw * 0.1 + bw * j, y: py + ph - bh,
         width: bw, height: bh,
-        fill: none, stroke: none, id: none, class: [chart_series_class(j)],
+        class: [chart_series_class(j)],
       }
     })))
 
@@ -191,7 +191,7 @@ let chart_lines = fn(series: list<ChartSeries>, px: f64, py: f64, pw: f64, ph: f
         y1: py + ph - ph * (v1 - ymin) / (ymax - ymin),
         x2: chart_line_x(px, pw, i + 1, ncat),
         y2: py + ph - ph * (v2 - ymin) / (ymax - ymin),
-        stroke: none, id: none, class: [cls, "wdoc-line"],
+        class: [cls, "wdoc-line"],
       }
     });
     let marks = map(range(0, ncat), fn(i: i64) -> SvgFundamental {
@@ -199,7 +199,7 @@ let chart_lines = fn(series: list<ChartSeries>, px: f64, py: f64, pw: f64, ph: f
       SvgFundamental::Circle {
         cx: chart_line_x(px, pw, i, ncat),
         cy: py + ph - ph * (v - ymin) / (ymax - ymin),
-        r: 2.6, fill: none, stroke: none, id: none, class: [cls],
+        r: 2.6, class: [cls],
       }
     });
     flatten([segs, marks])
@@ -218,7 +218,7 @@ let chart_point_value_labels = fn(series: list<ChartSeries>, px: f64, py: f64, p
         x: chart_line_x(px, pw, i, ncat),
         y: py + ph - ph * (v - ymin) / (ymax - ymin) - 8.0,
         font_size: 9.0, fit_width: 24.0, fit_height: 11.0,
-        fill: none, id: none, class: ["wdoc-point-label"],
+        class: ["wdoc-point-label"],
       }
     })
   }))
@@ -233,13 +233,13 @@ let chart_annotations = fn(points: list<ChartPoint>, px: f64, py: f64, pw: f64, 
     [
       SvgFundamental::Circle {
         cx: cxp, cy: cyp, r: 3.5,
-        fill: none, stroke: none, id: none, class: ["wdoc-annotation"],
+        class: ["wdoc-annotation"],
       },
       SvgFundamental::Label {
         content: p.label,
         x: cxp, y: cyp - 9.0,
         font_size: 10.0, fit_width: 80.0, fit_height: 12.0,
-        fill: none, id: none, class: ["wdoc-annotation"],
+        class: ["wdoc-annotation"],
       },
     ]
   }))
@@ -445,14 +445,14 @@ type PieChart extends SvgBlock {
         [
           SvgFundamental::Polygon {
             points: format("{},{} {}", cx, cy, chart_arc(cx, cy, r, a0, sweep, 48)),
-            fill: none, stroke: none, id: none, class: [chart_series_class(i)],
+            class: [chart_series_class(i)],
           },
           SvgFundamental::Label {
             content: si.label,
             x: cx + r * 0.62 * sin(mid),
             y: cy - r * 0.62 * cos(mid),
             font_size: 10.0, fit_width: 64.0, fit_height: 12.0,
-            fill: none, id: none, class: ["wdoc-legend"],
+            class: ["wdoc-legend"],
           },
         ]
       })),

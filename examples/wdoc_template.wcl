@@ -20,7 +20,7 @@ site {
 // it and embed the result — there's no special part syntax.
 let footer = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "footer", id: none, class: ["site-footer"], attrs: none,
+    tag: "footer", class: ["site-footer"],
     children: [ HtmlFundamental::Raw { html: c.title } ],
   }
 ]
@@ -31,16 +31,16 @@ template guide {
     flatten([
       [
         HtmlFundamental::Element {
-          tag: "nav", id: none, class: ["site-nav"], attrs: none,
+          tag: "nav", class: ["site-nav"],
           children: map(c.pages, fn(p: PageRef) -> HtmlFundamental
             HtmlFundamental::Element {
-              tag: "a", id: none, class: none,
+              tag: "a",
               attrs: [["href", p.href]],
               children: [ HtmlFundamental::Raw { html: p.name } ],
             }),
         },
         HtmlFundamental::Element {
-          tag: "main", id: none, class: ["site-main"], attrs: none,
+          tag: "main", class: ["site-main"],
           children: [ HtmlFundamental::Raw { html: c.content } ],
         },
       ],

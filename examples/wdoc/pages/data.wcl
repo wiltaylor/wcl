@@ -26,13 +26,11 @@ type SrvGrid extends SvgBlock {
       [
         SvgFundamental::Rect {
           x: cx + 4.0, y: g.y, width: cw - 8.0, height: 44.0,
-          fill: none, stroke: none, id: none,
           class: [if s.up { "srv-up" } else { "srv-down" }],
         },
         SvgFundamental::Label {
           content: s.name, x: cx + 14.0, y: g.y + 27.0,
-          font_size: 13.0, fit_width: none, fit_height: none,
-          fill: none, id: none, class: none,
+          font_size: 13.0,
         },
       ]
     }))

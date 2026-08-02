@@ -26,6 +26,17 @@ b = Shape::Polygon(7)
 c = Shape::Empty
 ```
 
+An **optional** (`field?`) member of a record body defaults to `none` when omitted, so `stroke: none` says nothing that leaving `stroke` out doesn't. Only required fields have to be supplied.
+
+```wcl
+union Shape {
+  Circle { radius: f64  stroke: f64?  fill: utf8? }
+}
+
+a = Shape::Circle { radius: 5.0 }                  // stroke and fill are `none`
+b = Shape::Circle { radius: 5.0, stroke: none }    // identical, and the `stroke:` is dead weight
+```
+
 ## Inferring the variant from shape
 
 When the expected type is a union — a union-typed field, an element of a `list<Union>`, or a function parameter — you can drop the `Union::Variant` tag and write a bare record. The variant is inferred from the record's field shape.
@@ -39,6 +50,8 @@ series = [
 ```
 
 The match is by field-name set (and field types when two variants share a name set), so it only works when the shape is unambiguous; a bare record matching no variant is a build error. Reach for the explicit `Union::Variant { ... }` form to disambiguate.
+
+A bare record must therefore carry the **full** field set, optional members included — the shape is what picks the variant. Only the explicit form can omit them.
 
 ## extends
 

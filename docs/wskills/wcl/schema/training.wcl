@@ -141,10 +141,10 @@ type Quiz extends WdocBlock {
     // after answering (hidden until then by the stylesheet).
     let choice_item = fn(c: Choice) -> HtmlFundamental {
       HtmlFundamental::Element {
-        tag: "li", id: none, class: ["quiz-choice"], attrs: none,
+        tag: "li", class: ["quiz-choice"],
         children: [
           HtmlFundamental::Element {
-            tag: "button", id: none, class: ["quiz-choice-btn"],
+            tag: "button", class: ["quiz-choice-btn"],
             attrs: [
               ["type", "button"],
               ["data-choice", $"${c.id}"],
@@ -153,7 +153,7 @@ type Quiz extends WdocBlock {
             children: [ HtmlFundamental::Inline { text: c.label } ],
           },
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["quiz-choice-note"], attrs: none,
+            tag: "div", class: ["quiz-choice-note"],
             children: [ HtmlFundamental::Inline { text: c.note ?? "" } ],
           },
         ],
@@ -161,7 +161,7 @@ type Quiz extends WdocBlock {
     };
 
     let prompt_el = HtmlFundamental::Element {
-      tag: "div", id: none, class: ["quiz-prompt"], attrs: none,
+      tag: "div", class: ["quiz-prompt"],
       children: [ HtmlFundamental::Inline { text: q.prompt } ],
     };
 
@@ -169,26 +169,26 @@ type Quiz extends WdocBlock {
     // The rubric doubles as the self-check when no server is grading.
     let text_body = [
       HtmlFundamental::Element {
-        tag: "textarea", id: none, class: ["quiz-answer"],
+        tag: "textarea", class: ["quiz-answer"],
         attrs: [["rows", "6"], ["placeholder", "Write your answer…"]],
         children: [],
       },
       HtmlFundamental::Element {
-        tag: "button", id: none, class: ["quiz-submit"], attrs: [["type", "button"]],
+        tag: "button", class: ["quiz-submit"], attrs: [["type", "button"]],
         children: [ HtmlFundamental::Raw { html: "Submit answer" } ],
       },
       HtmlFundamental::Element {
-        tag: "div", id: none, class: ["quiz-verdict"], attrs: none, children: [],
+        tag: "div", class: ["quiz-verdict"], children: [],
       },
       HtmlFundamental::Element {
-        tag: "div", id: none, class: ["quiz-rubric"], attrs: none,
+        tag: "div", class: ["quiz-rubric"],
         children: [
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["quiz-rubric-label"], attrs: none,
+            tag: "div", class: ["quiz-rubric-label"],
             children: [ HtmlFundamental::Raw { html: "A good answer covers" } ],
           },
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["quiz-rubric-body"], attrs: none,
+            tag: "div", class: ["quiz-rubric-body"],
             children: [ HtmlFundamental::Inline { text: q.rubric ?? "" } ],
           },
         ],
@@ -197,7 +197,7 @@ type Quiz extends WdocBlock {
 
     let choice_body = [
       HtmlFundamental::Element {
-        tag: "ul", id: none, class: ["quiz-choices"], attrs: none,
+        tag: "ul", class: ["quiz-choices"],
         children: map(q.choices, choice_item),
       },
     ];
@@ -209,7 +209,7 @@ type Quiz extends WdocBlock {
       else {
         [
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["quiz-explanation"], attrs: none,
+            tag: "div", class: ["quiz-explanation"],
             children: [ HtmlFundamental::Inline { text: q.explanation } ],
           },
         ]

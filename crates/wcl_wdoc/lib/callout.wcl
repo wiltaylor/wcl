@@ -36,7 +36,7 @@ type Callout extends WdocBlock {
       else { "" };
     let icon_name = if c.icon == none { kind_icon } else { c.icon };
     let title = HtmlFundamental::Paragraph {
-      id: none, class: ["callout-title"], spans: [c.heading],
+      class: ["callout-title"], spans: [c.heading],
     };
     let head_children =
       if icon_name == "" { [title] }
@@ -48,21 +48,21 @@ type Callout extends WdocBlock {
       };
     [
       HtmlFundamental::Element {
-        tag: "div", id: c.id, class: flatten([["callout"], cls]), attrs: none,
+        tag: "div", id: c.id, class: flatten([["callout"], cls]),
         children: [
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["callout-heading"], attrs: none,
+            tag: "div", class: ["callout-heading"],
             children: head_children,
           },
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["callout-body"], attrs: none,
+            tag: "div", class: ["callout-body"],
             children: [
               // A `<p>` wrapping an `Inline` fundamental, so the body
               // runs through the inline-pattern engine like `p "…"` —
               // `**bold**`, `` `code` ``, `[links](url)`, `:icons:`, and
               // `$math$` all work. The heading stays a plain span.
               HtmlFundamental::Element {
-                tag: "p", id: none, class: none, attrs: none,
+                tag: "p",
                 children: [HtmlFundamental::Inline { text: c.body }],
               },
             ],

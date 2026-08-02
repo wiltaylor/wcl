@@ -27,14 +27,14 @@ type Footnotes extends WdocBlock {
   @children("footnote") items: list<Footnote>
   lower = fn(f: Footnotes) -> list<HtmlFundamental> [
     HtmlFundamental::Element {
-      tag: "section", id: none, class: ["footnotes"], attrs: none,
+      tag: "section", class: ["footnotes"],
       children: [
         HtmlFundamental::Element {
-          tag: "div", id: none, class: ["footnotes-title"], attrs: none,
+          tag: "div", class: ["footnotes-title"],
           children: [ HtmlFundamental::Raw { html: "Footnotes" } ],
         },
         HtmlFundamental::Element {
-          tag: "ol", id: none, class: ["footnote-list"], attrs: none,
+          tag: "ol", class: ["footnote-list"],
           children: map(f.items, footnote_item),
         },
       ],
@@ -47,7 +47,7 @@ type Footnotes extends WdocBlock {
 // not the `identifier?` id slot.
 let footnote_item = fn(f: Footnote) -> HtmlFundamental
   HtmlFundamental::Element {
-    tag: "li", id: none, class: ["footnote-item"],
+    tag: "li", class: ["footnote-item"],
     attrs: [["id", format("fn-{}", f.id)]],
     children: [
       HtmlFundamental::Inline { text: f.text },

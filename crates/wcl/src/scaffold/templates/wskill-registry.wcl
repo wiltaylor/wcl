@@ -489,7 +489,7 @@ template registry {
       wdoc_head_font("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"),
       [
         HtmlFundamental::Element {
-          tag: "style", id: none, class: none, attrs: none,
+          tag: "style",
           children: [ HtmlFundamental::Raw { html: registry_css } ],
         },
         HtmlFundamental::Raw { html: registry_top },

@@ -30,9 +30,10 @@
 
 // The terminal building blocks a widget lowers into: styled text, plus a
 // `Children` content-origin slot for containers. Coordinates are 1-based
-// and LOCAL to the emitting widget. Every field must be supplied at
-// construction (set `none` to opt out) — that's how WCL variant literals
-// work; the `term_run` helper below is the ergonomic constructor.
+// and LOCAL to the emitting widget. Every REQUIRED field must be supplied
+// at construction; an optional (`field?`) one defaults to `none` when
+// omitted, so writing `fg: none` says nothing the omission doesn't.
+// `term_run` below is the ergonomic constructor.
 namespace wdoc
 
 union TermFundamental {

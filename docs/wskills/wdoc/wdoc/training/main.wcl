@@ -363,24 +363,24 @@ JS
 let tr_nav_entry = fn(e: TocEntry) -> HtmlFundamental
   if e.href == "" {
     HtmlFundamental::Element {
-      tag: "li", id: none, class: ["tr-nav-module"], attrs: none,
+      tag: "li", class: ["tr-nav-module"],
       children: [ HtmlFundamental::Raw { html: e.title } ],
     }
   } else {
     HtmlFundamental::Element {
-      tag: "li", id: none, class: ["tr-nav-item"], attrs: none,
+      tag: "li", class: ["tr-nav-item"],
       children: [
         HtmlFundamental::Element {
-          tag: "a", id: none,
+          tag: "a",
           class: if e.current { ["current"] } else { none },
           attrs: [["href", e.href]],
           children: [
             HtmlFundamental::Element {
-              tag: "span", id: none, class: ["tr-nav-mark"], attrs: none,
+              tag: "span", class: ["tr-nav-mark"],
               children: [ HtmlFundamental::Raw { html: "○" } ],
             },
             HtmlFundamental::Element {
-              tag: "span", id: none, class: none, attrs: none,
+              tag: "span",
               children: [ HtmlFundamental::Raw { html: e.title } ],
             },
           ],
@@ -397,33 +397,33 @@ let tr_nav_items = fn(entries: list<TocEntry>) -> list<HtmlFundamental>
 
 let tr_nav = fn(c: TemplateCtx) -> list<HtmlFundamental> [
   HtmlFundamental::Element {
-    tag: "nav", id: none, class: ["tr-nav"], attrs: none,
+    tag: "nav", class: ["tr-nav"],
     children: [
       HtmlFundamental::Element {
-        tag: "div", id: none, class: ["tr-nav-title"], attrs: none,
+        tag: "div", class: ["tr-nav-title"],
         children: [ HtmlFundamental::Raw { html: c.title } ],
       },
       HtmlFundamental::Element {
-        tag: "div", id: none, class: ["tr-progress"], attrs: none,
+        tag: "div", class: ["tr-progress"],
         children: [
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["tr-progress-label"], attrs: none,
+            tag: "div", class: ["tr-progress-label"],
             children: [ HtmlFundamental::Raw { html: "Not started" } ],
           },
           HtmlFundamental::Element {
-            tag: "div", id: none, class: ["tr-progress-bar"], attrs: none,
+            tag: "div", class: ["tr-progress-bar"],
             children: [ HtmlFundamental::Element {
-              tag: "div", id: none, class: ["tr-progress-fill"], attrs: none, children: [],
+              tag: "div", class: ["tr-progress-fill"], children: [],
             } ],
           },
         ],
       },
       HtmlFundamental::Element {
-        tag: "ul", id: none, class: none, attrs: none,
+        tag: "ul",
         children: tr_nav_items(c.toc),
       },
       HtmlFundamental::Element {
-        tag: "button", id: none, class: ["tr-reset"], attrs: [["type", "button"]],
+        tag: "button", class: ["tr-reset"], attrs: [["type", "button"]],
         children: [ HtmlFundamental::Raw { html: "Reset progress" } ],
       },
     ],
@@ -434,20 +434,20 @@ template training {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
       [ HtmlFundamental::Element {
-          tag: "style", id: none, class: none, attrs: none,
+          tag: "style",
           children: [ HtmlFundamental::Raw { html: training_css } ],
       } ],
       tr_nav(c),
       [ HtmlFundamental::Element {
-          tag: "main", id: none, class: ["tr-main"], attrs: none,
+          tag: "main", class: ["tr-main"],
           children: flatten([
             [ HtmlFundamental::Element {
-                tag: "div", id: none, class: ["tr-topbar"], attrs: none,
+                tag: "div", class: ["tr-topbar"],
                 children: wdoc_part_theme_toggle(c.theme_toggle),
             } ],
             [ HtmlFundamental::Raw { html: c.content } ],
             [ HtmlFundamental::Element {
-                tag: "div", id: none, class: ["tr-pagenav"], attrs: none,
+                tag: "div", class: ["tr-pagenav"],
                 children: wdoc_part_pagenav(c.toc),
             } ],
           ]),

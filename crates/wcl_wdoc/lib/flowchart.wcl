@@ -16,8 +16,8 @@ namespace wdoc
 
 let centered_label = fn(text: utf8, cx: f64, cy: f64, fit_w: f64, fit_h: f64, cls: list<utf8>) -> SvgFundamental
   SvgFundamental::Label {
-    content: text, x: cx, y: cy, font_size: none,
-    fit_width: fit_w, fit_height: fit_h, fill: none, id: none, class: cls,
+    content: text, x: cx, y: cy,
+    fit_width: fit_w, fit_height: fit_h, class: cls,
   }
 
 // Width of the strip a leading (`:left`, the default) icon badge needs
