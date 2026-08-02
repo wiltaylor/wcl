@@ -25,8 +25,10 @@
 //! }
 //! ```
 //!
-//! One sidecar lives beside each wskill's `wskill.wcl` (or, for a page not
-//! inside any wskill, beside the served root document) — see [`comments_path`].
+//! One sidecar lives beside each **owning document root** (or, for a page not
+//! inside one, beside the served root document) — see [`comments_path`]. The
+//! caller names the file that marks a root; this crate doesn't know the
+//! formats built on top of it.
 //!
 //! `wcl_wdoc` carries no serde dependency, so [`CommentRecord`] is a plain
 //! data struct; the `wcl` crate turns it into JSON for the CLI / dev server.
@@ -72,7 +74,7 @@ pub struct CommentRecord {
     /// The page name the comment is on.
     pub page: String,
     /// The source file the page is defined in. Together with `page` it
-    /// disambiguates same-named pages across different sites / wskills.
+    /// disambiguates same-named pages across different sites / sub-documents.
     pub page_file: Option<String>,
     /// Positional locator of the targeted block within the page; `None` for a
     /// whole-page comment.
@@ -86,17 +88,18 @@ pub struct CommentRecord {
     pub status: Option<String>,
 }
 
-/// The `comments.wcl` that owns comments for a page defined in `page_file`: the
-/// nearest ancestor directory (within `root`) that holds a `wskill.wcl`, else
-/// `root/comments.wcl`. Walking from the page's *source* file means a generated
-/// wskill page (whose source lives under `…/wdoc/book/`) still resolves to the
-/// `comments.wcl` beside that wskill's `wskill.wcl`.
-pub fn comments_path(page_file: &Path, root: &Path) -> PathBuf {
-    sidecar_path(page_file, root, SIDECAR)
+/// The `comments.wcl` that owns comments for a page defined in `page_file`:
+/// the nearest ancestor directory (within `root`) holding `marker` — the
+/// file the caller uses to mark a document root — else `root/comments.wcl`.
+/// Walking from the page's *source* file means a generated page (whose source
+/// lives under `…/wdoc/book/`) still resolves to the `comments.wcl` beside
+/// the root that owns it.
+pub fn comments_path(page_file: &Path, root: &Path, marker: &str) -> PathBuf {
+    sidecar_path(page_file, root, marker, SIDECAR)
 }
 
 /// List every comment stored in any `comments.wcl` under `root` (so a server
-/// rooted at the top `docs/` finds every wskill's sidecar plus the root one).
+/// rooted at the top `docs/` finds every owned sidecar plus the root one).
 pub fn list(root: &Path) -> Result<Vec<CommentRecord>, BuildError> {
     let mut files = Vec::new();
     scan_for(root, SIDECAR, &mut files);
@@ -213,7 +216,7 @@ pub fn edit(root: &Path, id: &str, body: &str) -> Result<bool, BuildError> {
 /// re-parses, then write it atomically.
 fn write_file(path: &Path, recs: &[CommentRecord]) -> Result<(), BuildError> {
     let mut out = String::from(
-        "// Review comments for this wskill / doc — written from the `wcl editor`\n\
+        "// Review comments for this document — written from the `wcl editor`\n\
          // preview pane and read back by `wcl wdoc comments`. Each `comment` block is\n\
          // keyed by page name + block locator; safe to hand-edit or generate.\n\n",
     );
@@ -379,26 +382,28 @@ mod tests {
     }
 
     #[test]
-    fn comments_path_walks_up_to_wskill_else_root() {
+    fn comments_path_walks_up_to_the_owning_root_else_the_served_root() {
         let root = tempdir();
-        // A wskill at root/wskills/x with a generated page under wdoc/book/.
-        let wskill = root.join("wskills").join("x");
-        let book = wskill.join("wdoc").join("book");
+        // An owned sub-document at root/owned/x — marked by the caller's
+        // marker file — with a generated page under wdoc/book/.
+        const MARKER: &str = "owner.wcl";
+        let owner = root.join("owned").join("x");
+        let book = owner.join("wdoc").join("book");
         fs::create_dir_all(&book).unwrap();
-        fs::write(wskill.join("wskill.wcl"), "").unwrap();
+        fs::write(owner.join(MARKER), "").unwrap();
         let page_file = book.join("main.wcl");
         fs::write(&page_file, "").unwrap();
         assert_eq!(
-            comments_path(&page_file, &root),
-            wskill.join("comments.wcl")
+            comments_path(&page_file, &root, MARKER),
+            owner.join("comments.wcl")
         );
 
-        // A page not inside any wskill falls back to root/comments.wcl.
+        // A page inside no owned root falls back to root/comments.wcl.
         let pages = root.join("pages");
         fs::create_dir_all(&pages).unwrap();
         let plain = pages.join("index.wcl");
         fs::write(&plain, "").unwrap();
         let want = fs::canonicalize(&root).unwrap().join("comments.wcl");
-        assert_eq!(comments_path(&plain, &root), want);
+        assert_eq!(comments_path(&plain, &root, MARKER), want);
     }
 }

@@ -1,0 +1,19 @@
+[package]
+name = "wcl_wskill"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The wskill model: a wskill folder's unit graph, read as typed Rust (library)"
+
+[dependencies]
+wcl_lang = { workspace = true }
+wcl_wdoc = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

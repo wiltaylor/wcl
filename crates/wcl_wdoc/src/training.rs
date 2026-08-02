@@ -33,7 +33,7 @@ use wcl_lang::parse_for_edit;
 
 use crate::build::BuildError;
 use crate::sidecar::{
-    atomic_write, gen_id, owner_dir, read_blocks, scan_for, sidecar_path, wcl_string,
+    atomic_write, gen_id, owner_root, read_blocks, scan_for, sidecar_path, wcl_string,
 };
 
 /// The sidecar file name course answers live in.
@@ -65,20 +65,21 @@ impl AnswerRecord {
     }
 }
 
-/// The `training.wcl` owning answers for a page defined in `page_file`.
-pub fn training_path(page_file: &Path, root: &Path) -> PathBuf {
-    sidecar_path(page_file, root, SIDECAR)
+/// The `training.wcl` owning answers for a page defined in `page_file`, with
+/// `marker` naming the file that marks an owning document root.
+pub fn training_path(page_file: &Path, root: &Path, marker: &str) -> PathBuf {
+    sidecar_path(page_file, root, marker, SIDECAR)
 }
 
 /// The `training.wcl` for a course served (or listed) from `dir`.
 ///
-/// A training site is usually entered below its wskill root — `wcl wdoc serve
-/// wdoc/training/main.wcl` watches `wdoc/training/` — so this walks *up* to
-/// the owning `wskill.wcl` and puts the sidecar beside it, keeping one answer
-/// file per wskill however the course was launched. Outside a wskill the
-/// sidecar simply sits in `dir`.
-pub fn sidecar_for(dir: &Path) -> PathBuf {
-    owner_dir(dir)
+/// A training site is usually entered below its owning document root — `wcl
+/// wdoc serve wdoc/training/main.wcl` watches `wdoc/training/` — so this walks
+/// *up* to the nearest directory holding `marker` and puts the sidecar beside
+/// it, keeping one answer file per owner however the course was launched.
+/// Outside such a root the sidecar simply sits in `dir`.
+pub fn sidecar_for(dir: &Path, marker: &str) -> PathBuf {
+    owner_root(dir, marker)
         .unwrap_or_else(|| dir.to_path_buf())
         .join(SIDECAR)
 }
@@ -239,7 +240,7 @@ impl AnswerRecord {
 /// re-parses, then write it atomically.
 fn write_file(path: &Path, recs: &[AnswerRecord]) -> Result<(), BuildError> {
     let mut out = String::from(
-        "// Course answers for this wskill — written by the training site when it\n\
+        "// Course answers for this course — written by the training site when it\n\
          // runs under `wcl wdoc serve`, and read back by `wcl wdoc training`.\n\
          // Grade a pending answer with `wcl wdoc training grade <id> …`.\n\
          // Safe to hand-edit or generate.\n\n",

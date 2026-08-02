@@ -23,6 +23,7 @@ CRATE_TO_CONTAINER = {
     "wcl": "wcl_cli",
     "wcl_lang": "wcl_lang",
     "wcl_wdoc": "wcl_wdoc",
+    "wcl_wskill": "wcl_wskill",
     "wcl_lsp": "wcl_lsp",
 }
 

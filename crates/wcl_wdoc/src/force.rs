@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn dense_large_node_hub_graph_has_no_overlap() {
-        // Mirrors the wskill note graph: many large (120×120) nodes wired
+        // Mirrors a dense note graph: many large (120×120) nodes wired
         // into a few hubs. The relaxation alone leaves overlaps at this
         // scale; the collision-resolution pass must still hand back a
         // disjoint layout so the edge router has clean lanes.

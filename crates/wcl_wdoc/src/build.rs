@@ -226,7 +226,7 @@ pub fn open_doc_for_edit_with_overlay(
 }
 
 /// The entry document that owns `page_file` — a sub-site's entry `.wcl` when the
-/// page belongs to an `include`d sub-site (e.g. a wskill book under the
+/// page belongs to an `include`d sub-site (a member book under the
 /// top-level docs site), else `root_file` itself. Lets the `wcl editor`
 /// introspect the schema/objects of the document a page actually came from
 /// when it serves the top-level site. Falls back to `root_file` on any
@@ -240,7 +240,7 @@ pub fn doc_entry_for_page(root_file: &Path, page_file: &Path) -> PathBuf {
 /// The included sub-site that owns `page_file` — its entry document, on-disk
 /// source root, and output subdirectory — or `None` when the page belongs to
 /// the root document. Lets the dev server's `/__wdoc_rebuild` rebuild *only*
-/// the sub-site a page lives in (e.g. one wskill) instead of the whole
+/// the sub-site a page lives in instead of the whole
 /// top-level site.
 pub struct PageSubSite {
     /// The sub-site entry `.wcl` to (re)build.

@@ -46,7 +46,8 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_gitspec {
     name = "gitspec"
     kind = "module"
-    summary = "1 file, 5 pub items"
+    summary = "1 file, 2 pub items"
+    deps = [n_cg_wcl_xc_wcl_wdoc]
   }
   code_node n_cg_wcl_preview {
     name = "preview"
@@ -70,6 +71,11 @@ code_item code_crate_wcl {
     kind = "module"
     summary = "1 file, 2 pub items"
     deps = [n_cg_wcl_diff, n_cg_wcl_gitspec]
+  }
+  code_node n_cg_wcl_wskill {
+    name = "wskill"
+    kind = "module"
+    summary = "1 file, 1 pub items"
   }
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
@@ -352,6 +358,11 @@ code_item code_crate_wcl_wdoc {
     kind = "module"
     summary = "1 file, 3 pub items"
     deps = [n_cg_wcl_wdoc_layered]
+  }
+  code_node n_cg_wcl_wdoc_git {
+    name = "git"
+    kind = "module"
+    summary = "1 file, 3 pub items"
   }
   code_node n_cg_wcl_wdoc_highlight {
     name = "highlight"
@@ -1018,6 +1029,16 @@ code_item code_api_cli_commands {
       deps = [n_api_cli_commands_SpecFormat]
     }
   }
+  code_node n_api_cli_commands_wskill_fns {
+    name = "wskill"
+    kind = "fns"
+    summary = "src/wskill.rs"
+    code_member m_n_api_cli_commands_wskill_fns_run_graph {
+      signature = "fn run_graph(entry: &Path, rev: Option<&str>) -> u8"
+      kind = "fn"
+      visibility = "crate"
+    }
+  }
 }
 
 code_item code_api_cli_serve {
@@ -1187,21 +1208,6 @@ code_item code_api_cli_gitspec {
       kind = "fn"
       visibility = "crate"
       deps = [n_api_cli_gitspec_Spec]
-    }
-    code_member m_n_api_cli_gitspec_gitspec_fns_repo_rel {
-      signature = "fn repo_rel(path: &str) -> Result<(PathBuf, String), String>"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_gitspec_gitspec_fns_resolve_rev {
-      signature = "fn resolve_rev(rev: &str, root: &Path) -> Result<String, String>"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_gitspec_gitspec_fns_materialize_rev {
-      signature = "fn materialize_rev(rev: &str, root: &Path) -> Result<TempDir, S…"
-      kind = "fn"
-      visibility = "crate"
     }
   }
 }
@@ -5964,7 +5970,7 @@ code_item code_api_wcl_wdoc_comments {
     kind = "fns"
     summary = "src/comments.rs"
     code_member m_n_api_wcl_wdoc_comments_comments_fns_comments_path {
-      signature = "fn comments_path(page_file: &Path, root: &Path) -> PathBuf"
+      signature = "fn comments_path(page_file: &Path, root: &Path, marker: &str) -…"
       kind = "fn"
     }
     code_member m_n_api_wcl_wdoc_comments_comments_fns_list {
@@ -6353,6 +6359,30 @@ code_item code_api_wdoc_layout {
     code_member m_n_api_wdoc_layout_EdgePath_points {
       signature = "points: Vec<(f64, f64)>"
       kind = "field"
+    }
+  }
+}
+
+code_item code_api_wcl_wdoc_git {
+  container = wcl_wdoc
+  name      = "Public surface — git"
+  summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_wdoc::git)."
+  kind      = :module_api
+  code_node n_api_wcl_wdoc_git_git_fns {
+    name = "git"
+    kind = "fns"
+    summary = "src/git.rs"
+    code_member m_n_api_wcl_wdoc_git_git_fns_repo_rel {
+      signature = "fn repo_rel(path: &str) -> Result<(PathBuf, String), String>"
+      kind = "fn"
+    }
+    code_member m_n_api_wcl_wdoc_git_git_fns_resolve_rev {
+      signature = "fn resolve_rev(rev: &str, root: &Path) -> Result<String, String>"
+      kind = "fn"
+    }
+    code_member m_n_api_wcl_wdoc_git_git_fns_materialize_rev {
+      signature = "fn materialize_rev(rev: &str, root: &Path) -> Result<TempDir, S…"
+      kind = "fn"
     }
   }
 }
@@ -8600,14 +8630,13 @@ code_item code_api_wcl_wdoc_sidecar {
     kind = "fns"
     summary = "src/sidecar.rs"
     code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_sidecar_path {
-      signature = "fn sidecar_path(page_file: &Path, root: &Path, name: &str) -> P…"
+      signature = "fn sidecar_path(page_file: &Path, root: &Path, marker: &str, na…"
       kind = "fn"
       visibility = "crate"
     }
-    code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_owner_dir {
-      signature = "fn owner_dir(start: &Path) -> Option<PathBuf>"
+    code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_owner_root {
+      signature = "fn owner_root(start: &Path, marker: &str) -> Option<PathBuf>"
       kind = "fn"
-      visibility = "crate"
     }
     code_member m_n_api_wcl_wdoc_sidecar_sidecar_fns_scan_for {
       signature = "fn scan_for(dir: &Path, name: &str, out: &mut Vec<PathBuf>)"
@@ -8955,11 +8984,11 @@ code_item code_api_wcl_wdoc_training {
     kind = "fns"
     summary = "src/training.rs"
     code_member m_n_api_wcl_wdoc_training_training_fns_training_path {
-      signature = "fn training_path(page_file: &Path, root: &Path) -> PathBuf"
+      signature = "fn training_path(page_file: &Path, root: &Path, marker: &str) -…"
       kind = "fn"
     }
     code_member m_n_api_wcl_wdoc_training_training_fns_sidecar_for {
-      signature = "fn sidecar_for(dir: &Path) -> PathBuf"
+      signature = "fn sidecar_for(dir: &Path, marker: &str) -> PathBuf"
       kind = "fn"
     }
     code_member m_n_api_wcl_wdoc_training_training_fns_read_sidecar {

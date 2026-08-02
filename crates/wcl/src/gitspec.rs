@@ -1,18 +1,14 @@
-//! Git-revision inputs for `wcl diff`.
+//! The `<rev>:<path>` argument convention shared by `wcl diff` and
+//! `wcl wad spec`.
 //!
-//! A diff argument is either a plain working-tree path or a `<rev>:<path>`
-//! specifier (e.g. `HEAD~1:config.wcl`, `main:a.wcl`). For a git spec we
-//! **materialize the whole tree at that revision into a temp dir** (via
-//! `git archive | tar`) and then open the file from there with the normal
-//! disk loader — so imports, the wdoc registry, and relative paths resolve
-//! exactly like a real checkout, with no special loader. We shell out to the
-//! `git` binary rather than add a git crate (the project keeps its
-//! dependency list minimal).
+//! Classifying a CLI argument is a CLI concern and stays here; reading the
+//! tree at the named revision is [`wcl_wdoc::git`]'s, so a library (the
+//! wskill model, which loads at a revision to diff two graphs) can do it
+//! without the binary.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
-use tempfile::TempDir;
+pub(crate) use wcl_wdoc::git::{materialize_rev, repo_rel, resolve_rev};
 
 /// A parsed diff input: either a working-tree path or a git revision + path.
 #[derive(Debug, PartialEq)]
@@ -46,110 +42,6 @@ pub(crate) fn parse_spec(arg: &str) -> Spec {
 fn is_windows_drive(rev: &str) -> bool {
     let mut chars = rev.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_alphabetic()) && chars.next().is_none()
-}
-
-/// Run `git` with the given args in `dir`, returning trimmed stdout or a
-/// human-readable error (distinguishing "git not found" from a non-zero
-/// exit, whose stderr is surfaced).
-fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .output()
-        .map_err(|e| format!("failed to run git: {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-    } else {
-        Err(format!(
-            "git {}: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ))
-    }
-}
-
-/// Resolve the repo root and the repo-relative path of a diff argument's
-/// path, without touching the working tree (the file may exist only in the
-/// target revision). For a relative path we add `git rev-parse
-/// --show-prefix` (the cwd's offset within the repo) to it; for an absolute
-/// path we strip the repo root.
-pub(crate) fn repo_rel(path: &str) -> Result<(PathBuf, String), String> {
-    let p = Path::new(path);
-    let run_dir = if p.is_absolute() {
-        p.parent().unwrap_or(Path::new("/")).to_path_buf()
-    } else {
-        PathBuf::from(".")
-    };
-    let root = PathBuf::from(git(&run_dir, &["rev-parse", "--show-toplevel"])?);
-    if p.is_absolute() {
-        let rel = p.strip_prefix(&root).map_err(|_| {
-            format!(
-                "path '{path}' is outside the git repo at {}",
-                root.display()
-            )
-        })?;
-        Ok((root, rel.to_string_lossy().replace('\\', "/")))
-    } else {
-        let prefix = git(&run_dir, &["rev-parse", "--show-prefix"])?;
-        Ok((root, format!("{prefix}{path}")))
-    }
-}
-
-/// Resolve `rev` to its full commit sha in the repo at `root` — the
-/// immutable baseline a generated change-spec records.
-pub(crate) fn resolve_rev(rev: &str, root: &Path) -> Result<String, String> {
-    git(
-        root,
-        &["rev-parse", "--verify", &format!("{rev}^{{commit}}")],
-    )
-}
-
-/// Extract the whole tree at `rev` into a fresh temp dir via
-/// `git archive <rev> | tar -x`. The returned `TempDir` cleans itself up on
-/// drop, so the caller must hold it for as long as the opened document is
-/// used.
-pub(crate) fn materialize_rev(rev: &str, root: &Path) -> Result<TempDir, String> {
-    let tmp = TempDir::new().map_err(|e| format!("failed to create temp dir: {e}"))?;
-
-    let mut archive = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["archive", "--format=tar", rev])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("failed to run git archive: {e}"))?;
-
-    let archive_out = archive
-        .stdout
-        .take()
-        .ok_or_else(|| "git archive produced no stdout handle".to_string())?;
-    let tar = Command::new("tar")
-        .arg("-x")
-        .arg("-C")
-        .arg(tmp.path())
-        .stdin(archive_out)
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("failed to run tar (is it installed?): {e}"))?;
-
-    let archive = archive
-        .wait_with_output()
-        .map_err(|e| format!("git archive failed: {e}"))?;
-    if !archive.status.success() {
-        return Err(format!(
-            "git archive {rev}: {}",
-            String::from_utf8_lossy(&archive.stderr).trim()
-        ));
-    }
-    if !tar.status.success() {
-        return Err(format!(
-            "tar extract of revision '{rev}' failed: {}",
-            String::from_utf8_lossy(&tar.stderr).trim()
-        ));
-    }
-    Ok(tmp)
 }
 
 #[cfg(test)]

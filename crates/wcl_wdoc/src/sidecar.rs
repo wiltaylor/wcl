@@ -4,7 +4,10 @@
 //! review notes ([`crate::comments`]) and course answers ([`crate::training`]).
 //! Both follow the same rules, which live here so the two stay in step:
 //!
-//! - the file sits beside the owning `wskill.wcl` (else the served root),
+//! - the file sits beside the **nearest owning document root** (else the
+//!   served root). Which file marks a root is the caller's to name — this
+//!   crate renders documents and knows nothing of the formats layered on
+//!   top of it — so every entry point takes the marker filename,
 //! - it is **schemaless** — read leniently off the AST, so it needs no
 //!   `import` / `@document` membership and survives hand edits,
 //! - every write **regenerates the whole file** deterministically and verifies
@@ -23,11 +26,11 @@ use wcl_lang::{Document, Value, ast, parse_for_edit};
 const MAX_SCAN_DEPTH: usize = 32;
 
 /// The sidecar named `name` that owns records for a page defined in
-/// `page_file`: the nearest ancestor directory (within `root`) that holds a
-/// `wskill.wcl`, else `root/<name>`. Walking from the page's *source* file
-/// means a generated wskill page (whose source lives under `…/wdoc/book/`)
-/// still resolves to the sidecar beside that wskill's `wskill.wcl`.
-pub(crate) fn sidecar_path(page_file: &Path, root: &Path, name: &str) -> PathBuf {
+/// `page_file`: the nearest ancestor directory (within `root`) holding
+/// `marker`, else `root/<name>`. Walking from the page's *source* file means
+/// a generated page (whose source lives under `…/wdoc/book/`) still resolves
+/// to the sidecar beside the document root that owns it.
+pub(crate) fn sidecar_path(page_file: &Path, root: &Path, marker: &str, name: &str) -> PathBuf {
     let root_canon = fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     let mut cur = page_file.parent().and_then(|d| fs::canonicalize(d).ok());
     while let Some(dir) = cur {
@@ -35,7 +38,7 @@ pub(crate) fn sidecar_path(page_file: &Path, root: &Path, name: &str) -> PathBuf
         if !dir.starts_with(&root_canon) {
             break;
         }
-        if dir.join("wskill.wcl").is_file() {
+        if dir.join(marker).is_file() {
             return dir.join(name);
         }
         if dir == root_canon {
@@ -46,18 +49,18 @@ pub(crate) fn sidecar_path(page_file: &Path, root: &Path, name: &str) -> PathBuf
     root_canon.join(name)
 }
 
-/// The nearest directory at or above `start` that holds a `wskill.wcl` — the
-/// wskill that owns whatever lives under it.
+/// The nearest directory at or above `start` holding `marker` — the document
+/// root that owns whatever lives under it.
 ///
 /// Unlike [`sidecar_path`], this walks *up* out of the starting directory,
-/// because a server is often rooted below the wskill root (`wcl wdoc serve
+/// because a server is often rooted below the owning root (`wcl wdoc serve
 /// wdoc/training/main.wcl` watches `wdoc/training/`, whose owner is two levels
 /// up). Bounded by [`MAX_SCAN_DEPTH`] and the filesystem root; `None` when the
-/// path is not inside a wskill at all.
-pub(crate) fn owner_dir(start: &Path) -> Option<PathBuf> {
+/// path is not inside such a root at all.
+pub fn owner_root(start: &Path, marker: &str) -> Option<PathBuf> {
     let mut cur = fs::canonicalize(start).ok()?;
     for _ in 0..MAX_SCAN_DEPTH {
-        if cur.join("wskill.wcl").is_file() {
+        if cur.join(marker).is_file() {
             return Some(cur);
         }
         cur = cur.parent()?.to_path_buf();
@@ -66,7 +69,7 @@ pub(crate) fn owner_dir(start: &Path) -> Option<PathBuf> {
 }
 
 /// Every sidecar named `name` under `dir`, so a server rooted at the top
-/// `docs/` finds every wskill's sidecar plus the root one. Hidden (`.`) and
+/// `docs/` finds every owning root's sidecar plus its own. Hidden (`.`) and
 /// generated (`_site` / `_wdoc`, any `_`-prefixed) directories are skipped.
 pub(crate) fn scan_for(dir: &Path, name: &str, out: &mut Vec<PathBuf>) {
     scan_inner(dir, name, out, 0);

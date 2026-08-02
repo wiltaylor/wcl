@@ -8,7 +8,7 @@ repository wcl_monorepo {
   url              = "https://github.com/wiltaylor/wcl"
   summary          = "The whole estate in one workspace: language, CLI, LSP, wdoc, editors, docs."
   primary_language = "Rust"
-  repo_path rp_crates   { path = "crates/"   description = "Rust workspace: wcl_lang, wcl (CLI), wcl_lsp, wcl_wdoc (+ fuzz targets)." }
+  repo_path rp_crates   { path = "crates/"   description = "Rust workspace: wcl_lang, wcl (CLI), wcl_lsp, wcl_wdoc, wcl_wskill (+ fuzz targets)." }
   repo_path rp_docs     { path = "docs/"     description = "The wcl.dev site, authored in WCL; wskills under docs/wskills/." }
   repo_path rp_editors  { path = "editors/"  description = "VS Code extension and tree-sitter grammar." }
   repo_path rp_examples { path = "examples/" description = "Fixture files used by tests (imports/, errors/)." }

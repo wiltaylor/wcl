@@ -3419,6 +3419,7 @@ dependencies = [
  "wcl_lang",
  "wcl_lsp",
  "wcl_wdoc",
+ "wcl_wskill",
 ]
 
 [[package]]
@@ -3473,6 +3474,17 @@ dependencies = [
  "two-face",
  "usvg",
  "wcl_lang",
+]
+
+[[package]]
+name = "wcl_wskill"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "wcl_lang",
+ "wcl_wdoc",
 ]
 
 [[package]]

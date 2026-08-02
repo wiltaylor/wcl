@@ -364,3 +364,27 @@ Derive a change-spec skeleton from a WAD diff: compare the working tree against 
 ```console
 wcl wad spec --from v1.2 --id spec_billing --title "Billing split" wad.wcl
 ```
+
+## wcl wskill
+
+wskill helpers. Scaffold a wskill with `wcl init wskill`.
+
+```console
+wcl wskill graph docs/wskills/wcl
+```
+
+### wcl wskill graph
+
+Print the wskill's model — units, index trees, `related` and pin edges, per-unit block lists with the file and byte span each is written at, and the units no index pins — as JSON on stdout. Reads the data model only: no build, no editor.
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| entry | optional | The wskill folder, or an entry `.wcl` inside it. |
+
+| Switch | Value | Description |
+| --- | --- | --- |
+| --rev | REV | Read the model at this git revision instead of the working tree. |
+
+```console
+wcl wskill graph docs/wskills/wcl --rev HEAD~1
+```
