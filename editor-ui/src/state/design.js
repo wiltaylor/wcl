@@ -18,7 +18,7 @@ import { applyDiskUpdate, buffers, buffer, openFile, saveBuffer } from './buffer
 import { emitCommit } from './commits';
 import { reloadGraph } from './graph';
 import { currentPage, mainPreview } from './preview';
-import { activeEntry, activeSite } from './sites';
+import { activeEntry, activeSite, selected } from './sites';
 import { treeData } from './tree';
 import { revealSpan } from './views';
 import { toast } from '@forge/ui';
@@ -41,8 +41,8 @@ const [popover, setPopover] = createSignal(null);
 /** Canvas navigation request: a page name the iframe should open. */
 const [gotoPage, setGotoPage] = createSignal(null);
 /** Which design surface shows: the WYSIWYG canvas, the wskill unit graph,
-    or a WAD's systems model. */
-const [designTab, setDesignTab] = createSignal('canvas'); // 'canvas' | 'graph' | 'systems'
+    the audit of a git range, or a WAD's systems model. */
+const [designTab, setDesignTab] = createSignal('canvas'); // 'canvas' | 'graph' | 'audit' | 'systems'
 
 export {
   mode,
@@ -170,6 +170,26 @@ export async function commitUnitCreateQuiet(unit, pin) {
   emitCommit({ surface: null });
   loadNav();
   return res;
+}
+
+/** The Design-mode surfaces this document offers, as the topbar toggle's
+    options. Stated once because every surface renders the toggle itself —
+    the second entry depends on the document (a wskill has a unit graph and
+    an audit, a WAD has its systems model, anything else has neither), and
+    four copies of that rule is four places to forget a new surface. */
+export function designTabOptions() {
+  const wskill = selected()?.wskill;
+  if (palette()?.wad && !wskill) {
+    return [
+      { value: 'canvas', label: 'Canvas' },
+      { value: 'systems', label: 'Systems' },
+    ];
+  }
+  return [
+    { value: 'canvas', label: 'Canvas' },
+    { value: 'graph', label: 'Graph', disabled: !wskill },
+    { value: 'audit', label: 'Audit', disabled: !wskill },
+  ];
 }
 
 export async function loadNav() {

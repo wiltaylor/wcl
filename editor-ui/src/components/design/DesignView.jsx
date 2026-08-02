@@ -48,6 +48,7 @@ import {
   tableCommit,
 } from '../../preview/table';
 import { designTab } from '../../state/design';
+import AuditView from './AuditView';
 import DesignCanvas, { viewLabel } from './DesignCanvas';
 import GraphView from './GraphView';
 import IndexPanel from './IndexPanel';
@@ -55,23 +56,32 @@ import NavPanel from './NavPanel';
 import SystemsPanel from './SystemsPanel';
 import SystemsView from './SystemsView';
 
-/** The panel + surface pair for the active tab. */
+/** The panel + surface pair for the active tab, or a `whole` surface for a
+    tab that has no left panel — the audit is one view over one range, and
+    its second representation (the union graph) is a pane of it, not a
+    panel beside it. */
 const SURFACES = {
   graph: { first: IndexPanel, second: GraphView },
   systems: { first: SystemsPanel, second: SystemsView },
   canvas: { first: NavPanel, second: DesignCanvas },
+  audit: { whole: AuditView },
 };
 
 export default function DesignView() {
   const surface = () => SURFACES[designTab()] ?? SURFACES.canvas;
   return (
     <div class="ed-design-view">
-      <SplitPane
-        first={<Dynamic component={surface().first} />}
-        second={<Dynamic component={surface().second} />}
-        initial={280}
-        min={200}
-      />
+      <Show
+        when={!surface().whole}
+        fallback={<Dynamic component={surface().whole} />}
+      >
+        <SplitPane
+          first={<Dynamic component={surface().first} />}
+          second={<Dynamic component={surface().second} />}
+          initial={280}
+          min={200}
+        />
+      </Show>
       <BlockEditorModals />
     </div>
   );

@@ -21,6 +21,7 @@
 //! conflicts on save, and previews always overlay the live buffers.
 
 mod assets;
+mod audit;
 mod blocks;
 mod cell;
 mod comments;
@@ -92,6 +93,7 @@ pub(crate) fn router(state: Arc<EditorState>) -> Router {
         .route("/api/nav/op", post(nav::handle_nav_op))
         .route("/api/wskill/profile", post(profiles::handle_profile))
         .route("/api/graph", get(graph::handle_graph))
+        .route("/api/audit", get(audit::handle_audit))
         .route("/api/systems", get(systems::handle_systems))
         .route("/api/systems/detail", post(systems::handle_systems_detail))
         .route("/api/data/types", get(data::handle_data_types))

@@ -43,6 +43,7 @@ import {
   commitOpsQuiet,
   commitUnitCreateQuiet,
   designTab,
+  designTabOptions,
   palette,
   setDesignTab,
 } from '../../state/design';
@@ -537,10 +538,7 @@ export default function SystemsView() {
     <div class="ed-sys">
       <div class="ed-design-note">
         <ToggleGroup
-          options={[
-            { value: 'canvas', label: 'Canvas' },
-            { value: 'systems', label: 'Systems' },
-          ]}
+          options={designTabOptions()}
           value={designTab()}
           onChange={(t) => setDesignTab(t)}
         />

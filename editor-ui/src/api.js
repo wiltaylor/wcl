@@ -79,6 +79,15 @@ export const api = {
       'GET',
       `/api/graph?entry=${encodeURIComponent(entry)}&sites=${encodeURIComponent(sites.join(','))}&kinds=${encodeURIComponent(kinds.join(','))}`,
     ),
+  /** The audit of a git range: the union graph (before ∪ after, removals
+      marked), the health metrics paired across both ends, and each node's
+      findings scoped to the range. `entry` names the wskill; `range` is
+      git's own spelling (`a`, `a..b`, `a...b`), defaulting server-side. */
+  audit: (entry, range = '') =>
+    json(
+      'GET',
+      `/api/audit?entry=${encodeURIComponent(entry)}&range=${encodeURIComponent(range)}`,
+    ),
   /** The Systems view's model: schema-derived containment metadata
       (`kinds` with their parent links / refs / edge role) plus every data
       object as a node and every relation as an edge. */
