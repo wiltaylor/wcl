@@ -8,8 +8,8 @@
 //! body HTML to (a) synthesise a stable slug `id` on every heading (the
 //! anchor target for cross-links and the right rail), (b) prepend the
 //! `§ N.M` section-number marker on `h2`/`h3`, and (c) collect the `h2`/`h3`
-//! list that drives the book's "on this page" rail. Operating on the final
-//! HTML keeps it independent of the render pipeline — no state threading.
+//! list that drives the book's "on this page" rail. A shared state lets
+//! separately placed authored runs retain page-wide ids and numbering.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -23,6 +23,13 @@ pub(crate) struct PageHeading {
     pub id: String,
     pub title: String,
     pub number: String,
+}
+
+#[derive(Default)]
+pub(crate) struct HeadingState {
+    used: HashMap<String, u32>,
+    h2: u32,
+    h3: u32,
 }
 
 /// Matches a rendered heading: the level digit off the tag, any extra
@@ -85,10 +92,15 @@ fn slugify(text: &str) -> String {
 /// `h2`/`h3` list for the rail. Idempotent for headings that already carry an
 /// id (it's kept). Levels 4-6 get an id but no marker / rail entry.
 pub(crate) fn process_page_headings(content: &str) -> (String, Vec<PageHeading>) {
+    process_page_headings_with_state(content, &mut HeadingState::default())
+}
+
+pub(crate) fn process_page_headings_with_state(
+    content: &str,
+    state: &mut HeadingState,
+) -> (String, Vec<PageHeading>) {
     let re = heading_re();
-    let mut used: HashMap<String, u32> = HashMap::new();
     let mut headings = Vec::new();
-    let (mut c2, mut c3) = (0u32, 0u32);
     let mut out = String::with_capacity(content.len());
     let mut last = 0;
     for cap in re.captures_iter(content) {
@@ -105,7 +117,7 @@ pub(crate) fn process_page_headings(content: &str) -> (String, Vec<PageHeading>)
             Some(existing) => existing.as_str().to_string(),
             None => {
                 let base = slugify(&text);
-                let n = used.entry(base.clone()).or_insert(0);
+                let n = state.used.entry(base.clone()).or_insert(0);
                 *n += 1;
                 if *n == 1 { base } else { format!("{base}-{n}") }
             }
@@ -114,15 +126,15 @@ pub(crate) fn process_page_headings(content: &str) -> (String, Vec<PageHeading>)
         let mut marker = String::new();
         if level == 2 || level == 3 {
             let number = if level == 2 {
-                c2 += 1;
-                c3 = 0;
-                format!("{c2}")
+                state.h2 += 1;
+                state.h3 = 0;
+                format!("{}", state.h2)
             } else {
-                if c2 == 0 {
-                    c2 = 1;
+                if state.h2 == 0 {
+                    state.h2 = 1;
                 }
-                c3 += 1;
-                format!("{c2}.{c3}")
+                state.h3 += 1;
+                format!("{}.{}", state.h2, state.h3)
             };
             write!(marker, "<span class=\"heading-marker\">§ {number}</span>")
                 .expect("write to String");

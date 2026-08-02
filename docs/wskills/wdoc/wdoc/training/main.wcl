@@ -411,7 +411,7 @@ template training {
       tr_nav(c),
       [ el("main", ["tr-main"], flatten([
             [ el("div", ["tr-topbar"], wdoc_part_theme_toggle(c.theme_toggle)) ],
-            [raw(c.content)],
+            wdoc_blocks(c.content),
             [ el("div", ["tr-pagenav"], wdoc_part_pagenav(c.toc)) ],
           ])) ],
       [raw(training_js)],

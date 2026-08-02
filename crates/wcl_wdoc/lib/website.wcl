@@ -9,7 +9,8 @@
 //   • Named REGIONS. A page declares `region "hero" { … }` blocks whose
 //     wdoc bodies render independently; a layout pulls each out by name
 //     with `wdoc_region(c, "hero")` (returns "" when absent). Everything
-//     outside a region is the default `c.content`.
+//     outside a region is the authored handle list `c.content`; place it
+//     with `wdoc_blocks(c.content)`.
 //
 //   • HEAD assets. A layout emits `HtmlFundamental::Head { … }` at the TOP
 //     LEVEL of its fundamentals to add `<link>` / `<script>` / `<meta>` /
@@ -18,11 +19,11 @@
 //     `scripts` / `fonts` fields do the same declaratively, and `assets`
 //     copies an externally-built folder verbatim into the output.)
 //
-// The intended authoring style is a raw-HTML heredoc with `${…}` slots —
-// paste the design, mark `${c.content}` / `${wdoc_region(c, "name")}` /
-// `${c.title}`. See the `website` scaffold (`wcl init website`) and the
-// Websites reference page for a worked example. The default layout below
-// is composed from parts so it stays robust when a region is absent.
+// A layout can combine raw-HTML fragments with `wdoc_blocks(c.content)`
+// and `${wdoc_region(c, "name")}` / `${c.title}` interpolations. See the
+// `website` scaffold (`wcl init website`) and the Websites reference page
+// for a worked example. The default layout below is composed from parts so
+// it stays robust when a region is absent.
 
 namespace wdoc
 
@@ -166,7 +167,7 @@ let website_region_section = fn(c: TemplateCtx, name: utf8, tag: utf8, cls: utf8
 let website_body = fn(c: TemplateCtx) -> HtmlFundamental {
   let aside = wdoc_region(c, "sidebar");
   el("div", ["ws-layout", if aside != "" { "has-aside" }], flatten([
-    [ el("main", ["ws-main"], [raw(c.content)]) ],
+    [ el("main", ["ws-main"], wdoc_blocks(c.content)) ],
     if aside == "" { [] }
     else { [ el("aside", ["ws-aside"], [raw(aside)]) ] },
   ]))

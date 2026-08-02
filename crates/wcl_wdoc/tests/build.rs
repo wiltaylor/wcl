@@ -4256,6 +4256,118 @@ page index {
 // ── Page templates ─────────────────────────────────────────────────
 
 #[test]
+fn template_queries_authored_blocks_and_places_typed_handles() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("authored-content.wcl");
+    write_fixture(
+        &src,
+        r#"
+site { default_template = :inspect  title = "Prepared site context" }
+
+template inspect {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental> {
+    let notice = head(filter(c.content, fn(h: BlockHandle) -> bool
+      h.kind == "callout" && h.block.heading == "Notice"));
+    let column_handle = at(c.content, 2);
+    let nested = head(column_handle.children);
+    [
+      el("main", [], [
+        el("strong", [], [raw(c.title)]),
+        HtmlFundamental::Blocks { blocks: [notice, nested, at(c.content, 0)] },
+      ]),
+    ]
+  }
+}
+
+page index {
+  h1 "First"
+  callout "Notice" { body = "Chosen by its authored fields." }
+  column {
+    p "Nested child"
+  }
+  p "Not placed"
+}
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("<strong>Prepared site context</strong>"),
+        "prepared site context remains available:\n{html}"
+    );
+    let notice = html
+        .find("Chosen by its authored fields.")
+        .expect("callout");
+    let nested = html.find("Nested child").expect("nested child");
+    let first = html.find("First").expect("heading");
+    assert!(
+        notice < nested && nested < first,
+        "the template can query and reorder authored handles:\n{html}"
+    );
+    assert!(
+        !html.contains("Not placed"),
+        "only handles emitted by the template are resolved:\n{html}"
+    );
+}
+
+#[test]
+fn separate_typed_placements_share_page_heading_and_footnote_state() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("separate-placements.wcl");
+    write_fixture(
+        &src,
+        r#"
+site { default_template = :split }
+
+template split {
+  render = fn(c: TemplateCtx) -> list<HtmlFundamental> [
+    el("main", [], flatten([
+      wdoc_blocks([at(c.content, 0), at(c.content, 1)]),
+      [el("hr", [], [])],
+      wdoc_blocks([at(c.content, 2), at(c.content, 3)]),
+    ])),
+  ]
+}
+
+page index {
+  h2 "Overview"
+  p "See [^note]."
+  h2 "Overview"
+  footnotes {
+    footnote note { text = "Defined after the second placement." }
+  }
+}
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("id=\"overview\">"),
+        "first heading id:\n{html}"
+    );
+    assert!(
+        html.contains("id=\"overview-2\">"),
+        "heading ids remain unique across placements:\n{html}"
+    );
+    assert!(
+        html.contains("heading-marker\">§ 1</span>")
+            && html.contains("heading-marker\">§ 2</span>"),
+        "section numbering remains page-wide across placements:\n{html}"
+    );
+    assert!(
+        html.contains("<sup class=\"footnote-ref\" id=\"fnref-note\">")
+            && html.contains("id=\"fn-note\""),
+        "footnote references resolve across placements:\n{html}"
+    );
+}
+
+#[test]
 fn template_wraps_content_in_header_nav_main() {
     // `site { default_template = :webpage }` wraps every page in the
     // bundled webpage layout: a title <header>, a <nav> built from the
@@ -4537,7 +4649,7 @@ template custom {
     flatten([
       wdoc_head_stylesheet("theme.css"),
       [ el("main", [], [
-          raw(c.content),
+          HtmlFundamental::Blocks { blocks: c.content },
           HtmlFundamental::Head { children: [raw("<!--LEAK-->")] },
       ]) ],
     ])
@@ -4607,7 +4719,7 @@ let footer = fn(c: TemplateCtx) -> list<HtmlFundamental> [
 template mini {
   render = fn(c: TemplateCtx) -> list<HtmlFundamental>
     flatten([
-      [ el("main", [], [raw(c.content)]) ],
+      [ el("main", [], wdoc_blocks(c.content)) ],
       footer(c),
     ])
 }
@@ -4626,7 +4738,7 @@ page index {
         html.contains("<footer class=\"ft\" data-x=\"a&quot;b\">T</footer>"),
         "part fn / attr escaping wrong:\n{html}"
     );
-    // Raw embeds the page content verbatim inside <main>.
+    // The typed block placement embeds the page content inside <main>.
     assert!(html.contains("<main><p>body text</p>"), "{html}");
 }
 

@@ -2059,6 +2059,9 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
         ctx.doc,
         &tmpl,
         "",
+        &[],
+        None,
+        ctx.base_dir,
         // A presentation has no named regions; it lays out the `deck`.
         Value::List(std::sync::Arc::new(Vec::new())),
         &title,
@@ -2134,11 +2137,12 @@ fn build_normal_page(
     // outside a `region`) and the named `region "name" { … }` regions,
     // each rendered separately so a template can slot them independently.
     // A `region`'s inline label is its name; its children are wdoc blocks.
+    let page_blocks: Vec<_> = page.blocks().collect();
     let mut content = String::new();
     let mut regions: Vec<(String, String)> = Vec::new();
-    for b in page.blocks() {
+    for b in &page_blocks {
         if b.kind() == "region" {
-            let name = label_string(&b).unwrap_or_default();
+            let name = label_string(b).unwrap_or_default();
             let mut html = String::new();
             for cb in b
                 .blocks()
@@ -2150,7 +2154,7 @@ fn build_normal_page(
             regions.push((name, html));
             continue;
         }
-        if let Some(s) = render_block(ctx.doc, &b, ctx.inline_patterns, ctx.base_dir) {
+        if let Some(s) = render_block(ctx.doc, b, ctx.inline_patterns, ctx.base_dir) {
             content.push_str(&s);
             content.push('\n');
         }
@@ -2214,6 +2218,9 @@ fn build_normal_page(
                 ctx.doc,
                 &tmpl,
                 &content,
+                &page_blocks,
+                Some(page),
+                ctx.base_dir,
                 regions_val,
                 &title,
                 &page_name,

@@ -106,6 +106,19 @@ interface WdocBlock {
   id:    identifier?
   lower: fn(&WdocBlock) -> list<HtmlFundamental>?
 }
+
+// Read-only authored content handed to a page template. `block` is the
+// concrete authored value (an H1 stays an H1, a Callout stays a Callout),
+// `children` exposes the same shape recursively, and `handle` is opaque
+// renderer identity. Templates query and reorder these values, then place
+// them with `HtmlFundamental::Blocks`; they never render or mutate them.
+type BlockHandle {
+  kind:     utf8
+  block:    WdocBlock
+  children: list<BlockHandle>
+  handle:   u64
+}
+
 interface SvgBlock {
   id:    identifier?
   lower: fn(&SvgBlock) -> list<SvgFundamental>?
@@ -356,4 +369,3 @@ type ClassModeLight {
   stroke_linecap:  utf8?
   opacity:      utf8?
 }
-

@@ -136,6 +136,8 @@ WCL
 
   type_table { type = TemplateCtx }
 
+  p "`c.content` is the current page's read-only authored block tree as `list<BlockHandle>`: each handle exposes its concrete `block`, `kind`, and recursive `children`. A template may filter or reorder those handles freely, then places them with `wdoc_blocks(handles)` (or `HtmlFundamental::Blocks { blocks: handles }`). The renderer resolves placements only after the template function returns. Cross-page access remains limited to the prepared site context fields."
+
   p "You rarely build a template from raw fundamentals. The stdlib exposes its own chrome as composable **parts** — each a function returning `list<HtmlFundamental>` — plus one `wdoc_*_layout` function per built-in that is its whole default composition. Parts resolve by bare name once you `import <wdoc.wcl>`."
 
   table {
@@ -174,6 +176,7 @@ WCL
       | "`inl(text)`"                  | "an inline prose run through the inline patterns" |
       | "`icon(name, cls)`"            | "an icon from a declared `iconset` or a built-in pack" |
       | "`para(cls, spans)`"           | "a `<p>` of inline-patterned spans" |
+      | "`wdoc_blocks(handles)`"       | "typed placement of authored block handles" |
   }
 
   p "There are three element constructors rather than one because a WCL parameter list is fixed at declaration — the language has neither default nor named arguments, so every call fills every parameter and `id` / `attrs` each need a name of their own. An empty `class` or `attrs` list emits no attribute at all, so passing `[]` costs nothing over omitting the field, and an optional field goes straight in (`el(\"p\", t.class, kids)` with `t.class` unset renders as an omitted `class`)."
