@@ -20,9 +20,8 @@ use wcl_lang::Block;
 
 use crate::icons::ShapeOverride;
 use crate::render::{
-    MAX_LOWER_DEPTH, RenderCtx, escape_html, expand_component_children, expand_instance_children,
-    expand_repeater_children, field_f64, field_id, field_utf8, field_utf8_list, label_string,
-    resolve_rect_box,
+    RenderCtx, escape_html, expand_container_children, field_f64, field_id, field_utf8,
+    field_utf8_list, label_string, resolve_rect_box,
 };
 
 /// Default per-node row height when `row_height` is unset.
@@ -55,39 +54,10 @@ fn indent(block: &Block<'_>) -> f64 {
 /// place — so a tree (or a sub-tree) can be data-driven, mirroring the
 /// `node_table` row collector.
 fn child_nodes<'a>(block: &Block<'a>) -> Vec<Block<'a>> {
-    let mut out = Vec::new();
-    for child in block.blocks() {
-        collect_nodes(child, &mut out);
-    }
-    out
-}
-
-fn collect_nodes<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
-    // Stop runaway self-referential expansion (mirrors the diagram guard).
-    if child.binding_scope_depth() > MAX_LOWER_DEPTH {
-        return;
-    }
-    match child.kind() {
-        "tree_node" => out.push(child),
-        "wdoc_repeater" => {
-            for c in expand_repeater_children(&child) {
-                collect_nodes(c, out);
-            }
-        }
-        "wdoc_instance" => {
-            for c in expand_instance_children(&child) {
-                collect_nodes(c, out);
-            }
-        }
-        kind => {
-            if let Some(def) = child.doc().kind_declarer(kind) {
-                for c in expand_component_children(&child, &def) {
-                    collect_nodes(c, out);
-                }
-            }
-            // Other non-node kinds are ignored.
-        }
-    }
+    expand_container_children(block)
+        .into_iter()
+        .filter(|child| child.kind() == "tree_node")
+        .collect()
 }
 
 /// Flatten the nested nodes into the rendered row order (pre-order), each

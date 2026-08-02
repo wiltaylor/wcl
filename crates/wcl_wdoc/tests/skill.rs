@@ -361,3 +361,21 @@ fn a_callout_renders_in_the_skill_folder() {
     assert!(md.contains("> **Heads up**"), "heading: {md}");
     assert!(md.contains("> Careful **here**."), "body prose: {md}");
 }
+
+#[test]
+fn nested_component_content_renders_in_the_skill_folder() {
+    let (_t, out) = build(&format!(
+        "wdoc_component inner {{\n  wdoc_body {{\n    h2 \"Inner frame\"\n    wdoc_content\n  }}\n}}\n\
+         wdoc_component outer {{\n  wdoc_body {{\n    inner {{\n      wdoc_content\n    }}\n  }}\n}}\n\
+         {SITE}page overview {{ start = true\n  outer {{\n    p \"Nested **payload**.\"\n  }}\n}}\n"
+    ));
+    let md = read(&out, "SKILL.md");
+    assert!(
+        md.contains("## Inner frame"),
+        "inner component rendered:\n{md}"
+    );
+    assert!(
+        md.contains("Nested **payload**."),
+        "the outer content slot was forwarded through the inner component:\n{md}"
+    );
+}

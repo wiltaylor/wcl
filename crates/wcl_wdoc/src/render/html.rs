@@ -612,10 +612,17 @@ pub(crate) fn render_block(
         // A `wdoc_instance` renders the component named by its `component`
         // value (render-by-reference) — a different component per data element.
         kinds::INSTANCE => Some(render_instance(doc, block, patterns, base_dir)),
-        // A `wdoc_content` marks where a component instance's own children
-        // render — emit the sentinel; `render_component` substitutes it.
-        // (Outside a component it has no effect; the sentinel is invisible.)
-        kinds::CONTENT => Some(WF_CONTENT_SLOT.to_string()),
+        kinds::CONTENT => {
+            let mut out = String::new();
+            fill_content_slot(block, &mut |child| {
+                if let Some(html) = render_block(doc, child, patterns, base_dir) {
+                    out.push_str(&html);
+                }
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .expect("infallible content-slot walk");
+            Some(out)
+        }
         // Everything else lowers via WCL — `text` / `code` (which emit the
         // new `Inline` / `Highlighted` leaf fundamentals), the headings,
         // `callout`, and any custom block — UNLESS the kind names a
@@ -627,7 +634,7 @@ pub(crate) fn render_block(
             if let Some(def) = doc.kind_declarer(kind) {
                 Some(render_component(doc, block, &def, patterns, base_dir))
             } else {
-                Some(lower_html_block(doc, block, kind, patterns, base_dir))
+                Some(lower_html_block(doc, block, kind, patterns))
             }
         }
     };
@@ -819,18 +826,14 @@ pub(crate) fn render_component(
     if instance.binding_scope_depth() > MAX_LOWER_DEPTH {
         return depth_marker();
     }
-    let children = expand_component_children(instance, def);
-    let mut out: String = children
-        .iter()
-        .filter_map(|b| render_block(doc, b, patterns, base_dir))
-        .collect();
-    if out.contains(WF_CONTENT_SLOT) {
-        let content: String = instance
-            .blocks()
-            .filter_map(|b| render_block(doc, &b, patterns, base_dir))
-            .collect();
-        out = out.replace(WF_CONTENT_SLOT, &content);
-    }
+    let mut out = String::new();
+    walk_component(instance, def, &mut |child| {
+        if let Some(html) = render_block(doc, child, patterns, base_dir) {
+            out.push_str(&html);
+        }
+        Ok::<(), std::convert::Infallible>(())
+    })
+    .expect("infallible component walk");
     out
 }
 

@@ -3,7 +3,6 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use miette::NamedSource;
 use wcl_lang::{Block, Document, EvalError, FnValue, Value, VariantPayload};
@@ -113,19 +112,6 @@ pub(crate) fn scoped_eval_errors<T>(
 /// that themselves lower further; this caps how deep we'll follow
 /// before bailing.
 pub(crate) const MAX_LOWER_DEPTH: usize = 32;
-
-/// Private placeholder emitted by an `HtmlFundamental::Children` variant.
-/// `lower_html_block` substitutes it with the block's rendered child
-/// blocks. U+FFF9 (interlinear annotation anchor) can't appear in
-/// document content, so it can't collide with real output.
-const WF_CHILDREN_SLOT: &str = "\u{FFF9}wdoc:children\u{FFF9}";
-
-/// Placeholder emitted by a `wdoc_content` block (a component's content
-/// slot). `render_component` substitutes it with the *instance's* own
-/// rendered child blocks. Distinct from `WF_CHILDREN_SLOT` so a container
-/// widget nested in a component body doesn't capture the component's
-/// content (and vice-versa).
-pub(crate) const WF_CONTENT_SLOT: &str = "\u{FFF9}wdoc:content\u{FFF9}";
 
 /// Look up the `lower` function for a block kind. Tries the block's
 /// own `lower` field first (per-instance override), then the kind's
@@ -388,15 +374,12 @@ pub(crate) fn lower_svg_block(
 }
 
 /// Custom HTML-block lowering (h1..h6, text, code, callout, wireframe
-/// widgets, and friends). `base_dir` is threaded so a container widget's
-/// `HtmlFundamental::Children` slot can render nested blocks (which may
-/// themselves resolve `source`-relative assets) via `render_block`.
+/// widgets, and friends).
 pub(crate) fn lower_html_block(
     doc: &Document,
     block: &Block<'_>,
     kind: &str,
     patterns: &InlinePatterns,
-    base_dir: Option<&Path>,
 ) -> String {
     // Route through `lower_block` so HTML shares the other backends'
     // error handling: a `lower` body that errors records a fatal eval
@@ -406,28 +389,13 @@ pub(crate) fn lower_html_block(
     let Some(items) = lower_block(doc, block, kind) else {
         return String::new();
     };
-    let out: String = items
+    items
         .iter()
         .map(|item| match item {
             Lowered::Content(node) => render_content(doc, node, patterns),
             Lowered::Html(value) => render_html_variant(doc, value, 0, patterns),
         })
-        .collect();
-    // A container widget's `lower` marks where its children go with an
-    // `HtmlFundamental::Children` slot (rendered as WF_CHILDREN_SLOT).
-    // Render this block's nested blocks — each dispatching to its own
-    // `lower` via `render_block` — and splice them in. Leaf blocks never
-    // emit the slot, so they skip this entirely. Nesting resolves bottom
-    // up: a nested container's own slot is filled before it returns here.
-    if out.contains(WF_CHILDREN_SLOT) {
-        let kids: String = block
-            .blocks()
-            .filter_map(|b| render_block(doc, &b, patterns, base_dir))
-            .collect();
-        out.replace(WF_CHILDREN_SLOT, &kids)
-    } else {
-        out
-    }
+        .collect()
 }
 
 /// Shared tail for a custom (non-fundamental) variant: rebuild its record,
@@ -554,13 +522,6 @@ pub(crate) fn render_html_variant(
         return String::new();
     };
     let kind = kind_for_variant(variant);
-    // The child slot carries no fields — handle it before the record
-    // guard so it works whether authored as `Children {}` or a unit
-    // variant. `lower_html_block` swaps the sentinel for the block's
-    // rendered children.
-    if kind == "children" {
-        return WF_CHILDREN_SLOT.to_string();
-    }
     let VariantPayload::Record(map) = payload else {
         return String::new();
     };
