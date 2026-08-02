@@ -6,6 +6,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { placeEmptySlots } from './slots';
 import { moveSteps, placeVisGutters } from './visgutter';
 
 const PAGE = `
@@ -162,5 +163,39 @@ describe('placeVisGutters', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientY: 400 }));
     expect(onReorder).not.toHaveBeenCalled();
+  });
+
+  it('drops content blocks onto an unfilled page slot', () => {
+    setup();
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<div id="sidebar" data-wcl-page-file="main.wcl" data-wcl-page-span="0:300" ' +
+        'data-wcl-page-name="concept_x" data-wcl-slot="sidebar"></div>',
+    );
+    placeEmptySlots(document);
+    const onSlotDrop = vi.fn();
+    placeVisGutters(document, { onSlotDrop });
+    const target = document.querySelector('#sidebar .wcl-wys-empty-slot');
+    document.elementFromPoint = vi.fn(() => target);
+
+    const handle = document.querySelector('#plain .wcl-vis-handle');
+    handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientY: 20 }));
+    document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientY: 500 }));
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientY: 500 }));
+
+    expect(onSlotDrop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: expect.objectContaining({
+          file: 'main.wcl',
+          span: { start: 10, end: 20 },
+          slot: 'content',
+        }),
+        target: expect.objectContaining({
+          file: 'main.wcl',
+          span: { start: 0, end: 300 },
+          slot: 'sidebar',
+        }),
+      }),
+    );
   });
 });

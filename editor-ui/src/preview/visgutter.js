@@ -14,6 +14,7 @@
    ignore `.wcl-vis-gutter` hits so the controls own their events. */
 
 import { anchorOf, blockChildren, pageEls, pageInfo, sameFileSiblings } from './anchors';
+import { emptySlotTargetAt, markEmptySlotDrop } from './slots';
 
 const CSS_ID = 'wcl-vis-css';
 /* The iframe holds a plain wdoc build with no Forge tokens — literal
@@ -75,6 +76,7 @@ export function moveSteps(sameFile, fromIdx, dropIdx) {
       handle drag; steps < 0 moves up, > 0 down, among the block's
       same-file siblings (el/sameFile/dropIdx let the caller mirror the
       move in the DOM without a rebuild);
+    - onSlotDrop({source, target}) — the handle landed on an empty page slot;
     - merged: the merged build — the profile button doubles as the
       indicator (amber = hidden in some view, dashed = custom visibility,
       read from the build's stamps);
@@ -83,7 +85,14 @@ export function moveSteps(sameFile, fromIdx, dropIdx) {
     - enabled() — gate while committing/rebuilding. */
 export function placeVisGutters(
   doc,
-  { onProfile, onReorder, enabled = () => true, currentSite, merged = false } = {},
+  {
+    onProfile,
+    onReorder,
+    onSlotDrop,
+    enabled = () => true,
+    currentSite,
+    merged = false,
+  } = {},
 ) {
   injectVisCss(doc);
   const page = pageInfo(doc);
@@ -102,13 +111,13 @@ export function placeVisGutters(
     const gutter = doc.createElement('div');
     gutter.className = 'wcl-vis-gutter';
 
-    if (onReorder) {
+    if (onReorder || onSlotDrop) {
       const handle = doc.createElement('button');
       handle.type = 'button';
       handle.className = 'wcl-vis-handle';
       handle.textContent = '⋮⋮';
       handle.title = 'Drag to re-order';
-      wireDrag(doc, handle, el, { onReorder, enabled });
+      wireDrag(doc, handle, el, { onReorder, onSlotDrop, enabled });
       gutter.appendChild(handle);
     }
 
@@ -142,15 +151,16 @@ export function placeVisGutters(
 /** Handle-drag → insertion index among the dragged block's SAME-FILE
     siblings → `onReorder({file, span, steps})`. The drop line previews the
     slot; cross-file drops are refused (a move op batches on one file). */
-function wireDrag(doc, handle, el, { onReorder, enabled }) {
+function wireDrag(doc, handle, el, { onReorder, onSlotDrop, enabled }) {
   handle.addEventListener('pointerdown', (down) => {
     if (!enabled()) return;
     down.preventDefault();
     down.stopPropagation();
-    const { file, span } = anchorOf(doc, el);
+    const source = anchorOf(doc, el);
+    const { file, span } = source;
     const sameFile = sameFileSiblings(doc, el);
     const fromIdx = sameFile.indexOf(el);
-    if (fromIdx < 0 || sameFile.length < 2) return;
+    if (fromIdx < 0 || (!onSlotDrop && sameFile.length < 2)) return;
     // No pointer capture — move/up listen on the document, and capturing a
     // synthetic pointer id throws.
     const gutter = handle.parentElement;
@@ -158,6 +168,7 @@ function wireDrag(doc, handle, el, { onReorder, enabled }) {
     const line = doc.createElement('div');
     line.className = 'wcl-vis-dropline';
     let dropIdx = null;
+    let slotTarget = null;
 
     const slotAt = (clientY) => {
       // Insertion slot: before the first same-file block whose midpoint is
@@ -169,6 +180,14 @@ function wireDrag(doc, handle, el, { onReorder, enabled }) {
       return sameFile.length;
     };
     const move = (ev) => {
+      slotTarget = onSlotDrop ? emptySlotTargetAt(doc, ev.clientX, ev.clientY) : null;
+      markEmptySlotDrop(doc, slotTarget);
+      if (slotTarget) {
+        dropIdx = null;
+        line.remove();
+        return;
+      }
+      if (!onReorder || sameFile.length < 2) return;
       dropIdx = slotAt(ev.clientY);
       const before = sameFile[dropIdx];
       const anchorEl = before ?? sameFile[sameFile.length - 1];
@@ -183,6 +202,11 @@ function wireDrag(doc, handle, el, { onReorder, enabled }) {
       doc.removeEventListener('keydown', key, true);
       gutter.classList.remove('is-dragging');
       line.remove();
+      markEmptySlotDrop(doc, null);
+      if (commit && slotTarget) {
+        onSlotDrop({ source, target: slotTarget });
+        return;
+      }
       if (!commit || dropIdx == null) return;
       const steps = moveSteps(sameFile, fromIdx, dropIdx);
       if (steps !== 0) onReorder({ file, span, steps, el, sameFile, dropIdx });
