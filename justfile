@@ -70,18 +70,6 @@ fuzz-run TARGET *ARGS:
 workspace-fmt:
     cargo fmt --all
 
-# Propagate the canonical wskill base schema to every wskill under docs/wskills/
-[group('quality')]
-wskill-schema-sync:
-    @{{heredoc}}; for d in docs/wskills/*; do \
-        [ -d "$d/schema" ] || continue; \
-        heredoc {{wskill_template}} WSK_SCHEMA_BASE_WCL > "$d/schema/base.wcl"; \
-        echo "synced $d/schema/base.wcl"; \
-        [ ! -f "$d/schema/training.wcl" ] || { \
-            heredoc {{wskill_template}} WSK_SCHEMA_TRAINING_WCL > "$d/schema/training.wcl"; \
-            echo "synced $d/schema/training.wcl"; }; \
-    done
-
 # Report book/skill audience coverage per wskill (units kept vs total per
 # projection) — informational, not a gate. An excluded unit is otherwise
 # invisible: audience defaults to :book (research: :ai), so e.g. a fact

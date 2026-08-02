@@ -54,7 +54,7 @@ dev_command dev_workspace_build {
 dev_command dev_ci__check {
   name        = "ci::check"
   command     = "just ci::check"
-  description = "Everything a change must pass before it can merge: fmt, lint, tests, schema and template drift, artifact freshness, doc builds"
+  description = "Everything a change must pass before it can merge: fmt, lint, tests, WAD schema drift, artifact freshness, doc builds"
   category    = "ci"
 }
 
@@ -258,34 +258,6 @@ dev_command dev_wskill_coverage {
   name        = "wskill-coverage"
   command     = "just wskill-coverage"
   description = "authored without `audience = :both` silently never reaches the skill."
-  category    = "quality"
-}
-
-dev_command dev_wskill_crosstopic_check {
-  name        = "wskill-crosstopic-check"
-  command     = "just wskill-crosstopic-check"
-  description = "Fail when a topic's copy of a topic-agnostic wdoc template drifts from the reference (runs in ci)"
-  category    = "quality"
-}
-
-dev_command dev_wskill_schema_check {
-  name        = "wskill-schema-check"
-  command     = "just wskill-schema-check"
-  description = "Fail when a live wskill base.wcl drifts from the scaffold heredoc (runs in ci)"
-  category    = "quality"
-}
-
-dev_command dev_wskill_schema_sync {
-  name        = "wskill-schema-sync"
-  command     = "just wskill-schema-sync"
-  description = "Propagate the canonical wskill base schema to every wskill under docs/wskills/"
-  category    = "quality"
-}
-
-dev_command dev_wskill_template_check {
-  name        = "wskill-template-check"
-  command     = "just wskill-template-check"
-  description = "Fail when the wskill scaffold's wdoc templates drift from the live reference implementation (runs in ci)"
   category    = "quality"
 }
 

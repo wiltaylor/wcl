@@ -97,6 +97,32 @@ impl Registry {
         self.files.is_empty()
     }
 
+    /// The content registered under `name`, if any. For a caller that reads a
+    /// registered file directly rather than through a [`FileLoader`] — the
+    /// same lookup [`loader`] does for a system import.
+    ///
+    /// [`loader`]: Registry::loader
+    pub fn get(&self, name: &str) -> Option<&str> {
+        self.files.get(name).map(|c| c.as_ref())
+    }
+
+    /// Every registered `(name, content)` pair, in unspecified order. Lets a
+    /// library that embeds a stdlib check its own files (they parse, their
+    /// imports resolve) without a second list to keep in step.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.files.iter().map(|(k, v)| (k.as_str(), v.as_ref()))
+    }
+
+    /// Fold `other`'s files into this registry, `other` winning on a shared
+    /// name — the same "later registration wins" rule [`register`] follows.
+    /// This is how one embedded stdlib layers onto another (a toolchain that
+    /// ships wdoc's library *and* a format built on it).
+    ///
+    /// [`register`]: Registry::register
+    pub fn extend(&mut self, other: Registry) {
+        self.files.extend(other.files);
+    }
+
     /// Build a [`FileLoader`] that serves registered files for system
     /// imports and delegates everything else to `fallback`. A system
     /// import naming an unregistered file fails with a `NotFound` error.

@@ -7,10 +7,9 @@
 // book and the skill.
 
 import <wdoc.wcl>
-import "./schema/base.wcl"
+import <wskill.wcl>                    // the base schema + the optional view schemas
+import "./schema/kinds.wcl"            // topic-owned vocabularies (EntityKind, ArtifactKind)
 import "./schema/extensions.wcl"
-import "./schema/presentation.wcl"     // opt-in: the overview deck view
-import "./schema/training.wcl"         // opt-in: the tutorial-series view
 
 // `block_doc` (description + reflected `type_table`) is used inside entity
 // bodies, so it must be in document scope for both schema validation and

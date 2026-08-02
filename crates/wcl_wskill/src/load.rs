@@ -109,6 +109,11 @@ impl Graph {
     /// Read the model of the wskill at `entry` — a `.wcl` entry document or
     /// the wskill directory itself (whose [`ROOT_MARKER`] is then the entry).
     pub fn open(entry: &Path) -> Result<Graph, Error> {
+        // The document's own `import <wskill.wcl>` resolves through wdoc's
+        // registry, which only carries the wskill library once it is layered
+        // in. Idempotent, so reading a model can't be the caller's cue to
+        // install it first.
+        crate::stdlib::install_stdlib();
         let entry_file = resolve_entry(entry)?;
         let root = root_for(&entry_file);
         let doc = wcl_wdoc::open_doc_for_edit(&entry_file)?;

@@ -11,7 +11,7 @@
 namespace wcl.wskill
 
 import <wdoc.wcl>
-import "./base.wcl"          // for Audience
+import <wskill/schema.wcl>          // for Audience
 
 // A function parameter.
 @block("parameter")

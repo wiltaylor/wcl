@@ -54,7 +54,7 @@ wskill is a unified format that allows saving knowledge for use by Humans and AI
 
 <never>
 
-- Hand-edit a wskill's `schema/base.wcl` — it is generated/propagated. Topic-owned edits go in schema/kinds.wcl and schema/extensions.wcl.
+- Copy the base schema or a shared projection template into a wskill folder — they ship inside the `wcl` binary and arrive by import (`import <wskill.wcl>` / `import <wskill/book.wcl>`). Topic-owned edits go in schema/kinds.wcl and schema/extensions.wcl; to take a shared part over, drop its import and declare your own.
 - Invent schema fields or block kinds that aren't in the reflected schema reference — check the `Schema blocks` pages instead of guessing.
 - Hand-edit anything under out/ — it is generated output.
 

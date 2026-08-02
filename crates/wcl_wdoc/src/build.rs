@@ -104,7 +104,43 @@ pub fn schema_registry() -> Registry {
     // a data document opts in with `import <answer.wcl>` alone, without
     // pulling in the whole wdoc page/site vocabulary.
     r.register("answer.wcl", include_str!("../lib/answer.wcl"));
+    for extra in EXTRA_STDLIBS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+    {
+        r.extend(extra.clone());
+    }
     r
+}
+
+/// Embedded stdlibs layered onto [`schema_registry`] by whoever composes the
+/// toolchain — `wcl_wskill`'s wskill library is the one in this workspace.
+///
+/// It is a slot rather than a parameter because this crate builds every
+/// [`FileLoader`](wcl_lang::FileLoader) itself, at four call sites reached
+/// from a hundred (`build`, [`open_doc_for_edit`], its overlay twin, and
+/// `include::read_entry_meta`); a caller cannot pass a registry in at the
+/// point that matters without threading one through all of them. The value it
+/// holds is compiled-in static text, identical for the whole process and
+/// installed once at startup, so the slot behaves as a constant that a lower
+/// layer is allowed not to know about.
+///
+/// The alternative — registering the wskill files here — is what §5.2 of the
+/// wdoc-substrate spec rules out: `wcl_wdoc` must not name the wskill format.
+static EXTRA_STDLIBS: std::sync::RwLock<Vec<Registry>> = std::sync::RwLock::new(Vec::new());
+
+/// Layer `extra` onto every registry [`schema_registry`] builds from now on.
+///
+/// Idempotent by content, not by call: installing the same library twice
+/// registers the same keys twice, which is a no-op (a later registration under
+/// a key wins). Callers that must not double-install guard it themselves —
+/// [`wcl_wskill::install_stdlib`] does.
+pub fn install_stdlib(extra: Registry) {
+    EXTRA_STDLIBS
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(extra);
 }
 
 /// The [`Environment`] every wdoc backend uses to open a document: the base

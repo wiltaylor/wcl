@@ -1,5 +1,5 @@
 // The presentation view's deck — "A wdoc tour" as slides
-// (schema/presentation.wcl). Slides feature existing units where possible
+// (`<wskill/presentation.wcl>`). Slides feature existing units where possible
 // (`unit = <id>` pulls the headline + summary); detail stays in the book.
 presentation intro {
   title   = "A wdoc tour"

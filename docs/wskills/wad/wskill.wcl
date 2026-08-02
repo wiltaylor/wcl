@@ -5,7 +5,8 @@
 // The wdoc template sets in wdoc/ project this model into the book and skill.
 
 import <wdoc.wcl>
-import "./schema/base.wcl"
+import <wskill.wcl>             # the base schema + the optional view schemas
+import "./schema/kinds.wcl"     # topic-owned vocabularies (EntityKind, ArtifactKind)
 import "./schema/extensions.wcl"
 
 import "./data/reference/concepts.wcl"

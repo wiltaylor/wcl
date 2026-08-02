@@ -24,6 +24,6 @@ main:
 # files under .wad/data/generated/, because freshness can't be judged without
 # re-running the extractors. See its own doc comment.
 
-# Everything a change must pass before it can merge: fmt, lint, tests, schema and template drift, artifact freshness, doc builds
+# Everything a change must pass before it can merge: fmt, lint, tests, WAD schema drift, artifact freshness, doc builds
 [group('ci')]
-check: fmt-check workspace-lint workspace-test wskill-schema-check wskill-template-check wskill-crosstopic-check wskill-artifact-check wcl-refcheck wad-schema-check wad-check wad-extract-check wad-facts-check wad-build wplan-template-check skills-check docs-build
+check: fmt-check workspace-lint workspace-test wskill-artifact-check wcl-refcheck wad-schema-check wad-check wad-extract-check wad-facts-check wad-build wplan-template-check skills-check docs-build

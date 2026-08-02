@@ -1,4 +1,4 @@
-// The training view's course — "Learn WCL" (schema/training.wcl). Ordered
+// The training view's course — "Learn WCL" (`<wskill/training.wcl>`). Ordered
 // lessons with hands-on exercises; `related` links each lesson back to the
 // reference units it teaches. Every snippet here is runnable as written.
 

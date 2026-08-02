@@ -106,16 +106,70 @@ impl Registry {
     }
 }
 
-/// The first top-level `site` block's name in a projection entry, read with a
-/// plain parse of that one file (its imports are not followed — a projection
-/// declares its own site).
+/// The first top-level `site` block's name in a projection entry.
+///
+/// A plain parse, never an evaluation — the registry is metadata. But the
+/// entry does not have to *declare* its site: since the shared projections
+/// were embedded, `wdoc/book/main.wcl` is two lines and the `site` arrives
+/// with `import <wskill/book.wcl>`. So the walk follows imports depth-first
+/// in written order, resolving `"…"` against the importing file's directory
+/// and `<…>` through this crate's own embedded library — the only two places
+/// a projection's site can come from.
+///
+/// Bounded rather than cycle-tracked: an entry reaches its site in one hop
+/// (the shared projection) or two (a topic's own file that imports one), and a
+/// deeper chain is a document to open properly rather than to walk here.
+const MAX_SITE_IMPORT_HOPS: usize = 3;
+
 fn first_site_name(entry: &Path) -> Option<String> {
+    fn walk(
+        src: &str,
+        name: String,
+        base: Option<&Path>,
+        lib: &wcl_lang::Registry,
+        depth: usize,
+    ) -> Option<String> {
+        let ast = parse_for_edit(src, name).ok()?;
+        if let Some(site) = ast.items.iter().find_map(|i| match i {
+            Item::Block(b) if b.kind == "site" => ast_label(b),
+            _ => None,
+        }) {
+            return Some(site);
+        }
+        if depth == 0 {
+            return None;
+        }
+        ast.items.iter().find_map(|i| match i {
+            Item::Import(imp) if imp.system => {
+                // A disk importer, so the key is the path from the registry
+                // root — the resolver's own rule, borrowed rather than redone.
+                let key = wcl_lang::system_import_key(None, &imp.path);
+                walk(lib.get(&key)?, format!("<{key}>"), None, lib, depth - 1)
+            }
+            Item::Import(imp) => {
+                let path = base?.join(&imp.path);
+                let text = std::fs::read_to_string(&path).ok()?;
+                walk(
+                    &text,
+                    path.display().to_string(),
+                    path.parent(),
+                    lib,
+                    depth - 1,
+                )
+            }
+            _ => None,
+        })
+    }
+
     let src = std::fs::read_to_string(entry).ok()?;
-    let ast = parse_for_edit(&src, entry.display().to_string()).ok()?;
-    ast.items.iter().find_map(|i| match i {
-        Item::Block(b) if b.kind == "site" => ast_label(b),
-        _ => None,
-    })
+    let lib = crate::schema_registry();
+    walk(
+        &src,
+        entry.display().to_string(),
+        entry.parent(),
+        &lib,
+        MAX_SITE_IMPORT_HOPS,
+    )
 }
 
 /// A block's first inline label — how every wskill block is named
@@ -180,6 +234,36 @@ mod tests {
         // …and falls back to the artifact id when the entry is missing.
         assert_eq!(views[1].site, None);
         assert_eq!(views[1].site_name(), "ai_skill");
+    }
+
+    /// A projection entry that imports its site instead of declaring one —
+    /// the shape every wskill has since the shared templates were embedded.
+    /// Both hops matter: through the library (`<wskill/book.wcl>` declares
+    /// `site book`) and through a disk import.
+    #[test]
+    fn a_site_reached_by_import_still_names_the_view() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        write(
+            root,
+            ROOT_MARKER,
+            "topic demo {\n  name = \"Demo\"\n}\n\n\
+             artifact book {\n  kind = :book\n  entry = \"wdoc/book/main.wcl\"\n}\n\n\
+             artifact ai_skill {\n  kind = :ai_skill\n  entry = \"wdoc/skill/main.wcl\"\n}\n",
+        );
+        write(
+            root,
+            "wdoc/book/main.wcl",
+            "import \"../../wskill.wcl\"\nimport <wskill/book.wcl>\n",
+        );
+        write(root, "wdoc/skill/main.wcl", "import \"./site.wcl\"\n");
+        write(root, "wdoc/skill/site.wcl", "site skill {\n}\n");
+
+        let views = Registry::read(&root.join(ROOT_MARKER))
+            .expect("registry")
+            .views(root);
+        assert_eq!(views[0].site.as_deref(), Some("book"));
+        assert_eq!(views[1].site.as_deref(), Some("skill"));
     }
 
     #[test]

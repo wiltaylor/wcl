@@ -6,7 +6,7 @@
 
 import <wdoc.wcl>
 import "../../schema/builtins.wcl"   // Function / Parameter / CodeExample
-import "./common.wcl"                // fn_signature
+import "./signature.wcl"               // fn_signature
 
 wdoc_component function_body {
   wdoc_slot func

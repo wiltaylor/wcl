@@ -1,0 +1,25 @@
+// wskill standard library — prelude.
+//
+// The public entry point is `wskill.wcl`, which a wskill root document opts
+// into with `import <wskill.wcl>`; that imports this file, which pulls in
+// every schema part. The parts are embedded in the binary and resolved through
+// the registry (see `crates/wcl_wskill/src/stdlib.rs`); the angle-bracket
+// paths are importer-relative, so `import <schema.wcl>` here resolves to
+// `wskill/schema.wcl`.
+//
+// Ordering does not matter — names resolve across every imported file.
+//
+// The two optional views' schemas ship unconditionally: declaring the
+// `lesson` / `presentation` block types costs a wskill nothing until it
+// authors one, and the gathered lists stay empty. A view SHIPS when the
+// wskill declares its `artifact` and renders the matching projection.
+//
+// `EntityKind` and `ArtifactKind` are deliberately NOT here: they are the
+// topic-OWNED vocabularies, and every wskill keeps its own hand-editable
+// `schema/kinds.wcl` declaring them in this same namespace.
+
+namespace wcl.wskill
+
+import <schema.wcl>           // the base wskill data model + the root @document
+import <presentation.wcl>     // optional view: the topic-overview slide deck
+import <training.wcl>         // optional view: the hands-on tutorial course

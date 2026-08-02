@@ -44,7 +44,7 @@ pub use doc::{
     Document, Field, FieldShape, FileLoader, GatheredKind, InterfaceDecl, NamedArg, Registry,
     ResolvedType, RowView, SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit, SymbolSetDecl, TableView,
     TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
-    VariantBodyView, disk_loader, overlay_loader,
+    VariantBodyView, disk_loader, overlay_loader, system_import_key,
 };
 pub use environment::{
     BuiltType, DecoratorBuilder, Environment, Expander, TypeBuilder, TypeFieldBuilder,

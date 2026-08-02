@@ -189,8 +189,25 @@ pub(super) fn resolve_import_path_kind(
         Some(d) if d.starts_with(sys_root) => d.strip_prefix(sys_root).unwrap_or(Path::new("")),
         _ => Path::new(""),
     };
-    let key = lexical_normalize(&dir_rel.join(path));
-    Ok(sys_root.join(key))
+    Ok(sys_root.join(lexical_normalize(&dir_rel.join(path))))
+}
+
+/// The registry key `import <path>` names when written in the file whose own
+/// registry key is `importer` — `None` for a disk file, whose system imports
+/// resolve from the registry root.
+///
+/// The same rule [`resolve_import_path_kind`] applies, in the vocabulary a
+/// [`Registry`](super::Registry) speaks: keys, not `<wcl-system>` paths. For a
+/// caller that reads a registered file directly rather than through a loader
+/// (`wcl_wskill` walks its own embedded library) — so that it cannot disagree
+/// with the resolver about what `<../../wdoc.wcl>` means.
+pub fn system_import_key(importer: Option<&str>, path: &str) -> String {
+    let dir = importer
+        .and_then(|k| k.rsplit_once('/'))
+        .map_or("", |(dir, _)| dir);
+    lexical_normalize(&Path::new(dir).join(path))
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 /// Collapse `.`/`..`/empty path components without touching the

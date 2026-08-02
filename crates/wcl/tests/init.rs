@@ -465,3 +465,84 @@ fn init_wplan_scaffold_checks_and_builds() {
         "wplan: agent briefs index missing"
     );
 }
+
+/// The wskill scaffold writes the topic's own files ONLY: the base schema,
+/// the optional-view schemas and the shared wdoc templates ship embedded in
+/// the binary (`crates/wcl_wskill/lib/`) and arrive by import. All four
+/// projections still build from what is written.
+#[test]
+fn init_wskill_scaffolds_entries_only_and_builds_every_projection() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let dest = tmp.path().join("topic");
+    wcl()
+        .args(["init", "wskill"])
+        .arg(&dest)
+        .args([
+            "-D",
+            "topic_id=demo",
+            "-D",
+            "topic_name=Demo",
+            "-D",
+            "include_presentation=yes",
+            "-D",
+            "include_training=yes",
+            "--defaults",
+        ])
+        .assert()
+        .success();
+
+    // What the scaffold no longer copies. Each of these was a verbatim copy
+    // in every wskill folder before the library was embedded.
+    for rel in [
+        "schema/base.wcl",
+        "schema/presentation.wcl",
+        "schema/training.wcl",
+        "wdoc/component/common.wcl",
+        "wdoc/component/skill_md.wcl",
+        "wdoc/pages/overview.wcl",
+    ] {
+        assert!(
+            !dest.join(rel).exists(),
+            "wskill: {rel} should come from the embedded library, not a copy"
+        );
+    }
+    // …and what it still writes, because it is this topic's own.
+    for rel in ["wskill.wcl", "schema/kinds.wcl", "schema/extensions.wcl"] {
+        assert!(dest.join(rel).exists(), "wskill: missing {rel}");
+    }
+    // The book entry is an entry: the topic's model plus the shared template.
+    let book = std::fs::read_to_string(dest.join("wdoc/book/main.wcl")).expect("read book main");
+    assert!(
+        book.contains("import <wskill/book.wcl>") && book.contains("import \"../../wskill.wcl\""),
+        "wskill: book entry does not import the shared template: {book}"
+    );
+
+    for rel in [
+        "wskill.wcl",
+        "wdoc/book/main.wcl",
+        "wdoc/skill/main.wcl",
+        "wdoc/presentation/main.wcl",
+        "wdoc/training/main.wcl",
+    ] {
+        wcl().arg("check").arg(dest.join(rel)).assert().success();
+    }
+
+    for (cmd, entry, out) in [
+        ("build", "wdoc/book/main.wcl", "out/book"),
+        ("skill", "wdoc/skill/main.wcl", "out/skill"),
+        ("build", "wdoc/presentation/main.wcl", "out/presentation"),
+        ("build", "wdoc/training/main.wcl", "out/training"),
+    ] {
+        wcl()
+            .args(["wdoc", cmd])
+            .arg(dest.join(entry))
+            .arg("--out")
+            .arg(dest.join(out))
+            .assert()
+            .success();
+    }
+    assert!(
+        dest.join("out/skill/SKILL.md").exists(),
+        "wskill: the skill projection wrote no SKILL.md"
+    );
+}

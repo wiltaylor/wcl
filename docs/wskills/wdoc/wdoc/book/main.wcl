@@ -8,24 +8,24 @@
 
 import <wdoc.wcl>
 import "../../wskill.wcl"
-import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
-import "../component/concept.wcl"   // concept_body
-import "../component/entity.wcl"    // entity_body
-import "../component/fact.wcl"      // fact_body
-import "../component/research.wcl"  // research_body
-import "../component/process.wcl"   // process_body
-import "../component/type_index.wcl" // shared unit-index page component
+import <wskill/component/common.wcl>    // UnitRef + shared per-unit sub-sections
+import <wskill/component/concept.wcl>   // concept_body
+import <wskill/component/entity.wcl>    // entity_body
+import <wskill/component/fact.wcl>      // fact_body
+import <wskill/component/research.wcl>  // research_body
+import <wskill/component/process.wcl>   // process_body
+import <wskill/component/type_index.wcl> // shared unit-index page component
 
 // Built-in standalone pages — one file each under pages/ (the generated
 // per-unit pages stay as repeaters below). These resolve the `let`s defined in
 // this file, so they are only valid as part of this document.
-import "../pages/overview.wcl"     // index (start page)
-import "../pages/concepts.wcl"     // concepts_page
-import "../pages/entities.wcl"     // entities_page
-import "../pages/facts.wcl"        // facts_page
-import "../pages/processes.wcl"    // processes_page
+import <wskill/pages/overview.wcl>     // index (start page)
+import <wskill/pages/concepts.wcl>     // concepts_page
+import <wskill/pages/entities.wcl>     // entities_page
+import <wskill/pages/facts.wcl>        // facts_page
+import <wskill/pages/processes.wcl>    // processes_page
 
-// The single topic block, bound from its gather list (see base.wcl
+// The single topic block, bound from its gather list (see `<wskill/schema.wcl>`
 // for why it is a list). A wskill always has exactly one.
 let topic = head(topics)
 

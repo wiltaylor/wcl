@@ -1,4 +1,4 @@
-# The training view's course — "Build your first wskill" (schema/training.wcl).
+# The training view's course — "Build your first wskill" (`<wskill/training.wcl>`).
 # Ordered lessons with hands-on exercises; `related` links each lesson back to
 # the reference units it teaches.
 
@@ -11,12 +11,14 @@ lesson scaffold_first_wskill {
   body {
     p <<DOC
       A wskill starts from the built-in scaffold: one command generates the whole folder — the
-      schema, the projection templates, and empty data files ready for content.
+      projection entry points and empty data files ready for content.
     DOC
     p <<DOC
-      The generated tree splits into three zones: `schema/` (the data model — `base.wcl` is
-      generated, `kinds.wcl` and `extensions.wcl` are yours), `data/` (the content you'll write),
-      and `wdoc/` (the projection templates that render it).
+      The generated tree splits into three zones: `schema/` (what this topic adds to the data
+      model — `kinds.wcl` and `extensions.wcl`, both yours), `data/` (the content you'll write),
+      and `wdoc/` (the projection entries). The base schema and the shared page templates are
+      not files here at all: they ship inside the `wcl` binary and arrive through
+      `import <wskill.wcl>`, the same way `import <wdoc.wcl>` does.
     DOC
   }
   exercise scaffold {
@@ -32,12 +34,12 @@ lesson scaffold_first_wskill {
     hint = "`wcl init wskill` prompts for a topic id, name, and summary; accept the defaults with `--defaults` if you just want to explore."
   }
   check which_zone_is_generated {
-    prompt = "Which part of a scaffolded wskill is generated and must not be hand-edited?"
+    prompt = "Which part of a scaffolded wskill must not be hand-edited?"
     related = [folder_layout]
-    choice base_schema {
-      label = "`schema/base.wcl`"
+    choice out {
+      label = "`out/`"
       correct = true
-      note = "Right — it is synced from the canonical scaffold heredoc, so local edits are overwritten."
+      note = "Right — it is rendered output. Re-render instead of editing it."
     }
     choice kinds {
       label = "`schema/kinds.wcl`"
@@ -47,7 +49,7 @@ lesson scaffold_first_wskill {
       label = "`data/`"
       note = "`data/` is entirely yours; it is where the content lives."
     }
-    explanation = "`base.wcl` is the shared wskill schema. Topic-specific vocabulary belongs in `kinds.wcl` and `extensions.wcl`, which the sync leaves alone."
+    explanation = "The base schema is not a file in your folder at all — it ships inside the `wcl` binary and arrives through `import <wskill.wcl>`. Everything the scaffold DOES write is yours, except `out/`."
   }
   check why_check_empty {
     prompt = "Why validate the model with `wcl check` before writing any content?"

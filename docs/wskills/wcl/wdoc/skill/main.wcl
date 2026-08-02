@@ -10,15 +10,16 @@
 
 import <wdoc.wcl>
 import "../../wskill.wcl"
-import "../component/common.wcl"    // UnitRef + shared per-unit sub-sections
-import "../component/skill_md.wcl"  // skill_md_body (the SKILL.md body)
-import "../component/concept.wcl"   // concept_body
-import "../component/entity.wcl"    // entity_body
-import "../component/fact.wcl"      // fact_body
-import "../component/research.wcl"  // research_body
-import "../component/process.wcl"   // process_body
+import <wskill/component/common.wcl>    // UnitRef + shared per-unit sub-sections
+import "../component/signature.wcl"      // fn_signature (this topic's one addition)
+import <wskill/component/skill_md.wcl>  // skill_md_body (the SKILL.md body)
+import <wskill/component/concept.wcl>   // concept_body
+import <wskill/component/entity.wcl>    // entity_body
+import <wskill/component/fact.wcl>      // fact_body
+import <wskill/component/research.wcl>  // research_body
+import <wskill/component/process.wcl>   // process_body
 
-// The single topic block, bound from its gather list (see base.wcl).
+// The single topic block, bound from its gather list (see `<wskill/schema.wcl>`).
 let topic = head(topics)
 let skill = head(skills)
 // Alias for use INSIDE the wdoc `skill { }` config block below, where a bare
@@ -138,7 +139,7 @@ wdoc_repeater { each = facts  as = :f
   }
 }
 // One page per research unit → references/research_<id>.md — the FIXED path
-// external consumers glob to reuse findings (see schema/base.wcl). Plus the
+// external consumers glob to reuse findings (see `<wskill/schema.wcl>`). Plus the
 // references/index_research.md menu page, emitted only when findings exist.
 wdoc_repeater { each = research_units  as = :r
   page $"research_${r.id}" { sites = [:skill]  title = $"${r.topic}"
