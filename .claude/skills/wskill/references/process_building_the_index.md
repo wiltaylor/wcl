@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Curate the wskill's navigation by writing `index` blocks that group units into a meaningful tree.
+Declare the wskill's shape during scoping by writing a bodied `index` tree, then place units under the node whose scope owns them.
 
 ## Flowchart
 
@@ -10,20 +10,24 @@ Curate the wskill's navigation by writing `index` blocks that group units into a
 
 ## Steps
 
-### Step 1: Add an index block
+### Step 1: Author the scoped index tree
 
 ```wcl
 // data/indexes.wcl
 index commands {
   name    = "Commands"
   summary = "The everyday command set."
+  body { p "Tasks performed directly with the CLI; excludes configuration concepts and file-format reference." }
   related = [git_add, git_commit, status_fact]
 }
 ```
 
-Add an `index` block (in `data/indexes.wcl` or its own file). Give it a `name` — the sidebar
-heading — and a `summary`, then list the unit ids it groups in `related`. Each id resolves
-to a link to that unit's page; an id that matches no unit is simply dropped.
+Use this procedure while scoping, before units are written. Add an `index` block (in
+`data/indexes.wcl` or its own file) for each real topic area. Give every node a `name`, a
+`summary`, and exactly one `body` stating what belongs in the area and what does not. The body
+makes the node a reader-facing area page and supplies the research brief and distillation
+contract. If you cannot write that scope, the node should not exist. As units are authored,
+list their ids in the owning node's `related`; each id resolves to its page.
 
 
 ### Step 2: Nest sub-indexes
@@ -36,9 +40,9 @@ index reference {
 }
 ```
 
-An index may hold child `index` blocks one level deep — write them inside the parent. The
-book renders them nested under the parent chapter. Document gathering is direct-only, so a
-nested index is not also listed at the top level.
+An index may hold child `index` blocks one level deep — write them inside the parent, and give
+every child its own body too. The book renders them nested under the parent chapter. Document
+gathering is direct-only, so a nested index is not also listed at the top level.
 
 
 ### Step 3: Choose the audience
@@ -51,12 +55,16 @@ sidebar. See \*Setting up AI skill generation\*.
 > [!TIP]
 > **Verification**
 >
-> Each `index` appears as a chapter in the book sidebar (and, when `:ai`/`:both`, as a section in `SKILL.md`), listing links to the units it pins.
+> Every index node has one scope body; each appears as an area page and a chapter in the book sidebar (and, when `:ai`/`:both`, in the skill projection), listing links to the units it owns.
 
 ## Related
 
 - [Structured data](../references/concept_structured_data.md)
 
 - [Creating a new wskill](../references/process_creating_a_wskill.md)
+
+- [Researching a topic into a wskill](../references/process_researching_a_topic.md)
+
+- [Adding content to a wskill](../references/process_adding_content.md)
 
 [← Back to SKILL.md](../SKILL.md)

@@ -1,6 +1,6 @@
 procedure adding_content {
   title = "Adding content to a wskill"
-  purpose = "The core capture loop: decompose a piece of knowledge, classify it, write the unit, link it, pin it, render."
+  purpose = "The shape-first capture loop: decompose a piece of knowledge, classify it, place it in the index, then write, link and render it."
   preconditions = ["An existing wskill folder that checks clean (`just wskill-check`)."]
   related = [decomposing_information, building_the_index]
   audience = :both
@@ -32,8 +32,21 @@ procedure adding_content {
     }
   }
 
-  step write {
+  step place {
     n = 3
+    title = "Choose its index node"
+    body steps {
+      p <<DOC
+        Before writing prose, choose the existing `index` node whose stated scope owns this unit. If
+        no node wants it, treat that as design information: revise the tree or justify a new bodied
+        node via [Building the wskill index](process_building_the_index). Do not author the unit until
+        its place is honest.
+      DOC
+    }
+  }
+
+  step write {
+    n = 4
     title = "Write the unit file"
     body screen {
       code "wcl" {
@@ -61,7 +74,7 @@ procedure adding_content {
   }
 
   step link {
-    n = 4
+    n = 5
     title = "Link it into the web"
     body steps {
       p <<DOC
@@ -69,18 +82,6 @@ procedure adding_content {
         related. Links resolve both ways (each page also lists what references it), so a careless
         link adds noise at both ends; see [Linking discipline](fact_linking_discipline). A unit with
         no links at all is usually misfiled or not atomic.
-      DOC
-    }
-  }
-
-  step pin {
-    n = 5
-    title = "Pin it into an index"
-    body steps {
-      p <<DOC
-        Add the id to the `related` list of the `index` that owns its area (or create a new index
-        branch — see [Building the wskill index](process_building_the_index)). Unpinned units stay
-        reachable via links but invisible in the nav.
       DOC
     }
   }
@@ -103,10 +104,10 @@ procedure adding_content {
   }
 
   decompose -> classify
-  classify -> write
+  classify -> place
+  place -> write
   write -> link
-  link -> pin
-  pin -> render
+  link -> render
 
   verification = "The new unit has its own page in the rendered book, appears under its index in the nav, and its related links resolve in both directions."
 }

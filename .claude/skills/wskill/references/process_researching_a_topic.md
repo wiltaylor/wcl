@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Author a whole wskill by research: scope the topic in an interview, fan the open questions out to parallel researcher agents as `research` units, then distill the findings into concept/entity/fact/procedure units and a curated index.
+Author a whole wskill shape-first: scope a provisional bodied index tree, research each area in parallel, revise the tree against all findings, then fill it with distilled units.
 
 ## Prerequisites
 
@@ -14,13 +14,20 @@ Author a whole wskill by research: scope the topic in an interview, fan the open
 
 ## Steps
 
-### Step 1: Scoping interview
+### Step 1: Scope the topic and author its shape
 
-Interview the topic owner in rounds until the shape is settled: what the topic covers and
-what it deliberately does NOT, which upstreams are authoritative (record each as a `source`
-block in wskill.wcl and pin `topic.version` when the subject has one), who each view is for,
-and which artifacts to ship. Decisions only the owner can make are captured as plain
-`question` blocks — those are for the owner, not for research.
+Interview the topic owner in rounds until the scope is settled: what the topic covers and
+deliberately does NOT, which upstreams are authoritative (record each as a `source` block in
+wskill.wcl and pin `topic.version` when the subject has one), who each view is for, and which
+artifacts to ship. Decisions only the owner can make are captured as plain `question` blocks
+— those are for the owner, not for research.
+
+
+During the same interview, author a provisional `index` tree in `data/indexes.wcl` using
+[Building the index](../references/process_building_the_index.md). Every node MUST carry a `body` that states
+what its area includes and excludes. That body is simultaneously the reader's area page, the
+research brief, and the contract distillation will fill. If no honest scope can be written
+for a node, remove it now.
 
 
 ### Step 2: Decompose into research items
@@ -30,23 +37,26 @@ and which artifacts to ship. Decisions only the owner can make are captured as p
 question r_<slug> {
   question = "<The single thing this item must settle.>"
   context  = "<Why it matters / which part of the topic it unblocks.>"
+  index    = <index_id>
   tags     = ["research_item"]
 }
 ```
 
-Turn the scoped topic into a worklist of single-idea research items — one `question` block
-each, tagged `research_item`, in a `data/questions.wcl` created for the run. If an item
-needs an "and" to state, split it. The worklist is temporary metadata: question blocks never
-render as topic content and are deleted once folded.
+Turn the scoped tree into a worklist of single-idea research items — one `question` block
+each, tagged `research_item`, in a `data/questions.wcl` created for the run. Set `index` to
+the id of the provisional node whose scope the item investigates. If an item needs an "and"
+to state, split it. The worklist is temporary metadata: question blocks never render as topic
+content and are deleted once folded.
 
 
 ### Step 3: Dispatch researchers in parallel
 
 Dispatch one `wskill-researcher` subagent per `:open` research item, in parallel. Each
-prompt carries the item's id, question and context, the absolute wskill folder path, and
-today's date. Each agent writes ONLY its own `data/research/<id>.wcl` (finding + `source`
-blocks), its one import line in `data/research/main.wcl`, and its own question row —
-separate files are what make the fan-out merge-safe.
+prompt carries the item's id, question, context and assigned index node; the WHOLE provisional
+index tree (ids plus every node body); the absolute wskill folder path; and today's date. The
+whole tree lets a researcher respect neighbouring scopes without changing the merge-safe
+fan-out. Each agent writes ONLY its own `data/research/<id>.wcl` (finding + `source` blocks),
+its one import line in `data/research/main.wcl`, and its own question row.
 
 
 ### Step 4: Completeness gate
@@ -62,19 +72,21 @@ and re-dispatch, or mark it `:dropped` with the why in `answer`. Do not distill 
 incomplete worklist.
 
 
-### Step 5: Distill findings into units
+### Step 5: Revise the shape, then fill it
 
-For each research unit, run the [Adding content](../references/process_adding_content.md) loop: decompose its
-body into atomic notes, classify each with
-[the decision guide](../references/fact_unit_decision_guide.md), and write the concept/entity/fact/procedure/term units — each citing its research id in `related`, so unit and evidence link both ways. The `research` block stays as the dated evidence trail. Then fold and delete the answered research_item
-questions (and `data/questions.wcl` plus its import, once empty).
+**Pass A — revise.** Read ALL findings as one set, then revise the provisional index tree
+against what research discovered. This pass is required: split, merge, add or drop nodes
+whose scopes proved wrong instead of forcing findings into the original boxes. Check that
+every surviving node is covered by at least one finding; drop an uncovered node or create and
+dispatch a follow-up research item before continuing.
 
 
-### Step 6: Build the index
-
-Pin every unit into a topic-meaningful `index` tree in `data/indexes.wcl`, per
-[Building the index](../references/process_building_the_index.md) — the same curation shapes the book nav and
-SKILL.md's entry points.
+**Pass B — fill.** Only after every node has been revised, distill all findings into atomic
+notes, classify them with [the decision guide](../references/fact_unit_decision_guide.md), and write each
+concept/entity/fact/procedure under its settled index node. No unit is written against an
+unrevised node. Each unit cites its research id in `related`, so unit and evidence link both
+ways; the `research` block remains as the dated evidence trail. Then fold and delete answered
+research_item questions (and `data/questions.wcl` plus its import, once empty).
 
 
 ### Step 7: Render and verify
@@ -89,16 +101,19 @@ Every research unit must ship at `references/research_<id>.md`, be listed in
 distilled unit must have its own page and a home in an index.
 
 
-### Step 8: Review with the owner
+### Step 8: Curate the whole graph, then review
 
-Hand off to a review pass: serve the book, walk it with the owner, and fold review
-comments back into the units.
+Before owner review, dispatch `wskill-curator` with the absolute wskill folder and explicit
+`whole graph` scope. This is mandatory even when the run extended an existing wskill: a 1-hop
+pass cannot see whole-graph hubs, duplicated reasons or index bloat. After the curator's gated
+run succeeds (an empty candidate list is success), serve the book, walk it with the owner,
+and fold review comments back into the units.
 
 
 > [!TIP]
 > **Verification**
 >
-> No `:open` research_item questions remain; every research unit renders at references/research_<id>.md and is listed in index_research.md; every distilled unit has a page, cites its research id, and sits under an index; `just wskill-check` and `just render` are green.
+> The provisional tree was revised against all findings before any unit was written; every surviving bodied index node is covered; no `:open` research_item questions remain; every research unit renders at references/research_<id>.md and is listed in index_research.md; every distilled unit has a page, cites its research id, and sits under its declared node; the whole-graph curator pass, `just wskill-check`, and `just render` are green.
 
 ## Related
 

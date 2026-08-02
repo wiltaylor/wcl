@@ -176,7 +176,7 @@ mod tests {
              import <wskill.wcl>\n\
              import \"./schema/kinds.wcl\"\n\
              import \"./data/main.wcl\"\n\n\
-             schema_version = \"1.4.0\"\n\n\
+             schema_version = \"1.5.0\"\n\n\
              topic demo {\n  name = \"Demo\"\n  summary = \"A demo.\"\n  created = \"1970-01-01\"\n}\n\n\
              wcl.wskill::skill {\n}\n\n\
              artifact book {\n  kind = :book\n  entry = \"wdoc/book/main.wcl\"\n}\n",
@@ -198,7 +198,8 @@ mod tests {
              related = [alpha]\n}\n\n\
              index start {\n  name = \"Start here\"\n  related = [alpha, beta]\n}\n\n\
              index area {\n  name = \"Area guide\"\n  summary = \"A guided area.\"\n  related = [alpha]\n  body { p \"Area body.\" }\n\n  \
-               index nested {\n    name = \"Nested guide\"\n    related = [beta]\n    body { p \"Nested body.\" }\n  }\n}\n",
+               index nested {\n    name = \"Nested guide\"\n    related = [beta]\n    body { p \"Nested body.\" }\n  }\n}\n\n\
+             question research_alpha {\n  question = \"What makes Alpha work?\"\n  index = area\n  tags = [\"research_item\"]\n}\n",
         );
         crate::testsupport::write(
             root,
@@ -209,6 +210,11 @@ mod tests {
         install_stdlib();
         let root_doc = wcl_wdoc::open_doc_for_edit(&root.join(crate::ROOT_MARKER))
             .expect("root document opens");
+        let root_errors = root_doc.schema_errors();
+        assert!(
+            root_errors.is_empty(),
+            "root document has schema errors: {root_errors:?}"
+        );
         let related = root_doc
             .blocks()
             .find(|b| b.kind() == "concept")

@@ -13,7 +13,7 @@ allowed-tools:
   - Task
 disable-model-invocation: false
 metadata:
-  wskill_schema_version: 1.4.0
+  wskill_schema_version: 1.5.0
 ---
 
 # WAD
