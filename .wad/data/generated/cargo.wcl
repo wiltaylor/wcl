@@ -20,6 +20,12 @@ relation r_gen_wcl_cli_wcl_wdoc {
   data = "wcl depends on wcl_wdoc (Cargo.toml)"
 }
 
+relation r_gen_wcl_cli_wcl_wskill {
+  source = wcl_cli  destination = wcl_wskill
+  kind = :depends_on  protocol = "Rust crate"
+  data = "wcl depends on wcl_wskill (Cargo.toml)"
+}
+
 relation r_gen_wcl_lsp_wcl_lang {
   source = wcl_lsp  destination = wcl_lang
   kind = :depends_on  protocol = "Rust crate"
@@ -36,4 +42,16 @@ relation r_gen_wcl_wdoc_wcl_lang {
   source = wcl_wdoc  destination = wcl_lang
   kind = :depends_on  protocol = "Rust crate"
   data = "wcl_wdoc depends on wcl_lang (Cargo.toml)"
+}
+
+relation r_gen_wcl_wskill_wcl_lang {
+  source = wcl_wskill  destination = wcl_lang
+  kind = :depends_on  protocol = "Rust crate"
+  data = "wcl_wskill depends on wcl_lang (Cargo.toml)"
+}
+
+relation r_gen_wcl_wskill_wcl_wdoc {
+  source = wcl_wskill  destination = wcl_wdoc
+  kind = :depends_on  protocol = "Rust crate"
+  data = "wcl_wskill depends on wcl_wdoc (Cargo.toml)"
 }

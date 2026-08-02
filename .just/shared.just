@@ -253,7 +253,8 @@ wcl-refcheck: require-cargo
         || { echo "wcl reference drift: builtins (< missing from docs/wskills/wcl/data/builtins.wcl, > documented but not a builtin)"; exit 1; }
     @subs() { cargo run -q -p wcl -- $1 --help 2>&1 \
         | sed -n '/^Commands:/,/^$/p' | sed -n 's/^  \([a-z][a-z-]*\) .*/\1/p' | grep -v '^help$'; }; \
-    { subs ""; subs wdoc | sed 's/^/wdoc /'; subs wad | sed 's/^/wad /'; } \
+    { subs ""; subs wdoc | sed 's/^/wdoc /'; subs wad | sed 's/^/wad /'; \
+      subs wskill | sed 's/^/wskill /'; } \
         | sort > target/refcheck/commands-real.txt
     @printf '{ let c = head(clis); join(flatten(map(c.subcommands, fn(s: Subcommand) -> list<utf8> { flatten([[s.name], map(s.subcommands, fn(n: Subcommand) -> utf8 { $"${s.name} ${n.name}" })]) })), "\\n") }\n' \
         | cargo run -q -p wcl -- repl docs/wskills/wcl/wskill.wcl \

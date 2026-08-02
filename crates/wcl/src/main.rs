@@ -17,6 +17,7 @@ mod preview;
 mod scaffold;
 mod serve;
 mod wad;
+mod wskill;
 
 const EXIT_OK: u8 = 0;
 const EXIT_PARSE: u8 = 1;
@@ -284,6 +285,11 @@ enum Command {
         #[command(subcommand)]
         cmd: WadCommand,
     },
+    /// wskill helpers. Scaffold a wskill with `wcl init wskill`.
+    Wskill {
+        #[command(subcommand)]
+        cmd: WskillCommand,
+    },
     /// Walk a document's pending interview questions and record the answers —
     /// the respondent-facing counterpart to editing the WCL by hand. A block
     /// type opts in with the `@answerable` decorator from `import <answer.wcl>`,
@@ -319,6 +325,29 @@ enum Command {
         /// Skip the question for `--id`: writes its declared skipped status.
         #[arg(long, requires = "id", conflicts_with_all = ["text", "pick"])]
         skip: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum WskillCommand {
+    /// Print the wskill's model — units, index trees, `related` and pin
+    /// edges, per-unit block lists, and where each is written — as JSON on
+    /// stdout. No editor, no build: the same model the browser editor's
+    /// graph view draws and the curator audits.
+    ///
+    /// Examples:
+    ///   wcl wskill graph
+    ///   wcl wskill graph docs/wskills/wcl
+    ///   wcl wskill graph docs/wskills/wcl --rev HEAD~1
+    Graph {
+        /// The wskill folder (or an entry `.wcl` inside it). Defaults to
+        /// the current directory.
+        entry: Option<PathBuf>,
+        /// Read the model at this git revision instead of the working
+        /// tree — the whole tree is materialized, so imports resolve as
+        /// they did at that commit.
+        #[arg(long)]
+        rev: Option<String>,
     },
 }
 
@@ -692,6 +721,12 @@ fn main() -> ExitCode {
             pick,
             skip,
         } => answer::run_answer(&file, list, id.as_deref(), text.as_deref(), &pick, skip),
+        Command::Wskill { cmd } => match cmd {
+            WskillCommand::Graph { entry, rev } => {
+                let entry = entry.unwrap_or_else(|| PathBuf::from("."));
+                wskill::run_graph(&entry, rev.as_deref())
+            }
+        },
         Command::Wad { cmd } => match cmd {
             WadCommand::Spec {
                 from,
@@ -969,7 +1004,7 @@ fn run_training(
     // A course is usually entered below its wskill root (`wdoc/training/`), so
     // resolve the owning wskill the same way the dev server does.
     let dir = file.parent().unwrap_or_else(|| Path::new("."));
-    let owned = wcl_wdoc::training::sidecar_for(dir);
+    let owned = wcl_wdoc::training::sidecar_for(dir, wcl_wskill::ROOT_MARKER);
     let root = owned.parent().unwrap_or(dir);
     if let Some(TrainingSub::Grade {
         id,

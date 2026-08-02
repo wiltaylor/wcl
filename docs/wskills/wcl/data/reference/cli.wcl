@@ -4,7 +4,7 @@
 // fails when the subcommand set here drifts from the binary.
 //
 // The book renders a top-level "CLI" section: wcl → its subcommands → the nested
-// subcommands of `wdoc` and `wad`.
+// subcommands of `wdoc`, `wad` and `wskill`.
 
 cli wcl_cli {
   name        = "wcl"
@@ -219,6 +219,20 @@ cli wcl_cli {
       cli_switch sw_incspec { long = "--include-specs"  description = "Keep changes to `spec` entities in the change list."  remarks = "They are filtered out by default." }
       cli_switch sw_format  { long = "--format"  value_name = "FORMAT"  description = "What the command produces."  remarks = "`wcl` (default) writes `data/specs/<id>.wcl`; `json` prints the filtered change list to stdout and writes nothing." }
       code_example { lang = "console"  code = "wcl wad spec --from v1.2 --id spec_billing --title \"Billing split\" wad.wcl" }
+    }
+  }
+
+  subcommand cmd_wskill {
+    name = "wskill"
+    description = "wskill helpers. Scaffold a wskill with `wcl init wskill`."
+    code_example { lang = "console"  code = "wcl wskill graph docs/wskills/wcl" }
+
+    subcommand cmd_wskill_graph {
+      name = "graph"
+      description = "Print the wskill's model — units, index trees, `related` and pin edges, per-unit block lists with the file and byte span each is written at, and the units no index pins — as JSON on stdout. Reads the data model only: no build, no editor."
+      cli_arg    arg_entry { name = "entry"  required = false  description = "The wskill folder, or an entry `.wcl` inside it."  remarks = "Default: the current directory." }
+      cli_switch sw_rev { long = "--rev"  value_name = "REV"  description = "Read the model at this git revision instead of the working tree."  remarks = "The whole tree is materialized, so imports resolve as they did at that commit — this is what makes two graphs comparable." }
+      code_example { lang = "console"  code = "wcl wskill graph docs/wskills/wcl --rev HEAD~1" }
     }
   }
 }

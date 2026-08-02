@@ -15,6 +15,7 @@ mod demo;
 mod dopesheet;
 mod file;
 mod force;
+pub mod git;
 mod highlight;
 mod icons;
 mod image;
@@ -54,6 +55,7 @@ pub use force::layout_graph;
 pub use markdown::{markdown, skill};
 pub use pdf::{PageSize, PdfError, pdf};
 pub use review::Handshake;
+pub use sidecar::owner_root;
 pub use sites::{EntryIncludeInfo, EntrySiteInfo, entry_site_info};
 
 /// Highlight `source` as HTML `<span class="tok-…">` runs using the same

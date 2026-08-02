@@ -61,7 +61,7 @@ fn add_comment(ws: &Workspace, v: &serde_json::Value) -> Result<serde_json::Valu
     // page_file that doesn't resolve inside the served tree means "page
     // source unknown" — fall back to the root sidecar, not an error.
     let sidecar = match page_file.and_then(|f| ws.abs(f).ok()) {
-        Some(pf) => comments::comments_path(&pf, ws.root_dir()),
+        Some(pf) => comments::comments_path(&pf, ws.root_dir(), wcl_wskill::ROOT_MARKER),
         None => ws.root_dir().join("comments.wcl"),
     };
     let id = comments::add(

@@ -47,6 +47,18 @@ container wcl_wdoc {
   repo       = wcl_monorepo
 }
 
+container wcl_wskill {
+  system     = wcl
+  name       = "wcl_wskill"
+  summary    = "The wskill model: a wskill folder's unit graph — units, nested index trees, related and pin edges, per-unit block lists — as typed Rust, loadable at a git revision."
+  kind       = :library
+  technology = "Rust"
+  repo       = wcl_monorepo
+  body {
+    p "Sits between wcl_wdoc (which renders a wskill's projections) and the CLI, because the model has several consumers that must not need a running editor: `wcl wskill graph`, the curator agent, and the browser editor's graph view."
+  }
+}
+
 container wcl_lsp {
   system     = wcl
   name       = "wcl_lsp"

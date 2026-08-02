@@ -331,7 +331,7 @@ pub(crate) async fn serve(
         error: RwLock::new(None),
         generation: tokio::sync::watch::Sender::new(0),
         watch_root: watch_root.clone(),
-        training_sidecar: wcl_wdoc::training::sidecar_for(&watch_root),
+        training_sidecar: wcl_wdoc::training::sidecar_for(&watch_root, wcl_wskill::ROOT_MARKER),
         pending: Mutex::new(Vec::new()),
         rebuild_tx: rebuild_tx.clone(),
     });
