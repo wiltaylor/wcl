@@ -136,10 +136,11 @@ pub enum ResolvedType<'a> {
     },
 }
 
-/// How many alias links [`TypeField::shape`] will peel before giving up.
-/// Matches [`Document::resolve_alias`]'s cap; a cycle stops the walk
-/// rather than hanging it.
-const ALIAS_DEPTH: u8 = 8;
+/// How many alias links a walk down an alias chain will peel before
+/// giving up — the cap that stops a cycle (`type A = B  type B = A`,
+/// which parses) from hanging the walk. Shared by every walker, so the
+/// document can't disagree with itself about how deep an alias goes.
+pub(crate) const ALIAS_DEPTH: u8 = 8;
 
 /// The **shape** of a schema field's declared type: what a consumer needs
 /// in order to decide how to treat the field, without printing the type
@@ -183,6 +184,13 @@ pub enum FieldShape<'a> {
     /// A function-valued field. The signature is not part of the shape —
     /// ask [`TypeField::resolved_type`] for it.
     Function,
+    /// An alias chain too long or too tangled to peel ([`ALIAS_DEPTH`]),
+    /// carrying the link the walk stopped on. The declaration is an
+    /// alias, so it is not a [`Block`](FieldShape::Block); what it stands
+    /// for is unknown, so it is nothing else either. Saying so is the
+    /// point — a shape that guessed here would misclassify the field in
+    /// exactly the silence this type exists to end.
+    Unresolved(TypeDecl<'a>),
 }
 
 impl<'a> FieldShape<'a> {
@@ -224,10 +232,11 @@ impl<'a> FieldShape<'a> {
                 // The alias target resolves in the ALIAS's namespace, not
                 // the field's — `type Port = u16` means what it meant
                 // where it was written.
-                Some(target) if depth > 0 => {
+                Some(_) if depth == 0 => FieldShape::Unresolved(d),
+                Some(target) => {
                     Self::from_resolved(doc, doc.resolve_in(target, d.file_ns), depth - 1)
                 }
-                _ => FieldShape::Block(d),
+                None => FieldShape::Block(d),
             },
             ResolvedType::List(inner) => FieldShape::List(nest(inner)),
             ResolvedType::Reference(inner) => FieldShape::Reference(nest(inner)),

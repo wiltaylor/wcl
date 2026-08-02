@@ -114,7 +114,7 @@ code_item code_crate_wcl_lang {
   code_node n_cg_wcl_lang_doc {
     name = "doc"
     kind = "module"
-    summary = "16 files, 66 pub items"
+    summary = "16 files, 67 pub items"
     deps = [n_cg_wcl_lang_ast, n_cg_wcl_lang_data, n_cg_wcl_lang_environment, n_cg_wcl_lang_error, n_cg_wcl_lang_lexer, n_cg_wcl_lang_numeric, n_cg_wcl_lang_parser, n_cg_wcl_lang_symbols, n_cg_wcl_lang_value]
   }
   code_node n_cg_wcl_lang_edit {
@@ -3061,6 +3061,11 @@ code_item code_api_doc_view {
       kind = "fn"
       visibility = "crate"
     }
+    code_member m_n_api_doc_view_views_fns_ALIAS_DEPTH {
+      signature = "const ALIAS_DEPTH: u8"
+      kind = "const"
+      visibility = "crate"
+    }
     code_member m_n_api_doc_view_views_fns_dataref_to_value_at {
       signature = "fn dataref_to_value_at<'a>( dr: &crate::data::DataRef<'a>, base…"
       kind = "fn"
@@ -3218,6 +3223,10 @@ code_item code_api_doc_view {
     }
     code_member m_n_api_doc_view_FieldShape_Function {
       signature = "Function"
+      kind = "variant"
+    }
+    code_member m_n_api_doc_view_FieldShape_Unresolved {
+      signature = "Unresolved(TypeDecl<'a>)"
       kind = "variant"
     }
     code_member m_n_api_doc_view_FieldShape_builtin {

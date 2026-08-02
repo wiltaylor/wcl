@@ -405,6 +405,13 @@ impl<'a> KindModel<'a> {
     /// descending from `wdoc.SvgBlock`. The client curates which surface in
     /// the add-shape palette; the full list is served so any selected shape
     /// — including user-declared ones — gets a schema-driven form.
+    ///
+    /// The base type is still addressed by NAME, the one classification
+    /// here a [`wcl_lang::FieldShape`] can't carry — a shape describes
+    /// what one field holds, not what a declaration descends from.
+    /// Renaming `wdoc.SvgBlock` therefore still empties this list
+    /// silently; closing that needs a supertype test taking a resolved
+    /// declaration rather than a string.
     pub(super) fn diagram_kinds(&self) -> Vec<serde_json::Value> {
         let names = self.kind_names();
         let mut seen: Vec<String> = Vec::new();
@@ -900,7 +907,9 @@ type D {
     /// and becomes an ordinary property with a suggestion picker.
     #[test]
     fn reclassifying_a_field_moves_it_in_the_model() {
-        let schema = |ty: &str| {
+        // One schema, one field, two declared types — and the same value
+        // written the way each type spells it.
+        let schema = |ty: &str, value: &str| {
             format!(
                 "@block(\"zone\")\n\
                  type Zone {{ @inline(0) id: identifier  name: utf8 }}\n\
@@ -910,14 +919,9 @@ type D {
                  type D {{ @children(\"zone\") zones: list<Zone>  @children(\"system\") systems: list<System> }}\n\
                  system a {{ zone = {value} }}\n\
                  system b {{ zone = {value} }}\n",
-                value = if ty.starts_with("identifier") {
-                    "core"
-                } else {
-                    "\"core\""
-                },
             )
         };
-        let linked = Document::open(&schema("identifier?"), "test.wcl").expect("parse");
+        let linked = Document::open(&schema("identifier?", "core"), "test.wcl").expect("parse");
         let model = KindModel::new(&linked);
         let system = model.get("system").expect("system");
         assert_eq!(
@@ -926,7 +930,7 @@ type D {
         );
         assert!(model.json_with_suggestions(system)["suggestions"]["zone"].is_null());
 
-        let text = Document::open(&schema("utf8?"), "test.wcl").expect("parse");
+        let text = Document::open(&schema("utf8?", "\"core\""), "test.wcl").expect("parse");
         let model = KindModel::new(&text);
         let system = model.get("system").expect("system");
         assert_eq!(system.json()["parents"], serde_json::json!([]));
