@@ -3,10 +3,9 @@
 // Preview-only class used in the "Authoring" live example below. Declared at
 // the top level so it applies site-wide; hyphenated names may be bare or quoted.
 class "sty-accent" {
-  color = "#bf616a"
-  bold  = true
-  dark  { color = "#88c0d0" }
-  light { color = "#5e81ac" }
+  css = "color:#bf616a;font-weight:bold;"
+  dark  { css = "color:#88c0d0;" }
+  light { css = "color:#5e81ac;" }
 }
 
 page wdoc_styling { sites = [:reference]  title = "Styling"
@@ -16,17 +15,16 @@ page wdoc_styling { sites = [:reference]  title = "Styling"
 
   h2 "Classes"
 
-  p "A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's `class` field. Fields cover text, box, and SVG paint properties; per-mode overrides go in `dark { }` / `light { }` sub-blocks."
+  p "A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's `class` field. Declarations stay CSS text in `css`; SVG paint and callout accents retain short fields. Per-mode overrides go in `dark { }` / `light { }` sub-blocks."
 
   h3 "Authoring"
 
   code wcl {
     source = <<'WCL'
 class accent {
-  color = "var(--wdoc-accent)"
-  bold  = true
-  dark  { color = "#88c0d0" }
-  light { color = "#5e81ac" }
+  css = "color:var(--wdoc-accent);font-weight:bold;"
+  dark  { css = "color:#88c0d0;" }
+  light { css = "color:#5e81ac;" }
 }
 
 // Use the class on a block:
@@ -48,11 +46,43 @@ WCL
   table {
     rows:
       | "Group" | "Fields" |
-      | "Text"  | "`color`, `background`, `bold`, `italic`, `underline`, `font_size`, `font_family`, `text_align`, `text_transform`, `letter_spacing`, `line_height`" |
-      | "Box"   | "`padding`, `margin`, `border`" |
-      | "SVG"   | "`fill`, `stroke`, `stroke_width`, `stroke_linejoin`, `stroke_linecap`, `opacity`" |
+      | "Declarations" | "`css` — raw CSS declarations for this rule" |
+      | "SVG shorthand" | "`fill`, `stroke`, `stroke_width`, `opacity`" |
       | "Callout" | "`accent` — sets a callout's accent colour (heading, border, icon) when the class is on a `callout`" |
+      | "Nesting" | "`nest \"selector\" { css = … }`; `&` explicitly references the parent class" |
       | "Modes" | "`dark { … }`, `light { … }` for prefers-color-scheme overrides" |
+  }
+
+  h3 "Selectors and at-rules"
+
+  p "Use `nest` for selectors rooted at a class. A fragment without `&` is a descendant; `&` explicitly attaches a compound, pseudo-class, or pseudo-element to the parent. Use `base` for element/reset selectors, `font_face` for font data, `media` to wrap class rules, and `keyframes` with `base` frame children."
+
+  code wcl {
+    source = <<'WCL'
+class card {
+  css = "display:grid;"
+  nest ".title" { css = "font-weight:700;" } // .card .title
+  nest "&:hover" { css = "opacity:0.8;" }    // .card:hover
+}
+
+base "body,.wdoc-body" { css = "margin:0;" }
+
+font_face "Inter" {
+  src = "url('inter.woff2') format('woff2')"
+  weight = "400"
+  style = "normal"
+  display = "swap"
+}
+
+media "(max-width: 40rem)" {
+  class card { css = "display:block;" }
+}
+
+keyframes "pulse" {
+  base "from" { css = "opacity:0;" }
+  base "to"   { css = "opacity:1;" }
+}
+WCL
   }
 
   h3 "Hyphenated names"

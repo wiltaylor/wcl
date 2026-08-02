@@ -72,7 +72,7 @@ WCL
 
   h2 "Styling shapes with classes"
 
-  p "Every shape takes a `class` list, just like text. A `class` emits SVG paint properties — `fill`, `stroke`, `stroke_width`, `stroke_linecap`, `stroke_linejoin`, `opacity` — with `dark { }` / `light { }` overrides, so you style shapes the same way you style prose. Prefer a class over an inline `fill = …` so a shape follows the site theme and the reader's light/dark mode."
+  p "Every shape takes a `class` list. A `class` keeps concise SVG paint fields — `fill`, `stroke`, `stroke_width`, `opacity` — with `dark { }` / `light { }` overrides; less-common paint declarations go in `css`. Prefer a class over an inline `fill = …` so a shape follows the site theme and the reader's light/dark mode."
 
   diagram { width = 320  height = 120
     rect { x = 20.0   y = 25.0  width = 110.0  height = 70.0  class = ["dgm-box"] }
@@ -110,8 +110,8 @@ WCL
       | "`fill`"                  | "Interior colour." |
       | "`stroke`"                | "Outline colour." |
       | "`stroke_width`"          | "Outline thickness." |
-      | "`stroke_linecap` / `stroke_linejoin`" | "Line end / corner style." |
       | "`opacity`"               | "Overall transparency (`0`–`1`)." |
+      | "`css`"                   | "Other SVG/CSS declarations, such as `stroke-linecap:round;`." |
       | "`dark { }` / `light { }`" | "Per-colour-scheme overrides." |
   }
 

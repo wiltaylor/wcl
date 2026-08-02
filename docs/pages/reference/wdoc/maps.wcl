@@ -3,8 +3,8 @@
 // Pin theming rides the `class` system — icons paint with currentColor, so a
 // class `color` recolours the marker (with optional `dark` / `light`).
 class "pin-city" {
-  color = "#fbbf24"
-  dark  { color = "#fcd34d" }
+  css = "color:#fbbf24;"
+  dark  { css = "color:#fcd34d;" }
 }
 
 page wdoc_maps { sites = [:reference]  title = "Maps"

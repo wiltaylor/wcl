@@ -13,6 +13,10 @@ namespace wdoc
 @document
 type Site {
   @children("class")          classes:     list<Class>
+  @children("base")           bases:       list<Base>
+  @children("font_face")      font_faces:  list<FontFace>
+  @children("media")          media:       list<Media>
+  @children("keyframes")      keyframes:   list<Keyframes>
   @children("stylesheet")     stylesheets: list<Stylesheet>
   @children("page")           pages:       list<Page>
   @children("inline_pattern") patterns:    list<InlinePattern>
@@ -50,9 +54,9 @@ type Site {
   @children("include")        includes:    list<IncludeSites>
 }
 
-// Raw stylesheet. Carries CSS that the bare-class `class` system can't
-// express (descendant / compound / pseudo selectors, `@font-face`,
-// `@keyframes`, `var()`, …). The build collects every `stylesheet` block
+// Legacy raw stylesheet escape hatch. New CSS should use the structured
+// `class` / `base` / `font_face` / `media` / `keyframes` vocabulary so
+// selectors and at-rules remain WCL structure. The build collects every `stylesheet` block
 // — bundled ones (from this stdlib, co-located with the block they style)
 // before user ones — and injects their `css` verbatim into each page's
 // `<head>` ahead of the `class` rules, so user `class`/`stylesheet` rules
@@ -274,39 +278,23 @@ type Class {
   // document requires).
   sites: list<symbol>?
 
-  // Text styling
-  color:       utf8?
-  background:  utf8?
-  bold:        bool?
-  italic:      bool?
-  underline:   bool?
-  font_weight: utf8?
+  // Opaque declarations are emitted after the SVG paint shorthand.
+  css: utf8?
+
+  // Selector fragments without `&` are descendants; `&` explicitly
+  // references the class selector for compound and pseudo selectors.
+  @children("nest") nests: list<Nest>
 
   // Callout accent colour — emits the `--callout-accent` custom property,
   // so a `callout` carrying this class is themed (heading / border / icon)
   // without authoring CSS. The six built-in callout types set it too.
   accent:      utf8?
 
-  // Sizing / alignment
-  font_size:      utf8?
-  line_height:    utf8?
-  font_family:    utf8?
-  text_align:     utf8?
-  text_transform: utf8?
-  letter_spacing: utf8?
-
-  // Layout
-  padding:     utf8?
-  margin:      utf8?
-  border:      utf8?
-
   // SVG painting (diagram shapes + chart series carry `class`es, so
-  // these theme bars / lines / slices the same way `color` themes text).
+  // these theme bars / lines / slices without a raw declaration string).
   fill:         utf8?
   stroke:       utf8?
   stroke_width: utf8?
-  stroke_linejoin: utf8?
-  stroke_linecap:  utf8?
   opacity:      utf8?
 
   // Optional per-mode overrides. `dark` is the default mode; `light`
@@ -320,53 +308,68 @@ type Class {
 // same styling fields as `Class` (minus the name).
 @block("dark")
 type ClassMode {
-  color:          utf8?
-  background:     utf8?
-  bold:           bool?
-  italic:         bool?
-  underline:      bool?
-  font_weight:    utf8?
+  css:            utf8?
   accent:         utf8?
-  font_size:      utf8?
-  line_height:    utf8?
-  font_family:    utf8?
-  text_align:     utf8?
-  text_transform: utf8?
-  letter_spacing: utf8?
-  padding:      utf8?
-  margin:       utf8?
-  border:       utf8?
   fill:         utf8?
   stroke:       utf8?
   stroke_width: utf8?
-  stroke_linejoin: utf8?
-  stroke_linecap:  utf8?
   opacity:      utf8?
 }
 
 // `light {}` block — structurally identical to `dark {}`.
 @block("light")
 type ClassModeLight {
-  color:          utf8?
-  background:     utf8?
-  bold:           bool?
-  italic:         bool?
-  underline:      bool?
-  font_weight:    utf8?
+  css:            utf8?
   accent:         utf8?
-  font_size:      utf8?
-  line_height:    utf8?
-  font_family:    utf8?
-  text_align:     utf8?
-  text_transform: utf8?
-  letter_spacing: utf8?
-  padding:      utf8?
-  margin:       utf8?
-  border:       utf8?
   fill:         utf8?
   stroke:       utf8?
   stroke_width: utf8?
-  stroke_linejoin: utf8?
-  stroke_linecap:  utf8?
   opacity:      utf8?
+}
+
+// A raw selector fragment nested beneath a class-rooted rule. A fragment
+// containing `&` attaches to the class selector; every other fragment is a
+// descendant.
+@block("nest")
+type Nest {
+  @inline(0) selector: utf8
+  css: utf8
+}
+
+// Element, reset, selector-list and tag-qualified rules whose root is not a
+// single bare class.
+@block("base")
+type Base {
+  @inline(0) selector: utf8
+  css: utf8
+  sites: list<symbol>?
+}
+
+// A typed @font-face declaration. The family and source are required; the
+// remaining descriptors are optional CSS values.
+@block("font_face")
+type FontFace {
+  @inline(0) family: utf8
+  src: utf8
+  weight: utf8?
+  style: utf8?
+  display: utf8?
+  sites: list<symbol>?
+}
+
+// A media query containing class-rooted rules.
+@block("media")
+type Media {
+  @inline(0) query: utf8
+  @children("class") classes: list<Class>
+  sites: list<symbol>?
+}
+
+// A named animation whose frames use `base` blocks for `from`, `to`, or
+// percentage selectors.
+@block("keyframes")
+type Keyframes {
+  @inline(0) name: utf8
+  @children("base") frames: list<Base>
+  sites: list<symbol>?
 }

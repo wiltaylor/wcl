@@ -15,16 +15,15 @@ concept styling {
     h2 "Classes"
     p <<DOC
       A `class <name> { … }` block declares a CSS class. Apply it by listing the name in any block's
-      `class` field (or a span's). Fields cover text, box, and SVG paint properties; per-mode
-      overrides go in `dark { }` / `light { }` sub-blocks.
+      `class` field (or a span's). Declarations stay CSS text in `css`; SVG paint and callout accents
+      retain short fields. Per-mode overrides go in `dark { }` / `light { }` sub-blocks.
     DOC
     code "wcl" {
       source = <<DOC
         class accent {
-          color = "var(--wdoc-accent)"
-          bold  = true
-          dark  { color = "#88c0d0" }
-          light { color = "#5e81ac" }
+          css = "color:var(--wdoc-accent);font-weight:bold;"
+          dark  { css = "color:#88c0d0;" }
+          light { css = "color:#5e81ac;" }
         }
 
         // Use the class on a block:
@@ -35,7 +34,7 @@ concept styling {
     h2 "Field groups"
     table {
       header = ["Group", "Fields"]
-      rows = [["Text", "`color`, `background`, `bold`, `italic`, `underline`, `font_size`, `font_family`, `text_align`, `text_transform`, `letter_spacing`, `line_height`"], ["Box", "`padding`, `margin`, `border`"], ["SVG", "`fill`, `stroke`, `stroke_width`, `stroke_linejoin`, `stroke_linecap`, `opacity`"], ["Callout", "`accent` — sets a callout's accent colour (heading, border, icon) when the class is on a `callout`"], ["Modes", "`dark { … }`, `light { … }` for prefers-color-scheme overrides"]]
+      rows = [["Declarations", "`css` — raw CSS declarations for this rule"], ["SVG shorthand", "`fill`, `stroke`, `stroke_width`, `opacity`"], ["Callout", "`accent` — sets a callout's accent colour (heading, border, icon) when the class is on a `callout`"], ["Nesting", "`nest \"selector\" { css = … }`; `&` explicitly references the parent class"], ["Modes", "`dark { … }`, `light { … }` for prefers-color-scheme overrides"]]
     }
     p <<DOC
       Hyphenated class names may be written bare — `class wdoc-series-1 { fill = "#88c0d0" }` — or

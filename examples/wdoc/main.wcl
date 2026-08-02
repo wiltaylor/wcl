@@ -26,26 +26,23 @@ import <wdoc.wcl>
 // so it stays bright and readable on every site's theme (a hardcoded
 // dark blue turned to mud on the dark themes).
 class accent {
-  color = "var(--wdoc-accent)"
-  bold  = true
+  css = "color:var(--wdoc-accent);font-weight:bold;"
 }
 
 class boxed {
-  border  = "1px solid #999"
-  padding = "0.5rem"
+  css = "padding:0.5rem;border:1px solid #999;"
 }
 
 class badge {
-  font_family = "sans-serif"
-  color       = "#444"
+  css = "color:#444;font-family:sans-serif;"
 }
 
 // Recolour icons through the class system. Icons paint with
 // `currentColor`, so a `color` here themes any icon carrying the class
 // (in a diagram directly, or inline via an iconset / icon_def `class`).
 class "icon-accent" {
-  color = "#5e81ac"
-  dark  { color = "#88c0d0" }
+  css = "color:#5e81ac;"
+  dark  { css = "color:#88c0d0;" }
 }
 
 // The `lucide` and `bootstrap` packs are built in (declared in the wdoc
@@ -123,7 +120,7 @@ site docs {
 // the docs book title takes the accent hue (the theme leaves it at the
 // body colour). Demonstrates that themes set the baseline and classes
 // fine-tune on top.
-class "book-title" { sites = [:docs]  color = "#88c0d0"  light { color = "#5e81ac" } }
+class "book-title" { sites = [:docs]  css = "color:#88c0d0;"  light { css = "color:#5e81ac;" } }
 
 // A blog: the `webpage` template again, with its own posts and the
 // Gruvbox theme — so all three sites in this document look distinct.

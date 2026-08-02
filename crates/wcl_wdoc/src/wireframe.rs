@@ -21,7 +21,8 @@
 //! `bg_inset` controls, `border`, `fg`/`fg_muted` text, the site `accent` for
 //! active states), baked into the SVG as concrete hex — so a wireframe reflects
 //! the theme on any output (HTML or PDF) without `currentColor`. A widget's own
-//! `class` `background`/`color`/`border` overrides its box fill / text / border.
+//! `class` `fill` / `stroke` paint shorthand overrides its box fill / border,
+//! and a raw `color` declaration preserves its text-colour override.
 //! The few glyphs (chevron, check, close ✕, dots) are native SVG shapes in
 //! baked colours, so there's no icon-sprite dependency. Measurement is
 //! theme-independent (the only `doc` use is `theme_of`, which feeds emission,
@@ -1633,9 +1634,9 @@ fn baseline(top: f64, h: f64) -> f64 {
 fn theme_of(doc: &Document, block: &Block<'_>) -> Theme {
     let classes = field_utf8_list(block, "class");
     Theme {
-        bg: class_field(doc, &classes, "background"),
-        fg: class_field(doc, &classes, "color"),
-        border: class_field(doc, &classes, "border").and_then(|s| border_color(&s)),
+        bg: class_field(doc, &classes, "fill"),
+        fg: class_css_property(doc, &classes, "color"),
+        border: class_field(doc, &classes, "stroke"),
     }
 }
 
@@ -1653,22 +1654,41 @@ fn class_field(doc: &Document, classes: &[String], field: &str) -> Option<String
     None
 }
 
-/// The text fill for a widget — its class `color` override, else the theme's
-/// `fg` role.
+/// Read one declaration from a class's opaque CSS body for the wireframe
+/// renderer's existing baked-colour behaviour. CSS itself remains preserved
+/// verbatim by the web renderer; this narrow lookup only bridges the retired
+/// `color` shorthand to SVG output.
+fn class_css_property(doc: &Document, classes: &[String], property: &str) -> Option<String> {
+    for class_name in classes {
+        let Some(class) = doc
+            .blocks()
+            .find(|b| b.kind() == "class" && label_string(b).as_deref() == Some(class_name))
+        else {
+            continue;
+        };
+        let Some(css) = field_utf8(&class, "css") else {
+            continue;
+        };
+        if let Some(value) = css.split(';').find_map(|declaration| {
+            let (name, value) = declaration.split_once(':')?;
+            (name.trim().eq_ignore_ascii_case(property)).then(|| value.trim().to_string())
+        }) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+/// The text fill for a widget — its class's raw `color` declaration, else the
+/// theme's `fg` role.
 fn fg_of<'a>(theme: &'a Theme, roles: &'a ThemeRoles) -> &'a str {
     theme.fg.as_deref().unwrap_or(&roles.fg)
 }
 
-/// A box border colour: the class `border`'s colour if set, else the theme's
+/// A box border colour: the class `stroke` if set, else the theme's
 /// `border` role.
 fn border<'a>(theme: &'a Theme, roles: &'a ThemeRoles) -> &'a str {
     theme.border.as_deref().unwrap_or(&roles.border)
-}
-
-/// The colour token from a CSS `border` shorthand (`"1px solid #1f6feb"` →
-/// `"#1f6feb"`): the last whitespace-separated token.
-fn border_color(s: &str) -> Option<String> {
-    s.split_whitespace().last().map(str::to_string)
 }
 
 /// A rough average glyph advance (in em) so box sizing fits mock-up text
@@ -1696,15 +1716,6 @@ mod tests {
         assert!(text_w("a", FONT) > 0.0);
         assert!(text_w("aa", FONT) > text_w("a", FONT));
         assert!(text_w("", FONT) == 0.0);
-    }
-
-    #[test]
-    fn border_color_takes_last_token() {
-        assert_eq!(
-            border_color("1px solid #1f6feb").as_deref(),
-            Some("#1f6feb")
-        );
-        assert_eq!(border_color("red").as_deref(), Some("red"));
     }
 
     #[test]

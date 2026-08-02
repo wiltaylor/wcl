@@ -15,8 +15,9 @@ use crate::render::{
     escape_html, expand_component_children, expand_instance_children, expand_repeater_children,
     field_bool, field_id, field_symbol, field_symbol_list_opt, field_utf8, field_utf8_list,
     find_template, flat_toc_to_value, footer_to_value, label_string, menu_to_value, pages_to_value,
-    read_deck, read_menu, read_sidebar_footer, read_toc, render_block, render_class, render_page,
-    render_template, site_theme_css, toc_to_value,
+    read_deck, read_menu, read_sidebar_footer, read_toc, render_base, render_block, render_class,
+    render_font_face, render_keyframes, render_media, render_page, render_template, site_theme_css,
+    toc_to_value,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -1442,8 +1443,8 @@ pub(crate) fn site_name(block: &Block<'_>) -> Option<String> {
     }
 }
 
-/// A block's declared `sites` membership list (used by `page`, `class`,
-/// and `stylesheet`). `None` ⇒ the field is absent, so the block belongs
+/// A block's declared `sites` membership list (used by `page` and CSS
+/// blocks). `None` ⇒ the field is absent, so the block belongs
 /// to every site — same as an empty list.
 fn block_sites(block: &Block<'_>) -> Option<Vec<String>> {
     field_symbol_list_opt(block, "sites")
@@ -1474,19 +1475,19 @@ fn block_in_site(block: &Block<'_>, site_name: Option<&str>) -> bool {
 /// rules, so it overrides the built-in defaults (chart palette, syntax
 /// tokens) while user `class` blocks still win. `site_block` is the
 /// `@block("site")` carrying the selection (`None` ⇒ bare/unthemed).
-/// The four CSS buckets `site_css` assembles — `stylesheet` text and
-/// rendered `class` rules, split by library (embedded-stdlib) vs user
+/// The four CSS buckets `site_css` assembles — legacy `stylesheet` text and
+/// rendered structured CSS rules, split by library (embedded-stdlib) vs user
 /// origin so the colour theme can be spliced between them.
 #[derive(Default)]
 struct CssBuckets {
     lib_sheets: Vec<String>,
     user_sheets: Vec<String>,
-    lib_classes: Vec<String>,
-    user_classes: Vec<String>,
+    lib_rules: Vec<String>,
+    user_rules: Vec<String>,
 }
 
 /// Collect a top-level block's CSS contribution into `css`. A `stylesheet`
-/// or `class` block deposits directly; a generator (`wdoc_repeater`,
+/// or structured CSS block deposits directly; a generator (`wdoc_repeater`,
 /// `wdoc_instance`, or a `wdoc_component` instance) is expanded and its
 /// generated blocks collected recursively — so a repeater driven by data
 /// can emit `class` blocks (the "repeater anywhere" hook for design-system
@@ -1504,12 +1505,20 @@ fn collect_css_block(b: &Block<'_>, is_lib: bool, css: &mut CssBuckets) {
                 .push(text);
             }
         }
-        "class" => {
-            if let Some(rule) = render_class(b) {
+        kind @ ("class" | "base" | "font_face" | "media" | "keyframes") => {
+            let rule = match kind {
+                "class" => render_class(b),
+                "base" => render_base(b),
+                "font_face" => render_font_face(b),
+                "media" => render_media(b),
+                "keyframes" => render_keyframes(b),
+                _ => unreachable!("matched a structured CSS block"),
+            };
+            if let Some(rule) = rule {
                 if is_lib {
-                    &mut css.lib_classes
+                    &mut css.lib_rules
                 } else {
-                    &mut css.user_classes
+                    &mut css.user_rules
                 }
                 .push(rule);
             }
@@ -1550,24 +1559,27 @@ fn site_css(doc: &Document, site_name: Option<&str>, site_block: Option<&Block<'
     let CssBuckets {
         lib_sheets,
         user_sheets,
-        lib_classes,
-        user_classes,
+        lib_rules,
+        user_rules,
     } = css;
     let stylesheet_css = lib_sheets
         .into_iter()
         .chain(user_sheets)
         .collect::<Vec<_>>()
         .join("\n");
-    // The colour theme sits between the library classes (whose defaults
-    // it overrides) and the user classes (which still win).
+    // The colour theme sits between the library rules (whose defaults it
+    // overrides) and the user rules (which still win).
     let theme_css = site_theme_css(doc, site_block);
-    let class_css = lib_classes
+    let structured_css = lib_rules
         .into_iter()
         .chain(theme_css.into_iter().filter(|s| !s.is_empty()))
-        .chain(user_classes)
+        .chain(user_rules)
         .collect::<Vec<_>>()
         .join("\n");
-    format!("{}\n{stylesheet_css}\n{class_css}", highlight::theme_css())
+    format!(
+        "{}\n{stylesheet_css}\n{structured_css}",
+        highlight::theme_css()
+    )
 }
 
 /// The output dir, URL prefix, and home back-link for one site within the
