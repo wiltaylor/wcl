@@ -13,7 +13,7 @@
    Plain-DOM, same-origin, like frame.js. The wysiwyg click/move handlers
    ignore `.wcl-vis-gutter` hits so the controls own their events. */
 
-import { anchorOf, blockChildren, pageInfo, sameFileSiblings } from './anchors';
+import { anchorOf, blockChildren, pageEls, pageInfo, sameFileSiblings } from './anchors';
 
 const CSS_ID = 'wcl-vis-css';
 /* The iframe holds a plain wdoc build with no Forge tokens — literal
@@ -91,7 +91,9 @@ export function placeVisGutters(
   for (const g of doc.querySelectorAll('.wcl-vis-gutter, .wcl-vis-dropline')) g.remove();
   for (const h of doc.querySelectorAll('.wcl-vis-host')) h.classList.remove('wcl-vis-host');
   for (const h of doc.querySelectorAll('.wcl-vis-ghost')) h.classList.remove('wcl-vis-ghost');
-  const anchors = blockChildren(page.el)
+  const roots = pageEls(doc, page.file);
+  const anchors = (roots.length ? roots : [page.el])
+    .flatMap(blockChildren)
     .map((el) => anchorOf(doc, el))
     .filter((a) => a && !a.chrome);
   for (const { el, file, span, except, vis } of anchors) {

@@ -43,7 +43,8 @@ import {
    a nested list, a diagram with a nested shape, an edit_field binding and
    an edit_object button. */
 const PAGE = `
-<div data-wcl-page-file="unit.wcl" data-wcl-page-span="0:900" data-wcl-page-name="concept_x">
+<div data-wcl-page-file="unit.wcl" data-wcl-page-span="0:900" data-wcl-page-name="concept_x"
+     data-wcl-slot="content">
   <p id="a" data-wcl-block data-wcl-kind="p"
      data-wcl-span="10:20" data-wcl-file="unit.wcl">a</p>
   <p id="b" data-wcl-block data-wcl-kind="p" data-wcl-span="30:40" data-wcl-file="unit.wcl"
@@ -85,6 +86,13 @@ const PAGE = `
       data-wcl-field-target="login" data-wcl-field-plain>Login</h2>
   <button id="editbtn" data-wcl-edit-kind="screen" data-wcl-edit-target="login">Edit this</button>
   <p id="badspan" data-wcl-block data-wcl-span="oops" data-wcl-file="unit.wcl">malformed</p>
+</div>
+<div data-wcl-page-file="unit.wcl" data-wcl-page-span="0:900" data-wcl-page-name="concept_x"
+     data-wcl-slot="hero">
+  <h1 id="hero-title" data-wcl-block data-wcl-kind="h1"
+      data-wcl-span="890:895" data-wcl-file="unit.wcl">Hero</h1>
+  <p id="hero-copy" data-wcl-block data-wcl-kind="p"
+     data-wcl-span="896:899" data-wcl-file="unit.wcl">Copy</p>
 </div>`;
 
 function setup() {
@@ -277,6 +285,7 @@ describe('the page wrapper and the block tree', () => {
       name: 'concept_x',
       file: 'unit.wcl',
       span: { start: 0, end: 900 },
+      slot: 'content',
     });
     document.body.innerHTML = '<p>not a wdoc page</p>';
     expect(pageInfo(document)).toBeNull();
@@ -352,6 +361,10 @@ describe('the sibling walk', () => {
       'demo',
     ]);
     expect(sameFileSiblings(document, el('li2')).map((e) => e.id)).toEqual(['li1', 'li2']);
+    expect(sameFileSiblings(document, el('hero-title')).map((e) => e.id)).toEqual([
+      'hero-title',
+      'hero-copy',
+    ]);
     // The two walks agree about what a neighbour is.
     const sibs = sameFileSiblings(document, el('b'));
     expect(sibs[sibs.indexOf(el('b')) + 1]).toBe(adjacentSameFileSibling(document, el('b'), 'down'));

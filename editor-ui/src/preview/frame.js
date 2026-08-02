@@ -2,15 +2,25 @@
    document (same origin). The locator pair locOf/elByLoc is a verbatim
    port of the old `wdoc serve --comment` client: a block's children come
    from the anchor module's block-tree walk, and a locator is the /-joined
-   child-index path from the page root down to the element. Positional,
-   not fuzzy — a stale locator resolves to null and its pin is dropped
-   (the record itself survives in the sidecar).
+   slot-qualified child-index path from the owning page wrapper down to the
+   element. Positional, not fuzzy — a stale locator resolves to null and its
+   pin is dropped (the record itself survives in the sidecar).
 
    The comment marks below (`data-wcl-comment*`) are this module's OWN
    client-side attributes, not build stamps — everything the build stamps
    is read through preview/anchors.js. */
 
-import { SEL, blockChildren, containerOf, editButtonOf, kindOf, pageInfo } from './anchors';
+import {
+  SEL,
+  blockChildren,
+  containerOf,
+  editButtonOf,
+  kindOf,
+  pageForSlot,
+  pageInfo,
+  pageRootOf,
+  pageSlotOf,
+} from './anchors';
 
 const CSS_ID = 'wcl-comment-css';
 /* The iframe holds a plain wdoc build with no Forge tokens, so these are
@@ -59,23 +69,39 @@ export function injectBareCss(doc) {
   doc.head.appendChild(style);
 }
 
-/** Child-index path from the page root to `el`, e.g. "0/2/1". */
+/** Slot-qualified child-index path to `el`, e.g. "@hero/0/2/1". */
 export function locOf(pageEl, el) {
+  const root = pageRootOf(el) ?? pageEl;
+  if (!root || !root.contains(el)) return null;
   const path = [];
   let cur = el;
-  while (cur && cur !== pageEl) {
-    const container = containerOf(pageEl, cur);
-    path.unshift(blockChildren(container).indexOf(cur));
+  while (cur && cur !== root) {
+    const container = containerOf(root, cur);
+    const index = blockChildren(container).indexOf(cur);
+    if (index < 0) return null;
+    path.unshift(index);
     cur = container; // the page root ends the walk
   }
-  return path.join('/');
+  const pathLoc = path.join('/');
+  const slot = pageSlotOf(root);
+  return slot ? `@${slot}/${pathLoc}` : pathLoc;
 }
 
-/** Inverse of locOf; null when the path no longer resolves. */
+/** Inverse of locOf; null when the slot or path no longer resolves. Older
+    unqualified locators remain relative to the reserved content slot. */
 export function elByLoc(pageEl, loc) {
   if (loc === '' || loc == null || !pageEl) return null;
-  let node = pageEl;
-  for (const part of String(loc).split('/')) {
+  const parts = String(loc).split('/');
+  const doc = pageEl.ownerDocument;
+  let node;
+  if (parts[0]?.startsWith('@')) {
+    node = pageForSlot(doc, parts.shift().slice(1));
+  } else {
+    node = pageForSlot(doc, 'content') ?? pageEl;
+  }
+  if (!node) return null;
+  for (const part of parts) {
+    if (!/^\d+$/.test(part)) return null;
     node = blockChildren(node)[+part];
     if (!node) return null;
   }

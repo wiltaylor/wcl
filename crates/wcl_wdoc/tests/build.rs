@@ -5680,7 +5680,7 @@ page other { h1 "Other" {} }
 #[test]
 fn template_extends_layout_with_custom_footer() {
     // Pattern (a): keep a whole built-in by calling its layout fn, then
-    // append a custom region. The full webpage chrome must be present and
+    // append a custom section. The full webpage chrome must be present and
     // the footer must follow it.
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("site.wcl");
@@ -5719,7 +5719,7 @@ page index { h1 "Post" {} }
 
 #[test]
 fn template_overrides_header_keeps_navbar() {
-    // Pattern (b): copy the webpage layout body and swap one region — a
+    // Pattern (b): copy the webpage layout body and swap one section — a
     // custom masthead replaces wdoc_part_header while the stdlib navbar and
     // content parts are reused. The stdlib header markup must be gone.
     let tmp = TempDir::new().expect("mkdir tempdir");
@@ -12134,20 +12134,36 @@ fn edit_mode_stamps_source_span_and_file_anchors() {
 }
 
 #[test]
-fn edit_mode_exposes_unfilled_layout_slots_as_empty_wrappers() {
+fn edit_mode_wraps_each_slot_with_its_own_provenance() {
     let tmp = TempDir::new().expect("tempdir");
     let out = TempDir::new().expect("out");
     let main = tmp.path().join("main.wcl");
-    write_fixture(
-        &main,
+    let layout = tmp.path().join("layout.wcl");
+    std::fs::write(
+        &layout,
         r#"
 template article {
   slot content: content
+  slot hero: content?
   slot sidebar: content?
-  render = fn(c: TemplateCtx) -> list<Html> slot(c, :content)
+  slot footer: content = fn(c: TemplateCtx) -> list<Html> [
+    el("footer", [], [raw(c.title)])
+  ]
+  render = fn(c: TemplateCtx) -> list<Html>
+    flatten([slot(c, :hero), slot(c, :content), slot(c, :footer)])
 }
-site { default_template = :article }
-page index { p "Body." }
+"#,
+    )
+    .expect("write layout fixture");
+    write_fixture(
+        &main,
+        r#"
+import "./layout.wcl"
+site { default_template = :article title = "Layout fallback" }
+page index {
+  hero { h1 "Page hero" }
+  p "Body."
+}
 "#,
     );
     let opts = BuildOptions {
@@ -12158,7 +12174,45 @@ page index { p "Body." }
         panic!("edit build: {}", err.render_plain());
     }
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
-    assert!(html.contains("data-wcl-slot=\"sidebar\""), "{html}");
+
+    let slot_wrapper_opening_tag = |slot: &str| {
+        let slot_attr = format!("data-wcl-slot=\"{slot}\"");
+        let slot_at = html
+            .find(&slot_attr)
+            .unwrap_or_else(|| panic!("missing {slot_attr}:\n{html}"));
+        let start = html[..slot_at]
+            .rfind("<div ")
+            .unwrap_or_else(|| panic!("missing wrapper start for {slot}:\n{html}"));
+        let end = html[slot_at..]
+            .find('>')
+            .map(|offset| slot_at + offset + 1)
+            .unwrap_or_else(|| panic!("missing wrapper end for {slot}:\n{html}"));
+        &html[start..end]
+    };
+
+    let page_file = format!("data-wcl-page-file=\"{}\"", main.display());
+    for slot in ["content", "hero", "sidebar"] {
+        let opening_tag = slot_wrapper_opening_tag(slot);
+        assert!(
+            opening_tag.contains(&page_file),
+            "{slot} must belong to the page: {opening_tag}"
+        );
+        assert!(
+            opening_tag.contains("data-wcl-page-span=\""),
+            "{slot}: {opening_tag}"
+        );
+    }
+
+    let fallback = slot_wrapper_opening_tag("footer");
+    assert!(
+        fallback.contains(&format!("data-wcl-file=\"{}\"", layout.display())),
+        "fallback must belong to the layout declaration: {fallback}"
+    );
+    assert!(fallback.contains("data-wcl-span=\""), "{fallback}");
+    assert!(!fallback.contains("data-wcl-page-file="), "{fallback}");
+
+    assert!(html.contains("Page hero"), "named slot content: {html}");
+    assert!(html.contains("Layout fallback"), "fallback content: {html}");
 }
 
 /// Edit mode anchors each diagram child shape: a free-layout child gets a

@@ -38,7 +38,7 @@ type Comment {
                       // across different sites / sub-documents)
   object_kind: utf8?  // object address kind; present together with object_id
   object_id: utf8?    // object address id; present together with object_kind
-  loc: utf8?          // positional locator of the block within the page
+  loc: utf8?          // slot-qualified path of block indexes within the page
   target: utf8?       // human description of the referenced block
   body: utf8          // the reviewer's note
   author: utf8?       // who left it
