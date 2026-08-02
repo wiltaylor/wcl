@@ -30,9 +30,14 @@ fn has_default_decorator(decorators: &[Decorator]) -> bool {
 /// depend on the doc layer. Drives string-literal field-key acceptance in
 /// `parse_block`.
 fn decorator_is_schemaless(decorators: &[Decorator]) -> bool {
-    decorators
-        .iter()
-        .any(|d| d.name.len() == 1 && d.name[0] == "schemaless")
+    decorators.iter().any(|decorator| {
+        decorator.name.len() == 1
+            && decorator.name[0] == "schemaless"
+            && !decorator
+                .named
+                .iter()
+                .any(|arg| arg.name == "annotations" && matches!(&arg.value, Expr::Bool(true)))
+    })
 }
 
 /// Infer a `TypeRef` from an expression used as an inline default in

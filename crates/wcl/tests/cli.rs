@@ -51,6 +51,27 @@ fn check_reports_syntax_error_and_exits_nonzero() {
 }
 
 #[test]
+fn check_reports_undeclared_decorator_with_its_source_span() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("decorators.wcl");
+    std::fs::write(
+        &file,
+        "@document type Root { title: utf8 }\n@missing\ntitle = \"Hello\"\n",
+    )
+    .expect("write fixture");
+
+    wcl()
+        .arg("check")
+        .arg(&file)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "decorator 'missing' has no @decorator declaration",
+        ))
+        .stderr(predicate::str::contains("@missing"));
+}
+
+#[test]
 fn check_reports_missing_file() {
     wcl()
         .arg("check")

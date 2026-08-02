@@ -1695,8 +1695,14 @@ fn run_check(file: &Path, json: bool) -> u8 {
                 EXIT_OK
             } else {
                 let count = errs.len();
+                let source_name = doc.source().name().to_string();
+                let source_text = doc.source().inner().clone();
                 for e in &errs {
-                    eprintln!("{:?}", miette::Report::new(e.clone()));
+                    let source = miette::NamedSource::new(&source_name, source_text.clone());
+                    eprintln!(
+                        "{:?}",
+                        miette::Report::new(e.clone()).with_source_code(source)
+                    );
                 }
                 eprintln!(
                     "{name}: {count} schema violation{}",
