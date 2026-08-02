@@ -162,11 +162,15 @@ impl Change {
 #[serde(into = "&'static str")]
 pub enum Aspect {
     Title,
+    /// The one-line `summary`. Its own aspect rather than part of the title:
+    /// a renamed unit and a re-described one are different edits, and the
+    /// summary is the line every index and every link preview shows.
+    Summary,
     Audience,
     Visibility,
     /// A unit's `related` links, or an index's pins — ids, order or reasons.
     Related,
-    /// The body's block list or its word count.
+    /// The body's block list, a block's label, or the subtree's word count.
     Body,
     /// An index's sub-index list.
     Children,
@@ -178,6 +182,7 @@ impl Aspect {
     pub fn as_str(&self) -> &'static str {
         match self {
             Aspect::Title => "title",
+            Aspect::Summary => "summary",
             Aspect::Audience => "audience",
             Aspect::Visibility => "visibility",
             Aspect::Related => "related",
@@ -444,6 +449,7 @@ fn graph_at(entry: &Path, rev: &str) -> Result<Graph, Error> {
 struct Node<'a> {
     key: NodeKey,
     title: &'a str,
+    summary: Option<&'a str>,
     audience: &'a str,
     anchor: &'a Anchor,
     visibility: &'a Visibility,
@@ -464,6 +470,7 @@ fn nodes_of(graph: &Graph) -> Vec<Node<'_>> {
         .map(|u| Node {
             key: u.key(),
             title: &u.title,
+            summary: u.summary.as_deref(),
             audience: &u.audience,
             anchor: &u.anchor,
             visibility: &u.visibility,
@@ -480,6 +487,7 @@ fn nodes_of(graph: &Graph) -> Vec<Node<'_>> {
     out.extend(graph.index_levels().map(|i| Node {
         key: i.key(),
         title: &i.title,
+        summary: i.summary.as_deref(),
         audience: &i.audience,
         anchor: &i.anchor,
         visibility: &i.visibility,
@@ -506,16 +514,20 @@ fn blocks_of(blocks: &[crate::model::ContentBlock]) -> Vec<(&str, &str, &[String
 
 /// What differs between two readings of one node.
 ///
-/// The body comparison is the model's own reading of a body — its block
-/// list and its word count — not the prose. A reword of the same length
-/// inside a paragraph therefore does not register: the model carries a
-/// 60-character preview per block, not the text. That is the accepted
-/// limit of auditing a model rather than a file diff, and the file diff is
-/// still there for anyone who wants the words.
+/// The body comparison is the model's own reading of a body — its
+/// top-level block list, each block's whole first label, and the subtree's
+/// word count. What it misses is a same-length reword *nested* inside a
+/// block, whose text is neither a top-level label nor a change in the
+/// count. That is the accepted limit of auditing a model rather than a
+/// file diff, and the file diff is still there for anyone who wants the
+/// words.
 fn aspects(before: &Node, after: &Node) -> Vec<Aspect> {
     let mut out = Vec::new();
     if before.title != after.title {
         out.push(Aspect::Title);
+    }
+    if before.summary != after.summary {
+        out.push(Aspect::Summary);
     }
     if before.audience != after.audience {
         out.push(Aspect::Audience);
@@ -526,7 +538,15 @@ fn aspects(before: &Node, after: &Node) -> Vec<Aspect> {
     if before.related != after.related {
         out.push(Aspect::Related);
     }
-    if before.blocks != after.blocks || before.words != after.words {
+    // The word count is over the whole block, string-valued FIELDS included,
+    // so a reworded title or summary moves it without a word of the body
+    // changing. It only counts as body evidence when it is the only
+    // explanation left — otherwise every rename would send a reviewer to
+    // read a body nobody touched.
+    let prose_fields_moved = out
+        .iter()
+        .any(|a| matches!(a, Aspect::Title | Aspect::Summary));
+    if before.blocks != after.blocks || (before.words != after.words && !prose_fields_moved) {
         out.push(Aspect::Body);
     }
     if before.children != after.children {
@@ -1070,6 +1090,27 @@ mod tests {
             .map(|e| format!("{} {}", e.change.marker(), e.to))
             .collect();
         assert_eq!(grew, ["+ research:gamma"]);
+    }
+
+    /// A re-described unit is not a renamed one: the summary is the line
+    /// every index and every link preview shows, so it is named on its own.
+    #[test]
+    fn a_rewritten_summary_is_its_own_aspect() {
+        let td = mini_wskill();
+        let audit = audit_after(&td, |root| {
+            write(
+                root,
+                "data/concepts/beta.wcl",
+                "concept beta {\n  name = \"Beta\"\n  summary = \"The second idea.\"\n}\n",
+            );
+        });
+        let beta = node(&audit, "beta");
+        assert_eq!(beta.change, Change::Modified);
+        assert_eq!(
+            beta.changed,
+            [Aspect::Summary],
+            "a summary moves the word count, but no word of the body changed"
+        );
     }
 
     /// A file the formatter touched but the author did not is not a change:
