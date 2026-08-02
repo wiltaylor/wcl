@@ -59,6 +59,23 @@ impl From<NodeKey> for String {
     }
 }
 
+/// Serialize a [`NodeKey`] as `{kind, id}` rather than the `"kind:id"`
+/// display form the graph's edges use.
+///
+/// Where a node is the *subject* of a record — a finding, an audit row —
+/// a consumer routing on the kind should not have to split a string, and
+/// there is one spelling of that shape because there is one function.
+pub(crate) fn node_key_fields<S: serde::Serializer>(
+    key: &NodeKey,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeStruct;
+    let mut st = s.serialize_struct("NodeKey", 2)?;
+    st.serialize_field("kind", &key.kind)?;
+    st.serialize_field("id", &key.id)?;
+    st.end()
+}
+
 /// A block's declared `@except(sites = […])` visibility, as far as it can be
 /// read mechanically.
 ///

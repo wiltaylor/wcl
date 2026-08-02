@@ -30,6 +30,11 @@ const WSKILL_OK: u8 = 0;
 const WSKILL_FINDINGS: u8 = 1;
 const WSKILL_TOOL_FAILURE: u8 = 2;
 
+/// How much of a commit sha an audit header shows. Long enough to paste back
+/// into `git`, short enough that the two ends of a range fit on the line
+/// with the path.
+const SHORT_SHA: usize = 8;
+
 /// Run `wcl wskill graph [<entry>] [--rev <rev>]`: print the model as JSON.
 pub(crate) fn run_graph(entry: &Path, rev: Option<&str>) -> u8 {
     let graph = match rev {
@@ -107,20 +112,18 @@ pub(crate) fn run_lint(
 /// One line per finding, plus a count on stderr so the summary survives a
 /// pipe into `grep`.
 fn print_findings(root: &Path, findings: &[Finding]) {
-    let mut lines = Lines::default();
+    let mut lines = Some(Lines::default());
     for f in findings {
-        let path = display_path(root, &f.file);
-        let at = match f.span.map(|s| lines.line_of(root, &f.file, s.start)) {
-            Some(Some(line)) => format!("{}:{line}", path.display()),
-            _ => path.display().to_string(),
-        };
         println!(
-            "{at} {} [{}] {} — {}",
-            f.severity, f.rule, f.node, f.message
+            "{} {} [{}] {} — {}",
+            written_at(root, &f.file, f.span, &mut lines),
+            f.severity,
+            f.rule,
+            f.node,
+            f.message
         );
     }
     let count = |sev: Severity| findings.iter().filter(|f| f.severity == sev).count();
-    let plural = |n: usize, word: &str| format!("{n} {word}{}", if n == 1 { "" } else { "s" });
     eprintln!(
         "{}",
         if findings.is_empty() {
@@ -134,6 +137,11 @@ fn print_findings(root: &Path, findings: &[Finding]) {
             )
         }
     );
+}
+
+/// `n things`, with the `s` only when it earns one.
+fn plural(n: usize, word: &str) -> String {
+    format!("{n} {word}{}", if n == 1 { "" } else { "s" })
 }
 
 /// Run `wcl wskill audit [<entry>] [--range <range>] [--format …]`: the
@@ -207,11 +215,22 @@ fn print_audit(audit: &Audit) {
     for node in audit.news() {
         changed += 1;
         findings += node.findings.len();
-        println!("\n{} {}", at(audit, node, &mut lines), row(node));
+        // A removal's span addresses the file as it *was*, so even against
+        // the working tree there is no line to give.
+        let mut removed = None;
+        let lines = match node.change {
+            Change::Removed => &mut removed,
+            _ => &mut lines,
+        };
+        println!(
+            "\n{} {}",
+            written_at(&audit.root, &node.file, node.span, lines),
+            row(node)
+        );
         for f in &node.findings {
             println!("    {} [{}] {}", f.severity, f.rule, f.message);
         }
-        for e in audit.edge_news(&node.key()) {
+        for e in audit.edge_news(&node.node) {
             let via = match &e.index_id {
                 Some(id) if *id != node.node.id => format!(" (via `{id}`)"),
                 _ => String::new(),
@@ -225,9 +244,9 @@ fn print_audit(audit: &Audit) {
             "no changes".to_string()
         } else {
             format!(
-                "{changed} node{} changed, {findings} new finding{}",
-                if changed == 1 { "" } else { "s" },
-                if findings == 1 { "" } else { "s" }
+                "{} changed, {}",
+                plural(changed, "node"),
+                plural(findings, "finding")
             )
         }
     );
@@ -237,7 +256,7 @@ fn print_audit(audit: &Audit) {
 /// is — an audit of uncommitted output must say so, or its reader cannot
 /// reproduce it.
 fn range_label(audit: &Audit) -> String {
-    let short = |sha: &str| sha.chars().take(8).collect::<String>();
+    let short = |sha: &str| sha.chars().take(SHORT_SHA).collect::<String>();
     format!(
         "{}..{}",
         short(&audit.before),
@@ -251,12 +270,20 @@ fn range_label(audit: &Audit) -> String {
 
 /// `+3 -1 ~2`, dropping the zeros. A count that did not move is not news,
 /// and a header of zeroes reads as noise.
+///
+/// The signs come from [`Change::marker`] rather than a second copy here,
+/// so the header and the rows below it cannot label the same thing
+/// differently.
 fn counts(added: usize, removed: usize, modified: usize) -> String {
-    let parts: Vec<String> = [('+', added), ('-', removed), ('~', modified)]
-        .iter()
-        .filter(|(_, n)| *n > 0)
-        .map(|(sign, n)| format!("{sign}{n}"))
-        .collect();
+    let parts: Vec<String> = [
+        (Change::Added, added),
+        (Change::Removed, removed),
+        (Change::Modified, modified),
+    ]
+    .iter()
+    .filter(|(_, n)| *n > 0)
+    .map(|(change, n)| format!("{}{n}", change.marker()))
+    .collect();
     if parts.is_empty() {
         "—".to_string()
     } else {
@@ -265,23 +292,29 @@ fn counts(added: usize, removed: usize, modified: usize) -> String {
 }
 
 fn metric_label(m: &Metric) -> String {
-    format!("{} {} → {}", m.label, m.format(m.before), m.format(m.after))
+    format!("{} {} → {}", m.label, m.before_text(), m.after_text())
 }
 
-/// Where a changed node is written, as a terminal can open it.
-fn at(audit: &Audit, node: &NodeDelta, lines: &mut Option<Lines>) -> String {
-    let path = display_path(&audit.root, &node.file);
-    // A removal's span addresses the file as it *was*, so resolving it
-    // against the working tree would be fiction.
-    if node.change == Change::Removed {
-        return path.display().to_string();
-    }
-    match (lines, node.span) {
-        (Some(lines), Some(span)) => match lines.line_of(&audit.root, &node.file, span.start) {
-            Some(line) => format!("{}:{line}", path.display()),
-            None => path.display().to_string(),
+/// Where something is written, as a terminal can open it: the shortest path
+/// that still resolves, plus a line number when one can honestly be given.
+///
+/// `lines` is `None` when the caller knows the working-tree file is not the
+/// one the span addresses — an audit of two commits, or a node the range
+/// deleted. A line resolved against a file this process never read would
+/// point at the wrong place with total confidence, so it is left off.
+fn written_at(
+    root: &Path,
+    file: &Path,
+    span: Option<wcl_lang::Span>,
+    lines: &mut Option<Lines>,
+) -> String {
+    let path = display_path(root, file).display().to_string();
+    match (lines.as_mut(), span) {
+        (Some(lines), Some(span)) => match lines.line_of(root, file, span.start) {
+            Some(line) => format!("{path}:{line}"),
+            None => path,
         },
-        _ => path.display().to_string(),
+        _ => path,
     }
 }
 

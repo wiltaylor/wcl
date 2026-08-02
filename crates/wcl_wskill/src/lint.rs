@@ -205,24 +205,13 @@ pub struct Finding {
     pub severity: Severity,
     pub rule: Rule,
     /// The node the finding is about — a unit, or an `index`.
-    #[serde(rename = "unit", serialize_with = "node_key_object")]
+    #[serde(rename = "unit", serialize_with = "crate::model::node_key_fields")]
     pub node: NodeKey,
     /// The declaring file, relative to [`Graph::root`].
     pub file: PathBuf,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
     pub message: String,
-}
-
-/// A finding's node serializes as `{kind, id}` rather than the graph's
-/// `"kind:id"` string: a consumer routing on the kind shouldn't have to split
-/// a display form.
-fn node_key_object<S: serde::Serializer>(key: &NodeKey, s: S) -> Result<S::Ok, S::Error> {
-    use serde::ser::SerializeStruct;
-    let mut st = s.serialize_struct("NodeKey", 2)?;
-    st.serialize_field("kind", &key.kind)?;
-    st.serialize_field("id", &key.id)?;
-    st.end()
 }
 
 impl Finding {

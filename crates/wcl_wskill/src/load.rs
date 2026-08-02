@@ -56,6 +56,19 @@ pub enum Error {
     /// a write the format doesn't allow. The message is written for the
     /// person who asked, and a host shows it verbatim.
     Op(String),
+    /// The wskill does not exist at that revision.
+    ///
+    /// Its own variant rather than an [`Error::Io`] because it is not always
+    /// a failure: a range whose baseline predates the folder is a legitimate
+    /// audit — everything in it is new — and only the caller knows whether
+    /// an absent wskill answers its question or defeats it. It carries the
+    /// resolved `sha` as well as the `rev` the caller spelled, so a caller
+    /// that carries on can still record which commit it read nothing from.
+    Absent {
+        entry: String,
+        rev: String,
+        sha: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -63,6 +76,9 @@ impl fmt::Display for Error {
         match self {
             Error::Io(msg) | Error::Git(msg) | Error::Op(msg) => write!(f, "{msg}"),
             Error::Parse(e) => write!(f, "{e}"),
+            Error::Absent { entry, rev, .. } => {
+                write!(f, "'{entry}' does not exist in revision '{rev}'")
+            }
         }
     }
 }
@@ -114,9 +130,11 @@ impl Graph {
         let tree = wcl_wdoc::git::materialize_rev(rev, &repo).map_err(Error::Git)?;
         let at_rev = tree.path().join(&rel);
         if !at_rev.exists() {
-            return Err(Error::Io(format!(
-                "'{rel}' does not exist in revision '{rev}'"
-            )));
+            return Err(Error::Absent {
+                entry: rel,
+                rev: rev.to_string(),
+                sha,
+            });
         }
         let mut graph = Graph::open(&at_rev)?;
         // Re-root onto the working tree: the scratch tree is about to go.
@@ -133,6 +151,37 @@ impl Graph {
         }
         graph.rev = Some(sha);
         Ok(graph)
+    }
+
+    /// The model of a wskill that **isn't there**: no topic, no views, no
+    /// nodes — what a revision before the folder was created holds.
+    ///
+    /// A caller that meets [`Error::Absent`] and wants to keep going asks for
+    /// this rather than inventing an empty [`Graph`] itself, so "the wskill
+    /// did not exist yet" has one spelling. `root` and `entry` are read
+    /// lexically from the path the caller named: there is no tree to read
+    /// them out of, and the caller's own name for the folder is the one
+    /// anything comparing two revisions is using anyway.
+    pub fn absent(entry: &Path, rev: &str) -> Graph {
+        let entry_file = entry_file_of(entry);
+        let root = entry_file
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        Graph {
+            entry: entry_file
+                .file_name()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(ROOT_MARKER)),
+            root,
+            rev: Some(rev.to_string()),
+            topic: None,
+            views: Vec::new(),
+            units: Vec::new(),
+            indexes: Vec::new(),
+            edges: Vec::new(),
+            course: None,
+        }
     }
 
     /// Read the model out of an already-open document — the entry point for
