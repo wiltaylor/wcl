@@ -150,15 +150,6 @@ deliberate exceptions: `just ci::fuzz-sweep` is a part but not in `check` (it ne
 isn't side-effect-free — it regenerates the tracked files under `.wad/data/generated/`,
 which is how it judges their freshness.
 
-Every heavy part takes a **machine-wide lock** (`{{ci_lock}}` in `.just/shared.just` →
-`.just/ci-lock.sh`), so the several worktrees on this box queue instead of oversubscribing
-it — one gate runs at full speed while the others wait, and a blocked run names the holder
-*before* it blocks. The lock is on the parts, never on `check` (which stays a pure
-dependency list), so running a part directly is serialized too. `WCL_CI_LOCK_DISABLE=1`
-opts out; `WCL_CI_LOCK_FILE` / `WCL_CI_LOCK_TIMEOUT` override the path
-(`${XDG_RUNTIME_DIR:-/tmp}/wcl-ci.lock`) and the bounded wait. A machine without `flock`
-warns once and runs unlocked — it's a throughput optimization, not a correctness gate.
-
 Run benches with `just workspace-bench` when changing the parser hot path.
 
 ## Conventions
