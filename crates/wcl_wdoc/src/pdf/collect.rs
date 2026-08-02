@@ -507,6 +507,8 @@ fn collect_image(block: &Block<'_>, base_dir: Option<&Path>) -> Option<BlockNode
 /// A local video gets only its poster — a `file:`-style path is useless in a
 /// distributed PDF — so it gets no link.
 fn collect_video(block: &Block<'_>, base_dir: Option<&Path>, out: &mut Vec<BlockNode>) {
+    let before = out.len();
+
     // Poster: only a local file can be embedded (there's no network at build
     // time), so a remote poster / YouTube auto-thumbnail is skipped here.
     if let Some(poster) = field_utf8(block, "poster")
@@ -527,14 +529,16 @@ fn collect_video(block: &Block<'_>, base_dir: Option<&Path>, out: &mut Vec<Block
         }
     }
 
-    let Some(source) = block.labels().ok().and_then(|l| l.into_iter().next()) else {
-        return;
-    };
-    let source = match source {
-        Value::Utf8(s) | Value::Ascii(s) => s,
-        _ => return,
-    };
-    if let Some(url) = crate::video::online_url(&source) {
+    let source = block
+        .labels()
+        .ok()
+        .and_then(|l| l.into_iter().next())
+        .and_then(|v| match v {
+            Value::Utf8(s) | Value::Ascii(s) => Some(s),
+            _ => None,
+        });
+    let online = source.as_deref().and_then(crate::video::online_url);
+    if let Some(url) = online {
         let label = field_utf8(block, "title").unwrap_or_else(|| url.clone());
         out.push(BlockNode::Paragraph {
             runs: vec![InlineRun::Link {
@@ -543,6 +547,27 @@ fn collect_video(block: &Block<'_>, base_dir: Option<&Path>, out: &mut Vec<Block
                     style: TextStyle::body(),
                 }],
                 href: url,
+            }],
+        });
+    }
+
+    // Nothing embeddable and nothing to link — a local file with no poster.
+    // `video` declares itself native on :pdf, so it owes the page *something*
+    // rather than disappearing between the paragraphs either side of it: name
+    // the video in italics. Still no path, because a link (or a filename read
+    // as one) into a distributed PDF's neighbourhood points at a file the
+    // reader hasn't got.
+    if out.len() == before {
+        let label = field_utf8(block, "title")
+            .map(|t| format!("Video: {t}"))
+            .unwrap_or_else(|| "Video".to_string());
+        out.push(BlockNode::Paragraph {
+            runs: vec![InlineRun::Text {
+                text: label,
+                style: TextStyle {
+                    italic: true,
+                    ..TextStyle::body()
+                },
             }],
         });
     }

@@ -1,10 +1,10 @@
 //! The `card` shape: a diagram box whose body is arbitrary wdoc content.
 //!
-//! Like `map` / `tilemap`, a card is special-cased in the renderer (its
-//! WCL `lower` is a stub) because its body is HTML — produced by the
-//! block renderer + inline engine ([`render_block`]) — not SVG
-//! primitives. The renderer wraps that HTML in an SVG `<foreignObject>`
-//! so it's drawn in place, always visible, and scales with the diagram.
+//! Like `map` / `tilemap`, a card is `@native` (see [`crate::native`])
+//! because its body is HTML — produced by the block renderer + inline
+//! engine ([`render_block`]) — not SVG primitives. The renderer wraps that
+//! HTML in an SVG `<foreignObject>` so it's drawn in place, always visible,
+//! and scales with the diagram.
 //!
 //! Two entry points share one builder ([`render_card_foreign`]):
 //!   - [`render_card`] — the free-standing `card` shape, positioned by

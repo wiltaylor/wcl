@@ -126,6 +126,11 @@ const NATIVE_DISPATCH: &[NativeKind] = &[
         backends: &[Html, Markdown, Skill],
     },
     // ── Diagram shapes (render/svg/shapes.rs) ──────────────────────
+    // Every one of these is `every(...)`, and that is load-bearing:
+    // `refuse_uncovered` is called by the three *page* renderers, not by
+    // `render_shape`, so a shape declaring narrower coverage would drop
+    // silently on the target it doesn't cover. Giving one a narrower set
+    // means wiring the check into `render_shape` in the same change.
     every("rect"),
     every("circle"),
     every("line"),

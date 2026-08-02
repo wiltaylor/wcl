@@ -583,8 +583,9 @@ pub(crate) fn render_block(
         // Renders its body to a Markdown string (the same output the Markdown /
         // skill backend produces) and shows it in a highlighted `code` block.
         // Special-cased here because reaching into the Markdown emitter from a
-        // WCL `lower` isn't possible. Book-only; in other backends its stub
-        // `lower` makes it render empty.
+        // WCL `lower` isn't possible. Book-only — it is `@native(backends =
+        // [:html])`, so another target refuses it above rather than quietly
+        // rendering nothing.
         "markdown_source" => Some(render_markdown_source(doc, block, patterns, base_dir)),
         // An example source listing + a live preview of the same children
         // under both palettes (side by side). Special-cased in Rust: it reads
