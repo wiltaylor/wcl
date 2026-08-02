@@ -153,24 +153,32 @@ let wdoc_part_presentation_css = fn() -> list<Html> [
 // The slide grid (`<div class="deck">`): one `<section>` per deck section,
 // each holding its slides. Driven by the bundled `presentation.js` player.
 let wdoc_part_deck = fn(c: TemplateCtx) -> list<Html> [
-  el("div", ["deck"],
-    if len(c.deck) == 0 {
-      [el("section", ["deck-section"], map(c.members, deck_slide_el))]
-    } else {
-      map(c.deck, deck_section_el)
-    }),
+  el("div", ["deck"], if len(c.deck) == 0 {
+    error("a presentation site needs a deck block")
+  } else {
+    map(c.deck, deck_section_el)
+  }),
 ]
 
 // The static deck chrome: the progress bar, slide counter, and nav-hint
 // arrows (the player updates them as you navigate).
 let wdoc_part_deck_chrome = fn() -> list<Html> [deck_chrome]
 
-// The full default `presentation` layout: style, deck grid, deck chrome.
+// The presentation layout owns its browser player just like any other
+// template-owned asset. The host copies this bundled script when the returned
+// HTML requests it; deck metadata itself does not opt a collection into it.
+let wdoc_part_presentation_player = fn() -> list<Html> [
+  raw("<!--wdoc:bundled-script:presentation.js-->"),
+]
+
+// The full default `presentation` layout: style, deck grid, deck chrome,
+// and its player asset.
 let wdoc_presentation_layout = fn(c: TemplateCtx) -> list<Html>
   flatten([
     wdoc_part_presentation_css(),
     wdoc_part_deck(c),
     wdoc_part_deck_chrome(),
+    wdoc_part_presentation_player(),
   ])
 
 // Stdlib `presentation` template: a single-file slide deck. The whole

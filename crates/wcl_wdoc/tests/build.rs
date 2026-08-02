@@ -9670,6 +9670,10 @@ template digest {
 site {
   default_template = :digest
   intro { h1 "Weekly digest" {} }
+  deck { section "Ordering only" {
+    slide second
+    slide first
+  } }
 }
 page first  {
   title = "First headline"
@@ -9694,6 +9698,8 @@ page second { p "Second story" }
         "{index}"
     );
     assert!(index.contains("<aside><p>First aside</p>"), "{index}");
+    assert!(!index.contains("presentation.js"), "{index}");
+    assert!(!out.path().join("_wdoc/presentation.js").exists());
     assert!(!out.path().join("first.html").exists());
     assert!(!out.path().join("second.html").exists());
 }
@@ -9777,6 +9783,32 @@ page unplaced { image "missing.png" {} }
 }
 
 #[test]
+fn only_a_repeated_content_slot_declares_a_collection() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("ordinary-repeated-slot.wcl");
+    write_fixture(
+        &src,
+        r#"
+template ordinary {
+  slot content: content
+  slot aside: content*
+  render = fn(c: TemplateCtx) -> list<Html>
+    flatten([slot(c, :content), slot(c, :aside)])
+}
+site { default_template = :ordinary }
+page first  { p "First" {}  aside { p "First aside" } }
+page second { p "Second" {} aside { p "Second aside" } }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    assert_eq!(build_ok(&src, out.path()), 2);
+    assert!(out.path().join("first.html").exists());
+    assert!(out.path().join("second.html").exists());
+    assert!(!out.path().join("index.html").exists());
+}
+
+#[test]
 fn presentation_site_renders_single_deck_file() {
     // A `presentation` site renders all its slides into one index.html,
     // grouped into the `deck` grid (sections = columns, slides = rows).
@@ -9824,11 +9856,42 @@ page topic  { h2 "Topic" {} }
     assert!(index.contains("Hello"), "{index}");
     assert!(index.contains("Agenda"), "{index}");
     assert!(index.contains("Topic"), "{index}");
+    assert!(!index.contains("<span class=\"heading-marker\""), "{index}");
     // The keyboard-nav player is written and linked exactly once.
     assert!(out.path().join("_wdoc").join("presentation.js").exists());
     assert_eq!(index.matches("_wdoc/presentation.js").count(), 1, "{index}");
     // No standalone per-slide files are written.
     assert!(!out.path().join("title.html").exists());
+}
+
+#[test]
+fn presentation_rejects_duplicate_ids_across_placed_members() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("duplicate-deck-ids.wcl");
+    write_fixture(
+        &src,
+        r#"
+site {
+  default_template = :presentation
+  deck { section "S" {
+    slide one
+    slide two
+  } }
+}
+page one { h1 "One" { id = shared } }
+page two { h1 "Two" { id = shared } }
+"#,
+    );
+
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::DuplicateId { page, id }) => {
+            assert_eq!(page, "two");
+            assert_eq!(id, "shared");
+        }
+        Err(err) => panic!("expected DuplicateId, got {}", err.render_plain()),
+        Ok(_) => panic!("expected DuplicateId"),
+    }
 }
 
 #[test]
@@ -9893,29 +9956,22 @@ page real { h1 "Real" {} }
 }
 
 #[test]
-fn presentation_without_deck_uses_member_order() {
+fn presentation_without_deck_is_build_error() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("talk.wcl");
     write_fixture(
         &src,
         r#"
 site { default_template = :presentation }
-page first  { h1 "First" {} }
-page second { h1 "Second" {} }
+page only { h1 "Only" {} }
 "#,
     );
     let out = TempDir::new().expect("mkdir out");
-    build_ok(&src, out.path());
-    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
-    assert_eq!(
-        index.matches("class=\"deck-section\"").count(),
-        1,
-        "{index}"
-    );
-    assert!(
-        index.find("First").unwrap() < index.find("Second").unwrap(),
-        "{index}"
-    );
+    let err = match build(&src, out.path(), None) {
+        Err(err) => err,
+        Ok(_) => panic!("missing deck must fail"),
+    };
+    assert!(err.render_plain().contains("needs a deck"));
 }
 
 #[test]

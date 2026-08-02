@@ -1708,11 +1708,7 @@ fn build_site(
     let collection_template = default_template
         .as_deref()
         .and_then(|name| find_template(doc, name))
-        .filter(|template| {
-            declared_slots(template)
-                .iter()
-                .any(|slot| slot.declaration.slot_repeated())
-        });
+        .filter(|template| declares_collection(&declared_slots(template)));
     let is_collection = collection_template.is_some();
 
     // Ordered (name, href) list of this site's pages for template nav,
@@ -2037,6 +2033,12 @@ fn declared_slots<'a>(template: &Block<'a>) -> Vec<DeclaredSlot<'a>> {
         .collect()
 }
 
+fn declares_collection(slots: &[DeclaredSlot<'_>]) -> bool {
+    slots
+        .iter()
+        .any(|slot| slot.name == "content" && slot.declaration.slot_repeated())
+}
+
 /// Check the page/layout side of the slot contract before rendering. The
 /// selected template is the page's literal override or the site's default;
 /// a page whose template cannot be resolved is left quiet, because a false
@@ -2059,7 +2061,7 @@ fn validate_slot_contracts(doc: &Document, spec: &SiteSpec<'_>) -> Result<(), Bu
         && let Some(template) = find_template(doc, template_name)
     {
         let slots = declared_slots(&template);
-        if slots.iter().any(|slot| slot.declaration.slot_repeated()) {
+        if declares_collection(&slots) {
             validate_collection_site_slots(spec, template_name, &slots)?;
             validated_collection_templates.insert(template_name.to_string());
         }
@@ -2110,7 +2112,7 @@ fn validate_slot_contracts(doc: &Document, spec: &SiteSpec<'_>) -> Result<(), Bu
                     .map_or_else(|| "unknown".to_string(), ToString::to_string)
             )));
         }
-        let collection = declared.iter().any(|slot| slot.declaration.slot_repeated());
+        let collection = declares_collection(&declared);
         if collection
             && spec
                 .block
@@ -2673,12 +2675,22 @@ fn build_collection_page(
         ctx.search,
         ctx.inline_patterns,
     );
-    // The slides may use the same interactive assets a normal page can.
+    if let Some((page, id)) = rendered.duplicate_id.take() {
+        return Err(BuildError::DuplicateId { page, id });
+    }
+    // Collection members may use the same interactive assets as an ordinary
+    // page. A template part requests a bundled player with an inert marker;
+    // deck metadata alone has no effect. Remove the marker before output and
+    // append the requested player after the member players, preserving the
+    // established presentation script order.
+    const PRESENTATION_ASSET: &str = "<!--wdoc:bundled-script:presentation.js-->";
+    let needs_presentation_player = rendered.body.contains(PRESENTATION_ASSET);
+    if needs_presentation_player {
+        rendered.body = rendered.body.replace(PRESENTATION_ASSET, "");
+    }
     ctx.players
         .inject(&mut rendered.body, ctx.inline_patterns.videos().is_used());
-    // A deck is ordinary collection metadata, but it still needs its bundled
-    // browser player. No template-name dispatch is involved.
-    if !ctx.deck_nodes.is_empty() {
+    if needs_presentation_player {
         write_asset(
             ctx.out_dir,
             "presentation.js",
@@ -2868,6 +2880,7 @@ fn build_normal_page(
             body: content.clone(),
             head: String::new(),
             page_heading: page_heading_title(page),
+            duplicate_id: None,
         },
     };
     ctx.players

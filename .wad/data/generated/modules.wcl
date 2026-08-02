@@ -454,7 +454,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_render {
     name = "render"
     kind = "module"
-    summary = "15 files, 230 pub items"
+    summary = "15 files, 231 pub items"
     deps = [n_cg_wcl_wdoc_content, n_cg_wcl_wdoc_dopesheet, n_cg_wcl_wdoc_force, n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_icons, n_cg_wcl_wdoc_image, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_layered, n_cg_wcl_wdoc_map, n_cg_wcl_wdoc_radial, n_cg_wcl_wdoc_routing, n_cg_wcl_wdoc_text, n_cg_wcl_wdoc_tileset, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_review {
@@ -7096,13 +7096,31 @@ code_item code_api_wdoc_html_renderer {
       signature = "page_heading: Option<String>"
       kind = "field"
     }
+    code_member m_n_api_wdoc_html_renderer_Rendered_duplicate_id {
+      signature = "duplicate_id: Option<(String, String)>"
+      kind = "field"
+    }
+  }
+  code_node n_api_wdoc_html_renderer_CollectionTemplateInput {
+    name = "CollectionTemplateInput"
+    kind = "struct"
+    summary = "src/render/html.rs"
+    code_member m_n_api_wdoc_html_renderer_CollectionTemplateInput_pages {
+      signature = "pages: &'a [Block<'a>]"
+      kind = "field"
+    }
+    code_member m_n_api_wdoc_html_renderer_CollectionTemplateInput_deck {
+      signature = "deck: &'a [DeckSectionNode]"
+      kind = "field"
+      deps = [n_api_wdoc_html_renderer_DeckSectionNode]
+    }
   }
   code_node n_api_wdoc_html_renderer_lower_fns {
     name = "lower"
     kind = "fns"
     summary = "src/render/lower.rs"
     code_member m_n_api_wdoc_html_renderer_lower_fns_BlockRenderer {
-      signature = "type BlockRenderer = dyn Fn(&[Value], Option<&str>, &str) -> St…"
+      signature = "type BlockRenderer = dyn Fn(&[Value], Option<&str>, Option<&str…"
       kind = "type"
       visibility = "crate"
     }
@@ -7470,86 +7488,10 @@ code_item code_api_wdoc_html_renderer {
       kind = "overflow"
     }
   }
-  code_node n_api_wdoc_html_renderer_edges_fns {
-    name = "edges"
-    kind = "fns"
-    summary = "src/render/svg/edges.rs"
-    code_member m_n_api_wdoc_html_renderer_edges_fns_all_edges {
-      signature = "fn all_edges(block: &Block<'_>) -> Vec<Value>"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_edge_id_pairs {
-      signature = "fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)>"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_render_edges {
-      signature = "fn render_edges( block: &Block<'_>, positions: &ShapePositions,…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_svg_fns]
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_edge_label_extent {
-      signature = "fn edge_label_extent(label: &str) -> (f64, f64)"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_polyline_bbox {
-      signature = "fn polyline_bbox(points: &[(f64, f64)]) -> Option<(f64, f64, f6…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_gather_edges_recursive {
-      signature = "fn gather_edges_recursive(block: &Block<'_>, out: &mut Vec<Valu…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_AnchorMap {
-      signature = "type AnchorMap = HashMap<(String, Side), SidedAnchor>"
-      kind = "type"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_DestAnchorMap {
-      signature = "type DestAnchorMap = HashMap<(String, Side, String), SidedAncho…"
-      kind = "type"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_facing_side {
-      signature = "fn facing_side(from: (f64, f64), to: (f64, f64)) -> Side"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_build_shared_anchors {
-      signature = "fn build_shared_anchors( items: &[Value], positions: &ShapePosi…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_wdoc_html_renderer_svg_fns]
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_centroid_of {
-      signature = "fn centroid_of(points: &[(f64, f64)]) -> (f64, f64)"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_pick_anchor_toward {
-      signature = "fn pick_anchor_toward( anchors: &[SidedAnchor], target: (f64, f…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_pick_closest_to {
-      signature = "fn pick_closest_to(anchors: &[SidedAnchor], target: (f64, f64))…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_wdoc_html_renderer_edges_fns_more {
-      signature = "… +10 more"
-      kind = "overflow"
-    }
-  }
   code_node n_api_wdoc_html_renderer_more {
-    name = "… +8 more"
+    name = "… +9 more"
     kind = "overflow"
-    summary = "8 further public items — see the source."
+    summary = "9 further public items — see the source."
   }
 }
 

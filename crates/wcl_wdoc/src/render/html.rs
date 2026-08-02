@@ -2,7 +2,7 @@
 //! blocks (text / span / column / code / table), and the HTML fundamentals.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -395,6 +395,7 @@ pub(crate) struct Rendered {
     pub body: String,
     pub head: String,
     pub page_heading: Option<String>,
+    pub duplicate_id: Option<(String, String)>,
 }
 
 /// Site members supplied to a collection template. The pages are reified as
@@ -433,6 +434,7 @@ pub(crate) fn render_template<'a>(
     search: bool,
     patterns: &InlinePatterns,
 ) -> Rendered {
+    let is_collection = collection.is_some();
     let Some(field) = template.field("render") else {
         return Rendered::default();
     };
@@ -583,6 +585,8 @@ pub(crate) fn render_template<'a>(
     // a returned handle call into the ordinary renderer.
     let heading_state = std::cell::RefCell::new(HeadingSequence::default());
     let placed_slots = RefCell::new(std::collections::HashSet::new());
+    let emitted_ids = RefCell::new(HashSet::new());
+    let duplicate_id = RefCell::new(None);
     let render_blocks =
         |handles: &[Value], slot: Option<&str>, owner: Option<&str>, fallback: &str| {
             if let Some(slot) = slot {
@@ -596,6 +600,16 @@ pub(crate) fn render_template<'a>(
                 let Some(block) = blocks.get(index) else {
                     continue;
                 };
+                if is_collection {
+                    let duplicate =
+                        collect_emitted_duplicate_id(block, &mut emitted_ids.borrow_mut());
+                    if let Some(id) = duplicate {
+                        let mut stored = duplicate_id.borrow_mut();
+                        if stored.is_none() {
+                            *stored = Some((owner.unwrap_or("site").to_string(), id));
+                        }
+                    }
+                }
                 if let Some(html) = render_block(doc, block, patterns, base_dir) {
                     if html.is_empty() {
                         continue;
@@ -607,7 +621,11 @@ pub(crate) fn render_template<'a>(
             if handles.is_empty() {
                 body.push_str(fallback);
             }
-            let body = process_page_headings(&body, &mut heading_state.borrow_mut());
+            let body = if is_collection && owner.is_some() {
+                body
+            } else {
+                process_page_headings(&body, &mut heading_state.borrow_mut())
+            };
             let owner_page = owner.and_then(|name| member_pages.get(name)).or(page);
             match (patterns.anchor_mode(), owner_page) {
                 (true, Some(page)) => {
@@ -663,7 +681,22 @@ pub(crate) fn render_template<'a>(
         }
     }
     rendered.body = process_footnotes(&rendered.body);
+    rendered.duplicate_id = duplicate_id.borrow().clone();
     rendered
+}
+
+fn collect_emitted_duplicate_id(block: &Block<'_>, seen: &mut HashSet<String>) -> Option<String> {
+    if let Some(id) = field_id(block, "id")
+        && !seen.insert(id.clone())
+    {
+        return Some(id);
+    }
+    for child in block.blocks() {
+        if let Some(duplicate) = collect_emitted_duplicate_id(&child, seen) {
+            return Some(duplicate);
+        }
+    }
+    None
 }
 
 fn page_handle_value<'a>(
