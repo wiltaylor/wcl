@@ -3,8 +3,8 @@
 // Declarative, reusable fragments of wdoc markup with named slots, plus
 // a list-driven repeater. These five block kinds are registered here so
 // the parser / validator / formatter recognise them, but their
-// *semantics* (slot binding, body expansion, iteration) are special-cased
-// in Rust — like `list` / `table` / `map`, their WCL `lower` is a stub.
+// *semantics* (slot binding, body expansion, iteration) live in Rust —
+// like `list` / `table` / `map`, they are `@native`.
 //
 //   wdoc_component metric_card {
 //     wdoc_slot label
@@ -60,15 +60,14 @@ type WdocBody {
 }
 
 // Marks where a component instance's own nested blocks render — a layout
-// "content slot". Legal wherever a `WdocBlock` is. Special-cased in Rust;
-// its `lower` is a never-called stub (declared to satisfy the interface).
+// "content slot". Legal wherever a `WdocBlock` is, and `@native`.
 @block("wdoc_content") @contextual
+@native
 type WdocContent extends WdocBlock {
-  lower = fn(c: WdocContent) -> list<HtmlFundamental> []
 }
 
 // Repeats its body once per element of `each`, binding the element to the
-// symbol `as`. Special-cased in Rust (its `lower` is a stub); `each` is
+// symbol `as`. `@native`; `each` is
 // read dynamically, so the validator does not type-check its elements.
 //
 // A repeater is the single iteration concept at every level of a document:
@@ -87,6 +86,7 @@ type WdocContent extends WdocBlock {
 // repeater is legal wherever children are allowed at all, and its body is
 // validated once expanded rather than in place.
 @block("wdoc_repeater") @contextual
+@native
 type WdocRepeater extends WdocBlock {
   // `@schemaless`: the `each` elements are read dynamically at render
   // time — `list<WdocItem>` only names the list shape.
@@ -97,7 +97,6 @@ type WdocRepeater extends WdocBlock {
   @children("chapter")    chapters: list<Chapter>
   @children("class")      classes:  list<Class>
   @children("stylesheet") sheets:   list<Stylesheet>
-  lower = fn(r: WdocRepeater) -> list<HtmlFundamental> []
 }
 
 // Opaque element type for a repeater's `each` list. The renderer reads
@@ -115,14 +114,14 @@ type WdocItem {}
 //
 // The instance's like-named fields fill the target's slots (falling back to
 // each slot's `default`). `@schemaless`, so the forwarded slot fields need
-// no static schema; special-cased in Rust (its `lower` is a never-called
-// stub). Context-polymorphic like `wdoc_repeater` — legal wherever a
+// no static schema; `@native`. Context-polymorphic like `wdoc_repeater`
+// — legal wherever a
 // `WdocBlock` / `SvgBlock` is, expanding to whatever its component body
 // contains.
 @block("wdoc_instance") @schemaless @contextual
+@native
 type WdocInstance extends WdocBlock {
   component: utf8
-  lower = fn(i: WdocInstance) -> list<HtmlFundamental> []
 }
 
 // ── Partials (scatter & collect) ──────────────────────────────────
@@ -140,19 +139,19 @@ type WdocInstance extends WdocBlock {
 //     collect sidebar                  // gathers every `partial sidebar`
 //   }
 //
-// Special-cased in Rust like the repeater / component; the `lower`s are
-// never-called stubs. A partial is invisible where it is defined unless
+// `@native` like the repeater / component. A partial is invisible where
+// it is defined unless
 // `show_here = true`, which also renders the body at its source.
 @block("partial")
+@native
 type WdocPartial extends WdocBlock {
   @inline(0) tag: symbol
   show_here: bool?
   @children(WdocBlock) children: list<WdocBlock>
-  lower = fn(p: WdocPartial) -> list<HtmlFundamental> []
 }
 
 @block("collect")
+@native
 type WdocCollect extends WdocBlock {
   @inline(0) tag: symbol
-  lower = fn(c: WdocCollect) -> list<HtmlFundamental> []
 }

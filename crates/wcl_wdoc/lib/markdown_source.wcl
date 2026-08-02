@@ -3,9 +3,10 @@
 // Lowers its body to a Markdown string — the same output the Markdown / skill
 // backend produces — and shows it in a syntax-highlighted `code` block. Used
 // to preview a skill page's generated Markdown inside the book (so it can be
-// read and review-commented). Special-cased in Rust: the Markdown emitter
-// isn't reachable from a WCL `lower`, so the `lower` here is a never-called
-// stub. Book / HTML only — other backends render it empty.
+// read and review-commented). `@native`, because the Markdown emitter isn't
+// reachable from a WCL `lower` — and native on `:html` alone: the block taps
+// the emitter from inside the HTML build, so it is a book-only device. Using
+// it on another target is refused rather than silently rendering nothing.
 //
 // `start_page` + `pages` opt the body into the skill-folder link layout, so a
 // skill page's Markdown (links into `references/…`) reproduces faithfully even
@@ -18,6 +19,7 @@
 namespace wdoc
 
 @block("markdown_source")
+@native(backends = [:html])
 type MarkdownSource extends WdocBlock {
   @doc("Skill start-page name. Set it (with `pages`) to render the body under the skill folder link layout; unset renders book-relative links.")
   start_page: utf8?
@@ -28,5 +30,4 @@ type MarkdownSource extends WdocBlock {
   @doc("Asset-filename stem for any diagram/terminal SVGs the body's Markdown writes — set it to the previewed page's name so the `![](…)` refs match the real skill output. Defaults to `markdown_source`.")
   id: utf8?
   @children(WdocBlock) children: list<WdocBlock>
-  lower = fn(m: MarkdownSource) -> list<HtmlFundamental> []
 }

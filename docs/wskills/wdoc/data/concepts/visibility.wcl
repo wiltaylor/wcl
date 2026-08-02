@@ -17,9 +17,10 @@ PROSE
       rows = [
         ["`sites`", "The site name — the label on a `site` block (`site marketing { … }` ⇒ `:marketing`)"],
         ["`templates`", "The site's template kind: `:webpage`, `:book`, or `:presentation`"],
-        ["`backends`", "The output backend: `:html`, `:pdf`, or `:markdown`"],
+        ["`backends`", "The output target: `:html`, `:pdf`, `:markdown`, or `:skill`"],
       ]
     }
+    callout "The skill target names itself" { class = ["info"]  body = "`wcl wdoc skill` runs the Markdown emitter but reports itself as `:skill`, so a skill folder and a Markdown site can be scoped apart. `@except(backends=[:markdown])` does not hide a block from the skill build — say `[:markdown, :skill]` to hide it from both." }
 
     h2 "Examples"
     code "wcl" { source = <<'SRC'
@@ -44,5 +45,27 @@ SRC
 **Within an axis** the values are OR'd — `sites=[:a, :b]` matches site `a` or `b`. **Across axes** they are AND'd — `@only(sites=[:docs], templates=[:book])` renders only when the site is `docs` *and* its template is `book`. A block renders when `@only` (if present) matches **and** `@except` (if present) does *not* fully match.
 PROSE
     callout "Template kind is per-site" { class = ["info"]  body = "Filtering on `templates` uses the site's `default_template`. A page-level `template` override does not change which template axis a block matches." }
+
+    h2 "Waiving a block a target can't render"
+    p <<PROSE
+The `backends` axis is also how you answer the build when it refuses a block. A few blocks are implemented for some targets and not others — `markdown_source` previews a page's generated Markdown from inside the HTML build, and `file` ships a file into an output folder a single-file PDF doesn't have. Using one on a target it doesn't cover is a **build error**, naming the kind, the target and the fix:
+PROSE
+    code "text" { source = <<'SRC'
+× `file` has no :pdf implementation (it is native on :html, :markdown, :skill);
+  remove the block or waive it here with `@except(backends = [:pdf])`
+SRC
+    }
+    p <<PROSE
+The two halves say different things and the build wants both to agree: a block type's `@native(backends = …)` is a **capability** — what wdoc can render — and `@except(backends = …)` on your instance is your **intent** — that you don't want it there. Waive it and the build proceeds, rendering nothing for that block on that target. The alternative is an `@only` that keeps the block off that target entirely. What you cannot do is nothing: a block a target can't render used to vanish from that output silently, and this is the mechanism that ended it.
+PROSE
+    code "wcl" { source = <<'SRC'
+page overview { start = true
+  // Shipped with the skill and linked from the web build; the print PDF
+  // has nowhere to put the file, and we're fine with that.
+  @except(backends=[:pdf])
+  file "src/setup.sh" { dir = "scripts"  as = "run setup" }
+}
+SRC
+    }
   }
 }

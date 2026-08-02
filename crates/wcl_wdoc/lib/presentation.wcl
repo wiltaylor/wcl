@@ -74,25 +74,25 @@ type DeckSection {
 // steps forward (Space / PageDown). A legal child of any page, so it
 // reveals a bullet, paragraph, image, diagram — anything. Rendered
 // directly in Rust (the `@children`-wrapping pattern of `column` /
-// `list`), so its `lower` is never invoked.
+// `list`), so it is `@native`.
 @block("fragment")
+@native
 type Fragment extends WdocBlock {
   id:    identifier?
   class: list<utf8>?
   @children(WdocBlock) body: list<WdocBlock>
-  lower = fn(f: Fragment) -> list<HtmlFundamental> []
 }
 
 // Speaker notes for a slide: hidden in the deck, shown in the notes
 // overlay (toggle with `s`). On the presentation build path the notes
 // are pulled out of the slide's visible content and rendered separately;
-// elsewhere they render to nothing. Rendered directly in Rust, so its
-// `lower` is never invoked.
+// elsewhere they render to nothing. Rendered directly in Rust, so it is
+// `@native`.
 @block("notes")
+@native
 type Notes extends WdocBlock {
   id:    identifier?
   @children(WdocBlock) body: list<WdocBlock>
-  lower = fn(n: Notes) -> list<HtmlFundamental> []
 }
 
 // ── The `presentation` template ─────────────────────────────────────

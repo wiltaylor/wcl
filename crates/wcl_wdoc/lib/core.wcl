@@ -83,20 +83,58 @@ stylesheet "wdoc-base" {
 // opt in with `extends WdocBlock` / `extends SvgBlock` to become
 // legal children of the corresponding `@children(...)` slot.
 //
-// Each interface requires a `lower` field — a function the renderer
-// calls to turn the block into a list of fundamental variants. The
-// interface signature uses `&Interface` as the parameter; concrete
-// types are free to narrow the parameter to their own type
-// (function-typed interface fields match on return type only).
-// Implementations supply the function via `@default(fn(...) -> ...)`
-// so per-instance overrides are possible but never required.
+// A block is rendered one of exactly two ways, and it says which:
+//
+//   `lower`   — a function the renderer calls to turn the block into a
+//               list of fundamental variants. The interface signature
+//               uses `&Interface` as the parameter; concrete types are
+//               free to narrow the parameter to their own type
+//               (function-typed interface fields match on return type
+//               only). Implementations supply the function as a field
+//               default so per-instance overrides are possible but never
+//               required.
+//   `@native` — the renderer implements the block in Rust and never calls
+//               a `lower`. See the decorator below.
+//
+// `lower` is therefore declared OPTIONAL here: the interface does not
+// demand a function a native block would only have to fake. Which of the
+// two is present is checked by the build instead (`crates/wcl_wdoc/src/
+// native.rs`), which refuses a block declaring both or neither — the
+// stub `lower` returning `[]` is exactly what that check exists to
+// prevent coming back.
 interface WdocBlock {
   id:    identifier?
-  lower: fn(&WdocBlock) -> list<HtmlFundamental>
+  lower: fn(&WdocBlock) -> list<HtmlFundamental>?
 }
 interface SvgBlock {
   id:    identifier?
-  lower: fn(&SvgBlock) -> list<SvgFundamental>
+  lower: fn(&SvgBlock) -> list<SvgFundamental>?
+}
+
+// This block is implemented in Rust, not by a WCL `lower`. Only wdoc's
+// own renderer can supply a native implementation, so `@native` on a
+// user-authored block is a build error: the kind must be one the Rust
+// dispatch registry knows.
+//
+//   `backends` — the output targets whose Rust dispatch handles this
+//                kind (`:html` / `:pdf` / `:markdown` / `:skill`).
+//                Omitted ⇒ every target. The declaration is cross-checked
+//                against the registry in both directions, so a target
+//                claimed but not implemented — or implemented but not
+//                claimed — fails the build rather than silently rendering
+//                nothing.
+//
+// Using a block on a target its `backends` exclude is a build error too,
+// waived per instance with the visibility system's backend axis
+// (`@except(backends = [:pdf])`): capability says *can't*, author intent
+// says *don't want to*, and the build refuses until they agree.
+//
+//   @block("terminal") @native            type Terminal extends WdocBlock { … }
+//   @block("file") @native(backends = [:html, :markdown, :skill])
+//                                         type FileObj  extends WdocBlock { … }
+@decorator("native")
+type NativeBlock {
+  backends: list<symbol>?
 }
 
 // Default connection schema for diagrams. Any pair of SvgBlocks may

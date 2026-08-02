@@ -26,6 +26,7 @@ mod layered;
 mod map;
 mod markdown;
 mod math;
+mod native;
 mod node_table;
 pub mod pdf;
 mod radial;

@@ -41,12 +41,13 @@ type TileKey {
 
 // A placeable, index-based tile grid inside a `diagram` / `container`.
 // Author the grid numerically (`tiles`) or symbolically (`map` + `tile`
-// legend; `map` wins when both are present). The `lower` is a stub —
-// the tilemap is special-cased in the renderer (it crops tiles out of
-// the referenced spritesheet, which WCL can't express). It lays out
+// legend; `map` wins when both are present). It is `@native` — the
+// tilemap crops tiles out of the referenced spritesheet in Rust, which
+// WCL can't express. It lays out
 // like any other shape (x/y + anchors), so other shapes drawn after it
 // in the same diagram overlay on top.
 @block("tilemap")
+@native
 type Tilemap extends SvgBlock {
   @doc("Name of the `tileset` to slice from.")
   set: identifier                    // which tileset
@@ -77,8 +78,6 @@ type Tilemap extends SvgBlock {
   @hidden anchor_bottom: f64?
   @doc("Diagram edge-attach sides, like any `SvgBlock`.")
   connect_points: list<AnchorSide>?
-
-  lower = fn(t: Tilemap) -> list<SvgFundamental> []
 }
 
 // Default tilemap styling. Pixel-art tilesets read best with

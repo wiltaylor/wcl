@@ -74,7 +74,7 @@ page overview { start = true
 
 > [!NOTE]
 > **Not an HTML template**
-> `:ai_skill` is a Markdown-only target. Building a skill site with `wcl wdoc build` (HTML) fails with a message pointing you at `wcl wdoc skill`. The `file` block works on every target — on the HTML and Markdown targets a `dir`-less `file` lands in the `_wdoc/` asset folder.
+> `:ai_skill` is a Markdown-only target. Building a skill site with `wcl wdoc build` (HTML) fails with a message pointing you at `wcl wdoc skill`. The `file` block works on the HTML, Markdown and skill targets — a `dir`-less `file` lands in the `_wdoc/` asset folder on the first two. It is **not** implemented for PDF: a PDF is one self-contained document with no output folder beside it to copy into, so a `file` on a page being built to PDF is refused until you waive it with `@except(backends=[:pdf])`.
 
 ## Sharing pages with a website
 

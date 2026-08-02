@@ -69,10 +69,9 @@ pub fn markdown(
         return Err(BuildError::Schema(n));
     }
 
-    // Root-authored re-declarations of renderer-built-in kinds would be
-    // silently dead (see `reserved_kind_errors`) — fail like a schema
-    // violation instead.
-    let reserved = crate::build::reserved_kind_errors(&doc);
+    // The schema-level rendering contract (see `contract_errors`) — fail
+    // like a schema violation.
+    let reserved = crate::build::contract_errors(&doc);
     if !reserved.is_empty() {
         let n = reserved.len();
         let src = NamedSource::new(name.clone(), user_src.clone());

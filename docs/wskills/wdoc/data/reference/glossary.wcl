@@ -18,6 +18,7 @@ fact glossary {
         | "**frontmatter**" | "A schemaless `frontmatter` block of `key = value` entries serialized as a YAML header on a page's Markdown output; the HTML and PDF targets ignore it." |
         | "**fundamental**" | "A primitive the renderer emits directly — an HTML, SVG, or terminal element — the fixed vocabulary every block ultimately lowers to." |
         | "**lowering** _(also: lower)_" | "The recursive expansion of a high-level block into simpler blocks via its `<kind>_lower` function, repeated until only fundamentals remain for the renderer." |
+        | "**native**" | "A block wdoc renders in Rust rather than by lowering, marked `@native` on its type — and `@native(backends = …)` names the targets that implement it. A block declares a lowering or `@native`, never both and never neither; using one on a target it doesn't cover is a build error, waived per instance with `@except(backends = …)`." |
         | "**page**" | "A `page` block: one rendered output page — an id, a title, the sites it joins via `sites`, and the content blocks that make up its body." |
         | "**projection**" | "Rendering document content from a typed data model rather than hand-authored blocks — components, repeaters, and `body`/`project` derive the pages from the data." |
         | "**repeater**" | "A `wdoc_repeater`: renders its body once per element of `each`, binding the element to the symbol named by `as` — the single iteration concept for blocks, pages, and nav entries." |

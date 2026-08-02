@@ -13,6 +13,10 @@ column {
 }
 ```
 
+**Left.** The first child fills the first 50% slot.
+
+**Right.** The second child fills the other half.
+
 Any number of columns is allowed — here three equal thirds, each holding its own content.
 
 
@@ -24,6 +28,12 @@ column {
   h4 "Three"
 }
 ```
+
+#### One
+
+#### Two
+
+#### Three
 
 ## Children
 

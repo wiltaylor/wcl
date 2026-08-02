@@ -2,10 +2,9 @@
 //
 // A `terminal` is a monospace character grid rendered as inline SVG
 // with the bundled JetBrains Mono Nerd Font, so box-drawing glyphs,
-// powerline symbols, and Nerd Font icons all render. Like `code` it
-// has no real `lower` — the renderer special-cases it in Rust (the
-// grid model, ANSI handling, and asciinema replay aren't expressible
-// in WCL). Populate it three ways:
+// powerline symbols, and Nerd Font icons all render. It is `@native` —
+// the grid model, ANSI handling, and asciinema replay aren't expressible
+// in WCL. Populate it three ways:
 //
 //   * authored text — `term_text` placed at 1-based character coordinates
 //     with the full terminal style set (the one base primitive), plus the
@@ -34,6 +33,7 @@ interface TermPrimitive {
 }
 
 @block("terminal")
+@native
 type Terminal extends WdocBlock {
   @doc("Grid width in cells (default `80`; a `.cast` header overrides it).")
   cols:        i64?
@@ -69,9 +69,6 @@ type Terminal extends WdocBlock {
   class:       list<utf8>?
   @doc("Placeable terminal primitives and widgets.")
   @children(TermPrimitive) children: list<TermPrimitive>
-  // Declared only to satisfy the WdocBlock interface — the renderer
-  // never calls this; the grid is built and painted in Rust.
-  lower = fn(t: Terminal) -> list<HtmlFundamental> []
 }
 
 // The one primitive: a run of text (may contain `\n` for multiple lines)

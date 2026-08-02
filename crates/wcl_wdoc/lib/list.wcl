@@ -22,7 +22,8 @@
 // `list` and `li` are fundamental HTML blocks rendered directly in Rust
 // (like `table`): `list` → `<ul>` / `<ol>`, `li` → `<li>`. The numbered
 // "1.1" sublist numbering is pure CSS (counters), so it needs no Rust
-// per-item state. Their `lower`s are therefore never called.
+// per-item state. `list` is therefore `@native`, and an `li` is a child
+// item its parent renders (like a `tree_node`), not a block of its own.
 
 // Marker for the two things an `li` can contain: another `li`, or a
 // nested `list`. Carries the fields both already declare.
@@ -39,6 +40,7 @@ interface ListNode {
 symbol_set ListStyle { bullet numbered }
 
 @block("list")
+@native
 type ListBlock extends WdocBlock, ListNode {
   id:    identifier?
   class: list<utf8>?
@@ -46,9 +48,6 @@ type ListBlock extends WdocBlock, ListNode {
   style: ListStyle?
   @doc("The list items.")
   @children("li") items: list<Li>
-  // Fundamental: rendered directly in Rust, so `lower` is never invoked —
-  // declared only to satisfy the WdocBlock interface (mirrors TableBlock).
-  lower = fn(l: ListBlock) -> list<HtmlFundamental> []
 }
 
 @block("li")

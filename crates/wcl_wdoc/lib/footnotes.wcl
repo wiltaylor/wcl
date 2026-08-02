@@ -11,14 +11,16 @@
 
 namespace wdoc
 
+// A single definition. Not a `WdocBlock`: it never renders on its own —
+// the parent `footnotes` block's `lower` maps it into one `<li>` — so it
+// has neither a lowering of its own nor a native implementation, exactly
+// like an `li` under a `list`.
 @block("footnote")
-type Footnote extends WdocBlock {
+type Footnote {
   @doc("The footnote id (its inline label slot) — the `[^id]` reference target.")
   @inline(0) id: identifier
   @doc("The footnote text; inline patterns (`**bold**`, `[links](…)`) apply.")
   text: utf8
-  // Rendered by the parent `footnotes` block.
-  lower = fn(f: Footnote) -> list<HtmlFundamental> []
 }
 
 @block("footnotes")

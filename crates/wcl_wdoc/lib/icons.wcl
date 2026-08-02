@@ -55,10 +55,11 @@ type IconDef {
 
 // A placeable, scalable icon inside a `diagram` / `container`. `width` /
 // `height` size it in diagram units (scaled further by `scale`); the
-// anchors position it like any other shape. The `lower` is a stub — the
-// icon is special-cased in the renderer (it resolves a bundled pack and
-// emits a `<use>` of the shared sprite, which WCL can't express).
+// anchors position it like any other shape. It is `@native` — the icon is
+// resolved in Rust against a bundled pack and emitted as a `<use>` of the
+// shared sprite, which WCL can't express.
 @block("icon")
+@native
 type Icon extends SvgBlock {
   @doc("Icon name (the label slot), optionally `set.name` (e.g. `lucide.compass`).")
   @inline(0) name: identifier         // icon name (optionally `set.name`)
@@ -95,8 +96,6 @@ type Icon extends SvgBlock {
   @hidden anchor_bottom: f64?
   @doc("Diagram edge-attach sides, like any shape.")
   connect_points: list<AnchorSide>?
-
-  lower = fn(i: Icon) -> list<SvgFundamental> []
 }
 
 // Default icon styling. The inline `:name:` handler emits an

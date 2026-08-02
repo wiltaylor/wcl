@@ -314,7 +314,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_build {
     name = "build"
     kind = "module"
-    summary = "1 file, 26 pub items"
+    summary = "1 file, 27 pub items"
     deps = [n_cg_wcl_wdoc_highlight, n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_card {
@@ -396,7 +396,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_kinds {
     name = "kinds"
     kind = "module"
-    summary = "1 file, 19 pub items"
+    summary = "1 file, 20 pub items"
   }
   code_node n_cg_wcl_wdoc_layered {
     name = "layered"
@@ -420,6 +420,12 @@ code_item code_crate_wcl_wdoc {
     kind = "module"
     summary = "1 file, 2 pub items"
     deps = [n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
+  }
+  code_node n_cg_wcl_wdoc_native {
+    name = "native"
+    kind = "module"
+    summary = "1 file, 2 pub items"
+    deps = [n_cg_wcl_wdoc_inline, n_cg_wcl_wdoc_kinds, n_cg_wcl_wdoc_render, n_cg_wcl_wdoc_xc_wcl_lang]
   }
   code_node n_cg_wcl_wdoc_node_table {
     name = "node_table"
@@ -523,7 +529,7 @@ code_item code_crate_wcl_wdoc {
   code_node n_cg_wcl_wdoc_xc_wcl_lang {
     name = "wcl_lang (crate)"
     kind = "extern_crate"
-    summary = "uses Block, Document, Environment, Registry, +6 more"
+    summary = "uses Block, Document, Environment, Registry, +8 more"
   }
 }
 
@@ -5702,6 +5708,11 @@ code_item code_api_wcl_wdoc_build {
       kind = "fn"
       visibility = "crate"
     }
+    code_member m_n_api_wcl_wdoc_build_build_fns_contract_errors {
+      signature = "fn contract_errors(doc: &Document) -> Vec<Report>"
+      kind = "fn"
+      visibility = "crate"
+    }
     code_member m_n_api_wcl_wdoc_build_build_fns_build {
       signature = "fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>…"
       kind = "fn"
@@ -5721,12 +5732,8 @@ code_item code_api_wcl_wdoc_build {
       kind = "fn"
       deps = [n_api_wcl_wdoc_build_BuildOptions, n_api_wcl_wdoc_build_RebuildOutcome, n_api_wcl_wdoc_build_BuildError]
     }
-    code_member m_n_api_wcl_wdoc_build_build_fns_take_render_warnings {
-      signature = "fn take_render_warnings() -> Vec<String>"
-      kind = "fn"
-    }
     code_member m_n_api_wcl_wdoc_build_build_fns_more {
-      signature = "… +8 more"
+      signature = "… +9 more"
       kind = "overflow"
     }
   }
@@ -6436,6 +6443,10 @@ code_item code_api_wdoc_html_renderer {
     }
     code_member m_n_api_wdoc_html_renderer_Backend_Markdown {
       signature = "Markdown"
+      kind = "variant"
+    }
+    code_member m_n_api_wdoc_html_renderer_Backend_Skill {
+      signature = "Skill"
       kind = "variant"
     }
     code_member m_n_api_wdoc_html_renderer_Backend_symbol {
@@ -7754,6 +7765,11 @@ code_item code_api_wcl_wdoc_kinds {
     name = "kinds"
     kind = "fns"
     summary = "src/kinds.rs"
+    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_COLUMN {
+      signature = "const COLUMN: &str"
+      kind = "const"
+      visibility = "crate"
+    }
     code_member m_n_api_wcl_wdoc_kinds_kinds_fns_FRAGMENT {
       signature = "const FRAGMENT: &str"
       kind = "const"
@@ -7814,13 +7830,8 @@ code_item code_api_wcl_wdoc_kinds {
       kind = "const"
       visibility = "crate"
     }
-    code_member m_n_api_wcl_wdoc_kinds_kinds_fns_FILE {
-      signature = "const FILE: &str"
-      kind = "const"
-      visibility = "crate"
-    }
     code_member m_n_api_wcl_wdoc_kinds_kinds_fns_more {
-      signature = "… +6 more"
+      signature = "… +7 more"
       kind = "overflow"
     }
   }
@@ -8539,6 +8550,28 @@ code_item code_api_wcl_wdoc_math {
     }
     code_member m_n_api_wcl_wdoc_math_math_fns_render_inline_math {
       signature = "fn render_inline_math(map: &BTreeMap<String, Value>) -> String"
+      kind = "fn"
+      visibility = "crate"
+    }
+  }
+}
+
+code_item code_api_wcl_wdoc_native {
+  container = wcl_wdoc
+  name      = "Public surface — native"
+  summary   = "Pub / pub(crate) types, traits, and functions — the surface a sibling component sees (tree-sitter over wcl_wdoc::native)."
+  kind      = :module_api
+  code_node n_api_wcl_wdoc_native_native_fns {
+    name = "native"
+    kind = "fns"
+    summary = "src/native.rs"
+    code_member m_n_api_wcl_wdoc_native_native_fns_refuse_uncovered {
+      signature = "fn refuse_uncovered( block: &Block<'_>, patterns: &InlinePatter…"
+      kind = "fn"
+      visibility = "crate"
+    }
+    code_member m_n_api_wcl_wdoc_native_native_fns_native_errors {
+      signature = "fn native_errors(doc: &Document) -> Vec<Report>"
       kind = "fn"
       visibility = "crate"
     }
@@ -9269,10 +9302,12 @@ code_item code_mod_wdoc_stdlib {
     members = [
       "class",
       "dark",
+      "file",
       "frontmatter",
       "light",
       "page",
       "stylesheet",
+      "terminal",
     ]
   }
   code_node n_wdoc_stdlib_demo {

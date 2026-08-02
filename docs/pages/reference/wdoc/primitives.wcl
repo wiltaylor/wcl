@@ -5,6 +5,11 @@ page wdoc_primitives { sites = [:reference]  title = "Primitive Shapes"
 
   p "Primitive shapes are what everything is broken down into for rendering. Higher-level blocks (flowchart nodes, charts, cards, …) all lower to these, so targeting a new backend only means re-implementing the primitives."
 
+  callout "Lowered or native — every block declares which" {
+    class = ["info"]
+    body  = "A block type carries **either** a `lower` function (the block expands into simpler blocks until only primitives remain) **or** `@native` (wdoc renders the kind in Rust, because its output — a character grid, a cropped spritesheet, calendar maths — isn't expressible in WCL). Declaring both, or neither, fails the build. `@native` also names the targets it covers, e.g. `@native(backends = [:html, :markdown, :skill])`; a bare `@native` covers all four. Only wdoc's own blocks can be native — a block you declare renders through its `lower`, and by that route it works on every target."
+  }
+
   p "Every shape shares a few common fields, summarised here; the per-shape tables below reflect the full field set of each shape:"
 
   table {

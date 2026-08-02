@@ -136,11 +136,33 @@ impl Emitter<'_> {
         if let Some(res) = structural {
             return res;
         }
+        // A native block this backend doesn't implement is a build error, not
+        // a silent nothing — waived per instance with
+        // `@except(backends = [:markdown])` (or `[:skill]`). The emitter
+        // drives both targets, so it asks which one it is running as.
+        if crate::native::refuse_uncovered(block, patterns, patterns.backend()) {
+            return Ok(());
+        }
         let kind = block.kind();
         match kind {
+            // An `edit_object` is an editor affordance: the button exists only
+            // in the `wcl editor` preview's edit mode, which is an HTML build.
+            // Markdown renders nothing for it — stated here rather than left to
+            // fall through, so the kind is honestly covered on this target.
+            kinds::EDIT_OBJECT => {}
             // A presentation fragment is a step-reveal wrapper — its children
             // render in place in static output.
             kinds::FRAGMENT => {
+                for c in block.blocks() {
+                    self.block(&c, out)?;
+                }
+            }
+            // A `column` is a CSS grid: side-by-side layout is the one thing
+            // Markdown can't reproduce. The content is not the layout, so the
+            // children render stacked in place — the same degradation `region`
+            // and `fragment` take, and the reason `column` is native here at
+            // all (until this arm existed it silently dropped its children).
+            kinds::COLUMN => {
                 for c in block.blocks() {
                     self.block(&c, out)?;
                 }

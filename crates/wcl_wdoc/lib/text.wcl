@@ -46,8 +46,12 @@ type Span {
 }
 
 // Grid container. `widths` are CSS percentages, one per child slot;
-// children flow in source order across the slots.
+// children flow in source order across the slots. `@native` on every
+// target: only HTML draws the grid, and the static backends render the
+// children stacked in source order — the layout is lost, the content is
+// not (the same degradation `region` / `fragment` take).
 @block("column")
+@native
 type Column extends WdocBlock {
   @doc("One CSS percentage per child slot (e.g. `[50.0, 50.0]`).")
   widths: list<f64>
@@ -57,6 +61,5 @@ type Column extends WdocBlock {
   class:  list<utf8>?
   @doc("Any wdoc blocks — each consecutive block fills the next column slot.")
   @children(WdocBlock) children: list<WdocBlock>
-  lower = fn(c: Column) -> list<HtmlFundamental> []
 }
 

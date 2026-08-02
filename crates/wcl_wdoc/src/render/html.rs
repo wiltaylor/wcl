@@ -529,8 +529,15 @@ pub(crate) fn render_block(
     if structural.is_some() {
         return Some(buf);
     }
+    // `render_block` always renders HTML — including the bodies of `card` /
+    // `node_table` / `map` shapes, which are HTML inside a `<foreignObject>`
+    // whichever target embeds the SVG. So the coverage question here is
+    // always about `:html`, never about the build that started this pass.
+    if crate::native::refuse_uncovered(block, patterns, crate::inline::Backend::Html) {
+        return Some(String::new());
+    }
     let rendered = match block.kind() {
-        "column" => Some(render_column(doc, block, patterns, base_dir)),
+        kinds::COLUMN => Some(render_column(doc, block, patterns, base_dir)),
         // A `region` is a named content slot pulled out and rendered
         // separately by `build_normal_page` (it becomes a `TemplateCtx`
         // region). Reached here only when nested outside the page top
@@ -651,7 +658,7 @@ fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> S
     if matches!(
         kind,
         kinds::REGION
-            | "column"
+            | kinds::COLUMN
             | kinds::FRAGMENT
             | kinds::REPEATER
             | kinds::INSTANCE

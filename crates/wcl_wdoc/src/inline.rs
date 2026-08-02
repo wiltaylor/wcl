@@ -35,22 +35,31 @@ const MAX_DEPTH: usize = 8;
 /// Which output backend a render pass targets. Carried on
 /// [`InlinePatterns`] so the block-visibility predicate
 /// ([`crate::visibility::block_visible`]) can honour the `backends=[…]`
-/// axis of `@only` / `@except`.
+/// axis of `@only` / `@except`, and so [`crate::native`] can refuse a
+/// native block on a target it doesn't cover.
+///
+/// `Skill` runs the Markdown emitter, but it is its own target: it writes
+/// a skill folder, routes `file`s to `scripts/` / `assets/`, and has no
+/// `markdown_source`. Naming it separately is what lets an author write
+/// `@except(backends = [:skill])` — before this the skill build reported
+/// itself as `:markdown` and could not be addressed.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Backend {
     Html,
     Pdf,
     Markdown,
+    Skill,
 }
 
 impl Backend {
     /// The symbol an author writes in a `backends=[…]` axis
-    /// (`:html` / `:pdf` / `:markdown`).
+    /// (`:html` / `:pdf` / `:markdown` / `:skill`).
     pub(crate) fn symbol(self) -> &'static str {
         match self {
             Backend::Html => "html",
             Backend::Pdf => "pdf",
             Backend::Markdown => "markdown",
+            Backend::Skill => "skill",
         }
     }
 }

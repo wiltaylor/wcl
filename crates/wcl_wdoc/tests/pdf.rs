@@ -1185,3 +1185,105 @@ fn state_diagram_embeds_in_pdf() {
     let n = pdf_ok(&src, out.path(), PageSize::A4);
     assert_eq!(n, 1);
 }
+
+#[test]
+fn a_file_block_refuses_to_build_a_pdf() {
+    // A PDF is one self-contained document: there is no output folder beside
+    // it to copy a shipped file into, so `file` declares no `:pdf` coverage
+    // and the build says so rather than dropping the block. This is the
+    // question the mechanism exists to force an answer to.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "site s { title = \"S\" }\npage p {\n  sites = [:s]\n  h1 \"P\"\n  file \"setup.sh\" { dir = \"scripts\"  as = \"run setup\" }\n}\n",
+    );
+    std::fs::write(tmp.path().join("setup.sh"), "#!/bin/sh\n").expect("write asset");
+    let out = TempDir::new().expect("mkdir out");
+    match pdf(&src, out.path(), None, PageSize::A4) {
+        Err(PdfError::Eval(r)) => {
+            let text = format!("{r:?}");
+            assert!(
+                text.contains("file") && text.contains(":pdf") && text.contains("@except"),
+                "names the kind, the target and the waiver: {text}"
+            );
+        }
+        Ok(n) => panic!("expected an uncovered-target error, but wrote {n} page(s)"),
+        Err(_) => panic!("expected PdfError::Eval"),
+    }
+}
+
+#[test]
+fn a_waived_file_block_lets_the_pdf_build() {
+    // The stated intent: this document does not want the file in its PDF.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "site s { title = \"S\" }\npage p {\n  sites = [:s]\n  h1 \"P\"\n  @except(backends = [:pdf])\n  file \"setup.sh\" { dir = \"scripts\"  as = \"run setup\" }\n}\n",
+    );
+    std::fs::write(tmp.path().join("setup.sh"), "#!/bin/sh\n").expect("write asset");
+    let out = TempDir::new().expect("mkdir out");
+    let n = pdf_ok(&src, out.path(), PageSize::A4);
+    assert_eq!(n, 1);
+}
+
+#[test]
+fn column_children_stack_in_a_pdf() {
+    // A PDF page flow has no side-by-side layout, so a `column` renders its
+    // children in source order instead of dropping them. The text is font-
+    // subset encoded in the output, so the signal is that the wrapped
+    // content reaches the page at all: the same body inside a `column`
+    // produces a PDF the size of the bare one, not the size of an empty page.
+    fn build(body: &str) -> usize {
+        let tmp = TempDir::new().expect("mkdir tempdir");
+        let src = tmp.path().join("doc.wcl");
+        write_fixture(&src, body);
+        let out = TempDir::new().expect("mkdir out");
+        assert_eq!(pdf_ok(&src, out.path(), PageSize::A4), 1);
+        std::fs::read(out.path().join("doc.pdf"))
+            .expect("read pdf")
+            .len()
+    }
+    let empty = build("page p {\n  h1 \"P\"\n}\n");
+    let bare = build(
+        "page p {\n  h1 \"P\"\n  p \"left side of the layout\"\n  p \"right side of the layout\"\n}\n",
+    );
+    let wrapped = build(
+        "page p {\n  h1 \"P\"\n  column { widths = [50.0, 50.0]\n    p \"left side of the layout\"\n    p \"right side of the layout\"\n  }\n}\n",
+    );
+    assert!(bare > empty, "the fixture's body has to show up at all");
+    assert!(
+        wrapped >= bare,
+        "column children must reach the PDF (empty {empty}, bare {bare}, wrapped {wrapped})"
+    );
+}
+
+#[test]
+fn a_file_block_inside_a_card_still_refuses_to_build_a_pdf() {
+    // A `card` body renders as HTML inside the diagram's `<foreignObject>`
+    // whichever target embeds it, so the renderer running there is the HTML
+    // one. `file`'s non-coverage is about the *output*, though — a PDF ships
+    // no folder to copy into — so the check has to fail here too, whichever
+    // of the two paths a card body takes, or the PDF gets a link to an asset
+    // that was never written.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "site s { title = \"S\" }\npage p {\n  sites = [:s]\n  h1 \"P\"\n  diagram {\n    width = 400  height = 120\n    card { x = 10.0  y = 10.0  width = 380.0  height = 100.0\n      file \"setup.sh\" { dir = \"scripts\"  as = \"run setup\" }\n    }\n  }\n}\n",
+    );
+    std::fs::write(tmp.path().join("setup.sh"), "#!/bin/sh\n").expect("write asset");
+    let out = TempDir::new().expect("mkdir out");
+    match pdf(&src, out.path(), None, PageSize::A4) {
+        Err(PdfError::Eval(r)) => {
+            let text = format!("{r:?}");
+            assert!(
+                text.contains("file") && text.contains(":pdf"),
+                "names the kind and the output target: {text}"
+            );
+        }
+        Ok(n) => panic!("expected an uncovered-target error, but wrote {n} page(s)"),
+        Err(_) => panic!("expected PdfError::Eval"),
+    }
+}

@@ -529,6 +529,20 @@ pub(crate) fn reserved_kind_errors(doc: &Document) -> Vec<Report> {
     out
 }
 
+/// Every schema-level contract a document must satisfy before any backend
+/// renders it: no root-authored re-declaration of a Rust-dispatched kind
+/// ([`reserved_kind_errors`]), and a coherent rendering declaration on every
+/// block type ([`crate::native::native_errors`]).
+///
+/// The four entry points (HTML / Markdown / PDF / skill) call this one
+/// function right after `schema_errors`, so a fifth cannot pick up half the
+/// contract — before it existed the skill target ran neither check.
+pub(crate) fn contract_errors(doc: &Document) -> Vec<Report> {
+    let mut out = reserved_kind_errors(doc);
+    out.extend(crate::native::native_errors(doc));
+    out
+}
+
 /// Emit a build-progress line to stderr, only when stderr is a
 /// terminal — an interactive `wcl wdoc build` (and `wdoc serve`) can
 /// tell a slow build from a stuck one, while tests, CI, and piped
@@ -736,10 +750,9 @@ fn build_inner(
         return Err(BuildError::Schema(n));
     }
 
-    // Root-authored re-declarations of renderer-built-in kinds would be
-    // silently dead (see `reserved_kind_errors`) — fail like a schema
-    // violation instead.
-    let reserved = reserved_kind_errors(&doc);
+    // The schema-level rendering contract (see `contract_errors`) — fail
+    // like a schema violation.
+    let reserved = contract_errors(&doc);
     if !reserved.is_empty() {
         let n = reserved.len();
         let src = NamedSource::new(name.clone(), user_src.clone());
