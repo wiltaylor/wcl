@@ -1,28 +1,34 @@
 //! `wcl wskill` — the wskill model from the command line.
 //!
-//! The model itself lives in [`wcl_wskill`], and so does the lint rule
-//! engine; this is the thin CLI face of both, so an agent (or a script, or a
-//! human) can read a wskill's graph and its findings without a browser editor
-//! running.
+//! The model itself lives in [`wcl_wskill`], and so do the lint rule engine
+//! and the range audit; this is the thin CLI face of all three, so an agent
+//! (or a script, or a human) can read a wskill's graph, its findings and what
+//! a range did to it without a browser editor running.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use wcl_wskill::audit::{Audit, Change, Metric, NodeDelta, Range};
 use wcl_wskill::{Finding, Severity};
 
 use crate::{EXIT_EVAL, EXIT_IO, EXIT_OK, EXIT_PARSE};
 
-/// `lint`'s exit codes are its own: **0** clean, **1** findings at or above
-/// the denied severity, **2** the model could not be read.
+/// The exit codes of the model-reading subcommands are their own: **0**
+/// clean, **1** findings at or above the denied severity, **2** the model
+/// could not be read.
 ///
 /// They deliberately differ from the CLI-wide codes (where 1 is a parse error
 /// and 2 a schema violation), because a linter's caller asks one question —
 /// did it pass? — and the answer must not depend on *how* a failing wskill
 /// failed. A tool failure is 2 whether the cause was a parse error or a
 /// missing folder.
-const LINT_OK: u8 = 0;
-const LINT_FINDINGS: u8 = 1;
-const LINT_TOOL_FAILURE: u8 = 2;
+///
+/// `audit` never returns 1: it is a review, not a gate. Deciding a range made
+/// things worse is a judgement over what it reports, and a command that
+/// exited non-zero for it would be a health gate wearing a review's clothes.
+const WSKILL_OK: u8 = 0;
+const WSKILL_FINDINGS: u8 = 1;
+const WSKILL_TOOL_FAILURE: u8 = 2;
 
 /// Run `wcl wskill graph [<entry>] [--rev <rev>]`: print the model as JSON.
 pub(crate) fn run_graph(entry: &Path, rev: Option<&str>) -> u8 {
@@ -64,7 +70,7 @@ pub(crate) fn run_graph(entry: &Path, rev: Option<&str>) -> u8 {
 /// `--severity candidate` the curator's phase-1 read rather than a gate.
 pub(crate) fn run_lint(
     entry: &Path,
-    format: crate::LintFormat,
+    format: crate::ReportFormat,
     severity: &[Severity],
     deny: Severity,
 ) -> u8 {
@@ -72,7 +78,7 @@ pub(crate) fn run_lint(
         Ok(g) => g,
         Err(e) => {
             report(e);
-            return LINT_TOOL_FAILURE;
+            return WSKILL_TOOL_FAILURE;
         }
     };
     let findings: Vec<Finding> = wcl_wskill::lint(&graph)
@@ -81,20 +87,20 @@ pub(crate) fn run_lint(
         .collect();
 
     match format {
-        crate::LintFormat::Json => {
+        crate::ReportFormat::Json => {
             let json = serde_json::to_string_pretty(&findings)
                 .expect("findings serialize (owned strings and numbers)");
             println!("{json}");
         }
-        crate::LintFormat::Text => print_findings(&graph.root, &findings),
+        crate::ReportFormat::Text => print_findings(&graph.root, &findings),
     }
 
     // `<=` is "at least this certain": severities are declared most-certain
     // first, so `--deny warn` covers warnings AND the errors above them.
     if findings.iter().any(|f| f.severity <= deny) {
-        LINT_FINDINGS
+        WSKILL_FINDINGS
     } else {
-        LINT_OK
+        WSKILL_OK
     }
 }
 
@@ -130,12 +136,188 @@ fn print_findings(root: &Path, findings: &[Finding]) {
     );
 }
 
+/// Run `wcl wskill audit [<entry>] [--range <range>] [--format …]`: the
+/// union graph of two revisions, with its changelog.
+///
+/// There is no `--deny`, and no exit code between clean and unreadable: an
+/// audit reports what a range did, and whether that is acceptable is the
+/// reviewer's call. See [`WSKILL_OK`].
+pub(crate) fn run_audit(entry: &Path, range: &str, format: crate::ReportFormat) -> u8 {
+    let audit = match Audit::across(entry, &Range::parse(range)) {
+        Ok(a) => a,
+        Err(e) => {
+            report(e);
+            return WSKILL_TOOL_FAILURE;
+        }
+    };
+    match format {
+        crate::ReportFormat::Json => {
+            let json = serde_json::to_string_pretty(&audit)
+                .expect("the audit serializes (owned strings and numbers)");
+            println!("{json}");
+        }
+        crate::ReportFormat::Text => print_audit(&audit),
+    }
+    WSKILL_OK
+}
+
+/// The header strip, then one row per changed node with its own findings and
+/// link churn beneath it — the changelog *is* the surface, and the health
+/// metrics are its header rather than a report of their own.
+fn print_audit(audit: &Audit) {
+    let s = &audit.summary;
+    println!(
+        "{} {}",
+        shorten(audit.root.clone()).display(),
+        range_label(audit)
+    );
+    println!(
+        "  units {}   indexes {}   edges {}",
+        counts(s.units.added, s.units.removed, s.units.modified),
+        counts(s.indexes.added, s.indexes.removed, s.indexes.modified),
+        // An edge has no content to modify — it exists or it doesn't.
+        counts(s.edges.added, s.edges.removed, 0),
+    );
+    for (label, moved) in [
+        (
+            "worse",
+            audit.health.iter().filter(|m| m.worse).collect::<Vec<_>>(),
+        ),
+        (
+            "better",
+            audit
+                .health
+                .iter()
+                .filter(|m| m.moved() && !m.worse)
+                .collect::<Vec<_>>(),
+        ),
+    ] {
+        if !moved.is_empty() {
+            let parts: Vec<String> = moved.into_iter().map(metric_label).collect();
+            println!("  {label:<6}  {}", parts.join(" · "));
+        }
+    }
+
+    // Line numbers are the working tree's, so they are only offered when the
+    // compared side IS the working tree — a line resolved against a file the
+    // audit never read would point at the wrong thing with total confidence.
+    let mut lines = (audit.after.is_none()).then(Lines::default);
+    let mut changed = 0usize;
+    let mut findings = 0usize;
+    for node in audit.news() {
+        changed += 1;
+        findings += node.findings.len();
+        println!("\n{} {}", at(audit, node, &mut lines), row(node));
+        for f in &node.findings {
+            println!("    {} [{}] {}", f.severity, f.rule, f.message);
+        }
+        for e in audit.edge_news(&node.key()) {
+            let via = match &e.index_id {
+                Some(id) if *id != node.node.id => format!(" (via `{id}`)"),
+                _ => String::new(),
+            };
+            println!("    {} {} → {}{via}", e.change.marker(), e.kind, e.to);
+        }
+    }
+    eprintln!(
+        "{}",
+        if changed == 0 {
+            "no changes".to_string()
+        } else {
+            format!(
+                "{changed} node{} changed, {findings} new finding{}",
+                if changed == 1 { "" } else { "s" },
+                if findings == 1 { "" } else { "s" }
+            )
+        }
+    );
+}
+
+/// `<before>..<after>`, in short shas, naming the working tree for what it
+/// is — an audit of uncommitted output must say so, or its reader cannot
+/// reproduce it.
+fn range_label(audit: &Audit) -> String {
+    let short = |sha: &str| sha.chars().take(8).collect::<String>();
+    format!(
+        "{}..{}",
+        short(&audit.before),
+        audit
+            .after
+            .as_deref()
+            .map(short)
+            .unwrap_or_else(|| "(working tree)".to_string())
+    )
+}
+
+/// `+3 -1 ~2`, dropping the zeros. A count that did not move is not news,
+/// and a header of zeroes reads as noise.
+fn counts(added: usize, removed: usize, modified: usize) -> String {
+    let parts: Vec<String> = [('+', added), ('-', removed), ('~', modified)]
+        .iter()
+        .filter(|(_, n)| *n > 0)
+        .map(|(sign, n)| format!("{sign}{n}"))
+        .collect();
+    if parts.is_empty() {
+        "—".to_string()
+    } else {
+        parts.join(" ")
+    }
+}
+
+fn metric_label(m: &Metric) -> String {
+    format!("{} {} → {}", m.label, m.format(m.before), m.format(m.after))
+}
+
+/// Where a changed node is written, as a terminal can open it.
+fn at(audit: &Audit, node: &NodeDelta, lines: &mut Option<Lines>) -> String {
+    let path = display_path(&audit.root, &node.file);
+    // A removal's span addresses the file as it *was*, so resolving it
+    // against the working tree would be fiction.
+    if node.change == Change::Removed {
+        return path.display().to_string();
+    }
+    match (lines, node.span) {
+        (Some(lines), Some(span)) => match lines.line_of(&audit.root, &node.file, span.start) {
+            Some(line) => format!("{}:{line}", path.display()),
+            None => path.display().to_string(),
+        },
+        _ => path.display().to_string(),
+    }
+}
+
+/// The changelog row itself: what happened, to what, and — for a
+/// modification — which part of it.
+fn row(node: &NodeDelta) -> String {
+    let aspects = if node.changed.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " ({})",
+            node.changed
+                .iter()
+                .map(|a| a.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    format!(
+        "{} {}:{} \"{}\"{aspects}",
+        node.change.marker(),
+        node.node.kind,
+        node.node.id,
+        node.title
+    )
+}
+
 /// A finding's file as the shortest thing that still resolves from the
 /// caller's directory: relative to the cwd when it is under it, else
 /// absolute. Anchors are wskill-relative in the model, which is what makes
 /// two revisions comparable but is not something a terminal can open.
 fn display_path(root: &Path, file: &Path) -> PathBuf {
-    let full = root.join(file);
+    shorten(root.join(file))
+}
+
+fn shorten(full: PathBuf) -> PathBuf {
     std::env::current_dir()
         .ok()
         .and_then(|cwd| full.strip_prefix(cwd).ok().map(Path::to_path_buf))

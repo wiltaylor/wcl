@@ -107,7 +107,7 @@ impl Graph {
     /// [`Graph::root`] is reported as the working-tree path of the wskill, so
     /// two revisions of one wskill compare directly.
     pub fn open_at_rev(entry: &Path, rev: &str) -> Result<Graph, Error> {
-        let entry_file = resolve_entry_lexical(entry);
+        let entry_file = entry_file_of(entry);
         let (repo, rel) =
             wcl_wdoc::git::repo_rel(&entry_file.to_string_lossy()).map_err(Error::Git)?;
         let sha = wcl_wdoc::git::resolve_rev(rev, &repo).map_err(Error::Git)?;
@@ -178,7 +178,7 @@ fn resolve_entry(entry: &Path) -> Result<PathBuf, Error> {
 /// [`resolve_entry`] without touching the filesystem — for a revision load,
 /// where the path may not exist in the working tree at all. A path that
 /// doesn't end in `.wcl` is taken for a directory.
-fn resolve_entry_lexical(entry: &Path) -> PathBuf {
+pub(crate) fn entry_file_of(entry: &Path) -> PathBuf {
     if entry.extension().and_then(|e| e.to_str()) == Some("wcl") {
         entry.to_path_buf()
     } else {

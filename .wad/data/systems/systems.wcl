@@ -50,12 +50,13 @@ container wcl_wdoc {
 container wcl_wskill {
   system     = wcl
   name       = "wcl_wskill"
-  summary    = "The wskill model: a wskill folder's unit graph — units, nested index trees, related and pin edges, per-unit block lists — as typed Rust, loadable at a git revision."
+  summary    = "The wskill model: a wskill folder's unit graph — units, nested index trees, related and pin edges, per-unit block lists — as typed Rust, loadable at a git revision, plus the lint rule engine and the range audit over it."
   kind       = :library
   technology = "Rust"
   repo       = wcl_monorepo
   body {
-    p "Sits between wcl_wdoc (which renders a wskill's projections) and the CLI, because the model has several consumers that must not need a running editor: `wcl wskill graph`, the curator agent, and the browser editor's graph view."
+    p "Sits between wcl_wdoc (which renders a wskill's projections) and the CLI, because the model has several consumers that must not need a running editor: `wcl wskill graph` / `lint` / `audit`, the curator agent, and the browser editor's graph view."
+    p "Loading at a revision is what makes the audit possible: two graphs held at once, diffed into the union graph — before ∪ after, with removals marked — because half of an audit is what stopped existing."
   }
 }
 

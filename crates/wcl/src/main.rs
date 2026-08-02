@@ -371,8 +371,8 @@ enum WskillCommand {
         /// the current directory.
         entry: Option<PathBuf>,
         /// Output format: `text` (default) or `json`.
-        #[arg(long, value_enum, default_value_t = LintFormat::Text)]
-        format: LintFormat,
+        #[arg(long, value_enum, default_value_t = ReportFormat::Text)]
+        format: ReportFormat,
         /// Report only these severities: `error`, `warn`, `candidate`
         /// (comma-separated, repeatable). Default: all three.
         #[arg(long, value_delimiter = ',', value_parser = parse_severity)]
@@ -381,6 +381,36 @@ enum WskillCommand {
         /// `warn`, `candidate`. Only reported severities count.
         #[arg(long, value_parser = parse_severity, default_value = "error")]
         deny: wcl_wskill::Severity,
+    },
+    /// Diff the model across a git range: the union graph — before ∪ after,
+    /// with removed units and edges marked removed — plus the findings each
+    /// changed unit gained and a header of health metrics that moved.
+    ///
+    /// This is the one reading a live graph structurally cannot give you,
+    /// because a live graph draws what exists and half of an audit is what
+    /// stopped existing. It is a review, not a gate: exit 0 unless the model
+    /// could not be read (2).
+    ///
+    /// The range is any git range and defaults to `HEAD~1` — a bare revision
+    /// (or an open-ended `a..`) compares it against the working tree, `a..b`
+    /// compares two commits, and `a...b` starts from where they diverged,
+    /// which is what reviewing a branch means.
+    ///
+    /// Examples:
+    ///   wcl wskill audit docs/wskills/wcl
+    ///   wcl wskill audit docs/wskills/wcl --range HEAD~5..HEAD
+    ///   wcl wskill audit docs/wskills/wcl --range main... --format json
+    Audit {
+        /// The wskill folder (or an entry `.wcl` inside it). Defaults to
+        /// the current directory.
+        entry: Option<PathBuf>,
+        /// The git range to audit. Default: `HEAD~1` (the previous commit
+        /// against the working tree).
+        #[arg(long, default_value = wcl_wskill::DEFAULT_RANGE)]
+        range: String,
+        /// Output format: `text` (default) or `json`.
+        #[arg(long, value_enum, default_value_t = ReportFormat::Text)]
+        format: ReportFormat,
     },
 }
 
@@ -397,7 +427,7 @@ fn parse_severity(s: &str) -> Result<wcl_wskill::Severity, String> {
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
-enum LintFormat {
+enum ReportFormat {
     /// One line per finding, most certain first.
     Text,
     /// JSON array, one object per finding.
@@ -787,6 +817,14 @@ fn main() -> ExitCode {
             } => {
                 let entry = entry.unwrap_or_else(|| PathBuf::from("."));
                 wskill::run_lint(&entry, format, &severity, deny)
+            }
+            WskillCommand::Audit {
+                entry,
+                range,
+                format,
+            } => {
+                let entry = entry.unwrap_or_else(|| PathBuf::from("."));
+                wskill::run_audit(&entry, &range, format)
             }
         },
         Command::Wad { cmd } => match cmd {

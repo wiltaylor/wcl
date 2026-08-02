@@ -23,7 +23,7 @@
 //! Two things follow from the curator being a first-class consumer:
 //!
 //! - a [`Graph`] can be loaded **at a git revision** ([`Graph::open_at_rev`]),
-//!   because auditing a change means diffing two of them;
+//!   because auditing a change means diffing two of them ([`Audit`]);
 //! - a [`Graph`] is **owned** — nothing borrows the document it was read
 //!   from, so two revisions can be held at once.
 //!
@@ -37,6 +37,7 @@
 //! wire shapes of any HTTP endpoint, and rendering. The model says what the
 //! wskill is.
 
+pub mod audit;
 pub mod lint;
 mod load;
 mod model;
@@ -45,6 +46,7 @@ mod registry;
 #[cfg(test)]
 mod testsupport;
 
+pub use audit::{Audit, Change, DEFAULT_RANGE, Range};
 pub use lint::{Finding, Rule, Severity, lint};
 pub use load::{DEFAULT_AUDIENCE, Error, root_for};
 pub use model::{

@@ -40,7 +40,7 @@ pub struct Anchor {
 /// A node's identity in the graph: its kind and its id (`concept:alpha`).
 /// Ids are unique per wskill in practice, but the kind is what turns an id
 /// into something an op can address without a lookup.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 #[serde(into = "String")]
 pub struct NodeKey {
     pub kind: String,
@@ -273,13 +273,28 @@ impl Index {
 }
 
 /// Why two nodes are joined.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeKind {
     /// A unit's own `related` link.
     Related,
     /// An index pinning a unit.
     Pin,
+}
+
+impl EdgeKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EdgeKind::Related => "related",
+            EdgeKind::Pin => "pin",
+        }
+    }
+}
+
+impl fmt::Display for EdgeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

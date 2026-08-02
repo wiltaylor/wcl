@@ -74,6 +74,13 @@ pub fn resolve_rev(rev: &str, root: &Path) -> Result<String, String> {
     )
 }
 
+/// The commit where `a` and `b` diverged — what a `a...b` range means, and
+/// the baseline for reviewing a branch: the state the branch started from,
+/// not whatever the other branch has done since.
+pub fn merge_base(a: &str, b: &str, root: &Path) -> Result<String, String> {
+    git(root, &["merge-base", a, b])
+}
+
 /// Extract the whole tree at `rev` into a fresh temp dir via
 /// `git archive <rev> | tar -x`. The returned `TempDir` cleans itself up on
 /// drop, so the caller must hold it for as long as anything read from it is

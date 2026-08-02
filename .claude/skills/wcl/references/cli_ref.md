@@ -406,3 +406,20 @@ Run every wskill rule over the model and report the findings — errors, warning
 ```console
 wcl wskill lint docs/wskills/wcl --severity error --deny error
 ```
+
+### wcl wskill audit
+
+Diff the model across a git range: the union graph — before ∪ after, with removed units and edges marked removed — plus the findings each changed unit gained and a header of the health metrics that moved.
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| entry | optional | The wskill folder, or an entry `.wcl` inside it. |
+
+| Switch | Value | Description |
+| --- | --- | --- |
+| --range | RANGE | The git range to audit. Default: `HEAD~1`. |
+| --format | FORMAT | Output format: `text` (default, a header strip and one row per changed node) or `json` (the whole union graph, which is what an audit view renders). |
+
+```console
+wcl wskill audit docs/wskills/wcl --range main... --format json
+```
