@@ -51,7 +51,9 @@ pub(super) fn block_to_variant<'a>(
 pub(super) fn decorator_to_variant<'a>(
     doc: &'a Document,
     positional: &[Value],
+    positional_spans: &[ast::Span],
     named: &BTreeMap<String, Value>,
+    named_spans: &BTreeMap<String, ast::Span>,
     union_decl: UnionDecl<'a>,
     span: ast::Span,
 ) -> Result<Value, EvalError> {
@@ -97,7 +99,22 @@ pub(super) fn decorator_to_variant<'a>(
             full_matches.push((*v, map));
         }
     }
-    pick_unique_match(union_decl, full_matches, name_matches, span)
+    pick_unique_match(
+        union_decl,
+        full_matches,
+        name_matches,
+        span,
+        Some(DecoratorArgumentSpans {
+            positional: positional_spans,
+            named: named_spans,
+        }),
+    )
+}
+
+#[derive(Clone, Copy)]
+struct DecoratorArgumentSpans<'a> {
+    positional: &'a [ast::Span],
+    named: &'a BTreeMap<String, ast::Span>,
 }
 
 /// Project a single synthesised table row (a `Block` whose `labels`
@@ -429,7 +446,7 @@ pub(crate) fn match_record_variant_by_shape<'a>(
             full_matches.push((*v, fields.clone()));
         }
     }
-    let v = pick_unique_match(*union_decl, full_matches, name_matches, span)?;
+    let v = pick_unique_match(*union_decl, full_matches, name_matches, span, None)?;
     // Re-extract the matched variant from the Value::Variant we got back.
     // Both invariants hold by construction (`pick_unique_match` returns a
     // `Value::Variant` built from the effective list); report an internal
@@ -458,6 +475,7 @@ fn pick_unique_match<'a>(
     full_matches: Vec<(&'a ast::UnionVariant, BTreeMap<String, Value>)>,
     name_matches: Vec<(&'a ast::UnionVariant, BTreeMap<String, Value>)>,
     span: ast::Span,
+    argument_spans: Option<DecoratorArgumentSpans<'_>>,
 ) -> Result<Value, EvalError> {
     if full_matches.len() == 1 {
         let (v, map) = full_matches.into_iter().next().unwrap();
@@ -490,6 +508,16 @@ fn pick_unique_match<'a>(
             unreachable!("name_matches only contains record variants");
         };
         if let Some((field_name, got, expected)) = first_type_mismatch(decl_fields, map) {
+            let mismatch_span = argument_spans
+                .and_then(|spans| {
+                    spans.named.get(field_name).copied().or_else(|| {
+                        decl_fields
+                            .iter()
+                            .position(|field| field.name == field_name)
+                            .and_then(|index| spans.positional.get(index).copied())
+                    })
+                })
+                .unwrap_or(span);
             return Err(EvalError::schema_violation(
                 SchemaViolationKind::VariantNoMatch,
                 format!(
@@ -497,7 +525,7 @@ fn pick_unique_match<'a>(
                     union_decl.ast.name.join("."),
                     v.name,
                 ),
-                span,
+                mismatch_span,
             ));
         }
     }
