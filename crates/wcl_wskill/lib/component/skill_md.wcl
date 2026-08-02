@@ -20,13 +20,13 @@ import <../schema.wcl>
 // across every imported file), so a topic that overrides `common` keeps the
 // rest of the components.
 
-// One "- [Name](href)" line per pinned unit id, over the four unit kinds.
-let unit_link_lines = fn(rids: list<identifier>, concepts: list<Concept>, entities: list<Entity>, facts: list<Fact>, procedures: list<Procedure>) -> list<utf8> {
-  flatten(map(rids, fn(rid: identifier) -> list<utf8> { flatten([
-    map(filter(concepts,   fn(x: Concept)   -> bool { x.id == rid }), fn(t: Concept)   -> utf8 { $"- [${t.name}](concept_${t.id})" }),
-    map(filter(entities,   fn(x: Entity)    -> bool { x.id == rid }), fn(t: Entity)    -> utf8 { $"- [${t.name}](entity_${t.id})" }),
-    map(filter(facts,      fn(x: Fact)      -> bool { x.id == rid }), fn(t: Fact)      -> utf8 { $"- [${t.title}](fact_${t.id})" }),
-    map(filter(procedures, fn(x: Procedure) -> bool { x.id == rid }), fn(t: Procedure) -> utf8 { $"- [${t.title}](process_${t.id})" }),
+// One "- [Name](href) — reason" line per pinned edge, over the four unit kinds.
+let unit_link_lines = fn(edges: list<identifier>, concepts: list<Concept>, entities: list<Entity>, facts: list<Fact>, procedures: list<Procedure>) -> list<utf8> {
+  flatten(map(edges, fn(edge: identifier) -> list<utf8> { flatten([
+    map(filter(concepts,   fn(x: Concept)   -> bool { $"${x.id}" == $"${related_id(edge)}" }), fn(t: Concept)   -> utf8 { $"- [${t.name}](concept_${t.id})${related_reason_suffix(edge)}" }),
+    map(filter(entities,   fn(x: Entity)    -> bool { $"${x.id}" == $"${related_id(edge)}" }), fn(t: Entity)    -> utf8 { $"- [${t.name}](entity_${t.id})${related_reason_suffix(edge)}" }),
+    map(filter(facts,      fn(x: Fact)      -> bool { $"${x.id}" == $"${related_id(edge)}" }), fn(t: Fact)      -> utf8 { $"- [${t.title}](fact_${t.id})${related_reason_suffix(edge)}" }),
+    map(filter(procedures, fn(x: Procedure) -> bool { $"${x.id}" == $"${related_id(edge)}" }), fn(t: Procedure) -> utf8 { $"- [${t.title}](process_${t.id})${related_reason_suffix(edge)}" }),
   ]) }))
 }
 

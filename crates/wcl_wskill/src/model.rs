@@ -270,7 +270,7 @@ impl Index {
 
     /// Whether this index carries a body — which is what makes it a
     /// linkable node rather than a pure nav heading: a body-less index has
-    /// no page, so a `related` id naming one resolves to nothing.
+    /// no page, so a `related` id naming one is a projection build error.
     pub fn has_body(&self) -> bool {
         !self.blocks.is_empty()
     }

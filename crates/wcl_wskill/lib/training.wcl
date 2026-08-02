@@ -62,7 +62,7 @@ type Check {
   kind: CheckKind?
   explanation: utf8?                        // revealed once answered
   rubric: utf8?                             // :text — what a good answer contains
-  @default([]) related: list<identifier>    // reference units this check covers
+  @schemaless @default([]) related: list<identifier> // bare id or RelatedEdge record
   @children("choice") choices: list<Choice>
 }
 
@@ -91,7 +91,7 @@ type Lesson {
   n:       u32                                   // order within its module (or the course)
   @default([]) objectives:    list<utf8>         // "after this lesson you can …"
   @default([]) prerequisites: list<identifier>   // lesson ids to complete first
-  @default([]) related:       list<identifier>   // reference units this lesson teaches
+  @schemaless @default([]) related: list<identifier> // bare id or RelatedEdge record
   @default([]) tags: list<utf8>
   @child("body") body: WdocAddressableBody?      // the material: prose, code, images, video
   @children("exercise") exercises: list<Exercise>

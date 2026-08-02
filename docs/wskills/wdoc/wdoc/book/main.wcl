@@ -37,10 +37,15 @@ let concepts   = filter(concepts,   fn(c: Concept)   -> bool { in_book(c.audienc
 let entities   = filter(entities,   fn(e: Entity)    -> bool { in_book(e.audience) })
 let facts      = filter(facts,      fn(f: Fact)      -> bool { in_book(f.audience) })
 let examples   = filter(examples,   fn(x: Example)   -> bool { in_book(x.audience) })
+let all_index_levels = flatten([indexes, flatten(map(indexes, fn(x: Index) -> list<Index> { x.children }))])
 // Top-level indexes (book-filtered). Each is a nav section in the TOC whose
 // `related` units are pinned directly beneath it — there are no index landing
 // pages.
 let indexes = filter(indexes, fn(x: Index) -> bool { in_book(x.audience) })
+let child_indexes = filter(flatten(map(indexes, fn(x: Index) -> list<Index> { x.children })), fn(x: Index) -> bool { in_book(x.audience) })
+let all_indexes = flatten([indexes, child_indexes])
+let content_indexes = filter(all_indexes, fn(ix: Index) -> bool { match ix.body { none => false, _ => true } })
+let nav_indexes = filter(all_index_levels, fn(ix: Index) -> bool { match ix.body { none => true, _ => false } })
 let procedures = filter(procedures, fn(p: Procedure) -> bool { in_book(p.audience) })
 // Research defaults to `:ai`, so the book shows a Research section only when a
 // finding opts in with `:book`/`:both`.
@@ -51,14 +56,21 @@ let research_book = filter(research_units, fn(r: Research) -> bool { in_book(r.a
 // Built from the audience-filtered lists above, so backlinks track the book's
 // view. UnitRef is declared in component/common.wcl (shared with the components).
 let all_units = flatten([
-  map(concepts,   fn(c: Concept)   -> UnitRef { { id: c.id, name: c.name,  href: $"concept_${c.id}", related: c.related } }),
-  map(entities,   fn(e: Entity)    -> UnitRef { { id: e.id, name: e.name,  href: $"entity_${e.id}",  related: e.related } }),
-  map(facts,      fn(f: Fact)      -> UnitRef { { id: f.id, name: f.title, href: $"fact_${f.id}",    related: f.related } }),
-  map(procedures, fn(p: Procedure) -> UnitRef { { id: p.id, name: p.title, href: $"process_${p.id}", related: p.related } }),
-  map(research_book, fn(r: Research) -> UnitRef { { id: r.id, name: r.topic, href: $"research_${r.id}", related: r.related } }),
+  map(concepts,   fn(c: Concept)   -> UnitRef { { id: c.id, name: c.name,  href: $"concept_${c.id}", linkable: true, related: c.related } }),
+  map(entities,   fn(e: Entity)    -> UnitRef { { id: e.id, name: e.name,  href: $"entity_${e.id}",  linkable: true, related: e.related } }),
+  map(facts,      fn(f: Fact)      -> UnitRef { { id: f.id, name: f.title, href: $"fact_${f.id}",    linkable: true, related: f.related } }),
+  map(procedures, fn(p: Procedure) -> UnitRef { { id: p.id, name: p.title, href: $"process_${p.id}", linkable: true, related: p.related } }),
+  map(research_book, fn(r: Research) -> UnitRef { { id: r.id, name: r.topic, href: $"research_${r.id}", linkable: true, related: r.related } }),
+  map(content_indexes, fn(ix: Index) -> UnitRef { { id: ix.id, name: ix.name, href: $"index_${ix.id}", linkable: true, related: ix.related } }),
 ])
-let referenced_by = fn(uid: identifier) -> list<UnitRef> {
-  filter(all_units, fn(u: UnitRef) -> bool { list_contains(u.related, uid) })
+let related_targets = flatten([
+  all_units,
+  map(nav_indexes, fn(ix: Index) -> UnitRef { { id: ix.id, name: ix.name, href: "", linkable: false, related: [] } }),
+])
+let referenced_by = fn(uid: identifier, outgoing: list<identifier>) -> list<UnitRef> {
+  filter(all_units, fn(u: UnitRef) -> bool {
+    relates_to(u.related, uid) && !relates_to(outgoing, u.id)
+  })
 }
 
 // The per-unit "Related" / "Referenced by" two-column block: top-align the two
@@ -84,24 +96,39 @@ site book {
   search           = true
   toc {
     chapter "Overview"       { page = index }
-    // Each index is a nav section heading (no landing page) whose body nests its
-    // child-index sub-groups; each sub-group nests the concept / fact / process
-    // pages it pins via `related`, so the units sit directly in the menu tree. A
-    // section's own direct `related` (if any) is pinned before its sub-groups.
+    // Content indexes are page chapters; bodyless indexes remain navigation
+    // headings whose pinned units are exposed directly in the tree.
     wdoc_repeater { each = indexes  as = :ix
-      chapter $"${ix.name}" {
-        wdoc_repeater { each = ix.related  as = :rid
-          wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
-          wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
-          wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
+      wdoc_repeater { each = match ix.body { none => [], _ => [true] }  as = :_ixp
+        chapter $"${ix.name}" { page = $"index_${ix.id}"
+          wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { in_book(x.audience) })  as = :cix
+            wdoc_repeater { each = match cix.body { none => [], _ => [true] }  as = :_cixp  chapter $"${cix.name}" { page = $"index_${cix.id}" } }
+            wdoc_repeater { each = match cix.body { none => [true], _ => [] }  as = :_cixn  chapter $"${cix.name}" {
+              wdoc_repeater { each = cix.related  as = :rid
+                wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { $"${x.id}" == $"${related_id(rid)}" })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
+                wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { $"${x.id}" == $"${related_id(rid)}" })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
+                wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { $"${x.id}" == $"${related_id(rid)}" })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
+              }
+            } }
+          }
         }
-        wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { in_book(x.audience) })  as = :cix
-          chapter $"${cix.name}" {
-            wdoc_repeater { each = cix.related  as = :rid
-              wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { x.id == rid })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
-              wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
-              wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { x.id == rid })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
-            }
+      }
+      wdoc_repeater { each = match ix.body { none => [true], _ => [] }  as = :_ixn
+        chapter $"${ix.name}" {
+          wdoc_repeater { each = ix.related  as = :rid
+            wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { $"${x.id}" == $"${related_id(rid)}" })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
+            wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { $"${x.id}" == $"${related_id(rid)}" })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
+            wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { $"${x.id}" == $"${related_id(rid)}" })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
+          }
+          wdoc_repeater { each = filter(ix.children, fn(x: Index) -> bool { in_book(x.audience) })  as = :cix
+            wdoc_repeater { each = match cix.body { none => [], _ => [true] }  as = :_cixp  chapter $"${cix.name}" { page = $"index_${cix.id}" } }
+            wdoc_repeater { each = match cix.body { none => [true], _ => [] }  as = :_cixn  chapter $"${cix.name}" {
+              wdoc_repeater { each = cix.related  as = :rid
+                wdoc_repeater { each = filter(concepts,   fn(x: Concept)   -> bool { $"${x.id}" == $"${related_id(rid)}" })  as = :t  chapter $"${t.name}"  { page = $"concept_${t.id}" } }
+                wdoc_repeater { each = filter(facts,      fn(x: Fact)      -> bool { $"${x.id}" == $"${related_id(rid)}" })  as = :t  chapter $"${t.title}" { page = $"fact_${t.id}" } }
+                wdoc_repeater { each = filter(procedures, fn(x: Procedure) -> bool { $"${x.id}" == $"${related_id(rid)}" })  as = :t  chapter $"${t.title}" { page = $"process_${t.id}" } }
+              }
+            } }
           }
         }
       }
@@ -123,37 +150,43 @@ site book {
 // --- 2. Concepts — one generated page per concept ---------------------------
 wdoc_repeater { each = concepts  as = :c
   page $"concept_${c.id}" { title = $"${c.name}"
-    concept_body { unit = c  examples = examples  all_units = all_units  backlinks = referenced_by(c.id)  layout = "columns" }
+    concept_body { unit = c  examples = examples  all_units = related_targets  backlinks = referenced_by(c.id, c.related)  layout = "columns" }
   }
 }
 
 // --- 2b. Entities — one page per entity (entities_page → pages/entities.wcl) -
 wdoc_repeater { each = entities  as = :e
   page $"entity_${e.id}" { title = $"${e.name}"
-    entity_body { unit = e  examples = examples  all_units = all_units  backlinks = referenced_by(e.id)  layout = "columns" }
+    entity_body { unit = e  examples = examples  all_units = related_targets  backlinks = referenced_by(e.id, e.related)  layout = "columns" }
   }
 }
 
 // --- 2c. Facts — one page per fact (facts_page → pages/facts.wcl) ------------
 wdoc_repeater { each = facts  as = :f
   page $"fact_${f.id}" { title = $"${f.title}"
-    fact_body { unit = f  examples = examples  all_units = all_units  backlinks = referenced_by(f.id)  layout = "columns" }
+    fact_body { unit = f  examples = examples  all_units = related_targets  backlinks = referenced_by(f.id, f.related)  layout = "columns" }
   }
 }
 
 // --- 5. Processes — one generated page per procedure ------------------------
 wdoc_repeater { each = procedures  as = :pr
   page $"process_${pr.id}" { title = $"${pr.title}"
-    process_body { unit = pr  all_units = all_units  backlinks = referenced_by(pr.id)  layout = "columns" }
+    process_body { unit = pr  all_units = related_targets  backlinks = referenced_by(pr.id, pr.related)  layout = "columns" }
   }
 }
 
-// Indexes have no landing page — their `related` units are pinned straight into
-// the TOC above and reached as their own generated unit pages.
+// Bodied indexes are content units; nav-only indexes remain TOC groupings.
+wdoc_repeater { each = all_indexes  as = :ix
+  wdoc_repeater { each = match ix.body { none => [], _ => [true] }  as = :_pg
+    page $"index_${ix.id}" { title = $"${ix.name}"
+      index_body { unit = ix  all_units = related_targets  backlinks = referenced_by(ix.id, ix.related)  layout = "columns" }
+    }
+  }
+}
 
 // --- Research — one page per book-audience research finding ------------------
 wdoc_repeater { each = research_book  as = :r
   page $"research_${r.id}" { title = $"${r.topic}"
-    research_body { unit = r  sources = sources  all_units = all_units  backlinks = referenced_by(r.id)  layout = "columns" }
+    research_body { unit = r  sources = sources  all_units = related_targets  backlinks = referenced_by(r.id, r.related)  layout = "columns" }
   }
 }

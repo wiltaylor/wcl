@@ -11,10 +11,36 @@ import <../../wdoc.wcl>
 import <../schema.wcl>
 
 // A flattened cross-reference row: every unit projected to a uniform
-// { id, name, href, related } so a unit's `related` ids resolve to links and
+// { id, name, href, related } so a unit's `related` edges resolve to links and
 // the inverse (backlinks) can be computed. Each projection builds `all_units`
 // over its own audience-filtered lists and passes it into the components.
-type UnitRef { id: identifier  name: utf8  href: utf8  related: list<identifier> }
+type UnitRef {
+  id: identifier
+  name: utf8
+  href: utf8
+  // Bodyless indexes are present only so naming one can fail explicitly.
+  linkable: bool
+  // Dynamic while both the legacy bare-id and annotated record forms coexist.
+  @schemaless related: list<identifier>
+}
+
+// Normalize either accepted edge form for templates. A bare identifier has no
+// `.id` / `.why`, so `try` falls back to the legacy value or no suffix.
+let related_id = fn(edge: identifier) -> identifier {
+  try edge.id catch e => edge
+}
+let related_reason_suffix = fn(edge: identifier) -> utf8 {
+  try $" — ${edge.why}" catch e => ""
+}
+let relates_to = fn(edges: list<identifier>, id: identifier) -> bool {
+  len(filter(edges, fn(edge: identifier) -> bool { $"${related_id(edge)}" == $"${id}" })) > 0
+}
+let related_link = fn(u: UnitRef, edge: identifier) -> utf8 {
+  match u.linkable {
+    false => error($"`related` names bodyless index `${u.id}`"),
+    _ => $"- [${u.name}](${u.href})${related_reason_suffix(edge)}"
+  }
+}
 
 // A kind symbol's display text ( `$"${:file_format}"` → "file format" ) — used
 // wherever an entity's `kind` (or an artifact's) renders as prose. Symbols
@@ -36,14 +62,17 @@ wdoc_component unit_examples {
   }
 }
 
-// "Related" — each related id resolved to a link via `all_units`.
+// "Related" — each edge resolved to a link via `all_units`, with its optional
+// reason rendered after the link.
 wdoc_component unit_related {
   wdoc_slot related
   wdoc_slot all_units
   wdoc_body {
     wdoc_repeater { each = match len(related) { 0 => [], _ => [true] }  as = :_r  h2 "Related" }
-    wdoc_repeater { each = related  as = :rid
-      wdoc_repeater { each = filter(all_units, fn(u: UnitRef) -> bool { u.id == rid })  as = :u  p $"- [${u.name}](${u.href})" }
+    wdoc_repeater { each = related  as = :edge
+      wdoc_repeater { each = filter(all_units, fn(u: UnitRef) -> bool { $"${u.id}" == $"${related_id(edge)}" })  as = :u
+        p $"${related_link(u, edge)}"
+      }
     }
   }
 }
@@ -79,5 +108,21 @@ wdoc_component related_section {
     wdoc_repeater { each = match layout { "columns" => [], _ => [true] }  as = :_stk
       unit_related { related = related  all_units = all_units }
     }
+  }
+}
+
+// A bodied index is a first-class content unit. Both top-level and nested
+// indexes use this component so their body and related edges project exactly
+// like the other unit kinds.
+wdoc_component index_body {
+  wdoc_slot unit
+  wdoc_slot all_units
+  wdoc_slot backlinks
+  wdoc_slot layout { default = "stack" }
+  wdoc_body {
+    h1 $"${unit.name}"
+    wdoc_repeater { each = match unit.summary { none => [], s => [s] }  as = :s  p $"_${s}_" }
+    project { from = unit.body }
+    related_section { related = unit.related  all_units = all_units  backlinks = backlinks  layout = layout }
   }
 }
