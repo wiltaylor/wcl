@@ -271,7 +271,7 @@ pub(crate) fn enter_project(path: &str) -> Option<ProjectGuard> {
 /// body, or a list from a `@children` body slot). Empty when `from` is
 /// absent or doesn't evaluate to a reference, which the caller surfaces as a
 /// diagnostic.
-fn project_target_paths(block: &Block<'_>) -> Vec<String> {
+pub(crate) fn project_target_paths(block: &Block<'_>) -> Vec<String> {
     fn path_of(v: &Value) -> Option<String> {
         match v {
             Value::DataPath { segments, .. } if !segments.is_empty() => Some(segments.join(".")),

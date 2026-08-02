@@ -138,7 +138,7 @@ let website_header = fn(c: TemplateCtx) -> HtmlFundamental
       [ el("ul", ["menu"], map(c.pages, fn(p: PageRef) -> HtmlFundamental
           el("li", [], [ ela("a", [], [["href", p.href]], [raw(p.name)]) ]))) ]
     } else {
-      wdoc_part_menu_tree(c.menu)
+      wdoc_part_menu_tree(c)
     },
     website_header_controls(c),
   ]))

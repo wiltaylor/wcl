@@ -617,6 +617,15 @@ function fn_panic {
   parameter msg { type = "utf8"  description = "The failure message to report." }
   code_example { lang = "wcl"  code = "panic(\"invariant violated\")   // abort with an unrecoverable failure → (aborts)" }
 }
+function fn_page_metadata {
+  name        = "page_metadata"
+  category    = "reflection"
+  description = "Derive the current wdoc template page's reading order, neighbours, active TOC path, and heading outline from its TemplateCtx. The shared site index is memoised and no page body is lowered."
+  returns     = "PageMetadata"
+  returns_description = "Navigation and authored-heading metadata for the current template page."
+  parameter ctx { type = "TemplateCtx"  description = "The current wdoc template context." }
+  code_example { lang = "wcl"  code = "let m = page_metadata(c); m.next   // next TOC entry without walking the site tree" }
+}
 function fn_path_contains {
   name        = "path_contains"
   category    = "paths"

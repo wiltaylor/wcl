@@ -1,7 +1,6 @@
 //! HTML page rendering: the document shell, templates, the page-level
 //! blocks (text / span / column / code / table), and the HTML fundamentals.
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
@@ -116,19 +115,16 @@ pub(crate) fn read_toc(site: &Block<'_>) -> Vec<TocNode> {
     }
 }
 
-/// Build a `list<Record>` `Value` from `nodes`, marking the entry whose
-/// `page` matches `current`. Shared by `toc_to_value`/`menu_to_value`;
-/// `ty`/`label_field` name the record and its label key, and the
-/// closures read each node's label, resolved href, page, and children.
-#[allow(clippy::too_many_arguments)] // cohesive node-projection closures
+/// Build an immutable site-level `list<Record>` from navigation nodes.
+/// Shared by `toc_to_value`/`menu_to_value`; `ty`/`label_field` name the
+/// record and its label key, and the closures read the label, href, and
+/// children.
 fn nodes_to_value<T>(
     nodes: &[T],
-    current: &str,
     ty: &str,
     label_field: &str,
     label: &impl Fn(&T) -> String,
     href: &impl Fn(&T) -> String,
-    page: &impl Fn(&T) -> Option<&str>,
     children: &impl Fn(&T) -> &[T],
 ) -> Value {
     Value::List(
@@ -138,19 +134,9 @@ fn nodes_to_value<T>(
                 let mut m = BTreeMap::new();
                 m.insert(label_field.to_string(), Value::Utf8(label(n)));
                 m.insert("href".to_string(), Value::Utf8(href(n)));
-                m.insert("current".to_string(), Value::Bool(page(n) == Some(current)));
                 m.insert(
                     "children".to_string(),
-                    nodes_to_value(
-                        children(n),
-                        current,
-                        ty,
-                        label_field,
-                        label,
-                        href,
-                        page,
-                        children,
-                    ),
+                    nodes_to_value(children(n), ty, label_field, label, href, children),
                 );
                 Value::Record {
                     ty: vec![ty.to_string()],
@@ -162,12 +148,11 @@ fn nodes_to_value<T>(
     )
 }
 
-/// Build a `list<TocEntry>` `Value` from `nodes`, marking the entry
-/// (if any) that links to `current`.
-pub(crate) fn toc_to_value(nodes: &[TocNode], current: &str) -> Value {
+/// Build the site-level TOC once. Current-page facts come from
+/// `page_metadata(ctx)`, so this value is identical for every page.
+pub(crate) fn toc_to_value(nodes: &[TocNode]) -> Value {
     nodes_to_value(
         nodes,
-        current,
         "TocEntry",
         "title",
         &|n: &TocNode| n.title.clone(),
@@ -177,8 +162,36 @@ pub(crate) fn toc_to_value(nodes: &[TocNode], current: &str) -> Value {
                 .map(|p| format!("{p}.html"))
                 .unwrap_or_default()
         },
-        &|n: &TocNode| n.page.as_deref(),
         &|n: &TocNode| n.children.as_slice(),
+    )
+}
+
+pub(crate) fn pages_to_value(pages: &[(String, String, String)]) -> Value {
+    Value::list(
+        pages
+            .iter()
+            .map(|(name, href, _)| {
+                let mut fields = BTreeMap::new();
+                fields.insert("name".to_string(), Value::Utf8(name.clone()));
+                fields.insert("href".to_string(), Value::Utf8(href.clone()));
+                Value::record(vec!["PageRef".to_string()], fields)
+            })
+            .collect(),
+    )
+}
+
+pub(crate) fn flat_toc_to_value(pages: &[(String, String, String)]) -> Value {
+    Value::list(
+        pages
+            .iter()
+            .map(|(_, href, title)| {
+                let mut fields = BTreeMap::new();
+                fields.insert("title".to_string(), Value::Utf8(title.clone()));
+                fields.insert("href".to_string(), Value::Utf8(href.clone()));
+                fields.insert("children".to_string(), Value::list(Vec::new()));
+                Value::record(vec!["TocEntry".to_string()], fields)
+            })
+            .collect(),
     )
 }
 
@@ -236,12 +249,11 @@ pub(crate) fn read_menu(site: &Block<'_>) -> Vec<MenuNode> {
 
 /// Build a `list<MenuEntry>` `Value` from `nodes`, resolving each item's
 /// `href` (an internal `page` wins → `<page>.html`, else the raw `href`,
-/// else empty for a parent/grouping item) and marking the entry that
-/// links to `current`.
-pub(crate) fn menu_to_value(nodes: &[MenuNode], current: &str) -> Value {
+/// else empty for a parent/grouping item). Current-link styling is derived
+/// from the page name by the template.
+pub(crate) fn menu_to_value(nodes: &[MenuNode]) -> Value {
     nodes_to_value(
         nodes,
-        current,
         "MenuEntry",
         "label",
         &|n: &MenuNode| n.label.clone(),
@@ -250,8 +262,34 @@ pub(crate) fn menu_to_value(nodes: &[MenuNode], current: &str) -> Value {
             (None, Some(h)) => h.clone(),
             (None, None) => String::new(),
         },
-        &|n: &MenuNode| n.page.as_deref(),
         &|n: &MenuNode| n.children.as_slice(),
+    )
+}
+
+/// Build the site-level sidebar footer once. Current-page styling is derived
+/// by the template from each stable href and `TemplateCtx.page_name`.
+pub(crate) fn footer_to_value(nodes: &[FooterButtonNode], patterns: &InlinePatterns) -> Value {
+    Value::list(
+        nodes
+            .iter()
+            .map(|button| {
+                let href = match (&button.page, &button.href) {
+                    (Some(page), _) => format!("{page}.html"),
+                    (None, Some(href)) => href.clone(),
+                    (None, None) => String::new(),
+                };
+                let icon = button
+                    .icon
+                    .as_deref()
+                    .and_then(|name| patterns.icons().resolve_html_icon(name, &[]))
+                    .unwrap_or_default();
+                let mut fields = BTreeMap::new();
+                fields.insert("label".to_string(), Value::Utf8(button.label.clone()));
+                fields.insert("href".to_string(), Value::Utf8(href));
+                fields.insert("icon".to_string(), Value::Utf8(icon));
+                Value::record(vec!["FooterButton".to_string()], fields)
+            })
+            .collect(),
     )
 }
 
@@ -355,31 +393,30 @@ pub(crate) fn read_deck(site: &Block<'_>) -> Vec<DeckSectionNode> {
 pub(crate) struct Rendered {
     pub body: String,
     pub head: String,
+    pub page_heading: Option<String>,
 }
 
 /// Render a page through `template`'s `render` function. Builds a
-/// `TemplateCtx` record (content + regions + title + page_name + pages +
-/// toc) and invokes the WCL function, then renders the returned
+/// `TemplateCtx` record (authored block handles + site context) and invokes
+/// the WCL function, then renders the returned
 /// fundamentals — partitioning top-level `Head` fundamentals into
 /// [`Rendered::head`] and the rest into [`Rendered::body`].
 /// Best-effort: a missing/failed `render` yields an empty body, like
-/// the rest of the lowering pipeline. When `toc_nodes` is empty the
-/// `toc` falls back to a flat entry per page.
+/// the rest of the lowering pipeline.
 #[allow(clippy::too_many_arguments)] // cohesive per-page render inputs
 pub(crate) fn render_template<'a>(
     doc: &'a Document,
     template: &Block<'a>,
-    content: &str,
     content_blocks: &[Block<'a>],
     page: Option<&Block<'a>>,
     base_dir: Option<&Path>,
     regions: Value,
     title: &str,
     page_name: &str,
-    pages: &[(String, String, String)],
-    toc_nodes: &[TocNode],
-    menu_nodes: &[MenuNode],
-    footer_nodes: &[FooterButtonNode],
+    pages: &Value,
+    toc: &Value,
+    menu: &Value,
+    footer: &Value,
     deck: Value,
     theme_toggle: bool,
     home_href: &str,
@@ -394,100 +431,32 @@ pub(crate) fn render_template<'a>(
         return Rendered::default();
     };
     let fv = fv.clone();
-    let page_ref = |n: &str, h: &str| {
-        let mut m = BTreeMap::new();
-        m.insert("name".to_string(), Value::Utf8(n.to_string()));
-        m.insert("href".to_string(), Value::Utf8(h.to_string()));
-        Value::Record {
-            ty: vec!["PageRef".to_string()],
-            fields: std::sync::Arc::new(m),
-        }
-    };
-    let pages_val = Value::list(pages.iter().map(|(n, h, _)| page_ref(n, h)).collect());
-    // `toc`: the declared book TOC, or a flat entry per page as a
-    // fallback so a templated page without a `toc` still gets a nav.
-    let toc_val = if toc_nodes.is_empty() {
-        Value::List(
-            pages
-                .iter()
-                .map(|(n, h, t)| {
-                    let mut m = BTreeMap::new();
-                    m.insert("title".to_string(), Value::Utf8(t.clone()));
-                    m.insert("href".to_string(), Value::Utf8(h.clone()));
-                    m.insert("current".to_string(), Value::Bool(n == page_name));
-                    m.insert(
-                        "children".to_string(),
-                        Value::List(std::sync::Arc::new(Vec::new())),
-                    );
-                    Value::Record {
-                        ty: vec!["TocEntry".to_string()],
-                        fields: std::sync::Arc::new(m),
-                    }
-                })
-                .collect::<Vec<_>>()
-                .into(),
-        )
-    } else {
-        toc_to_value(toc_nodes, page_name)
-    };
-    // Keep the old book-rail metadata until #52 derives it from authored
-    // blocks. The HTML itself is rendered later, when the template's typed
-    // placement handles are resolved.
-    let (_, page_headings) = super::headings::process_page_headings(content);
     let mut blocks = Vec::new();
+    let mut active_projects = Vec::new();
+    let mut page_heading = None;
     let content = Value::list(
         content_blocks
             .iter()
-            .map(|block| block_handle_value(block, &mut blocks))
+            .map(|block| {
+                block_handle_value(
+                    block,
+                    &mut blocks,
+                    patterns,
+                    &mut active_projects,
+                    &mut page_heading,
+                )
+            })
             .collect(),
     );
     let mut ctx = BTreeMap::new();
     ctx.insert("content".to_string(), content);
-    ctx.insert(
-        "on_this_page".to_string(),
-        super::headings::on_this_page_value(&page_headings),
-    );
     ctx.insert("regions".to_string(), regions);
     ctx.insert("title".to_string(), Value::Utf8(title.to_string()));
     ctx.insert("page_name".to_string(), Value::Utf8(page_name.to_string()));
-    ctx.insert("pages".to_string(), pages_val);
-    ctx.insert("toc".to_string(), toc_val);
-    ctx.insert("menu".to_string(), menu_to_value(menu_nodes, page_name));
-    // `footer`: the resolved sidebar-footer buttons. Each button's href is
-    // its internal `page` (→ `<page>.html`), else its raw `href`, else
-    // empty; `current` marks the one linking to the page being rendered;
-    // `icon` is resolved to inline SVG markup via the icon registry (which
-    // also records it into the shared sprite), empty when unset/unresolved.
-    let footer_val = Value::list(
-        footer_nodes
-            .iter()
-            .map(|b| {
-                let href = match (&b.page, &b.href) {
-                    (Some(p), _) => format!("{p}.html"),
-                    (None, Some(h)) => h.clone(),
-                    (None, None) => String::new(),
-                };
-                let icon = b
-                    .icon
-                    .as_deref()
-                    .and_then(|name| patterns.icons().resolve_html_icon(name, &[]))
-                    .unwrap_or_default();
-                let mut m = BTreeMap::new();
-                m.insert("label".to_string(), Value::Utf8(b.label.clone()));
-                m.insert("href".to_string(), Value::Utf8(href));
-                m.insert(
-                    "current".to_string(),
-                    Value::Bool(b.page.as_deref() == Some(page_name)),
-                );
-                m.insert("icon".to_string(), Value::Utf8(icon));
-                Value::Record {
-                    ty: vec!["FooterButton".to_string()],
-                    fields: std::sync::Arc::new(m),
-                }
-            })
-            .collect(),
-    );
-    ctx.insert("footer".to_string(), footer_val);
+    ctx.insert("pages".to_string(), pages.clone());
+    ctx.insert("toc".to_string(), toc.clone());
+    ctx.insert("menu".to_string(), menu.clone());
+    ctx.insert("footer".to_string(), footer.clone());
     // The resolved presentation deck — populated only on the
     // presentation build path, empty (an empty list) for normal pages.
     ctx.insert("deck".to_string(), deck);
@@ -507,7 +476,7 @@ pub(crate) fn render_template<'a>(
     };
     // Template evaluation is now complete. Only from this point onward may
     // a returned handle call into the ordinary renderer.
-    let heading_state = RefCell::new(super::headings::HeadingState::default());
+    let heading_state = std::cell::RefCell::new(HeadingSequence::default());
     let render_blocks = |handles: &[Value]| {
         let mut body = String::new();
         for handle in handles {
@@ -525,10 +494,7 @@ pub(crate) fn render_template<'a>(
                 body.push('\n');
             }
         }
-        let (body, _) = super::headings::process_page_headings_with_state(
-            &body,
-            &mut heading_state.borrow_mut(),
-        );
+        let body = process_page_headings(&body, &mut heading_state.borrow_mut());
         match (patterns.anchor_mode(), page) {
             (true, Some(page)) => wrap_page_content(page, page_name, &body),
             _ => body,
@@ -536,7 +502,10 @@ pub(crate) fn render_template<'a>(
     };
     // Partition the template's top-level fundamentals: a `Head` hoists its
     // children into `<head>`; everything else renders into the `<body>`.
-    let mut rendered = Rendered::default();
+    let mut rendered = Rendered {
+        page_heading,
+        ..Rendered::default()
+    };
     for v in items.iter() {
         match head_fundamental_html_with_blocks(doc, v, patterns, Some(&render_blocks)) {
             Some(h) => rendered.head.push_str(&h),
@@ -549,14 +518,20 @@ pub(crate) fn render_template<'a>(
             )),
         }
     }
-    rendered.body = super::headings::process_footnotes(&rendered.body);
+    rendered.body = process_footnotes(&rendered.body);
     rendered
 }
 
 /// Reify one authored block into the public, immutable query shape while
 /// retaining its renderer-only identity in `blocks`. Descendants become
 /// handles recursively, independent of their schema's child-slot shape.
-fn block_handle_value<'a>(block: &Block<'a>, blocks: &mut Vec<Block<'a>>) -> Value {
+fn block_handle_value<'a>(
+    block: &Block<'a>,
+    blocks: &mut Vec<Block<'a>>,
+    patterns: &InlinePatterns,
+    active_projects: &mut Vec<String>,
+    page_heading: &mut Option<String>,
+) -> Value {
     let handle = blocks.len();
     blocks.push(block.clone());
     let contextual = block.schema().is_some_and(|schema| {
@@ -564,20 +539,56 @@ fn block_handle_value<'a>(block: &Block<'a>, blocks: &mut Vec<Block<'a>>) -> Val
             .decorators()
             .any(|decorator| decorator.name() == "contextual")
     });
-    let child_blocks = if contextual {
-        block.expand_children().unwrap_or_default()
+    let children = if contextual {
+        block
+            .expand_children()
+            .unwrap_or_default()
+            .iter()
+            .map(|child| block_handle_value(child, blocks, patterns, active_projects, page_heading))
+            .collect()
+    } else if block.kind() == "project" {
+        let mut children = Vec::new();
+        for path in project_target_paths(block) {
+            if active_projects.contains(&path) {
+                continue;
+            }
+            let Some(body) = block.doc().get(&path).and_then(|record| record.as_block()) else {
+                continue;
+            };
+            if body.kind() != "body" {
+                continue;
+            }
+            active_projects.push(path);
+            children.extend(body.blocks().map(|child| {
+                block_handle_value(&child, blocks, patterns, active_projects, page_heading)
+            }));
+            active_projects.pop();
+        }
+        children
     } else {
-        block.blocks().collect()
+        block
+            .blocks()
+            .map(|child| {
+                block_handle_value(&child, blocks, patterns, active_projects, page_heading)
+            })
+            .collect()
     };
-    let children = child_blocks
-        .iter()
-        .map(|child| block_handle_value(child, blocks))
-        .collect();
     let mut fields = BTreeMap::new();
     fields.insert("kind".to_string(), Value::Utf8(block.kind().to_string()));
     fields.insert("block".to_string(), authored_block_value(block));
     fields.insert("children".to_string(), Value::list(children));
     fields.insert("handle".to_string(), Value::U64(handle as u64));
+    if matches!(
+        block.kind(),
+        "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "chapter_header"
+    ) && let Some(text) = label_string(block)
+    {
+        let heading_text = plain_text(&patterns.render(block.doc(), &text));
+        if page_heading.is_none() && matches!(block.kind(), "h1" | "chapter_header") {
+            *page_heading = Some(heading_text.clone());
+        }
+        fields.insert("heading_text".to_string(), Value::Utf8(heading_text));
+    }
     Value::record(vec!["BlockHandle".to_string()], fields)
 }
 

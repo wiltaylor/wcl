@@ -11,8 +11,9 @@ use crate::render::{
     DeckSectionNode, FooterButtonNode, MAX_LOWER_DEPTH, MenuNode, TocNode, escape_html,
     expand_component_children, expand_instance_children, expand_repeater_children, field_bool,
     field_id, field_symbol, field_symbol_list_opt, field_utf8, field_utf8_list, find_template,
-    label_string, read_deck, read_menu, read_sidebar_footer, read_toc, render_block, render_class,
-    render_page, render_template, site_theme_css,
+    flat_toc_to_value, footer_to_value, label_string, menu_to_value, pages_to_value, read_deck,
+    read_menu, read_sidebar_footer, read_toc, render_block, render_class, render_page,
+    render_template, site_theme_css, toc_to_value,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -162,6 +163,7 @@ pub fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
     // component instance is a hard error — which is exactly the point:
     // a wdoc document must be opened with the wdoc environment.
     env.set_expander(std::sync::Arc::new(crate::render::WdocExpander));
+    crate::page_metadata::register(&mut env);
     let base = base_dir.map(Path::to_path_buf);
     env.add_builtin(
         "included_sites",
@@ -1580,7 +1582,7 @@ fn build_site(
         .iter()
         .filter_map(|p| {
             page_name(p).map(|n| {
-                let title = page_h1_title(p).unwrap_or_else(|| n.clone());
+                let title = page_heading_title(p).unwrap_or_else(|| n.clone());
                 (n.clone(), format!("{n}.html"), title)
             })
         })
@@ -1728,6 +1730,17 @@ fn build_site(
         }
     }
 
+    // Immutable site facts are one Arc-backed value shared by every page.
+    // The TOC's shared identity is the memoisation key for page_metadata.
+    let pages_value = pages_to_value(&pages);
+    let toc_value = if toc_nodes.is_empty() {
+        flat_toc_to_value(&pages)
+    } else {
+        toc_to_value(&toc_nodes)
+    };
+    let menu_value = menu_to_value(&menu_nodes);
+    let footer_value = footer_to_value(&footer_nodes, &inline_patterns);
+
     // Everything the page-rendering paths read but never mutate, resolved
     // once and shared by the presentation and per-page paths below.
     let ctx = PageRenderCtx {
@@ -1742,11 +1755,11 @@ fn build_site(
         default_template: default_template.as_deref(),
         site_title: site_title.as_deref(),
         theme_toggle,
-        toc_nodes: &toc_nodes,
-        menu_nodes: &menu_nodes,
-        footer_nodes: &footer_nodes,
+        toc: &toc_value,
+        menu: &menu_value,
+        footer: &footer_value,
         deck_nodes: &deck_nodes,
-        pages: &pages,
+        pages_value: &pages_value,
         home_href,
         home_title,
         players: PlayerScripts {
@@ -1967,11 +1980,11 @@ struct PageRenderCtx<'a> {
     default_template: Option<&'a str>,
     site_title: Option<&'a str>,
     theme_toggle: bool,
-    toc_nodes: &'a [TocNode],
-    menu_nodes: &'a [MenuNode],
-    footer_nodes: &'a [FooterButtonNode],
+    toc: &'a Value,
+    menu: &'a Value,
+    footer: &'a Value,
     deck_nodes: &'a [DeckSectionNode],
-    pages: &'a [(String, String, String)],
+    pages_value: &'a Value,
     home_href: &'a str,
     home_title: &'a str,
     players: PlayerScripts,
@@ -2058,7 +2071,6 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
     let mut rendered = render_template(
         ctx.doc,
         &tmpl,
-        "",
         &[],
         None,
         ctx.base_dir,
@@ -2066,10 +2078,10 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
         Value::List(std::sync::Arc::new(Vec::new())),
         &title,
         "",
-        ctx.pages,
-        ctx.toc_nodes,
-        ctx.menu_nodes,
-        ctx.footer_nodes,
+        ctx.pages_value,
+        ctx.toc,
+        ctx.menu,
+        ctx.footer,
         Value::List(std::sync::Arc::new(sections_val)),
         ctx.theme_toggle,
         ctx.home_href,
@@ -2096,14 +2108,14 @@ fn build_presentation_page(ctx: &PageRenderCtx<'_>) -> Result<usize, BuildError>
     Ok(1)
 }
 
-/// A page's first `h1` label, used as its display title in the
-/// no-`toc` navigation fallback (and anywhere else a human-facing page
-/// title is wanted without rendering the page).
-fn page_h1_title(page: &Block<'_>) -> Option<String> {
+/// A page's first authored top-level heading, used anywhere a human-facing
+/// title is needed without rendering and then searching HTML. Both `h1` and
+/// `chapter_header` carry their title in the inline label.
+fn page_heading_title(page: &Block<'_>) -> Option<String> {
     page.blocks()
-        .find(|b| b.kind() == "h1")
+        .find(|b| matches!(b.kind(), "h1" | "chapter_header"))
         .and_then(|b| label_string(&b))
-        .filter(|t| !t.is_empty())
+        .filter(|title| !title.is_empty())
 }
 
 /// Render one ordinary page to `<name>.html`. Returns the page's
@@ -2133,11 +2145,14 @@ fn build_normal_page(
         });
     }
 
-    // Split the page's blocks into the default `content` part (everything
-    // outside a `region`) and the named `region "name" { … }` regions,
-    // each rendered separately so a template can slot them independently.
-    // A `region`'s inline label is its name; its children are wdoc blocks.
     let page_blocks: Vec<_> = page.blocks().collect();
+    // Resolve the template before lowering anything. A template receives
+    // authored handles and decides which ones to place; unplaced bodies must
+    // stay lazy. Bare pages still need their full HTML, and searchable sites
+    // lower once for the page-local search index.
+    let template_name =
+        field_symbol(page, "template").or_else(|| ctx.default_template.map(str::to_string));
+    let needs_eager_content = template_name.is_none() || ctx.search;
     let mut content = String::new();
     let mut regions: Vec<(String, String)> = Vec::new();
     for b in &page_blocks {
@@ -2154,7 +2169,9 @@ fn build_normal_page(
             regions.push((name, html));
             continue;
         }
-        if let Some(s) = render_block(ctx.doc, b, ctx.inline_patterns, ctx.base_dir) {
+        if needs_eager_content
+            && let Some(s) = render_block(ctx.doc, b, ctx.inline_patterns, ctx.base_dir)
+        {
             content.push_str(&s);
             content.push('\n');
         }
@@ -2193,10 +2210,6 @@ fn build_normal_page(
             .collect(),
     );
 
-    // Resolve the template: the page's own `template` overrides the
-    // site `default_template`. None ⇒ render content bare.
-    let template_name =
-        field_symbol(page, "template").or_else(|| ctx.default_template.map(str::to_string));
     let mut rendered = match template_name {
         // `:ai_skill` is a Markdown-only target, not an HTML template.
         Some(name) if name == "ai_skill" => {
@@ -2217,17 +2230,16 @@ fn build_normal_page(
             render_template(
                 ctx.doc,
                 &tmpl,
-                &content,
                 &page_blocks,
                 Some(page),
                 ctx.base_dir,
                 regions_val,
                 &title,
                 &page_name,
-                ctx.pages,
-                ctx.toc_nodes,
-                ctx.menu_nodes,
-                ctx.footer_nodes,
+                ctx.pages_value,
+                ctx.toc,
+                ctx.menu,
+                ctx.footer,
                 Value::List(std::sync::Arc::new(Vec::new())),
                 ctx.theme_toggle,
                 ctx.home_href,
@@ -2239,6 +2251,7 @@ fn build_normal_page(
         None => crate::render::Rendered {
             body: content.clone(),
             head: String::new(),
+            page_heading: page_heading_title(page),
         },
     };
     ctx.players.inject(&mut rendered.body);
@@ -2270,7 +2283,7 @@ fn build_normal_page(
     // chrome doesn't match every query). The title is the first `h1`
     // when the page has one, else the page name.
     let text = html_to_text(&content);
-    let title = first_h1_text(&content).unwrap_or_else(|| page_name.clone());
+    let title = rendered.page_heading.unwrap_or_else(|| page_name.clone());
     Ok(Some(SearchEntry {
         href: format!("{page_name}.html"),
         title,
@@ -2355,24 +2368,6 @@ fn html_to_text(html: &str) -> String {
         .replace("&#39;", "'")
         .replace("&amp;", "&");
     decoded.trim().to_string()
-}
-
-/// The text of the page's first top-level heading, if any. An `h1` block
-/// and a chapter header's title both render as a real `<h1>` now (the
-/// content IR carries the level as a number), so one scan covers them and
-/// raw-HTML `<h1>` alike. That also makes this honestly first-in-document
-/// -order: it used to prefer a heading *block* (`<p class="heading-1">`)
-/// over a raw `<h1>` wherever each sat, because they were different
-/// shapes and it looked for one before the other. They are one shape now.
-/// Only the page's own content is scanned (the caller passes it before
-/// the template wraps it), so template chrome can't win.
-fn first_h1_text(html: &str) -> Option<String> {
-    let lower = html.to_ascii_lowercase();
-    let start = lower.find("<h1")?;
-    let open_end = html[start..].find('>')? + start + 1;
-    let close = lower[open_end..].find("</h1>")? + open_end;
-    let text = html_to_text(&html[open_end..close]);
-    if text.is_empty() { None } else { Some(text) }
 }
 
 /// The bundled client-side search widget (see `assets/wdoc-search.js`).
