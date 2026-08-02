@@ -19,8 +19,11 @@ pub(crate) fn hover(
     // Prefer the per-file doc (cheap, in-memory); fall back to reading
     // the declaring file off disk via the root doc's symbol hit.
     let snippet = hover_snippet(local_doc.as_ref(), root_doc, &sym, source);
+    let docs = hover_doc_comment(local_doc.as_ref(), root_doc, &sym)
+        .map(|comment| format!("\n\n{comment}"))
+        .unwrap_or_default();
     let body = format!(
-        "**{kind}** `{name}`\n\n```wcl\n{snippet}\n```",
+        "**{kind}** `{name}`{docs}\n\n```wcl\n{snippet}\n```",
         kind = sym.kind_label(),
         name = sym.display_name(),
         snippet = snippet.as_deref().unwrap_or("<no source>"),
@@ -58,6 +61,24 @@ fn hover_snippet(
         .map(str::to_string)
 }
 
+fn hover_doc_comment(
+    local_doc: Option<&Document>,
+    root_doc: Option<&Document>,
+    sym: &LocatedSymbol,
+) -> Option<String> {
+    let LocatedSymbol::Decorator(fqn) = sym else {
+        return None;
+    };
+    local_doc
+        .and_then(|doc| doc.type_decl(fqn))
+        .and_then(|declaration| declaration.doc_comment())
+        .or_else(|| {
+            root_doc
+                .and_then(|doc| doc.type_decl(fqn))
+                .and_then(|declaration| declaration.doc_comment())
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,6 +93,24 @@ mod tests {
         };
         assert!(m.value.contains("block kind"));
         assert!(m.value.contains("type Config"));
+    }
+
+    #[test]
+    fn hover_on_decorator_includes_doc_comment_and_argument_shape() {
+        let src = r#"# Deployment metadata.
+@decorator("deploy")
+type Deploy { @inline(0) target: utf8 }
+@deploy("prod")
+type Target {}
+"#;
+        let cursor = src.rfind("deploy").expect("decorator use") + 2;
+        let h = hover(src, "test.wcl", cursor, None).expect("hover present");
+        let HoverContents::Markup(markup) = h.contents else {
+            panic!("expected markup")
+        };
+
+        assert!(markup.value.contains("Deployment metadata."), "{markup:#?}");
+        assert!(markup.value.contains("target: utf8"), "{markup:#?}");
     }
 
     #[test]

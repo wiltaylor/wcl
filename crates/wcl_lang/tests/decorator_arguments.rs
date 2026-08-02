@@ -1,4 +1,7 @@
-use wcl_lang::{Document, EvalError, SchemaViolationKind, Span, Value, ast, parse_for_edit};
+use wcl_lang::{
+    Document, Environment, EvalError, Registry, SchemaViolationKind, Span, Value, ast, disk_loader,
+    parse_for_edit,
+};
 
 fn first_type_decorator(src: &str) -> ast::Decorator {
     let parsed = parse_for_edit(src, "decorator_arguments.wcl").expect("source parses");
@@ -199,7 +202,6 @@ fn synthesized_single_slot_builtins_are_positional_and_still_resolve() {
     .expect("source opens");
 
     for name in [
-        "block",
         "inline",
         "default",
         "child",
@@ -214,6 +216,18 @@ fn synthesized_single_slot_builtins_are_positional_and_still_resolve() {
         assert_eq!(fields.len(), 1, "@{name} should have one slot");
         assert_eq!(fields[0].inline_slot(), Some(0), "@{name} slot");
     }
+
+    let block = doc.decorator_schema("block").expect("@block schema exists");
+    let block_fields: Vec<_> = block.fields().collect();
+    assert_eq!(block_fields.len(), 4);
+    assert_eq!(block_fields[0].name(), "name");
+    assert_eq!(block_fields[0].inline_slot(), Some(0));
+    assert!(
+        block_fields[1..]
+            .iter()
+            .all(|field| field.inline_slot().is_none()),
+        "@block constraint slots are named-only"
+    );
 
     let decorator = doc
         .decorator_schema("decorator")
@@ -258,6 +272,24 @@ fn synthesized_single_slot_builtins_are_positional_and_still_resolve() {
         block.resolved_arg_value("name"),
         Some(Ok(Value::Utf8("service".into())))
     );
+}
+
+#[test]
+fn builtin_reference_slots_and_polymorphic_defaults_keep_their_authored_forms() {
+    let source = r#"
+interface ChildType {}
+type Endpoint {}
+symbol_set Kind { link }
+connection Edge: Endpoint -> Endpoint : Kind
+@document type Root {
+  @children(ChildType) children: list<ChildType>
+  @connections(Edge) edges: list<Edge>
+}
+type Options { @default(true) enabled: bool }
+"#;
+
+    let errors = schema_errors(source);
+    assert!(errors.is_empty(), "{errors:#?}");
 }
 
 #[test]
@@ -325,4 +357,173 @@ service api {}
         src.find(argument).expect("argument is present")
     );
     assert_eq!(span.len(), argument.len());
+}
+
+fn sources_for_every_argument_position(decorators: &str) -> Vec<(&'static str, String)> {
+    let declaration = "@decorator(\"typed\") type Typed { @inline(0) value: i64 }\n";
+    vec![
+        (
+            "document field",
+            format!("{declaration}@document type Root {{ value: i64 }}\n{decorators}\nvalue = 1\n"),
+        ),
+        (
+            "fn item",
+            format!("{declaration}{decorators}\nfn answer() -> i64 42\n"),
+        ),
+        (
+            "block",
+            format!(
+                "{declaration}@document type Root {{ @child(\"thing\") thing: Thing }}\n@block(\"thing\") type Thing {{}}\n{decorators}\nthing {{}}\n"
+            ),
+        ),
+        (
+            "type",
+            format!("{declaration}{decorators}\ntype Example {{}}\n"),
+        ),
+        (
+            "interface",
+            format!("{declaration}{decorators}\ninterface Example {{}}\n"),
+        ),
+        (
+            "type field",
+            format!("{declaration}type Example {{\n{decorators}\nvalue: i64\n}}\n"),
+        ),
+        (
+            "union",
+            format!("{declaration}{decorators}\nunion Example {{ Value none }}\n"),
+        ),
+        (
+            "union variant",
+            format!("{declaration}union Example {{\n{decorators}\nValue none\n}}\n"),
+        ),
+        (
+            "symbol set",
+            format!("{declaration}{decorators}\nsymbol_set Example {{ value }}\n"),
+        ),
+        (
+            "symbol entry",
+            format!("{declaration}symbol_set Example {{\n{decorators}\nvalue\n}}\n"),
+        ),
+        (
+            "connection",
+            format!(
+                "{declaration}type Endpoint {{}}\nsymbol_set Kind {{ link }}\n{decorators}\nconnection Edge: Endpoint -> Endpoint : Kind\n"
+            ),
+        ),
+    ]
+}
+
+#[test]
+fn decorator_arguments_are_checked_in_every_position() {
+    for (position, source) in sources_for_every_argument_position("@typed(\"wrong\")") {
+        let errors = schema_errors(&source);
+        let mismatches: Vec<_> = errors
+            .iter()
+            .filter(|error| {
+                matches!(
+                    error,
+                    EvalError::SchemaViolation {
+                        kind: SchemaViolationKind::FieldTypeMismatch,
+                        ..
+                    }
+                )
+            })
+            .collect();
+        assert_eq!(
+            mismatches.len(),
+            1,
+            "{position} must validate decorator arguments: {errors:#?}"
+        );
+    }
+}
+
+#[test]
+fn qualified_decorator_arguments_use_the_selected_namespace_schema() {
+    let mut registry = Registry::new();
+    registry.register(
+        "one.wcl",
+        "namespace one\n@decorator(\"note\") type Note { code: i64 }\n",
+    );
+    registry.register(
+        "two.wcl",
+        "namespace two\n@decorator(\"note\") type Note { message: utf8 }\n",
+    );
+    let source = "import <one.wcl>\nimport <two.wcl>\n@two.note(message = 7) type Target {}\n";
+    let document = Document::open_at_with_loader(
+        source,
+        "decorator_arguments.wcl",
+        None,
+        &Environment::new(),
+        registry.loader(disk_loader()),
+    )
+    .expect("source opens");
+    let errors = document.schema_errors();
+
+    assert_eq!(errors.len(), 1, "{errors:#?}");
+    assert!(matches!(
+        errors[0],
+        EvalError::SchemaViolation {
+            kind: SchemaViolationKind::FieldTypeMismatch,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn annotation_exemptions_skip_every_decorator_check_in_every_position() {
+    for exemption in ["@schemaless", "@schemaless(annotations = true)"] {
+        let decorators = format!("{exemption}\n@typed(\"wrong\")\n@typed(\"wrong\")");
+        for (position, source) in sources_for_every_argument_position(&decorators) {
+            let errors = schema_errors(&source);
+            assert!(
+                errors.is_empty(),
+                "{exemption} must exempt {position} completely: {errors:#?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn bare_schemaless_block_skips_decorator_checks_in_its_contents() {
+    let source = r#"
+@decorator("typed") type Typed { @inline(0) value: i64 }
+@document type Root { @child("thing") thing: Thing }
+@block("thing") type Thing { known: i64 }
+
+@schemaless
+thing {
+  @typed("wrong")
+  known = 1
+}
+"#;
+
+    assert!(
+        schema_errors(source).is_empty(),
+        "{:#?}",
+        schema_errors(source)
+    );
+}
+
+#[test]
+fn omitted_union_typed_slot_uses_its_declared_default() {
+    let source = r#"
+union Choice { One { code: i64 } }
+@decorator("select")
+type Select { @default(Choice::One { code: 7 }) value: Choice }
+@select
+type Target {}
+"#;
+    let document = Document::open(source, "decorator_arguments.wcl").expect("source opens");
+    let decorator = document
+        .type_decl("Target")
+        .expect("target type")
+        .decorators()
+        .next()
+        .expect("decorator");
+    let value = decorator
+        .resolved_arg_value("value")
+        .expect("declared slot")
+        .expect("default evaluates");
+
+    assert!(matches!(value, Value::Variant { ref variant, .. } if variant == "One"));
 }

@@ -40,6 +40,28 @@ server prod {
 }
 
 #[test]
+fn decorators_round_trip_in_every_supported_position() {
+    let out = round_trip(
+        r#"
+@tag field = 1
+@tag fn answer() -> i64 42
+@tag block {}
+@tag type Example { @tag value: i64 }
+@tag interface Contract { @tag value: i64 }
+@tag union Choice { @tag Value { @tag inner: i64 } }
+@tag symbol_set Mode { @tag fast }
+@tag connection Edge: Example -> Example : Mode
+"#,
+    );
+
+    assert_eq!(
+        out.match_indices("@tag").count(),
+        13,
+        "every decorator-bearing position survives formatting:\n{out}"
+    );
+}
+
+#[test]
 fn newline_escape_string_stays_quoted() {
     // Variant 2 of the report: a `"\n"` separator inside a call used to
     // become a whitespace heredoc whose closer glued onto the `)` —

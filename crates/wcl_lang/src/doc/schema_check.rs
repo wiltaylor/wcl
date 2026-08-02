@@ -28,6 +28,12 @@ fn decorator_slot_value_error(
 ) -> Option<EvalError> {
     use crate::error::SchemaViolationKind as Kind;
 
+    // A schemaless slot declares only the argument's name/cardinality; the
+    // host owns its value type (for example, `@default` accepts any value).
+    if has_schemaless(&slot.ast.decorators) {
+        return None;
+    }
+
     let declared_type = doc.resolve_alias(slot.type_ref());
     if !crate::doc::value_matches_declared(value, &declared_type, slot.optional()) {
         return Some(EvalError::schema_violation_named(
@@ -373,7 +379,7 @@ pub(super) fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
 /// Whether a node opts its annotations out of decorator declaration checks.
 /// Bare `@schemaless` includes this exemption; the narrow form spells it as
 /// the literal named argument `annotations = true`.
-fn has_annotation_exemption(decorators: &[ast::Decorator]) -> bool {
+pub(super) fn has_annotation_exemption(decorators: &[ast::Decorator]) -> bool {
     decorators
         .iter()
         .any(|decorator| decorator.schemaless_mode().is_some())
@@ -398,147 +404,6 @@ pub(super) fn has_by_ref(decorators: &[ast::Decorator]) -> bool {
     decorators
         .iter()
         .any(|d| d.name.len() == 1 && d.name[0] == name)
-}
-
-/// Require every decorator on one AST node to resolve through the document's
-/// decorator-schema registry. A dotted prefix selects a namespace; a bare
-/// name resolves relative to the namespace of the source carrying the node.
-pub(super) fn validate_decorators(
-    doc: &Document,
-    decorators: &[ast::Decorator],
-    context_ns: &[String],
-) -> Vec<EvalError> {
-    use crate::error::SchemaViolationKind as Kind;
-
-    if has_annotation_exemption(decorators) {
-        return Vec::new();
-    }
-
-    decorators
-        .iter()
-        .filter_map(|decorator| {
-            let (name, qualifier) = decorator
-                .name
-                .split_last()
-                .expect("parsed decorator names have at least one segment");
-            doc.decorator_schema_in(qualifier, name, context_ns)
-                .is_none()
-                .then(|| {
-                    EvalError::schema_violation_named(
-                        Kind::UndeclaredDecorator,
-                        format!(
-                            "decorator '{}' has no @decorator declaration",
-                            decorator.name.join(".")
-                        ),
-                        decorator.name.join("."),
-                        decorator.name_span,
-                    )
-                })
-        })
-        .collect()
-}
-
-/// Walk every decorator-carrying position in an AST item list. This is a
-/// source-level pass rather than part of block validation because schema
-/// declarations, function items, and document fields are peers of blocks.
-pub(super) fn validate_item_decorators(
-    doc: &Document,
-    items: &[ast::Item],
-    context_ns: &[String],
-) -> Vec<EvalError> {
-    let mut errors = Vec::new();
-    for item in items {
-        match item {
-            ast::Item::Field(field) => {
-                errors.extend(validate_decorators(doc, &field.decorators, context_ns));
-            }
-            ast::Item::Let(binding) if binding.fn_syntax => {
-                errors.extend(validate_decorators(doc, &binding.decorators, context_ns));
-            }
-            ast::Item::Block(block) => {
-                errors.extend(validate_decorators(doc, &block.decorators, context_ns));
-                errors.extend(validate_item_decorators(doc, &block.items, context_ns));
-            }
-            ast::Item::TypeDecl(decl) => {
-                errors.extend(validate_decorators(doc, &decl.decorators, context_ns));
-                for field in &decl.fields {
-                    errors.extend(validate_decorators(doc, &field.decorators, context_ns));
-                }
-            }
-            ast::Item::InterfaceDecl(decl) => {
-                errors.extend(validate_decorators(doc, &decl.decorators, context_ns));
-                for field in &decl.fields {
-                    errors.extend(validate_decorators(doc, &field.decorators, context_ns));
-                }
-            }
-            ast::Item::UnionDecl(decl) => {
-                errors.extend(validate_decorators(doc, &decl.decorators, context_ns));
-                for variant in &decl.variants {
-                    errors.extend(validate_decorators(doc, &variant.decorators, context_ns));
-                    if let ast::VariantBody::Record { fields, .. } = &variant.body {
-                        for field in fields {
-                            errors.extend(validate_decorators(doc, &field.decorators, context_ns));
-                        }
-                    }
-                }
-            }
-            ast::Item::SymbolSetDecl(decl) => {
-                errors.extend(validate_decorators(doc, &decl.decorators, context_ns));
-                for symbol in &decl.symbols {
-                    errors.extend(validate_decorators(doc, &symbol.decorators, context_ns));
-                }
-            }
-            ast::Item::ConnectionDecl(decl) => {
-                errors.extend(validate_decorators(doc, &decl.decorators, context_ns));
-            }
-            ast::Item::Let(_)
-            | ast::Item::NamespaceDecl(_)
-            | ast::Item::UseDecl(_)
-            | ast::Item::Import(_)
-            | ast::Item::Table(_)
-            | ast::Item::Connection(_) => {}
-        }
-    }
-    errors
-}
-
-/// Validate decorators introduced by a lazy in-block import. Eager imports
-/// are covered by the source-level pass in `Document::collect_schema_errors`,
-/// while a lazy import is only visible after its enclosing block is realized.
-fn validate_lazy_field_decorators(block: &Block<'_>, field: &super::Field<'_>) -> Vec<EvalError> {
-    let block_source = block.named_source();
-    let field_source = field.named_source();
-    if block_source.name() == field_source.name() {
-        return Vec::new();
-    }
-
-    let context_ns = block.doc.find_field_source_ns(field.ast);
-    validate_decorators(block.doc, &field.ast.decorators, context_ns)
-        .into_iter()
-        .map(|error| error.with_schema_source(field_source.clone()))
-        .collect()
-}
-
-/// A lazy imported block can contain an authored subtree from the imported
-/// file. Validate that whole subtree once, at the boundary where its source
-/// differs from the enclosing block's source.
-fn validate_lazy_block_decorators(block: &Block<'_>, nested: &Block<'_>) -> Vec<EvalError> {
-    let block_source = block.named_source();
-    let nested_source = nested.named_source();
-    if block_source.name() == nested_source.name() {
-        return Vec::new();
-    }
-
-    let mut errors = validate_decorators(block.doc, &nested.ast.decorators, nested.file_ns());
-    errors.extend(validate_item_decorators(
-        block.doc,
-        &nested.ast.items,
-        nested.file_ns(),
-    ));
-    errors
-        .into_iter()
-        .map(|error| error.with_schema_source(nested_source.clone()))
-        .collect()
 }
 
 /// Validate every `Item::Connection` in a flat item list against the
@@ -753,12 +618,13 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         return errs;
     }
 
-    for decorator in block.decorators() {
-        errs.extend(decorator_argument_errors(block.doc, &decorator));
+    if !has_annotation_exemption(&block.ast.decorators) {
+        for decorator in block.decorators() {
+            errs.extend(decorator_argument_errors(block.doc, &decorator));
+        }
     }
     for field in block.fields() {
-        errs.extend(validate_lazy_field_decorators(block, &field));
-        if has_schemaless(&field.ast.decorators) {
+        if has_annotation_exemption(&field.ast.decorators) {
             continue;
         }
         for decorator in field.decorators() {
@@ -1133,7 +999,6 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     //   - `@contextual` kinds: context-polymorphic bodies that only have
     //     meaning once expanded with bindings.
     for nested in block.blocks() {
-        errs.extend(validate_lazy_block_decorators(block, &nested));
         if nested.schema().is_none() && block.doc.is_possible_block_slot_fill(nested.kind()) {
             continue;
         }
