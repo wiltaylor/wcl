@@ -33,6 +33,7 @@ enum AgentStatus {
 struct AgentReport {
     status: AgentStatus,
     message: String,
+    commit: Option<String>,
 }
 
 trait Runner: Send + Sync {
@@ -48,9 +49,10 @@ const REPORT_SCHEMA: &str = r#"{
   "type":"object",
   "properties":{
     "status":{"type":"string","enum":["committed","no_changes","failed"]},
-    "message":{"type":"string"}
+    "message":{"type":"string"},
+    "commit":{"type":["string","null"]}
   },
-  "required":["status","message"],
+  "required":["status","message","commit"],
   "additionalProperties":false
 }"#;
 
@@ -123,8 +125,9 @@ pub(super) async fn handle_curator(
         return json_error(StatusCode::CONFLICT, "a curator pass is already running");
     }
     let state2 = Arc::clone(&state);
+    let running = RunningGuard;
     run_blocking(move || {
-        let _running = RunningGuard;
+        let _running = running;
         curate_with(&state2.ws, &value, &ClaudeRunner)
     })
     .await
@@ -171,50 +174,64 @@ fn curate_with(
          Work headlessly through the wskill CLI exactly as your contract requires; do not ask for \
          approval and do not edit prose. Return `committed` only after the gated op run creates its \
          commit, `no_changes` only when the scoped pass honestly needs no commit, and `failed` with \
-         the gate or tool failure in `message`.",
+         the gate or tool failure in `message`. Set `commit` to the resulting commit SHA only for \
+         `committed`; set it to null for `no_changes` and `failed`.",
         root.display(),
         scope_prompt
     );
 
     let run = runner.run(&repo, &prompt);
     let after = git_stdout(&repo, &["rev-parse", "HEAD"])?;
-
-    // The commit is the event the UI cares about. Even if the agent's final
-    // response is lost after committing, the repository gives us a stable,
-    // reproducible range to audit.
-    if after != before {
-        let message = run
-            .as_ref()
-            .map(|r| r.message.clone())
-            .unwrap_or_else(|e| format!("The curator committed before reporting: {e}"));
-        return Ok(serde_json::json!({
-            "ok": true,
-            "status": "committed",
-            "commit": after,
-            "range": format!("{before}..{after}"),
-            "message": message,
-        }));
-    }
-
     match run? {
-        AgentReport {
-            status: AgentStatus::NoChanges,
-            message,
-        } => Ok(serde_json::json!({
-            "ok": true,
-            "status": "no_changes",
-            "message": message,
-        })),
-        AgentReport {
-            status: AgentStatus::Failed,
-            message,
-        } => Err(format!("curator pass failed: {message}")),
         AgentReport {
             status: AgentStatus::Committed,
             message,
-        } => Err(format!(
-            "curator reported a commit but HEAD did not change: {message}"
-        )),
+            commit: Some(reported),
+        } => {
+            let commit_spec = format!("{reported}^{{commit}}");
+            let commit = git_stdout(&repo, &["rev-parse", "--verify", &commit_spec])?;
+            let parent_spec = format!("{commit}^");
+            let parent = git_stdout(&repo, &["rev-parse", "--verify", &parent_spec])?;
+            if parent != before {
+                return Err(format!(
+                    "curator commit {commit} is not the single child of the pre-run revision {before}"
+                ));
+            }
+            if !git_is_ancestor(&repo, &commit, &after)? {
+                return Err(format!(
+                    "curator reported commit {commit}, but current HEAD {after} does not contain it"
+                ));
+            }
+            Ok(serde_json::json!({
+                "ok": true,
+                "status": "committed",
+                "commit": commit,
+                "range": format!("{parent}..{commit}"),
+                "message": message,
+            }))
+        }
+        AgentReport {
+            status: AgentStatus::NoChanges,
+            message,
+            commit: None,
+        } => {
+            if after != before {
+                return Err(format!(
+                    "curator reported no changes, but HEAD moved from {before} to {after}"
+                ));
+            }
+            Ok(serde_json::json!({
+                "ok": true,
+                "status": "no_changes",
+                "message": message,
+            }))
+        }
+        AgentReport {
+            status: AgentStatus::Failed,
+            message,
+            commit: None,
+        } => Err(format!("curator pass failed: {message}")),
+        _ => Err("the curator response paired its status with an invalid commit value".to_string()),
     }
 }
 
@@ -236,7 +253,16 @@ fn parse_report(stdout: &[u8]) -> Result<AgentReport, String> {
         .and_then(serde_json::Value::as_str)
         .ok_or("the curator response has no message")?
         .to_string();
-    Ok(AgentReport { status, message })
+    let commit = report
+        .get("commit")
+        .and_then(serde_json::Value::as_str)
+        .filter(|sha| !sha.is_empty())
+        .map(str::to_string);
+    Ok(AgentReport {
+        status,
+        message,
+        commit,
+    })
 }
 
 fn repo_root(path: &Path) -> Result<PathBuf, String> {
@@ -260,6 +286,20 @@ fn git_stdout(dir: &Path, args: &[&str]) -> Result<String, String> {
     String::from_utf8(output.stdout)
         .map(|s| s.trim().to_string())
         .map_err(|e| format!("git output is not UTF-8: {e}"))
+}
+
+fn git_is_ancestor(dir: &Path, ancestor: &str, descendant: &str) -> Result<bool, String> {
+    let status = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["merge-base", "--is-ancestor", ancestor, descendant])
+        .status()
+        .map_err(|e| format!("run git: {e}"))?;
+    match status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => Err("git merge-base --is-ancestor failed".to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -311,6 +351,7 @@ mod tests {
         Ok(AgentReport {
             status,
             message: message.to_string(),
+            commit: None,
         })
     }
 
@@ -323,7 +364,11 @@ mod tests {
             std::fs::write(cwd.join("curated.txt"), "done\n").unwrap();
             git(cwd, &["add", "curated.txt"]);
             git(cwd, &["commit", "-qm", "curate language index"]);
-            report(AgentStatus::Committed, "Curated language")
+            Ok(AgentReport {
+                status: AgentStatus::Committed,
+                message: "Curated language".to_string(),
+                commit: Some(git(cwd, &["rev-parse", "HEAD"])),
+            })
         });
 
         let before = git(ws.root_dir(), &["rev-parse", "HEAD"]);
@@ -395,6 +440,61 @@ mod tests {
     }
 
     #[test]
+    fn unrelated_head_movement_does_not_turn_a_failed_gate_into_success() {
+        let (_td, ws) = fixture();
+        let runner = FakeRunner(|cwd: &Path, _: &str| {
+            std::fs::write(cwd.join("elsewhere.txt"), "another writer\n").unwrap();
+            git(cwd, &["add", "elsewhere.txt"]);
+            git(cwd, &["commit", "-qm", "unrelated concurrent commit"]);
+            report(AgentStatus::Failed, "projection gate failed")
+        });
+
+        let error = curate_with(
+            &ws,
+            &serde_json::json!({ "entry": "main.wcl", "scope": "whole_graph" }),
+            &runner,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("projection gate failed"), "{error}");
+    }
+
+    #[test]
+    fn audit_range_names_only_the_reported_curator_commit() {
+        let (_td, ws) = fixture();
+        let runner = FakeRunner(|cwd: &Path, _: &str| {
+            std::fs::write(cwd.join("curated.txt"), "curator\n").unwrap();
+            git(cwd, &["add", "curated.txt"]);
+            git(cwd, &["commit", "-qm", "curator commit"]);
+            let curator_commit = git(cwd, &["rev-parse", "HEAD"]);
+
+            std::fs::write(cwd.join("later.txt"), "another writer\n").unwrap();
+            git(cwd, &["add", "later.txt"]);
+            git(cwd, &["commit", "-qm", "later unrelated commit"]);
+
+            Ok(AgentReport {
+                status: AgentStatus::Committed,
+                message: "Curated".to_string(),
+                commit: Some(curator_commit),
+            })
+        });
+        let before = git(ws.root_dir(), &["rev-parse", "HEAD"]);
+
+        let value = curate_with(
+            &ws,
+            &serde_json::json!({ "entry": "main.wcl", "scope": "whole_graph" }),
+            &runner,
+        )
+        .expect("verified curator commit");
+
+        assert_ne!(value["commit"], git(ws.root_dir(), &["rev-parse", "HEAD"]));
+        assert_eq!(
+            value["range"],
+            format!("{before}..{}", value["commit"].as_str().unwrap())
+        );
+    }
+
+    #[test]
     fn unknown_index_is_refused_before_the_agent_runs() {
         let (_td, ws) = fixture();
         let runner = FakeRunner(|_: &Path, _: &str| panic!("runner must not be called"));
@@ -416,7 +516,7 @@ mod tests {
     #[test]
     fn parses_claude_structured_output() {
         let parsed = parse_report(
-            br#"{"type":"result","structured_output":{"status":"failed","message":"lint gate got worse"}}"#,
+            br#"{"type":"result","structured_output":{"status":"failed","message":"lint gate got worse","commit":null}}"#,
         )
         .expect("structured report");
         assert_eq!(parsed.status, AgentStatus::Failed);

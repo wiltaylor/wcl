@@ -2,19 +2,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fakes = vi.hoisted(() => ({
   curator: vi.fn(),
+  readFile: vi.fn(),
+  applyDiskUpdate: vi.fn(),
   emitCommit: vi.fn(),
   toast: vi.fn(),
   selected: vi.fn(() => ({ registry: 'skills/demo/wskill.wcl', wskill: true })),
+  bufferStore: { buffers: {} },
 }));
 
 vi.mock('../api', () => ({
   api: {
     curator: fakes.curator,
+    readFile: fakes.readFile,
   },
 }));
 vi.mock('./buffers', () => ({
-  applyDiskUpdate: vi.fn(),
-  buffers: { buffers: {} },
+  applyDiskUpdate: fakes.applyDiskUpdate,
+  buffers: fakes.bufferStore,
   buffer: vi.fn(),
   openFile: vi.fn(),
   saveBuffer: vi.fn(),
@@ -46,13 +50,22 @@ import {
 describe('curator → audit navigation', () => {
   beforeEach(() => {
     fakes.curator.mockReset();
+    fakes.readFile.mockReset();
+    fakes.applyDiskUpdate.mockReset();
     fakes.emitCommit.mockReset();
     fakes.toast.mockReset();
     setDesignTab('graph');
     setPendingAuditRange(null);
+    fakes.bufferStore.buffers = {};
   });
 
   it('opens the audit tab on the exact committed range', async () => {
+    fakes.bufferStore.buffers['data/alpha.wcl'] = {
+      path: 'data/alpha.wcl',
+      dirty: false,
+      text: 'before',
+    };
+    fakes.readFile.mockResolvedValue({ ok: true, text: 'after', etag: 'fresh' });
     fakes.curator.mockResolvedValue({
       ok: true,
       status: 'committed',
@@ -69,7 +82,28 @@ describe('curator → audit navigation', () => {
     expect(pendingAuditRange()).toBe('abc123..def456');
     expect(designTab()).toBe('audit');
     expect(fakes.emitCommit).toHaveBeenCalledWith({ surface: null });
+    expect(fakes.readFile).toHaveBeenCalledWith('data/alpha.wcl');
+    expect(fakes.applyDiskUpdate).toHaveBeenCalledWith('data/alpha.wcl', 'after', 'fresh');
     expect(busy()).toBe(false);
+  });
+
+  it('refuses to start while any open buffer is dirty', async () => {
+    fakes.bufferStore.buffers['data/alpha.wcl'] = {
+      path: 'data/alpha.wcl',
+      dirty: true,
+      text: 'unsaved',
+    };
+
+    const res = await runCurator({ scope: 'whole_graph' });
+
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain('dirty buffer');
+    expect(fakes.curator).not.toHaveBeenCalled();
+    expect(designTab()).toBe('graph');
+    expect(fakes.toast).toHaveBeenCalledWith(
+      expect.stringContaining('data/alpha.wcl'),
+      expect.objectContaining({ tone: 'danger' }),
+    );
   });
 
   it('reports a failed gate without opening an audit or claiming a commit', async () => {

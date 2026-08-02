@@ -78,6 +78,17 @@ export {
 export async function runCurator(scope) {
   const entry = selected()?.registry ?? activeEntry();
   if (!entry || busy()) return { ok: false, error: busy() ? 'busy' : 'no wskill selected' };
+  const dirty = Object.entries(buffers.buffers)
+    .filter(([, b]) => b?.dirty)
+    .map(([path]) => path);
+  if (dirty.length) {
+    const error = `dirty buffer${dirty.length === 1 ? '' : 's'}: ${dirty.join(', ')}`;
+    toast(`Save or discard ${dirty.join(', ')} before running the curator`, {
+      tone: 'danger',
+      duration: 8000,
+    });
+    return { ok: false, error };
+  }
   setBusy(true);
   setCuratorRunning(true);
   const res = await api.curator(entry, scope);
@@ -98,6 +109,16 @@ export async function runCurator(scope) {
     const error = 'The curator completed without an auditable commit range';
     toast(error, { tone: 'danger', duration: 8000 });
     return { ok: false, error };
+  }
+  // The agent may have touched any wskill file, unlike an ordinary Design
+  // op whose response names its one edited file. Re-read every open text
+  // buffer before exposing the audit so code tabs and the audited commit
+  // describe the same bytes. Dirty buffers were refused above.
+  for (const [path, b] of Object.entries(buffers.buffers)) {
+    if (b?.binary) continue;
+    const fresh = await api.readFile(path);
+    if (fresh.ok) applyDiskUpdate(path, fresh.text, fresh.etag);
+    else toast(`Could not refresh ${path}: ${fresh.error}`, { tone: 'danger', duration: 8000 });
   }
   emitCommit({ surface: null });
   setPendingAuditRange(res.range);
