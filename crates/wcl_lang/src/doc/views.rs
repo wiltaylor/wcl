@@ -713,6 +713,20 @@ fn iter_decorators<'a>(
 }
 
 impl<'a> Decorator<'a> {
+    pub(super) fn from_parts(
+        ast: &'a ast::Decorator,
+        cell: &'a DecoratorCell,
+        doc: &'a Document,
+        file_ns: &'a [String],
+    ) -> Self {
+        Self {
+            ast,
+            cell,
+            doc,
+            file_ns,
+        }
+    }
+
     pub fn name(&self) -> &'a str {
         self.ast
             .name
@@ -816,12 +830,6 @@ impl<'a> Decorator<'a> {
     pub fn resolved_arg_value(&self, slot_name: &str) -> Option<Result<Value, EvalError>> {
         let schema = self.schema()?;
         let slot = schema.field(slot_name)?;
-        // Resolve a union slot from the decorator schema's namespace, not
-        // the decorator use site's. Two libraries may both call the union
-        // `Choice`, just as they may both declare this decorator name.
-        if let ResolvedType::Union(union) = slot.resolved_type() {
-            return Some(self.dispatch_into_union(union));
-        }
         if let Some(v) = self.named_arg(slot_name) {
             return Some(v);
         }
@@ -833,6 +841,19 @@ impl<'a> Decorator<'a> {
             if let Some(value) = positional.into_iter().nth(slot_idx as usize) {
                 return Some(Ok(value));
             }
+        }
+        // Resolve a union slot from the decorator schema's namespace, not
+        // the decorator use site's. Two libraries may both call the union
+        // `Choice`, just as they may both declare this decorator name. An
+        // entirely omitted union slot still receives its declared default.
+        if let ResolvedType::Union(union) = slot.resolved_type() {
+            if self.ast.positional.is_empty()
+                && self.ast.named.is_empty()
+                && let Some(default) = slot.default_value()
+            {
+                return Some(Ok(default));
+            }
+            return Some(self.dispatch_into_union(union));
         }
         slot.default_value().map(Ok)
     }

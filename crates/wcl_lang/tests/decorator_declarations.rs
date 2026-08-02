@@ -157,6 +157,22 @@ fn undeclared_decorator_on_connection_is_spanned_on_its_name() {
 }
 
 #[test]
+fn unknown_qualified_decorator_reports_once_as_a_namespace_error() {
+    let source = "@missing.note\ntype Example {}\n";
+    let document = Document::open(source, "decorator-declarations.wcl").expect("fixture parses");
+    let errors = document.schema_errors();
+
+    assert_eq!(errors.len(), 1, "{errors:#?}");
+    assert!(matches!(
+        errors[0],
+        EvalError::SchemaViolation {
+            kind: SchemaViolationKind::UnknownDecorator,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn bare_schemaless_exempts_annotations_in_every_position() {
     for (position, source) in sources_for_every_position("@schemaless") {
         assert!(

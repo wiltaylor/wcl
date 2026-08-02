@@ -251,8 +251,8 @@ impl ItemCells {
                 decorators: make_decorator_cells(&f.decorators),
                 kind: ItemCellKind::Field(FieldCell::new()),
             },
-            ast::Item::Let(_) => Self {
-                decorators: Vec::new(),
+            ast::Item::Let(binding) => Self {
+                decorators: make_decorator_cells(&binding.decorators),
                 kind: ItemCellKind::Let(FieldCell::new()),
             },
             ast::Item::Block(b) => {
@@ -382,8 +382,8 @@ impl ItemCells {
                 decorators: Vec::new(),
                 kind: ItemCellKind::Table,
             },
-            ast::Item::ConnectionDecl(_) => Self {
-                decorators: Vec::new(),
+            ast::Item::ConnectionDecl(declaration) => Self {
+                decorators: make_decorator_cells(&declaration.decorators),
                 kind: ItemCellKind::ConnectionDecl,
             },
             ast::Item::Connection(_) => Self {

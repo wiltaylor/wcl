@@ -364,7 +364,8 @@ mod tests {
         // Validating open of the registry succeeds (commit already gated
         // this; double-check directly).
         let doc = wcl_wdoc::open_doc_for_edit(&root.join("wskill.wcl")).unwrap();
-        assert!(doc.schema_errors().is_empty());
+        let errors = doc.schema_errors();
+        assert!(errors.is_empty(), "{errors:#?}");
         // Idempotence guards.
         let e = toggle("presentation", true).unwrap_err();
         assert!(e.contains("already exists"), "{e}");

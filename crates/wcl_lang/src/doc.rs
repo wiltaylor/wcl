@@ -39,10 +39,10 @@ use crate::symbols::{SymbolIndex, SymbolKind, SymbolRecord};
 #[cfg(test)]
 use crate::value::{BuiltinType, TensorDim};
 use crate::value::{TypeRef, Value};
-use cells::{BlockCells, ItemCellKind, ItemCells, LoadedImport};
+use cells::{BlockCells, DecoratorCell, ItemCellKind, ItemCells, LoadedImport};
 use imports::{expand_top_level_imports, load_import_lazily};
 use lookup::{find_block, find_field, find_let, iter_blocks, iter_fields};
-use schema_check::has_schemaless;
+use schema_check::{has_annotation_exemption, has_schemaless};
 use scope::Scope;
 use validate::{decl_fqn_matches, resolve_path, validate_document};
 
@@ -654,6 +654,18 @@ impl Document {
         }
         for imp in &self.eager_imports {
             if let Some(source) = named_source_for_union_in_import(imp, target) {
+                return source;
+            }
+        }
+        self.root_named_source()
+    }
+
+    fn named_source_for_type(&self, target: *const ast::TypeDecl) -> NamedSource<String> {
+        if type_in_items(&self.ast.items, target) {
+            return self.root_named_source();
+        }
+        for import in &self.eager_imports {
+            if let Some(source) = named_source_for_type_in_import(import, target) {
                 return source;
             }
         }
@@ -2531,8 +2543,7 @@ impl Document {
         // file). Each source's items are validated against the merged
         // `@document` schema for that source's namespace, if any.
         for src in self.all_sources() {
-            let mut errors =
-                crate::doc::schema_check::validate_item_decorators(self, src.items, src.file_ns);
+            let mut errors = Vec::new();
             let schemas = self.doc_schemas_for_ns(src.file_ns);
 
             // Pre-compute the merged schema's union-typed children
@@ -2626,19 +2637,53 @@ impl Document {
 
         // Applicability and cardinality share one grammar-shaped walk so
         // every decorator-bearing position is covered by the same rules.
-        for src in self.all_sources() {
-            self.validate_decorators_in_items(src.items, src.cells, src.file_ns, &mut out);
-        }
-        for declaration in &self.synthetic_types {
-            self.validate_decorator_group(&declaration.decorators, "type", None, &[], &mut out);
-            for field in &declaration.fields {
-                self.validate_decorator_group(&field.decorators, "type_field", None, &[], &mut out);
+        // Follow each authored import edge from the root exactly once. This
+        // reaches eager and lazy block imports without re-walking eager
+        // sources already exposed by `all_sources()`.
+        let mut decorated_imports = HashSet::new();
+        let mut decorator_errors = Vec::new();
+        self.validate_decorators_in_items(
+            &self.ast.items,
+            &self.cells.items,
+            &self.file_ns,
+            &mut decorated_imports,
+            &mut decorator_errors,
+        );
+        let root_source = self.root_named_source();
+        out.extend(decorator_errors.into_iter().map(|error| {
+            let source = error.schema_source().or_else(|| Some(root_source.clone()));
+            (error, source)
+        }));
+        for (declaration, cells) in self.synthetic_types.iter().zip(&self.synthetic_type_cells) {
+            let mut errors = Vec::new();
+            self.validate_decorator_group(
+                &declaration.decorators,
+                &cells.decorators,
+                "type",
+                None,
+                &[],
+                &mut errors,
+            );
+            let ItemCellKind::TypeDecl { field_decorators } = &cells.kind else {
+                unreachable!("synthetic type cells mirror the declaration")
+            };
+            for (field, decorator_cells) in declaration.fields.iter().zip(field_decorators) {
+                self.validate_decorator_group(
+                    &field.decorators,
+                    decorator_cells,
+                    "type_field",
+                    None,
+                    &[],
+                    &mut errors,
+                );
             }
+            out.extend(errors.into_iter().map(|error| (error, None)));
         }
 
         // Validate the applicability declarations themselves before using
         // them to check decorator occurrences.
         for declaration in self.type_decls() {
+            let mut errors = Vec::new();
             let declares_decorator = declaration
                 .decorators()
                 .any(|decorator| decorator.full_name() == "decorator");
@@ -2648,7 +2693,7 @@ impl Document {
             {
                 if !declares_decorator {
                     EvalError::push_schema_violation(
-                        &mut out,
+                        &mut errors,
                         Kind::InvalidDecoratorApplicability,
                         "@applies_to is attached to no decorator schema",
                         decorator_name_span(&applies_to),
@@ -2675,7 +2720,7 @@ impl Document {
                     }) {
                         if !position_set.has(position) {
                             EvalError::push_schema_violation(
-                                &mut out,
+                                &mut errors,
                                 Kind::InvalidDecoratorApplicability,
                                 format!("unknown decorator position '{position}'"),
                                 on_span,
@@ -2690,7 +2735,7 @@ impl Document {
                     );
                     if !includes_block {
                         EvalError::push_schema_violation(
-                            &mut out,
+                            &mut errors,
                             Kind::InvalidDecoratorApplicability,
                             "@applies_to 'kinds' requires the 'block' position in 'on'",
                             kinds_arg.span(),
@@ -2706,7 +2751,7 @@ impl Document {
                                 .is_none()
                             {
                                 EvalError::push_schema_violation(
-                                    &mut out,
+                                    &mut errors,
                                     Kind::InvalidDecoratorApplicability,
                                     format!("@applies_to names unknown block kind '{kind}'"),
                                     kinds_arg.span(),
@@ -2716,6 +2761,12 @@ impl Document {
                     }
                 }
             }
+            let source = self.named_source_for_type(declaration.ast);
+            out.extend(
+                errors
+                    .into_iter()
+                    .map(|error| (error, Some(source.clone()))),
+            );
         }
 
         out
@@ -2733,8 +2784,10 @@ impl Document {
         out: &mut Vec<EvalError>,
     ) {
         use crate::error::SchemaViolationKind as Kind;
-        for decorator in f.decorators() {
-            out.extend(schema_check::decorator_argument_errors(self, &decorator));
+        if !has_annotation_exemption(&f.ast.decorators) {
+            for decorator in f.decorators() {
+                out.extend(schema_check::decorator_argument_errors(self, &decorator));
+            }
         }
         if schemas.is_empty() {
             EvalError::push_schema_violation(
@@ -2845,42 +2898,69 @@ impl Document {
         items: &[ast::Item],
         cells: &[ItemCells],
         file_ns: &[String],
+        seen_imports: &mut HashSet<PathBuf>,
         out: &mut Vec<EvalError>,
     ) {
         for (item, cell) in items.iter().zip(cells) {
             match item {
-                ast::Item::Field(field) => {
-                    self.validate_decorator_group(&field.decorators, "field", None, file_ns, out)
-                }
-                ast::Item::Let(function) if function.fn_syntax => {
-                    self.validate_decorator_group(&function.decorators, "fn", None, file_ns, out)
-                }
+                ast::Item::Field(field) => self.validate_decorator_group(
+                    &field.decorators,
+                    &cell.decorators,
+                    "field",
+                    None,
+                    file_ns,
+                    out,
+                ),
+                ast::Item::Let(function) if function.fn_syntax => self.validate_decorator_group(
+                    &function.decorators,
+                    &cell.decorators,
+                    "fn",
+                    None,
+                    file_ns,
+                    out,
+                ),
                 ast::Item::Block(block) => {
                     self.validate_decorator_group(
                         &block.decorators,
+                        &cell.decorators,
                         "block",
                         Some(&block.kind),
                         file_ns,
                         out,
                     );
+                    if has_schemaless(&block.decorators) {
+                        continue;
+                    }
                     if let ItemCellKind::Block {
                         items: block_cells, ..
                     } = &cell.kind
                     {
-                        self.validate_decorators_in_items(&block.items, block_cells, file_ns, out);
+                        self.validate_decorators_in_items(
+                            &block.items,
+                            block_cells,
+                            file_ns,
+                            seen_imports,
+                            out,
+                        );
                     }
                 }
                 ast::Item::TypeDecl(declaration) => {
                     self.validate_decorator_group(
                         &declaration.decorators,
+                        &cell.decorators,
                         "type",
                         None,
                         file_ns,
                         out,
                     );
-                    for field in &declaration.fields {
+                    let ItemCellKind::TypeDecl { field_decorators } = &cell.kind else {
+                        unreachable!("type declaration has type cells")
+                    };
+                    for (field, decorator_cells) in declaration.fields.iter().zip(field_decorators)
+                    {
                         self.validate_decorator_group(
                             &field.decorators,
+                            decorator_cells,
                             "type_field",
                             None,
                             file_ns,
@@ -2891,14 +2971,20 @@ impl Document {
                 ast::Item::InterfaceDecl(declaration) => {
                     self.validate_decorator_group(
                         &declaration.decorators,
+                        &cell.decorators,
                         "interface",
                         None,
                         file_ns,
                         out,
                     );
-                    for field in &declaration.fields {
+                    let ItemCellKind::InterfaceDecl { field_decorators } = &cell.kind else {
+                        unreachable!("interface declaration has interface cells")
+                    };
+                    for (field, decorator_cells) in declaration.fields.iter().zip(field_decorators)
+                    {
                         self.validate_decorator_group(
                             &field.decorators,
+                            decorator_cells,
                             "type_field",
                             None,
                             file_ns,
@@ -2909,23 +2995,35 @@ impl Document {
                 ast::Item::UnionDecl(declaration) => {
                     self.validate_decorator_group(
                         &declaration.decorators,
+                        &cell.decorators,
                         "union",
                         None,
                         file_ns,
                         out,
                     );
-                    for variant in &declaration.variants {
+                    let ItemCellKind::UnionDecl {
+                        variant_decorators,
+                        variant_field_decorators,
+                    } = &cell.kind
+                    else {
+                        unreachable!("union declaration has union cells")
+                    };
+                    for (variant_index, variant) in declaration.variants.iter().enumerate() {
                         self.validate_decorator_group(
                             &variant.decorators,
+                            &variant_decorators[variant_index],
                             "variant",
                             None,
                             file_ns,
                             out,
                         );
                         if let ast::VariantBody::Record { fields, .. } = &variant.body {
-                            for field in fields {
+                            for (field, decorator_cells) in
+                                fields.iter().zip(&variant_field_decorators[variant_index])
+                            {
                                 self.validate_decorator_group(
                                     &field.decorators,
+                                    decorator_cells,
                                     "type_field",
                                     None,
                                     file_ns,
@@ -2938,14 +3036,21 @@ impl Document {
                 ast::Item::SymbolSetDecl(declaration) => {
                     self.validate_decorator_group(
                         &declaration.decorators,
+                        &cell.decorators,
                         "symbol_set",
                         None,
                         file_ns,
                         out,
                     );
-                    for symbol in &declaration.symbols {
+                    let ItemCellKind::SymbolSetDecl { symbol_decorators } = &cell.kind else {
+                        unreachable!("symbol-set declaration has symbol-set cells")
+                    };
+                    for (symbol, decorator_cells) in
+                        declaration.symbols.iter().zip(symbol_decorators)
+                    {
                         self.validate_decorator_group(
                             &symbol.decorators,
+                            decorator_cells,
                             "symbol",
                             None,
                             file_ns,
@@ -2955,6 +3060,7 @@ impl Document {
                 }
                 ast::Item::ConnectionDecl(declaration) => self.validate_decorator_group(
                     &declaration.decorators,
+                    &cell.decorators,
                     "connection",
                     None,
                     file_ns,
@@ -2978,8 +3084,10 @@ impl Document {
                             self.loader(),
                         )
                     });
-                    if let Ok(loaded) = loaded {
-                        self.validate_decorators_in_loaded_import(loaded, out);
+                    if let Ok(loaded) = loaded
+                        && seen_imports.insert(loaded.path.clone())
+                    {
+                        self.validate_decorators_in_loaded_import(loaded, seen_imports, out);
                     }
                 }
                 _ => {}
@@ -2990,17 +3098,31 @@ impl Document {
     fn validate_decorators_in_loaded_import(
         &self,
         loaded: &LoadedImport,
+        seen_imports: &mut HashSet<PathBuf>,
         out: &mut Vec<EvalError>,
     ) {
-        self.validate_decorators_in_items(&loaded.items, &loaded.cells, &loaded.file_ns, out);
-        for import in &loaded.eager_imports {
-            self.validate_decorators_in_loaded_import(import, out);
-        }
+        let mut errors = Vec::new();
+        self.validate_decorators_in_items(
+            &loaded.items,
+            &loaded.cells,
+            &loaded.file_ns,
+            seen_imports,
+            &mut errors,
+        );
+        let source = NamedSource::new(loaded.path.display().to_string(), loaded.source.clone());
+        out.extend(errors.into_iter().map(|error| {
+            if error.schema_source().is_some() {
+                error
+            } else {
+                error.with_schema_source(source.clone())
+            }
+        }));
     }
 
     fn validate_decorator_group(
         &self,
         decorators: &[ast::Decorator],
+        decorator_cells: &[DecoratorCell],
         position: &str,
         block_kind: Option<&str>,
         file_ns: &[String],
@@ -3008,16 +3130,45 @@ impl Document {
     ) {
         use crate::error::SchemaViolationKind as Kind;
 
+        if has_annotation_exemption(decorators) {
+            return;
+        }
+
         let mut seen = HashSet::new();
-        for decorator in decorators {
-            let Some((name, qualifier)) = decorator.name.split_last() else {
+        for (decorator_ast, decorator_cell) in decorators.iter().zip(decorator_cells) {
+            let decorator = Decorator::from_parts(decorator_ast, decorator_cell, self, file_ns);
+            let Some(schema) = decorator.schema() else {
+                let (kind, message) = if decorator.name_segments().len() > 1 {
+                    (
+                        Kind::UndeclaredDecorator,
+                        format!(
+                            "decorator '@{}' has no declaration in the qualified namespace",
+                            decorator.full_name()
+                        ),
+                    )
+                } else {
+                    (
+                        Kind::UndeclaredDecorator,
+                        format!(
+                            "decorator '{}' has no @decorator declaration",
+                            decorator.full_name()
+                        ),
+                    )
+                };
+                out.push(EvalError::schema_violation_named(
+                    kind,
+                    message,
+                    decorator.full_name(),
+                    decorator.name_span(),
+                ));
                 continue;
             };
-            let Some(schema) =
-                self.find_schema_ns(BuiltinDecorator::Decorator, qualifier, name, file_ns)
-            else {
-                continue;
-            };
+            // Block and data-field arguments are checked by their public
+            // schema-validation paths. Every other decorator-bearing AST
+            // position is checked here by the grammar-shaped source walk.
+            if position != "block" && position != "field" {
+                out.extend(schema_check::decorator_argument_errors(self, &decorator));
+            }
             let canonical_name = schema.full_name();
             let repeatable = schema
                 .decorators()
@@ -3031,9 +3182,9 @@ impl Document {
                     Kind::DecoratorCardinality,
                     format!(
                         "decorator '@{}' may appear at most once on one node",
-                        decorator.name.join(".")
+                        decorator.full_name()
                     ),
-                    ast_decorator_name_span(decorator),
+                    decorator.name_span(),
                 );
             }
 
@@ -3063,9 +3214,9 @@ impl Document {
                     Kind::DecoratorNotApplicable,
                     format!(
                         "decorator '@{}' is not applicable in the '{position}' position",
-                        decorator.name.join(".")
+                        decorator.full_name()
                     ),
-                    ast_decorator_name_span(decorator),
+                    decorator.name_span(),
                 );
                 continue;
             }
@@ -3095,9 +3246,9 @@ impl Document {
                         Kind::DecoratorNotApplicable,
                         format!(
                             "decorator '@{}' is not applicable to block kind '{kind}'",
-                            decorator.name.join(".")
+                            decorator.full_name()
                         ),
-                        ast_decorator_name_span(decorator),
+                        decorator.name_span(),
                     );
                 }
             }
@@ -3274,10 +3425,6 @@ impl Document {
 /// identifier lengths are byte lengths, matching parser spans.
 fn decorator_name_span(decorator: &Decorator<'_>) -> Span {
     decorator_name_span_from_parts(decorator.span(), decorator.name_segments())
-}
-
-fn ast_decorator_name_span(decorator: &ast::Decorator) -> Span {
-    decorator_name_span_from_parts(decorator.span, &decorator.name)
 }
 
 fn decorator_name_span_from_parts(span: Span, name: &[String]) -> Span {
@@ -4137,6 +4284,12 @@ fn union_in_items(items: &[ast::Item], target: *const ast::UnionDecl) -> bool {
         .any(|item| matches!(item, ast::Item::UnionDecl(union) if std::ptr::eq(union, target)))
 }
 
+fn type_in_items(items: &[ast::Item], target: *const ast::TypeDecl) -> bool {
+    items
+        .iter()
+        .any(|item| matches!(item, ast::Item::TypeDecl(declaration) if std::ptr::eq(declaration, target)))
+}
+
 /// The miette source (name + text) of `imp` (or a transitive eager
 /// import) when it declares the block `target` points into.
 fn named_source_in_import(
@@ -4245,6 +4398,24 @@ fn named_source_for_union_in_import(
     }
     for child in &imp.eager_imports {
         if let Some(source) = named_source_for_union_in_import(child, target) {
+            return Some(source);
+        }
+    }
+    None
+}
+
+fn named_source_for_type_in_import(
+    import: &cells::LoadedImport,
+    target: *const ast::TypeDecl,
+) -> Option<NamedSource<String>> {
+    if type_in_items(&import.items, target) {
+        return Some(NamedSource::new(
+            import.path.display().to_string(),
+            import.source.clone(),
+        ));
+    }
+    for child in &import.eager_imports {
+        if let Some(source) = named_source_for_type_in_import(child, target) {
             return Some(source);
         }
     }
