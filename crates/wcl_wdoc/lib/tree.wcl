@@ -7,8 +7,8 @@
 // optional `icon` and `color` — the natural shape for a directory layout,
 // a config tree, or any hierarchy where the structure is the point.
 //
-// Like `card` / `node_table`, it is special-cased in the renderer (its
-// `lower` is a stub): the guides, icons and labels are SVG primitives
+// Like `card` / `node_table`, it is `@native`: the guides, icons and
+// labels are SVG primitives
 // drawn in Rust (see src/tree.rs), because the indent math + connector
 // routing isn't expressible in WCL. The whole tree is placed by `x`/`y`
 // (or anchors) like any shape; its height is derived from the node count.
@@ -20,6 +20,7 @@
 namespace wdoc
 
 @block("tree")
+@native
 type Tree extends SvgBlock {
   // Free placement in a diagram / container (anchors like `rect`).
   @doc("Top-left x placement in the diagram (or use anchors).")
@@ -49,11 +50,11 @@ type Tree extends SvgBlock {
   @doc("The tree's top-level nodes, top to bottom; each may nest further `node`s.")
   @children("tree_node") nodes: list<TreeNode>
 
-  // Stub: the rows + guides + icons are rendered in Rust (see src/tree.rs).
-  lower = fn(t: Tree) -> list<SvgFundamental> []
+  // The rows + guides + icons are rendered in Rust — see src/tree.rs.
 }
 
 @block("tree_node")
+@native
 type TreeNode extends SvgBlock {
   @doc("The node's label (its positional slot), e.g. `node \"render/\"`.")
   @inline(0) title: utf8
@@ -70,8 +71,8 @@ type TreeNode extends SvgBlock {
   @doc("Child nodes nested under this one.")
   @children("tree_node") children: list<TreeNode>?
 
-  // Stub: a node's row is rendered by its parent `tree` in Rust.
-  lower = fn(n: TreeNode) -> list<SvgFundamental> []
+  // A node's row is rendered by its parent `tree` in Rust: the node is
+  // part of the tree's native subtree, not a shape of its own.
 }
 
 // Default tree styling. Bare-class selectors so user `class`es win,

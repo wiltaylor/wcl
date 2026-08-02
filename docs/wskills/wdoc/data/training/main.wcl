@@ -671,7 +671,7 @@ lesson visibility_and_themes {
   prerequisites = [render_targets]
   related = [visibility, themes, styling]
   body {
-    p "Any block can carry `@only(...)` or `@except(...)` to scope it by three axes: `sites` (site names), `templates` (`:webpage` / `:book` / `:presentation`), and `backends` (`:html` / `:pdf` / `:markdown`). `@only` renders the block only where the conditions match; `@except` everywhere else. This is how one document serves a web build and a print PDF without forking content."
+    p "Any block can carry `@only(...)` or `@except(...)` to scope it by three axes: `sites` (site names), `templates` (`:webpage` / `:book` / `:presentation`), and `backends` (`:html` / `:pdf` / `:markdown` / `:skill`). `@only` renders the block only where the conditions match; `@except` everywhere else. This is how one document serves a web build and a print PDF without forking content."
     p "Themes recolour the whole site in one line: `theme = :forge` (the default, or `nord`, `tokyonight`, `gruvbox`, `catppuccin`, `rose`, `paper`), each with dark and light variants — add `theme_toggle = true` for the switcher button. Local styling stays available through `class` blocks, which always win over theme defaults."
   }
   exercise scope_and_style {
@@ -711,7 +711,7 @@ WCL
       note    = "Yes — scope by the layout a page renders under."
     }
     choice backends {
-      label   = "`backends` — `:html` / `:pdf` / `:markdown`"
+      label   = "`backends` — `:html` / `:pdf` / `:markdown` / `:skill`"
       correct = true
       note    = "Yes — this is how a web build and a print PDF diverge without forking content."
     }

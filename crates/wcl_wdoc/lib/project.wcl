@@ -28,8 +28,7 @@
 // (a `Value::DataPath`) rather than inlined content, so `s.overview`
 // carries the address of *that* server's body. `project` resolves the
 // reference its `from` field evaluates to and renders the body's children.
-// Both are special-cased in Rust (their `lower`s are never-called stubs),
-// like `partial` / `collect` / `wdoc_repeater`.
+// Both are `@native`, like `partial` / `collect` / `wdoc_repeater`.
 
 namespace wdoc
 
@@ -64,10 +63,10 @@ type WdocAddressableBody {
 // is generating from (`from = s.overview`). May also resolve a list of
 // references (a `@children("body")` slot), rendering each in order. Legal
 // wherever a `WdocBlock` is. `@schemaless` because `from` evaluates to a
-// reference value, not a static scalar. Special-cased in Rust (its `lower`
-// is a never-called stub); cycle-guarded against a body that projects itself.
+// reference value, not a static scalar. `@native`, and cycle-guarded
+// against a body that projects itself.
 @block("project") @schemaless
+@native
 type WdocProject extends WdocBlock {
   from: utf8
-  lower = fn(p: WdocProject) -> list<HtmlFundamental> []
 }

@@ -21,11 +21,12 @@
 //
 // Special-cased in Rust in all three backends as a transparent wrapper: the
 // children render in place everywhere; only the edit-mode HTML build adds
-// the data attributes. The `lower` here is a never-called stub.
+// the data attributes.
 
 namespace wdoc
 
 @block("edit_field")
+@native
 type EditField extends WdocBlock {
   @doc("The schema object kind that owns the field, e.g. \"concept\".")
   kind: utf8
@@ -36,5 +37,4 @@ type EditField extends WdocBlock {
   @doc("The field is plain text — the editor suppresses its formatting toolbar.")
   plain: bool?
   @children(WdocBlock) children: list<WdocBlock>
-  lower = fn(b: EditField) -> list<HtmlFundamental> []
 }

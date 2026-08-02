@@ -7,12 +7,12 @@
 // referenced by URL, so it resolves when *served*, not when opened
 // directly from disk) or an external URL / `data:` URI (passed through
 // unchanged). Like
-// `icon` / `tilemap` it's special-cased in the renderer — the asset copy,
-// path rewrite, and natural-size reading aren't expressible in WCL — so
-// the `lower` is a never-called stub.
+// `icon` / `tilemap` it is `@native` — the asset copy, path rewrite, and
+// natural-size reading aren't expressible in WCL.
 namespace wdoc
 
 @block("image")
+@native
 type Image extends WdocBlock, SvgBlock {
   @doc("Image source (the inline label): a doc-relative path, a URL, or a `data:` URI.")
   @inline(0) source: utf8
@@ -41,8 +41,6 @@ type Image extends WdocBlock, SvgBlock {
   @hidden anchor_bottom: f64?
   @doc("Diagram edge-attach sides, like any shape.")
   connect_points: list<AnchorSide>?
-
-  lower = fn(i: Image) -> list<HtmlFundamental> []
 }
 
 // Responsive default for page images. `img.wdoc-image` is an

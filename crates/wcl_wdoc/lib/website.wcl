@@ -29,13 +29,13 @@ namespace wdoc
 // A named content region of a page: its inline label is the region name,
 // its children are ordinary wdoc blocks. `build_normal_page` pulls these
 // out and renders each separately into the `TemplateCtx.regions` list
-// (so its `lower` is never invoked — it's handled directly in Rust).
+// (`@native` — the region is handled directly in Rust).
 @block("region")
+@native
 type PageRegion extends WdocBlock {
   @inline(0) name: utf8
   id:    identifier?
   @children(WdocBlock) body: list<WdocBlock>
-  lower = fn(r: PageRegion) -> list<HtmlFundamental> []
 }
 
 // ── Region + head helpers ───────────────────────────────────────────

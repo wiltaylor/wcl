@@ -7,8 +7,8 @@
 // supply several tiled images at different zoom levels (`layer`s) — the
 // renderer shows the sharpest layer that suits the current zoom.
 //
-// Like `tilemap` / `image`, the `map` is special-cased in the renderer
-// (its `lower` is a stub): the tile crops, the icon `<use>`s, and the
+// Like `tilemap` / `image`, the `map` is `@native`: the tile crops, the
+// icon `<use>`s, and the
 // HTML cards overlaid on the SVG can't be expressed in WCL. A diagram
 // containing a map is automatically interactive (pan + zoom) and loads
 // the bundled `wdoc-map.js`. Tile / image assets are copied into
@@ -24,6 +24,7 @@
 namespace wdoc
 
 @block("map")
+@native
 type Map extends SvgBlock {
   @doc("Optional reference name (the inline label).")
   @inline(0) name: identifier?       // optional reference name
@@ -59,8 +60,6 @@ type Map extends SvgBlock {
   @children("layer") layers: list<MapLayer>?
   @doc("Clickable markers with cards.")
   @children("pin")   pins:   list<MapPin>?
-
-  lower = fn(m: Map) -> list<SvgFundamental> []
 }
 
 // One level-of-detail layer. Omit `layer`s entirely for the common

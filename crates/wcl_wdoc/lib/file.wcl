@@ -13,13 +13,21 @@
 //   - inline reference (`as`) → renders a link to the copied file.
 //
 // The copy, path rewrite, and `dir` routing aren't expressible in WCL, so
-// like `image` it's special-cased in the renderer and the `lower` is a
-// never-called stub. Used by every backend: the skill target routes files
-// to the skill's `scripts/` / `assets/` folders (by `dir`); the HTML and
-// Markdown targets default `dir` to the `_wdoc/` asset folder.
+// like `image` it is `@native`. The skill target routes files to the
+// skill's `scripts/` / `assets/` folders (by `dir`); the HTML and Markdown
+// targets default `dir` to the `_wdoc/` asset folder.
+//
+// **Not covered by the PDF target.** A PDF is one self-contained document:
+// there is no output folder beside it to copy the file into, so a rendered
+// link would point at something that was never shipped — worse than no
+// link. The `backends` list says so, and a `file` on a page being built to
+// PDF is refused until the author states the intent per instance
+// (`@except(backends = [:pdf])`). Shipping sidecar assets beside a PDF is a
+// deliberate non-goal, not a gap waiting to be filled.
 namespace wdoc
 
 @block("file")
+@native(backends = [:html, :markdown, :skill])
 type FileObj extends WdocBlock {
   @doc("File source (the inline label): a doc-relative path, a URL, or a `data:` URI.")
   @inline(0) source: utf8
@@ -31,6 +39,4 @@ type FileObj extends WdocBlock {
   id: identifier?
   @doc("Optional style classes (HTML target, when `as` renders a link).")
   class: list<utf8>?
-
-  lower = fn(f: FileObj) -> list<HtmlFundamental> []
 }

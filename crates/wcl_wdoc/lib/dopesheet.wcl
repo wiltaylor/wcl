@@ -7,8 +7,8 @@
 //
 // It's a placeable diagram shape (`extends SvgBlock`), so it lays out
 // like any other shape (x/y + anchors) and other shapes drawn after it
-// overlay on top. The `lower` is a stub — like `tilemap`/`image`, the
-// dopesheet is special-cased in the renderer (it windows into an
+// overlay on top. Like `tilemap`/`image` it is `@native` — the
+// dopesheet is rendered in Rust (it windows into an
 // external image and is driven by a bundled JS player, which WCL can't
 // express). The sheet image is copied into `_wdoc/` and referenced by
 // URL, so frames resolve when the output is *served*, not when opened
@@ -16,6 +16,7 @@
 namespace wdoc
 
 @block("dopesheet")
+@native
 type Dopesheet extends SvgBlock {
   @doc("Spritesheet image path (the inline label), relative to the build entry file.")
   @inline(0) source: utf8            // sheet image path, relative to the doc
@@ -64,8 +65,6 @@ type Dopesheet extends SvgBlock {
   @hidden anchor_bottom: f64?
   @doc("Diagram edge-attach sides, like any `SvgBlock`.")
   connect_points: list<AnchorSide>?
-
-  lower = fn(d: Dopesheet) -> list<SvgFundamental> []
 }
 
 // Default dopesheet styling. Sprite art reads best with nearest-neighbour

@@ -58,10 +58,33 @@ fn collect_block(
     if structural.is_some() {
         return;
     }
+    // A native block this backend doesn't implement is a build error, not a
+    // silent nothing — waived per instance with `@except(backends = [:pdf])`.
+    if crate::native::refuse_uncovered(block, patterns, crate::inline::Backend::Pdf) {
+        return;
+    }
     let kind = block.kind();
+    // An `edit_object` is an editor affordance: the button exists only in the
+    // `wcl editor` preview's edit mode, which is an HTML build. A PDF renders
+    // nothing for it — stated here rather than left to fall through, so the
+    // kind is honestly covered on this target.
+    if kind == kinds::EDIT_OBJECT {
+        return;
+    }
     // A presentation fragment is a step-reveal wrapper — in a static PDF its
     // children simply render in place.
     if kind == kinds::FRAGMENT {
+        for child in block.blocks() {
+            collect_block(doc, &child, patterns, base_dir, out);
+        }
+        return;
+    }
+    // A `column` is a CSS grid: side-by-side layout is the one thing a PDF
+    // page flow can't reproduce. The content is not the layout, though, so
+    // the children render stacked in place — the same degradation `region`
+    // and `fragment` take, and the reason `column` is native here at all
+    // (until this arm existed it silently dropped its children).
+    if kind == kinds::COLUMN {
         for child in block.blocks() {
             collect_block(doc, &child, patterns, base_dir, out);
         }

@@ -88,6 +88,20 @@ fn skill_inner(
         return Err(BuildError::Schema(n));
     }
 
+    // The schema-level rendering contract (see `contract_errors`) — fail
+    // like a schema violation. The skill target is a backend of its own
+    // (`:skill`), so it runs the same checks as the other three; it ran
+    // neither before.
+    let reserved = crate::build::contract_errors(&doc);
+    if !reserved.is_empty() {
+        let n = reserved.len();
+        let src = NamedSource::new(name.clone(), user_src.clone());
+        for r in reserved {
+            eprintln!("{:?}", r.with_source_code(src.clone()));
+        }
+        return Err(BuildError::Schema(n));
+    }
+
     fs::create_dir_all(out_dir)
         .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", out_dir.display())))?;
 
@@ -300,7 +314,7 @@ fn emit_agents(
         images,
         videos,
         files,
-        crate::inline::Backend::Markdown,
+        crate::inline::Backend::Skill,
     );
     let mut count = 0;
     let mut agent_names: HashSet<String> = HashSet::new();
@@ -411,7 +425,7 @@ fn skill_site(
         images,
         videos,
         files,
-        crate::inline::Backend::Markdown,
+        crate::inline::Backend::Skill,
     );
     patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
     patterns.set_site_context(spec.name.clone(), Some("ai_skill".to_string()));

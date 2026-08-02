@@ -5,7 +5,7 @@ _Gate individual blocks inside a body per site, template, or backend — finer-g
 Where `audience` selects whole units, wdoc's `@only` / `@except` decorators gate a single
 block \*inside\* a body. Any block can carry them, with three optional axes — `sites`,
 `templates` (`:book`, `:webpage`, `:presentation`, `:ai_skill`), and `backends` (`:html`,
-`:markdown`, `:pdf`). Values within an axis OR together; axes AND together.
+`:markdown`, `:pdf`, `:skill`). Values within an axis OR together; axes AND together.
 
 
 ```wcl

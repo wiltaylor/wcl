@@ -24,13 +24,13 @@
 // utf8 cells run through the inline pattern engine (so **bold**,
 // _italic_, `code`, [links](page), `:icons:` work), other types
 // (numbers, bools, symbols) are stringified. `table` is a fundamental
-// HTML block (rendered directly), so its `lower` is never invoked —
-// declared only to satisfy the WdocBlock interface. Named `TableBlock`
+// HTML block: `@native`, rendered directly. Named `TableBlock`
 // (not `Table`) because `Table` is the reserved type name for the
 // `@table` decorator. The block kind is still "table".
 namespace wdoc
 
 @block("table")
+@native
 type TableBlock extends WdocBlock {
   @doc("Optional explicit HTML id.")
   id:     identifier?
@@ -45,7 +45,6 @@ type TableBlock extends WdocBlock {
   // `@schemaless`: computed cells may hold any scalar (stringified at
   // render time), so the value-vs-type check stays out of the way.
   @schemaless rows: list<list<utf8>>?
-  lower = fn(t: TableBlock) -> list<HtmlFundamental> []
 }
 
 // Default table styling, injected into every page's <head> (before user

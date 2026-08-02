@@ -17,8 +17,8 @@
 // stay side by side but centre and scale their diagram to fit the pane, so
 // a compact diagram isn't lost in a wide, half-empty box.
 //
-// Like `card` / `markdown_source`, a demo is special-cased in the
-// renderer (its `lower` is a stub): printing children as source and
+// Like `card` / `markdown_source`, a demo is `@native`: printing
+// children as source and
 // re-rendering them into themed wrappers isn't expressible in WCL. In
 // the Markdown / skill backend it degrades to the source code block plus
 // one static (un-themed) render of the children.
@@ -26,6 +26,7 @@
 namespace wdoc
 
 @block("demo")
+@native
 type Demo extends WdocBlock {
   @doc("Optional caption shown above the example.")
   @inline(0) title: utf8?
@@ -36,10 +37,9 @@ type Demo extends WdocBlock {
   @doc("The component(s) to show. Printed as the example source and rendered live as the light/dark preview.")
   @children(WdocBlock) children: list<WdocBlock>
 
-  // Stub: the source listing + dual-theme preview are rendered in Rust
-  // (see src/demo.rs); a pure-WCL lower can't reach the source text or
+  // The source listing + dual-theme preview are rendered in Rust (see
+  // src/demo.rs); a pure-WCL lower can't reach the source text or
   // re-render its own children into themed wrappers.
-  lower = fn(d: Demo) -> list<HtmlFundamental> []
 }
 
 // Structural styling for the demo wrapper and its preview panes. Bare-class

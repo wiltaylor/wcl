@@ -360,9 +360,10 @@ fn cross_root_children_render_in_a_page() {
 
 #[test]
 fn lowerless_block_fails_the_build() {
-    // A declared block kind with no `lower` would render nothing on
-    // every backend — almost always a missing lowering, so the build
-    // fails with a diagnostic instead of dropping the block silently.
+    // A declared block kind with neither a `lower` nor `@native` would
+    // render nothing on every backend. The build refuses the *type*, before
+    // a page is rendered — the block says how it is rendered or it doesn't
+    // build (the message is asserted in `native.rs`'s own tests).
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("doc.wcl");
     write_fixture(
@@ -372,15 +373,9 @@ fn lowerless_block_fails_the_build() {
     );
     let out = tmp.path().join("out");
     match markdown(&src, &out, None) {
-        Err(BuildError::Eval(r)) => {
-            let text = format!("{r:?}");
-            assert!(
-                text.contains("gadget") && text.contains("lower"),
-                "names the kind and the missing lowering: {text}"
-            );
-        }
-        Ok(n) => panic!("expected an eval error, but wrote {n} page(s)"),
-        Err(_) => panic!("expected BuildError::Eval, got a different error"),
+        Err(BuildError::Schema(n)) => assert_eq!(n, 1, "one contract violation"),
+        Ok(n) => panic!("expected a schema error, but wrote {n} page(s)"),
+        Err(_) => panic!("expected BuildError::Schema, got a different error"),
     }
 }
 
@@ -675,5 +670,87 @@ fn projects_numeric_labelled_nested_body_in_markdown() {
     assert!(
         md.contains("STEP ONE body"),
         "nested numeric-label body in markdown:\n{md}"
+    );
+}
+
+#[test]
+fn a_block_the_target_does_not_cover_fails_the_build() {
+    // `markdown_source` previews a page's generated Markdown by tapping the
+    // emitter from inside the HTML build: `@native(backends = [:html])`. On
+    // any other target the build refuses rather than rendering nothing — the
+    // failure names the kind, the target, and the waiver.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "page p {\n  markdown_source {\n    p \"previewed\"\n  }\n}\n",
+    );
+    let out = tmp.path().join("out");
+    match markdown(&src, &out, None) {
+        Err(BuildError::Eval(r)) => {
+            let text = format!("{r:?}");
+            assert!(
+                text.contains("markdown_source")
+                    && text.contains(":markdown")
+                    && text.contains("@except"),
+                "names the kind, the target and the waiver: {text}"
+            );
+        }
+        Ok(n) => panic!("expected an uncovered-target error, but wrote {n} page(s)"),
+        Err(e) => panic!("expected BuildError::Eval, got {e}", e = e.render_plain()),
+    }
+}
+
+#[test]
+fn an_uncovered_block_is_waived_per_instance_by_the_backends_axis() {
+    // The counterpart: capability says `markdown_source` can't render here,
+    // author intent says it shouldn't, and the build proceeds — with the rest
+    // of the page intact.
+    let (_t, out) = build(
+        "page p {\n  @except(backends = [:markdown])\n  markdown_source {\n    p \"previewed\"\n  }\n  p \"kept\"\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(md.contains("kept"), "the rest of the page renders:\n{md}");
+    assert!(!md.contains("previewed"), "the waived block is gone:\n{md}");
+}
+
+#[test]
+fn column_children_stack_in_place() {
+    // Markdown has no side-by-side layout, so a `column` degrades to its
+    // children in source order — the layout is lost, the content is not.
+    let (_t, out) = build(
+        "page p {\n  column { widths = [50.0, 50.0]\n    p \"left side\"\n    p \"right side\"\n  }\n}\n",
+    );
+    let md = read(&out, "p.md");
+    let left = md.find("left side").expect("left child rendered");
+    let right = md.find("right side").expect("right child rendered");
+    assert!(left < right, "children keep source order:\n{md}");
+}
+
+#[test]
+fn a_covered_block_renders_on_the_skill_target_under_its_own_symbol() {
+    // The skill build reports itself as `:skill`, not `:markdown` — so a
+    // block excepted from Markdown still reaches a skill folder.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "site s { default_template = :ai_skill  root = true\n  skill { description = \"A demo skill.\" }\n}\n\
+         page overview { sites = [:s]  start = true\n  h1 \"Overview\"\n  \
+         @except(backends = [:markdown]) p \"markdown-excepted\"\n  \
+         @except(backends = [:skill]) p \"skill-excepted\"\n}\n",
+    );
+    let out = tmp.path().join("out");
+    if let Err(e) = wcl_wdoc::skill(&src, &out, None) {
+        panic!("skill build failed: {}", e.render_plain());
+    }
+    let md = std::fs::read_to_string(out.join("SKILL.md")).expect("read SKILL.md");
+    assert!(
+        md.contains("markdown-excepted"),
+        "an `:markdown` exception must not hide a block from the skill target:\n{md}"
+    );
+    assert!(
+        !md.contains("skill-excepted"),
+        "a `:skill` exception hides the block:\n{md}"
     );
 }

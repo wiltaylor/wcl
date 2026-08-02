@@ -250,6 +250,7 @@ type SeqNote {
 }
 
 @block("sequence_diagram")
+@native
 type SequenceDiagram extends WdocBlock {
   @doc("Rendered width in pixels; the height follows the content.")
   width = 760.0
@@ -272,9 +273,8 @@ type SequenceDiagram extends WdocBlock {
   @doc("Margin notes anchored to messages.")
   @children("note") notes: list<SeqNote>
 
-  // Page-level placement contract (`WdocBlock`): the Rust renderer
-  // special-cases this kind, so the HTML lowering is a stub.
-  lower = fn(s: SequenceDiagram) -> list<HtmlFundamental> []
+  // Page-level placement contract (`WdocBlock`): `@native`, because the
+  // geometry below is SVG the Rust renderer fits a viewBox over.
 
   lower_svg = fn(s: SequenceDiagram) -> list<SvgFundamental> {
     let cw = s.col_width ?? 140.0;

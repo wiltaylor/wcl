@@ -14,14 +14,16 @@
 //                only when the document has exactly one instance of the kind.
 //   • `label`  — button text override (defaults to "Edit <kind>").
 //
-// Special-cased in Rust: edit mode is not visible to a WCL `lower`, so the
-// button HTML is emitted by the renderer (gated on edit mode) and the `lower`
-// here is a never-called stub. Outside edit mode — `wcl wdoc build`, markdown,
-// pdf — it renders nothing, so the button never leaks into published output.
+// `@native`: edit mode is not visible to a WCL `lower`, so the button HTML is
+// emitted by the renderer, gated on edit mode. Outside edit mode — `wcl wdoc
+// build`, markdown, pdf — every backend renders it as nothing, which is why it
+// is covered on all four targets: the button never leaks into published output
+// and no build has to waive it.
 
 namespace wdoc
 
 @block("edit_object")
+@native
 type EditObject extends WdocBlock {
   @doc("The schema object kind to edit, e.g. \"concept\".")
   kind: utf8
@@ -33,7 +35,6 @@ type EditObject extends WdocBlock {
   id: identifier?
   @doc("Extra CSS classes on the button.")
   class: list<utf8>?
-  lower = fn(b: EditObject) -> list<HtmlFundamental> []
 }
 
 // Styling for the injected button. Kept self-contained (no `--wdoc-*` vars) so

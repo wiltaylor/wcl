@@ -7,8 +7,8 @@
 // This makes it the natural shape for database / ER tables and UML class
 // diagrams.
 //
-// Like `card` / `map`, it is special-cased in the renderer (its `lower` is
-// a stub): each row's body is HTML produced by the block renderer + inline
+// Like `card` / `map`, it is `@native`: each row's body is HTML produced by
+// the block renderer + inline
 // engine, wrapped in an SVG `<foreignObject>`; the frame, row separators
 // and per-row port markers are SVG primitives (see src/node_table.rs).
 //
@@ -19,6 +19,7 @@
 namespace wdoc
 
 @block("node_table")
+@native
 type NodeTable extends SvgBlock {
   // Free placement in a diagram / container (anchors like `rect`).
   @doc("Top-left x placement in the diagram (or use anchors).")
@@ -50,11 +51,11 @@ type NodeTable extends SvgBlock {
   @doc("The table rows, top to bottom.")
   @children("node_row") rows: list<NodeRow>
 
-  // Stub: the rows + frame are rendered in Rust (see src/node_table.rs).
-  lower = fn(t: NodeTable) -> list<SvgFundamental> []
+  // The rows + frame are rendered in Rust — see src/node_table.rs.
 }
 
 @block("node_row")
+@native
 type NodeRow extends SvgBlock {
   @doc("Row id — the edge target for connecting to this row (`fk -> users_id`).")
   id: identifier?
@@ -65,8 +66,8 @@ type NodeRow extends SvgBlock {
   @doc("The row's rich content (paragraphs, code, lists…).")
   @children(WdocBlock) body: list<WdocBlock>
 
-  // Stub: a row's HTML body is rendered by its parent `node_table` in Rust.
-  lower = fn(r: NodeRow) -> list<SvgFundamental> []
+  // A row's HTML body is rendered by its parent `node_table` in Rust: the
+  // row is part of the table's native subtree, not a shape of its own.
 }
 
 // Default node_table styling. Bare-class selectors so user `class`es win,

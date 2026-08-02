@@ -377,6 +377,7 @@ type Transition {
 }
 
 @block("state_diagram")
+@native
 type StateDiagram extends WdocBlock {
   @doc("Rendered width in pixels; the height follows the content.")
   width = 640.0
@@ -397,9 +398,8 @@ type StateDiagram extends WdocBlock {
   @doc("Transitions between states (`trigger [guard]` edge labels).")
   @children("transition") transitions: list<Transition>
 
-  // Page-level placement contract (`WdocBlock`): the Rust renderer
-  // special-cases this kind, so the HTML lowering is a stub.
-  lower = fn(d: StateDiagram) -> list<HtmlFundamental> []
+  // Page-level placement contract (`WdocBlock`): `@native`, because the
+  // geometry below is SVG the Rust renderer fits a viewBox over.
 
   lower_svg = fn(d: StateDiagram) -> list<SvgFundamental> {
     let dir = d.direction ?? :top_to_bottom;

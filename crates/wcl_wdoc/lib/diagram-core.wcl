@@ -3,6 +3,7 @@
 namespace wdoc
 
 @block("diagram")
+@native
 type Diagram extends WdocBlock {
   @doc("Diagram canvas width in pixels.")
   width:  i64
@@ -89,7 +90,6 @@ type Diagram extends WdocBlock {
   @children(SvgBlock) children: list<SvgBlock>
   @doc("Edges connecting shapes (`a -> b`).")
   @connections(Edge) edges: list<Edge>
-  lower = fn(d: Diagram) -> list<HtmlFundamental> []
 }
 
 // SVG <g> group with optional layout. Layout modes:
@@ -124,6 +124,7 @@ type Diagram extends WdocBlock {
 // Anchors on the container itself resolve against the parent box and
 // can resize the container; that new size flows to its own children.
 @block("container")
+@native
 type Container extends SvgBlock {
   @doc("Name used to connect the shape (`a -> b`) and to anchor others to it.")
   id:    identifier?
@@ -223,9 +224,7 @@ type Container extends SvgBlock {
   @children(SvgBlock) children: list<SvgBlock>
   @doc("Edges connecting child shapes (`a -> b`).")
   @connections(Edge) edges: list<Edge>
-  // `container` is itself rendered directly as <g>; the renderer
-  // never invokes its `lower`. Declared only to satisfy the interface.
-  lower = fn(c: Container) -> list<SvgFundamental> []
+  // `container` is itself rendered directly as a <g> in Rust.
 }
 
 // A labelled box drawn *behind* a set of member shapes, sized to their
@@ -239,6 +238,7 @@ type Container extends SvgBlock {
 // them. Like `container` chrome the rect is synthesised by the
 // renderer and is NOT an obstacle, so edges cross it cleanly.
 @block("boundary")
+@native
 type Boundary extends SvgBlock {
   @doc("Title drawn on/above the box (inline label).")
   @inline(0) label: utf8?
@@ -256,13 +256,12 @@ type Boundary extends SvgBlock {
   class:   list<utf8>?
   @doc("Optional id (a boundary is not itself a connection endpoint).")
   id:      identifier?
-  // A boundary is special-cased in Rust (its geometry comes from
-  // post-layout member bboxes, not expressible in WCL); the renderer
-  // never invokes its `lower`. Declared only to satisfy the interface.
-  lower = fn(b: Boundary) -> list<SvgFundamental> []
+  // A boundary is drawn in Rust: its geometry comes from post-layout
+  // member bboxes, which isn't expressible in WCL.
 }
 
 @block("rect")
+@native
 type Rect extends SvgBlock {
   @doc("Top-left x corner, in canvas pixels.")
   x:      f64?
@@ -303,11 +302,10 @@ type Rect extends SvgBlock {
   icon_class: list<utf8>?
   @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
   link: utf8?
-
-  lower = fn(r: Rect) -> list<SvgFundamental> []
 }
 
 @block("circle")
+@native
 type Circle extends SvgBlock {
   @doc("Centre x point.")
   cx:     f64?
@@ -346,11 +344,10 @@ type Circle extends SvgBlock {
   icon_class: list<utf8>?
   @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
   link: utf8?
-
-  lower = fn(c: Circle) -> list<SvgFundamental> []
 }
 
 @block("line")
+@native
 type Line extends SvgBlock {
   @doc("Start-point x.")
   x1:     f64?
@@ -380,13 +377,12 @@ type Line extends SvgBlock {
   connect_points: list<AnchorSide>?
   @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
   link: utf8?
-
-  lower = fn(l: Line) -> list<SvgFundamental> []
 }
 
 // SVG <text> shape. Renamed from `text` to avoid colliding with the
 // paragraph block kind.
 @block("label")
+@native
 type Label extends SvgBlock {
   @doc("The text, given as the inline label: `label \"halfway\" { … }`.")
   @inline(0) content: utf8
@@ -424,11 +420,10 @@ type Label extends SvgBlock {
   connect_points: list<AnchorSide>?
   @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
   link: utf8?
-
-  lower = fn(l: Label) -> list<SvgFundamental> []
 }
 
 @block("polygon")
+@native
 type Polygon extends SvgBlock {
   @doc("Space-separated `x,y` pairs, e.g. `\"180,10 230,40 180,70\"`.")
   points: utf8
@@ -454,8 +449,6 @@ type Polygon extends SvgBlock {
   connect_points: list<AnchorSide>?
   @doc("Link the shape to an in-site page (bare page name, or `site:page`). Wraps it in a clickable `<a>`; an unknown page fails the build like a bad prose link.")
   link: utf8?
-
-  lower = fn(p: Polygon) -> list<SvgFundamental> []
 }
 
 // ── Lowering layer ─────────────────────────────────────────────────

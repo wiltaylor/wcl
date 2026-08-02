@@ -7,6 +7,7 @@
 //! backend owns (page chrome, wireframe widgets) stay as literals at their
 //! one site.
 
+pub(crate) const COLUMN: &str = "column";
 pub(crate) const FRAGMENT: &str = "fragment";
 pub(crate) const REGION: &str = "region";
 pub(crate) const EDIT_FIELD: &str = "edit_field";

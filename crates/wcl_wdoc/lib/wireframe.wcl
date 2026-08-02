@@ -8,9 +8,8 @@
 // The whole family is special-cased in Rust (`src/wireframe.rs`, like
 // `card` / `map`): one renderer measures the widget tree bottom-up and
 // emits a single positioned SVG `<g>`, dispatched from `render_shape`.
-// The Rust renderer walks the raw blocks directly, so the `lower`
-// functions below are inert stubs (they satisfy the `SvgBlock` interface
-// but are never called) and the container `@children(Widget)`
+// The Rust renderer walks the raw blocks directly, so every widget below
+// is `@native` and the container `@children(Widget)`
 // declarations exist purely for schema validation. A widget's size comes
 // from its measured content; `x`/`y`/anchors only position it.
 //
@@ -77,6 +76,7 @@ interface Widget extends SvgBlock {
 // ── Leaf widgets ──────────────────────────────────────────────────────
 
 @block("wf_label")
+@native
 type WfLabel extends Widget {
   @doc("The label text (the inline label).")
   @inline(0) text: utf8
@@ -85,10 +85,10 @@ type WfLabel extends Widget {
   anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
   connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(l: WfLabel) -> list<SvgFundamental> []
 }
 
 @block("wf_button")
+@native
 type WfButton extends Widget {
   @doc("Button caption (the inline label).")
   @inline(0) text: utf8
@@ -99,10 +99,10 @@ type WfButton extends Widget {
   anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
   connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(b: WfButton) -> list<SvgFundamental> []
 }
 
 @block("wf_input")
+@native
 type WfInput extends Widget {
   @doc("Greyed prompt shown when empty (the inline label).")
   @inline(0) placeholder: utf8   // greyed placeholder text
@@ -113,10 +113,10 @@ type WfInput extends Widget {
   anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
   connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(i: WfInput) -> list<SvgFundamental> []
 }
 
 @block("wf_dropdown")
+@native
 type WfDropdown extends Widget {
   @doc("The selected option label (the inline label).")
   @inline(0) text: utf8          // currently-selected option label
@@ -125,10 +125,10 @@ type WfDropdown extends Widget {
   anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
   connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(d: WfDropdown) -> list<SvgFundamental> []
 }
 
 @block("wf_checkbox")
+@native
 type WfCheckbox extends Widget {
   @doc("Checkbox caption (the inline label).")
   @inline(0) label: utf8
@@ -139,10 +139,10 @@ type WfCheckbox extends Widget {
   anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
   connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(c: WfCheckbox) -> list<SvgFundamental> []
 }
 
 @block("wf_radio")
+@native
 type WfRadio extends Widget {
   @doc("Radio caption (the inline label).")
   @inline(0) label: utf8
@@ -153,10 +153,10 @@ type WfRadio extends Widget {
   anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
   connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(r: WfRadio) -> list<SvgFundamental> []
 }
 
 @block("wf_toggle")
+@native
 type WfToggle extends Widget {
   @doc("Optional trailing caption (the inline label).")
   @inline(0) label: utf8?        // optional trailing caption
@@ -167,7 +167,6 @@ type WfToggle extends Widget {
   anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
   connect_points: list<AnchorSide>?
   theme: symbol?  accent: symbol?  mode: symbol?
-  lower = fn(t: WfToggle) -> list<SvgFundamental> []
 }
 
 // ── Container widgets ─────────────────────────────────────────────────
@@ -176,6 +175,7 @@ type WfToggle extends Widget {
 // widget's placement geometry positions the whole group in the diagram).
 
 @block("wf_window")
+@native
 type WfWindow extends Widget {
   @doc("Titlebar caption (the inline label).")
   @inline(0) title: utf8
@@ -188,7 +188,6 @@ type WfWindow extends Widget {
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, stacked vertically.")
   @children(Widget) children: list<Widget>
-  lower = fn(w: WfWindow) -> list<SvgFundamental> []
 }
 
 // Device frames: a web browser and phone / tablet shells. Unlike every
@@ -198,6 +197,7 @@ type WfWindow extends Widget {
 // default, and height still grows if the content would overflow).
 
 @block("wf_browser")
+@native
 type WfBrowser extends Widget {
   @doc("Address-bar URL (the inline label).")
   @inline(0) url: utf8
@@ -209,10 +209,10 @@ type WfBrowser extends Widget {
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, stacked vertically in the content area.")
   @children(Widget) children: list<Widget>
-  lower = fn(b: WfBrowser) -> list<SvgFundamental> []
 }
 
 @block("wf_phone")
+@native
 type WfPhone extends Widget {
   @doc("Optional status-bar caption (the inline label).")
   @inline(0) title: utf8?
@@ -226,10 +226,10 @@ type WfPhone extends Widget {
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, stacked vertically on the screen.")
   @children(Widget) children: list<Widget>
-  lower = fn(p: WfPhone) -> list<SvgFundamental> []
 }
 
 @block("wf_tablet")
+@native
 type WfTablet extends Widget {
   @doc("Optional status-bar caption (the inline label).")
   @inline(0) title: utf8?
@@ -243,10 +243,10 @@ type WfTablet extends Widget {
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, stacked vertically on the screen.")
   @children(Widget) children: list<Widget>
-  lower = fn(t: WfTablet) -> list<SvgFundamental> []
 }
 
 @block("wf_panel")
+@native
 type WfPanel extends Widget {
   @doc("Optional group caption.")
   title: utf8?                   // optional group caption
@@ -257,13 +257,13 @@ type WfPanel extends Widget {
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, stacked vertically.")
   @children(Widget) children: list<Widget>
-  lower = fn(p: WfPanel) -> list<SvgFundamental> []
 }
 
 // Layout containers: thin wrappers that arrange their children. Drop one
 // inside a window/panel to change how controls flow.
 
 @block("wf_column")
+@native
 type WfColumn extends Widget {
   id: identifier?  class: list<utf8>?  disabled: bool?
   x = 0.0  y = 0.0  width: f64?  height: f64?
@@ -272,10 +272,10 @@ type WfColumn extends Widget {
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, stacked top-to-bottom.")
   @children(Widget) children: list<Widget>
-  lower = fn(c: WfColumn) -> list<SvgFundamental> []
 }
 
 @block("wf_row")
+@native
 type WfRow extends Widget {
   id: identifier?  class: list<utf8>?  disabled: bool?
   x = 0.0  y = 0.0  width: f64?  height: f64?
@@ -284,10 +284,10 @@ type WfRow extends Widget {
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, laid out left-to-right.")
   @children(Widget) children: list<Widget>
-  lower = fn(r: WfRow) -> list<SvgFundamental> []
 }
 
 @block("wf_grid")
+@native
 type WfGrid extends Widget {
   @doc("Number of equal-width columns (default 2); children flow across the rows.")
   columns = 2                    // number of equal-width columns
@@ -298,7 +298,6 @@ type WfGrid extends Widget {
   theme: symbol?  accent: symbol?  mode: symbol?
   @doc("Any `Widget`s, flowed across the grid.")
   @children(Widget) children: list<Widget>
-  lower = fn(g: WfGrid) -> list<SvgFundamental> []
 }
 
 // ── Node graph ────────────────────────────────────────────────────────
@@ -340,6 +339,7 @@ type WfLink {
 }
 
 @block("wf_node_graph")
+@native
 type WfNodeGraph extends Widget {
   @doc("Layout flow: `:left_to_right` (default) or `:top_to_bottom`.")
   direction: symbol?
@@ -352,5 +352,4 @@ type WfNodeGraph extends Widget {
   @children("wf_node") nodes: list<WfNode>
   @doc("The links wiring node ports together.")
   @children("wf_link") links: list<WfLink>
-  lower = fn(g: WfNodeGraph) -> list<SvgFundamental> []
 }

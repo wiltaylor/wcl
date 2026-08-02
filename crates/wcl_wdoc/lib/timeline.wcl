@@ -17,7 +17,7 @@
 // Dates are ISO strings: `"2026-03-15"` or `"2026-03-15 14:30"` /
 // `"2026-03-15T14:30"`. Unlike the charts, the timeline can't lower in
 // WCL — calendar math (variable month lengths, leap years) lives in Rust
-// — so its `lower` is a stub and the whole shape is drawn by
+// — so it is `@native` and the whole shape is drawn by
 // `src/timeline.rs` (like `map` / `tilemap`). Default styling is the
 // `wdoc-timeline-*` classes (see css-classes.wcl), so a `class` or a site
 // `theme` recolours it like anything else.
@@ -36,6 +36,7 @@ union TimelineItem {
 union TimelinePhase { Of { label: utf8  from: utf8  to: utf8 } }
 
 @block("timeline")
+@native
 type Timeline extends SvgBlock {
   // Defaults match the chart convention so `:layered` / `:grid` layout
   // can position the timeline via a wrapper transform.
@@ -72,6 +73,5 @@ type Timeline extends SvgBlock {
   @doc("Diagram edge-attach sides, like any shape.")
   connect_points: list<AnchorSide>?
 
-  // Rendered entirely in Rust (src/timeline.rs); the WCL lower is a stub.
-  lower = fn(t: Timeline) -> list<SvgFundamental> []
+  // Rendered entirely in Rust — see src/timeline.rs.
 }
