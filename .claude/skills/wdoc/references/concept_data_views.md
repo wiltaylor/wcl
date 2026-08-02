@@ -288,7 +288,7 @@ A `wdoc_body` inside a component: the markup template that renders, with the slo
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `children` | `WdocBlock` | yes |  |
+| `children` | `ContentBlock` | yes |  |
 
 A `wdoc_content` marker in a component body: where the instance's own nested blocks render, framing arbitrary content.
 
@@ -308,7 +308,7 @@ A `wdoc_repeater` block: renders its body once per element of `each`, binding th
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `children` | `WdocBlock` | yes |  |
+| `children` | `ContentBlock` | yes |  |
 | `pages` | `page` | yes |  |
 | `chapters` | `chapter` | yes |  |
 | `classes` | `class` | yes |  |
@@ -333,7 +333,7 @@ A `partial` block: tags a body of blocks for later collection — invisible wher
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `children` | `WdocBlock` | yes |  |
+| `children` | `ContentBlock` | yes |  |
 
 A `collect` block: gathers every matching `partial` across the document and renders their bodies in document order at the collect site.
 
@@ -352,7 +352,7 @@ A `body` block: a chunk of renderable content attached to a data record as a pro
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `children` | `WdocBlock` | yes |  |
+| `children` | `ContentBlock` | yes |  |
 
 A `project` block: renders an addressable `body` by reference (`from = …`), resolving `${…}` against that record.
 

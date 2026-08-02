@@ -131,7 +131,7 @@ A box whose body is rich wdoc content (paragraphs, lists, nested diagrams), draw
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `body` | `WdocBlock` | yes | The card's rich content (paragraphs, lists, callouts, nested diagrams…). |
+| `body` | `ContentBlock` | yes | The card's rich content (paragraphs, lists, callouts, nested diagrams…). |
 
 ## node_table
 
@@ -211,7 +211,7 @@ One row of a node_table.
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `body` | `WdocBlock` | yes | The row's rich content (paragraphs, code, lists…). |
+| `body` | `ContentBlock` | yes | The row's rich content (paragraphs, code, lists…). |
 
 ## Related
 

@@ -47,7 +47,7 @@ A pin dropped at `x` / `y` in the map's coordinate space; its child blocks becom
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `card` | `WdocBlock` | yes | The card body — any wdoc blocks. |
+| `card` | `ContentBlock` | yes | The card body — any wdoc blocks. |
 
 Live below — **scroll to zoom, drag to pan, then click a marker** to open its card. (A `map` is an interactive viewport, so it renders directly at full width rather than in a light/dark demo, and the diagram is automatically interactive — no `pan_zoom` needed.)
 

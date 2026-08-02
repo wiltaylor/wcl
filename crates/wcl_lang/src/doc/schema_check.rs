@@ -5,8 +5,9 @@
 //! deviation: unknown fields, disallowed nested-block kinds, missing or
 //! over-quota children, table-row arity mismatches.
 //!
-//! Whole-block `@schemaless` short-circuits all checks. Per-field
-//! `@schemaless` exempts just that field from the membership check.
+//! Bare `@schemaless` on a block short-circuits all checks. The narrow
+//! `@schemaless(annotations = true)` form exempts only decorators. Bare
+//! `@schemaless` on a field exempts that field from membership checking.
 
 use std::collections::{HashMap, HashSet};
 
@@ -19,13 +20,15 @@ use super::cells::ItemCellKind;
 use super::{Block, BuiltinDecorator, DeclName, Document, TypeField};
 
 /// Check the constraint decorators that apply to a field's value: the
-/// field declaration's own `@min` / `@max` / `@non_empty`, plus those on
+/// field declaration's own registered `@min` / `@max` / `@non_empty`, plus those on
 /// every type-alias declaration its declared type goes through
 /// (`@min(1) type Port = u16`). Returns the first violation, rendered
 /// for embedding in a schema-violation message. Decorator arguments
 /// evaluate through the document, so `@min(8_000)` and `@min(8e3)` both
 /// work; a non-numeric bound is ignored rather than flagged (the
-/// decorator is data, not schema).
+/// decorator is data, not schema). Constraint identity comes from the
+/// decorator registry, so a local metadata decorator shadowing one of these
+/// spellings does not accidentally become a constraint.
 pub(super) fn constraint_violation(
     doc: &Document,
     field_decorators: &[ast::Decorator],
@@ -35,9 +38,8 @@ pub(super) fn constraint_violation(
     let chain = doc.alias_chain(declared_ty);
     let alias_decorators = chain.iter().flat_map(|link| link.ast.decorators.iter());
     for d in field_decorators.iter().chain(alias_decorators) {
-        let name = d.name.join(".");
-        match name.as_str() {
-            "min" | "max" => {
+        match registered_constraint(doc, d) {
+            Some(constraint @ (RegisteredConstraint::Min | RegisteredConstraint::Max)) => {
                 let Some(bound) = d
                     .positional
                     .first()
@@ -49,14 +51,14 @@ pub(super) fn constraint_violation(
                 let Some(actual) = value.as_f64() else {
                     continue;
                 };
-                if name == "min" && actual < bound {
+                if matches!(constraint, RegisteredConstraint::Min) && actual < bound {
                     return Some(format!("value {actual} is below @min({bound})"));
                 }
-                if name == "max" && actual > bound {
+                if matches!(constraint, RegisteredConstraint::Max) && actual > bound {
                     return Some(format!("value {actual} is above @max({bound})"));
                 }
             }
-            "non_empty" => {
+            Some(RegisteredConstraint::NonEmpty) => {
                 let empty = match value {
                     Value::Utf8(s) | Value::Ascii(s) => s.is_empty(),
                     // `none` elements don't count: a list literal may
@@ -70,10 +72,37 @@ pub(super) fn constraint_violation(
                     return Some("value is empty but the type is @non_empty".to_string());
                 }
             }
-            _ => {}
+            None => {}
         }
     }
     None
+}
+
+#[derive(Clone, Copy)]
+enum RegisteredConstraint {
+    Min,
+    Max,
+    NonEmpty,
+}
+
+fn registered_constraint(
+    doc: &Document,
+    decorator: &ast::Decorator,
+) -> Option<RegisteredConstraint> {
+    let name = decorator.name.last()?;
+    let schema = doc.decorator_schema(name)?;
+    // Language built-ins are synthetic declarations. A source-authored
+    // schema with the same decorator name wins registry resolution and must
+    // remain ordinary metadata.
+    if !schema.span().is_empty() {
+        return None;
+    }
+    match schema.name() {
+        "MinDecorator" => Some(RegisteredConstraint::Min),
+        "MaxDecorator" => Some(RegisteredConstraint::Max),
+        "NonEmptyDecorator" => Some(RegisteredConstraint::NonEmpty),
+        _ => None,
+    }
 }
 
 /// When `declared` carries `@ref("kind")` and `value` holds an id (or a
@@ -186,9 +215,25 @@ pub(super) fn duplicate_id_violations<'a>(
 
 pub(super) fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
     let name = BuiltinDecorator::Schemaless.as_str();
-    decorators
-        .iter()
-        .any(|d| d.name.len() == 1 && d.name[0] == name)
+    decorators.iter().any(|d| {
+        d.name.len() == 1
+            && d.name[0] == name
+            && !d.named.iter().any(|arg| arg.name == "annotations")
+    })
+}
+
+/// Whether a node opts its annotations out of decorator declaration checks.
+/// Bare `@schemaless` includes this exemption; the narrow form spells it as
+/// the literal named argument `annotations = true`.
+fn has_annotation_exemption(decorators: &[ast::Decorator]) -> bool {
+    has_schemaless(decorators)
+        || decorators.iter().any(|decorator| {
+            decorator.name.len() == 1
+                && decorator.name[0] == BuiltinDecorator::Schemaless.as_str()
+                && decorator.named.iter().any(|arg| {
+                    arg.name == "annotations" && matches!(arg.value, ast::Expr::Bool(true))
+                })
+        })
 }
 
 /// `true` when `decorators` carries `@contextual` — see
@@ -210,6 +255,98 @@ pub(super) fn has_by_ref(decorators: &[ast::Decorator]) -> bool {
     decorators
         .iter()
         .any(|d| d.name.len() == 1 && d.name[0] == name)
+}
+
+/// Require every decorator on one AST node to resolve through the document's
+/// decorator-schema registry. Dotted names retain the existing resolution
+/// rule for now: their final segment identifies the decorator schema.
+pub(super) fn validate_decorators(doc: &Document, decorators: &[ast::Decorator]) -> Vec<EvalError> {
+    use crate::error::SchemaViolationKind as Kind;
+
+    if has_annotation_exemption(decorators) {
+        return Vec::new();
+    }
+
+    decorators
+        .iter()
+        .filter_map(|decorator| {
+            let name = decorator
+                .name
+                .last()
+                .expect("parsed decorator names have at least one segment");
+            doc.decorator_schema(name).is_none().then(|| {
+                EvalError::schema_violation_named(
+                    Kind::UndeclaredDecorator,
+                    format!(
+                        "decorator '{}' has no @decorator declaration",
+                        decorator.name.join(".")
+                    ),
+                    decorator.name.join("."),
+                    decorator.name_span,
+                )
+            })
+        })
+        .collect()
+}
+
+/// Walk every decorator-carrying position in an AST item list. This is a
+/// source-level pass rather than part of block validation because schema
+/// declarations, function items, and document fields are peers of blocks.
+pub(super) fn validate_item_decorators(doc: &Document, items: &[ast::Item]) -> Vec<EvalError> {
+    let mut errors = Vec::new();
+    for item in items {
+        match item {
+            ast::Item::Field(field) => {
+                errors.extend(validate_decorators(doc, &field.decorators));
+            }
+            ast::Item::Let(binding) if binding.fn_syntax => {
+                errors.extend(validate_decorators(doc, &binding.decorators));
+            }
+            ast::Item::Block(block) => {
+                errors.extend(validate_decorators(doc, &block.decorators));
+                errors.extend(validate_item_decorators(doc, &block.items));
+            }
+            ast::Item::TypeDecl(decl) => {
+                errors.extend(validate_decorators(doc, &decl.decorators));
+                for field in &decl.fields {
+                    errors.extend(validate_decorators(doc, &field.decorators));
+                }
+            }
+            ast::Item::InterfaceDecl(decl) => {
+                errors.extend(validate_decorators(doc, &decl.decorators));
+                for field in &decl.fields {
+                    errors.extend(validate_decorators(doc, &field.decorators));
+                }
+            }
+            ast::Item::UnionDecl(decl) => {
+                errors.extend(validate_decorators(doc, &decl.decorators));
+                for variant in &decl.variants {
+                    errors.extend(validate_decorators(doc, &variant.decorators));
+                    if let ast::VariantBody::Record { fields, .. } = &variant.body {
+                        for field in fields {
+                            errors.extend(validate_decorators(doc, &field.decorators));
+                        }
+                    }
+                }
+            }
+            ast::Item::SymbolSetDecl(decl) => {
+                errors.extend(validate_decorators(doc, &decl.decorators));
+                for symbol in &decl.symbols {
+                    errors.extend(validate_decorators(doc, &symbol.decorators));
+                }
+            }
+            ast::Item::ConnectionDecl(decl) => {
+                errors.extend(validate_decorators(doc, &decl.decorators));
+            }
+            ast::Item::Let(_)
+            | ast::Item::NamespaceDecl(_)
+            | ast::Item::UseDecl(_)
+            | ast::Item::Import(_)
+            | ast::Item::Table(_)
+            | ast::Item::Connection(_) => {}
+        }
+    }
+    errors
 }
 
 /// Validate every `Item::Connection` in a flat item list against the

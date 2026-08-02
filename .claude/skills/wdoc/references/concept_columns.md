@@ -62,6 +62,6 @@ A `column` block: side-by-side layout of its child blocks, one `widths` percenta
 
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
-| `children` | `WdocBlock` | yes | Any wdoc blocks — each consecutive block fills the next column slot. |
+| `children` | `ContentBlock` | yes | Any wdoc blocks — each consecutive block fills the next column slot. |
 
 [← Back to SKILL.md](../SKILL.md)

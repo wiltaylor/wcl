@@ -326,8 +326,8 @@ fn decorator_arg_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, S
     else {
         return Ok(Value::None);
     };
-    // Try schema-aware resolution first; fall back to a raw named-arg
-    // lookup so un-schema'd decorators still work.
+    // Try schema-aware resolution first; retain raw named-arg lookup for
+    // annotations deliberately admitted through the schemaless exemption.
     if let Some(res) = dec.resolved_arg_value(&slot) {
         return res.map_err(|e| format!("decorator_arg: {e}"));
     }

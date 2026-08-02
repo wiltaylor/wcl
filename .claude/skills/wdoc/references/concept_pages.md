@@ -52,7 +52,7 @@ A `page` block: one rendered page — its id, title, the sites it joins, the sta
 | Slot | Accepts | Multiple | Description |
 | --- | --- | --- | --- |
 | `frontmatter` | `frontmatter` | no | Optional YAML front matter for the Markdown target (Markdown only). |
-| `children` | `WdocBlock` | yes | The page's content blocks. |
+| `children` | `ContentBlock` | yes | The page's content blocks. |
 
 ## Examples
 

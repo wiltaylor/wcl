@@ -328,6 +328,9 @@ impl std::fmt::Display for ArithmeticFault {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemaViolationKind {
+    /// A decorator name that resolves to no type carrying a matching
+    /// `@decorator("name")` declaration.
+    UndeclaredDecorator,
     DisallowedChild,
     MissingRequired,
     ChildrenTooFew,

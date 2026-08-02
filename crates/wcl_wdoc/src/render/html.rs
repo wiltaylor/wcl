@@ -768,7 +768,7 @@ fn page_handle_value<'a>(
 }
 
 fn expand_template_page_blocks<'a>(block: Block<'a>, out: &mut Vec<Block<'a>>) {
-    if block.kind() == kinds::REPEATER {
+    if block.kind() == "wdoc_repeater" {
         for generated in expand_repeater_children(&block) {
             expand_template_page_blocks(generated, out);
         }

@@ -30,6 +30,7 @@ pub(crate) fn synthetic_span() -> Span {
 pub(crate) fn synthetic_decorator(name: &str, positional: Vec<Expr>) -> Decorator {
     Decorator {
         name: vec![name.to_string()],
+        name_span: synthetic_span(),
         positional,
         named: Vec::new(),
         span: synthetic_span(),
@@ -434,6 +435,9 @@ pub enum UnaryOp {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Decorator {
     pub name: Vec<String>,
+    /// Span of the dotted name only, excluding the leading `@` and any
+    /// arguments. Decorator-level diagnostics point here.
+    pub name_span: Span,
     pub positional: Vec<Expr>,
     pub named: Vec<NamedArg>,
     pub span: Span,

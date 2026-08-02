@@ -1,8 +1,7 @@
 // Reflective decorator queries. `decorator_names(&T)` returns the
 // list of decorator names attached to a type / field / variant /
 // union / symbol-set / symbol / block. `decorator_arg(&T, name, slot)`
-// reads a specific decorator slot, falling back to a raw named-arg
-// lookup when the decorator has no registered schema.
+// reads a specific declared decorator slot by its schema field name.
 
 @document
 type Demo {

@@ -28,6 +28,10 @@
 // helper/component signatures readable; they mirror the builtin's output.
 namespace wdoc
 
+# Omits a schema field from generated type-reference tables.
+@decorator("hidden")
+type Hidden {}
+
 type FieldDecorator { name: utf8  arg: utf8 }
 type FieldInfo {
   name:        utf8
