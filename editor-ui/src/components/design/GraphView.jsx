@@ -72,6 +72,7 @@ import {
 } from '../../state/graph';
 import AddUnitDialog from './AddUnitDialog';
 import ContentModal from './ContentModal';
+import UnitSearch from './UnitSearch';
 import { DEFAULT_PARAMS, createSimulation } from './forceSim';
 
 const KIND_COLORS = {
@@ -735,6 +736,9 @@ export default function GraphView() {
           onChange={(t) => setDesignTab(t)}
         />
         <span class="ed-design-page">unit graph</span>
+        {/* Search pans the graph to the hit (revealNode → focus → the pan
+            effect above), so no host wiring beyond the default. */}
+        <UnitSearch class="ed-unitsearch-inline" placeholder="Find a unit…" />
         <Show when={data()}>
           <div class="ed-graph-filters">
             <ListFilter size={13} class="ed-graph-filtericon" />
@@ -977,19 +981,25 @@ export default function GraphView() {
           </svg>
         </Show>
 
-        <Show when={contentFor()}>
-          <ContentModal
-            nodeKey={contentFor()}
-            onClose={() => setContentFor(null)}
-            onOpenPage={(n) => openInCanvas(n)}
-            onOpenCode={(n) => openCode(n)}
-            opening={openingPage()}
-            onDelete={async (n) => {
-              await deleteUnit(n);
-              setContentFor(null);
-            }}
-            deleting={deleting()}
-          />
+        {/* Keyed: the modal builds its per-tab previews and probes for the
+            merged one when it mounts, so moving it to another unit (its own
+            search box does exactly that) has to be a remount, not a prop
+            change onto stale previews. */}
+        <Show when={contentFor()} keyed>
+          {(key) => (
+            <ContentModal
+              nodeKey={key}
+              onClose={() => setContentFor(null)}
+              onOpenPage={(n) => openInCanvas(n)}
+              onOpenCode={(n) => openCode(n)}
+              opening={openingPage()}
+              onDelete={async (n) => {
+                await deleteUnit(n);
+                setContentFor(null);
+              }}
+              deleting={deleting()}
+            />
+          )}
         </Show>
 
         <AddUnitDialog

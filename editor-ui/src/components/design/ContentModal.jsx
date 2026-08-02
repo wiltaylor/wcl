@@ -51,12 +51,19 @@ import {
   setPopover,
 } from '../../state/design';
 import { createPreview, currentPage, setCurrentPage } from '../../state/preview';
-import { graphData, indexLevelsForSite, pinCounts, reloadGraph } from '../../state/graph';
+import {
+  graphData,
+  indexLevelsForSite,
+  pinCounts,
+  reloadGraph,
+  setContentFor,
+} from '../../state/graph';
 import { wclLanguage } from '../../lang/wcl';
 import { injectBareCss } from '../../preview/frame';
 import EditSurface from './EditSurface';
 import { viewLabel } from './DesignCanvas';
 import FlowPanel from './FlowPanel';
+import UnitSearch from './UnitSearch';
 
 export default function ContentModal(props) {
   const node = () => graphData()?.nodes.find((n) => n.key === props.nodeKey);
@@ -636,6 +643,11 @@ export default function ContentModal(props) {
       <Show when={node()} fallback={<div class="ed-empty">The unit is gone — reload the graph.</div>}>
         <div class="ed-content-modal">
           <div class="ed-content-side">
+            {/* The modal covers the graph and the index panel, so its own
+                search is how a reader moves on to the next unit: the pick
+                re-keys the modal onto it (GraphView's `Show` is keyed), and
+                the graph behind pans there for when it closes. */}
+            <UnitSearch placeholder="Go to another unit…" onPick={(n) => setContentFor(n.key)} />
             {/* A procedure's `from -> to` wiring. Not draggable on the canvas:
                 its chart is repeater-generated, so the shapes share one span
                 and the statements live here, on the unit block. */}

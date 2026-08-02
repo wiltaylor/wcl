@@ -39,6 +39,23 @@ export {
   setContentFor,
 };
 
+/** Navigate every graph-mode surface to one node — what picking a search
+    hit (or any "go here" gesture) means. Focus is the whole protocol: the
+    graph pans until the node is on screen and the index panel reveals and
+    scrolls to the rows that pin it, both by watching `focusedNode`. An
+    index has no graph node of its own, so it selects in the panel instead;
+    hosts that show a unit's own surface (the content modal) do that on top
+    of this call. */
+export function revealNode(node) {
+  if (!node) return;
+  if (node.type === 'index') {
+    setSelectedIndex(node.key);
+    setRevealedIndex(node.key);
+  } else {
+    setFocusedNode(node.key);
+  }
+}
+
 /** The selected index's node from the current payload. */
 export function selectedIndexNode() {
   const key = selectedIndex();

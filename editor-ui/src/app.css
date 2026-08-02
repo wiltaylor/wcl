@@ -366,7 +366,47 @@ g.is-hidden > .ed-graph-edge-hit { display: none; }
 .ed-graph-count.is-zero circle { fill: var(--bg-2); stroke: var(--border); }
 .ed-graph-count.is-zero text { fill: var(--fg-3); }
 
+/* Find-a-unit box (graph toolbar, index panel, content modal) */
+.ed-unitsearch { position: relative; min-width: 0; }
+/* The toolbar variant: a fixed, modest width so the filters keep their room. */
+.ed-unitsearch-inline { width: 190px; flex: none; margin-left: var(--sp-2); }
+.ed-unitsearch-results {
+  position: absolute; z-index: 40; top: calc(100% + 4px); left: 0;
+  min-width: 100%; width: max(100%, 380px); max-height: 340px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--bg-1); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  padding: 4px;
+}
+.ed-unitsearch-count {
+  position: sticky; top: -4px; z-index: 1; margin: -4px -4px 4px; padding: 4px 8px;
+  background: var(--bg-1); color: var(--fg-3); font-size: var(--fs-xs);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ed-unitsearch-empty { padding: var(--sp-2); color: var(--fg-3); font-size: var(--fs-xs); }
+.ed-unitsearch-hit {
+  display: flex; flex-direction: column; gap: 2px; width: 100%;
+  padding: 5px 8px; border: 1px solid transparent; border-radius: var(--r-sm);
+  background: none; color: var(--fg-1); text-align: left; cursor: pointer;
+}
+.ed-unitsearch-hit.is-active { background: var(--accent-bg); border-color: var(--accent); }
+.ed-unitsearch-hit-head { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.ed-unitsearch-hit-title {
+  flex: 1; min-width: 0; font-size: var(--fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ed-unitsearch-hit-snip {
+  display: block; color: var(--fg-3); font-size: var(--fs-xs);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ed-unitsearch-hit-snip mark { background: var(--accent-bg); color: var(--accent-fg); }
+.ed-unitsearch-hit-field {
+  margin-right: 6px; padding: 0 4px; border-radius: var(--r-sm);
+  background: var(--bg-2); color: var(--fg-3); font: 600 9px system-ui, sans-serif;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+
 /* Graph-tab index panel (the left bar) */
+.ed-index-search { padding: 0 var(--sp-2) var(--sp-2); }
 .ed-index-panel.is-dropready { outline: 2px dashed var(--accent); outline-offset: -4px; }
 .ed-index-viewfilter { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 var(--sp-2) var(--sp-2); }
 .ed-index-list { list-style: none; margin: 0; padding: 0 var(--sp-2); overflow-y: auto; flex: 1; }
