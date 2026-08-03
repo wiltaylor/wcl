@@ -28,8 +28,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # The deploy only runs `wcl wdoc build`; the embedded `wcl editor`
+      # frontend is never served here, so skip building it. Without this,
+      # crates/wcl's build.rs panics on a runner that has no pnpm and no
+      # prebuilt editor-ui/dist — installing node + pnpm just to throw the
+      # result away would cost minutes per deploy.
       - name: Build wcl
         run: cargo build --release -p wcl
+        env:
+          WCL_EDITOR_UI_SKIP: '1'
 
       - name: Build docs site
         run: ./target/release/wcl wdoc build docs/main.wcl --out docs/_site
