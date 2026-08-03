@@ -40,9 +40,7 @@ type EditObject extends ContentBlock {
 // Styling for the injected button. Kept self-contained (no `--wdoc-*` vars) so
 // it is safe even though the button only ever appears in the `wcl editor`
 // preview pane.
-stylesheet "wdoc-edit-object" {
-  css = <<CSS
-    .wcl-edit-object-btn { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0.4rem 0; padding: 0.3rem 0.7rem; border: 1px solid #4c8bf5; border-radius: 6px; background: rgba(76,139,245,0.12); color: #4c8bf5; font: 600 13px system-ui, sans-serif; cursor: pointer; }
-    .wcl-edit-object-btn:hover { background: rgba(76,139,245,0.22); }
-    CSS
+class "wcl-edit-object-btn" { css = "display: inline-flex; align-items: center; gap: 0.35rem; margin: 0.4rem 0; padding: 0.3rem 0.7rem; border: 1px solid #4c8bf5; border-radius: 6px; background: rgba(76,139,245,0.12); color: #4c8bf5; font: 600 13px system-ui, sans-serif; cursor: pointer;" }
+class "wcl-edit-object-btn" {
+  nest "&:hover" { css = "background: rgba(76,139,245,0.22);" }
 }

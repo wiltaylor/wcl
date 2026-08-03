@@ -415,29 +415,44 @@ type Template {
 // fallback for old browsers). `.site-home` uses `color: inherit` so the
 // back-link follows the page theme instead of the UA's default link blue.
 //
-// IMPORTANT: this heredoc is emitted verbatim into the page <style>, so it
-// must be pure CSS — never a `//` line. CSS has no `//` comment; a stray
-// one (especially with an unmatched `(`, as in prose) is parsed as a
-// selector and silently swallows every rule after it. Keep prose in WCL
-// `//` comments out here, not inside the `<<CSS … CSS` body.
-let webpage_css = <<CSS
-  .site-header, .site-main { max-width: 48rem; margin-left: auto; margin-right: auto; padding-left: 1.25rem; padding-right: 1.25rem; box-sizing: border-box; }
-  .site-header { padding-top: 1rem; }
-  .site-nav { position: sticky; top: 0; z-index: 10; display: flex; gap: 1rem; background: var(--wdoc-bg, #fff); border-bottom: 1px solid var(--wdoc-border, #ccc); padding: 0.6rem max(1.25rem, calc((100% - 48rem) / 2 + 1.25rem)); margin-bottom: 1.5rem; box-sizing: border-box; }
-  .site-nav a { text-decoration: none; }
-  .site-home { font-weight: 600; color: inherit; }
-  .site-nav ul.menu { list-style: none; margin: 0; padding: 0; display: flex; gap: 1rem; align-items: center; }
-  .site-nav ul.menu li { position: relative; }
-  .site-nav .menu-toggle, .site-nav .menu-link, .site-nav .menu-label { display: inline-block; padding: 0.1rem 0; font: inherit; color: inherit; background: none; border: none; cursor: pointer; text-decoration: none; white-space: nowrap; }
-  .site-nav .menu-label { cursor: default; }
-  .site-nav .menu-toggle::after { content: " ▾"; opacity: 0.7; }
-  .site-nav a.menu-link.current { font-weight: 600; color: var(--wdoc-accent, inherit); }
-  .site-nav ul.menu ul.menu { display: none; position: absolute; top: 100%; left: 0; flex-direction: column; align-items: stretch; gap: 0.15rem; min-width: 10rem; padding: 0.4rem; background: var(--wdoc-bg, #fff); border: 1px solid var(--wdoc-border, #ccc); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,0.18); z-index: 30; }
-  .site-nav li.open > ul.menu { display: flex; }
-  .site-nav ul.menu ul.menu ul.menu { top: 0; left: 100%; }
-  .site-main { display: block; background: var(--wdoc-bg-alt, #ffffff); background: color-mix(in srgb, var(--wdoc-bg) 90%, var(--wdoc-fg) 10%); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 12px; padding: 1.75rem 2rem 2.25rem; margin-bottom: 2.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.12), 0 12px 30px rgba(0,0,0,0.18); }
-  html { scroll-padding-top: 4rem; }
-  CSS
+// The declarations stay opaque CSS text, while every selector is a WCL block;
+// a stray WCL comment can therefore affect at most its own rule.
+style "webpage_css" {
+  base ".site-header, .site-main" { css = "max-width: 48rem; margin-left: auto; margin-right: auto; padding-left: 1.25rem; padding-right: 1.25rem; box-sizing: border-box;" }
+  class "site-header" { css = "padding-top: 1rem;" }
+  class "site-nav" { css = "position: sticky; top: 0; z-index: 10; display: flex; gap: 1rem; background: var(--wdoc-bg, #fff); border-bottom: 1px solid var(--wdoc-border, #ccc); padding: 0.6rem max(1.25rem, calc((100% - 48rem) / 2 + 1.25rem)); margin-bottom: 1.5rem; box-sizing: border-box;" }
+  class "site-nav" {
+    nest "a" { css = "text-decoration: none;" }
+  }
+  class "site-home" { css = "font-weight: 600; color: inherit;" }
+  class "site-nav" {
+    nest "ul.menu" { css = "list-style: none; margin: 0; padding: 0; display: flex; gap: 1rem; align-items: center;" }
+  }
+  class "site-nav" {
+    nest "ul.menu li" { css = "position: relative;" }
+  }
+  base ".site-nav .menu-toggle, .site-nav .menu-link, .site-nav .menu-label" { css = "display: inline-block; padding: 0.1rem 0; font: inherit; color: inherit; background: none; border: none; cursor: pointer; text-decoration: none; white-space: nowrap;" }
+  class "site-nav" {
+    nest ".menu-label" { css = "cursor: default;" }
+  }
+  class "site-nav" {
+    nest ".menu-toggle::after" { css = "content: \" ▾\"; opacity: 0.7;" }
+  }
+  class "site-nav" {
+    nest "a.menu-link.current" { css = "font-weight: 600; color: var(--wdoc-accent, inherit);" }
+  }
+  class "site-nav" {
+    nest "ul.menu ul.menu" { css = "display: none; position: absolute; top: 100%; left: 0; flex-direction: column; align-items: stretch; gap: 0.15rem; min-width: 10rem; padding: 0.4rem; background: var(--wdoc-bg, #fff); border: 1px solid var(--wdoc-border, #ccc); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,0.18); z-index: 30;" }
+  }
+  class "site-nav" {
+    nest "li.open > ul.menu" { css = "display: flex;" }
+  }
+  class "site-nav" {
+    nest "ul.menu ul.menu ul.menu" { css = "top: 0; left: 100%;" }
+  }
+  class "site-main" { css = "display: block; background: var(--wdoc-bg-alt, #ffffff); background: color-mix(in srgb, var(--wdoc-bg) 90%, var(--wdoc-fg) 10%); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 12px; padding: 1.75rem 2rem 2.25rem; margin-bottom: 2.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.12), 0 12px 30px rgba(0,0,0,0.18);" }
+  base "html" { css = "scroll-padding-top: 4rem;" }
+}
 
 // Back-link to the root site, shown by the templates when the current
 // page is on a sub-site (`ctx.home_href` non-empty). Empty otherwise.
@@ -488,24 +503,32 @@ let menu_script = raw(
 // the bundled `wdoc-search.js` (injected by the build when the site
 // sets `search = true`). The `<style>` ships with the box so the CSS
 // loads only when search is enabled.
-let wdoc_search_css = <<CSS
-  .wdoc-search { position: relative; margin: 0 0 0.75rem; }
-  .wdoc-search-input { width: 100%; box-sizing: border-box; padding: 0.3rem 0.5rem; font: inherit; color: inherit; background: var(--wdoc-bg, transparent); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 4px; }
-  .wdoc-search-results { display: none; position: absolute; z-index: 10; left: 0; right: 0; max-height: 60vh; overflow-y: auto; background: var(--wdoc-bg-alt, #fff); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
-  .wdoc-search-results.open { display: block; }
-  .wdoc-search-hit { display: block; padding: 0.45rem 0.6rem; text-decoration: none; color: inherit; border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.2)); }
-  .wdoc-search-hit:last-child { border-bottom: none; }
-  .wdoc-search-hit:hover { background: rgba(127,127,127,0.12); }
-  .wdoc-search-hit-title { display: block; font-weight: 600; }
-  .wdoc-search-hit-snippet { display: block; font-size: 0.85em; opacity: 0.75; margin-top: 0.15rem; }
-  .wdoc-search-empty { padding: 0.45rem 0.6rem; opacity: 0.7; }
-  .site-nav .wdoc-search { display: inline-block; margin: 0 0 0 1rem; min-width: 14rem; vertical-align: middle; }
-  CSS
+style "wdoc_search_css" {
+  class "wdoc-search" { css = "position: relative; margin: 0 0 0.75rem;" }
+  class "wdoc-search-input" { css = "width: 100%; box-sizing: border-box; padding: 0.3rem 0.5rem; font: inherit; color: inherit; background: var(--wdoc-bg, transparent); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 4px;" }
+  class "wdoc-search-results" { css = "display: none; position: absolute; z-index: 10; left: 0; right: 0; max-height: 60vh; overflow-y: auto; background: var(--wdoc-bg-alt, #fff); border: 1px solid var(--wdoc-border, rgba(127,127,127,0.4)); border-radius: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.25);" }
+  class "wdoc-search-results" {
+    nest "&.open" { css = "display: block;" }
+  }
+  class "wdoc-search-hit" { css = "display: block; padding: 0.45rem 0.6rem; text-decoration: none; color: inherit; border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.2));" }
+  class "wdoc-search-hit" {
+    nest "&:last-child" { css = "border-bottom: none;" }
+  }
+  class "wdoc-search-hit" {
+    nest "&:hover" { css = "background: rgba(127,127,127,0.12);" }
+  }
+  class "wdoc-search-hit-title" { css = "display: block; font-weight: 600;" }
+  class "wdoc-search-hit-snippet" { css = "display: block; font-size: 0.85em; opacity: 0.75; margin-top: 0.15rem;" }
+  class "wdoc-search-empty" { css = "padding: 0.45rem 0.6rem; opacity: 0.7;" }
+  class "site-nav" {
+    nest ".wdoc-search" { css = "display: inline-block; margin: 0 0 0 1rem; min-width: 14rem; vertical-align: middle;" }
+  }
+}
 
 let wdoc_search_box = fn(enabled: bool) -> list<Html>
   if enabled {
     [
-      el("style", [], [raw(wdoc_search_css)]),
+      css_style(:wdoc_search_css),
       el("div", ["wdoc-search"], [
         ela("input", ["wdoc-search-input"],
           [["type", "search"], ["placeholder", "Search…"], ["aria-label", "Search this site"]],
@@ -547,7 +570,7 @@ let wdoc_part_home_link = fn(c: TemplateCtx, cls: utf8) -> list<Html>
 // The `webpage` template's `<style>` block — include it to inherit the
 // stdlib header / nav / content-card styling, or omit it and supply your own.
 let wdoc_part_webpage_css = fn() -> list<Html> [
-  el("style", [], [raw(webpage_css)]),
+  css_style(:webpage_css),
 ]
 
 // The site title header (`<header class="site-header">`).
@@ -661,49 +684,104 @@ let book_pagenav = fn(m: PageMetadata) -> list<Html> {
 // descendant / compound / `:hover` selectors a bare `class` can't express;
 // the chapter / section colours are the bundled `class "book-chapter" /
 // "book-section" / "current"`.
-let book_css = <<CSS
-  .book-sidebar { position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid var(--wdoc-border); background: var(--wdoc-bg-alt); display: flex; flex-direction: column; font-family: var(--wdoc-font-head); scrollbar-width: thin; scrollbar-color: var(--wdoc-border-strong) transparent; }
-  .book-sidebar::-webkit-scrollbar { width: 9px; }
-  .book-sidebar::-webkit-scrollbar-thumb { background: var(--wdoc-border-strong); border-radius: 999px; border: 2px solid var(--wdoc-bg-alt); }
-  .book-title { font-weight: 600; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--wdoc-fg-muted); margin-bottom: 0.9rem; }
-  .book-home { display: block; margin-bottom: 0.6rem; opacity: 0.8; text-decoration: none; color: inherit; }
-  .book-home:hover { opacity: 1; text-decoration: underline; }
-  .book-sidebar ul.book-toc { list-style: none; margin: 0; padding-left: 0; }
-  .book-sidebar ul.book-toc ul.book-toc { padding-left: 0.85rem; }
-  .book-sidebar a.book-chapter { display: block; padding: 0.25rem 0 0.25rem 0.6rem; border-left: 2px solid transparent; color: var(--wdoc-fg-muted); text-decoration: none; }
-  .book-sidebar a.book-chapter:hover { color: var(--wdoc-fg); }
-  .book-sidebar a.book-chapter.current { color: var(--wdoc-accent); border-left-color: var(--wdoc-accent); font-weight: 600; }
-  .book-sidebar .book-section { display: block; padding: 0.5rem 0 0.15rem; font-weight: 600; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--wdoc-fg-subtle); }
-  .book-sidebar .book-toc-row { display: flex; align-items: baseline; }
-  .book-sidebar .book-toc-row > a.book-chapter, .book-sidebar .book-toc-row > .book-section { flex: 1 1 auto; }
-  .book-sidebar .book-toc-toggle { flex: 0 0 1rem; cursor: pointer; user-select: none; text-align: center; opacity: 0.55; }
-  .book-sidebar .book-toc-toggle:hover { opacity: 1; }
-  .book-sidebar li.book-branch > .book-toc-row { cursor: pointer; user-select: none; }
-  .book-sidebar li.book-branch > .book-toc-row:hover > .book-toc-toggle { opacity: 1; }
-  .book-sidebar li.book-branch > .book-toc-row > .book-toc-toggle::before { content: "▸"; display: inline-block; transition: transform 0.12s ease; }
-  .book-sidebar li.book-branch.open > .book-toc-row > .book-toc-toggle::before { transform: rotate(90deg); }
-  .book-sidebar li.book-branch > ul.book-toc { display: none; }
-  .book-sidebar li.book-branch.open > ul.book-toc { display: block; }
-  .book-content { margin-left: 16rem; margin-right: 15rem; min-height: 100vh; box-sizing: border-box; }
-  .book-content .book-measure { max-width: 60rem; margin: 0 auto; padding: 2.5rem 3.5rem 6rem; background: var(--wdoc-book-bg); min-height: 100vh; box-sizing: border-box; font-family: var(--wdoc-font-body); }
-  .theme-toggle { display: block; margin: 0 0 0.75rem; padding: 0.25rem 0.7rem; cursor: pointer; background: var(--wdoc-bg-alt); border: 1px solid var(--wdoc-border-strong); border-radius: 999px; color: inherit; font: inherit; font-family: var(--wdoc-font-head); font-size: 0.8rem; }
-  .book-pagenav { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 3.5rem; }
-  .book-pagenav .book-nav { display: block; padding: 0.9rem 1.1rem; border: 1px solid var(--wdoc-border); border-radius: 8px; background: var(--wdoc-book-bg); text-decoration: none; color: var(--wdoc-heading); font-family: var(--wdoc-font-head); font-weight: 600; }
-  .book-pagenav .book-nav:hover { border-color: var(--wdoc-accent); }
-  .book-pagenav .book-nav-next { grid-column: 2; text-align: right; }
-  .book-sidebar-footer { position: sticky; bottom: 0; margin: auto -1rem -1rem; padding: 0.6rem 1rem; background: var(--wdoc-bg-alt); border-top: 1px solid var(--wdoc-border); display: flex; flex-direction: column; gap: 0.4rem; }
-  .book-footer-btn { display: flex; align-items: center; justify-content: center; padding: 0.45rem 0.6rem; text-decoration: none; color: inherit; border: 1px solid var(--wdoc-border); border-radius: 6px; opacity: 0.85; }
-  .book-footer-btn:hover { opacity: 1; border-color: var(--wdoc-accent); }
-  .book-footer-btn.current { color: var(--wdoc-accent); border-color: var(--wdoc-accent); opacity: 1; }
-  .book-footer-btn .wdoc-icon { width: 1.4em; height: 1.4em; flex: 0 0 auto; }
-  .book-rail { position: fixed; top: 0; right: 0; width: 15rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 2.5rem 1.4rem; font-family: var(--wdoc-font-head); scrollbar-width: thin; scrollbar-color: var(--wdoc-border-strong) transparent; }
-  .book-rail-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.9rem; }
-  .book-onpage { display: flex; flex-direction: column; }
-  .book-onpage-link { display: block; padding: 0.2rem 0 0.2rem 0.7rem; font-size: 0.82rem; line-height: 1.35; text-decoration: none; }
-  .book-onpage-link.level-3 { padding-left: 1.5rem; font-size: 0.78rem; }
-  .heading-marker { display: block; font-size: 0.78rem; margin-bottom: 0.2rem; }
-  @media (max-width: 82rem) { .book-rail { display: none; } .book-content { margin-right: 0; } }
-  CSS
+style "book_css" {
+  class "book-sidebar" { css = "position: fixed; top: 0; left: 0; width: 16rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 1rem; border-right: 1px solid var(--wdoc-border); background: var(--wdoc-bg-alt); display: flex; flex-direction: column; font-family: var(--wdoc-font-head); scrollbar-width: thin; scrollbar-color: var(--wdoc-border-strong) transparent;" }
+  class "book-sidebar" {
+    nest "&::-webkit-scrollbar" { css = "width: 9px;" }
+  }
+  class "book-sidebar" {
+    nest "&::-webkit-scrollbar-thumb" { css = "background: var(--wdoc-border-strong); border-radius: 999px; border: 2px solid var(--wdoc-bg-alt);" }
+  }
+  class "book-title" { css = "font-weight: 600; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--wdoc-fg-muted); margin-bottom: 0.9rem;" }
+  class "book-home" { css = "display: block; margin-bottom: 0.6rem; opacity: 0.8; text-decoration: none; color: inherit;" }
+  class "book-home" {
+    nest "&:hover" { css = "opacity: 1; text-decoration: underline;" }
+  }
+  class "book-sidebar" {
+    nest "ul.book-toc" { css = "list-style: none; margin: 0; padding-left: 0;" }
+  }
+  class "book-sidebar" {
+    nest "ul.book-toc ul.book-toc" { css = "padding-left: 0.85rem;" }
+  }
+  class "book-sidebar" {
+    nest "a.book-chapter" { css = "display: block; padding: 0.25rem 0 0.25rem 0.6rem; border-left: 2px solid transparent; color: var(--wdoc-fg-muted); text-decoration: none;" }
+  }
+  class "book-sidebar" {
+    nest "a.book-chapter:hover" { css = "color: var(--wdoc-fg);" }
+  }
+  class "book-sidebar" {
+    nest "a.book-chapter.current" { css = "color: var(--wdoc-accent); border-left-color: var(--wdoc-accent); font-weight: 600;" }
+  }
+  class "book-sidebar" {
+    nest ".book-section" { css = "display: block; padding: 0.5rem 0 0.15rem; font-weight: 600; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--wdoc-fg-subtle);" }
+  }
+  class "book-sidebar" {
+    nest ".book-toc-row" { css = "display: flex; align-items: baseline;" }
+  }
+  base ".book-sidebar .book-toc-row > a.book-chapter, .book-sidebar .book-toc-row > .book-section" { css = "flex: 1 1 auto;" }
+  class "book-sidebar" {
+    nest ".book-toc-toggle" { css = "flex: 0 0 1rem; cursor: pointer; user-select: none; text-align: center; opacity: 0.55;" }
+  }
+  class "book-sidebar" {
+    nest ".book-toc-toggle:hover" { css = "opacity: 1;" }
+  }
+  class "book-sidebar" {
+    nest "li.book-branch > .book-toc-row" { css = "cursor: pointer; user-select: none;" }
+  }
+  class "book-sidebar" {
+    nest "li.book-branch > .book-toc-row:hover > .book-toc-toggle" { css = "opacity: 1;" }
+  }
+  class "book-sidebar" {
+    nest "li.book-branch > .book-toc-row > .book-toc-toggle::before" { css = "content: \"▸\"; display: inline-block; transition: transform 0.12s ease;" }
+  }
+  class "book-sidebar" {
+    nest "li.book-branch.open > .book-toc-row > .book-toc-toggle::before" { css = "transform: rotate(90deg);" }
+  }
+  class "book-sidebar" {
+    nest "li.book-branch > ul.book-toc" { css = "display: none;" }
+  }
+  class "book-sidebar" {
+    nest "li.book-branch.open > ul.book-toc" { css = "display: block;" }
+  }
+  class "book-content" { css = "margin-left: 16rem; margin-right: 15rem; min-height: 100vh; box-sizing: border-box;" }
+  class "book-content" {
+    nest ".book-measure" { css = "max-width: 60rem; margin: 0 auto; padding: 2.5rem 3.5rem 6rem; background: var(--wdoc-book-bg); min-height: 100vh; box-sizing: border-box; font-family: var(--wdoc-font-body);" }
+  }
+  class "theme-toggle" { css = "display: block; margin: 0 0 0.75rem; padding: 0.25rem 0.7rem; cursor: pointer; background: var(--wdoc-bg-alt); border: 1px solid var(--wdoc-border-strong); border-radius: 999px; color: inherit; font: inherit; font-family: var(--wdoc-font-head); font-size: 0.8rem;" }
+  class "book-pagenav" { css = "display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 3.5rem;" }
+  class "book-pagenav" {
+    nest ".book-nav" { css = "display: block; padding: 0.9rem 1.1rem; border: 1px solid var(--wdoc-border); border-radius: 8px; background: var(--wdoc-book-bg); text-decoration: none; color: var(--wdoc-heading); font-family: var(--wdoc-font-head); font-weight: 600;" }
+  }
+  class "book-pagenav" {
+    nest ".book-nav:hover" { css = "border-color: var(--wdoc-accent);" }
+  }
+  class "book-pagenav" {
+    nest ".book-nav-next" { css = "grid-column: 2; text-align: right;" }
+  }
+  class "book-sidebar-footer" { css = "position: sticky; bottom: 0; margin: auto -1rem -1rem; padding: 0.6rem 1rem; background: var(--wdoc-bg-alt); border-top: 1px solid var(--wdoc-border); display: flex; flex-direction: column; gap: 0.4rem;" }
+  class "book-footer-btn" { css = "display: flex; align-items: center; justify-content: center; padding: 0.45rem 0.6rem; text-decoration: none; color: inherit; border: 1px solid var(--wdoc-border); border-radius: 6px; opacity: 0.85;" }
+  class "book-footer-btn" {
+    nest "&:hover" { css = "opacity: 1; border-color: var(--wdoc-accent);" }
+  }
+  class "book-footer-btn" {
+    nest "&.current" { css = "color: var(--wdoc-accent); border-color: var(--wdoc-accent); opacity: 1;" }
+  }
+  class "book-footer-btn" {
+    nest ".wdoc-icon" { css = "width: 1.4em; height: 1.4em; flex: 0 0 auto;" }
+  }
+  class "book-rail" { css = "position: fixed; top: 0; right: 0; width: 15rem; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 2.5rem 1.4rem; font-family: var(--wdoc-font-head); scrollbar-width: thin; scrollbar-color: var(--wdoc-border-strong) transparent;" }
+  class "book-rail-title" { css = "font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.9rem;" }
+  class "book-onpage" { css = "display: flex; flex-direction: column;" }
+  class "book-onpage-link" { css = "display: block; padding: 0.2rem 0 0.2rem 0.7rem; font-size: 0.82rem; line-height: 1.35; text-decoration: none;" }
+  class "book-onpage-link" {
+    nest "&.level-3" { css = "padding-left: 1.5rem; font-size: 0.78rem;" }
+  }
+  class "heading-marker" { css = "display: block; font-size: 0.78rem; margin-bottom: 0.2rem;" }
+  media "(max-width: 82rem)" {
+    class "book-rail" { css = "display: none;" }
+    class "book-content" { css = "margin-right: 0;" }
+  }
+}
 
 // Stdlib `book` template: an mdbook-style layout — a fixed left
 // sidebar holding the book title and the table of contents (nested,
@@ -715,7 +793,7 @@ let book_css = <<CSS
 // The `book` template's `<style>` block — the fixed sidebar, nested TOC,
 // reading column, and theme toggle. Include it for stdlib book styling.
 let wdoc_part_book_css = fn() -> list<Html> [
-  el("style", [], [raw(book_css)]),
+  css_style(:book_css),
 ]
 
 // One pinned sidebar-footer button: an icon-only `<a class="book-footer-btn">`

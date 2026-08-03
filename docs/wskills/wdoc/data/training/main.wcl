@@ -722,7 +722,7 @@ lesson visibility_and_themes {
   summary = "Scope blocks per site, template, or backend with `@only` / `@except`, and restyle a whole site in one line."
   objectives = ["Scope a block to a subset of the build with `@only` / `@except`", "Switch a site's palette with `theme` and add a light/dark toggle"]
   prerequisites = [render_targets]
-  related = [{ id: "visibility", why: "Block Visibility supports Visibility and themes: The @only / @except decorators scope a block by site, template kind, or backend." }, { id: "themes", why: "Built-in colour themes supports Visibility and themes: Set `theme = :<name>` on a `site` to recolour the whole site in one line." }, { id: "styling", why: "Styling supports Visibility and themes: Class blocks, stylesheets, and themes — how a site looks." }]
+  related = [{ id: "visibility", why: "Block Visibility supports Visibility and themes: The @only / @except decorators scope a block by site, template kind, or backend." }, { id: "themes", why: "Built-in colour themes supports Visibility and themes: Set `theme = :<name>` on a `site` to recolour the whole site in one line." }, { id: "styling", why: "Styling supports Visibility and themes: Structured CSS blocks and themes — how a site looks." }]
   body {
     p <<DOC
       Any block can carry `@only(...)` or `@except(...)` to scope it by three axes: `sites` (site

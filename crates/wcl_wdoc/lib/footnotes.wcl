@@ -59,14 +59,12 @@ let resolve_footnote = fn(n: Footnote) -> ContentFootnote
 // Footnotes styling; colours come from the theme apply rules. The class
 // names are the ones the content IR's HTML reading emits
 // (`render/content_html.rs`), not names authored here.
-stylesheet "wdoc-footnotes" {
-  css = <<CSS
-    .wdoc-footnotes { margin-top: 3rem; padding-top: 1.2rem; font-size: 0.9rem; }
-    .wdoc-footnotes-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.6rem; }
-    .wdoc-footnote-list { margin: 0; padding-left: 1.4rem; }
-    .wdoc-footnote-item { margin-bottom: 0.4rem; }
-    .wdoc-footnote-back { text-decoration: none; border: none; margin-left: 0.3rem; }
-    .footnote-ref { font-size: 0.75em; line-height: 0; }
-    .footnote-ref a { border: none; padding: 0 0.1em; }
-    CSS
+class "wdoc-footnotes" { css = "margin-top: 3rem; padding-top: 1.2rem; font-size: 0.9rem;" }
+class "wdoc-footnotes-title" { css = "font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.6rem;" }
+class "wdoc-footnote-list" { css = "margin: 0; padding-left: 1.4rem;" }
+class "wdoc-footnote-item" { css = "margin-bottom: 0.4rem;" }
+class "wdoc-footnote-back" { css = "text-decoration: none; border: none; margin-left: 0.3rem;" }
+class "footnote-ref" { css = "font-size: 0.75em; line-height: 0;" }
+class "footnote-ref" {
+  nest "a" { css = "border: none; padding: 0 0.1em;" }
 }

@@ -2,7 +2,7 @@ import <wdoc.wcl>
 
 concept styling {
   name = "Styling"
-  summary = "Class blocks, stylesheets, and themes — how a site looks."
+  summary = "Structured CSS blocks and themes — how a site looks."
   related = [{ id: "sites", why: "Sites supports Styling: The `site` block: one output target — template, title, theme, multi-site routing, and full-text search." }]
   audience = :both
   body {
@@ -41,6 +41,14 @@ concept styling {
       quoted; both are equivalent. This is how you override built-in classes like the chart palette
       or callout styles. Set `sites = [:foo]` on a class to scope it to one site in a multi-site
       document; omit the field and the class applies everywhere.
+    DOC
+
+    h2 "Selectors and at-rules"
+    p <<DOC
+      Use `nest` for descendant or compound selectors rooted at a class, `base` for element,
+      reset, and selector-list rules, `font_face` for typed font descriptors, `media` for grouped
+      responsive rules, and `keyframes` for animations. A named `style` groups structured rules
+      that a template emits in place through `css_style(:name)`.
     DOC
 
     h2 "Themes"
@@ -99,8 +107,24 @@ concept styling {
       description = "The `light` sub-block of a `class`: field overrides applied under a prefers-light colour scheme."
     }
     block_doc {
-      type = Stylesheet
-      description = "A `stylesheet` block: raw CSS injected verbatim into the rendered site, for styling beyond the `class` field set."
+      type = Base
+      description = "A `base` block: an element, reset, selector-list, or other rule whose root is not one bare class."
+    }
+    block_doc {
+      type = FontFace
+      description = "A `font_face` block: typed family, source, weight, style, and display descriptors."
+    }
+    block_doc {
+      type = Media
+      description = "A `media` block containing structured class and base rules."
+    }
+    block_doc {
+      type = Keyframes
+      description = "A `keyframes` block containing `base` frame selectors."
+    }
+    block_doc {
+      type = Style
+      description = "A named `style` bundle containing structured rules that a template can render in place with `css_style(:name)`."
     }
     block_doc {
       type = ThemeBlock

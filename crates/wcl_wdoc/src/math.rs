@@ -18,7 +18,7 @@
 //! [`force_current_color`] rewrites that default black to `currentColor`
 //! so an equation inherits whatever `color` its surroundings have (theme,
 //! `class`, light/dark toggle); an explicit `\textcolor{…}` keeps its own
-//! (non-black) colour. The `wdoc-math` stylesheet reinforces this in CSS.
+//! (non-black) colour. The `wdoc-math` structured rules reinforce this in CSS.
 
 use std::collections::BTreeMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};

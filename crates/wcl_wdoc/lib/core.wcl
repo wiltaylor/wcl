@@ -17,7 +17,7 @@ type Site {
   @children("font_face")      font_faces:  list<FontFace>
   @children("media")          media:       list<Media>
   @children("keyframes")      keyframes:   list<Keyframes>
-  @children("stylesheet")     stylesheets: list<Stylesheet>
+  @children("style")          styles:      list<Style>
   @children("page")           pages:       list<Page>
   @children("inline_pattern") patterns:    list<InlinePattern>
   @children("template")       templates:   list<Template>
@@ -54,32 +54,24 @@ type Site {
   @children("include")        includes:    list<IncludeSites>
 }
 
-// Legacy raw stylesheet escape hatch. New CSS should use the structured
-// `class` / `base` / `font_face` / `media` / `keyframes` vocabulary so
-// selectors and at-rules remain WCL structure. The build collects every `stylesheet` block
-// — bundled ones (from this stdlib, co-located with the block they style)
-// before user ones — and injects their `css` verbatim into each page's
-// `<head>` ahead of the `class` rules, so user `class`/`stylesheet` rules
-// still win by cascade. A user may declare their own for advanced CSS.
-@block("stylesheet")
-type Stylesheet {
+// A named, structured set of rules rendered in place by `css_style(:name)`.
+// This keeps template-local CSS beside the template without falling back to
+// an opaque CSS string. Top-level rule blocks remain global.
+@block("style")
+type Style {
   @inline(0) name: identifier
-  css: utf8
-  // Limit this stylesheet to specific sites (`sites = [:book]`). Absent
-  // or empty ⇒ every site (like `Class.sites`; unlike `Page.sites`, which
-  // a multi-site document requires).
-  sites: list<symbol>?
+  @children("class")      classes:    list<Class>
+  @children("base")       bases:      list<Base>
+  @children("font_face")  font_faces: list<FontFace>
+  @children("media")      media:      list<Media>
+  @children("keyframes")  keyframes:  list<Keyframes>
 }
 
 // Base page styling. Resets the body margin and makes it fill the
 // viewport so a themed `class "wdoc-body" { … }` background reaches every
 // edge (no white gutter / short-page gap). `<body class="wdoc-body">` is
 // emitted by the renderer's page shell.
-stylesheet "wdoc-base" {
-  css = <<CSS
-    .wdoc-body { margin: 0; min-height: 100vh; }
-    CSS
-}
+class "wdoc-body" { css = "margin: 0; min-height: 100vh;" }
 
 // Renderable-block interfaces describe OUTPUT, not placement:
 // `ContentBlock` lowers to the target-neutral page-content IR and
@@ -357,11 +349,12 @@ type FontFace {
   sites: list<symbol>?
 }
 
-// A media query containing class-rooted rules.
+// A media query containing structured rules.
 @block("media")
 type Media {
   @inline(0) query: utf8
   @children("class") classes: list<Class>
+  @children("base") bases: list<Base>
   sites: list<symbol>?
 }
 

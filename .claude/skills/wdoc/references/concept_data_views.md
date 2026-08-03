@@ -312,7 +312,10 @@ A `wdoc_repeater` block: renders its body once per element of `each`, binding th
 | `pages` | `page` | yes |  |
 | `chapters` | `chapter` | yes |  |
 | `classes` | `class` | yes |  |
-| `sheets` | `stylesheet` | yes |  |
+| `bases` | `base` | yes |  |
+| `fonts` | `font_face` | yes |  |
+| `media` | `media` | yes |  |
+| `keyframes` | `keyframes` | yes |  |
 
 A `wdoc_instance` block: renders the component named by the value of its `component` field, filling slots from its like-named fields.
 

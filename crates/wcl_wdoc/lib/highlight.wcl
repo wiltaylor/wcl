@@ -1,0 +1,36 @@
+// Syntax highlighting is authored once here. Theme variables override the
+// literal fallbacks when a site selects a theme; site-less documents retain
+// the standalone light palette without a second token-rule vocabulary.
+
+namespace wdoc
+
+base "pre.code-block" { css = "background: #f6f8fa;\n  color: #24292f;\n  border: 1px solid #d0d7de;\n  border-radius: 6px;\n  padding: 0.75rem 1rem;\n  margin: 0.75rem 0;\n  overflow-x: auto;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;\n  font-size: 0.9rem;\n  line-height: 1.45;" }
+base "pre.code-block code" { css = "background: none;\n  padding: 0;\n  font: inherit;\n  color: inherit;\n  white-space: pre;" }
+
+class "tok-comment" { css = "color: var(--wdoc-syn-comment, #6a737d); font-style: italic;" }
+class "tok-keyword" { css = "color: var(--wdoc-syn-kw, #cf222e);" }
+class "tok-storage" { css = "color: var(--wdoc-syn-kw, #cf222e);" }
+class "tok-storage" {
+  nest "&.tok-type" { css = "color: var(--wdoc-syn-type, #953800);" }
+}
+class "tok-string" { css = "color: var(--wdoc-syn-str, #0a3069);" }
+class "tok-constant" { css = "color: var(--wdoc-syn-num, #0550ae);" }
+class "tok-constant" {
+  nest "&.tok-numeric" { css = "color: var(--wdoc-syn-num, #0550ae);" }
+}
+class "tok-entity" {
+  nest "&.tok-name.tok-function" { css = "color: var(--wdoc-syn-fn, #8250df);" }
+}
+class "tok-entity" {
+  nest "&.tok-name.tok-tag" { css = "color: var(--wdoc-red, #116329);" }
+}
+class "tok-entity" {
+  nest "&.tok-name.tok-class" { css = "color: var(--wdoc-syn-type, #953800);" }
+}
+class "tok-variable" { css = "color: var(--wdoc-fg, #24292f);" }
+class "tok-support" { css = "color: var(--wdoc-syn-type, #0550ae);" }
+class "tok-punctuation" { css = "color: var(--wdoc-syn-punct, #57606a);" }
+class "tok-meta" {
+  nest "&.tok-tag" { css = "color: var(--wdoc-red, #116329);" }
+}
+class "tok-invalid" { css = "color: var(--wdoc-bg, #ffffff); background: var(--wdoc-red, #cf222e);" }

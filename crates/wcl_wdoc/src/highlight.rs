@@ -6,7 +6,7 @@
 //! site can highlight WCL itself.
 //!
 //! Token classes are emitted as `tok-<scope>` so the bundled
-//! `code-theme.css` (and user overrides) target stable selectors
+//! structured rules in `lib/highlight.wcl` (and user overrides) target stable selectors
 //! like `.tok-keyword`, `.tok-string`, `.tok-comment`.
 
 use std::sync::OnceLock;
@@ -18,7 +18,6 @@ use syntect::parsing::{SyntaxDefinition, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
 const WCL_SYNTAX: &str = include_str!("../assets/wcl.sublime-syntax");
-const THEME_CSS: &str = include_str!("../assets/code-theme.css");
 
 const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed { prefix: "tok-" };
 
@@ -81,13 +80,6 @@ pub(crate) fn highlight_html(source: &str, language: &str, line_numbers: bool) -
         out.push_str("</span>");
     }
     out
-}
-
-/// Bundled CSS for `.code-block` containers and `.tok-*` token
-/// classes. Injected into every rendered page's `<style>` block
-/// alongside the per-document class rules.
-pub(crate) fn theme_css() -> &'static str {
-    THEME_CSS
 }
 
 /// A light syntect theme for the PDF backend (which has no CSS to colour

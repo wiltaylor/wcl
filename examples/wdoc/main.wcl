@@ -13,7 +13,7 @@
 // With more than one site declared the field is required — a page shared
 // by several sites lists them all — because the site chooses the page's
 // template. Shared styles and iconsets below are global (a `class` or
-// `stylesheet` with no `sites` still applies everywhere), so all four
+// a CSS rule with no `sites` still applies everywhere), so all four
 // sites can use them.
 //
 // The `import <wdoc.wcl>` below pulls in the embedded wdoc standard

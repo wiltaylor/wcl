@@ -85,10 +85,10 @@ type Tilemap extends SvgBlock {
 // default; a `smooth = true` tilemap opts back into the browser's
 // default smoothing via the extra `smooth` class. Uses descendant +
 // compound selectors, so it can't be a bare `class`.
-stylesheet "wdoc-tilemap" {
-  css = <<CSS
-    .wdoc-tilemap image { image-rendering: pixelated; }
-    .wdoc-tilemap.smooth image { image-rendering: auto; }
-    CSS
+class "wdoc-tilemap" {
+  nest "image" { css = "image-rendering: pixelated;" }
+}
+class "wdoc-tilemap" {
+  nest "&.smooth image" { css = "image-rendering: auto;" }
 }
 

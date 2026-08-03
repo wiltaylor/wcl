@@ -50,38 +50,23 @@ type Video extends ContentBlock {
 }
 
 // Click-to-play facade styling. Element+class selectors and a pseudo-
-// element (the play triangle) need a `stylesheet` rather than a `class`;
+// element (the play triangle) use structured nested rules rather than one class;
 // a user `class` on the video still cascades over it. No `--wdoc-*`
 // custom properties — this is always injected, so it must stand alone.
-stylesheet "wdoc-video" {
-  css = <<CSS
-    .wdoc-video {
-      position: relative; display: block; cursor: pointer;
-      max-width: 100%; margin: 0; overflow: hidden;
-      background: #000; border-radius: 4px; line-height: 0;
-    }
-    .wdoc-video img { display: block; width: 100%; height: auto; }
-    .wdoc-video .wdoc-video-placeholder {
-      display: block; width: 100%; min-height: 220px;
-      background: linear-gradient(135deg, #2a2a32, #14141a);
-    }
-    .wdoc-video .wdoc-video-play {
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 72px; height: 72px; border-radius: 50%;
-      background: rgba(0, 0, 0, 0.6); border: 2px solid #fff;
-      transition: background 0.15s ease;
-    }
-    .wdoc-video:hover .wdoc-video-play { background: rgba(0, 0, 0, 0.8); }
-    .wdoc-video .wdoc-video-play::after {
-      content: ""; position: absolute; top: 50%; left: 54%;
-      transform: translate(-50%, -50%);
-      border-style: solid; border-width: 14px 0 14px 24px;
-      border-color: transparent transparent transparent #fff;
-    }
-    .wdoc-video iframe, .wdoc-video video {
-      display: block; width: 100%; height: 100%;
-      aspect-ratio: 16 / 9; border: 0;
-    }
-    CSS
+class "wdoc-video" { css = "position: relative; display: block; cursor: pointer;\n  max-width: 100%; margin: 0; overflow: hidden;\n  background: #000; border-radius: 4px; line-height: 0;" }
+class "wdoc-video" {
+  nest "img" { css = "display: block; width: 100%; height: auto;" }
 }
+class "wdoc-video" {
+  nest ".wdoc-video-placeholder" { css = "display: block; width: 100%; min-height: 220px;\n  background: linear-gradient(135deg, #2a2a32, #14141a);" }
+}
+class "wdoc-video" {
+  nest ".wdoc-video-play" { css = "position: absolute; top: 50%; left: 50%;\n  transform: translate(-50%, -50%);\n  width: 72px; height: 72px; border-radius: 50%;\n  background: rgba(0, 0, 0, 0.6); border: 2px solid #fff;\n  transition: background 0.15s ease;" }
+}
+class "wdoc-video" {
+  nest "&:hover .wdoc-video-play" { css = "background: rgba(0, 0, 0, 0.8);" }
+}
+class "wdoc-video" {
+  nest ".wdoc-video-play::after" { css = "content: \"\"; position: absolute; top: 50%; left: 54%;\n  transform: translate(-50%, -50%);\n  border-style: solid; border-width: 14px 0 14px 24px;\n  border-color: transparent transparent transparent #fff;" }
+}
+base ".wdoc-video iframe, .wdoc-video video" { css = "display: block; width: 100%; height: 100%;\n  aspect-ratio: 16 / 9; border: 0;" }

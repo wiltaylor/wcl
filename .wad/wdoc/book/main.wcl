@@ -318,9 +318,7 @@ site book {
 
 // Small shared stylesheet: the external-system card tint plus tightened
 // metadata paragraphs. Everything else rides on the theme.
-stylesheet "wad-book" {
-  css = <<CSS
-.wad-external { border-style: dashed; opacity: 0.92; }
-.wad-meta p { margin: 0.15rem 0; }
-CSS
+class "wad-external" { css = "border-style: dashed; opacity: 0.92;" }
+class "wad-meta" {
+  nest "p" { css = "margin: 0.15rem 0;" }
 }

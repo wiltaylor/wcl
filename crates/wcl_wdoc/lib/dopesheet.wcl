@@ -73,12 +73,14 @@ type Dopesheet extends SvgBlock {
 // smoothing via the extra `smooth` class. The whole group is clickable
 // (play/pause); the `.dope-btn` overlay glyph follows `currentColor`.
 // Descendant + compound selectors, so it can't be a bare `class`.
-stylesheet "wdoc-dopesheet" {
-  css = <<CSS
-    .wdoc-dopesheet { cursor: pointer; }
-    .wdoc-dopesheet image { image-rendering: pixelated; }
-    .wdoc-dopesheet.smooth image { image-rendering: auto; }
-    .dope-btn { fill: currentColor; opacity: 0.7; cursor: pointer; }
-    .dope-btn:hover { opacity: 1; }
-    CSS
+class "wdoc-dopesheet" { css = "cursor: pointer;" }
+class "wdoc-dopesheet" {
+  nest "image" { css = "image-rendering: pixelated;" }
+}
+class "wdoc-dopesheet" {
+  nest "&.smooth image" { css = "image-rendering: auto;" }
+}
+class "dope-btn" { css = "fill: currentColor; opacity: 0.7; cursor: pointer;" }
+class "dope-btn" {
+  nest "&:hover" { css = "opacity: 1;" }
 }

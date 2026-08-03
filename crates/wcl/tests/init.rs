@@ -68,7 +68,7 @@ fn multifolder_templates_scaffold_check_and_build() {
 }
 
 /// The `website` scaffold has its own layout (a custom raw-HTML template +
-/// shipped assets), so it gets a dedicated check rather than the shared
+/// structured design rules + a shipped script), so it gets a dedicated check rather than the shared
 /// multi-folder loop above.
 #[test]
 fn init_website_scaffold_checks_and_builds() {
@@ -86,7 +86,6 @@ fn init_website_scaffold_checks_and_builds() {
         "theme.wcl",
         "components.wcl",
         "content.wcl",
-        "assets/site.css",
         "assets/app.js",
     ] {
         assert!(dest.join(rel).exists(), "website: missing {rel}");
@@ -110,19 +109,19 @@ fn init_website_scaffold_checks_and_builds() {
         .assert()
         .success();
 
-    // The build wires the design assets into <head> and slots the page's
-    // regions + content into the custom layout.
+    // The build emits the structured design rules, wires the script into
+    // <head>, and slots the page's regions + content into the custom layout.
     let html = std::fs::read_to_string(dest.join("_site/index.html")).expect("read index.html");
     assert!(
-        html.contains("assets/site.css") && html.contains("assets/app.js"),
-        "website: head assets not linked: {html}"
+        html.contains(".nav { display: flex;") && html.contains("assets/app.js"),
+        "website: design rules or script missing: {html}"
     );
     assert!(
         html.contains("Build something great"),
         "website: hero component not rendered: {html}"
     );
     assert!(
-        dest.join("_site/assets/site.css").exists(),
+        dest.join("_site/assets/app.js").exists(),
         "website: assets folder not copied into the build"
     );
 }

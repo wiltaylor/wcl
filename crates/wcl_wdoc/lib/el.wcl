@@ -17,7 +17,8 @@
 //   ela(tag, cls, attrs, kids)  … with attributes
 //   eli(tag, id, cls, kids)     … with an explicit HTML id
 //
-// plus four leaves — `raw` (verbatim HTML), `inl` (a prose run through
+// plus five leaves — `raw` (verbatim HTML), `css_style` (a named structured
+// style block), `inl` (a prose run through
 // the inline-pattern engine), `icon`, and `para`.
 //
 // `eli`, `inl`, `icon` and `para` currently have no caller in this
@@ -81,6 +82,10 @@ let eli = fn(tag: utf8, id: identifier, cls: list<utf8>, kids: list<Html>) -> Ht
 // content (a page's `content`, an icon's SVG markup) into a template.
 let raw = fn(html: utf8) -> Html
   Html::Raw { html: html }
+
+// Render a named top-level `style` block in place as `<style>…</style>`.
+let css_style = fn(name: symbol) -> Html
+  Html::Style { name: name }
 
 // An inline prose run: fed through the inline-pattern engine, so
 // `**bold**` / `` `code` `` / `[links](url)` / `:icons:` / `$math$` all
