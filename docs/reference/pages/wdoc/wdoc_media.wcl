@@ -1,11 +1,607 @@
 // Chapter 26 — Images, videos and file assets.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #181. Every build command, output tree and HTML
+// fragment quoted below was run against the `wcl` CLI first; the block
+// behaviour is read from crates/wcl_wdoc/src/{image,video,file}.rs and
+// crates/wcl_wdoc/lib/{image,video,file}.wcl, not from the older units.
+//
+// The live renders on this page use `../assets/…` because the build entry
+// is docs/reference/main.wcl — which is the point the "Where a source
+// resolves" section makes, demonstrated on itself.
 page wdoc_media {
   title = "Images, videos and file assets"
 
   h1 "Images, videos and file assets"
 
-  p "Not written yet. This chapter covers `image` sources, sizing and crops, the `video` block, the `file` block, and path resolution."
+  p "Three blocks put something that is not text into a document. `image` places a raster picture — on a page, or inside a diagram as a placeable shape. `video` embeds a clip on a page. `file` ships an arbitrary file into the build output and, when you ask it to, links to the copy. This chapter covers all three, the one rule they share about where a path points, and the consequence of that rule that surprises everyone: a built page is a set of references, and the references only resolve when something serves them."
+
+  p "Every command, output tree and HTML fragment below was run before it was written down. The images and the video on this page are live renders, not screenshots."
+
+  h2 "Three blocks, one source slot"
+
+  p "Each of the three takes its source as a **label** — the positional value between the kind and the brace — rather than as a named field:"
+
+  code wcl {
+    source = <<'WCL'
+image "assets/hero.png"  { alt = "Our team" }
+video "assets/intro.mp4" { poster = "assets/intro-thumb.jpg" }
+file  "src/setup.sh"     { as = "setup.sh" }
+WCL
+  }
+
+  p "[Documents, fields and blocks](lang_documents) covers the label form itself. What may go in that slot is one of three things, and the build decides which by reading the first characters of the string:"
+
+  table {
+    rows:
+      | "Source" | "Example" | "What the build does with it" |
+      | "A doc-relative path" | "`\"assets/hero.png\"`" | "Reads the file, copies it into the output, rewrites the reference to point at the copy" |
+      | "An `http://` or `https://` URL" | "`\"https://example.com/logo.png\"`" | "Emits it verbatim. Nothing is copied, and nothing is fetched at build time" |
+      | "A `data:` URI, or a path starting with `/`" | "`\"data:image/png;base64,iVBOR…\"`, `\"/logo.png\"`" | "Emits it verbatim, exactly as a URL" |
+  }
+
+  p "The bottom two rows are one rule. A source is **external** when it starts with `http://`, `https://`, `data:` or `/`; everything else is local. Only a local source is read from disk, only a local source is copied, and only a local source can fail the build by not being there. Note where the leading slash lands you: `\"/logo.png\"` is a _site-root_ URL for a file you deploy yourself, not an absolute filesystem path. wdoc will not go looking for it."
+
+  h2 "Where a source resolves"
+
+  p "A local path resolves against the folder of the **build entry file** — the `.wcl` you name on the command line — and not against the file the block happens to be written in."
+
+  p "That distinction bites as soon as a document splits its pages across files, which every real document does. This chapter is one of them. The block below lives in `docs/reference/pages/wdoc/wdoc_media.wcl`, but the book is built from `docs/reference/main.wcl`, so the path is written relative to `docs/reference/`:"
+
+  code text {
+    source = <<'TEXT'
+docs/
+  assets/
+    map/
+      blue-marble.png         <- the file on disk
+  reference/
+    main.wcl                  <- the build entry: every path resolves from here
+    pages/
+      wdoc/
+        wdoc_media.wcl        <- the block is written here
+TEXT
+  }
+
+  code wcl {
+    filename = "docs/reference/pages/wdoc/wdoc_media.wcl"
+    source = <<'WCL'
+image "../assets/map/blue-marble.png" {
+  alt   = "NASA's Blue Marble composite of the Earth"
+  width = 420.0
+}
+WCL
+  }
+
+  p "One entry, one base folder, however deep the page files nest under it. The exception is an `include`d sub-site: that is a build entry in its own right, so it brings its own base folder with it. See [Documents, pages and sites](wdoc_sites)."
+
+  callout "Move the entry, move every path" {
+    class = ["warning"]
+    body  = "Because the base folder is the entry's, moving `main.wcl` up or down one directory silently re-points every asset path in every page of the document — the pages themselves did not move. A local source that no longer exists fails the build loudly (see [When the file is not there](#when-the-file-is-not-there)), so you will hear about it; an external source will not notice at all."
+  }
+
+  h2 "Served, not opened from disk"
+
+  p "A copied asset lands in the output's `_wdoc/` folder and the page refers to it by a **relative URL**. That is the whole mechanism, and it has one consequence worth stating on its own:"
+
+  callout "A built page needs a server" {
+    class = ["note"]
+    body  = "Images, videos, copied files, icons and tilemaps are all referenced by relative URL into `_wdoc/`. Those URLs resolve when the output folder is **served** — `wcl wdoc serve`, a static host, any local web server. They do not reliably resolve when you double-click `index.html` and open the page directly from disk, because a browser applies different origin rules to a page it did not load over a connection. If a built page looks right but its pictures are missing, serve the folder before you go looking for a bug."
+  }
+
+  p "`wcl wdoc serve <entry>` is the short way to do that while you write. [Output targets](wdoc_outputs) covers the four builds and what each one emits."
+
+  h2 "image"
+
+  p "`image` is the only one of the three that is useful in two places. On a page it is an `<img>`. Inside a `diagram` or a `container` it is a placeable SVG shape, positioned like a `rect`. One block type, one set of fields, and the fields that belong to the other role are simply ignored."
+
+  h3 "On a page"
+
+  p "Write it directly under a `page`. This is a live render — NASA's Blue Marble composite, public domain, scaled down from its 1280×640 original:"
+
+  image "../assets/map/blue-marble.png" {
+    alt   = "The Earth from space: Africa and Europe under scattered cloud, the oceans deep blue"
+    width = 420.0
+  }
+
+  code wcl {
+    source = <<'WCL'
+image "assets/hero.png" {
+  alt   = "Our team at the launch"
+  width = 480.0
+  class = ["hero"]
+}
+WCL
+  }
+
+  p "That emits one element, with the block's own class on it and yours after it:"
+
+  code text {
+    source = <<'TEXT'
+<img class="wdoc-image hero" src="_wdoc/image-hero-8572175c.png"
+     alt="Our team at the launch" width="480" />
+TEXT
+  }
+
+  p "`class` adds names beside the built-in `wdoc-image` for your own rules to hook onto; [Themes and styling](wdoc_styling) covers where those rules go. `id` sets an explicit HTML id, so a link elsewhere in the document can point at the picture."
+
+  h3 "The copied filename"
+
+  p "The `src` above is not the name you wrote. A copied image is renamed to `image-<stem>-<hash>.<ext>`. The stem is the source's basename without its extension, with every non-alphanumeric character flattened to a dash and the result capped at 24 characters. The hash is eight hex digits computed from the **whole source string**, path and all."
+
+  p "Both halves earn their place. The stem keeps the folder readable when you go digging. The hash keeps two files named `logo.png` in two different folders from overwriting each other, and — because it is computed from the path, not from the bytes — the same source always produces the same output name. A rebuild does not churn the filenames, so a cache or a diff over the output folder stays quiet."
+
+  p "One source is registered once no matter how many pages reference it, and is copied once."
+
+  h3 "Alt text"
+
+  p "`alt` is the text a screen reader announces and the text a browser shows when the picture cannot load. It is optional in the schema and it should not be optional in your writing."
+
+  p "Two rules cover almost every case. If the picture carries information the surrounding prose does not, `alt` says what that information is — not what the picture looks like. If the picture is decoration, and the page reads correctly with it removed, write `alt = \"\"`: an empty `alt` tells a screen reader to skip the element, which is exactly right and is different from omitting the field."
+
+  callout "Omitted is not empty" {
+    class = ["warning"]
+    body  = "Leave `alt` out and the `<img>` carries no `alt` attribute at all. A screen reader falls back to announcing the filename — `image-hero-8572175c.png`, the generated one — which is noise for a decorative picture and useless for an informative one. Write the text, or write `alt = \"\"` on purpose."
+  }
+
+  h3 "Sizing"
+
+  p "`width` and `height` are floats and both are optional. What they mean depends on which of the two roles the block is in."
+
+  p "On a page they become the `width` and `height` attributes of the `<img>`, in pixels. Omit them and the browser uses the file's intrinsic size. The block also ships one style rule of its own:"
+
+  code text {
+    source = <<'TEXT'
+img.wdoc-image { max-width: 100%; height: auto; }
+TEXT
+  }
+
+  p "So a page image never overflows its column, and its rendered height follows from its rendered width. Give `width` the size you want and let `height` alone unless you are reserving layout space before the file loads."
+
+  p "Inside a diagram the same two fields are user units on the drawing surface, and there is a third: `scale` multiplies whatever size the box ends up with. Omit `width` and `height` there and wdoc reads the file's own pixel dimensions out of its header — which is a real read of a real file, and it can come up empty."
+
+  callout "Three formats have readable headers" {
+    class = ["note"]
+    body  = "The natural-size read understands PNG, GIF and JPEG. An SVG, a WebP, a corrupt file or any external URL yields no dimensions at all. In a diagram that leaves the box at 0×0 and the image invisible, so the build warns rather than drawing nothing quietly. On a page nothing is read and nothing warns: the browser sizes the picture itself, and an SVG is perfectly fine there."
+  }
+
+  p "The warning names the source, so you can go straight to the block:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build main.wcl --out _site
+warning: image "https://example.com/logo.svg": no intrinsic size available
+(unreadable or unsupported header, or an external URL) — set `width`/`height`
+or the diagram image renders invisible
+wrote 1 page
+TEXT
+  }
+
+  h3 "Cropping is a different block"
+
+  p "`image` places a whole file. It has no crop, no source rectangle and no sprite index — every field on it is about where the picture goes and how big it is, never about which part of the file to show."
+
+  p "Cropping a region out of a larger file is what the sheet-backed blocks are for, and there are three:"
+
+  table {
+    rows:
+      | "Block" | "Crops" | "Covered in" |
+      | "`tilemap`" | "A grid of indexed tiles out of one spritesheet" | "[Tilemaps and maps](wdoc_tilemaps)" |
+      | "`map`" | "Tiles out of a spritesheet, laid out as a world map" | "[Tilemaps and maps](wdoc_tilemaps)" |
+      | "`dopesheet`" | "A range of frames out of a sprite strip, played at a set `fps`" | "[Timelines and dopesheets](wdoc_timelines)" |
+  }
+
+  p "All three are placeable diagram shapes, like `image` is, and all three take the same kind of source — so the path rules and the served-not-opened rule above apply to them unchanged. If you want a fixed crop of a picture and none of those fit, crop the file before the build. wdoc does not decode images beyond reading their headers."
+
+  h3 "Inside a diagram"
+
+  p "`image` extends the diagram shape interface, so it is a legal child of any `diagram` or `container` and takes the shape vocabulary: `x` / `y` to place it, the anchor insets to pin it to a parent edge, and `connect_points` so a connection can attach to it. Live:"
+
+  diagram {
+    width  = 300
+    height = 140
+
+    image "../assets/map/blue-marble.png" {
+      x      = 20.0
+      y      = 25.0
+      width  = 120.0
+      height = 90.0
+    }
+
+    rect {
+      x      = 160.0
+      y      = 45.0
+      width  = 110.0
+      height = 50.0
+      fill   = "#a3be8c"
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 300  height = 140
+
+  image "assets/hero.png" {
+    x = 20.0  y = 25.0  width = 120.0  height = 90.0
+  }
+
+  rect { x = 160.0  y = 45.0  width = 110.0  height = 50.0  fill = "#a3be8c" }
+}
+WCL
+  }
+
+  p "The emitted shape is an SVG `<image>` at that box, and the diagram's viewBox grows to fit it like it does for any other shape. [The diagram canvas](wdoc_diagrams) covers placement, anchors and sizing in full; [Connections and routing](wdoc_diagram_connections) covers attaching edges."
+
+  callout "Aspect ratio is not preserved in a diagram" {
+    class = ["note"]
+    body  = "A diagram `image` is emitted with `preserveAspectRatio=\"none\"`, so it stretches to exactly the box you gave it. That is deliberate — a shape occupies the rectangle it is placed in — but it means a `width` / `height` pair that does not match the file's proportions distorts the picture. On a page the opposite holds: the shipped `height: auto` rule keeps the proportions for you."
+  }
+
+  h2 "video"
+
+  p "`video` embeds a clip on a page. Unlike `image` it is page-only: it is not a diagram shape and cannot be placed inside one."
+
+  h3 "The click-to-play facade"
+
+  p "A page with three embedded videos on it would, done naively, open three connections and pull several megabytes before the reader has asked for anything. `video` does not do that. It first renders a **facade** — a poster thumbnail with a play button drawn over it — and the small bundled player swaps in the real `<video>` or `<iframe>` only when the reader clicks. Nothing loads until someone wants it."
+
+  p "Click the poster below. It is a live local-file render: a short Big Buck Bunny excerpt, © Blender Foundation, CC-BY."
+
+  video "../assets/big-buck-bunny.mp4" {
+    poster = "../assets/big-buck-bunny-poster.jpg"
+    title  = "Big Buck Bunny (excerpt)"
+    width  = 420.0
+  }
+
+  code wcl {
+    source = <<'WCL'
+video "assets/intro.mp4" {
+  poster = "assets/intro-thumb.jpg"
+  title  = "Product intro"
+  width  = 420.0
+}
+WCL
+  }
+
+  p "`title` is the accessible label: it becomes the facade's `aria-label`, the poster's `alt`, and the link text this block degrades to on every target that cannot play anything. Write one."
+
+  p "`width` and `height` are pixels, applied as an inline style to the facade so the swapped-in player inherits the same box. Omit both and the facade is responsive, with the player at a 16:9 aspect ratio inside it."
+
+  h3 "Four kinds of source"
+
+  p "The source string is classified once, and the classification decides what the player becomes. There are four players and five shapes of source, because a URL that points straight at a video file uses the same native player a local file does:"
+
+  table {
+    rows:
+      | "Source" | "Recognised as" | "Plays as" |
+      | "A doc-relative path" | "A local file" | "A `<video>` element, from the copy in `_wdoc/`" |
+      | "A YouTube URL" | "The video id, from any of the usual URL shapes" | "A `youtube.com/embed/<id>` `<iframe>`, autoplaying on click" |
+      | "A Vimeo URL" | "The numeric video id" | "A `player.vimeo.com` `<iframe>`, autoplaying on click" |
+      | "Any other `http(s)` URL ending `.mp4` / `.webm` / `.ogg` / `.ogv` / `.mov` / `.m4v`" | "A direct video file" | "A `<video>` element, straight from that URL — external, so never copied" |
+      | "Any other `http(s)` URL" | "A generic embed" | "An `<iframe>` on that URL, verbatim" |
+  }
+
+  p "The YouTube shapes it understands are `watch?v=ID`, `youtu.be/ID`, `/embed/ID`, `/shorts/ID` and `/v/ID`, on `youtube.com`, `m.youtube.com`, `youtu.be` or `youtube-nocookie.com`, with or without `www.` and with any extra query parameters. Paste the URL from the address bar and it will be recognised."
+
+  code wcl {
+    source = <<'WCL'
+video "https://www.youtube.com/watch?v=aqz-KE-bpKQ" { title = "Trailer" }
+video "https://vimeo.com/76979871"                  { title = "Our talk" }
+video "https://example.com/player/embed/abc"        { title = "Hosted clip" }
+video "https://cdn.example.com/clip.webm"           { title = "Direct file" }
+WCL
+  }
+
+  h3 "Posters"
+
+  p "The poster is what the reader sees before they click, and it is resolved in three steps, first match winning:"
+
+  list {
+    li "**An explicit `poster`.** Any source the label slot accepts — a doc-relative path (copied, like the video) or an external URL."
+    li "**A YouTube auto-thumbnail.** For a YouTube source with no `poster`, the thumbnail is derived from the video id. Nothing local is needed."
+    li "**A plain placeholder.** A styled empty box with the play button on it."
+  }
+
+  p "The live YouTube facade below sets no `poster`; the thumbnail comes from step two:"
+
+  video "https://www.youtube.com/watch?v=aqz-KE-bpKQ" {
+    title = "Big Buck Bunny on YouTube"
+    width = 420.0
+  }
+
+  callout "Always give a local video a poster" {
+    class = ["tip"]
+    body  = "wdoc never decodes a video file, so it cannot pull a frame out of one to make a thumbnail. A local video with no `poster` shows the plain placeholder in HTML and prints as a bare italic line in PDF. The same `poster` is doing three jobs — the HTML facade, the PDF still, and the fallback link text's companion — so it is one field's worth of effort for the whole set of targets. A YouTube embed is the one case that can skip it."
+  }
+
+  h2 "file"
+
+  p "`file` is the general case behind the other two: it ships a file, of any kind, into the build output. Nothing is interpreted, nothing is decoded, nothing is renamed."
+
+  h3 "Ship it, and optionally link it"
+
+  p "One field decides which of the block's two jobs you get. Set `as` and the block renders a link to the copy, using that string as the link text. Leave `as` out and the block renders nothing at all — the file is still copied, and you reference it yourself at a path you can predict."
+
+  code wcl {
+    source = <<'WCL'
+# Renders: <a class="wdoc-file" href="scripts/setup.sh">run setup</a>
+file "src/setup.sh" { dir = "scripts"  as = "run setup" }
+
+# Renders nothing. `assets/logo.svg` is in the output all the same.
+file "src/logo.svg" { dir = "assets" }
+WCL
+  }
+
+  p "The silent form is the useful one more often than it looks. It is how you get a downloadable archive, a schema file, a script or a font into the output and then link to it from ordinary prose, from a template, or from your own CSS."
+
+  h3 "dir, and the output path"
+
+  p "This is where `file` parts company with `image` and `video`. A copied file **keeps its basename**, under the subdirectory `dir` names:"
+
+  code text {
+    source = <<'TEXT'
+file "src/setup.sh" { dir = "scripts" }   ->  <out>/scripts/setup.sh
+file "notes.txt"    {}                    ->  <out>/_wdoc/notes.txt
+TEXT
+  }
+
+  p "No hash, no rewriting. The emitted path is the one you would have guessed, which is the entire point: `scripts/setup.sh` is a path you can type into a `code` block, hand to a reader, or reference from a tool that has no idea wdoc exists. An absent `dir` routes the file to the shared `_wdoc/` asset folder alongside the images."
+
+  p "Predictability has a price, and the build charges it up front:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build main.wcl --out _site
+two different files map to the output path 'scripts/run.sh'
+('a/run.sh' and 'b/run.sh') — give them distinct names or `dir`s
+TEXT
+  }
+
+  p "Two different sources landing on one output path is a build error rather than a silent overwrite. Rename one, or send it to a different `dir`. Referencing the *same* source twice is not a collision — repeat references share one copy."
+
+  h3 "Skill folders"
+
+  p "The `:ai_skill` target is where `dir` was designed. A skill folder has a conventional shape — `SKILL.md`, `references/`, `scripts/`, `assets/` — and `file` is how you populate the last two:"
+
+  code wcl {
+    source = <<'WCL'
+page overview {
+  start = true
+  h1 "Demo skill"
+  file "src/setup.sh"    { dir = "scripts"  as = "run setup" }
+  file "assets/logo.svg" { dir = "assets" }
+  image "assets/hero.png" { alt = "The Earth" }
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc skill main.wcl --out _skill
+wrote 2 pages
+
+$ find _skill -type f | sort
+_skill/assets/logo.svg
+_skill/references/usage.md
+_skill/scripts/setup.sh
+_skill/SKILL.md
+_skill/_wdoc/image-hero-8572175c.png
+TEXT
+  }
+
+  p "Note the last line. `dir` belongs to `file` alone — an `image` still lands in `_wdoc/` under its generated name, on every target that copies at all. If you want a picture at a path you chose, ship it with `file` and reference it yourself."
+
+  h3 "No PDF"
+
+  p "A `file` on a page you are building to PDF is refused:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc pdf main.wcl --out handbook.pdf
+wcl::eval::user_error
+
+  × error: `file` has no :pdf implementation (it is native
+  │ on :html, :markdown, :skill); remove the block or waive it here with
+  │ `@except(backends = [:pdf])`
+    ╭─[main.wcl:25:3]
+ 24 │
+ 25 │   file "src/setup.sh" { as = "setup.sh" }
+    ·   ───────────────────┬───────────────────
+    ·                      ╰── error raised here
+ 26 │ }
+    ╰────
+TEXT
+  }
+
+  p "This is a stated non-goal, not an unfinished corner. A PDF is one self-contained document; there is no output folder beside it to copy a file into, so a rendered link would point at something that was never shipped — worse than no link at all. The block declares which targets it covers, and the build holds it to the declaration."
+
+  p "The fix is to say what you meant, per instance:"
+
+  code wcl {
+    source = <<'WCL'
+@except(backends = [:pdf])
+file "src/setup.sh" { dir = "scripts"  as = "run setup" }
+WCL
+  }
+
+  p "Capability says *cannot*; `@except` says *do not want to*. The build refuses until the two agree — see [Visibility](wdoc_visibility) for the backend axis and the rest of the decorator, and [Writing your own blocks](wdoc_extending) for what makes a block native to a target in the first place."
+
+  h2 "One page, four targets"
+
+  p "Here is the whole chapter as one project you can type out. Three files beside a `main.wcl`:"
+
+  code text {
+    source = <<'TEXT'
+media/
+  main.wcl
+  assets/
+    hero.png
+    intro.mp4
+    intro-thumb.jpg
+  src/
+    setup.sh
+TEXT
+  }
+
+  code wcl {
+    filename = "media/main.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+site handbook {
+  default_template = :webpage
+  title            = "Handbook"
+}
+
+page index {
+  start = true
+  title = "Media"
+
+  h1 "Media"
+
+  image "assets/hero.png" {
+    alt   = "The team at work"
+    width = 480.0
+  }
+
+  video "assets/intro.mp4" {
+    poster = "assets/intro-thumb.jpg"
+    title  = "Product intro"
+    width  = 480.0
+  }
+
+  file "src/setup.sh" { as = "setup.sh" }
+}
+WCL
+  }
+
+  p "Build it to HTML and look at what landed:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build main.wcl --out _site
+wrote 1 page
+
+$ find _site -type f | grep -v woff2
+_site/index.html
+_site/_wdoc/favicon.svg
+_site/_wdoc/image-hero-8572175c.png
+_site/_wdoc/pages.json
+_site/_wdoc/poster-intro-thumb-5b050ec9.jpg
+_site/_wdoc/setup.sh
+_site/_wdoc/video-intro-e1bb5f9c.mp4
+_site/_wdoc/wdoc-video.js
+TEXT
+  }
+
+  p "Four assets, three naming schemes doing one job each. The image and the video carry a stem and a hash. The poster is a second registered asset with its own `poster-` prefix, because a thumbnail is a file in its own right. `setup.sh` kept its name, because `file` promised it would. And `wdoc-video.js` is there because a `video` was rendered — the click-to-play player ships only when something needs it."
+
+  p "The three blocks in the page body:"
+
+  code text {
+    source = <<'TEXT'
+<img class="wdoc-image" src="_wdoc/image-hero-8572175c.png"
+     alt="The team at work" width="480" />
+
+<div class="wdoc-video" data-kind="local" data-src="_wdoc/video-intro-e1bb5f9c.mp4"
+     aria-label="Product intro" style="width:480px;">
+  <img src="_wdoc/poster-intro-thumb-5b050ec9.jpg" alt="Product intro" />
+  <span class="wdoc-video-play" aria-hidden="true"></span>
+</div>
+
+<a class="wdoc-file" href="_wdoc/setup.sh">setup.sh</a>
+TEXT
+  }
+
+  p "`data-kind` and `data-src` are how the facade tells the player what to build and where to point it. Until a click happens there is no `<video>` element on the page at all."
+
+  p "Now the same source as Markdown. The blocks are the same; only the readings differ:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc markdown main.wcl --out _md
+wrote 1 page
+
+$ find _md -type f
+_md/index.md
+_md/_wdoc/image-hero-8572175c.png
+_md/_wdoc/setup.sh
+_md/_wdoc/video-intro-e1bb5f9c.mp4
+
+$ cat _md/index.md
+# Media
+
+![The team at work](_wdoc/image-hero-8572175c.png)
+
+[Product intro](_wdoc/video-intro-e1bb5f9c.mp4)
+
+[setup.sh](_wdoc/setup.sh)
+TEXT
+  }
+
+  p "Three things to read out of that. The image is a Markdown image, alt text and all. Static Markdown cannot play anything, so the video degrades to a link to the copied file — labelled with its `title`, which is why `title` was worth writing. And the poster is gone: with no facade to render, it was never referenced, so it was never copied. A registry only ships what something asked for."
+
+  p "The PDF build is the one that stops, on the `file`:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc pdf main.wcl --out handbook.pdf
+wcl::eval::user_error
+
+  × error: `file` has no :pdf implementation …
+
+$ wcl wdoc pdf main.wcl --out handbook.pdf     # with @except(backends = [:pdf])
+wrote 1 pdf
+TEXT
+  }
+
+  p "Waive the `file` and the PDF renders. The image is **embedded** in it rather than referenced — a PDF is one self-contained document, so the raster bytes go inside. The video, having nothing to play, prints its poster; an online video would print a link beneath the poster, and a local one prints the poster alone, because a path to a file on your machine is useless in a document you hand to somebody."
+
+  h3 "When the file is not there"
+
+  p "A missing local source is a build error, on the copy:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build main.wcl --out _site
+copy assets/nope.png -> _site/_wdoc/image-nope-b0f360e4.png:
+No such file or directory (os error 2)
+TEXT
+  }
+
+  p "Read the two paths in it. The one on the left is where wdoc looked — the source you wrote, resolved against the entry's folder — and the one on the right is where it was going. When the left-hand path is not the file you meant, the base folder is what to check first."
+
+  p "A PDF build is the exception, because it never copies: a missing image there is a warning that names the absolute path it tried, and the picture is left out of the document. An external source is not checked on any target — nothing is fetched at build time, so a dead URL is only ever a dead URL in the reader's browser. In a PDF an external image is simply absent, since there is no network to fetch it from and nothing to reference."
+
+  h2 "The three blocks side by side"
+
+  p "This is the comparison the rest of the chapter has been building toward. Reach for the row, not the block."
+
+  table {
+    rows:
+      | "" | "`image`" | "`video`" | "`file`" |
+      | "Where it may go" | "A page, **or** a diagram" | "A page" | "A page" |
+      | "Renders by itself" | "Always" | "Always" | "Only with `as`" |
+      | "Output path" | "`_wdoc/image-<stem>-<hash>.<ext>`" | "`_wdoc/video-<stem>-<hash>.<ext>`" | "`<dir>/<basename>`, unchanged" |
+      | "You can predict the path" | "No" | "No" | "**Yes** — that is the point" |
+      | "Inspects the file's contents" | "Its header, for the natural size" | "Never" | "Never" |
+      | "HTML" | "`<img>`" | "Click-to-play facade" | "A link, or silence" |
+      | "Markdown" | "`![alt](path)`" | "A link to the file or the URL" | "A link, or silence" |
+      | "Skill folder" | "As Markdown, into `_wdoc/`" | "As Markdown" | "As Markdown, into `dir`" |
+      | "PDF" | "Embedded, local sources only" | "Poster, plus a link when online" | "**Refused** — waive with `@except`" |
+  }
+
+  p "Three questions settle almost every choice between them. Does the reader need to see it on the page, or to get hold of the file? Does the path have to be one you can write down? And is a PDF one of your targets?"
+
+  h2 "Where to go next"
+
+  list {
+    li "[Output targets](wdoc_outputs) — the four builds, what each emits, and why a block may cover only some of them."
+    li "[Visibility](wdoc_visibility) — `@only` / `@except`, the backend axis, and per-instance waivers."
+    li "[The diagram canvas](wdoc_diagrams) — placement, anchors and sizing for `image` in its shape role."
+    li "[Tilemaps and maps](wdoc_tilemaps) — cropping tiles out of a spritesheet."
+    li "[Timelines and dopesheets](wdoc_timelines) — cropping and playing a strip of frames."
+    li "[Icons](wdoc_icons) — the other asset family, drawn from bundled packs rather than your own files."
+    li "[Themes and styling](wdoc_styling) — where the CSS behind `class` is declared."
+    li "[Writing your own blocks](wdoc_extending) — lowering, native blocks, and declared backend coverage."
+  }
 }
