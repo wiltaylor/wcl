@@ -1,8 +1,0 @@
-// entities — one import per entry.
-//
-// The wdoc components now live as `fact`s (see ../facts/), so the only entity
-// unit is the maintainer. The entity plumbing (the `entity` block type in
-// base.wcl, the entity_body component, the entities index page, and the
-// per-entity projection repeaters) is kept ready for other kinds of
-// information; add an `entity <id> { … }` file here and import it to use it.
-import "./wil_taylor.wcl"

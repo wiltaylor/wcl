@@ -1,6 +1,0 @@
-// processes — one import per entry.
-import "./build_serve.wcl"
-import "./render_skill.wcl"
-import "./render_pdf_markdown.wcl"
-import "./render_presentation.wcl"
-import "./review_comments.wcl"

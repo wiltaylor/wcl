@@ -1,3 +1,0 @@
-// entities — one import per entry.
-import "./wil_taylor.wcl"
-import "./wcl_cli.wcl"

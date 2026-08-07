@@ -85,20 +85,23 @@ wplan-schema-extract:
 cli-run *ARGS:
     cargo run -p wcl -- {{ARGS}}
 
-# Open the browser editor on this repo (root document: docs/main.wcl, so the preview pane renders the docs site)
+# Open the browser editor on this repo (root document: docs/reference/main.wcl, so the preview pane renders the reference book)
 [group('dev')]
 editor *ARGS:
-    cargo run -p wcl -- editor docs/main.wcl --addr 127.0.0.1:8139 {{ARGS}}
+    cargo run -p wcl -- editor docs/reference/main.wcl --addr 127.0.0.1:8139 {{ARGS}}
 
 # Serve examples/wdoc/main.wcl — hot-reload dev server (--site picks one of its three sites; flags after --). Review comments live in `just editor`'s preview pane.
 [group('dev')]
 wdoc-serve *ARGS:
     cargo run -p wcl -- wdoc serve examples/wdoc/main.wcl {{ARGS}}
 
-# Serve docs/ in edit mode (landing at /, reference book at /reference/) — click a block to edit it in place. Review comments live in `just editor`'s preview pane (list with `just docs-comments`)
+# Serve the wcl.dev landing page (docs/landing/main.wcl) in edit mode — click a block to edit it in place
 [group('dev')]
 docs-serve *ARGS:
-    cargo run -p wcl -- wdoc serve docs/main.wcl --addr 127.0.0.1:8137 --edit {{ARGS}}
+    cargo run -p wcl -- wdoc serve docs/landing/main.wcl --addr 127.0.0.1:8137 --edit {{ARGS}}
+
+# Two entries mean two `serve` processes on two ports, so the landing's
+# `./reference/` link does not resolve while serving locally.
 
 # Serve the combined reference book (docs/reference/main.wcl) — hot-reload dev server
 [group('dev')]
@@ -120,20 +123,15 @@ wad-md *ARGS:
 wad-spec REV:
     cargo run -p wcl -- wad spec --from {{REV}} .wad/wad.wcl
 
-# List review @comments left in docs/ via `just editor`'s preview pane (--format json, or `resolve <id>` to delete one)
-[group('dev')]
-docs-comments *ARGS:
-    cargo run -p wcl -- wdoc comments docs/main.wcl {{ARGS}}
-
-# Render the project's docs/ site to Markdown under docs/_md/ (gitignored) —
+# Render the reference book to Markdown under docs/_md/ (gitignored) —
 # smoke-tests `wcl wdoc markdown` (folder of .md + standalone .svg diagrams)
 [group('dev')]
 md-build *ARGS:
-    cargo run -p wcl -- wdoc markdown docs/main.wcl --out docs/_md {{ARGS}}
+    cargo run -p wcl -- wdoc markdown docs/reference/main.wcl --out docs/_md {{ARGS}}
 
-# Render the example and the docs to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`
+# Render the example and the reference book to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`
 [group('dev')]
-wdoc-pdf: (wdoc-pdf-render "examples/wdoc/main.wcl" "target/pdf/examples") (wdoc-pdf-render "docs/main.wcl" "target/pdf/docs")
+wdoc-pdf: (wdoc-pdf-render "examples/wdoc/main.wcl" "target/pdf/examples") (wdoc-pdf-render "docs/reference/main.wcl" "target/pdf/docs")
 
 [private]
 wdoc-pdf-render file out:
