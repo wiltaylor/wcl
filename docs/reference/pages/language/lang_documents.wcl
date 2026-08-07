@@ -1,11 +1,527 @@
 // Chapter 1 — Documents, fields and blocks.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// The exemplar chapter (#159). Every snippet below was run against the
+// `wcl` CLI before it was written down; nothing here is paraphrased from
+// the older concept units without being checked first.
 page lang_documents {
   title = "Documents, fields and blocks"
 
   h1 "Documents, fields and blocks"
 
-  p "Not written yet. This chapter covers a `.wcl` file as a document: fields, blocks, labels, nesting, tables, `self` and `parent`, and `let` items."
+  p "A `.wcl` file is a **document**. It is not a stream of settings. It is a tree of _items_, and a schema describes the shape of that tree. This chapter covers the four item forms you write most: fields, blocks, tables and `let` bindings. It names the nine others, so you know where the rest of the book goes. It also covers comments, and the two keywords that navigate the tree from inside it."
+
+  p "Every file and every command below was run before it was written down. Type them and compare."
+
+  h2 "A file is a document"
+
+  p "Start with a service inventory. Save it as `inventory.wcl`:"
+
+  code wcl {
+    filename = "inventory.wcl"
+    source = <<'WCL'
+# inventory.wcl — every service we run, and where.
+
+# What a service is.
+@block("service")
+type Service {
+  @inline(0) name: identifier
+  port:   u32
+  region: utf8
+  @child("limits") limits: Limits?
+}
+
+# What a service may spend.
+@block("limits")
+type Limits {
+  cpu:    f64
+  memory: std.ByteSize
+}
+
+# What the file as a whole may contain.
+@document
+type Inventory {
+  owner: utf8
+  @children("service") services: list<Service>
+}
+
+owner = "platform"
+
+service web {
+  port   = 8080u32
+  region = "us-east-1"
+
+  limits {
+    cpu    = 0.5
+    memory = 512MiB
+  }
+}
+
+service db {
+  port   = 5432u32
+  region = "us-east-1"
+}
+WCL
+  }
+
+  p "Three commands read it. `wcl check` validates the document against its schema and says nothing else:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check inventory.wcl
+OK
+TEXT
+  }
+
+  p "`wcl get` resolves a dotted path and prints one value:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get inventory.wcl owner
+"platform"
+$ wcl get inventory.wcl services.web.port
+8080u32
+$ wcl get inventory.wcl services.web.limits.memory
+536870912
+TEXT
+  }
+
+  p "`wcl parse` prints the whole evaluated tree, so you can see what the document became rather than what you typed:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl parse inventory.wcl
+...
+owner = "platform"
+service web {
+  port = 8080u32
+  region = "us-east-1"
+  limits {
+    cpu = 0.5
+    memory = 536870912
+  }
+}
+service db {
+  port = 5432u32
+  region = "us-east-1"
+}
+TEXT
+  }
+
+  p "Read the path `services.web.limits.memory` from the left. `services` is the field the `@document` schema declares to gather every `service` block. `web` picks one of them by its label. `limits` is the nested block. `memory` is a field on it. Note that `512MiB` has already become the number 536870912: a unit is part of the value, not part of the text. [Values and primitives](lang_values) covers that; [Schemas](lang_schemas) covers `@document`, `@block`, `@child` and `@children`."
+
+  callout "There is no schema-free document" {
+    class = ["note"]
+    body  = "Data needs a schema to stand on. A top-level field that no `@document` type declares fails with `top-level field 'owner' has no @document schema`. A block kind that no `@block` or `@table` type declares fails the same way. A file that declares nothing but types, `let` bindings and functions is fine — it is a library, not data. Every complete example in this chapter therefore carries its schema."
+  }
+
+  h2 "The thirteen item forms"
+
+  p "A document is a list of items, and there are exactly thirteen kinds of item. The list below is the map of the whole language — most chapters of this book are one row of it in depth."
+
+  table {
+    rows:
+      | "Item"                   | "Written as"                              | "Covered in" |
+      | "Field"                  | "`name = expr`"                           | "[This chapter](#fields)" |
+      | "Block"                  | "`kind \"label\" { … }`"                    | "[This chapter](#blocks-and-labels)" |
+      | "Table"                  | "`name:` then one pipe row per record"    | "[This chapter](#tables)" |
+      | "`let` item"             | "`let name = expr`"                       | "[This chapter](#let-items)" |
+      | "`type` declaration"     | "`type Name { … }`"                       | "[Types](lang_types), [Schemas](lang_schemas)" |
+      | "`interface` declaration"| "`interface Name { … }`"                  | "[Types](lang_types)" |
+      | "`union` declaration"    | "`union Name { … }`"                      | "[Types](lang_types)" |
+      | "`symbol_set` declaration" | "`symbol_set Name { … }`"               | "[Values and primitives](lang_values)" |
+      | "`namespace` declaration"| "`namespace app.web`"                     | "[Namespaces and imports](lang_namespaces)" |
+      | "`use` declaration"      | "`use lib.Tier`"                          | "[Namespaces and imports](lang_namespaces)" |
+      | "`import`"               | "`import \"./lib.wcl\"` or `import <wdoc.wcl>`" | "[Namespaces and imports](lang_namespaces)" |
+      | "`connection` declaration" | "`connection DependsOn: Service -> Service : EdgeKind`" | "[Connections](lang_connections)" |
+      | "Connection statement"   | "`web -> db :uses`"                       | "[Connections](lang_connections)" |
+  }
+
+  p "Thirteen forms, fourteen spellings: `fn name(a: T) -> U { … }` is a **`let` item** in disguise. It binds a name to a function value exactly as `let name = fn(a: T) -> U { … }` does, and differs only in that the editor tooling indexes it. See [Functions](lang_functions)."
+
+  p "Every one of the fourteen is legal in one file. This one checks green, beside a `lib.wcl` holding `namespace lib` and `type Tier { name: utf8 }`:"
+
+  code wcl {
+    filename = "map.wcl"
+    source = <<'WCL'
+namespace app                      # 1. namespace declaration
+import "./lib.wcl"                 # 2. import
+use lib.Tier                       # 3. use declaration
+
+symbol_set EdgeKind { uses }       # 4. symbol_set declaration
+
+interface Named {                  # 5. interface declaration
+  name: utf8
+}
+
+union Scale {                      # 6. union declaration
+  Small { replicas: u32 }
+  Large { replicas: u32  shards: u32 }
+}
+
+@table("route")
+type Route {                       # 7. type declaration
+  verb: utf8
+  path: utf8
+}
+
+@block("service")
+type Service {
+  @inline(0) name: utf8
+  port:  u32
+  scale: Scale
+  @children("route") routes: list<Route>
+}
+
+connection DependsOn: Service -> Service : EdgeKind   # 8. connection declaration
+
+@document
+type Cfg {
+  owner: utf8
+  @children("service")    services: list<Service>
+  @connections(DependsOn) deps:     list<DependsOn>
+}
+
+let team = "platform"              # 9. let item
+
+fn label(s: utf8) -> utf8 { s }    # 10. fn item — a let item in disguise
+
+owner = label(team)                # 11. field
+
+service "web" {                    # 12. block
+  port  = 8080u32
+  scale = Scale::Small { replicas: 2u32 }
+  routes:                          # 13. table
+    | "GET"  | "/users" |
+    | "POST" | "/users" |
+}
+
+service "db" { port = 5432u32  scale = Scale::Large { replicas: 5u32, shards: 3u32 } }
+
+web -> db :uses                    # 14. connection statement
+WCL
+  }
+
+  p "The numbering above is for reading, not for the parser. **Item order does not matter.** A field may read a `let` declared below it. A block may name a type declared at the end of the file. A `use` may precede the `import` that brings its target in. Nothing in a document is a forward reference, because nothing evaluates until something asks — see [How a document evaluates](lang_evaluation)."
+
+  h2 "Comments"
+
+  p "There are two line-comment forms, `//` and `#`. Both run to the end of the line. There are **no block comments**: `/* … */` is a parse error."
+
+  code wcl {
+    source = <<'WCL'
+// A leading comment describes the next item.
+service "web" {
+  port   = 8080u32   // a trailing comment sits on the same line
+  # hash comments work too
+  region = "us-east-1"
+}
+WCL
+  }
+
+  p "Comments are part of the tree, not stripped noise. `wcl fmt` and the `wcl set` edit path both keep them. They also keep the blank lines that group your items, up to one blank line between any two. What `wcl fmt` does not keep is the choice of marker: it rewrites `//` to `#`."
+
+  code text {
+    source = <<'TEXT'
+$ cat two-forms.wcl
+// The edge service.
+# Two comment forms, one meaning.
+@block("service")
+type Service {
+  @inline(0) name: utf8
+  port: u32   // the listening port
+}
+
+$ wcl fmt two-forms.wcl
+# The edge service.
+# Two comment forms, one meaning.
+@block("service")
+type Service {
+  @inline(0) name: utf8
+  port: u32  # the listening port
+}
+TEXT
+  }
+
+  h3 "Doc comments"
+
+  p "A **doc comment** is not a third form. It is the unbroken run of line comments directly above a declaration. \"Unbroken\" is the rule that matters: a blank line ends the run, and anything above the blank line belongs to nothing."
+
+  p "The `doc_comment` builtin reads the run back. That is how the language server fills a hover card, and how a generated reference page gets its prose:"
+
+  code wcl {
+    filename = "service.wcl"
+    source = <<'WCL'
+// The edge service: terminates TLS and forwards to the app tier.
+// Owned by the platform team.
+@block("service")
+type Service {
+  @inline(0) name: utf8
+  port: u32
+}
+
+@document
+type Cfg {
+  @children("service") services: list<Service>
+  service_doc: utf8
+}
+
+service_doc = doc_comment(Service)
+
+service "web" { port = 8080u32 }
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl get service.wcl service_doc
+"The edge service: terminates TLS and forwards to the app tier.\nOwned by the platform team."
+TEXT
+  }
+
+  p "Doc comments attach to declarations — types, interfaces, unions, union variants, symbol sets and the fields inside them. A comment above a _field_ or a _block instance_ is an ordinary comment: kept, formatted, and not readable as data. [Builtins](lang_builtins) documents `doc_comment`."
+
+  h2 "Fields"
+
+  p "A field binds a name to a value with `=`:"
+
+  code wcl {
+    source = <<'WCL'
+name    = "alpha"
+count   = 3u32
+enabled = true
+ratio   = count / 2u32
+WCL
+  }
+
+  p "The right-hand side is any expression, not just a literal: a reference to another name, a call, arithmetic, a conditional. [Expressions and operators](lang_expressions) covers the whole grammar. Fields evaluate **lazily**. Nothing on the right of an `=` runs until something asks for that field. That is why `ratio` may name `count` whichever line comes first. [How a document evaluates](lang_evaluation) covers the order, the caching and the cycle detection."
+
+  p "Fields are the leaves of the document. Every other item exists to group them, constrain them, or compute them."
+
+  h2 "Blocks and labels"
+
+  p "A block is a named group of fields that may also hold other blocks. The name before the brace is the block's **kind**; the schema for that kind decides which fields are legal inside it."
+
+  code wcl {
+    source = <<'WCL'
+service "web" {
+  port   = 8080u32
+  region = "us-east-1"
+}
+WCL
+  }
+
+  p "Between the kind and the brace you may write **labels** — positional values that identify the instance. A label is any scalar: a string, a bare identifier, a number, a boolean or a symbol. The schema binds each position to a field name with `@inline(n)`:"
+
+  code wcl {
+    source = <<'WCL'
+@block("route")
+type Route {
+  @inline(0) verb: utf8      # first label
+  @inline(1) path: utf8      # second label
+  handler: identifier
+}
+
+# Two labels: verb = "GET", path = "/users".
+route "GET" "/users" {
+  handler = list_users
+}
+WCL
+  }
+
+  h3 "Bare labels and quoted labels"
+
+  p "`service web` and `service \"web\"` are both legal, and both address the same way. The choice is about the label text, not about the declared type. Write it bare when it is a valid identifier — letters, digits and underscores, not starting with a digit. Quote it otherwise: `service \"us-east-1\"`, `page \"Getting started\"`."
+
+  p "Declaring the field as `identifier` rather than `utf8` says what the label _means_: a name that other parts of the document may point at, not free text. [Values and primitives](lang_values) covers the `identifier` type, and [Schemas](lang_schemas) covers the reference checking that hangs off it."
+
+  p "A block whose body is empty may drop the braces entirely, which makes a label-only instance read like a declaration:"
+
+  code wcl {
+    source = <<'WCL'
+flag beta { on = true }
+flag legacy
+WCL
+  }
+
+  p "A kind may also be namespace-qualified — `wdoc::process { … }` names the `process` kind in the `wdoc` namespace, and `foo.bar::process` a deeper one. See [Namespaces and imports](lang_namespaces)."
+
+  callout "A label is not a readable field" {
+    class = ["warning"]
+    body  = "`@inline(n)` tells the schema which field a label _fills_. The document model reads labels through the block's label list. It does not make the label resolvable by that name from an expression: inside the block above, `self.verb` does not evaluate to `\"GET\"`. When a sibling field has to read the value, declare it as an ordinary field and write it out."
+  }
+
+  h2 "Nesting"
+
+  p "A block may hold further blocks, to any depth. What is legal at each level is the schema's business, not the parser's: `@child(\"kind\")` admits one, `@children(\"kind\")` admits a list."
+
+  code wcl {
+    source = <<'WCL'
+service "web" {
+  metadata {
+    region = "us-east-1"
+    tags {
+      environment = "prod"
+    }
+  }
+}
+WCL
+  }
+
+  p "Nesting is how a dotted path gets long. `wcl get inventory.wcl services.web.limits.memory` walks the gather field, then the label, then the nested block, then the field."
+
+  p "A block that the enclosing schema does not admit is an error, and so is a field the block's own schema does not declare. Add `zone = \"a\"` to the `web` service of `inventory.wcl` and `wcl check` names the field, the schema and nothing else:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check inventory.wcl
+wcl::eval::schema_violation
+
+  × field 'zone' is not declared by schema 'Service'
+
+inventory.wcl: 1 schema violation
+TEXT
+  }
+
+  h2 "Tables"
+
+  p "When many blocks of one kind share a shape and carry nothing but scalars, writing each as a block is noise. A **table** writes the same data one record per line. Give the row type a `@table(\"kind\")` decorator instead of `@block(\"kind\")`, then write the parent's field name with a colon and the rows underneath:"
+
+  code wcl {
+    filename = "api.wcl"
+    source = <<'WCL'
+@table("route")
+type Route {
+  verb: utf8
+  path: utf8
+  auth: bool
+}
+
+@block("api")
+type Api {
+  @inline(0) name: utf8
+  @children("route") routes: list<Route>
+}
+
+@document
+type Cfg {
+  @children("api") apis: list<Api>
+}
+
+api "public" {
+  routes:
+    | "GET"    | "/users"     | false |
+    | "POST"   | "/users"     | true  |
+    | "DELETE" | "/users/:id" | true  |
+}
+WCL
+  }
+
+  p "Note the two spellings of one name. The **header** is the parent field (`routes:`, declared as `@children(\"route\")`), and each row becomes one `route`. The colon is what distinguishes a table header from a field: `routes = …` is a field, `routes:` opens a table."
+
+  p "Three rules follow from a row being a block:"
+
+  list {
+    li "**Cells are positional.** They fill the row type's fields in declaration order — first cell to the first declared field, and so on. Nothing names a column."
+    li "**A row is one cell per declared field.** Supply them all, in order."
+    li "**A cell is an expression, evaluated as a literal.** Strings, numbers, booleans and symbols all work. A bare identifier does not parse here — write it as a string."
+  }
+
+  p "The trailing pipe is optional, and a header with no rows at all is legal. The row count is checked against the parent field: `@children(\"route\", max = 1)` with two rows fails with `field 'routes' allows at most 1 'route' children, found 2`."
+
+  callout "A pipe row is not validated cell by cell" {
+    class = ["warning"]
+    body  = "The arity and cell-type rules above are the contract, not a check `wcl check` currently runs. A short row, a long row and a wrongly-typed cell all pass today. The same row written out as a block _is_ checked. Against a `@table` type, `route \"GET\" { path = \"/users\" }` reports `table row for 'route' has 1 values, expected 3`. Write your rows correctly; the tool will not catch you."
+  }
+
+  p "One thing a table is not is addressable. `wcl get` walks fields and labelled blocks. A row has neither a name nor a label, so no dotted path reaches into one. Rows are for the program that consumes the document — a `wdoc` build, or a host reading it through the Rust API. Tables also live **inside a block**: a table at the document's top level parses, but its rows never reach a root gather field."
+
+  h2 "self and parent"
+
+  p "Two contextual keywords navigate the tree from inside it. `self` is the block the expression is written in. `parent` is the block one level out."
+
+  code wcl {
+    source = <<'WCL'
+service web {
+  port       = 8080u32
+  region     = "us-east-1"
+  admin_port = self.port + 1u32     # this block's own `port`
+
+  limits {
+    # `parent` reaches back out to the service.
+    label = $"limits for ${parent.region}"
+  }
+}
+WCL
+  }
+
+  p "Both are keywords only in expression position, so a field or type named `self` or `parent` keeps working everywhere else. At the top level of a file `self` is the document itself, and `parent` is an error — there is no scope above the root. One level in, `parent` is the document."
+
+  callout "Navigators, not copies" {
+    class = ["note"]
+    body  = "`self` and `parent` resolve lazily through the lexical scope chain, exactly as a `&T` reference field does. They read the value at the moment the field is forced; they do not snapshot it when the block is parsed."
+  }
+
+  h2 "let items"
+
+  p "A `let` item binds a name to a value the way a field does:"
+
+  code wcl {
+    source = <<'WCL'
+let base_port = 8000u32
+
+service "web" {
+  port       = base_port
+  admin_port = self.port + 1u32
+}
+WCL
+  }
+
+  p "The difference is that a `let` is **not document data**. It is a composition helper: sibling and descendant expressions resolve it by name, and nothing else can see it at all."
+
+  code text {
+    source = <<'TEXT'
+$ wcl get scratch.wcl services.web.port
+8000u32
+$ wcl get scratch.wcl base_port
+no such path: base_port
+TEXT
+  }
+
+  p "That invisibility is deliberate and it is total. A `let` is absent from the document's field list and block list. It is absent from `wcl parse` output and from a JSON serialization. `wcl get` cannot address it. And the schema never validates it — which is the difference you can feel."
+
+  p "Recall the `zone = \"a\"` that [Nesting](#nesting) refused. Write the same line as `let zone = \"a\"` and `wcl check` prints `OK`. The schema never saw it."
+
+  p "Use a `let` for the intermediate value that keeps the real fields readable: a base port, a shared prefix, a list you map over twice. Use a field for anything a consumer of the document is meant to read."
+
+  callout "Two lets, one keyword" {
+    class = ["info"]
+    body  = "The `let` **item** described here sits at file or block scope and takes no semicolon. There is also an expression-level `let name = expr;` that lives inside a `{ … }` block expression and is scoped to it. They share a keyword and nothing else. See [Expressions and operators](lang_expressions)."
+  }
+
+  h2 "Four ways to write a value"
+
+  p "Fields, blocks, tables and `let` items all put a value in a file, and they are not interchangeable. The table below is the comparison — what each form is _for_, and what the document model can see of it."
+
+  table {
+    rows:
+      | "Form"     | "Holds"                        | "Reachable by `wcl get`"              | "Schema-checked" | "Reach for it when" |
+      | "Field"    | "One value"                    | "Yes"                                 | "Yes"            | "A consumer reads this value" |
+      | "Block"    | "A group of fields and blocks" | "Yes — by kind, or by gather field and label" | "Yes"    | "The value is a thing with parts" |
+      | "Table"    | "Many blocks of one kind"      | "No — a host walks the rows"          | "Row count only" | "Many records share one flat shape" |
+      | "`let`"    | "One value"                    | "No"                                  | "No"             | "Only other expressions read it" |
+  }
+
+  p "Run the difference rather than trusting the table. Take `inventory.wcl` from the top of this chapter and add `zone` to the `web` service four ways. As a field, `wcl check` refuses it: `field 'zone' is not declared by schema 'Service'`. As a nested block, it refuses it again: `block kind 'zone' is not allowed inside 'service'`. As a `let`, `check` prints `OK` and `wcl get inventory.wcl services.web.zone` answers `no such path` — the binding did its work and left nothing behind. As a table header, `check` also prints `OK`, and that one is the gap the [warning above](#tables) describes rather than a fourth kind of freedom."
+
+  p "That is the whole idea of a WCL document in one experiment. What you write is either data — visible, addressable, checked against a declared shape — or it is scaffolding that helps you write the data. The document keeps the two apart for you."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Values and primitives](lang_values) — what may sit on the right of an `=`: the numeric types, strings and heredocs, symbols, units."
+    li "[Lists, tensors and records](lang_collections) — the composite values behind a `list<T>` gather field."
+    li "[Schemas](lang_schemas) — `@document`, `@block`, `@child`, `@children`, `@inline`, `@table`, and what `wcl check` actually checks."
+    li "[How a document evaluates](lang_evaluation) — laziness, caching, cycles, and the order things really run in."
+    li "[The CLI](lang_cli) — `check`, `parse`, `get`, `set`, `fmt`, `diff` and the rest in full."
+  }
 }
