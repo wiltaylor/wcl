@@ -1,9 +1,9 @@
 # Websites
 
-The **website** workflow builds a marketing or product site. You bring the design — the HTML
-and CSS from a Figma export, a Claude artifact, a hand-built theme, or an external bundle — and
-you slot wdoc-rendered content into it. The split is deliberate: HTML and CSS for the shell,
-wdoc for the words.
+The **website** workflow builds a marketing or product site. You bring the design: the HTML and
+CSS from a Figma export, a Claude artifact, a hand-built theme, or an external bundle. You then
+slot wdoc-rendered content into it. The split is deliberate — HTML and CSS for the shell, wdoc
+for the words.
 
 Start with `default_template = :website` for the built-in shell, or author your own `template`
 for a real design. `wcl init website ./my-site` scaffolds a complete project.
@@ -58,7 +58,7 @@ That renders:
 ```html
 <header class="nav"><a class="brand" href="index.html">Acme</a></header>
 <section class="hero"><h1 class="heading-1" id="build-something-great">Build something great</h1>
-</section><main class="content"><h2 class="heading-2" id="about">…About</h2>
+</section><main class="content"><h2 class="heading-2" id="about"><span class="heading-marker">§ 1</span>About</h2>
 <p>Everything outside a named fill lands in the reserved content slot.</p>
 </main><footer class="foot"><p>© Built with WCL + wdoc.</p></footer>
 ```
@@ -95,10 +95,10 @@ Filling a slot that no layout used by this site declares is a build error:
 page `topic` fills slot `notes`, but no layout used by this site declares it
 ```
 
-The `name? { … }` conditional form is narrower than it looks. It drops the fill only when
-**some** layout used by this site declares the slot but the **selected** template does not —
-the case where a page overrides `template` and loses a slot. It does not silence a slot no
-layout on the site declares:
+The `name? { … }` conditional form is narrower than it looks. It drops the fill in one case
+only: **some** layout used by this site declares the slot, but the **selected** template does
+not. That is the case where a page overrides `template` and loses a slot. It does not silence a
+slot that no layout on the site declares:
 
 ```console
 page `topic` conditionally fills slot `notes`, but no layout used by this site declares it
@@ -142,8 +142,8 @@ The result:
 ```html
 <link rel="icon" type="image/svg+xml" href="_wdoc/favicon.svg">
 <link rel="stylesheet" href="assets/site.css">
-<script src="assets/app.js" defer>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="assets/app.js" defer></script>
+<meta name="viewport" content="width=device-width, initial-scale=1"></meta>
 ```
 
 ### From the layout
@@ -159,7 +159,7 @@ helpers wrap the common cases:
 | `wdoc_head_meta(name, content)` | `<meta name content>` |
 | `wdoc_head_raw(html)` | verbatim head HTML |
 
-**A `Head` is hoisted only from the layout's top level.** Return it in the list `render` gives
+**wdoc hoists a `Head` from the layout's top level only.** Return it in the list `render` gives
 back, or in a part's list that `flatten` merges into it. A `Head` nested inside the body renders
 to nothing. It never leaks into `<body>`.
 
@@ -178,9 +178,9 @@ Its slots:
 | `sidebar` | `<aside class="ws-aside">` beside the content. Optional; filling it switches the grid to two columns. |
 | `footer` | `<footer class="ws-footer">`. Falls back to the site title. |
 
-The header is sticky. It shows the site title as a home link, then the curated `menu` (or a
-flat link per page with no `menu`), then a controls cluster. The controls appear only when the
-site sets `search = true` or `theme_toggle = true`.
+The header is sticky. It shows the site title as a home link, then the curated `menu`, then a
+controls cluster. With no `menu` it falls back to a flat link per page. The controls appear
+only when the site sets `search = true` or `theme_toggle = true`.
 
 ```wcl
 site web {
@@ -219,7 +219,7 @@ Copy it as a starting point. `wdoc_website_layout(c)` is the template's whole bo
 | `assets/app.js` | the design's script, shipped verbatim |
 
 The generated `site` sets `assets = ["assets"]` and `scripts = ["assets/app.js"]`. Add your own
-stylesheet to that folder and list it in `stylesheets`. Build the project with:
+stylesheet to that folder. Then list it in `stylesheets`. Build the project with:
 
 ```console
 $ wcl wdoc build my-site/main.wcl --out my-site/_site

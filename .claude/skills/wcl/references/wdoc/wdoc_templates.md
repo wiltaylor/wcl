@@ -30,8 +30,12 @@ With neither field set, a page renders bare: its blocks go straight into `<body>
 | `:presentation` | A slide deck rendered as one `index.html`. | `deck` |
 | `:ai_skill` | A Claude skill folder. Markdown only — build it with `wcl wdoc skill`. | `skill` |
 
-None of the five is special. Each one is an ordinary `template` block in the standard library,
-and each one is a composition of the public parts listed below.
+The first four are ordinary `template` blocks in the standard library. None of them is special.
+Each one is a composition of the public parts listed below, so you can call, extend or rebuild
+it.
+
+`:ai_skill` is the odd one out. It is a **Rust target selector**, not a `template` block. It
+declares no slots and has no parts, so do not look for a `wdoc_ai_skill_layout`.
 
 ## Page templates and collection templates
 
@@ -49,8 +53,8 @@ Two rules follow from that:
 
 - A collection template must be selected by the **site** (`default_template`). A page that
   names one in its own `template` field fails the build.
-- A collection template's **non-repeated** slots are filled at the site level, from loose
-  content blocks inside the `site`. Its **repeated** slots are filled by each member page.
+- The `site` fills a collection template's **non-repeated** slots, from loose content blocks
+  inside the `site` block. Each member page fills the **repeated** slots.
 
 ## Slots
 
@@ -103,9 +107,16 @@ let aside = slot_blocks(c, :sidebar);
 el("div", ["layout", if len(aside) > 0 { "has-aside" }], …)
 ```
 
-Filling a slot no layout on this site declares is a build error. See
-[`wdoc_websites.md`](wdoc_websites.md) for the conditional `name? { … }` form and its exact
-rule.
+Filling a slot that no layout on this site declares is a build error:
+
+```console
+page `topic` fills slot `notes`, but no layout used by this site declares it
+```
+
+The conditional form `name? { … }` drops the fill in one case only. **Some** layout used by
+this site must declare the slot, while the **selected** template does not. That is the case
+where a page overrides `template` and loses a slot. It does not silence a slot that no layout
+on the site declares.
 
 ## The template context
 
@@ -200,10 +211,9 @@ Book:
 | `wdoc_part_toc_tree(c)` | The nested `<ul class="book-toc">` alone. |
 | `wdoc_part_pagenav(c)` | The previous/next links alone. |
 
-Each of the four book parts that needs page metadata also has a `_with_metadata` twin
-(`wdoc_part_sidebar_with_metadata(c, m)`, `wdoc_part_book_content_with_metadata(c, m)`,
-`wdoc_part_book_rail_with_metadata(m)`). Call `page_metadata(c)` once and pass the result when
-you use several of them.
+Three of those parts also have a `_with_metadata` twin: `wdoc_part_sidebar_with_metadata(c, m)`,
+`wdoc_part_book_content_with_metadata(c, m)` and `wdoc_part_book_rail_with_metadata(m)`. Call
+`page_metadata(c)` once. Then pass the result to each twin you use.
 
 Website and presentation parts have their own references:
 [`wdoc_websites.md`](wdoc_websites.md), [`wdoc_presentations.md`](wdoc_presentations.md).
@@ -278,11 +288,11 @@ or the attributes silently. Pick by what you are passing.
 
 The family covers the HTML **element** vocabulary only. `Svg` shapes and the semantic content
 IR keep the named-field record literal, because they are field-shaped. WCL checks argument
-arity but never argument types, so transposing two of a shape's interchangeable `f64`s would
-render silently wrong where a record raises a shape mismatch.
+arity but never argument types. Transposing two of a shape's interchangeable `f64`s would
+therefore render silently wrong, where a record raises a shape mismatch.
 
-Write the long form for anything the family does not name: an element that carries both an id
-and attrs, a `Paragraph` with an id, a `Head`, a `Table`, a `Highlighted`, a `Math`.
+Write the long form for anything the family does not name. That covers an element carrying both
+an id and attrs, a `Paragraph` with an id, a `Head`, a `Table`, a `Highlighted` and a `Math`.
 
 ## Gotchas
 

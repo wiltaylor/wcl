@@ -107,12 +107,11 @@ Markdown and PDF targets render the children in place.
 notes { p "Mention the benchmark numbers." }
 ```
 
-On the presentation build, the notes are pulled out of the slide's visible content and rendered
-into the hidden overlay that `s` toggles.
+On the presentation build, the renderer takes the notes out of the slide's visible content. It
+puts them into the hidden overlay that `s` toggles.
 
 **A `notes` block only works on a presentation site.** It is a named fill for the
-`presentation` template's `notes` slot, so a site whose layout declares no such slot refuses
-it:
+`presentation` template's `notes` slot. A site whose layout declares no such slot refuses it:
 
 ```console
 page `topic` fills slot `notes`, but no layout used by this site declares it

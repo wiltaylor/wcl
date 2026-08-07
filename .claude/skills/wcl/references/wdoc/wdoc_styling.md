@@ -3,8 +3,8 @@
 Two layers decide how a site looks.
 
 - A **theme** is a colour palette. A site names one, and everything the renderer emits
-  recolours: the page, the text, the links, the headings, the code highlighting, the chart
-  series, the callouts, the tables, the template chrome.
+  recolours. That covers the page, the text, the links, the headings and the code highlighting.
+  It also covers the chart series, the callouts, the tables and the template chrome.
 - A **class** (and its neighbours `base`, `nest`, `media`, `font_face`, `keyframes`, `style`) is
   a structured CSS rule. A class always wins over a theme default through the cascade.
 
@@ -226,8 +226,9 @@ class "wdoc-series-1" { fill = "#88c0d0" }
 
 A name with other non-identifier characters, such as a space, still needs the quotes.
 
-Bare hyphenated names matter because that is how you **override a built-in class**. wdoc's own
-rules use ordinary class blocks, so redeclaring one wins through the cascade. Useful names:
+Bare hyphenated names matter, because that is how you **override a built-in class**. wdoc's own
+rules use ordinary class blocks. A redeclaration therefore wins through the cascade. Useful
+names:
 
 | Class | Paints |
 | --- | --- |
@@ -254,7 +255,7 @@ multi-site document requires.
 
 - A `class` field is a **list**: `class = ["accent"]`, not `class = "accent"`.
 - The `css` field is opaque text. wdoc does not parse it, so a typo there fails silently in the
-  browser rather than at build time. Keep the selector in WCL blocks and only the declarations
+  browser rather than at build time. Keep the selector in WCL blocks. Put only the declarations
   in `css`, so a mistake can affect at most its own rule.
 - A `theme` recolours what wdoc emits. It does not restyle raw HTML you inject with `raw(...)`.
   Paint that from `var(--wdoc-*)` yourself.

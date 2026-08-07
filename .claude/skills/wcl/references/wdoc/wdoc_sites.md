@@ -2,8 +2,8 @@
 
 A wdoc document is one `.wcl` file, plus the files it imports, that declares `page` blocks and
 `site` blocks. `wcl wdoc build <entry> --out <dir>` renders it. This file covers the entry
-document, the `site` block, the `page` block, the `toc` / `menu` / `sidebar_footer` navigation
-blocks, and the directory the build writes.
+document, the `site` block and the `page` block. It then covers the `toc`, `menu` and
+`sidebar_footer` navigation blocks, and the directory the build writes.
 
 ## The entry document
 
@@ -222,8 +222,8 @@ also makes the `book`, `webpage` and `website` templates render a search box. Ty
 pages by title and body matches, and lists the top hits with a snippet. Enter opens the first
 hit. Escape clears the box.
 
-The widget fetches the index over HTTP. Search therefore works when the site is served — a real
-host, or `wcl wdoc serve` — not when a page is opened directly from disk.
+The widget fetches the index over HTTP. Search therefore works when a host serves the site, or
+when `wcl wdoc serve` does. It does not work when you open a page directly from disk.
 
 ## The output tree
 
@@ -245,9 +245,9 @@ _site/
 ```
 
 `_wdoc/` holds everything the pages share: the bundled fonts, the favicon, the page manifest
-(`pages.json`), the icon sprite, and the small player scripts a page asks for — search,
-terminal replay, diagram pan and zoom, the deck player. A page references that folder by a
-plain relative path, so a site directory is self-contained and can move anywhere.
+(`pages.json`) and the icon sprite. It also holds the small player scripts a page asks for —
+search, terminal replay, diagram pan and zoom, the deck player. A page references that folder
+by a plain relative path, so a site directory is self-contained and can move anywhere.
 
 ### Several sites
 
@@ -307,7 +307,7 @@ include "members"  { entry   = "wdoc/book/main.wcl" } // a fixed path per immedi
 | `prefix` | Overrides the output subdirectory, so two includes over one folder can target different places. |
 
 The `included_sites(options)` builtin returns one `{ name, href, title, summary }` record per
-match, so a `wdoc_repeater` inside a `menu` or a `toc` can build navigation from it. Pass the
+match. A `wdoc_repeater` inside a `menu` or a `toc` can then build navigation from it. Pass the
 **same** options you gave the `include` block, or the hrefs will not line up. A record uses `:`
 for its fields, not the `=` a block uses:
 
@@ -317,8 +317,8 @@ wdoc_repeater { each = included_sites({ folder: "members", entry: "main.wcl", si
 }
 ```
 
-Sub-sites are embedded by the HTML build, the dev server and the skill target. The Markdown and
-PDF targets define `included_sites` — so a document still parses — but embed nothing.
+The HTML build, the dev server and the skill target all embed sub-sites. The Markdown and PDF
+targets define `included_sites` — so a document still parses — but embed nothing.
 
 ## Gotchas
 

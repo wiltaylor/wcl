@@ -1,7 +1,7 @@
 # Text and formatting
 
-The prose vocabulary: the six heading levels, the paragraph blocks, the side-by-side `column`
-layout, and the inline patterns that light up inside every one of them.
+The prose vocabulary: the six heading levels, the paragraph blocks and the side-by-side
+`column` layout. It also covers the inline patterns that light up inside every one of them.
 
 ## Headings
 
@@ -33,10 +33,10 @@ The renderer emits a real `<hN>` and derives a `heading-N` class from the level:
 
 Three things follow:
 
-- On a **templated** page, an `id` you do not supply is **synthesised** by slugifying the
-  heading text (`"Hello There"` gives `id="hello-there"`), and h2 / h3 headings gain a `§`
-  section number. A page that renders bare — no `default_template` and no page `template` —
-  gets neither. Set `id` when you need a target that survives a wording change.
+- On a **templated** page, wdoc **synthesises** an `id` you do not supply. It slugifies the
+  heading text, so `"Hello There"` gives `id="hello-there"`. It also numbers h2 and h3 headings
+  with a `§` marker. A page that renders bare gets neither: no `default_template`, and no page
+  `template`. Set `id` when you need a target that survives a wording change.
 - The `heading-N` class is a style hook. Restyle a level by declaring
   `class heading-2 { css = "…" }`.
 - The `book` template lists the page's own h2 and h3 headings in the right-hand "on this page"
@@ -83,20 +83,22 @@ The spans concatenate **in source order** into one paragraph:
 <p class="lead">A leading label, then a span.</p>
 ```
 
-**A span's `id` and `class` do not render.** The content model carries prose as a string, not as
-a list of styled runs, so a `text` flattens to one paragraph. The two fields stay declared, so
-an existing document keeps validating, but `span "…" { class = ["accent"] }` paints nothing.
-Style the whole paragraph through `class` on the `text`, or format inside it with the inline
-patterns below.
+**A span's `id` and `class` do not render.** The content model carries prose as a string, not
+as a list of styled runs. A `text` therefore flattens to one paragraph. The two fields stay
+declared, so an existing document keeps validating. But `span "…" { class = ["accent"] }`
+paints nothing. Style the whole paragraph through `class` on the `text`. To format inside it,
+use the inline patterns below.
 
 Use `text` when you assemble a paragraph from computed pieces. Use `p` otherwise.
 
 ## Inline patterns
 
-Every pattern below is recognised in a `p` label, in a `span`, in a heading, in an `li`, in a
-callout body, and in a `utf8` table cell. The content model carries prose rather than markup,
-so every target sees them. Each target then renders what it can: HTML draws all of them, and
-Markdown re-emits bold, italic, code and links as Markdown but leaves an icon as its literal
+wdoc recognises every pattern below in a `p` label, in a `span` and in a heading. It also
+recognises them in an `li`, in a callout body and in a `utf8` table cell.
+
+The content model carries prose rather than markup,
+so every target sees them. Each target then renders what it can. HTML draws all of them.
+Markdown re-emits bold, italic, code and links as Markdown, and leaves an icon as its literal
 `:name:` text.
 
 | Write | Get |
@@ -130,9 +132,9 @@ contain italic.
 Each guard exists because the regex engine has no look-around, so a literal case has to be
 excluded by the pattern itself.
 
-- **`_italic_` is word-boundary gated.** A match is skipped when it touches a letter, a digit
-  or `_` on either side. `safe_mode_password` stays literal; `a _word_ here` formats. This is
-  why snake_case identifiers survive.
+- **`_italic_` is word-boundary gated.** The engine skips a match that touches a letter, a
+  digit or `_` on either side. `safe_mode_password` stays literal; `a _word_ here` formats.
+  This is why snake_case identifiers survive.
 - **`$…$` may not touch whitespace at either end.** `it cost $10 or $20` stays prose, and
   `$x^2$` is an equation. Malformed LaTeX renders an inline error marker; it does not fail the
   build.
