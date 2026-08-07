@@ -113,7 +113,7 @@ TEXT
 
   list {
     li "`:Home:` does not match — the first character after the colon must be lower-case or a digit."
-    li "`10:30` and `note: see below` do not match — a token needs a **closing** colon, and neither has one."
+    li "`10:30` does not match — a token needs a **closing** colon and there is none. `note: see below` does not match either — the character after the colon must be a letter or a digit, and a space is neither."
     li "`:lucide.compass:` matches as one token, dot and all, and the dot is what separates the set name from the icon name."
   }
 
@@ -185,7 +185,7 @@ WCL
 
   h3 "Per-icon overrides"
 
-  p "An `icon_def` child names one icon in the set and overrides the set's defaults for it. It carries the same five styling fields — `size`, `color`, `fill`, `background`, `class` — and nothing else. A field it does not set keeps the set's value; a `class` list is **added** to the set's rather than replacing it."
+  p "An `icon_def` child names one icon in the set and overrides the set's defaults for it. It carries the same five styling fields — `size`, `color`, `fill`, `background`, `class` — and nothing else. [Sizing and colour](#sizing-and-colour) has the layering rule that decides what an override replaces."
 
   code wcl {
     source = <<'WCL'
@@ -212,7 +212,7 @@ WCL
   p "A name reaches a glyph through one registry, loaded once per build from those root `iconset` blocks. Four rules, in this order:"
 
   list {
-    li "**A `set.name` token names the set.** `:ui.heart:` looks only at the set called `ui`. If no set has that name, or that set's pack has no `heart`, the lookup fails — it does not try elsewhere."
+    li "**A `set.name` token names the set.** `:ui.heart:` looks only at the set called `ui`. If no set has that name, or that set's pack has no `heart`, the lookup fails — it does not try elsewhere. (One caller has a fallback after that failure; the example below is it.)"
     li "**A bare `name` tries every set in declaration order**, and the first whose pack holds the icon wins. The document's own sets come before the two the library declares, so a set of yours is always consulted first."
     li "**On a diagram icon, an explicit `set =` field beats a `set.` prefix** on the name. `icon \"lucide.compass\" { set = ui }` reads from `ui`."
     li "**A failed lookup is never a build error.** Inline, the literal `:name:` text is emitted. In a diagram, nothing is drawn. A badge whose `icon` misses simply has no badge."
@@ -245,7 +245,9 @@ WCL
 
   p "Build that and the sprite holds one symbol, `lucide-triangle-alert`, while the paragraph renders the literal text `:lucide.triangle-alert:`. Both halves of that are worth understanding, because they are the one place the rules above are not the whole story."
 
-  p "The warning callout's default glyph is `lucide.triangle-alert`, and Bootstrap has no icon by that name. The set lookup therefore failed — and an icon a **block** asks for, rather than an author, falls back to the compiled-in pack of that name. So the callout drew the real Lucide glyph. The author's own inline token got no such fallback: rule 1 applied, the lookup failed, and the literal text was emitted."
+  p "The warning callout's default glyph is `lucide.triangle-alert`, and Bootstrap has no icon by that name, so the set lookup failed. One path has a second chance after that failure: an icon named through the `Html::Icon` value — the `icon(name, class)` constructor, and so a callout's default glyph and a `sidebar_footer` button — falls back to a compiled-in pack whose name matches the prefix. That is why the callout drew the real Lucide glyph."
+
+  p "Nothing else gets that fallback. The author's own inline token did not: rule 1 applied, the lookup failed, and the literal text was emitted. Nor does a diagram `icon` block, nor a shape badge — both resolve through the set list and stop there."
 
   callout "Renaming a built-in set moves the furniture" {
     class = ["warning"]
@@ -321,14 +323,14 @@ WCL
       | "Symbol"          | "Places the badge" |
       | "`:left`"         | "Against the left edge, vertically centred — **the default**." |
       | "`:right`"        | "Against the right edge, vertically centred." |
-      | "`:center`"       | "In the middle of the box — drawn last, so it sits over any label the shape carries." |
+      | "`:center`"       | "In the middle of the box. Every badge draws over the shape, so this one overlaps a centred label." |
       | "`:top_left`"     | "Top-left corner." |
       | "`:top_right`"    | "Top-right corner." |
       | "`:bottom_left`"  | "Bottom-left corner." |
       | "`:bottom_right`" | "Bottom-right corner." |
   }
 
-  p "`:left` is the default because the label-bearing flowchart shapes reserve a matching strip on their left, so the badge and the centred label sit side by side instead of on top of one another — and because a corner badge pokes out of a rounded or oval outline. Compare the two:"
+  p "`:left` is the default for two reasons. The label-bearing flowchart shapes reserve a matching strip on their left, so the badge and the label sit side by side instead of on top of one another. And a corner badge pokes out of a rounded or oval outline. Compare the two:"
 
   diagram {
     width = 420  height = 90
@@ -434,7 +436,7 @@ TEXT
       | "Skill"      | "As Markdown — it shares the emitter"              | "As Markdown"                                               | "As Markdown" |
   }
 
-  p "Two of those rows deserve a sentence each. In **PDF** there is no sprite file to fetch, so the glyph must travel inside the document; an inline icon is embedded as the raw pack glyph, which means an iconset's `size` and `color` do not reach it — it is one em tall and it is the page's text colour. In **Markdown** the inline pattern has nowhere to go, since GitHub-flavoured Markdown has no inline SVG, so the token you wrote comes back out as text. Diagrams are unaffected either way, because a diagram was always going to be an image."
+  p "Two of those rows deserve a sentence each. In **PDF** there is no sprite file to fetch, so the glyph must travel inside the document. An inline icon is embedded as the raw pack glyph, so an iconset's `size` and `color` do not reach it: it is one em tall, and it is the page's text colour. In **Markdown** the inline pattern has nowhere to go, because GitHub-flavoured Markdown has no inline SVG. The token you wrote comes back out as text. Diagrams are unaffected either way, because a diagram was always going to be an image."
 
   p "Build the file from the top of this chapter as Markdown and the difference is plain:"
 
@@ -473,7 +475,7 @@ type Status extends ContentBlock {
 WCL
   }
 
-  p "The name resolves through the same registry and by the same rules, and it records its usage, so a glyph only your block asks for is still in the sprite. It also gets the block-level fallback: a `pack.name` that no declared set covers still resolves from the compiled-in pack, exactly as a callout's default glyph does — and a name that even that cannot place emits nothing rather than failing. [Writing your own blocks](wdoc_extending) covers the lowering interface, and `inl` alongside `icon` in the `el` family."
+  p "The name resolves through the same registry and by the same rules, and it records its usage, so a glyph only your block asks for is still in the sprite. `icon()` is also the constructor that carries the [compiled-in pack fallback](#how-a-name-resolves): a `pack.name` that no declared set covers still resolves, exactly as a callout's default glyph does. A name that even that cannot place emits nothing rather than failing. [Writing your own blocks](wdoc_extending) covers the lowering interface, and `inl` alongside `icon` in the `el` family."
 
   p "The other route needs no lowering at all. Because `Html::Inline` and every prose string run through the inline pattern engine, a block that emits prose gets `:name:` support for nothing."
 
