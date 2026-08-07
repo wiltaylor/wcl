@@ -107,13 +107,6 @@ dev_command dev_md_build {
   category    = "dev"
 }
 
-dev_command dev_skills_install {
-  name        = "skills-install"
-  command     = "just skills-install"
-  description = "Install generated skills/agents and remove stale generated output."
-  category    = "dev"
-}
-
 dev_command dev_wad_build {
   name        = "wad-build"
   command     = "just wad-build [ARGS]..."
@@ -174,13 +167,6 @@ dev_command dev_fmt_check {
   name        = "fmt-check"
   command     = "just fmt-check"
   description = "Check formatting without modifying files"
-  category    = "quality"
-}
-
-dev_command dev_skills_check {
-  name        = "skills-check"
-  command     = "just skills-check"
-  description = "Fail on drift, collisions, or stale output; exempt hand-authored artifacts."
   category    = "quality"
 }
 
