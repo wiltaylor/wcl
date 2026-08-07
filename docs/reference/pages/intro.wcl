@@ -1,7 +1,8 @@
 // Chapter 0 — Introduction & Quick Start.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #158. Every file and every command below was run against
+// the `wcl` CLI before it was written down; the older concept units were
+// re-cut, not lifted.
 page intro {
   // Served at the book's root (`/reference/`).
   start = true
@@ -10,5 +11,447 @@ page intro {
 
   h1 "Introduction & Quick Start"
 
-  p "Not written yet. This chapter introduces WCL, installs it, and walks a first document through `wcl check` and `wcl eval`."
+  p "WCL is a typed configuration and schema language. A `.wcl` file carries the data — the ports, the replica counts, the URLs — and it carries the shape that data has to fit. One command, `wcl check`, holds the second against the first, and it does that before the program needing the configuration has started."
+
+  p "This chapter is the shortest complete path through that idea. It installs the tool, writes one file, watches the tool refuse it, gives it a schema, reads it back, and then tightens the schema until it catches the mistakes a data format would have waved through. It closes on **wdoc**, the document generator built on the same language, and on how to read the other forty-one chapters."
+
+  p "Every file and every command below was run before it was written down. Type them and compare."
+
+  h2 "What WCL is for"
+
+  p "Configuration is the part of a system with no compiler. The code around it is type-checked, reviewed and tested; the file that decides which database it talks to is a bag of strings that nothing looks at until the process boots. So a missing key is a crash at 3am, a `replicas: 600` is an outage, and a `debug: true` that outlived its pull request is an incident report."
+
+  p "The usual answer is to describe the shape somewhere else — a JSON Schema file, a Kubernetes CRD, a `struct` with `#[serde(deny_unknown_fields)]` in the program that reads it. That works, and it puts the description of the data in a different file, a different language, and often a different repository from the data itself. The two drift."
+
+  p "WCL's answer is that the shape belongs in the language. A `.wcl` file declares its own types, and the toolchain checks the data against them as an ordinary command you can run in CI, in a pre-commit hook, or on your laptop before you push. Nothing has to consume the file for it to be judged."
+
+  p "What the type system carries, beyond the string/number/boolean of a data format:"
+
+  list {
+    li "**Sized numbers and units.** `u32`, `f64`, and literals like `512MiB` and `90s` that evaluate to a plain number in a declared base unit. See [Values and primitives](lang_values)."
+    li "**Names that mean something.** `identifier` for a name the rest of the document may point at, `symbol` for a tag, and a `symbol_set` for a closed vocabulary whose members are checked."
+    li "**Composite types.** Records, lists, tensors, unions, interfaces and type aliases with `@min` / `@max` / `@non_empty` constraints. See [Types](lang_types)."
+    li "**Expressions and functions.** The right of an `=` is an expression, not just a literal: arithmetic, string interpolation, conditionals, `let` bindings, calls. See [Expressions and operators](lang_expressions) and [Functions](lang_functions)."
+    li "**A document model.** Blocks nest, a schema decides what may nest inside what, and gather fields collect every block of a kind into a list the host can walk. See [Documents, fields and blocks](lang_documents)."
+  }
+
+  h2 "How WCL differs from JSON, YAML and TOML"
+
+  p "Take a real fragment. Here is a service deployed to two environments, written the way most projects write it today:"
+
+  code yaml {
+    filename = "app.yaml"
+    source = <<'YAML'
+service: checkout
+
+environments:
+  staging:
+    url: https://staging.example.com
+    replicas: 1
+    debug: yes
+  prod:
+    url: https://example.com
+    replicas: 6
+    debug: no
+YAML
+  }
+
+  p "Nothing in that file says `replicas` holds a number. Nothing says 600 would be absurd. Nothing says `environments` may hold `staging` and `prod` and not `stagng`. Every one of those is the consuming program's problem, discovered at startup, in production, by whoever is on call. And `debug: yes` is not even reliably a boolean: YAML 1.1 parsers read `yes` and `no` as `true` and `false`, YAML 1.2 parsers read them as the strings `\"yes\"` and `\"no\"`, and which one you get depends on a library you did not choose."
+
+  p "The same data in WCL, with the shape written down beside it:"
+
+  code wcl {
+    filename = "app.wcl"
+    source = <<'WCL'
+@block("env")
+type Env {
+  @inline(0) name: identifier
+  url:      utf8
+  replicas: u32
+  debug:    bool
+}
+
+@document
+type AppConfig {
+  service: utf8
+  @children("env") envs: list<Env>
+}
+
+service = "checkout"
+
+env staging {
+  url      = "https://staging.example.com"
+  replicas = 1u32
+  debug    = true
+}
+
+env prod {
+  url      = "https://example.com"
+  replicas = 6u32
+  debug    = false
+}
+WCL
+  }
+
+  p "It is longer, and the extra length is the whole point: the top half is the contract, and it is the reason `wcl check` can answer a question about the bottom half. There is no `debug: yes` ambiguity to resolve, because `yes` is not a boolean in WCL — it is a name, and a name that nothing declares fails to resolve."
+
+  table {
+    rows:
+      | "Question"              | "JSON"                        | "YAML"                                  | "TOML"                        | "WCL" |
+      | "Comments"              | "No"                          | "Yes"                                   | "Yes"                         | "Yes, and `wcl fmt` keeps them" |
+      | "Scalar types"          | "String, number, bool, null"  | "The same, guessed from the text"       | "Plus dates and times"        | "Sized integers, floats, units, `bool`, four string encodings, identifiers, symbols, `none`" |
+      | "Where the schema lives"| "Another file (JSON Schema)"  | "Another file"                          | "Another file"                | "This file, or one it imports" |
+      | "Computed values"       | "No"                          | "Anchors and aliases reuse, never compute" | "No"                       | "Full expressions, `let` bindings and functions" |
+      | "Who validates"         | "The consuming program"       | "The consuming program"                 | "The consuming program"       | "`wcl check`, before anything consumes it" |
+      | "Reusing a fragment"    | "Copy it"                     | "`&anchor` / `*alias`"                  | "Copy it"                     | "`import`, `let`, functions, references" |
+  }
+
+  p "The last row is the one that compounds. A configuration format without composition grows by copying, and a file that grew by copying is a file where two of the copies disagree. [Namespaces and imports](lang_namespaces) covers splitting a document across files; [Expressions and operators](lang_expressions) covers computing one field from another."
+
+  callout "WCL is not a general-purpose language" {
+    class = ["note"]
+    body  = "There is no I/O, no mutation, no loops that can fail to terminate. Every expression evaluates to a value, and evaluation is lazy and cached — see [How a document evaluates](lang_evaluation). What it adds over a data format is types, composition and checking, not a runtime."
+  }
+
+  h2 "Install"
+
+  p "WCL is pre-release only for now, so ask the install script for the newest pre-release. A plain run targets stable, which does not exist yet:"
+
+  code text {
+    source = <<'TEXT'
+$ curl -fsSL https://wcl.dev/install.sh | sh -s -- --pre
+TEXT
+  }
+
+  p "That drops a single binary into `~/.local/bin` (override with `--bin-dir <dir>` or `$WCL_INSTALL_DIR`) and tells you if that directory is not on your `PATH`. Prebuilt binaries exist for Linux on x86_64. On anything else — macOS included — build from source with Cargo, which needs a Rust toolchain:"
+
+  code text {
+    source = <<'TEXT'
+$ cargo install --git https://github.com/wiltaylor/wcl -p wcl --locked
+TEXT
+  }
+
+  p "Either way, confirm the result before going on:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl --version
+wcl 0.33.2-alpha
+TEXT
+  }
+
+  p "One binary is the whole toolchain. `wcl` is the parser, the checker, the evaluator, the formatter, the differ, the project scaffolder, the language server your editor talks to, the browser editor, and the `wdoc` site builder. [The CLI](lang_cli) documents every subcommand."
+
+  h2 "Your first document"
+
+  p "Save the data half of the comparison above on its own, without the types. Call it `app.wcl`:"
+
+  code wcl {
+    filename = "app.wcl"
+    source = <<'WCL'
+service = "checkout"
+
+env staging {
+  url      = "https://staging.example.com"
+  replicas = 1u32
+}
+WCL
+  }
+
+  p "That is a legal WCL _file_. It parses: a field, then a block with a label and two fields of its own. It is not a legal WCL _document_, and `wcl check` says so twice:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check app.wcl
+wcl::eval::schema_violation
+
+  × top-level field 'service' has no @document schema
+
+wcl::eval::schema_violation
+
+  × block kind 'env' has no @block or @table declaration
+
+app.wcl: 2 schema violations
+TEXT
+  }
+
+  callout "There is no schema-free document" {
+    class = ["note"]
+    body  = "This is the first rule of the language and it is worth meeting head-on. Data needs a schema to stand on: a top-level field that no `@document` type declares is an error, and so is a block kind that no `@block` or `@table` type declares. A file holding nothing but types, `let` bindings and functions is fine — that is a library, not data. Every complete example in this book therefore carries its schema, and so will yours."
+  }
+
+  h2 "A first schema"
+
+  p "A schema is three decorators and two type declarations. Put them at the top of the same file — order does not matter to the parser, but it reads better with the shape before the data. This is the file from [the comparison above](#how-wcl-differs-from-json-yaml-and-toml), assembled, with a comment on each half:"
+
+  code wcl {
+    filename = "app.wcl"
+    source = <<'WCL'
+# app.wcl — how the checkout service is deployed, per environment.
+
+# What an environment is.
+@block("env")
+type Env {
+  @inline(0) name: identifier
+  url:      utf8
+  replicas: u32
+  debug:    bool
+}
+
+# What the file as a whole may contain.
+@document
+type AppConfig {
+  service: utf8
+  @children("env") envs: list<Env>
+}
+
+service = "checkout"
+
+env staging {
+  url      = "https://staging.example.com"
+  replicas = 1u32
+  debug    = true
+}
+
+env prod {
+  url      = "https://example.com"
+  replicas = 6u32
+  debug    = false
+}
+WCL
+  }
+
+  p "Read the decorators one at a time. `@block(\"env\")` says: instances of this type are written as blocks whose kind is `env`. `@inline(0)` binds the first **label** — the thing between the kind and the brace — to the `name` field, so `env staging` is an environment named `staging`. `@document` marks the type describing the file's top level. `@children(\"env\")` declares a **gather field**: `envs` is written nowhere in the data, it is the list every `env` block lands in."
+
+  p "A label identifies a block rather than becoming an ordinary field on it, which is why `wcl eval app.wcl envs.staging.name` answers `cannot evaluate type_field as a leaf value` rather than `staging`. [Documents, fields and blocks](lang_documents#blocks-and-labels) covers labels properly."
+
+  code text {
+    source = <<'TEXT'
+$ wcl check app.wcl
+OK
+TEXT
+  }
+
+  p "That `OK` is the whole promise of the language in two characters. Nothing consumed the file. Nothing booted. The document was held against a shape declared in the same breath as the data, and it fit."
+
+  h2 "Reading the document back"
+
+  p "`wcl eval` resolves a dotted path from the document root and prints one value:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl eval app.wcl service
+"checkout"
+$ wcl eval app.wcl envs.prod.replicas
+6u32
+TEXT
+  }
+
+  p "`wcl get` is an alias for the same command, and the rest of this book mostly writes it that way — `get` reads better when you are fetching one value, `eval` when the value is computed. Add `--json` to print a JSON scalar instead of the WCL display form."
+
+  p "Read the path `envs.prod.replicas` from the left. `envs` is the gather field the `@document` schema declared. `prod` picks one of the gathered blocks by its label. `replicas` is a field on it. A path has to end on a leaf: asking for `envs.prod` gives `cannot evaluate block as a leaf value`, because a block is not a value."
+
+  p "To see the whole tree at once, use `wcl parse`. It prints the evaluated document — what your file became, rather than what you typed:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl parse app.wcl
+@block("env")
+type Env {
+  @inline(0)
+  name: identifier
+  url: utf8
+  replicas: u32
+  debug: bool
+}
+... then your @document type, then the decorator, unit and symbol_set
+declarations every document gets for free, then the data ...
+service = "checkout"
+env staging {
+  url = "https://staging.example.com"
+  replicas = 1u32
+  debug = true
+}
+env prod {
+  url = "https://example.com"
+  replicas = 6u32
+  debug = false
+}
+TEXT
+  }
+
+  p "Two things there are worth a second look. Your own type declarations come back **normalized** — `@inline(0)` on its own line, `url:      utf8` with its padding gone — because `parse` prints the tree, not your keystrokes; `wcl fmt` is the same normalization written back to the file. And the declarations you never wrote are the built-in decorators, units and symbol sets every document gets for free, which is where `@block`, `@children` and `512MiB` come from."
+
+  p "Three commands, three questions. `wcl check` asks _is this document valid_. `wcl eval` asks _what is this one value_. `wcl parse` asks _what did the whole file become_. [The CLI](lang_cli) covers the rest — `set`, `fmt`, `diff`, `init`, `repl`, `lsp`, `editor`."
+
+  h2 "Making the schema stricter"
+
+  p "So far the schema says `replicas` is a `u32`. It does not say that 600 of them is nonsense, that an environment belongs to a billing tier, that `debug` defaults to off, or that `url` is not optional. Each of those is one more line. Replace the type declarations — the data below them does not change:"
+
+  code wcl {
+    filename = "app.wcl"
+    source = <<'WCL'
+symbol_set Tier { free  pro  enterprise }
+
+@min(1)
+@max(50)
+type Replicas = u32
+
+@block("env", required_fields = ["url", "replicas", "tier"])
+type Env {
+  @inline(0) name: identifier
+  url:      utf8
+  replicas: Replicas
+  tier:     Tier
+  @default(false) debug: bool
+}
+
+@document
+type AppConfig {
+  service: utf8
+  @children("env") envs: list<Env>
+}
+WCL
+  }
+
+  p "Four ideas, in order. A `symbol_set` is a closed vocabulary: `tier` may be `:free`, `:pro` or `:enterprise` and nothing else. A **type alias** carrying `@min` / `@max` narrows a primitive and gets a name that says what it is for. `required_fields` lists the fields a block may not leave out. `@default(false)` supplies a value when a field is absent, which is why `debug` can stay off that list — the label `name` is off it too, because a label is not written as a field at all."
+
+  p "Now give it an environment that breaks the schema in two places at once:"
+
+  code wcl {
+    source = <<'WCL'
+env prod {
+  url      = "https://example.com"
+  replicas = 600u32
+  tier     = :platinum
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check app.wcl
+wcl::eval::schema_violation
+
+  × field 'replicas': value 600 is above @max(50)
+
+wcl::eval::schema_violation
+
+  × field 'tier' declared as symbol_set 'Tier' but ':platinum' is not one of
+  │ its members
+
+app.wcl: 2 schema violations
+TEXT
+  }
+
+  p "Delete the `url` line as well and a third violation joins them — `block 'env' is missing required field 'url'`. Every one of these is the class of mistake a data format hands to the program at startup, and every one of them was answered by a command that never ran the program. `wcl check` exits non-zero, so a pre-commit hook or a CI step is one line."
+
+  p "Two more mistakes worth trying on the corrected file, because they show what the checker keys on. Writing `replicas = \"6\"` gives `field 'replicas' declared as Replicas but value is utf8` — a string that looks like a number is still a string, and the message names your alias rather than the `u32` underneath it. Mistyping the field as `replicass = 6u32` gives two violations at once: `field 'replicass' is not declared by schema 'Env'`, because an unknown field is refused rather than ignored, and `block 'env' is missing required field 'replicas'`, because the field you meant to write is now absent."
+
+  callout "Not everything waits for wcl check" {
+    class = ["warning"]
+    body  = "Fields evaluate lazily, so an error inside an expression surfaces when something asks for the value rather than when the document is checked. `debug = no` passes `wcl check` — `no` is a name, and the schema does not resolve names — and then fails on `wcl eval` with `unresolved reference 'no'`. [How a document evaluates](lang_evaluation) covers which errors land where, and why."
+  }
+
+  p "[Schemas](lang_schemas) is the full account of `@document`, `@block`, `@child`, `@children`, `@inline`, `@table` and reference checking. [Decorators](lang_decorators) covers the whole decorator vocabulary, including declaring your own."
+
+  h2 "The other half: wdoc"
+
+  p "**wdoc** is a document generator written in WCL. You declare pages and sites as blocks, and `wcl wdoc` renders them to a static website, a Markdown tree, a PDF or an AI-skill folder. The book you are reading is a wdoc site, and its source is one `main.wcl` declaring the site and its table of contents, plus one `.wcl` file per chapter."
+
+  p "The relationship between the two halves is simpler than it sounds: **wdoc is a schema**. `import <wdoc.wcl>` pulls in a library of type declarations shipped inside the binary, and every block it gives you — `site`, `page`, `h1`, `p`, `code`, `table`, `callout` — is an ordinary `@block` type of the kind you just wrote by hand. Save this as `main.wcl` in an empty folder:"
+
+  code wcl {
+    filename = "main.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+site handbook {
+  title            = "Checkout handbook"
+  default_template = :book
+
+  toc {
+    chapter "Overview" { page = overview }
+  }
+}
+
+page overview {
+  start = true
+  title = "Overview"
+
+  h1 "Overview"
+
+  p "The checkout service runs in two environments."
+
+  table {
+    rows:
+      | "Environment" | "Replicas" |
+      | "staging"     | "1"        |
+      | "prod"        | "6"        |
+  }
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build main.wcl --out _site
+wrote 1 page
+TEXT
+  }
+
+  p "That is a complete site: `_site/index.html`, `_site/overview.html`, and the fonts and other assets beside them under `_site/_wdoc/`. `wcl wdoc serve main.wcl` serves the same build over HTTP while you write: it watches your sources and collects what changed, you press Enter in its console to rebuild, and the browser reloads itself."
+
+  p "Now point the language half at the document half, and nothing special happens — which is the point:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check main.wcl
+OK
+$ wcl get main.wcl pages.overview.title
+"Overview"
+$ wcl get main.wcl sites.handbook.title
+"Checkout handbook"
+TEXT
+  }
+
+  p "The same checker, the same paths, the same errors. Mistype `h1` as `h7` and you get `block kind 'h7' is not allowed inside 'page'` — the message you would get for any block a schema does not admit, because that is exactly what happened."
+
+  p "That symmetry is why the two halves share one book. A wdoc page is a WCL document, so everything in Part I applies to it: a page body can compute a heading from a `let`, a site can `import` its data from another file, and a repeater can project a list of typed records into one rendered section per record. [Documents, pages and sites](wdoc_sites) starts Part II; [Data views](wdoc_data_views) is where the two halves meet properly; [Writing your own blocks](wdoc_extending) shows how to add a block of your own."
+
+  p "For a running start on either half, `wcl init` scaffolds a project folder from a template — `wcl init --list` names the built-ins, which include a `minimal` single-file project and four ready-made wdoc ones (`page`, `book`, `website`, `presentation`)."
+
+  h2 "How to read this book"
+
+  p "This is one reference for both halves, in three parts."
+
+  table {
+    rows:
+      | "Part"                | "Chapters" | "What it covers" |
+      | "Introduction"        | "0"        | "This chapter." |
+      | "[The WCL language](lang_documents)" | "1–14" | "Documents, values, collections, types, expressions, control flow, functions, namespaces, schemas, decorators, connections, evaluation, builtins, and the CLI." |
+      | "[wdoc](wdoc_sites)"  | "15–41"    | "Pages and sites, templates, themes, visibility and output targets; then the block reference — text, code, callouts, tables, media, icons, math, data views, diagrams, charts, timelines, terminals, wireframes, and writing your own." |
+  }
+
+  p "Read Part I in order the first time. Chapters 1 to 5 build on one another — [Documents, fields and blocks](lang_documents) is the shape of a file, [Values and primitives](lang_values) is what goes in it, [Lists, tensors and records](lang_collections) is what those compose into, [Types](lang_types) is how you name a shape, and [Expressions and operators](lang_expressions) is how you compute one. After chapter 5 the chapters are largely independent, and [Schemas](lang_schemas) is the one to reach for when a `wcl check` message surprises you."
+
+  p "Part II assumes Part I and otherwise stands alone. Read [Documents, pages and sites](wdoc_sites) first; after that, look up the block you need."
+
+  p "Three conventions run through every chapter:"
+
+  list {
+    li "**Snippets were run.** A `.wcl` listing carrying a filename is a whole file, schema included, unless the surrounding text says it replaces part of one. A `$` listing is real terminal output, copied rather than typed out — including the failures, which are as real as the successes."
+    li "**Chapter links carry the chapter's name.** [Schemas](lang_schemas) goes to a chapter; [Making the schema stricter](#making-the-schema-stricter) goes to a heading in this one. Every link in this book is checked when the book builds, so a link that renders is a link that resolves."
+    li "**Gaps are stated, not hidden.** Where the tool does not check something it describes, a warning callout says so. Where a feature is deliberately unfinished, the chapter names it rather than leaving you to find out."
+  }
+
+  h2 "Where to go next"
+
+  list {
+    li "[Documents, fields and blocks](lang_documents) — fields, blocks, labels, tables and `let` items in full. The next chapter, and the one to read first."
+    li "[Values and primitives](lang_values) — the seven ways to write a scalar, and which of them the checker judges."
+    li "[Schemas](lang_schemas) — `@document`, `@block`, `@child`, `@children`, `@inline`, `@table`, and exactly what `wcl check` checks."
+    li "[The CLI](lang_cli) — `check`, `parse`, `eval`, `set`, `fmt`, `diff`, `init`, `answer`, `repl`, `lsp`, `editor`, `wdoc` and `wskill`."
+    li "[Documents, pages and sites](wdoc_sites) — the start of Part II, and the wdoc equivalent of chapter 1."
+  }
 }
