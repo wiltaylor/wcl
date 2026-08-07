@@ -1,11 +1,653 @@
 // Chapter 16 — Templates and layouts.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #173. Every snippet and every line of output below was
+// built with `wcl wdoc build` before it was written down; nothing here is
+// paraphrased from the older concept units without being checked first.
 page wdoc_templates {
   title = "Templates and layouts"
 
   h1 "Templates and layouts"
 
-  p "Not written yet. This chapter covers the three template kinds, the template context, the template parts, and the `el` constructor family."
+  p "A page holds content. A **template** holds everything around it: the sidebar, the navbar, the footer, the previous/next links. wdoc ships four of them, and none is special — a template is a WCL function from a context record to a list of HTML fundamentals, and yours is selected exactly the way `book` is. This chapter covers the built-ins, the `template` block, the `TemplateCtx` they receive, the `page_metadata(c)` builtin they navigate with, the `wdoc_part_*` functions they are built from, and the `el` family you write the rest of the markup with."
+
+  p "Every file and every command below was run before it was written down. Type them and compare."
+
+  h2 "What a template is"
+
+  p "Start without one. This document declares a site that names no template at all:"
+
+  code wcl {
+    filename = "bare.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+site bare {
+  title = "Bare"
+}
+
+page index {
+  h1 "Hi"
+  p "No chrome at all."
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build bare.wcl --out _site
+wrote 1 page
+TEXT
+  }
+
+  p "The `<body>` of `_site/index.html` is the page and nothing else:"
+
+  code html {
+    source = <<'HTML'
+<body class="wdoc-body">
+<h1 class="heading-1">Hi</h1>
+<p>No chrome at all.</p>
+HTML
+  }
+
+  p "Now add `default_template = :book` to the `site` block and rebuild. The same two blocks come back wrapped in a fixed sidebar, a reading column, an \"on this page\" rail and a pagination footer — and the `<h1>` grows `id=\"hi\"`. That last detail is the whole shape of the mechanism in miniature: **anchor ids and `§` section markers are stamped by the template path**, not by the block. A page that renders bare has neither."
+
+  p "So a template is not decoration. It is the thing that decides what a page's blocks become and what surrounds them."
+
+  callout "A template is a function, not a file" {
+    class = ["note"]
+    body  = "There is no template directory, no include path and no inheritance. A template is a `template` block in an ordinary `.wcl` file — a `render` field holding `fn(c: TemplateCtx) -> list<Html>`. The four built-ins live in the embedded stdlib (`import <wdoc.wcl>`) and are found by name in exactly the same lookup that finds yours."
+  }
+
+  h2 "The built-in templates"
+
+  p "Four `template` blocks ship in the stdlib. Each reads its own navigation block off the `site`, and each is covered in depth by its own chapter — this one covers what they have in common."
+
+  table {
+    rows:
+      | "Template"       | "Shape"                                              | "Reads"            | "Output"        | "Covered in" |
+      | "`:webpage`"     | "Title header, sticky top navbar, reading card"      | "`menu`"           | "One file per page" | "[Documents, pages and sites](wdoc_sites)" |
+      | "`:book`"        | "Fixed left sidebar with a nested TOC, reading column, on-this-page rail" | "`toc`, `sidebar_footer`" | "One file per page" | "This chapter" |
+      | "`:website`"     | "Header, optional banner / hero / sidebar sections, footer" | "`menu`, named slots" | "One file per page" | "[Websites](wdoc_websites)" |
+      | "`:presentation`" | "Full-viewport slide deck, keyboard-navigated"       | "`deck`"           | "One `index.html` for the whole site" | "[Presentations](wdoc_presentations)" |
+  }
+
+  p "A fifth symbol, `:ai_skill`, is **not** a template. It is a build target: `default_template = :ai_skill` marks the site as a skill folder, and `wcl wdoc skill` — not `wcl wdoc build` — renders it. No `template ai_skill` block exists, and no `render` function runs. See [Output targets](wdoc_outputs)."
+
+  p "`:webpage` and `:website` overlap, and the difference is what a page may fill. `webpage` offers one hole: the page's loose content. `website` adds named slots — `banner`, `hero`, `sidebar`, `footer` — plus `<head>` assets, so a page can place content in more than one region of the layout."
+
+  h2 "Selecting a template"
+
+  p "Two fields select one, and the page wins:"
+
+  list {
+    li "`default_template` on the `site` block — a symbol naming a `template`. Applies to every page of that site."
+    li "`template` on a `page` block — the same symbol, for one page only. Overrides the site's default."
+    li "Neither — the page renders bare, as `bare.wcl` above did."
+  }
+
+  code wcl {
+    source = <<'WCL'
+site handbook {
+  default_template = :narrow      # every page …
+  title            = "Handbook"
+}
+
+page changelog {
+  template = :book                # … except this one
+  h1 "Changelog"
+}
+WCL
+  }
+
+  p "A symbol naming no `template` block stops the build before any page is written. Set `default_template = :blog` in `bare.wcl` with no `template blog` declared anywhere and the whole build is one line:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build bare.wcl --out _site
+unknown template "blog"
+TEXT
+  }
+
+  h2 "The template block"
+
+  p "The block itself is small. A label, one or more `slot` declarations, and `render`:"
+
+  code wcl {
+    source = <<'WCL'
+template narrow {
+  slot content: content
+
+  render = fn(c: TemplateCtx) -> list<Html> [
+    el("main", ["narrow"], slot(c, :content)),
+  ]
+}
+WCL
+  }
+
+  p "`render` is an ordinary function value — see [Functions](lang_functions). It takes the context described [below](#templatectx) and returns `list<Html>`, the HTML fundamental vocabulary. Those fundamentals become the page `<body>`; the `<head>` and the stylesheet are the renderer's, not the template's. A top-level `Head` fundamental is the exception, and it hoists its children into `<head>` instead — [Websites](wdoc_websites) covers that."
+
+  h3 "The content slot"
+
+  p "A page's authored blocks reach the template through a **slot**. One slot name is reserved: `content` holds every block the page wrote loose in its body, and `slot(c, :content)` places them."
+
+  p "The declaration is `slot <name>: <type>`, and for `content` the type must literally be `content`. Placing the slot is not enough — the template has to *declare* it. Drop the `slot` line from `narrow` above and keep the `slot(c, :content)` call:"
+
+  code wcl {
+    source = <<'WCL'
+template bad {
+  render = fn(c: TemplateCtx) -> list<Html> [
+    el("main", ["narrow"], slot(c, :content)),
+  ]
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build bad.wcl --out _site
+page `index` has loose content, but template `bad` does not declare the reserved `content` slot
+TEXT
+  }
+
+  p "Everything a slot declaration can do beyond that — extra named slots, `?` for optional, `*` for repeated, a `default` fallback — belongs to [Websites](wdoc_websites), which is where named slots earn their keep. Two facts are worth carrying here. `slot(c, :name)` returns `list<Html>` ready to place. `slot_blocks(c, :name)` returns the raw handles, so a template can ask whether a slot is filled before it emits a wrapper for it."
+
+  callout "Handles, not HTML" {
+    class = ["note"]
+    body  = "`c.content` and `slot_blocks(...)` hand you read-only `BlockHandle`s, not rendered markup. A template may inspect a handle's `kind`, read its concrete `block` fields and walk its `children`, and may reorder or filter the list — but nothing renders until the returned tree is walked, after `render` has finished. That is what keeps a template from forcing a page body it decided not to place. `wdoc_blocks(handles)` places a list of handles you assembled yourself."
+  }
+
+  h2 "TemplateCtx"
+
+  p "One record arrives at `render`. Every built-in template reads it and nothing else."
+
+  table {
+    rows:
+      | "Field"          | "Type"                | "Holds" |
+      | "`content`"      | "`list<BlockHandle>`" | "The page's authored blocks, as handles" |
+      | "`slots`"        | "`list<TemplateSlot>`" | "The resolved slot table — read it through `slot` / `slot_blocks`" |
+      | "`title`"        | "`utf8`"              | "The site title" |
+      | "`page_name`"    | "`utf8`"              | "The current page's name (its output file is `<name>.html`)" |
+      | "`pages`"        | "`list<PageRef>`"     | "Every page of this site in source order — `name` and `href`" |
+      | "`toc`"          | "`list<TocEntry>`"    | "The resolved chapter tree; flat (one entry per page) when the site declares no `toc`" |
+      | "`menu`"         | "`list<MenuEntry>`"   | "The resolved navbar tree; empty when the site declares no `menu`" |
+      | "`footer`"       | "`list<FooterButton>`" | "The pinned sidebar buttons; empty when the site declares no `sidebar_footer`" |
+      | "`deck`"         | "`list<DeckSection>`" | "The presentation slide grid; empty otherwise" |
+      | "`members`"      | "`list<PageHandle>`"  | "Member pages — non-empty only for a collection template" |
+      | "`theme_toggle`" | "`bool`"              | "The site's `theme_toggle` flag" |
+      | "`search`"       | "`bool`"              | "The site's `search` flag" |
+      | "`home_href`"    | "`utf8`"              | "Relative link back to the root site; empty when this **is** the root" |
+      | "`home_title`"   | "`utf8`"              | "The root site's title, for that link's text" |
+  }
+
+  p "Note what is **not** there: no current chapter, no previous page, no next page, no heading list. Those are derived, not carried, and the next section is why."
+
+  p "Note also that the context is per-**site**, not per-document. `c.pages` and `c.toc` describe the site the current page belongs to. A document declaring three sites calls `render` with three different contexts."
+
+  h2 "Reading order with page_metadata"
+
+  p "A book sidebar needs to know which chapter is current. A pagination footer needs the previous and next pages. An \"on this page\" rail needs the current page's own headings. All three are questions about position, and answering them naively would mean evaluating other pages' bodies — which is exactly what a lazy document is built to avoid."
+
+  p "`page_metadata(c)` is the answer. It takes the context and returns a `PageMetadata` record. It indexes each site's shared `toc` value **once**, memoised, and it never asks the evaluator for another page's body: the reading order comes from the TOC tree the renderer already resolved, and the heading list comes from the current page's own authored handles."
+
+  table {
+    rows:
+      | "Field"           | "Type"             | "Holds" |
+      | "`reading_order`" | "`list<TocEntry>`" | "The TOC flattened to its linked entries, in reading order" |
+      | "`current`"       | "`TocEntry?`"      | "The current page's entry; `none` when the page is outside the TOC" |
+      | "`current_href`"  | "`utf8`"           | "`<page_name>.html` — the href to compare TOC entries against" |
+      | "`previous`"      | "`TocEntry?`"      | "The entry before `current`; `none` at the start, or outside the TOC" |
+      | "`next`"          | "`TocEntry?`"      | "The entry after `current`; `none` at the end, or outside the TOC" |
+      | "`active_path`"   | "`list<TocEntry>`" | "TOC root down to `current` — what a sidebar expands" |
+      | "`headings`"      | "`list<OnPageHeading>`" | "The current page's own h2 / h3 headings" |
+  }
+
+  p "A grouping `chapter` — one with no `page` — is in the tree and in the `active_path`, but never in the `reading_order`. That is what makes previous/next skip section headings instead of linking to nothing."
+
+  p "Here is a template that uses nothing but `page_metadata`, and the output it produces:"
+
+  code wcl {
+    filename = "guide.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+let outline_row = fn(h: OnPageHeading) -> Html
+  ela("a", [format("lvl-{}", h.level)], [["href", format("#{}", h.id)]],
+    [raw(format("{} {}", h.number, h.title))])
+
+let neighbour = fn(e: TocEntry, arrow: utf8) -> list<Html>
+  if e == none { [] }
+  else { [ ela("a", ["nb"], [["href", e.href]], [raw(format("{} {}", arrow, e.title))]) ] }
+
+template outlined {
+  slot content: content
+
+  render = fn(c: TemplateCtx) -> list<Html> {
+    let m = page_metadata(c);
+    flatten([
+      [ el("nav", ["outline"], map(m.headings, outline_row)) ],
+      [ el("main", [], slot(c, :content)) ],
+      [ el("nav", ["pager"], flatten([
+          neighbour(m.previous, "←"),
+          neighbour(m.next, "→"),
+        ])) ],
+    ])
+  }
+}
+
+site guide {
+  default_template = :outlined
+  title            = "Guide"
+
+  toc {
+    chapter "Part one" {
+      chapter "Install" { page = install }
+      chapter "Run"     { page = run }
+    }
+    chapter "Reference" { page = reference }
+  }
+}
+
+page install {
+  h1 "Install"
+  p "Get it."
+}
+
+page run {
+  h1 "Run"
+  h2 "First run"
+  p "Go."
+  h3 "Flags"
+  p "Many."
+  h2 "Daemon mode"
+  p "Also."
+}
+
+page reference {
+  h1 "Reference"
+  p "Everything."
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build guide.wcl --out _site
+wrote 3 pages
+TEXT
+  }
+
+  p "The `<body>` of `_site/run.html`, reformatted for width:"
+
+  code html {
+    source = <<'HTML'
+<nav class="outline">
+  <a class="lvl-2" href="#first-run">1 First run</a>
+  <a class="lvl-3" href="#flags">1.1 Flags</a>
+  <a class="lvl-2" href="#daemon-mode">2 Daemon mode</a>
+</nav>
+<main>
+  <h1 class="heading-1" id="run">Run</h1>
+  <h2 class="heading-2" id="first-run"><span class="heading-marker">§ 1</span>First run</h2>
+  <p>Go.</p>
+  <h3 class="heading-3" id="flags"><span class="heading-marker">§ 1.1</span>Flags</h3>
+  <p>Many.</p>
+  <h2 class="heading-2" id="daemon-mode"><span class="heading-marker">§ 2</span>Daemon mode</h2>
+  <p>Also.</p>
+</main>
+<nav class="pager">
+  <a class="nb" href="install.html">← Install</a>
+  <a class="nb" href="reference.html">→ Reference</a>
+</nav>
+HTML
+  }
+
+  p "The pager skipped the grouping chapter \"Part one\" and linked `install` and `reference` — the two entries either side of `run` in the flattened order, across a section boundary."
+
+  h3 "Headings, ids and § numbers"
+
+  p "Look at the `href`s the outline emitted and the `id`s the headings carry. They match, and nothing in the template arranged that."
+
+  p "The rail is derived from authored handles by `page_metadata`. The `id` and `§` marker in the emitted `<h2>` are stamped afterwards, by a page-wide pass over the rendered HTML. Both walk the **same** numbering sequence, so the two agree by construction rather than by luck. Three rules fall out of it:"
+
+  list {
+    li "**An id is slugified from the heading text** — lowercased, runs of non-alphanumerics collapsed to one `-`. A second heading with the same text gets `-2`, then `-3`. A heading that writes its own `id` keeps it."
+    li "**Only h2 and h3 are numbered**, and only they appear in `m.headings`. An h1, h4, h5 or h6 gets its `id` stamped and nothing else — no `§` marker and no rail entry."
+    li "**The sequence is per page, not per slot**, and it follows the order the template *places* slots, not the order the page *wrote* them. Place `content` and then a `sidebar` and the sidebar's headings number after every content heading, wherever the page put them."
+  }
+
+  callout "`page_metadata(c).field` will not parse" {
+    class = ["warning"]
+    body  = "Member access needs a reference on its left, not a call. `len(page_metadata(c).reading_order)` fails with `expected a reference, got call`. Bind the record first — `let m = page_metadata(c);` inside a `{ … }` block expression, as `outlined` does above — and read `m.reading_order`. This is a general rule about expressions, not a template one; see [Expressions and operators](lang_expressions). It bites hardest here because template code reads the same record five or six times."
+  }
+
+  h2 "Template parts"
+
+  p "The built-in templates are not privileged code. Each is a composition of small `let`-bound functions the stdlib also exports to you, and each built-in's whole body is one of them:"
+
+  code wcl {
+    source = <<'WCL'
+# From the stdlib. This is the entire `book` template.
+let wdoc_book_layout = fn(c: TemplateCtx) -> list<Html> {
+  let m = page_metadata(c);
+  flatten([
+    wdoc_part_book_css(),
+    wdoc_part_sidebar_with_metadata(c, m),
+    wdoc_part_book_content_with_metadata(c, m),
+    wdoc_part_book_rail_with_metadata(m),
+  ])
+}
+
+template book {
+  slot content: content
+  render = fn(c: TemplateCtx) -> list<Html>
+    wdoc_book_layout(c)
+}
+WCL
+  }
+
+  p "Every part returns `list<Html>`, so composing them is `flatten([…])`. The catalogue:"
+
+  table {
+    rows:
+      | "Part"                                | "Returns" |
+      | "`wdoc_part_home_link(c, cls)`"       | "The back-to-root link on a sub-site; empty on the root" |
+      | "`wdoc_part_search_box(enabled)`"     | "The search input and its results dropdown; gate it on `c.search`" |
+      | "`wdoc_part_theme_toggle(enabled)`"   | "The light/dark button and its script; gate it on `c.theme_toggle`" |
+      | "`wdoc_part_webpage_css()`"           | "The `webpage` stylesheet" |
+      | "`wdoc_part_header(c)`"               | "`<header class=\"site-header\">` with the site title" |
+      | "`wdoc_part_navbar(c)`"               | "`<nav class=\"site-nav\">` — home link, search, menu" |
+      | "`wdoc_part_menu_tree(c)`"            | "The nested `<ul class=\"menu\">` on its own" |
+      | "`wdoc_part_menu_script(c.menu)`"     | "The one-time dropdown-toggle script; empty with no `menu`" |
+      | "`wdoc_part_content(c)`"              | "`<main class=\"site-main\">` holding the `content` slot" |
+      | "`wdoc_part_book_css()`"              | "The `book` stylesheet" |
+      | "`wdoc_part_sidebar(c)`"              | "The fixed left sidebar: title, home link, search, toggle, TOC, footer buttons" |
+      | "`wdoc_part_toc_tree(c)`"             | "The nested `<ul class=\"book-toc\">` on its own" |
+      | "`wdoc_part_sidebar_footer(c)`"       | "The pinned footer buttons; empty with no `sidebar_footer`" |
+      | "`wdoc_part_book_content(c)`"         | "The reading column plus its pagination" |
+      | "`wdoc_part_book_rail(c)`"            | "The right-hand \"on this page\" rail; empty on a page with no h2/h3" |
+      | "`wdoc_part_pagenav(c)`"              | "The previous/next pair on its own" |
+      | "`wdoc_part_website_css()`"           | "The `website` stylesheet" |
+      | "`wdoc_part_presentation_css()`"      | "The deck stylesheet" |
+      | "`wdoc_part_deck(c)`"                 | "The slide grid built from `c.deck`" |
+      | "`wdoc_part_deck_chrome()`"           | "The deck progress bar, counter and nav hints" |
+      | "`wdoc_part_presentation_player()`"   | "The bundled keyboard player script" |
+  }
+
+  p "Three of the book parts come in pairs — `wdoc_part_sidebar(c)` and `wdoc_part_sidebar_with_metadata(c, m)`, and the same for the content column and the rail. Each pair does one thing; the `_with_metadata` form takes the `PageMetadata` you already bound instead of calling `page_metadata` again. Use it when your template touches more than one of them, as `wdoc_book_layout` does."
+
+  p "Four whole layouts sit above the parts: `wdoc_webpage_layout(c)`, `wdoc_book_layout(c)`, `wdoc_website_layout(c)` and `wdoc_presentation_layout(c)`."
+
+  h3 "Overriding, appending, copying"
+
+  p "There is no `extends` and no block-override syntax. There are three moves, and they cover the ground between them."
+
+  table {
+    rows:
+      | "You want"                                  | "Do this"                                             | "Costs you" |
+      | "The built-in exactly, plus something"      | "Call the `wdoc_*_layout`, `flatten` your own on the end" | "Nothing" |
+      | "The built-in minus a region, or reordered" | "Copy the layout's body, drop or move a part"         | "You now own the composition, not the parts" |
+      | "Your own chrome entirely"                  | "Compose the shared parts you still want, write the rest with `el`" | "You own the layout" |
+  }
+
+  p "The middle one is the common case, and it is a three-line function. Here is the `book` layout with the right-hand rail dropped:"
+
+  code wcl {
+    source = <<'WCL'
+let narrow_layout = fn(c: TemplateCtx) -> list<Html>
+  flatten([
+    wdoc_part_book_css(),
+    wdoc_part_sidebar(c),
+    wdoc_part_book_content(c),
+  ])
+WCL
+  }
+
+  callout "Parts resolve by bare name" {
+    class = ["warning"]
+    body  = "Every part, every layout and every member of the `el` family is a plain `let` binding brought in by `import <wdoc.wcl>`. They are reached by bare name, and there is no namespace to hide behind. A `let` of your own named `el`, `raw`, `wdoc_part_sidebar` or `wdoc_book_layout` **shadows the stdlib one** for the rest of that scope. Prefix your own helpers."
+  }
+
+  h2 "Sidebar footer buttons"
+
+  p "The `book` sidebar pins buttons at its bottom. Declare them on the `site`:"
+
+  code wcl {
+    source = <<'WCL'
+site handbook {
+  default_template = :book
+  title            = "Team handbook"
+
+  toc { chapter "Welcome" { page = index } }
+
+  sidebar_footer {
+    button "Source" {
+      href = "https://example.com/repo"
+      icon = "lucide.chart-network"
+    }
+  }
+}
+WCL
+  }
+
+  p "A `button` takes its label inline, then one of `page` (an in-site page name, validated — an unknown name fails the build) or `href` (any URL; `page` wins when both are given), plus an optional `icon` name. It reaches the template as a `FooterButton` on `c.footer`, and the icon arrives **already rendered to SVG markup** — embed it with `raw`, do not resolve it yourself:"
+
+  code html {
+    source = <<'HTML'
+<div class="book-sidebar-footer">
+  <a class="book-footer-btn" href="https://example.com/repo"
+     title="Source" aria-label="Source">
+    <svg class="wdoc-icon"><use href="_wdoc/icons.svg#lucide-chart-network"/></svg>
+  </a>
+</div>
+HTML
+  }
+
+  p "The built-in book renders the button **icon-only** and puts the label in `title` and `aria-label`, so a row of buttons stays a row. A button with no `icon` falls back to its label as visible text, so it is never empty. An icon name that resolves to nothing does the same — which is the failure mode to watch for, because it is silent. [Icons](wdoc_icons) covers the packs and the naming."
+
+  p "Only the `book` template reads `c.footer`. Declaring `sidebar_footer` on a `webpage` or `website` site is not an error; it simply renders nothing, unless your own template places `wdoc_part_sidebar_footer(c)`."
+
+  h2 "The el constructor family"
+
+  p "Below the parts is the markup itself. A template builds `Html` values, and the long form is a record literal:"
+
+  code wcl {
+    source = <<'WCL'
+Html::Element { tag: "div", class: ["book-toc-row"], children: kids }
+WCL
+  }
+
+  p "Written out by the hundred, that is mostly punctuation. The `el` family is the same thing with the field names dropped:"
+
+  code wcl {
+    source = <<'WCL'
+el("div", ["book-toc-row"], kids)
+WCL
+  }
+
+  p "Each constructor is **exactly** its long form — not a wrapper that normalises anything. A test in the crate builds the same tree both ways in one document and compares the rendered bodies byte for byte, which is how the stdlib was ported to the family without moving a byte of output."
+
+  h3 "Three element constructors"
+
+  p "There is one element variant and three constructors for it. The reason is a language fact, not a design preference: **a WCL parameter list is fixed at declaration.** There are no default arguments and no named arguments, so every call fills every parameter. `id` and `attrs` are each rare enough that carrying both in one constructor would mean writing `none, []` at most call sites — so each gets a constructor of its own."
+
+  table {
+    rows:
+      | "Constructor"                 | "Long form" |
+      | "`el(tag, cls, kids)`"        | "`Html::Element { tag, class, children }`" |
+      | "`ela(tag, cls, attrs, kids)`" | "`Html::Element { tag, class, attrs, children }`" |
+      | "`eli(tag, id, cls, kids)`"   | "`Html::Element { tag, id, class, children }`" |
+  }
+
+  p "`attrs` is a list of `[name, value]` pairs — `[[\"href\", p.href], [\"title\", p.label]]` — and the values are escaped. `id` is an `identifier`, so a literal is written as a string: `eli(\"main\", \"main\", [\"site-main\"], kids)`."
+
+  p "An empty `class` or `attrs` list emits no attribute at all, not `class=\"\"`. Neither does an unset optional passed straight through — `el(\"p\", t.class, kids)` with `t.class` unset renders exactly as an omitted field does. The parameter lists cannot **say** so, because `?` in a parameter list is a parse error; every wdoc `fn` annotates its optionals as though they were required and lets the `none` flow through."
+
+  h3 "The ela / eli trap"
+
+  p "`ela` and `eli` take four arguments each. WCL checks argument **arity** and never argument **types**, so arity is the one positional mistake it catches — and it cannot separate these two. Confusing `el` with `ela` is caught:"
+
+  code text {
+    source = <<'TEXT'
+wcl::eval::builtin_arity
+
+  × 'el' expects 3 argument(s), got 4
+TEXT
+  }
+
+  p "Confusing `ela` with `eli` is not. Build these two lines side by side:"
+
+  code wcl {
+    source = <<'WCL'
+ela("a", ["link"], [["href", "x.html"]], [raw("right")]),
+eli("a", ["link"], [["href", "x.html"]], [raw("wrong")]),
+WCL
+  }
+
+  code html {
+    source = <<'HTML'
+<a class="link" href="x.html">right</a>
+<a>wrong</a>
+HTML
+  }
+
+  p "The second call handed `[\"link\"]` to `id` and the attribute list to `class`. Both were silently dropped, the build reported nothing, and the link stopped being a link. Pick the constructor by what you are passing, and when an element needs an id **and** attributes, write the record."
+
+  h3 "The leaves"
+
+  p "Five constructors build the non-element variants:"
+
+  table {
+    rows:
+      | "Constructor"            | "Renders" | "Escaped" |
+      | "`raw(html)`"            | "Verbatim, pre-rendered HTML — a resolved icon, an inline `<script>`" | "No" |
+      | "`inl(text)`"            | "One prose run through the inline-pattern engine — bold, code spans, links, `:icons:`, `$math$`" | "By the engine" |
+      | "`para(cls, spans)`"     | "`<p class>` of spans, each run through the inline patterns" | "By the engine" |
+      | "`icon(name, cls)`"      | "An icon resolved against the declared `iconset`s and the built-in packs" | "n/a" |
+      | "`css_style(name)`"      | "A named top-level `style` block, in place, as `<style>…</style>`" | "n/a" |
+  }
+
+  p "`inl` does not wrap itself — write `el(\"p\", [], [inl(txt)])`. `raw` is the escape hatch and the hazard in one: it is the only way to place markup a block already rendered, and the only way to inject markup that was never checked. [Text and formatting](wdoc_formatting) covers what the inline engine understands. `css_style` is how every `wdoc_part_*_css()` works — the stylesheet is a `style` block, and the part is one call."
+
+  h3 "When to write the long form"
+
+  p "The family covers the HTML **element** vocabulary and stops there. Two things keep the named-field literal, deliberately:"
+
+  list {
+    li "**The other value families** — the `Svg` shapes a diagram block draws, and the `Content` values an ordinary block's `lower` returns (see [Writing your own blocks](wdoc_extending)). They are field-shaped: a positional constructor over them would be the same record with its field names deleted. WCL checks argument arity but never argument types, so transposing two of an SVG label's four interchangeable `f64`s would render silently wrong, where the record raises a shape mismatch. The saving is an order of magnitude smaller there than it is on elements, and the risk is larger."
+    li "**Combinations the family does not name** — an element carrying an id *and* attributes, a `Paragraph` with an id, a `Head`, a `Table`."
+  }
+
+  p "The long form is legal everywhere and never wrong. The family is a shorthand for the shapes you write a hundred times, and it is worth exactly that much."
+
+  h2 "A worked layout"
+
+  p "Everything above in one file. This is the `book` layout with the rail dropped and a footer added — a copy of the stdlib composition, three parts kept, one gone, and a footer built with the `el` family."
+
+  code wcl {
+    filename = "handbook.wcl"
+    source = <<'WCL'
+# handbook.wcl — the stdlib book layout, minus the rail, plus a footer.
+import <wdoc.wcl>
+
+template handbook {
+  slot content: content
+
+  render = fn(c: TemplateCtx) -> list<Html> {
+    let m = page_metadata(c);
+    flatten([
+      wdoc_part_book_css(),
+      wdoc_part_sidebar_with_metadata(c, m),
+      wdoc_part_book_content_with_metadata(c, m),
+      [ el("footer", ["handbook-footer"], [
+          para([], [format("{} — {} chapters", c.title, len(m.reading_order))]),
+          ela("a", ["edit"],
+            [["href", format("https://example.com/edit/{}.wcl", c.page_name)]],
+            [inl("Edit **this page**")]),
+        ]) ],
+    ])
+  }
+}
+
+site handbook {
+  default_template = :handbook
+  title            = "Team handbook"
+  theme_toggle     = true
+
+  toc {
+    chapter "Welcome" { page = index }
+    chapter "Practices" {
+      chapter "Code review" { page = review }
+      chapter "On call"     { page = oncall }
+    }
+  }
+
+  sidebar_footer {
+    button "Source" {
+      href = "https://example.com/repo"
+      icon = "lucide.chart-network"
+    }
+  }
+}
+
+page index {
+  title = "Welcome"
+  h1 "Welcome"
+  p "Everything the team agreed to write down."
+}
+
+page review {
+  title = "Code review"
+  h1 "Code review"
+  h2 "What to look for"
+  p "Correctness first, then names."
+  h3 "Naming"
+  p "A name that lies costs more than a slow function."
+  h2 "How fast"
+  p "One working day."
+}
+
+page oncall {
+  title = "On call"
+  h1 "On call"
+  h2 "Rotation"
+  p "One week at a time."
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build handbook.wcl --out _site
+wrote 3 pages
+TEXT
+  }
+
+  p "The footer of `_site/review.html`:"
+
+  code html {
+    source = <<'HTML'
+<footer class="handbook-footer">
+  <p><span>Team handbook — 3 chapters</span></p>
+  <a class="edit" href="https://example.com/edit/review.wcl">Edit <span class="bold">this page</span></a>
+</footer>
+HTML
+  }
+
+  p "Three chapters, not four: the `toc` has four entries, and `Practices` is a grouping heading with no `page`, so it never reaches the reading order. `page_metadata` did that, not the footer."
+
+  callout "Watch the line breaks" {
+    class = ["warning"]
+    body  = "Write one block per line inside a page. `h1 \"Hello\"  p \"World.\"` on a single line is **one** block, not two: the parser reads `p` and `\"World.\"` as two more labels on the `h1`. `wcl check` prints `OK`, `wcl fmt` prints the line back unchanged, and the paragraph is simply absent from the built page."
+  }
+
+  h2 "Where to go next"
+
+  list {
+    li "[Documents, pages and sites](wdoc_sites) — the `site` block, `page` blocks, `toc` and `menu`, and the output tree the templates write into."
+    li "[Websites](wdoc_websites) — named slots, slot defaults and fallbacks, `<head>` assets, and the `website` template in full."
+    li "[Presentations](wdoc_presentations) — the `deck` grid, collection templates and repeated slots."
+    li "[Themes and styling](wdoc_styling) — `style` blocks, `class` rules and the `--wdoc-*` variables the built-in layouts consume."
+    li "[Writing your own blocks](wdoc_extending) — the other half of the `Html` vocabulary: a block's `lower`, and when a block is `@native` instead."
+    li "[Functions](lang_functions) — the `fn` literals, block expressions and `let` bindings a `render` is built from."
+  }
 }
