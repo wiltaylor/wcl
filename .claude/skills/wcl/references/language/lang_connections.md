@@ -1,7 +1,247 @@
 # Connections
 
-> **Not written yet.** This file is a placeholder for the reference that mirrors
-> chapter 11 of the WCL reference book. The finished reference must stand alone.
-> The book does not travel with this skill.
+A connection is a typed relationship between block instances, written as an arrow statement and
+projected into a list of records. It is how graph-shaped documents — flowcharts, state machines,
+dependency maps, architecture models — declare their edges without a per-edge block.
 
-Will cover: `connection` declarations, connection statements, the `@connections` decorator and reference integrity.
+There are three pieces, and you need all three:
+
+1. A `connection` **declaration** naming the endpoint types and the tag vocabulary.
+2. A field carrying **`@connections(Decl)`** to collect the projected records.
+3. The **statements** themselves: `source -> destination :tag`.
+
+## A whole example
+
+```wcl
+symbol_set EdgeKind { uses  depends_on }
+connection DependsOn: Service -> Service : EdgeKind
+
+@block("service") type Service { @inline(0) id: identifier }
+
+@document type Config {
+  @children("service")    services: list<Service>
+  @connections(DependsOn) edges:    list<DependsOn>
+}
+
+service web {}
+service db {}
+service cache {}
+
+web -> db    :depends_on
+web -> cache :uses
+```
+
+```console
+$ wcl check a.wcl
+OK
+$ wcl get a.wcl edges --json
+[
+  {
+    "destination": "db",
+    "kind": "depends_on",
+    "source": "web"
+  },
+  {
+    "destination": "cache",
+    "kind": "uses",
+    "source": "web"
+  }
+]
+```
+
+Every projected record has the same three slots — `source`, `destination`, `kind` — whatever
+the connection is called. A host reads that shape and interprets it.
+
+## The `connection` declaration
+
+```
+connection NAME : SourceType -> DestinationType : KindSet
+```
+
+The trailing `: KindSet` is **required**. A `connection` written without it is a parse error:
+
+```console
+  × expected ':' before connection kind symbol_set, found …
+```
+
+`KindSet` must be a `symbol_set`. Its members are the tags a statement may carry.
+
+`@connections(NAME)` on a field names that declaration. It is **not** a plain `type`: pointing
+it at one gives
+
+```console
+  × no connection schema accepts 'Service -> Service'
+```
+
+## Statements
+
+```wcl
+web -> db :depends_on   // tagged
+web -> cache            // untagged
+```
+
+**An untagged statement is not untagged in the projection.** It takes the **first member** of
+the kind set as its `kind`. Order your `symbol_set` so that the first member is the sensible
+default:
+
+```wcl
+symbol_set EdgeKind { uses  depends_on }   // `a -> b` becomes :uses
+```
+
+Statements route to a schema by their **operand types**, not by which field they were written
+near. Declare two connections over different endpoint types and each `@connections` field
+collects only its own:
+
+```wcl
+symbol_set K { uses }
+symbol_set L { owns }
+connection Calls: Service -> Service : K
+connection Owns:  Team    -> Service : L
+
+@block("service") type Service { @inline(0) id: identifier }
+@block("team")    type Team    { @inline(0) id: identifier }
+
+@document type Config {
+  @children("service") services: list<Service>
+  @children("team")    teams:    list<Team>
+  @connections(Calls)  calls:    list<Calls>
+  @connections(Owns)   owns:     list<Owns>
+}
+
+service web {}
+service db {}
+team core {}
+
+web  -> db     // lands in `calls`
+core -> web    // lands in `owns`
+```
+
+## Polymorphic endpoints
+
+An endpoint type need not be one concrete block type. A connection claims a statement when each
+operand's concrete type satisfies the endpoint, three ways:
+
+- **Nominal** — the exact type, or a subtype through `extends`.
+- **Interface** — `&Iface`, matched by any operand implementing it.
+- **Union** — the operand is a variant member of the declared union.
+
+```wcl
+interface Entity { name: utf8 }
+symbol_set RelKind { relates }
+connection Rel: &Entity -> &Entity : RelKind
+
+@block("service") type Service extends Entity { @inline(0) id: identifier  name: utf8 }
+@block("store")   type Store   extends Entity { @inline(0) id: identifier  name: utf8 }
+
+@document type Config {
+  @children("service") services: list<Service>
+  @children("store")   stores:   list<Store>
+  @connections(Rel)    edges:    list<Rel>
+}
+
+service web { name = "web" }
+store  db  { name = "db" }
+
+web -> db :relates          // a Service to a Store, through the interface
+```
+
+Note the reference form: an interface endpoint must be written `&Entity`, not `Entity`.
+
+## `@dynamic` endpoints
+
+By default every operand must name a literal block in scope. An operand that resolves to nothing
+is a schema error:
+
+```console
+  × connection destination 'nope' does not name a block in scope
+```
+
+Tag the **declaration** with `@dynamic` to relax that. An unresolved operand is then projected
+as its raw id string instead of being dropped, and `wcl check` no longer flags it:
+
+```wcl
+symbol_set K { uses }
+@dynamic
+connection Calls: Service -> Service : K
+```
+
+```console
+$ wcl get f.wcl edges --json
+[
+  {
+    "destination": "generated_later",
+    "kind": "uses",
+    "source": "web"
+  }
+]
+```
+
+This is for endpoints a host materialises at consume time — ids generated by a `@contextual`
+block's expansion, for instance. A still-unmatched id is then the host's problem. Leave
+`@dynamic` off for connections whose endpoints are always literal, so typos stay caught.
+
+Even under `@dynamic`, the side that *does* resolve must still type-match, so a statement is
+never claimed by the wrong schema.
+
+## Errors
+
+| Message | Means |
+| --- | --- |
+| `connection destination 'x' does not name a block in scope` | Unresolved operand, and the connection is not `@dynamic`. |
+| `no connection schema accepts 'A -> B'` | No declaration's endpoints match. Often `@connections` pointing at a `type` rather than a `connection`. |
+| `connection 'A -> B' matches multiple schemas: X, Y` | Two declarations accept the same operand types. Narrow one. |
+| `connection kind ':nope' is not a member of 'K'` | The tag is not in the declared `symbol_set`. |
+
+## Reference integrity with `@ref`
+
+A connection is not the only way to point at another block. A field holding an `identifier` (or
+`list<identifier>`) that is semantically a reference declares that with `@ref("kind")`.
+`wcl check` then verifies every id names an existing block of that kind, anywhere in the
+document.
+
+```wcl
+@block("screen") type Screen { @inline(0) id: identifier }
+
+@block("flow") type Flow {
+  @inline(0) id: identifier
+  @ref("screen") entry: identifier          // must be a declared screen id
+  @ref("screen") steps: list<identifier>    // every element checked
+}
+
+@document type App {
+  @children("screen") screens: list<Screen>
+  @children("flow")   flows:   list<Flow>
+}
+
+screen home {}
+flow main { entry = missing }
+```
+
+```console
+$ wcl check d.wcl
+wcl::eval::schema_violation
+
+  × field 'entry': @ref("screen") target 'missing' is not the id of any 'screen' block
+
+d.wcl: 1 schema violation
+```
+
+## Choosing between them
+
+- **`@ref`** when one block names another and you want the id checked. It stays a scalar field,
+  it reads as a property, and it costs nothing to add to an existing schema.
+- **A connection** when the relationship is an edge in its own right — when it has a *kind*,
+  when both ends matter symmetrically, or when a consumer wants the whole edge list rather than
+  a walk over blocks.
+- **`@by_ref`** on a block type when a nested block should reify as a resolvable reference
+  rather than an inlined copy, so a cross-cutting definition (a colour, a palette entry) is
+  declared once and pointed at from many places.
+
+## Gotchas
+
+- The `: KindSet` on a `connection` declaration is mandatory, and it must be a `symbol_set`.
+- An untagged statement takes the **first** member of that set. It is not `none`.
+- `@connections(X)` needs `X` to be a `connection`, not a `type`.
+- The projected record slots are always `source` / `destination` / `kind`.
+- `@dynamic` goes on the declaration, not on the statement or the field.
+- An interface endpoint is written `&Iface`.
