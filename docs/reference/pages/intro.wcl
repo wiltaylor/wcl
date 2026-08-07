@@ -97,7 +97,7 @@ WCL
 
   table {
     rows:
-      | ""                      | "JSON"                        | "YAML"                                  | "TOML"                        | "WCL" |
+      | "Question"              | "JSON"                        | "YAML"                                  | "TOML"                        | "WCL" |
       | "Comments"              | "No"                          | "Yes"                                   | "Yes"                         | "Yes, and `wcl fmt` keeps them" |
       | "Scalar types"          | "String, number, bool, null"  | "The same, guessed from the text"       | "Plus dates and times"        | "Sized integers, floats, units, `bool`, four string encodings, identifiers, symbols, `none`" |
       | "Where the schema lives"| "Another file (JSON Schema)"  | "Another file"                          | "Another file"                | "This file, or one it imports" |
@@ -182,7 +182,7 @@ TEXT
 
   h2 "A first schema"
 
-  p "A schema is three decorators and two type declarations. Put them at the top of the same file — order does not matter to the parser, but it reads better with the shape before the data:"
+  p "A schema is three decorators and two type declarations. Put them at the top of the same file — order does not matter to the parser, but it reads better with the shape before the data. This is the file from [the comparison above](#how-wcl-differs-from-json-yaml-and-toml), assembled, with a comment on each half:"
 
   code wcl {
     filename = "app.wcl"
@@ -256,8 +256,16 @@ TEXT
   code text {
     source = <<'TEXT'
 $ wcl parse app.wcl
-# ... the prelude's built-in decorator, unit and symbol_set declarations
-# print first, followed by your own ...
+@block("env")
+type Env {
+  @inline(0)
+  name: identifier
+  url: utf8
+  replicas: u32
+  debug: bool
+}
+... then your @document type, then the decorator, unit and symbol_set
+declarations every document gets for free, then the data ...
 service = "checkout"
 env staging {
   url = "https://staging.example.com"
@@ -271,6 +279,8 @@ env prod {
 }
 TEXT
   }
+
+  p "Two things there are worth a second look. Your own type declarations come back **normalized** — `@inline(0)` on its own line, `url:      utf8` with its padding gone — because `parse` prints the tree, not your keystrokes; `wcl fmt` is the same normalization written back to the file. And the declarations you never wrote are the built-in decorators, units and symbol sets every document gets for free, which is where `@block`, `@children` and `512MiB` come from."
 
   p "Three commands, three questions. `wcl check` asks _is this document valid_. `wcl eval` asks _what is this one value_. `wcl parse` asks _what did the whole file become_. [The CLI](lang_cli) covers the rest — `set`, `fmt`, `diff`, `init`, `repl`, `lsp`, `editor`."
 
@@ -304,7 +314,7 @@ type AppConfig {
 WCL
   }
 
-  p "Four ideas, in order. A `symbol_set` is a closed vocabulary: `tier` may be `:free`, `:pro` or `:enterprise` and nothing else. A **type alias** carrying `@min` / `@max` narrows a primitive and gets a name that says what it is for. `required_fields` lists the fields a block may not leave out. `@default(false)` supplies a value when a field is absent, which is what makes `debug` the one field the list does not require."
+  p "Four ideas, in order. A `symbol_set` is a closed vocabulary: `tier` may be `:free`, `:pro` or `:enterprise` and nothing else. A **type alias** carrying `@min` / `@max` narrows a primitive and gets a name that says what it is for. `required_fields` lists the fields a block may not leave out. `@default(false)` supplies a value when a field is absent, which is why `debug` can stay off that list — the label `name` is off it too, because a label is not written as a field at all."
 
   p "Now give it an environment that breaks the schema in two places at once:"
 
@@ -336,7 +346,7 @@ TEXT
 
   p "Delete the `url` line as well and a third violation joins them — `block 'env' is missing required field 'url'`. Every one of these is the class of mistake a data format hands to the program at startup, and every one of them was answered by a command that never ran the program. `wcl check` exits non-zero, so a pre-commit hook or a CI step is one line."
 
-  p "Two more mistakes worth trying on the corrected file, because they show what the checker keys on. Typing `replicass = 6u32` gives `field 'replicass' is not declared by schema 'Env'` — an unknown field is refused, not ignored. Writing `replicas = \"6\"` gives `field 'replicas' declared as u32 but value is utf8` — a string that looks like a number is still a string."
+  p "Two more mistakes worth trying on the corrected file, because they show what the checker keys on. Writing `replicas = \"6\"` gives `field 'replicas' declared as Replicas but value is utf8` — a string that looks like a number is still a string, and the message names your alias rather than the `u32` underneath it. Mistyping the field as `replicass = 6u32` gives two violations at once: `field 'replicass' is not declared by schema 'Env'`, because an unknown field is refused rather than ignored, and `block 'env' is missing required field 'replicas'`, because the field you meant to write is now absent."
 
   callout "Not everything waits for wcl check" {
     class = ["warning"]
@@ -390,7 +400,7 @@ wrote 1 page
 TEXT
   }
 
-  p "That is a complete site: `_site/index.html`, `_site/overview.html`, and the fonts and other assets beside them under `_site/_wdoc/`. `wcl wdoc serve main.wcl` does the same thing behind a watch-and-reload dev server while you write."
+  p "That is a complete site: `_site/index.html`, `_site/overview.html`, and the fonts and other assets beside them under `_site/_wdoc/`. `wcl wdoc serve main.wcl` serves the same build over HTTP while you write: it watches your sources and collects what changed, you press Enter in its console to rebuild, and the browser reloads itself."
 
   p "Now point the language half at the document half, and nothing special happens — which is the point:"
 
@@ -441,7 +451,7 @@ TEXT
     li "[Documents, fields and blocks](lang_documents) — fields, blocks, labels, tables and `let` items in full. The next chapter, and the one to read first."
     li "[Values and primitives](lang_values) — the seven ways to write a scalar, and which of them the checker judges."
     li "[Schemas](lang_schemas) — `@document`, `@block`, `@child`, `@children`, `@inline`, `@table`, and exactly what `wcl check` checks."
-    li "[The CLI](lang_cli) — `check`, `parse`, `eval`, `set`, `fmt`, `diff`, `init`, `repl`, `lsp` and `editor`."
+    li "[The CLI](lang_cli) — `check`, `parse`, `eval`, `set`, `fmt`, `diff`, `init`, `answer`, `repl`, `lsp`, `editor`, `wdoc` and `wskill`."
     li "[Documents, pages and sites](wdoc_sites) — the start of Part II, and the wdoc equivalent of chapter 1."
   }
 }
