@@ -1,11 +1,788 @@
 // Chapter 4 — Types.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #162. Every snippet and every command transcript below
+// was run against the `wcl` CLI before it was written down; the older
+// concept units were re-cut, not lifted, and several of their claims did
+// not survive the check.
 page lang_types {
   title = "Types"
 
   h1 "Types"
 
-  p "Not written yet. This chapter covers type aliases, unions, interfaces, optionals, symbol sets, reference types and the type constraints."
+  p "A schema says what a document may contain. A **type** says what one value may be. Four keywords introduce a type: `type`, `interface`, `union` and `symbol_set`. A small grammar of _type references_ then names those types on the right of a colon. This chapter covers both halves."
+
+  p "One form is out of scope. `type Name { … }`, the record form with a body, exists to carry `@document` / `@block` / `@table`, and it belongs to [Schemas](lang_schemas). This chapter takes the other `type` form, the alias, and everything you may write after a colon."
+
+  p "Every file and every command below was run before it was written down. Type them and compare."
+
+  h2 "The four declarations"
+
+  p "Each of these introduces a name:"
+
+  table {
+    rows:
+      | "Declaration"      | "Written as"                    | "Names"                              | "Covered in" |
+      | "Alias"            | "`type Port = u16`"             | "another name for a type"            | "[This chapter](#type-aliases)" |
+      | "Record type"      | "`type Service { … }`"          | "a named set of typed fields"        | "[Schemas](lang_schemas)" |
+      | "`interface`"      | "`interface Drawable { … }`"    | "a structural contract"              | "[This chapter](#interfaces)" |
+      | "`union`"          | "`union Shape { … }`"           | "a tagged choice between shapes"     | "[This chapter](#unions)" |
+      | "`symbol_set`"     | "`symbol_set Palette { … }`"    | "a closed vocabulary of symbols"     | "[This chapter](#symbol-sets)" |
+  }
+
+  h2 "The seven type references"
+
+  p "What you write after the colon in `name: T` is one of seven forms:"
+
+  table {
+    rows:
+      | "Form"          | "Example"                 | "Means" |
+      | "Builtin"       | "`u16`, `utf8`, `bool`, `identifier`" | "One of the primitive scalars — see [Values and primitives](lang_values)" |
+      | "Named"         | "`Port`, `lib.Tier`"      | "A declared alias, record type, interface, union or symbol set" |
+      | "Optional"      | "`utf8?`"                 | "The type, or `none`" |
+      | "Reference"     | "`&Drawable`"             | "A pointer to another node that satisfies `Drawable`" |
+      | "List"          | "`list<utf8>`"            | "A homogeneous sequence" |
+      | "Tensor"        | "`tensor<f64, [2, 3]>`"   | "A shaped numeric array" |
+      | "Function"      | "`fn(f64) -> f64`"        | "A callable value" |
+  }
+
+  p "The forms nest — `list<&Drawable>`, `fn(list<utf8>) -> Port`, `tensor<Extent, [4]>` — with one exception. `?` is not part of a type reference; it is a suffix the _field declaration_ reads after the type reference ends. So `list<utf8>?` is an optional list and `list<utf8?>` is the parse error `expected '>' to close list<...>, found '?'`. There is no optional element type."
+
+  h2 "One document, every form"
+
+  p "The rest of the chapter takes this file apart. Save it as `canvas.wcl`; it checks green as written:"
+
+  code wcl {
+    filename = "canvas.wcl"
+    source = <<'WCL'
+# canvas.wcl — a drawing and the shapes on it.
+
+@min(1) @max(4096)
+type Extent = u32
+
+@non_empty
+type Label = utf8
+
+symbol_set Palette {
+  ink
+  paper
+  accent
+}
+
+union Fill {
+  Solid    { hue: Palette }
+  Gradient { from: Palette  to: Palette }
+  Bare     none
+}
+
+interface Placed {
+  x: f64
+  y: f64
+}
+
+@block("circle")
+type Circle {
+  @inline(0) id: identifier
+  title:  Label
+  x:      f64
+  y:      f64
+  radius: f64
+  fill:   Fill
+}
+
+@block("canvas")
+type Canvas {
+  @inline(0) id: identifier
+  width:  Extent
+  height: Extent
+  focus:  &Placed
+}
+
+@document
+type Drawing {
+  @children("circle") circles: list<Circle>
+  @children("canvas") canvases: list<Canvas>
+}
+
+circle dot {
+  title  = "the dot"
+  x      = 10.0
+  y      = 20.0
+  radius = 5.0
+  fill   = { hue: :accent }
+}
+
+canvas main {
+  width  = 800u32
+  height = 600u32
+  focus  = circles.dot
+}
+WCL
+  }
+
+  p "`wcl parse` shows what the two blocks became. Two lines are worth staring at — neither was typed the way it is printed:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check canvas.wcl
+OK
+
+$ wcl parse canvas.wcl
+...
+circle dot {
+  title = "the dot"
+  x = 10.0
+  y = 20.0
+  radius = 5.0
+  fill = Fill::Solid { hue: :accent }
+}
+canvas main {
+  width = 800u32
+  height = 600u32
+  focus = &block(dot)
+}
+TEXT
+  }
+
+  p "The bare record `{ hue: :accent }` became `Fill::Solid { hue: :accent }` — the union picked its own variant from the record's shape. And `circles.dot` became `&block(dot)` — a navigator to the circle, not a copy of it. Those two are [Inferring the variant from a bare record](#inferring-the-variant-from-a-bare-record) and [Reference types](#reference-types) below."
+
+  h2 "Type aliases"
+
+  p "`type Name = TypeRef` gives a type a second name. The alias is **transparent**: it resolves to its target wherever it is used, transitively, and a value is checked against the target and not against the name."
+
+  code wcl {
+    source = <<'WCL'
+type Extent = u32
+type Size   = Extent      # aliases chain
+type Tags   = list<utf8>
+type Weights = tensor<f64, [2, 3]>
+type Scorer  = fn(f64) -> f64
+WCL
+  }
+
+  p "An alias may name any type reference, including the compound forms. What it may not do is carry a body or an `extends` clause — `type Port extends Base = u16` is a parse error (`a type alias cannot have an extends clause`). An alias is a name, not a subtype."
+
+  p "The reason to declare one is rarely the shorter spelling. It is that **decorators stick to the name**, and that is the subject of the next section."
+
+  h2 "Constraints"
+
+  p "Three decorators bound a value. They are checked by `wcl check`."
+
+  table {
+    rows:
+      | "Decorator"     | "Bounds"                                        | "Applies to" |
+      | "`@min(n)`"     | "The value must be at least `n`"                | "Any numeric value" |
+      | "`@max(n)`"     | "The value must be at most `n`"                 | "Any numeric value" |
+      | "`@non_empty`"  | "The value must not be empty"                   | "A string or a list" |
+  }
+
+  p "A constraint may sit in either of two places, and they mean the same thing to the field it lands on. Write it on the **field declaration** to bound that one field:"
+
+  code wcl {
+    source = <<'WCL'
+@block("sprite")
+type Sprite {
+  @inline(0) id: identifier
+  @max(10) layer: i64
+}
+WCL
+  }
+
+  p "Or write it on an **alias**. It then travels to every field declared with that name, and through any further alias that names it:"
+
+  code wcl {
+    source = <<'WCL'
+@min(1) type Positive = i64
+type Retries = Positive        # inherits @min(1)
+
+type Job {
+  attempts: Retries
+}
+WCL
+  }
+
+  p "That is the payoff of `type Extent = u32` in `canvas.wcl`. `width` and `height` are one word each, and each carries `@min(1) @max(4096)`. Set `width = 0u32` and `wcl check` says so:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check canvas.wcl
+wcl::eval::schema_violation
+
+  × field 'width': value 0 is below @min(1)
+
+canvas.wcl: 1 schema violation
+TEXT
+  }
+
+  p "Set `layer = 99` in the `sprite` above and `@max` answers the same way:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check sprites.wcl
+wcl::eval::schema_violation
+
+  × field 'layer': value 99 is above @max(10)
+
+sprites.wcl: 1 schema violation
+TEXT
+  }
+
+  p "`@non_empty` reads a length, not a magnitude. Set `title = \"\"` in `canvas.wcl`:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check canvas.wcl
+wcl::eval::schema_violation
+
+  × field 'title': value is empty but the type is @non_empty
+
+canvas.wcl: 1 schema violation
+TEXT
+  }
+
+  callout "A constraint bounds a value, not an absence" {
+    class = ["note"]
+    body  = "`@min(1) retries: Positive?` is not a contradiction. An optional field has no value to bound when you write it as `none` or leave it out. The constraint is skipped, and `wcl check` prints `OK`. Supply a number and the bound bites. The same reading explains `@non_empty` on a list. A list of nothing but `none` elements counts as empty, because every consumer drops those elements."
+  }
+
+  p "The bound is an expression that evaluates through the document. `@min(8_000)`, `@min(8000)` and `@min(8000.0)` are one bound. The bound must be a number: `@min(\"x\")` fails with `argument for decorator '@min' slot 'value' is declared as f64 but the value is utf8`. Note that `@min(8e3)` also fails. WCL reads `8e3` as the magnitude `8` with the unit `e3`; the float is `8.0e3`. [Values and primitives](lang_values) covers that spelling, and [Decorators](lang_decorators) covers how these three are declared."
+
+  h2 "Optionals"
+
+  p "A `?` after a type reference makes it optional. A `T?` field accepts a `T` or the literal `none`; a field without `?` accepts only a `T`."
+
+  code wcl {
+    source = <<'WCL'
+@block("profile")
+type Profile {
+  @inline(0) id: identifier
+  name: utf8       # required
+  bio:  utf8?      # optional
+  age:  u32?       # optional
+}
+WCL
+  }
+
+  p "Absence has two spellings and they mean one thing. **Omit** the field, or write it as `none`:"
+
+  code wcl {
+    source = <<'WCL'
+profile alice { name = "Alice"  bio = "Author." }
+profile bob   { name = "Bob"    bio = none      }
+WCL
+  }
+
+  p "Both read back as `none` for the fields they leave out. What a required field refuses is `none` as a _value_. Change `bob` to `profile bob { name = none }` and:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check profiles.wcl
+wcl::eval::schema_violation
+
+  × field 'name' declared as utf8 but value is none
+
+profiles.wcl: 1 schema violation
+TEXT
+  }
+
+  callout "Omitting a required field is not the same error" {
+    class = ["warning"]
+    body  = "`profile carol { }` does not trip the check above, and on an ordinary `@block` type it does not trip anything at all — `wcl check` prints `OK`. A field being _required_ by its type is not what makes it mandatory in an instance; `@block(\"kind\", required_fields = [...])` is. See [Schemas](lang_schemas). The `?` suffix governs whether `none` is an acceptable value, and that is all it governs."
+  }
+
+  p "Write the `?` at the very end of the declaration, after the type reference. `list<utf8>?` is an optional list. `&Placed?` is an optional reference. `fn(f64) -> f64?` is an optional function, _not_ a function that returns an optional."
+
+  p "Two places refuse the `?`. Inside a compound form it is a parse error, as [the seven forms](#the-seven-type-references) shows. On a union variant body it is a parse error too: `Polygon i32?` gives `'?' is not allowed on a variant body`."
+
+  p "The `??` operator supplies a default for an optional (`width = box.width ?? 480.0`). It is an expression, not a type, so it lives in [Expressions and operators](lang_expressions); `match` and `if let` over an optional are in [Control flow](lang_control_flow)."
+
+  h2 "Symbol sets"
+
+  p "A `symbol_set` names a **closed vocabulary** of symbols — an enum without the weight of a union. Declare the members bare, one per line, and type a field with the set's name:"
+
+  code wcl {
+    source = <<'WCL'
+symbol_set Palette {
+  ink
+  paper
+  accent
+}
+
+@block("stroke")
+type Stroke {
+  @inline(0) id: identifier
+  hue: Palette
+}
+
+stroke outline { hue = :accent }
+WCL
+  }
+
+  p "The membership check is real. A symbol outside the set is named, and so is the set:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check strokes.wcl
+wcl::eval::schema_violation
+
+  × field 'hue' declared as symbol_set 'Palette' but ':neon' is not one of its
+  │ members
+
+strokes.wcl: 1 schema violation
+TEXT
+  }
+
+  p "A `symbol_set` takes no `extends` clause — `symbol_set B extends A { … }` is a parse error. A vocabulary is closed or it is not one. To widen a closed set, declare the wider set; to keep it open, use `utf8` and stop calling it a vocabulary."
+
+  p "[Values and primitives](lang_values) covers the `:symbol` literal itself, including the symbols that belong to no declared set."
+
+  callout "Membership is checked where the set is the declared type" {
+    class = ["warning"]
+    body  = "`hue: Palette` on a block field is checked, as above. The same name reached indirectly is not: `hue: Palette` inside a _union variant body_ accepts `:neon` and reads back as `Fill::Solid { hue: :neon }`. The variant dispatcher matches the value against the payload field's declared type. That test is deliberately permissive for a symbol against a named type. Put the vocabulary on the block field when you want the tool to hold you to it."
+  }
+
+  h2 "Unions"
+
+  p "A `union` declares a tagged choice: a value that is exactly one of several named alternatives, each with its own payload. Variants are written one per line inside the braces, with no commas."
+
+  h3 "The four variant bodies"
+
+  code wcl {
+    source = <<'WCL'
+interface Placed { x: f64  y: f64 }
+
+union Item {
+  Circle   { radius: f64  stroke: f64? }   # record body
+  Polygon  i32                             # type-reference body
+  Anywhere &Placed                         # interface-reference body
+  Bare     none                            # unit body
+}
+WCL
+  }
+
+  list {
+    li "A **record** body names its own fields — space- or newline-separated, and each may be optional."
+    li "A **type-reference** body carries one positional payload of that type."
+    li "An **interface-reference** body (`&Iface`) carries one positional payload that must satisfy the interface."
+    li "A **unit** body, spelled `none`, carries nothing."
+  }
+
+  p "Two variants may not share a body shape. `Circle { size: f64 }` beside `Square { size: f64 }` fails at declaration time, before any value is written:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check shapes.wcl
+wcl::eval::schema_violation
+
+  × variants 'Circle' and 'Square' in union 'Shape' have identical bodies
+   ╭─[shapes.wcl:3:3]
+ 2 │   Circle { size: f64 }
+ 3 │   Square { size: f64 }
+   ·   ──────────┬─────────
+   ·             ╰── schema violation
+ 4 │ }
+   ╰────
+
+shapes.wcl: 1 schema violation
+TEXT
+  }
+
+  p "That rule is what pays for [shape inference](#inferring-the-variant-from-a-bare-record) below: because no two bodies collide, a body identifies a variant."
+
+  h3 "Constructing a variant explicitly"
+
+  p "`Union::Variant` names the variant. Record payloads go in braces, positional payloads in parentheses, unit variants bare:"
+
+  code wcl {
+    source = <<'WCL'
+a = Item::Circle { radius: 5.0, stroke: 0.5 }
+b = Item::Circle { radius: 5.0 }              # stroke? omitted → none
+c = Item::Polygon(7)
+d = Item::Anywhere({ x: 1.0, y: 2.0 })
+e = Item::Bare
+WCL
+  }
+
+  p "Name a variant that does not exist and you get `union 'Item' has no variant named 'Nope'`. Supply a field the variant does not declare and you get a shape mismatch: `unexpected field 'extra'`. Leave out a **required** one and you get the same error read the other way: `expected field 'radius', got missing`."
+
+  p "An interface-reference payload is checked field by field. `Item::Anywhere({ x: 1.0 })` reports `expected interface field 'y', got missing on value`."
+
+  h3 "Inferring the variant from a bare record"
+
+  p "Drop the tag and write a bare record wherever the expected type is a union. Three slots qualify: a union-typed field, an element of a `list<Union>`, and a function parameter. That is the `fill = { hue: :accent }` of `canvas.wcl`, and it is why `wcl parse` printed `Fill::Solid { hue: :accent }` back."
+
+  p "The match is by the record's **field-name set**, then by its field _types_ when a name set alone is not decisive. It works per element inside a list, so a list of records needs no repeated tag:"
+
+  code wcl {
+    source = <<'WCL'
+fills = [
+  { hue: :ink },                  # → Fill::Solid
+  { from: :ink, to: :paper },     # → Fill::Gradient
+]
+WCL
+  }
+
+  p "A record matching no variant is `VariantNoMatch`. Write the `dot`'s fill as `{ from: :ink }` — a name set no variant of `Fill` has:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get canvas.wcl circles.dot.fill
+wcl::eval::schema_violation
+
+  × no variant of 'Fill' matches the supplied shape
+TEXT
+  }
+
+  p "When exactly one variant matches by name but not by type, the message narrows to the field that missed. Write the fill as `{ from: :ink, to: \"paper\" }`:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get canvas.wcl circles.dot.fill
+wcl::eval::schema_violation
+
+  × field 'to' of variant Fill::Gradient expects Named { path: ["Palette"],
+  │ args: [] }, got utf8
+TEXT
+  }
+
+  p "The expected type prints in its internal form. Read `Named { path: [\"Palette\"] }` as `Palette`, and `Builtin(F64)` as `f64`."
+
+  h3 "Explicit or bare"
+
+  p "The two forms are not two spellings of one thing. They check different things, because they do different jobs. The explicit form already knows the variant and only has to fill it. The bare form must _identify_ the variant from what you wrote."
+
+  table {
+    rows:
+      | "Question"                                  | "`Union::Variant { … }`"      | "Bare record `{ … }`" |
+      | "Names the variant"                         | "You do"                       | "The shape does" |
+      | "May omit an optional field"                | "Yes — it defaults to `none`"  | "**No** — the full name set picks the variant" |
+      | "Rejects an undeclared field"               | "Yes"                          | "Yes — it makes the record match nothing" |
+      | "Checks each field's value type"            | "No"                           | "Yes — that is how it disambiguates" |
+      | "Usable where the expected type is unknown" | "Yes"                          | "No — it needs a union-typed slot" |
+  }
+
+  p "Run the second row rather than trusting it. Declare `union Outline { Circle { radius: f64  stroke: f64? } }`, then write the same circle twice:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get opt.wcl a          # a = Outline::Circle { radius: 5.0 }
+Outline::Circle { radius: 5.0, stroke: none }
+
+$ wcl get opt.wcl c          # c = { radius: 5.0 }
+wcl::eval::schema_violation
+
+  × no variant of 'Outline' matches the supplied shape
+TEXT
+  }
+
+  p "And the type check runs one way only. `Outline::Circle { radius: \"big\" }` evaluates to `Outline::Circle { radius: \"big\" }` — the explicit form checked the name set and stopped. The same value written bare would match no variant and be refused."
+
+  p "Reach for the bare record when you are writing data. The shape is the point, and a list of them reads cleanly. Reach for the explicit form in three cases. Use it to omit a variant's optional fields. Use it when two shapes are close enough that you would rather say which you mean. Use it where there is no union-typed slot to infer from."
+
+  callout "VariantNoMatch is a late error more often than not" {
+    class = ["warning"]
+    body  = "Every transcript above uses `wcl get`, not `wcl check`. That is not an accident. Variant dispatch runs when something forces a field's value. `check` forces most fields, but it does not report what their evaluation raised. One case is the exception, and it is the one that matters most for authored data: a **literal list whose element type is a union**, written inside a block. `check` dispatches that list and reports a bad element. Two cases are not that one: a scalar union field, and a list at the document's top level. There the error waits for `wcl get`, `wcl parse`, or the build."
+  }
+
+  h3 "Extending a union"
+
+  p "A union may `extends` another, inheriting its variants and adding more. It is how a host opens a vocabulary to a user without editing the base declaration:"
+
+  code wcl {
+    source = <<'WCL'
+union BaseShape {
+  Bare none
+}
+
+union Shape extends BaseShape {
+  Circle { radius: f64 }
+  Square { side:   f64 }
+}
+WCL
+  }
+
+  p "`Shape::Bare` is legal, and shape inference sees the inherited variants too — a bare `{ side: 2.0 }` in a `Shape` slot reads back as `Shape::Square { side: 2.0 }`. The identical-body rule applies across the whole inherited set, so an extension cannot re-introduce a shape the base already spends."
+
+  h2 "Interfaces"
+
+  p "An `interface` declares a structural contract — a set of fields a type must have. Nothing declares that it implements one. A type that happens to have the fields satisfies it."
+
+  code wcl {
+    source = <<'WCL'
+interface Placed {
+  x: f64
+  y: f64
+}
+
+interface Sized extends Placed {
+  width:  f64
+  height: f64
+}
+WCL
+  }
+
+  p "`extends` on an interface accumulates fields, and the accumulation is what gets checked. A type with `width` and `height` but no `x` fails `Sized` on the inherited field:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl parse spans.wcl
+...
+scene bad {
+  target = <error: type 'Span' does not implement interface 'Sized': missing field 'x'>
+}
+TEXT
+  }
+
+  p "Conformance is field name plus field type. A missing name is `missing field 'x'`. A name whose type differs is `field 'x' has incompatible type`, so a `Span` declaring `x: utf8` fails as loudly as one declaring no `x` at all."
+
+  p "One kind of field is exempt. A field whose declared type is a **function** need only be present and be a function. Its parameter list and return type are unconstrained. A concrete type may therefore narrow `fn(&Placed) -> Item` to `fn(Circle) -> Svg`."
+
+  p "The language consumes an interface in exactly two places: an [interface-reference variant body](#the-four-variant-bodies), and the reference fields of the next section."
+
+  callout "extends on a record type is not inheritance of fields" {
+    class = ["warning"]
+    body  = "`type Marker extends Positioned { … }` does two things. It adds `Positioned`'s fields to the _effective_ field list, which interface conformance and the editor tooling read. And it makes `Marker` a descendant of `Positioned` for the reference check below. It does **not** widen what an instance of `marker` may write. Instance validation reads the type's own fields only. A `marker` block that writes the inherited `x` gets `field 'x' is not declared by schema 'Marker'`. Redeclare the field to write it."
+  }
+
+  h2 "Reference types"
+
+  p "A `&T` field does not hold a value. It holds a **path to another node** in the document, resolved lazily when something reads through it. That is what `focus = circles.dot` is in `canvas.wcl`, and why `wcl parse` printed `&block(dot)` rather than the circle's fields."
+
+  code text {
+    source = <<'TEXT'
+$ wcl get canvas.wcl canvases.main.focus
+&circles.dot<block>
+TEXT
+  }
+
+  p "The right-hand side of a `&T` field must therefore be a **path** — a name, a dotted member chain, `self`, or `parent`. Anything else is not a reference and is refused as one: writing the target inline reads back as `<error: expected a reference, got record literal>`. [Documents, fields and blocks](lang_documents) covers `self` and `parent`, which resolve through the same machinery."
+
+  h3 "Two readings of &T"
+
+  p "What `T` names decides which check runs, and the two checks are opposites."
+
+  table {
+    rows:
+      | "`T` names"     | "Accepts"                                              | "Check" |
+      | "An interface"  | "Any node whose type has the interface's fields"       | "Structural" |
+      | "A record type" | "That type, or one that `extends` it"                  | "Nominal" |
+  }
+
+  p "Put both on one block and the difference is one transcript. `Marker extends Positioned`; `Plain` has the same two fields but extends nothing:"
+
+  code wcl {
+    filename = "scene.wcl"
+    source = <<'WCL'
+interface Drawable { x: f64  y: f64 }
+
+type Positioned { x: f64  y: f64 }
+
+@block("marker")
+type Marker extends Positioned {
+  @inline(0) id: identifier
+  x: f64
+  y: f64
+  glyph: utf8
+}
+
+@block("plain")
+type Plain {
+  @inline(0) id: identifier
+  x: f64
+  y: f64
+}
+
+@block("scene")
+type Scene {
+  @inline(0) id: identifier
+  focus:  &Drawable      # structural
+  anchor: &Positioned    # nominal
+}
+
+@document
+type Doc {
+  @children("marker") markers: list<Marker>
+  @children("plain")  plains:  list<Plain>
+  @children("scene")  scenes:  list<Scene>
+}
+
+marker m { x = 1.0  y = 2.0  glyph = "*" }
+plain  p { x = 0.0  y = 0.0 }
+
+scene ok  { focus = markers.m  anchor = markers.m }
+scene bad { focus = plains.p   anchor = plains.p  }
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl parse scene.wcl
+...
+scene ok {
+  focus = &block(m)
+  anchor = &block(m)
+}
+scene bad {
+  focus = &block(p)
+  anchor = <error: target type 'Plain' is not 'Positioned' and does not extend it>
+}
+TEXT
+  }
+
+  p "`Plain` satisfies `&Drawable` — it has `x` and `y`, and nothing more is asked. It fails `&Positioned` — the fields are identical, and it is still not a `Positioned`. That is the whole distinction: an interface asks what a value _has_, a record type asks what it _is_."
+
+  p "A reference field lets a schema stay open without becoming untyped. A renderer that consumes `&Drawable` accepts any shape a user declares later, as long as the contract holds. A field that consumes `&Positioned` accepts only the family you sanctioned."
+
+  callout "Reference errors surface when the reference is read" {
+    class = ["warning"]
+    body  = "`wcl check` prints `OK` for `scene.wcl` above. Both readings run when the navigator is built, not during the schema pass. `wcl parse` builds it, and so does a host that walks the document. Related: `&T` is a property of a **field's own** declared type. `members: list<&Drawable>` parses, and the elements resolve, but the ordinary value-versus-type check refuses the list (`field 'members' declared as list<&Drawable> but value is list`). Declare one reference per field."
+  }
+
+  h2 "The compound forms"
+
+  p "Three type references build one type out of others. All three may be aliased, nested inside one another, and made optional by the field's `?`."
+
+  h3 "list<T>"
+
+  p "`list<T>` is a homogeneous sequence, and `list<list<utf8>>` nests. `wcl check` checks the element type. Give `h: list<utf8>` the value `[1]` and it answers `field 'h' declared as list<utf8> but value is list`."
+
+  p "One element type is always legal, whatever `T` is: `none`. An else-less `if` inside a list literal contributes one, and every consumer drops it."
+
+  code wcl {
+    source = <<'WCL'
+type Tags = list<utf8>
+
+@block("post")
+type Post {
+  @inline(0) id: identifier
+  tags:    Tags
+  authors: list<identifier>
+  drafts:  list<utf8>?
+}
+WCL
+  }
+
+  h3 "tensor<T, [dims]>"
+
+  p "`tensor<T, [d1, d2, …]>` is a shaped numeric array. A dimension is a non-negative integer, or a symbolic identifier standing in for one. At least one dimension is required, so `tensor<f64, []>` is a parse error."
+
+  code wcl {
+    filename = "model.wcl"
+    source = <<'WCL'
+type Weights = tensor<f64, [2, 3]>
+
+@block("model")
+type Model {
+  @inline(0) id: identifier
+  weights: Weights
+  scale:   fn(f64) -> f64
+}
+
+@document
+type Doc { @children("model") models: list<Model> }
+
+model m {
+  weights = tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [2, 3])
+  scale   = fn(x: f64) -> f64 { x * 2.0 }
+}
+WCL
+  }
+
+  p "The `tensor(data, shape)` builtin builds the value from flat row-major data. A nested list literal is a `list`, not a tensor, and `weights` refuses it: `field 'weights' declared as Weights but value is list`."
+
+  code text {
+    source = <<'TEXT'
+$ wcl check model.wcl
+OK
+$ wcl get model.wcl models.m.weights
+tensor[2x3](1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+TEXT
+  }
+
+  callout "The declared shape is not enforced" {
+    class = ["note"]
+    body  = "A field declared `tensor<f64, [2, 3]>` accepts a tensor of any element type and any shape. Change the shape to `[3, 2]` and `wcl check` still prints `OK`. The value check asks whether the value is a tensor, and stops there. Declare the dimensions for the reader and for the host that consumes them. Do not expect `wcl check` to hold you to them."
+  }
+
+  h3 "fn(A, B) -> R"
+
+  p "`fn(…) -> T` types a callable value. `wcl check` tests one thing: that the value is a function. Set `scale = 2.0` in `model.wcl`:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check model.wcl
+wcl::eval::schema_violation
+
+  × field 'scale' declared as fn(f64) -> f64 but value is f64
+
+model.wcl: 1 schema violation
+TEXT
+  }
+
+  p "The **signature** is not checked. A `fn(f64) -> f64` field accepts `fn(a: f64, b: f64) -> f64` without complaint, and the arity mismatch surfaces at the call. Interface conformance grants a function field the same freedom, seen from the other side. [Functions](lang_functions) covers function values, `fn` items and closures. [Lists, tensors and records](lang_collections) covers list and tensor _values_, and the builtins over them."
+
+  h2 "Type arguments parse and do nothing"
+
+  p "A named type reference accepts an argument list: `content<SvgBlock>`, `Label<Nonsense>`, `Box<A, B>`. It parses, it round-trips through `wcl fmt`, and `TypeRef::type_args()` reads it back. Nothing else happens to it."
+
+  p "There is no `type Foo<T> { … }` declaration form, so nothing exists to check an argument list against. Nothing checks arity. Nothing substitutes. A named type resolves by its **path alone**, and nothing ever resolves the arguments. That last point leaves a visible hole in the ordinary unknown-type error:"
+
+  code wcl {
+    filename = "args.wcl"
+    source = <<'WCL'
+type Label = utf8
+
+@document
+type Doc {
+  a: Label<Nonsense>     # `Nonsense` is never declared, and never looked up
+}
+
+a = "hello"
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check args.wcl
+OK
+$ wcl get args.wcl a
+"hello"
+TEXT
+  }
+
+  p "Now move `Nonsense` out of the argument list and into the type position. Same undeclared name, same file — and now the parser refuses it. The caret block below is the whole of `args.wcl`:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check args.wcl
+wcl::parse
+
+  × unknown type 'Nonsense'
+   ╭─[args.wcl:2:15]
+ 1 │ @document
+ 2 │ type Doc { a: Nonsense }
+   ·               ────┬───
+   ·                   ╰── type not declared
+ 3 │ a = "hello"
+   ╰────
+TEXT
+  }
+
+  p "So `Label<Nonsense>` resolves through the alias to `utf8` and is checked as `utf8`. Assign it `5` and the message is `field 'a' declared as Label<Nonsense> but value is i64` — the arguments printed back, and ignored. The only shape the parser refuses is the empty list: `Label<>` is `type argument list cannot be empty`, because there would be nothing to print and `wcl fmt` would silently delete the brackets."
+
+  callout "What the argument list is for today" {
+    class = ["note"]
+    body  = "One thing: slot derivation. A `@declares_kind` component declares a slot as `content<SvgBlock>`. The language emits both a typed field and a `@children(SvgBlock)` decorator. The _decorator_ then does the child-kind checking. That is enough for the job and is why nothing more was built. Full generics — a declaration form, arity checking, substitution — are a separate effort. Until then, read `Foo<Bar>` as `Foo` with a comment attached, and put anything you need enforced somewhere the language checks."
+  }
+
+  h2 "Where to go next"
+
+  list {
+    li "[Schemas](lang_schemas) — the record form of `type`, `@document` / `@block` / `@child` / `@children` / `@inline`, and what `wcl check` checks."
+    li "[Values and primitives](lang_values) — the builtin scalars every type reference bottoms out in, and the `:symbol` literal behind a symbol set."
+    li "[Lists, tensors and records](lang_collections) — the values behind `list<T>`, `tensor<…>` and the bare record literal."
+    li "[Decorators](lang_decorators) — how `@min` / `@max` / `@non_empty` are declared, and how a document may shadow them."
+    li "[Expressions and operators](lang_expressions) — `??`, and the expression grammar a field's value is written in."
+    li "[Control flow](lang_control_flow) — `match` and `if let` over a union or an optional."
+    li "[Functions](lang_functions) — the values a `fn(…) -> T` field holds."
+  }
 }
