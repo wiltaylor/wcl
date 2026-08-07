@@ -10,7 +10,7 @@ page wdoc_presentations {
 
   h1 "Presentations"
 
-  p "A **presentation** is the third site shape. A `webpage` site renders one HTML file per page and a `book` site does the same with a sidebar; a presentation site renders **the whole site into one `index.html`** and hands it to a keyboard-driven player. The pages become slides. A `deck` block on the site arranges them into a grid, `fragment` reveals content a step at a time, and `notes` carries what only the presenter sees."
+  p "A **presentation** is the third site shape. A `webpage` site renders one HTML file per page, and a `book` site does the same with a sidebar. A presentation site renders **the whole site into one `index.html`** and hands it to a keyboard-driven player. The pages become slides. A `deck` block on the site arranges them into a grid, `fragment` reveals content a step at a time, and `notes` carries what only the presenter sees."
 
   p "Nothing else changes. A slide is an ordinary `page`, holding the ordinary block vocabulary — headings, lists, code, diagrams, terminals, charts. This chapter covers the five blocks that make a deck, the template behind them, how to build one, and what a deck becomes on the targets that have no keyboard."
 
@@ -205,7 +205,7 @@ TEXT
 
   h2 "Fragments"
 
-  p "A `fragment` is a step-reveal group. Its children stay invisible until the presenter steps forward with `Space`, then fade in. It is a legal child of any page, so it can hide a paragraph, a bullet list, an image or a whole diagram:"
+  p "A `fragment` is a step-reveal group. Its children stay invisible until the presenter steps forward with `Space`, then fade in. It is a legal child of any page, so it can hide a paragraph, a bullet list, an image or a whole diagram. Here is the `numbers` slide from `talk.wcl` again, cut down to the reveals:"
 
   code wcl {
     source = <<'WCL'
@@ -251,7 +251,7 @@ HTML
 
   h2 "Speaker notes"
 
-  p "A `notes` block holds what the presenter reads and the room does not see:"
+  p "A `notes` block holds what the presenter reads and the room does not see. The same slide once more, this time down to its last line:"
 
   code wcl {
     source = <<'WCL'
@@ -310,12 +310,21 @@ wrote 1 page
 TEXT
   }
 
-  p "That template is worth reading for one thing beyond the boilerplate: its slides are **generated**. The data lives in `data/main.wcl`, and a `wdoc_repeater` in `wdoc/main.wcl` emits one `page` per record. A `deck` accepts repeaters too, on both levels, so the slide list can be generated from the same data:"
+  p "That template is worth reading for one thing beyond the boilerplate: its slides are **generated**. The data lives in `data/main.wcl`, and a `wdoc_repeater` in `wdoc/main.wcl` emits one `page` per record. A `deck` accepts repeaters too, on both levels, so the slide list comes from the same data. Save this as `generated.wcl` and build it:"
 
   code wcl {
+    filename = "generated.wcl"
     source = <<'WCL'
+import <wdoc.wcl>
+
+let topics = [
+  { slug: "parser",   title: "The parser" },
+  { slug: "renderer", title: "The renderer" },
+]
+
 site talk {
   default_template = :presentation
+  title            = "Generated"
   deck {
     section "Intro" { slide title }
     section "Topics" {
@@ -326,6 +335,8 @@ site talk {
   }
 }
 
+page title { h1 "Generated" }
+
 wdoc_repeater { each = topics  as = :t
   page $"topic_${t.slug}" {
     h2 $"${t.title}"
@@ -334,6 +345,8 @@ wdoc_repeater { each = topics  as = :t
 }
 WCL
   }
+
+  p "Three slides, two of them written once. The data is a `let` here to keep the file to one page; the scaffold puts it in a top-level field its own `@document` type declares, which is what you want as soon as anything else reads it. See [Documents, fields and blocks](lang_documents#let-items) for the difference."
 
   p "Keep the two `each` expressions on the same data and the deck cannot drift out of step with the pages. [Data views](wdoc_data_views) covers `wdoc_repeater` in full."
 
@@ -357,13 +370,13 @@ WCL
 
   h2 "One deck, four targets"
 
-  p "A deck is a browser artifact. Nothing about it survives into a target with no keyboard, and the four targets do not fail the same way — so this is the comparison to have in front of you before you send a deck anywhere but a browser. Every row below was produced by running the target against `talk.wcl` from the top of this chapter."
+  p "A deck is a browser artifact. Nothing about it survives into a target with no keyboard, and the four targets do not fail the same way. Have this comparison in front of you before you send a deck anywhere but a browser. Every row below came from running that target against `talk.wcl` from the top of this chapter."
 
   table {
     rows:
       | "Target"              | "A deck becomes"                         | "Slide order"   | "`fragment`"      | "`notes`"                | "A page no `slide` names" |
       | "`wdoc build`"        | "One `index.html` plus the player"       | "The deck's"    | "Hidden until stepped" | "In the `s` overlay" | "Never rendered" |
-      | "`wdoc pdf`"          | "One PDF per site, one page per slide"   | "**Source order**" | "Always visible"  | "**Printed in the body**" | "Printed" |
+      | "`wdoc pdf`"          | "One PDF per site: a title page, then one page per slide" | "**Source order**" | "Always visible"  | "**Printed in the body**" | "Printed" |
       | "`wdoc markdown`"     | "One `.md` per slide"                    | "One file each" | "Always visible"  | "**Written into the body**" | "Written" |
       | "`wdoc skill`"        | "Nothing"                                | "—"             | "—"               | "—"                      | "—" |
   }
@@ -393,14 +406,14 @@ TEXT
 
   p "Three files where the browser had one. The two fragments are ordinary paragraphs — correct, since a step reveal is a thing the presenter does, not a thing the content means. And the last line is the speaker note, sitting in the body as if you had written it there."
 
-  p "The PDF target agrees with Markdown and differs from both. It writes one PDF per site — `pdf/talk.pdf`, named after the site — with one physical page per slide, the site title as a running header and `1/3` style page numbers. It puts the note in the body too. And it orders the pages by the **source**, not by the `deck`: move a section and the deck reorders while the PDF does not."
+  p "The PDF target agrees with Markdown and differs from both. It writes one PDF per site — `pdf/talk.pdf`, named after the site — opening on a title page carrying the site title, then one physical page per slide. Each of those runs the site title as a header and numbers itself `1/3`, `2/3`, `3/3`. It puts the note in the body too. And it orders the pages by the **source**, not by the `deck`: move a section and the deck reorders while the PDF does not."
 
   callout "A deck is not a handout" {
     class = ["warning"]
     body  = "`wcl wdoc pdf talk.wcl` produces a valid PDF, and it is not the deck you presented: the order is the file's, the reveals are gone, and every speaker note is printed. Nothing warns you. When you need a handout, write it as a `book` site over the same content and build the two separately — [Output targets](wdoc_outputs) covers the four targets and [Visibility](wdoc_visibility) covers keeping a block out of one of them."
   }
 
-  p "The skill target is the plain case: `wcl wdoc skill` builds only sites with `default_template = :ai_skill`, so a document holding nothing but a deck answers `no :ai_skill site to build` and writes nothing."
+  p "The skill target is the plain case: `wcl wdoc skill` builds only sites with `default_template = :ai_skill`, so a document holding nothing but a deck writes nothing and tells you why — `no :ai_skill site to build`, followed by what to set to get one."
 
   h2 "The presentation template"
 
@@ -417,11 +430,11 @@ template presentation {
 WCL
   }
 
-  p "That is the whole of it, and it explains the two blocks this chapter has treated as special. **`notes` is a slot fill, not a content block.** It is named by a `slot` declaration, so the build lifts a `notes { … }` out of the page body and hands its children to the layout separately — which is why one per page is the limit, and why a site whose template declares no such slot refuses the block outright."
+  p "That is the whole of it, and it explains why `notes` behaved unlike every other block above. **`notes` is a slot fill, not a content block.** A `slot` declaration names it, so the build lifts the `notes { … }` out of the page body and hands its children to the layout separately. One fill per slot is the rule for every slot, which is why one `notes` per page is the limit — and why a site whose template declares no such slot refuses the block outright."
 
   p "A repeated content slot (`content*`) is what makes this a **collection** template: the site renders once, not once per page, and every member is reachable from the `render` function. [Templates and layouts](wdoc_templates) covers slots, arity and the `TemplateCtx` record in full."
 
-  p "The layout is composed from four public parts, so you can take the deck and add to it:"
+  p "The layout is four public parts and one function composing them, so you can take the deck and add to it:"
 
   table {
     rows:
