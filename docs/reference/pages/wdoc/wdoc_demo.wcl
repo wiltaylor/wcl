@@ -1,11 +1,258 @@
 // Chapter 30 — Demo blocks.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #185. Every claim below was checked against the crate
+// (`crates/wcl_wdoc/src/demo.rs`, the dispatch in `render/html.rs`,
+// `markdown/emit.rs` and `pdf/collect.rs`, and `crates/wcl_wdoc/lib/demo.wcl`)
+// and against real builds of the snippets — including the two live `demo`
+// blocks on this page, which are the chapter demonstrating itself.
 page wdoc_demo {
   title = "Demo blocks"
 
   h1 "Demo blocks"
 
-  p "Not written yet. This chapter covers the `demo` block: the source and the live preview side by side, and how it degrades."
+  p "Documentation about a block has to answer two questions at once: what do I write, and what do I get? Answering them separately means writing the component twice — once in a `code` block, once for real — and the two copies drift the moment one is edited. A **`demo`** removes the second copy. You author the component once, as the demo's children. wdoc renders those children live and prints their source beside them, so the listing cannot disagree with the picture."
+
+  p "It renders them twice over, in fact: once under the site's light palette and once under its dark one, side by side. A reader sees both without touching the theme toggle."
+
+  h2 "A demo in one file"
+
+  p "Save this as `demo.wcl`. It is complete — a site, a page and one `demo`:"
+
+  code wcl {
+    filename = "demo.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+site probe {
+  title = "Demo probe"
+  theme = :nord
+  toc { chapter "Probe" { page = p1 } }
+}
+
+page p1 {
+  title = "Probe"
+
+  h1 "Probe"
+
+  demo {
+    title = "A tip, both ways"
+    callout "Tip" {
+      class = ["tip"]
+      body  = "Author once, see both."
+    }
+  }
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build demo.wcl --out out
+wrote 1 page
+TEXT
+  }
+
+  p "The same block, live. Everything below the caption is what `demo.wcl` produces:"
+
+  demo {
+    title = "A tip, both ways"
+    callout "Tip" {
+      class = ["tip"]
+      body  = "Author once, see both."
+    }
+  }
+
+  h2 "What lands on the page"
+
+  p "A demo emits three things, in this order:"
+
+  list {
+    li "The **caption** — the `title` field, if you set one, as a small uppercase label."
+    li "The **preview** — a two-column row holding the children rendered twice: `<div class=\"wdoc-body wdoc-theme-light wdoc-preview\">` on the left, `wdoc-theme-dark` on the right, under a `Preview` label."
+    li "The **example** — the children's formatted source in a `<pre class=\"code-block\"><code class=\"language-wcl\">`, highlighted exactly as a [`code wcl` block](wdoc_code) would be, under an `Example` label."
+  }
+
+  callout "Preview first, then example" {
+    class = ["note"]
+    body  = "The rendered panes come **above** the listing in HTML. The Markdown backend puts them the other way round — source fence first, render after. Nothing in the block controls this; each backend chose its own order. If your prose says \"the code below\", it is wrong in one of the two outputs."
+  }
+
+  p "An empty `demo { }` is legal and is not the same as writing nothing: you get the `Preview` label and two empty panes. The `Example` section is the one part that disappears when there is no source to print."
+
+  h2 "The fields"
+
+  table {
+    rows:
+      | "Field"    | "Type"        | "Default" | "What it does" |
+      | "`title`"  | "`utf8?`"     | "unset"   | "A caption above the preview. Rendered in HTML only." |
+      | "`diagram`"| "`bool`"      | "`false`" | "Centre and fit the preview contents — see [Diagram previews](#diagram-previews)." |
+      | "`id`"     | "`identifier?`" | "unset" | "An explicit `id` on the wrapper `<div>`, so a link can address the demo." |
+      | "children" | "`list<ContentBlock>`" | "empty" | "The component(s) to show. Any content block is legal, and there may be several." |
+  }
+
+  p "There is no limit of one child. A demo holding three `list` blocks prints all three as one listing and renders all three in each pane — which is how you compare variants of a block side by side, in one demo, rather than three."
+
+  callout "Write title as a field, not as a label" {
+    class = ["warning"]
+    body  = "`title` is declared `@inline(0)`, so `demo \"A tip\" { … }` parses and `wcl check` passes it. The renderer does not read it: it looks the field up by name, and a positional label is not a readable field (see [Documents, fields and blocks](lang_documents)). The caption is silently dropped. Write `title = \"A tip\"` inside the braces."
+  }
+
+  h2 "The two panes"
+
+  p "Neither pane is a screenshot and neither is an iframe. Both are ordinary HTML in the same page, and what makes them differ is one CSS rule per palette."
+
+  p "A themed site emits its `--wdoc-*` custom properties four ways: at `:root` for the default mode, under `prefers-color-scheme`, under the `data-theme` attribute the toggle sets, and — the part a demo needs — on two bare classes, `.wdoc-theme-light` and `.wdoc-theme-dark`. Custom properties inherit, and the closest ancestor that defines one wins. Wrapping a subtree in `.wdoc-theme-light` therefore re-themes everything inside it, whatever the reader has set globally. That is the whole mechanism. [Themes and styling](wdoc_styling) covers where those properties come from."
+
+  p "Two things follow. The first is that a demo shows both palettes **at once**, not one and then the other — the reader compares rather than remembers. The second is that in a document with no `site` block there are no scoped palette rules to emit, so both panes fall back to the neutral `.wdoc-preview` defaults and look identical. The demo still works; it just has nothing to contrast."
+
+  h2 "How many times the children render"
+
+  p "Once per pane — the children are rendered twice, not rendered once and copied."
+
+  p "That is worth knowing because it is the more expensive of the two options and it was chosen deliberately. HTML content would re-theme for free from one render: the two wrappers redefine the custom properties, and the same markup picks up different colours in each. SVG content does not. A wireframe widget bakes its resolved palette into `fill` and `stroke` attributes in Rust rather than deferring to `currentColor`, because the PDF backend has no CSS to defer to. One render of a wireframe therefore carries one palette, and dropping that string into both panes would put dark-mode greys inside the light pane."
+
+  p "So the demo renderer flips the build's UI theme mode, renders the children, flips it back, and renders them again. Build a wireframe demo and read the two panes' `fill` attributes: they differ."
+
+  p "The cost of a second pass is the renderer's side effects, not the markup. Images, icons and videos register themselves as they render, and those registries are keyed by source, so the second pass adds nothing. A demo containing one `callout \"Tip\"` renders two lightbulb icons and the page's sprite sheet still holds exactly one `lucide-lightbulb` symbol."
+
+  callout "Read the panes as siblings, not as a before and after" {
+    class = ["info"]
+    body  = "The two passes see the same document, the same children and the same base directory. Only the UI theme mode differs. A block whose output depends on anything else — a counter, a random value, an ordering that accumulates across a page — would render two different things into the two panes, and the demo would be showing you a bug rather than a palette."
+  }
+
+  h2 "Diagram previews"
+
+  p "A prose block fills whatever width you give it. A diagram is the size its canvas says it is, and a half-page pane is rarely that size: a narrow flowchart sits in the top-left corner of a mostly empty box, twice over. Setting `diagram = true` fixes that."
+
+  demo {
+    title = "diagram = true"
+    diagram = true
+    diagram {
+      width  = 100
+      height = 220
+      layout = :layered
+      process "parse" { id = parse }
+      process "check" { id = check }
+      process "build" { id = build }
+      parse -> check
+      check -> build
+    }
+  }
+
+  p "The flag changes the CSS class on the preview row, and nothing else. `wdoc-preview-diagram` makes each pane a centring flex container and caps its diagram viewport and any `svg` at `max-width: 100%`, so a compact drawing sits in the middle of its pane and a wide one shrinks to fit instead of scrolling."
+
+  callout "diagram = true does not stack the panes" {
+    class = ["warning"]
+    body  = "The row stays a two-column grid either way; the flag only centres and fits the contents. What does stack both panes is the viewport: below `48rem` the grid collapses to one column for every demo, flagged or not. If you need to see a wide diagram at full size, that narrow-viewport layout is the only thing that gives it to you."
+  }
+
+  p "Set the flag for anything in the diagram family — flowcharts, sequence and state diagrams, charts, timelines, tilemaps, wireframes. Leave it off for prose, tables, lists, callouts and code. See [The diagram canvas](wdoc_diagrams) and [Wireframes](wdoc_wireframe)."
+
+  h2 "What the example listing shows"
+
+  p "The listing is not the bytes you typed. Each child block is pretty-printed through the formatter and the results are concatenated with no blank line between them, so what a reader copies is the canonical form of what you wrote. Three consequences:"
+
+  list {
+    li "**Comments survive.** A `#` or `//` comment inside a child is part of the tree, and it is printed. Use one to annotate the example."
+    li "**The formatter normalises.** `//` comes out as `#`, your alignment is redone, a one-line block is reflowed onto several, and a value the formatter spells differently is spelled its way. The listing under [Diagram previews](#diagram-previews) is the proof: each `process` is written on one line in this page's source and prints on three."
+    li "**Only blocks are printed.** The demo's own `title`, `diagram` and `id` fields are the demo's, not the example's, and never appear in the listing."
+  }
+
+  code wcl {
+    filename = "annotated.wcl"
+    source = <<'WCL'
+demo {
+  title = "Two list styles"
+  list {
+    // the default is a bullet list
+    li "Plain item"
+  }
+
+  list {
+    style = :numbered   // opt in to numbering
+    li "First step"
+  }
+}
+WCL
+  }
+
+  p "The listing that reaches the page holds both `list` blocks, both comments rewritten to `#`, the trailing comment re-aligned, and no sign of the `title`. Note that the blank line you left between the two blocks is not one of the things it keeps:"
+
+  code wcl {
+    source = <<'WCL'
+list {
+  # the default is a bullet list
+  li "Plain item"
+}
+list {
+  style = :numbered  # opt in to numbering
+  li "First step"
+}
+WCL
+  }
+
+  h2 "What each output target shows"
+
+  p "A `demo` is `@native` on all four targets, and every one of them implements it — there is no target you have to hide a demo from with `@except`. What they show is not the same. The panes need CSS custom properties, which only HTML has. The caption and the highlighted listing are HTML chrome, and each static target decided separately how much of the rest to keep."
+
+  table {
+    rows:
+      | "Target"       | "Caption" | "Preview"                        | "Example listing" |
+      | "HTML"         | "Yes"     | "Both palettes, side by side"    | "Yes — highlighted, below the preview" |
+      | "Markdown"     | "No"      | "One render, unthemed"           | "Yes — a `wcl` fence, above the render" |
+      | "Skill"        | "No"      | "One render, unthemed"           | "Yes — as Markdown" |
+      | "PDF"          | "No"      | "One render, in place"           | "**No** — the source is dropped" |
+  }
+
+  p "The Markdown degradation keeps the comparison a demo exists to make, in the one order Markdown can carry it. `wcl wdoc markdown demo.wcl --out md` on the file from the top of this chapter writes:"
+
+  code markdown {
+    filename = "md/p1.md"
+    source = <<'MD'
+# Probe
+
+```wcl
+callout "Tip" {
+  class = ["tip"]
+  body = "Author once, see both."
+}
+```
+
+> [!TIP]
+> **Tip**
+>
+> Author once, see both.
+MD
+  }
+
+  callout "A demo is invisible in a PDF" {
+    class = ["warning"]
+    body  = "The PDF backend collects the demo's children in place and returns — no caption, no listing, no wrapper. The children appear as though you had written them directly on the page, and a reader of the PDF has no way to tell a demo was there. If the source listing is the point of a passage, write a separate [`code`](wdoc_code) block for the PDF and hide the demo from it. [Visibility](wdoc_visibility) covers the `backends` axis; [Output targets](wdoc_outputs) covers what each target can do."
+  }
+
+  h2 "Three ways to show a block"
+
+  p "A demo is one of three, and the other two are still right sometimes. The comparison is what each one costs and what it can prove."
+
+  table {
+    rows:
+      | "You write"                | "Reader sees"        | "Can they disagree?" | "Reach for it when" |
+      | "A `code wcl` block"       | "Source only"        | "Yes — nothing renders it" | "The snippet is a fragment, an error case, or a file that does not belong on this page" |
+      | "The block itself"         | "Rendered output only" | "n/a"              | "The block *is* the content — a real callout, a real diagram in your document" |
+      | "A `demo`"                 | "Both, from one authoring" | "**No** — one source of truth" | "You are documenting the block: the reader must copy the source and trust the picture" |
+  }
+
+  p "The middle row is the one people reach for by accident. Writing the block plainly on a documentation page shows the reader a result they cannot reproduce, because you never showed them the input. Writing it in a `code` block shows them an input you never ran. A demo is the only one of the three where the two halves are the same text."
+
+  p "The cost is real and it is short: two render passes, a wider footprint on the page, and nothing at all in a PDF. For a page whose subject *is* a block, that is a good trade. For a page that merely uses one, it is not."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Themes and styling](wdoc_styling) — the `--wdoc-*` custom properties, the light and dark palettes, and the toggle the demo's panes ignore."
+    li "[Code](wdoc_code) — the `code` block the example listing is highlighted like."
+    li "[Output targets](wdoc_outputs) — what HTML, Markdown, skill folders and PDF can each carry."
+    li "[Visibility](wdoc_visibility) — `@only` and `@except`, for hiding a demo from a target or a site."
+    li "[Writing your own blocks](wdoc_extending) — declaring a block of your own, which is the thing you will most want a demo for."
+  }
 }
