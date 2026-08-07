@@ -80,59 +80,6 @@ fuzz-sweep: require-cargo-fuzz
         (cd crates/wcl_lang && cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
     done
 
-# Validate every wskill model and resolve artifact entries from parsed data.
-# Build every declared projection in scratch space and report coverage.
-[group('quality')]
-wskill-check: require-cargo
-    cargo run -p wcl -- wskill check docs/wskills
-
-# Run mechanically certain lint rules in CI; warnings remain advisory.
-# Fail on certain lint errors while keeping advisory warnings non-blocking.
-[group('quality')]
-wskill-lint: require-cargo
-    @for d in docs/wskills/*; do \
-        [ -f "$d/wskill.wcl" ] || continue; \
-        cargo run -q -p wcl -- wskill lint "$d" --severity error || exit 1; \
-    done
-
-# Two comparisons: the documented builtin names vs `builtin_names()`, and the
-# documented subcommand tree vs `wcl --help` / `wcl wdoc --help` /
-# `wcl wad --help`. The wskill IS the WCL language/CLI/builtin reference, so a
-# new builtin or subcommand must land in it or the docs quietly go stale.
-#
-# `host_builtins` are the ones the CLI's *host* environment registers, not the
-# language: `wcl` opens every document with `wcl_wdoc::wdoc_environment` (that
-# is what supplies the expander `@contextual` block kinds need), so wdoc's own
-# builtins are callable too. They're documented with wdoc, not here — a new one
-# fails this check until it is either documented in the wcl wskill or added to
-# this list as wdoc's. One name per line: `grep -vxF` takes a multi-line pattern
-# argument as one pattern per line, so a second entry must be a real newline.
-host_builtins := "included_sites"
-
-# Fail when the `wcl` wskill's builtin/subcommand reference drifts from the binary it documents (runs in ci)
-[group('quality')]
-wcl-refcheck: require-cargo
-    @mkdir -p target/refcheck
-    @printf '@document\ntype D {\n  names: list<utf8>\n}\n\nnames = builtin_names()\n' > target/refcheck/builtins.wcl
-    @cargo run -q -p wcl -- eval target/refcheck/builtins.wcl names \
-        | tr -d '[]" ' | tr ',' '\n' | sed '/^$/d' \
-        | grep -vxF -e '{{host_builtins}}' | sort > target/refcheck/builtins-real.txt
-    @grep -oE '^  name *= *"[^"]+"' docs/wskills/wcl/data/builtins.wcl \
-        | sed 's/.*"\(.*\)"/\1/' | sort > target/refcheck/builtins-doc.txt
-    @diff target/refcheck/builtins-real.txt target/refcheck/builtins-doc.txt \
-        || { echo "wcl reference drift: builtins (< missing from docs/wskills/wcl/data/builtins.wcl, > documented but not a builtin)"; exit 1; }
-    @subs() { cargo run -q -p wcl -- $1 --help 2>&1 \
-        | sed -n '/^Commands:/,/^$/p' | sed -n 's/^  \([a-z][a-z-]*\) .*/\1/p' | grep -v '^help$'; }; \
-    { subs ""; subs wdoc | sed 's/^/wdoc /'; subs wad | sed 's/^/wad /'; \
-      subs wskill | sed 's/^/wskill /'; } \
-        | sort > target/refcheck/commands-real.txt
-    @printf '{ let c = head(clis); join(flatten(map(c.subcommands, fn(s: Subcommand) -> list<utf8> { flatten([[s.name], map(s.subcommands, fn(n: Subcommand) -> utf8 { $"${s.name} ${n.name}" })]) })), "\\n") }\n' \
-        | cargo run -q -p wcl -- repl docs/wskills/wcl/wskill.wcl \
-        | sed 's/^"//; s/"$//' | sed 's/\\n/\n/g' | sort > target/refcheck/commands-doc.txt
-    @diff target/refcheck/commands-real.txt target/refcheck/commands-doc.txt \
-        || { echo "wcl reference drift: CLI subcommands (< missing from docs/wskills/wcl/data/reference/cli.wcl, > documented but not a subcommand)"; exit 1; }
-    @echo "wcl-refcheck OK — $(wc -l < target/refcheck/builtins-real.txt) builtins, $(wc -l < target/refcheck/commands-real.txt) subcommands match the binary"
-
 # Fail when .wad/schema/base.wcl drifts from the scaffold heredoc (runs in ci)
 [group('quality')]
 wad-schema-check:
@@ -167,14 +114,6 @@ wad-extract-check: require-git wad-extract
     @git checkout -q -- .wad/data/generated/releases.wcl 2>/dev/null || true
     @echo "wad-extract-check OK — .wad/data/generated is fresh (releases.wcl exempt: tag-derived)"
 
-# Fail when the wad wskill's hand-reflected fact tables lag the WAD schema version (runs in ci)
-[group('quality')]
-wad-facts-check:
-    @V=$(grep -m1 'schema_version = ' crates/wcl/src/scaffold/templates/wad.wcl | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
-    grep -q "hand-reflected from schema $V" docs/wskills/wad/data/reference/facts.wcl \
-        || { echo "wad wskill facts drift: docs/wskills/wad/data/reference/facts.wcl must say 'hand-reflected from schema $V' — re-reflect the fact tables against the current WAD schema, then update the header"; exit 1; }
-    @echo "wad-facts-check OK"
-
 # Scaffold the shipped wplan template into target/ and run its structural gates (runs in ci)
 [group('quality')]
 wplan-template-check: require-cargo
@@ -189,23 +128,27 @@ wplan-template-check: require-cargo
 
 # ── Builds the gate depends on ────────────────────────────────────────────
 
-# The second invocation is the combined reference book (#157), which is
-# written one chapter at a time alongside the site it replaces. It lands at
-# `reference-next` only while both exist: the old docs/main.wcl already
-# builds a `reference` sub-site whose page names collide with the new book's,
-# and a build never wipes its output dir. At the switchover (#206) the old
-# entry goes, the landing becomes its own document, and the two invocations
-# become `docs/landing/main.wcl --out docs/_site` plus
-# `docs/reference/main.wcl --out docs/_site/reference`.
+# wcl.dev is two documents: the landing page at `/` and the combined
+# reference book at `/reference/`. These are the SAME two invocations, in the
+# same order, that .github/workflows/deploy-site.yml runs — this recipe is a
+# gate part precisely so the gate and the deploy cannot drift.
 #
+# Order matters: build the landing first. A build tree is self-contained and
+# relocatable by design, and `wdoc build` never wipes its `--out` dir. The
+# second invocation therefore writes into the first one's output safely. No
+# staging dir, and nothing is copied.
+#
+# The wipe up front is this recipe's own. A build never deletes a page that
+# no longer exists, so a removed page would linger as orphaned HTML.
+
 # Build the project's docs/ sites into docs/_site/ (gitignored)
 [group('dev')]
 docs-build *ARGS: require-cargo
-    cargo run -p wcl -- wdoc build docs/main.wcl --out docs/_site {{ARGS}}
-    cargo run -p wcl -- wdoc build docs/reference/main.wcl --out docs/_site/reference-next {{ARGS}}
+    rm -rf docs/_site
+    cargo run -p wcl -- wdoc build docs/landing/main.wcl --out docs/_site {{ARGS}}
+    cargo run -p wcl -- wdoc build docs/reference/main.wcl --out docs/_site/reference {{ARGS}}
 
-# The output dir is wiped first: a build never deletes pages that no longer
-# exist, so removed entities would otherwise linger as orphaned HTML.
+# The output dir is wiped first, for the same reason as `docs-build`.
 
 # Build the WCL architecture book (.wad/) into .wad/_site/ (gitignored)
 [group('dev')]

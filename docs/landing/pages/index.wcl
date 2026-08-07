@@ -1,0 +1,121 @@
+// WCL landing page. `start = true` makes it the page served at `/`.
+// Rendered through the stdlib `website` template: the warning banner and
+// the footer are named slot fills (placed by the template), everything
+// else is ordinary page content built from the landing components in
+// landing-parts.wcl. The same content degrades to the Markdown / PDF
+// backends — no parallel fallback copy needed.
+
+// The reference book is a separate document (docs/reference/main.wcl) built
+// beside this one, so every link to it is the hand-written `./reference/` —
+// the header menu item and the hero CTA. That is the only cross-document
+// href on this page, and it names the mount point rather than a chapter.
+
+page index { sites = [:wcl]  title = "Why WCL?"  start = true
+  banner {
+    callout "Heavy development — not production ready." {
+      class = ["warning"]
+      body  = "The language, APIs, and `wdoc` output can change at any time without notice."
+    }
+  }
+
+  lp_hero "One language for every shape of data." {
+    badge    = "Typed configuration & schema language"
+    lede     = "WCL lets you express structured data the way it actually is — records, unions, interfaces, and decorators — gather it into a document model that validates itself, then project that single model into config, HTML, Markdown, books, and Claude skills."
+    footnote = "Open source · built in the open by Wil Taylor"
+    lp_cta "Get started"  { href = "./reference/"  primary = true }
+    lp_cta "View source"  { href = "https://github.com/wiltaylor/wcl" }
+  }
+
+  lp_showcase {
+    id      = taste
+    eyebrow = "A taste"
+    heading = "A document is fields and blocks. A schema is the rules they follow."
+    body    = "Declare your types with decorators that describe how raw syntax maps onto them — `@inline`, `@default`, `@children`. The data reads like the thing it describes, and the document model validates the whole shape before anything downstream sees it."
+    code wcl {
+      filename = "service.wcl"
+      source = <<'WCL'
+        @block("service")
+        type Service {
+          @inline(0)   name: utf8     // service "web" → name = "web"
+          @default(80) port: u32
+          region: utf8
+        }
+
+        @document
+        type Config {
+          @children("service") services: list<Service>
+        }
+
+        service "web" {
+          region = "us-east-1"
+        }
+        service "api" {
+          port   = 9090u32
+          region = "eu-west-1"
+        }
+        WCL
+    }
+  }
+
+  lp_features {
+    id      = features
+    eyebrow = "Why WCL"
+    title   = "Built to express data naturally — and keep it honest."
+    lede    = "A small, typed core that scales from a single config file to a complete documented model."
+
+    lp_feature "Flexible structure" {
+      icon = "lucide.blocks"
+      body = "Map almost any data structure with a statically typed core — records, vectors and tensors, union types, interfaces, and decorators that bind surface syntax to your model. Express the shapes you actually have, checked before runtime."
+    }
+    lp_feature "Schemas" {
+      icon = "lucide.shield-check"
+      body = "Declare a schema once and easily validate your data against it — types, required fields, and constraints all checked, so mistakes surface before anything downstream runs."
+    }
+    lp_feature "Natural, block-based syntax" {
+      icon = "lucide.braces"
+      body = "Blocks and fields read like the thing you're describing — `service \"web\" { … }` — not a wall of nested brackets."
+    }
+    lp_feature "One format, multiple uses" {
+      icon = "lucide.share-2"
+      body = "The same WCL format is equally at home as typed application configuration and as the source for documentation — pages, sites, books, and Claude skills rendered with wdoc."
+    }
+    lp_feature "Data–presentation separation" {
+      icon = "lucide.component"
+      body = "Keep your data model separate from how it's shown. Project the same typed data structures into documentation — many views and layouts over one validated source, with no copy-paste."
+    }
+    lp_feature "Rich diagram support" {
+      icon = "lucide.workflow"
+      body = "wdoc draws diagrams straight from WCL — flowcharts, sequence and state diagrams, charts, timelines, trees, and class/DB tables — with automatic layout and edge routing, themed to match the page."
+    }
+  }
+
+  lp_steps {
+    id      = start
+    eyebrow = "Getting started"
+    title   = "Install it and scaffold your first project."
+    lede    = "Grab a prebuilt binary with the install script, then let `wcl init` scaffold a ready-to-build project — a book, a presentation deck, and more."
+
+    lp_step "Install the CLI"          { command = "curl -fsSL https://wcl.dev/install.sh | sh -s -- --pre" }
+    lp_step "Scaffold a new book"      { command = "wcl init book ./my-book" }
+    lp_step "…or a presentation deck"  { command = "wcl init presentation ./my-deck" }
+  }
+
+  footer {
+    lp_footer {
+      brand     = "wcl.dev"
+      tagline   = "A typed configuration and schema language. Open source, built in the open."
+      copyright = "© 2026 WCL · Wil Taylor"
+      note      = "Heavy development — not production ready"
+
+      lp_footcol "WCL" {
+        lp_footlink "Home"            { href = "index" }
+        lp_footlink "Features"        { href = "#features" }
+        lp_footlink "Getting started" { href = "#start" }
+      }
+      lp_footcol "Project" {
+        lp_footlink "GitHub" { href = "https://github.com/wiltaylor/wcl" }
+        lp_footlink "Issues" { href = "https://github.com/wiltaylor/wcl/issues" }
+      }
+    }
+  }
+}

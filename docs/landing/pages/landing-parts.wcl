@@ -1,0 +1,461 @@
+// Landing-page components for the `wcl` site. Each is an ordinary
+// user-declared `@block(...) extends ContentBlock` whose `lower` builds a
+// semantic element tree, so the same page content renders through the
+// `website` template for HTML and degrades to sensible Markdown / PDF
+// (headings stay headings, links ride `Inline` markdown text, chrome —
+// icons, filename bars, backdrops — drops away silently).
+//
+// Children are rendered from the parent's materialised `@children`
+// records (top-level `lp_*_el` helpers), not via a `Children {}` slot —
+// the slot is HTML-only, and building the whole tree in the `lower`
+// keeps all three backends consistent.
+//
+// Everything paints from `var(--wdoc-*, fallback)`, so the design
+// follows the site `theme` / `accent` and the standard wdoc theme
+// toggle — no bespoke palette, no parallel toggle script.
+
+// ── Styling ──────────────────────────────────────────────────────────
+// Selectors are structured blocks; declaration bodies remain CSS text.
+class "ws-banner" {
+  sites = [:wcl]
+  nest ".callout" { css = "display: flex; align-items: center; justify-content: center; gap: 0.75rem; max-width: 70rem; margin: 0 auto; padding: 0.45rem 1rem; border: 0; border-radius: 0; background: none; font-size: 0.85rem;" }
+}
+base ".ws-banner .callout-title, .ws-banner .callout-body p" { sites = [:wcl]  css = "margin: 0;" }
+class "lp-hero" { sites = [:wcl]  css = "position: relative; text-align: center; padding: 4.5rem 0 3rem;" }
+class "lp-hero" {
+  sites = [:wcl]
+  nest "> :not(.lp-hero-bg)" { css = "position: relative;" }
+}
+class "lp-hero-bg" { sites = [:wcl]  css = "position: absolute; inset: 0; pointer-events: none; opacity: 0.55; background-image: linear-gradient(var(--wdoc-border, rgba(127,127,127,0.25)) 1px, transparent 1px), linear-gradient(90deg, var(--wdoc-border, rgba(127,127,127,0.25)) 1px, transparent 1px); background-size: 44px 44px; -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 72%); mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 72%);" }
+class "lp-badge" { sites = [:wcl]  css = "display: inline-flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.3rem 0.8rem; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 999px; background: var(--wdoc-bg-alt, transparent); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wdoc-fg-muted, inherit);" }
+class "lp-badge" {
+  sites = [:wcl]
+  nest "&::before" { css = "content: \"\"; width: 6px; height: 6px; border-radius: 999px; background: var(--wdoc-accent, #4060ff);" }
+}
+class "lp-hero" {
+  sites = [:wcl]
+  nest "h1" { css = "margin: 1.4rem auto 0; max-width: 16ch; font-size: clamp(2.4rem, 6vw, 4rem); line-height: 1.05; letter-spacing: -0.03em; text-wrap: balance;" }
+}
+class "lp-hero" {
+  sites = [:wcl]
+  nest ".lp-lede" { css = "margin: 1.3rem auto 0;" }
+}
+class "lp-lede" { sites = [:wcl]  css = "max-width: 60ch; font-size: 1.05rem; line-height: 1.6; color: var(--wdoc-fg-muted, inherit);" }
+class "lp-ctas" { sites = [:wcl]  css = "display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem;" }
+class "lp-ctas" {
+  sites = [:wcl]
+  nest "p" { css = "margin: 0;" }
+}
+class "lp-cta" {
+  sites = [:wcl]
+  nest "a" { css = "display: inline-flex; align-items: center; gap: 0.5rem; height: 2.6rem; padding: 0 1.25rem; border-radius: 6px; font-weight: 600; font-size: 0.9rem; text-decoration: none;" }
+}
+class "lp-cta-primary" {
+  sites = [:wcl]
+  nest "a" { css = "background: var(--wdoc-accent, #4060ff); color: var(--wdoc-on-accent, #fff); border: 1px solid transparent;" }
+}
+class "lp-cta-primary" {
+  sites = [:wcl]
+  nest "a::after" { css = "content: \"→\";" }
+}
+class "lp-cta-primary" {
+  sites = [:wcl]
+  nest "a:hover" { css = "background: color-mix(in srgb, var(--wdoc-accent, #4060ff) 85%, var(--wdoc-fg, #000) 15%);" }
+}
+class "lp-cta-ghost" {
+  sites = [:wcl]
+  nest "a" { css = "background: transparent; color: inherit; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); font-weight: 500;" }
+}
+class "lp-cta-ghost" {
+  sites = [:wcl]
+  nest "a:hover" { css = "border-color: var(--wdoc-border-strong, rgba(127,127,127,0.7)); background: var(--wdoc-bg-alt, transparent);" }
+}
+class "lp-hero-footnote" { sites = [:wcl]  css = "margin-top: 1.4rem; font-size: 0.8rem; color: var(--wdoc-fg-subtle, inherit);" }
+class "lp-section" { sites = [:wcl]  css = "padding: 2.75rem 0 1rem;" }
+class "lp-section-head" { sites = [:wcl]  css = "display: block; text-align: center; max-width: 60ch; margin: 0 auto 2.25rem;" }
+base ".lp-section-head h2, .lp-showcase-text h2" { sites = [:wcl]  css = "margin: 0.7rem 0 0; font-size: 1.9rem; letter-spacing: -0.02em; line-height: 1.12;" }
+class "lp-section-head" {
+  sites = [:wcl]
+  nest ".lp-lede" { css = "margin: 0.85rem auto 0; font-size: 1rem;" }
+}
+class "lp-eyebrow" { sites = [:wcl]  css = "margin: 0; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wdoc-fg-subtle, inherit);" }
+class "lp-grid" { sites = [:wcl]  css = "display: grid; grid-template-columns: repeat(auto-fit, minmax(17.5rem, 1fr)); gap: 1rem;" }
+class "lp-card" { sites = [:wcl]  css = "display: flex; flex-direction: column; margin: 0; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 8px; background: var(--wdoc-bg-alt, transparent); padding: 1.4rem;" }
+base ".lp-card:hover" { sites = [:wcl]  css = "border-color: var(--wdoc-border-strong, rgba(127,127,127,0.7));" }
+class "lp-card-icon" { sites = [:wcl]  css = "display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; margin: 0 0 0.85rem; border-radius: 8px; background: color-mix(in srgb, var(--wdoc-accent, #4060ff) 14%, transparent); color: var(--wdoc-accent, #4060ff);" }
+class "lp-card-icon" {
+  sites = [:wcl]
+  nest "svg.wdoc-icon" { css = "width: 1.2rem; height: 1.2rem;" }
+}
+class "lp-card" {
+  sites = [:wcl]
+  nest "h3" { css = "margin: 0 0 0.4rem; font-size: 1rem;" }
+}
+base ".lp-card p:last-child" { sites = [:wcl]  css = "margin: 0; font-size: 0.88rem; line-height: 1.6; color: var(--wdoc-fg-muted, inherit);" }
+class "lp-showcase" { sites = [:wcl]  css = "display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.75rem; align-items: start;" }
+class "lp-codepanel" { sites = [:wcl]  css = "margin: 0; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 8px; background: var(--wdoc-bg-alt, transparent); overflow: hidden;" }
+class "lp-codehead" { sites = [:wcl]  css = "display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--wdoc-border, rgba(127,127,127,0.25)); background: var(--wdoc-bg-inset, rgba(127,127,127,0.08)); font-family: var(--wdoc-font-mono, ui-monospace, monospace); font-size: 0.8rem; color: var(--wdoc-fg-muted, inherit);" }
+class "lp-codehead" {
+  sites = [:wcl]
+  nest "svg.wdoc-icon" { css = "width: 0.95rem; height: 0.95rem;" }
+}
+class "lp-codetag" { sites = [:wcl]  css = "margin-left: auto; padding: 0.1rem 0.5rem; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 4px; font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase;" }
+class "lp-code" { sites = [:wcl]  css = "margin: 0; padding: 1.1rem 1.25rem; overflow-x: auto; line-height: 1.65; font-size: 0.85rem;" }
+class "lp-code" {
+  sites = [:wcl]
+  nest "code" { css = "background: none; border: 0; padding: 0;" }
+}
+class "lp-showcase-text" { sites = [:wcl]  css = "display: block;" }
+class "lp-showcase-text" {
+  sites = [:wcl]
+  nest "p:last-child" { css = "margin-bottom: 0; max-width: 62ch; color: var(--wdoc-fg-muted, inherit); line-height: 1.65;" }
+}
+class "lp-steps-panel" { sites = [:wcl]  css = "border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 8px; background: var(--wdoc-bg-alt, transparent); padding: 1.9rem;" }
+class "lp-steps-panel" {
+  sites = [:wcl]
+  nest ".lp-section-head" { css = "text-align: left; margin: 0 0 1.5rem; max-width: 60ch;" }
+}
+base "ol.lp-steps" { sites = [:wcl]  css = "list-style: none; counter-reset: lp-step; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1rem;" }
+base "ol.lp-steps > li" { sites = [:wcl]  css = "position: relative; padding-left: 2.5rem;" }
+base "ol.lp-steps > li::before" { sites = [:wcl]  css = "counter-increment: lp-step; content: counter(lp-step); position: absolute; left: 0; top: 0; width: 1.5rem; height: 1.5rem; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 999px; font-size: 0.75rem; font-weight: 600; font-family: var(--wdoc-font-mono, ui-monospace, monospace); color: var(--wdoc-fg-muted, inherit);" }
+class "lp-step-title" { sites = [:wcl]  css = "margin: 0 0 0.5rem; font-weight: 500;" }
+class "lp-cmd" { sites = [:wcl]  css = "margin: 0; padding: 0.65rem 0.9rem; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.25)); border-radius: 6px; background: var(--wdoc-bg-inset, rgba(127,127,127,0.06)); font-size: 0.85rem; overflow-x: auto; white-space: nowrap;" }
+class "lp-cmd" {
+  sites = [:wcl]
+  nest "&::before" { css = "content: \"$ \"; color: var(--wdoc-fg-subtle, inherit); font-family: var(--wdoc-font-mono, ui-monospace, monospace);" }
+}
+class "lp-cmd" {
+  sites = [:wcl]
+  nest "code" { css = "background: none; border: 0; padding: 0;" }
+}
+base "footer.ws-footer" { sites = [:wcl]  css = "opacity: 1; text-align: left; padding: 0;" }
+class "lp-footgrid" { sites = [:wcl]  css = "max-width: 70rem; margin: 0 auto; padding: 2.75rem clamp(1rem, 5vw, 3rem); display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 2rem;" }
+class "lp-footbrand" {
+  sites = [:wcl]
+  nest "p" { css = "margin: 0 0 0.75rem;" }
+}
+class "lp-footlogo" { sites = [:wcl]  css = "display: flex; align-items: center; gap: 0.6rem; font-family: var(--wdoc-font-mono, ui-monospace, monospace); font-weight: 600; color: var(--wdoc-heading, inherit);" }
+class "lp-footlogo" {
+  sites = [:wcl]
+  nest "svg.wdoc-icon" { css = "width: 1.1rem; height: 1.1rem; color: var(--wdoc-accent, #4060ff);" }
+}
+class "lp-foottag" { sites = [:wcl]  css = "max-width: 34ch; font-size: 0.85rem; line-height: 1.6; color: var(--wdoc-fg-subtle, inherit);" }
+class "lp-footcol" {
+  sites = [:wcl]
+  nest "p" { css = "margin: 0 0 0.55rem; font-size: 0.85rem;" }
+}
+class "lp-foothead" { sites = [:wcl]  css = "font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--wdoc-fg-subtle, inherit);" }
+class "lp-footlink" {
+  sites = [:wcl]
+  nest "a" { css = "color: var(--wdoc-fg-muted, inherit); text-decoration: none;" }
+}
+class "lp-footlink" {
+  sites = [:wcl]
+  nest "a:hover" { css = "color: var(--wdoc-fg, inherit);" }
+}
+class "lp-footbottom" { sites = [:wcl]  css = "display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: space-between; max-width: 70rem; margin: 0 auto; padding: 1rem clamp(1rem, 5vw, 3rem); border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.2));" }
+class "lp-footbottom" {
+  sites = [:wcl]
+  nest "p" { css = "margin: 0; font-size: 0.75rem; color: var(--wdoc-fg-subtle, inherit);" }
+}
+media "(max-width: 48rem)" {
+  sites = [:wcl]
+  class "lp-footgrid" { css = "grid-template-columns: 1fr 1fr;" }
+}
+media "(prefers-reduced-motion: reduce)" {
+  sites = [:wcl]
+  class "lp-hero-bg" { css = "opacity: 0.3;" }
+}
+
+// ── Child-element helpers ────────────────────────────────────────────
+// Top-level `let` fns so every parent `lower` can map its materialised
+// `@children` records through them (lowering fns resolve free names via
+// root lets, not lexical capture).
+
+// A call-to-action button: a styled `<p><a></a></p>` whose link rides
+// the inline-pattern engine, so Markdown keeps a real `[label](href)`.
+let lp_cta_el = fn(x: LpCta) -> Html
+  el("p", ["lp-cta", if x.primary == true { "lp-cta-primary" } else { "lp-cta-ghost" }], [inl($"[${x.label}](${x.href})")])
+
+// One feature card: icon chip, title, body prose.
+let lp_feature_el = fn(f: LpFeature) -> Html {
+  let icon_name = if f.icon == none { "lucide.sparkles" } else { f.icon };
+  el("article", ["lp-card"], [
+      el("p", ["lp-card-icon"], [icon(icon_name, [])]),
+      el("h3", [], [inl(f.title)]),
+      el("p", [], [inl(f.body)]),
+    ])
+}
+
+// One getting-started step: a numbered row (the number is a CSS counter)
+// with a title and a command line rendered as inline code.
+let lp_step_el = fn(s: LpStep) -> Html
+  el("li", [], [
+      el("p", ["lp-step-title"], [inl(s.title)]),
+      el("p", ["lp-cmd"], [inl($"`${s.command}`")]),
+    ])
+
+// One footer column: an uppercase heading over a list of links.
+let lp_footcol_el = fn(col: LpFootcol) -> Html {
+  let links = if col.links == none { [] } else { col.links };
+  el("section", ["lp-footcol"], flatten([
+      [ el("p", ["lp-foothead"], [inl(col.title) ])],
+      map(links, fn(l: LpFootlink) -> Html
+        el("p", ["lp-footlink"], [inl($"[${l.label}](${l.href})")])),
+    ]))
+}
+
+// The eyebrow / title / lede header shared by the section wrappers.
+// `cls` is the wrapping class ("lp-section-head"); the wrapper is a
+// `<header>` (not a `<div>`) so Markdown descends into it as blocks and
+// the `<h2>` survives as a `##` heading. Absent fields render nothing.
+let lp_section_head = fn(eyebrow: utf8, title: utf8, lede: utf8, cls: utf8) -> list<Html> {
+  let parts = flatten([
+    if eyebrow == none || eyebrow == "" { [] }
+    else {
+      [ el("p", ["lp-eyebrow"], [inl(eyebrow) ])]
+    },
+    if title == none || title == "" { [] }
+    else {
+      [ el("h2", [], [inl(title) ])]
+    },
+    if lede == none || lede == "" { [] }
+    else {
+      [ el("p", ["lp-lede"], [inl(lede) ])]
+    },
+  ]);
+  if len(parts) == 0 { [] }
+  else {
+    [ el("header", [cls], parts) ]
+  }
+}
+
+// ── The components ───────────────────────────────────────────────────
+
+// The hero: a decorative grid backdrop, an optional badge pill, the
+// headline, the lede, CTA buttons, and an optional footnote.
+@block("lp_hero")
+type LpHero extends ContentBlock {
+  @doc("The main headline (rendered as the page `<h1>`).")
+  @inline(0) heading: utf8
+  @doc("The supporting paragraph under the headline.")
+  lede: utf8
+  @doc("Optional uppercase badge pill above the headline.")
+  badge: utf8?
+  @doc("Optional small print under the CTA buttons.")
+  footnote: utf8?
+  id: identifier?
+  @children("lp_cta") ctas: list<LpCta>?
+
+  lower = fn(b: LpHero) -> list<Html> {
+    let ctas = if b.ctas == none { [] } else { b.ctas };
+    [
+      eli("section", b.id, ["lp-hero"], flatten([
+          [ ela("div", ["lp-hero-bg"], [["aria-hidden", "true"]], []) ],
+          if b.badge == none { [] }
+          else {
+            [ el("p", ["lp-badge"], [inl(b.badge) ])]
+          },
+          [ el("h1", [], [inl(b.heading) ])],
+          [ el("p", ["lp-lede"], [inl(b.lede) ])],
+          if len(ctas) == 0 { [] }
+          else {
+            [ el("nav", ["lp-ctas"], map(ctas, lp_cta_el)) ]
+          },
+          if b.footnote == none { [] }
+          else {
+            [ el("p", ["lp-hero-footnote"], [inl(b.footnote) ])]
+          },
+        ])),
+    ]
+  }
+}
+
+// A CTA button (child of `lp_hero`). `primary = true` fills it with the
+// accent colour; otherwise it renders as a ghost/outline button.
+@block("lp_cta")
+type LpCta extends ContentBlock {
+  @inline(0) label: utf8
+  href: utf8
+  primary: bool?
+  id: identifier?
+  lower = fn(x: LpCta) -> list<Html> [ lp_cta_el(x) ]
+}
+
+// A feature-card grid section with an optional centred header.
+@block("lp_features")
+type LpFeatures extends ContentBlock {
+  eyebrow: utf8?
+  title: utf8?
+  lede: utf8?
+  id: identifier?
+  @children("lp_feature") items: list<LpFeature>?
+
+  lower = fn(b: LpFeatures) -> list<Html> {
+    let items = if b.items == none { [] } else { b.items };
+    [
+      eli("section", b.id, ["lp-section"], flatten([
+          lp_section_head(b.eyebrow, b.title, b.lede, "lp-section-head"),
+          if len(items) == 0 { [] }
+          else {
+            [ el("section", ["lp-grid"], map(items, lp_feature_el)) ]
+          },
+        ])),
+    ]
+  }
+}
+
+// One feature card (child of `lp_features`).
+@block("lp_feature")
+type LpFeature extends ContentBlock {
+  @inline(0) title: utf8
+  body: utf8
+  @doc("Icon as `pack.name` (default `lucide.sparkles`).")
+  icon: utf8?
+  id: identifier?
+  lower = fn(f: LpFeature) -> list<Html> [ lp_feature_el(f) ]
+}
+
+// A code showcase: a filename-chromed, syntax-highlighted panel (fed by
+// a nested stdlib `code` block) above the explanatory text. The chrome
+// (filename bar, language tag) is `Raw`, so Markdown drops it and keeps
+// just the fenced listing.
+@block("lp_showcase")
+type LpShowcase extends ContentBlock {
+  heading: utf8
+  body: utf8
+  eyebrow: utf8?
+  id: identifier?
+  @children("code") snippets: list<Code>?
+
+  lower = fn(b: LpShowcase) -> list<Html> {
+    let snips = if b.snippets == none { [] } else { b.snippets };
+    let panel =
+      if len(snips) == 0 { [] }
+      else {
+        let sn = at(snips, 0);
+        let fname = if sn.filename == none { "" } else { sn.filename };
+        let lang = format("{}", sn.language);
+        [
+          el("figure", ["lp-codepanel"], [
+              el("figcaption", ["lp-codehead"], [
+                  icon("lucide.file-text", []),
+                  el("span", ["lp-codename"], [raw(fname)]),
+                  el("span", ["lp-codetag"], [raw(lang)]),
+                ]),
+              el("pre", ["lp-code"], [
+                  el("code", [format("language-{}", lang)], [ Html::Highlighted { source: sn.source, language: lang } ]),
+                ]),
+            ]),
+        ]
+      };
+    [
+      eli("section", b.id, ["lp-section", "lp-showcase"], flatten([
+          panel,
+          lp_section_head(b.eyebrow, b.heading, b.body, "lp-showcase-text"),
+        ])),
+    ]
+  }
+}
+
+// A getting-started panel: header plus numbered steps, each a title over
+// a command line.
+@block("lp_steps")
+type LpSteps extends ContentBlock {
+  eyebrow: utf8?
+  title: utf8?
+  lede: utf8?
+  id: identifier?
+  @children("lp_step") steps: list<LpStep>?
+
+  lower = fn(b: LpSteps) -> list<Html> {
+    let steps = if b.steps == none { [] } else { b.steps };
+    [
+      eli("section", b.id, ["lp-section"], [
+          el("article", ["lp-steps-panel"], flatten([
+              lp_section_head(b.eyebrow, b.title, b.lede, "lp-section-head"),
+              if len(steps) == 0 { [] }
+              else {
+                [ el("ol", ["lp-steps"], map(steps, lp_step_el)) ]
+              },
+            ])),
+        ]),
+    ]
+  }
+}
+
+// One numbered step (child of `lp_steps`).
+@block("lp_step")
+type LpStep extends ContentBlock {
+  @inline(0) title: utf8
+  command: utf8
+  id: identifier?
+  lower = fn(s: LpStep) -> list<Html> [ lp_step_el(s) ]
+}
+
+// The multi-column site footer: a brand cell (icon + wordmark + tagline)
+// beside link columns, over a bottom bar with the copyright and a note.
+@block("lp_footer")
+type LpFooter extends ContentBlock {
+  @doc("Short prose under the brand wordmark.")
+  tagline: utf8
+  @doc("Brand wordmark text (chrome — dropped in Markdown).")
+  brand: utf8?
+  copyright: utf8?
+  note: utf8?
+  id: identifier?
+  @children("lp_footcol") columns: list<LpFootcol>?
+
+  lower = fn(b: LpFooter) -> list<Html> {
+    let cols = if b.columns == none { [] } else { b.columns };
+    let brand = if b.brand == none { "" } else { b.brand };
+    let bottom = flatten([
+      if b.copyright == none { [] }
+      else {
+        [ el("p", [], [inl(b.copyright) ])]
+      },
+      if b.note == none { [] }
+      else {
+        [ el("p", [], [inl(b.note) ])]
+      },
+    ]);
+    flatten([
+      [ eli("nav", b.id, ["lp-footgrid"], flatten([
+            [ el("header", ["lp-footbrand"], [
+                  el("p", ["lp-footlogo"], [
+                      icon("lucide.layers", []),
+                      el("span", [], [raw(brand)]),
+                    ]),
+                  el("p", ["lp-foottag"], [inl(b.tagline)]),
+                ]) ],
+            map(cols, lp_footcol_el),
+          ])) ],
+      if len(bottom) == 0 { [] }
+      else {
+        [ el("section", ["lp-footbottom"], bottom) ]
+      },
+    ])
+  }
+}
+
+// One footer link column (child of `lp_footer`). Links may be authored
+// as nested `lp_footlink` blocks or spliced in as data with
+// `links = map(...)` (computed `@children`).
+@block("lp_footcol")
+type LpFootcol extends ContentBlock {
+  @inline(0) title: utf8
+  id: identifier?
+  @children("lp_footlink") links: list<LpFootlink>?
+  lower = fn(col: LpFootcol) -> list<Html> [ lp_footcol_el(col) ]
+}
+
+// One footer link (child of `lp_footcol`).
+@block("lp_footlink")
+type LpFootlink extends ContentBlock {
+  @inline(0) label: utf8
+  href: utf8
+  id: identifier?
+  lower = fn(l: LpFootlink) -> list<Html> [
+    el("p", ["lp-footlink"], [inl($"[${l.label}](${l.href})")]),
+  ]
+}
