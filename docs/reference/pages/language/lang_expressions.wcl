@@ -1,11 +1,632 @@
 // Chapter 5 — Expressions and operators.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #163. Every snippet, value and error message below was
+// run through `wcl repl` / `wcl get` / `wcl check` before it was written
+// down. Where the older concept units disagreed with the code, the code
+// won — see the "arguments evaluate before the call" callout.
 page lang_expressions {
   title = "Expressions and operators"
 
   h1 "Expressions and operators"
 
-  p "Not written yet. This chapter covers member access, indexing, calls, the operator precedence table, numeric promotion and the `??` operator."
+  p "Everything to the right of an `=` is an **expression**, and so is every call argument, every `let` initialiser, every table cell and every `${…}` slot in an interpolated string. This chapter is the grammar of that right-hand side: the four ways expressions combine, the fourteen binary operators and two prefix ones, the precedence that orders them, and what each does to the values it is handed."
+
+  p "Every value and every error message below came from a real run. The quickest way to check one is `wcl repl`, which evaluates a bare expression against an empty document:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl repl
+wcl> 1 + 2 * 3
+7
+wcl> :quit
+TEXT
+  }
+
+  p "Give it a file and identifiers resolve against that document's top-level names, which is how the transcripts later in this chapter read a real document. [The CLI](lang_cli) covers `repl` in full."
+
+  h2 "The shape of an expression"
+
+  p "An expression is built in four layers. Read them from the inside out and the precedence table at the end of this chapter stops being a list to memorise."
+
+  table {
+    rows:
+      | "Layer"    | "Written as"                     | "Examples" |
+      | "Atom"     | "a value, a name, or a bracketed form" | "`8080u32`, `\"web\"`, `:prod`, `none`, `rate`, `self`, `[1, 2]`, `{ w: 3 }`, `(a + b)`" |
+      | "Postfix"  | "sticks to the atom on its left"      | "`svc.port`, `len(xs)`, `Scale::Small`" |
+      | "Prefix"   | "sits in front of what it acts on"    | "`-x`, `!ready`" |
+      | "Infix"    | "joins a left and a right operand"    | "`a + b`, `a == b`, `a && b`, `a ?? b`" |
+  }
+
+  p "Three atoms are covered elsewhere because they are whole subjects: `if`, `match` and `try` are expressions like any other and live in [Control flow](lang_control_flow); a `{ … }` block expression with its `let name = expr;` bindings lives there too; a `fn(…) -> T …` literal lives in [Functions](lang_functions). Every one of them may appear anywhere this chapter says \"expression\" — including as an operand."
+
+  p "Parentheses are the fifth thing, and they are only grouping. They are also **kept**: `wcl fmt` prints `1 + (2 * 3)` back exactly as written, because the parentheses are a node in the tree rather than a hint the parser discards. Write them wherever they help the reader, and never write them to fix a precedence you had to guess."
+
+  h2 "A report that computes itself"
+
+  p "One file exercises most of this chapter. Save it as `report.wcl`:"
+
+  code wcl {
+    filename = "report.wcl"
+    source = <<'WCL'
+# report.wcl — a capacity report that computes its own numbers.
+
+@block("service")
+type Service {
+  @inline(0) id: identifier
+  replicas: u32
+  cpu:      f64
+  budget:   f64?      # optional — a service need not set one
+  cost:     f64       # computed below
+  over:     bool      # computed below
+  line:     utf8      # computed below
+}
+
+@document
+type Report {
+  region:         utf8
+  rate:           f64
+  default_budget: f64
+  @children("service") services: list<Service>
+  total:          f64
+  any_over:       bool
+  headline:       utf8
+}
+
+region         = "us-east-1"
+rate           = 12.5
+default_budget = 20.0
+
+service web {
+  replicas = 3u32
+  cpu      = 0.5
+  budget   = 30.0
+  cost     = self.replicas * self.cpu * rate
+  over     = self.cost > (self.budget ?? default_budget)
+  line     = format("web  {} x {} = {}", self.replicas, self.cpu, self.cost)
+}
+
+service db {
+  replicas = 2u32
+  cpu      = 1.5
+  cost     = self.replicas * self.cpu * rate
+  over     = self.cost > (self.budget ?? default_budget)
+  line     = format("db   {} x {} = {}", self.replicas, self.cpu, self.cost)
+}
+
+total    = services.web.cost + services.db.cost
+any_over = services.web.over || services.db.over
+headline = concat(region, $" — ${total}")
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check report.wcl
+OK
+$ wcl get report.wcl services.web.cost
+18.75
+$ wcl get report.wcl services.web.over
+false
+$ wcl get report.wcl services.db.cost
+37.5
+$ wcl get report.wcl services.db.over
+true
+$ wcl get report.wcl services.db.line
+"db   2 x 1.5 = 37.5"
+$ wcl get report.wcl total
+56.25
+$ wcl get report.wcl any_over
+true
+$ wcl get report.wcl headline
+"us-east-1 — 56.25"
+TEXT
+  }
+
+  p "Four of the sections below are already on that page. `self.replicas * self.cpu` multiplies a `u32` by an `f64` and answers an `f64` — that is [numeric promotion](#numeric-promotion). `self.budget ?? default_budget` supplies the missing budget for `db` without a conditional — that is [none-coalescing](#none-coalescing). `services.web.cost` walks a gather field, a label and a field — that is [member access](#member-access). `format(…)` and `concat(…)` build the strings, because `+` does not — that is [joining strings](#joining-strings). Keep the file; several later transcripts read it."
+
+  h2 "Member access"
+
+  p "A dot reads a member of the value on its left. It binds tighter than everything else, so a dotted path is one atom as far as the rest of an expression is concerned: `-svc.port` negates the port, and `a.b + c.d` adds two members."
+
+  p "What a dot may read depends on what is on its left:"
+
+  table {
+    rows:
+      | "Left of the dot"       | "What a segment names"                 | "Example" |
+      | "A block"               | "one of its fields, or a nested block" | "`self.cpu`, `svc.limits.memory`" |
+      | "A gather field"        | "one instance, by its first label"     | "`services.web`" |
+      | "A record"              | "one of its fields"                    | "`box.width`" |
+      | "A union variant value" | "one field of its record payload"      | "`scale.shards`" |
+      | "The document"          | "any top-level name"                   | "`parent.region`, from inside a block" |
+  }
+
+  p "Chains mix the rows freely, and each step is resolved only when the whole path is forced. With `report.wcl` from above:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl repl report.wcl
+wcl> services.web.cost
+18.75
+wcl> services.db.replicas
+2u32
+wcl> services.web.zone
+eval error: wcl::eval::unresolved_reference
+
+  × unresolved reference 'services.web.zone'
+TEXT
+  }
+
+  p "A dot is also how `self` and `parent` are useful: on their own they name a block, and the member is what you wanted from it. [Documents, fields and blocks](lang_documents#self-and-parent) covers both keywords."
+
+  callout "A label is not readable through the dot" {
+    class = ["warning"]
+    body  = "`@inline(0) id: identifier` says which field a block's label _fills_, not that the label is readable back. `services.web.id` resolves to the field's declaration, not to `web`, and a sibling field cannot read it either. When an expression needs the value, declare an ordinary field and write it out — see [Documents, fields and blocks](lang_documents#blocks-and-labels)."
+  }
+
+  h2 "There is no index operator"
+
+  p "`[` opens a list literal, a tensor shape or a table row. It never indexes, and writing it after an expression is a parse error rather than a missing feature:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl repl
+wcl> [10, 20, 30][0]
+parse error: wcl::parse
+
+  × expected end of input after expression, found '['
+   ╭─[<repl>:1:13]
+ 1 │ [10, 20, 30][0]
+   ·             ┬
+   ·             ╰── unexpected trailing token
+   ╰────
+TEXT
+  }
+
+  p "Reaching into a list is a call. `at(xs, i)` is the direct one, and it errors on a negative or out-of-range index rather than answering `none`:"
+
+  code text {
+    source = <<'TEXT'
+wcl> at([10, 20, 30], 1)
+20
+wcl> at([10, 20, 30], 3)
+eval error: wcl::eval::builtin_type
+
+  × 'at': at: index 3 out of bounds
+
+wcl> head([10, 20, 30])
+10
+wcl> slice([1, 2, 3, 4], 1, 3)
+[2, 3]
+wcl> index_of([10, 20, 30], 20)
+1
+TEXT
+  }
+
+  h3 "Three notations that look like indexing"
+
+  p "The trap is that one of them _is_ a dot followed by a number, and it means something else entirely. A numeric segment after a dot is a **label match**, exactly like a named one — it finds the block whose first label reifies to those digits. Take this file:"
+
+  code wcl {
+    filename = "steps.wcl"
+    source = <<'WCL'
+@block("step")
+type Step {
+  @inline(0) n: u32
+  action: utf8
+}
+
+@document
+type Doc {
+  ports: list<u32>
+  @children("step") steps: list<Step>
+}
+
+ports = [8080u32, 5432u32, 9000u32]
+
+step 1 { action = "checkout" }
+step 2 { action = "build" }
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl repl steps.wcl
+wcl> steps.1.action
+"checkout"
+wcl> steps.0.action
+eval error: wcl::eval::unresolved_reference
+
+  × unresolved reference 'steps.0'
+
+wcl> at(ports, 0)
+8080u32
+wcl> ports.0
+eval error: wcl::eval::unresolved_reference
+
+  × unresolved reference 'ports.0'
+TEXT
+  }
+
+  p "`steps.1` is the step labelled `1`, which happens to be the first. `steps.0` is not the first step; it is a step that does not exist, because no block carries the label `0`. And `ports.0` fails outright: `ports` is a list value, not a list of blocks, so it has no members to name at all."
+
+  table {
+    rows:
+      | "Written"      | "Means"                                  | "Works on"                   | "Missing element" |
+      | "`at(xs, 0)`"  | "the element at position 0"              | "a list or tensor value"     | "an error" |
+      | "`steps.1`"    | "the block whose first label is `1`"     | "a `@children` gather field" | "unresolved reference" |
+      | "`ports.0`"    | "nothing — lists have no members"        | "—"                          | "unresolved reference" |
+  }
+
+  callout "Position and label are different questions" {
+    class = ["note"]
+    body  = "A `@children` gather field holds blocks, and a block is addressed by its label, so `steps.1` reads the same whether the steps are written in order, out of order, or one per imported file. `at(steps, 0)` would ask a different question — _which one is written first_ — and the answer changes when someone reorders the file. Prefer the label."
+  }
+
+  h2 "Calls"
+
+  p "Parentheses after an expression call it. When the callee is a bare name, three places are searched, in this order:"
+
+  list {
+    li "**A local name** — a function-valued `let` binding or a function parameter."
+    li "**A document name** — a `fn name(…)` item, or any field or `let` holding a function value. See [Functions](lang_functions)."
+    li "**A builtin** — `len`, `at`, `format`, `map`, `concat` and the rest of [Builtins](lang_builtins)."
+  }
+
+  p "Any other callee is evaluated first and must produce a function value: `r.f(2)` calls the function stored at `r.f`. That is worth saying plainly, because it is not a method call: **there are no methods**. `xs.len()` does not exist, because `len` is not a member of a list. `len(xs)` is the call, and `r.f(2)` works only because `r.f` really is a function value. Argument lists are positional, there are no named arguments and no defaults, so the arity must match:"
+
+  code text {
+    source = <<'TEXT'
+wcl> len([1, 2, 3])
+3
+wcl> len([1, 2, 3], 2)
+eval error: wcl::eval::builtin_arity
+
+  × 'len' expects 1 argument(s), got 2
+
+wcl> { let r = { f: fn(x: i64) -> i64 x + 1 }; r.f(2) }
+3
+TEXT
+  }
+
+  callout "Arguments evaluate before the call, left to right" {
+    class = ["warning"]
+    body  = "Fields are lazy; arguments are not. Every argument expression is evaluated in order and the values are handed to the callee, so an argument that the body never reads still runs — and still fails. With `fn first(x: i64, y: i64) -> i64 { x }` in scope, `first(1, 1 / 0)` reports `operator '/' cannot divide by zero` even though `y` is unused. The only expressions that skip an operand are `&&`, `||` and `??`, below."
+  }
+
+  h3 "Two things that look like calls"
+
+  p "`Scale::Small { replicas: 2u32 }` is **variant construction**, not a call. The `::` binds as tightly as a dot, the braces carry a record payload and the parenthesised form `Shape::Polygon(7)` carries a positional one. Records themselves have no constructor: a record value is the bare literal `{ width: 480.0 }`, typed by where it is used. [Types](lang_types) covers both."
+
+  p "A name in call position that is not a function is reported as a missing builtin, because the builtin registry is the last place the resolver looks. `box(1)`, where `box` is a record, answers `unknown built-in 'box'` rather than something about records — read that message as \"nothing callable is named `box`\"."
+
+  h2 "Arithmetic"
+
+  p "Five infix operators — `+`, `-`, `*`, `/`, `%` — plus prefix `-`. They are defined for numbers and for nothing else. `+` does not join strings and does not concatenate lists:"
+
+  code text {
+    source = <<'TEXT'
+wcl> "us-" + "east-1"
+eval error: wcl::eval::type_mismatch
+
+  × operator '+' is not defined for utf8 and utf8
+
+wcl> [1] + [2]
+eval error: wcl::eval::type_mismatch
+
+  × operator '+' is not defined for list and list
+TEXT
+  }
+
+  p "Division and remainder follow the operand type. Between integers, `/` truncates toward zero and `%` takes the sign of the left operand; between floats, both are the IEEE operations:"
+
+  code text {
+    source = <<'TEXT'
+wcl> 7 / 2
+3
+wcl> -7 / 2
+-3
+wcl> -7 % 3
+-1
+wcl> 7 % -3
+1
+wcl> 7.0 / 2.0
+3.5
+wcl> 7.5 % 2.0
+1.5
+TEXT
+  }
+
+  h3 "Integers refuse to be wrong; floats do not"
+
+  p "This is the comparison to take away from the section. An integer operation with no representable answer is an **error**, not a wrapped value and not a debug-build panic. A float operation with no finite answer is `inf` or `NaN`, silently, because that is what IEEE arithmetic means."
+
+  code text {
+    source = <<'TEXT'
+wcl> 255u8 + 1u8
+eval error: wcl::eval::arithmetic
+
+  × operator '+' cannot represent the result in u8 (overflow)
+
+wcl> 2u32 - 3u32
+eval error: wcl::eval::arithmetic
+
+  × operator '-' cannot represent the result in u32 (overflow)
+
+wcl> 1 / 0
+eval error: wcl::eval::arithmetic
+
+  × operator '/' cannot divide by zero
+
+wcl> 1.0 / 0.0
+inf
+wcl> 0.0 / 0.0
+NaN
+TEXT
+  }
+
+  p "`2u32 - 3u32` is the one that catches people. The operands are both `u32`, the answer is −1, and `u32` has no −1, so the operation has no result. It does not widen to reach one — see the next section for why."
+
+  h2 "Numeric promotion"
+
+  p "Every arithmetic and comparison operator tries the operands' **own type first**, and promotes only when that fails. The rule is two lines:"
+
+  list {
+    li "**Same variant, same answer.** `u8 + u8` is `u8` arithmetic and the result is a `u8`. Nothing widens, which is why `255u8 + 1u8` overflows instead of answering `256`."
+    li "**Mixed variants promote once.** If either side is a float, both become `f64`. Otherwise both become `i128`. The operator then runs on the promoted pair."
+  }
+
+  code text {
+    source = <<'TEXT'
+wcl> 1u8 + 1u8
+2u8
+wcl> 2u8 + 300u32
+302i128
+wcl> 1u32 + 2.5
+3.5
+wcl> 3u32 * 0.5
+1.5
+TEXT
+  }
+
+  p "Read `2u8 + 300u32` closely: the result is neither a `u8` nor a `u32`. The operands disagreed, both went to `i128`, and `i128` is what came back. The promotion ladder has exactly these two rungs — there is no `u8` → `u16` → `u32` staircase, and no unsigned result type is ever chosen for a mixed pair."
+
+  p "`i128` is the top of the integer rung, so one mixed pair has nowhere to promote to: a `u128` larger than `i128::MAX` beside any other numeric type. That is reported as a type mismatch rather than an overflow, because the operator was never reached — `340282366920938463463374607431768211455u128 + 1u32` answers `operator '+' is not defined for u128 and u32`. Two `u128`s never promote at all, so they add, overflow and compare normally."
+
+  p "A declared field type then converts the result on the way in, which is why `report.wcl` never mentions `i128` or `f64`. `cost: f64` accepts the `f64` the multiplication produced; a field declared `u32` accepts an `i128` result that fits and rejects one that does not. [Schemas](lang_schemas) covers the conversion, and [Values and primitives](lang_values) the numeric types themselves."
+
+  callout "A unit literal is not a number yet" {
+    class = ["note"]
+    body  = "`512MiB` carries its unit until a declared type resolves it, so it is not an operand you can do arithmetic on in the REPL. Read the field instead — against the `inventory.wcl` of [Documents, fields and blocks](lang_documents), `wcl get inventory.wcl services.web.limits.memory` answers `536870912`, and that value is an ordinary integer. See [Values and primitives](lang_values)."
+  }
+
+  h2 "Comparison"
+
+  p "`==` and `!=` compare **any** two values. Same-typed values compare structurally — lists element by element, records field by field — and numbers of different types promote first. Values of unrelated kinds are simply unequal; nothing errors:"
+
+  code text {
+    source = <<'TEXT'
+wcl> 1u32 == 1u64
+true
+wcl> 1 == 1.0
+true
+wcl> [1, 2] == [1, 2]
+true
+wcl> { a: 1 } == { a: 1 }
+true
+wcl> :prod == :prod
+true
+wcl> true == 1
+false
+wcl> "a" == 1
+false
+TEXT
+  }
+
+  p "`<`, `<=`, `>` and `>=` are narrower. They order numbers (promoting mixed pairs the same way) and they order `utf8` / `ascii` strings byte by byte. Everything else is a type error, including symbols, lists and booleans:"
+
+  code text {
+    source = <<'TEXT'
+wcl> 2u8 < 300u32
+true
+wcl> "abc" < "abd"
+true
+wcl> :prod < :dev
+eval error: wcl::eval::type_mismatch
+
+  × operator '<>' is not defined for symbol and symbol
+TEXT
+  }
+
+  p "The message names the ordering family as `<>` rather than the operator you wrote; the two type names after it are the ones to read. Symbols are a set of names, not a scale — when the order matters, model it with a number."
+
+  h2 "Logic"
+
+  p "`&&`, `||` and prefix `!` take booleans and nothing else. There is no truthiness: `1 && true` is a type error, and so is `!1`. The message names the offending value's type and leaves the other side as `—`:"
+
+  code text {
+    source = <<'TEXT'
+wcl> true && 1
+eval error: wcl::eval::type_mismatch
+
+  × operator '&&' is not defined for i64 and —
+
+wcl> !1
+eval error: wcl::eval::type_mismatch
+
+  × operator '!' is not defined for i64 and —
+TEXT
+  }
+
+  p "Both binary operators **short-circuit**. `false && …` and `true || …` answer without touching the right operand, which is the one place besides `??` where an expression you wrote may never run:"
+
+  code text {
+    source = <<'TEXT'
+wcl> false && error("boom")
+false
+wcl> true || error("boom")
+true
+wcl> true && error("boom")
+eval error: wcl::eval::user_error
+
+  × error: boom
+TEXT
+  }
+
+  p "`&&` binds tighter than `||`, so `a && b || c` is `(a && b) || c`. Both bind looser than every comparison, so `x > 0 && y > 0` needs no parentheses at all."
+
+  h2 "None-coalescing"
+
+  p "`a ?? b` is the left value **unless it is `none`**, in which case it is the right value. It is the operator for a default, and it is the only reason a document with optional fields rarely needs a conditional. The right side is evaluated only when it is needed:"
+
+  code text {
+    source = <<'TEXT'
+wcl> none ?? 5
+5
+wcl> 0 ?? 5
+0
+wcl> false ?? 5
+false
+wcl> "ok" ?? error("boom")
+"ok"
+wcl> none ?? none ?? "last"
+"last"
+TEXT
+  }
+
+  p "`0` and `false` are values, so they win. Only `none` gives way — the absent optional field, the `else`-less `if` that did not fire, the field a schema declares as `T?` and the document never wrote. That last one is what `report.wcl` uses:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get report.wcl services.db.budget
+none
+$ wcl get report.wcl services.db.over
+true
+TEXT
+  }
+
+  callout "?? is not a `try`" {
+    class = ["warning"]
+    body  = "`??` reads a value and asks whether it is `none`. It does not catch a failure. `error(\"gone\") ?? 5` reports `error: gone`, and so does a `??` whose left side is a field that failed to evaluate or a path that does not resolve. Recovering from an error is `try body catch e => fallback` — see [Control flow](lang_control_flow)."
+  }
+
+  p "`??` is the **loosest** operator in the language, which is a real trap when the default sits next to a comparison. `width ?? 480.0 > 100.0` is `width ?? (480.0 > 100.0)`: when `width` is set you get a number, and when it is `none` you get a boolean, out of one expression. Parenthesise the default:"
+
+  code text {
+    source = <<'TEXT'
+wcl> none ?? 480.0 > 100.0
+true
+wcl> 5.0 ?? 480.0 > 100.0
+5.0
+wcl> (none ?? 480.0) > 100.0
+true
+TEXT
+  }
+
+  h2 "Joining strings"
+
+  p "`+` is arithmetic, so joining two strings is a call or an interpolation. There are four ways, and they are not interchangeable:"
+
+  table {
+    rows:
+      | "Written"                      | "Answers"        | "Non-string arguments" | "Reach for it when" |
+      | "`concat(a, b)`"               | "`\"us-east-1\"`" | "a type error"         | "Exactly two strings meet" |
+      | "`join(parts, sep)`"           | "`\"a-b-c\"`"     | "a type error"         | "A list becomes one string" |
+      | "`format(\"{}:{}\", a, b)`"    | "`\"web:8080\"`"  | "formatted in place"   | "A template with holes" |
+      | "`$\"web:${port}\"`"           | "`\"web:8080\"`"  | "formatted in place"   | "The template is the literal" |
+  }
+
+  code text {
+    source = <<'TEXT'
+wcl> concat("us-", "east-1")
+"us-east-1"
+wcl> join(["a", "b", "c"], "-")
+"a-b-c"
+wcl> format("{}:{}", "web", 8080u32)
+"web:8080"
+wcl> $"web:${8080u32}"
+"web:8080"
+wcl> concat("n=", 5)
+eval error: wcl::eval::builtin_type
+
+  × 'concat': expected utf8 string, found i64
+TEXT
+  }
+
+  p "Note what the last two lines show. `format` and `${…}` render a value's display form — `8080u32` becomes `8080`, with no type suffix — while `concat` and `join` demand strings and say so. Reach for the interpolated literal when the template is written out and for `format` when it is computed; the `$` prefix is what makes a string literal interpolating, and a plain `\"…\"` never substitutes. [Values and primitives](lang_values) covers the string forms, [Builtins](lang_builtins) the rest of the string functions."
+
+  h2 "Precedence and associativity"
+
+  p "Nine levels, tightest first. Every binary operator is **left-associative**, so `10 - 3 - 2` is `(10 - 3) - 2` and answers `5`."
+
+  table {
+    rows:
+      | "Level" | "Operators"              | "Form"                                              | "Example" |
+      | "1"     | "`.`  `::`  `(…)`"       | "member access, variant construction, call"         | "`svc.limits.cpu`, `len(xs)`" |
+      | "2"     | "`-`  `!`"               | "prefix negation, prefix not"                       | "`-x`, `!ready`" |
+      | "3"     | "`*`  `/`  `%`"          | "multiply, divide, remainder"                       | "`a * b % c`" |
+      | "4"     | "`+`  `-`"               | "add, subtract"                                     | "`a + b - c`" |
+      | "5"     | "`<`  `<=`  `>`  `>=`"   | "ordering"                                          | "`cost > budget`" |
+      | "6"     | "`==`  `!=`"             | "equality"                                          | "`tier == :prod`" |
+      | "7"     | "`&&`"                   | "logical and"                                       | "`a && b`" |
+      | "8"     | "`||`"                   | "logical or"                                        | "`a || b`" |
+      | "9"     | "`??`"                   | "none-coalescing"                                   | "`w ?? 480.0`" |
+  }
+
+  p "Level 1 is why a dotted path never needs parentheses, and level 2 is why `-svc.port` negates the port rather than negating `svc`. Everything else is the usual arithmetic ordering, with two surprises worth pinning down:"
+
+  code text {
+    source = <<'TEXT'
+wcl> 1 < 2 == true
+true
+wcl> "a" ?? "b" == "c"
+"a"
+TEXT
+  }
+
+  p "The first is ordering binding **tighter** than equality: `1 < 2 == true` is `(1 < 2) == true`, which is `true`. The second is `??` binding loosest: `\"a\" ?? \"b\" == \"c\"` is `\"a\" ?? (\"b\" == \"c\")`, and since the left side is not `none` it answers `\"a\"` — the comparison never runs. Both parse exactly as the table says; both read better with parentheses."
+
+  h2 "What is not an operator"
+
+  p "Seven spellings that other languages make operators, and what WCL does instead."
+
+  table {
+    rows:
+      | "Not this"     | "Write"                  | "Because" |
+      | "`2.0 ^ 10.0`" | "`pow(2.0, 10.0)`"       | "`^` is not a token at all — it is a lexer error" |
+      | "`xs[0]`"      | "`at(xs, 0)`"            | "`[` opens a list literal, a tensor shape or a table row" |
+      | "`xs.len()`"   | "`len(xs)`"              | "There are no methods; `len` is a function, not a member" |
+      | "`a + b` (strings)" | "`concat(a, b)`"    | "`+` is arithmetic — see [Joining strings](#joining-strings)" |
+      | "`&T`"         | "—"                      | "A reference **type**, in a declaration, not an operator on values" |
+      | "`->`"         | "—"                      | "A function's return type, or a [connection statement](lang_connections)" |
+      | "`=>`"         | "—"                      | "Separates a `match` arm or a `catch` binding from its body" |
+  }
+
+  code text {
+    source = <<'TEXT'
+wcl> 2.0 ^ 10.0
+parse error: wcl::parse
+
+  × unexpected character '^'
+   ╭─[<repl>:1:5]
+ 1 │ 2.0 ^ 10.0
+   ·     ┬
+   ·     ╰── unexpected character '^'
+   ╰────
+
+wcl> pow(2.0, 10.0)
+1024.0
+TEXT
+  }
+
+  p "`::` is the one that belongs in this chapter rather than on the list above. It really is postfix syntax — it constructs a union variant, and it also qualifies a namespaced name — and it binds at level 1, beside the dot. [Types](lang_types) covers variants and [Namespaces and imports](lang_namespaces) covers qualification."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Control flow](lang_control_flow) — `if`, `match`, `try`/`catch` and the block expression, all of which are expressions you can drop into any operand position."
+    li "[Functions](lang_functions) — `fn` items, function literals, parameters and what a function value captures."
+    li "[Builtins](lang_builtins) — the full catalogue behind `at`, `len`, `format`, `concat`, `map` and the rest."
+    li "[Values and primitives](lang_values) — the numeric types the promotion ladder walks, and the string forms interpolation builds."
+    li "[How a document evaluates](lang_evaluation) — when an expression actually runs, what caches it, and how a cycle is caught."
+  }
 }
