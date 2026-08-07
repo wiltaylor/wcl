@@ -6,8 +6,6 @@ use wcl_lang::{
     Document, Environment, ParseError, format as wcl_format, parse_expr, parse_for_edit,
 };
 
-mod answer;
-mod answer_tui;
 mod diff;
 mod dump;
 mod edit;
@@ -289,42 +287,6 @@ enum Command {
     Wskill {
         #[command(subcommand)]
         cmd: WskillCommand,
-    },
-    /// Walk a document's pending interview questions and record the answers —
-    /// the respondent-facing counterpart to editing the WCL by hand. A block
-    /// type opts in with the `@answerable` decorator from `import <answer.wcl>`,
-    /// which maps the prompt / response / status roles onto its own fields
-    /// (see `examples/answer/plan.wcl`). Choice questions render their option
-    /// child blocks as an arrow-key menu (numbered line input when stdin isn't
-    /// a TTY); a free-text answer is always available. Each answer writes back
-    /// immediately through the validating edit pipeline, so an interrupted
-    /// session loses nothing.
-    ///
-    /// Examples:
-    ///   wcl answer plan.wcl
-    ///   wcl answer plan.wcl --list
-    ///   wcl answer plan.wcl --id q_platforms --pick linux --text "and CI runners"
-    ///   wcl answer plan.wcl --id q_scope --skip
-    Answer {
-        /// Path to the WCL document (imports are followed; each answer lands
-        /// in the file that declares its question).
-        file: PathBuf,
-        /// List the pending questions as JSON (id, prompt, kind, options,
-        /// skippable) instead of prompting.
-        #[arg(long)]
-        list: bool,
-        /// Answer one question non-interactively: the question block's label.
-        #[arg(long)]
-        id: Option<String>,
-        /// Free-text answer for `--id` (may combine with `--pick`).
-        #[arg(long, requires = "id")]
-        text: Option<String>,
-        /// Pick an option by its id for `--id` (repeatable).
-        #[arg(long, requires = "id")]
-        pick: Vec<String>,
-        /// Skip the question for `--id`: writes its declared skipped status.
-        #[arg(long, requires = "id", conflicts_with_all = ["text", "pick"])]
-        skip: bool,
     },
 }
 
@@ -888,14 +850,6 @@ fn main() -> ExitCode {
         } => scaffold::run_init(template, dest, answers, define, defaults, force, list),
         Command::Wdoc { cmd } => run_wdoc(cmd),
         Command::Diff { old, new, format } => run_diff(&old, &new, format),
-        Command::Answer {
-            file,
-            list,
-            id,
-            text,
-            pick,
-            skip,
-        } => answer::run_answer(&file, list, id.as_deref(), text.as_deref(), &pick, skip),
         Command::Wskill { cmd } => match cmd {
             WskillCommand::Check { entry } => {
                 let entry = entry.unwrap_or_else(|| PathBuf::from("."));

@@ -45,7 +45,7 @@ type Choice {
 // A check-your-understanding question at the end of a lesson.
 //
 // Named `check` rather than `question` because the base schema already owns
-// `question` for authoring-time open questions (the `wcl answer` workflow).
+// `question` for authoring-time open questions.
 //
 // Omit `kind` and it follows the shape: choices present ⇒ `:single`, none ⇒
 // `:text`. A `:text` question needs a `rubric` — it is the grading brief an

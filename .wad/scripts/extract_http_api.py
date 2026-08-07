@@ -48,9 +48,6 @@ PATH_SUMMARIES = {
     "/__wdoc_highlight": "Syntax-highlight a code snippet (public wcl_wdoc::highlight_code).",
     "/__wdoc_preview": "Render the current page with unsaved buffers overlaid into a scratch dir.",
     "/__wdoc_preview/{*path}": "Serve the preview render (no reload/edit scripts injected).",
-    "/__wdoc_answer.js": "The questionnaire client script (answer mode).",
-    "/__wdoc_answers": "Pending @answerable questions for the served document (answer mode).",
-    "/__wdoc_answer": "Record one answer/skip; re-discovers the question by file+span and writes through the validating pipeline.",
 }
 
 # Swagger-level detail per route: query/body parameters, request/response
