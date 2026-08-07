@@ -160,7 +160,7 @@ TEXT
 
   callout "Three formats have readable headers" {
     class = ["note"]
-    body  = "The natural-size read understands PNG, GIF and JPEG. An SVG, a WebP, a corrupt file or any external URL yields no dimensions at all. In a diagram that leaves the box at 0×0 and the image invisible, so the build warns rather than drawing nothing quietly. On a page nothing is read and nothing warns: the browser sizes the picture itself, and an SVG is perfectly fine there."
+    body  = "The natural-size read understands PNG, GIF and JPEG. An SVG, a WebP, a corrupt file or any external URL yields no dimensions at all. In a diagram that leaves the box at 0×0 and the image invisible, so the build warns rather than drawing nothing quietly. On a page nothing depends on the read and nothing warns: the browser sizes the picture itself, and an SVG is perfectly fine there."
   }
 
   p "The warning names the source, so you can go straight to the block:"
@@ -363,13 +363,26 @@ TEXT
   p "The `:ai_skill` target is where `dir` was designed. A skill folder has a conventional shape — `SKILL.md`, `references/`, `scripts/`, `assets/` — and `file` is how you populate the last two:"
 
   code wcl {
+    filename = "main.wcl"
     source = <<'WCL'
+import <wdoc.wcl>
+
+site helper {
+  default_template = :ai_skill
+  skill { name = "demo"  description = "A demo skill." }
+}
+
 page overview {
   start = true
   h1 "Demo skill"
   file "src/setup.sh"    { dir = "scripts"  as = "run setup" }
   file "assets/logo.svg" { dir = "assets" }
   image "assets/hero.png" { alt = "The Earth" }
+}
+
+page usage {
+  h1 "Usage"
+  p "More."
 }
 WCL
   }
@@ -554,9 +567,9 @@ wrote 1 pdf
 TEXT
   }
 
-  p "Waive the `file` and the PDF renders. The image is **embedded** in it rather than referenced — a PDF is one self-contained document, so the raster bytes go inside. The video, having nothing to play, prints its poster; an online video would print a link beneath the poster, and a local one prints the poster alone, because a path to a file on your machine is useless in a document you hand to somebody."
+  p "That is the coverage refusal from [No PDF](#no-pdf), met in the wild. Waive the `file` and the PDF renders. The image is **embedded** in it rather than referenced — a PDF is one self-contained document, so the raster bytes go inside. The video, having nothing to play, prints its poster; an online video would print a link beneath the poster, and a local one prints the poster alone, because a path to a file on your machine is useless in a document you hand to somebody."
 
-  h3 "When the file is not there"
+  h2 "When the file is not there"
 
   p "A missing local source is a build error, on the copy:"
 
@@ -570,7 +583,7 @@ TEXT
 
   p "Read the two paths in it. The one on the left is where wdoc looked — the source you wrote, resolved against the entry's folder — and the one on the right is where it was going. When the left-hand path is not the file you meant, the base folder is what to check first."
 
-  p "A PDF build is the exception, because it never copies: a missing image there is a warning that names the absolute path it tried, and the picture is left out of the document. An external source is not checked on any target — nothing is fetched at build time, so a dead URL is only ever a dead URL in the reader's browser. In a PDF an external image is simply absent, since there is no network to fetch it from and nothing to reference."
+  p "A PDF build is the exception, because it never copies: a missing image there is a warning that names the absolute path it tried, and the picture is left out of the document. A URL is not checked on any target — nothing is fetched at build time, so a dead URL is only ever a dead URL in the reader's browser. In a PDF it is worse than dead: an `http(s)` or `data:` image is left out of the document altogether, since there is no network to fetch it from and no folder to reference. A site-root source such as `\"/logo.png\"` is the odd one out there: the PDF build takes it as an absolute filesystem path and tries to read it, warning with `cannot read /logo.png` when nothing is there."
 
   h2 "The three blocks side by side"
 
@@ -601,7 +614,6 @@ TEXT
     li "[Tilemaps and maps](wdoc_tilemaps) — cropping tiles out of a spritesheet."
     li "[Timelines and dopesheets](wdoc_timelines) — cropping and playing a strip of frames."
     li "[Icons](wdoc_icons) — the other asset family, drawn from bundled packs rather than your own files."
-    li "[Themes and styling](wdoc_styling) — where the CSS behind `class` is declared."
     li "[Writing your own blocks](wdoc_extending) — lowering, native blocks, and declared backend coverage."
   }
 }
