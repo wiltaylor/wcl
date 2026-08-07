@@ -1,11 +1,494 @@
 // Chapter 18 — Presentations.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #175. Every file, command and transcript below was run
+// against the `wcl` CLI before it was written down. The older concept unit
+// was re-cut, not lifted: what a deck does on the PDF and Markdown targets,
+// what a `section` title renders to, and the one-slide-per-line trap all
+// came from the code and the CLI, not from it.
 page wdoc_presentations {
   title = "Presentations"
 
   h1 "Presentations"
 
-  p "Not written yet. This chapter covers `deck`, `section`, `slide`, `fragment` and `notes`, and how a deck builds on each target."
+  p "A **presentation** is the third site shape. A `webpage` site renders one HTML file per page and a `book` site does the same with a sidebar; a presentation site renders **the whole site into one `index.html`** and hands it to a keyboard-driven player. The pages become slides. A `deck` block on the site arranges them into a grid, `fragment` reveals content a step at a time, and `notes` carries what only the presenter sees."
+
+  p "Nothing else changes. A slide is an ordinary `page`, holding the ordinary block vocabulary — headings, lists, code, diagrams, terminals, charts. This chapter covers the five blocks that make a deck, the template behind them, how to build one, and what a deck becomes on the targets that have no keyboard."
+
+  p "Every file and every command below was run before it was written down. Type them and compare."
+
+  h2 "A deck is one HTML file"
+
+  p "Two things opt a site in: `default_template = :presentation`, and a `deck` block saying which pages are slides and in what order. Save this as `talk.wcl`:"
+
+  code wcl {
+    filename = "talk.wcl"
+    source = <<'WCL'
+# talk.wcl — a three-slide deck.
+import <wdoc.wcl>
+
+site talk {
+  default_template = :presentation
+  title            = "Shipping WCL"
+  theme            = :nord
+  accent           = :cyan
+
+  deck {
+    section "Intro" {
+      slide title
+      slide agenda
+    }
+    section "Detail" {
+      slide numbers
+    }
+  }
+}
+
+page title {
+  h1 "Shipping WCL"
+  p "Wil Taylor — platform team"
+}
+
+page agenda {
+  h2 "Agenda"
+  list {
+    li "Where we are"
+    li "What changed"
+    li "What is next"
+  }
+}
+
+page numbers {
+  h2 "The numbers"
+
+  p "Build time fell twice this quarter."
+
+  fragment { p "**April:** 63 seconds." }
+  fragment { p "**July:** 2.4 seconds." }
+
+  notes {
+    p "Say the second number slowly. Nobody believes it the first time."
+  }
+}
+WCL
+  }
+
+  p "Build it and look at what lands:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build talk.wcl --out out
+wrote 1 page
+$ ls -1 out
+index.html
+_wdoc
+TEXT
+  }
+
+  p "**One page.** Three slides, one file. There is no `title.html`, no `agenda.html`, no `numbers.html` — a presentation site is a _collection_, so every slide body is inlined into `index.html` and the count the build reports is the count of files it wrote. Open `out/index.html` in a browser and drive it with the arrow keys."
+
+  p "The generated markup is a shallow, readable grid. Each `section` becomes a `<section class=\"deck-section\">` and each `slide` a `<div class=\"deck-slide\">` holding the page's rendered body (indented here for reading — the build emits it without the line breaks):"
+
+  code html {
+    source = <<'HTML'
+<div class="deck">
+  <section class="deck-section">
+    <div class="deck-slide">
+      <div class="deck-slide-inner"><h1 class="heading-1">Shipping WCL</h1>
+        <p>Wil Taylor — platform team</p>
+      </div><aside class="deck-notes"></aside>
+    </div>
+    ...
+HTML
+  }
+
+  p "Exactly one slide carries the `active` class at a time; the rest are hidden by the deck's own stylesheet. The player — `_wdoc/presentation.js`, copied in by the build — moves that class around, reveals fragments, and updates the progress bar, the slide counter and the arrow hints in the corners. It is plain JavaScript with no dependencies and no network calls, so the output folder is the whole deck: copy it to whatever machine you present from and serve it there."
+
+  h2 "The deck grid"
+
+  p "A `deck` holds `section`s and a `section` holds `slide`s. That is the whole grammar, and it is deliberately the shape of the book `toc`:"
+
+  table {
+    rows:
+      | "Block"     | "Written as"          | "Means" |
+      | "`deck`"    | "`deck { … }`"        | "The slide order for this site. Declared **inside** the `site` block." |
+      | "`section`" | "`section \"Intro\" { … }`" | "One column of the grid. The label is a display title." |
+      | "`slide`"   | "`slide title`"       | "One cell. The label names a `page` of this site." |
+  }
+
+  p "Two dimensions, because a talk has two: sections are the parts you would name in an agenda, and the slides inside one are the beats you work through. `talk.wcl` above lays out this grid:"
+
+  code text {
+    source = <<'TEXT'
+        ←                 →
+   ┌───────────┐   ┌───────────┐
+ ↑ │  title    │   │  numbers  │
+   │  agenda   │   │           │
+ ↓ └───────────┘   └───────────┘
+     "Intro"         "Detail"
+TEXT
+  }
+
+  h3 "Moving around"
+
+  p "The player binds one key map, and it is the same one every reveal.js-style deck uses:"
+
+  table {
+    rows:
+      | "Key"                | "Does" |
+      | "`←` / `→`"          | "Previous / next section, landing on that section's first slide" |
+      | "`↑` / `↓`"          | "Previous / next slide inside the current section" |
+      | "`Space` / `PageDown`" | "Step forward — reveal the next fragment, or advance one slide" |
+      | "`⇧Space` / `PageUp`"  | "Step back — hide the last fragment, or retreat one slide" |
+      | "`Home` / `End`"     | "First / last slide" |
+      | "`s`"                | "Toggle the speaker-notes overlay" |
+      | "`f`"                | "Toggle fullscreen" |
+  }
+
+  p "The two families differ in one way that matters while you present. An arrow jump shows the target slide **with every fragment already revealed** — it is for getting somewhere. `Space` steps: it walks the fragments one at a time and only then moves on. Present with `Space`; jump with the arrows."
+
+  p "The player also writes the current position into the URL as `#/<section>/<slide>` and reads it back on load. So `index.html#/1/0` opens straight on the first slide of the second section, a reload keeps your place, and you can send someone a link to one slide."
+
+  h3 "What the deck refuses"
+
+  p "Two mistakes are build errors rather than a quietly wrong deck. A `slide` naming a page this site does not have:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build talk.wcl --out out
+unknown template "deck slide links to unknown page "missing_page""
+TEXT
+  }
+
+  p "And a presentation site with no `deck` at all. The refusal comes from the template itself, so it names the line of the standard library that raised it:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build talk.wcl --out out
+wcl::eval::user_error
+
+  × error: a presentation site needs a deck block
+     ╭─[<wcl-system>/wdoc/presentation.wcl:165:5]
+ 164 │   el("div", ["deck"], if len(c.deck) == 0 {
+ 165 │     error("a presentation site needs a deck block")
+     ·     ───────────────────────┬───────────────────────
+     ·                            ╰── error raised here
+ 166 │   } else {
+     ╰────
+TEXT
+  }
+
+  p "A third mistake is not an error, and it is the one that will catch you."
+
+  callout "One slide per line" {
+    class = ["warning"]
+    body  = "A `slide` has no body, and a body-less block keeps eating bare identifiers as labels. So `slide one  slide two` on one line parses as a **single** slide with the labels `one`, `slide` and `two` — and only the first label is read. You lose the second slide, `wcl check` prints `OK`, and the build succeeds with one slide fewer than you wrote. `wcl parse` shows you the truth: `slide one slide two { }`. Write one `slide` per line, always."
+  }
+
+  h2 "Slides are ordinary pages"
+
+  p "A slide page is a `page`. It carries no special field, no `slide` keyword, nothing that ties it to the deck except its name. Anything the rest of this book documents renders on a slide — a `code` block, a `diagram`, a `table`, a `terminal`, a `chart`. The deck styles it full-viewport and centres it; that is all it does to your content."
+
+  p "Three consequences follow from the deck being the only thing that orders the slides:"
+
+  list {
+    li "**The `deck` decides the order, not the file.** Move `section \"Detail\"` above `section \"Intro\"` and the deck starts on `numbers`, however the pages are laid out in the source."
+    li "**A page no `slide` names never appears.** It is still a member of the site — and it still renders on the other targets — but it is absent from `index.html`. That is a usable trick: keep a cut slide in the file and delete the one `slide` line."
+    li "**A page may only be named by a slide of its own site.** When a document declares more than one site, tag each slide page with `sites = [:talk]`, exactly as you would for a book or a website. A `slide` naming another site's page is the unknown-page error above."
+  }
+
+  p "One thing the default deck ignores is the page `title`. It sets no heading and no browser title — the `<title>` of a built deck is the **site** title, `Shipping WCL`. Give each slide its own `h1` or `h2`, as `talk.wcl` does. A page `title` is still worth setting when a template of your own reads it; see [The presentation template](#the-presentation-template)."
+
+  callout "A section title renders nowhere" {
+    class = ["note"]
+    body  = "`section \"Intro\"` looks like a heading, and the default layout never draws it. The label groups slides into a column and gives the section a name your own template can read from `TemplateCtx.deck`; the built deck contains neither the word `Intro` nor the word `Detail`. When you want a part title on screen, write it as a slide."
+  }
+
+  h2 "Fragments"
+
+  p "A `fragment` is a step-reveal group. Its children stay invisible until the presenter steps forward with `Space`, then fade in. It is a legal child of any page, so it can hide a paragraph, a bullet list, an image or a whole diagram:"
+
+  code wcl {
+    source = <<'WCL'
+page numbers {
+  h2 "The numbers"
+
+  p "Build time fell twice this quarter."
+
+  fragment { p "**April:** 63 seconds." }
+  fragment { p "**July:** 2.4 seconds." }
+}
+WCL
+  }
+
+  p "That slide takes three steps: it appears with only the heading and the first paragraph, then one number, then the other. Each `fragment` becomes a `<div class=\"wdoc-fragment\">`, and the player adds `revealed` to them in document order:"
+
+  code html {
+    source = <<'HTML'
+<div class="wdoc-fragment"><p><span class="bold">April:</span> 63 seconds.</p></div>
+<div class="wdoc-fragment"><p><span class="bold">July:</span> 2.4 seconds.</p></div>
+HTML
+  }
+
+  p "A `fragment` takes two optional fields, `id` and a `class` list. The classes are appended after the `wdoc-fragment` marker, so your own CSS can style a reveal without breaking the one the player looks for:"
+
+  code wcl {
+    source = <<'WCL'
+fragment {
+  id    = punchline
+  class = ["accent"]
+  list { li "Second" }
+}
+WCL
+  }
+
+  code html {
+    source = <<'HTML'
+<div class="wdoc-fragment accent" id="punchline"><ul><li>Second</li></ul></div>
+HTML
+  }
+
+  p "Order is source order. A `fragment` carries no ordering field, and there is no way to reveal one out of sequence — if you need a different order, write them in it. Stepping back with `⇧Space` hides the last-revealed fragment again, so a slide you have walked forward through walks backward the same way."
+
+  h2 "Speaker notes"
+
+  p "A `notes` block holds what the presenter reads and the room does not see:"
+
+  code wcl {
+    source = <<'WCL'
+page numbers {
+  h2 "The numbers"
+
+  fragment { p "**July:** 2.4 seconds." }
+
+  notes {
+    p "Say the second number slowly. Nobody believes it the first time."
+  }
+}
+WCL
+  }
+
+  p "The notes are pulled out of the slide's visible content and rendered into a hidden `<aside class=\"deck-notes\">` beside it. Press `s` and the overlay for the current slide appears at the bottom of the screen; press it again and it goes away. Nothing else moves, so you can toggle it mid-sentence."
+
+  p "`notes` is not a content block like the others, and two rules follow from that. Both are build errors, which is the point:"
+
+  list {
+    li "**One `notes` per slide.** A second one fails the build: _page `numbers` fills slot `notes` more than once_. Put every line for one slide in the same block."
+    li "**Only where a layout declares the slot.** A `notes` block on a page of a `webpage` or `book` site fails too: _page `one` fills slot `notes`, but no layout used by this site declares it_. Speaker notes belong to a deck."
+  }
+
+  callout "Notes are hidden, not private" {
+    class = ["warning"]
+    body  = "The overlay is hidden with CSS, so the text is in `index.html` and anyone can read the source. And on the static targets it is not even hidden — see [One deck, four targets](#one-deck-four-targets). Write notes as prompts for yourself, never as something the audience must not read."
+  }
+
+  h2 "Building and viewing a deck"
+
+  p "There is no `deck` subcommand. A deck is a site, so the ordinary build commands drive it:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build talk.wcl --out out       # render out/index.html
+$ wcl wdoc build talk.wcl --site talk --out out   # only this site, when the document has several
+$ wcl wdoc serve talk.wcl                 # watch, rebuild, live-reload while you write
+TEXT
+  }
+
+  p "`wcl wdoc serve` is how you write a deck: edit the file, and the browser reloads onto the slide you were looking at, because the position lives in the URL hash. See [The CLI](lang_cli) for the flags both commands share."
+
+  p "To start from a working deck instead of an empty file, scaffold one:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl init presentation ./my-deck -D name="Launch talk" --defaults
+Created ./my-deck from template 'presentation'
+  main.wcl
+  schema/main.wcl
+  data/main.wcl
+  wdoc/main.wcl
+$ wcl wdoc build my-deck/main.wcl --out my-deck/_site
+wrote 1 page
+TEXT
+  }
+
+  p "That template is worth reading for one thing beyond the boilerplate: its slides are **generated**. The data lives in `data/main.wcl`, and a `wdoc_repeater` in `wdoc/main.wcl` emits one `page` per record. A `deck` accepts repeaters too, on both levels, so the slide list can be generated from the same data:"
+
+  code wcl {
+    source = <<'WCL'
+site talk {
+  default_template = :presentation
+  deck {
+    section "Intro" { slide title }
+    section "Topics" {
+      wdoc_repeater { each = topics  as = :t
+        slide $"topic_${t.slug}"
+      }
+    }
+  }
+}
+
+wdoc_repeater { each = topics  as = :t
+  page $"topic_${t.slug}" {
+    h2 $"${t.title}"
+    p "Generated slide."
+  }
+}
+WCL
+  }
+
+  p "Keep the two `each` expressions on the same data and the deck cannot drift out of step with the pages. [Data views](wdoc_data_views) covers `wdoc_repeater` in full."
+
+  p "A deck can also sit beside other sites in one document — a website, a book and a talk, built together. It lands in its own folder, so link to it by folder and not by page:"
+
+  code wcl {
+    source = <<'WCL'
+p "Read [the docs](docs:index), then watch [the talk](./talk/)."
+WCL
+  }
+
+  callout "Do not link into a deck with site:page" {
+    class = ["warning"]
+    body  = "A cross-site link like `[the talk](talk:title)` resolves to `talk/title.html`, and the link checker accepts it because `title` really is a page of the `talk` site. But a deck writes no per-slide files, so the built link is dead. Link to `./talk/` for the deck, or `./talk/index.html#/0/1` for one slide."
+  }
+
+  callout "The deck layout has no chrome to configure" {
+    class = ["note"]
+    body  = "`theme` and `accent` work — the deck reads the same `--wdoc-*` variables as every other template, so a themed deck is one field. `theme_toggle = true` and `search = true` do not: neither the toggle button nor the search widget is part of the presentation layout, so the first renders nothing and the second ships an empty index. See [Themes and styling](wdoc_styling)."
+  }
+
+  h2 "One deck, four targets"
+
+  p "A deck is a browser artifact. Nothing about it survives into a target with no keyboard, and the four targets do not fail the same way — so this is the comparison to have in front of you before you send a deck anywhere but a browser. Every row below was produced by running the target against `talk.wcl` from the top of this chapter."
+
+  table {
+    rows:
+      | "Target"              | "A deck becomes"                         | "Slide order"   | "`fragment`"      | "`notes`"                | "A page no `slide` names" |
+      | "`wdoc build`"        | "One `index.html` plus the player"       | "The deck's"    | "Hidden until stepped" | "In the `s` overlay" | "Never rendered" |
+      | "`wdoc pdf`"          | "One PDF per site, one page per slide"   | "**Source order**" | "Always visible"  | "**Printed in the body**" | "Printed" |
+      | "`wdoc markdown`"     | "One `.md` per slide"                    | "One file each" | "Always visible"  | "**Written into the body**" | "Written" |
+      | "`wdoc skill`"        | "Nothing"                                | "—"             | "—"               | "—"                      | "—" |
+  }
+
+  p "Run the Markdown target on `talk.wcl` and the shape of the disagreement is immediate:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc markdown talk.wcl --out md
+wrote 3 pages
+$ ls -1 md
+agenda.md
+numbers.md
+title.md
+$ cat md/numbers.md
+## The numbers
+
+Build time fell twice this quarter.
+
+**April:** 63 seconds.
+
+**July:** 2.4 seconds.
+
+Say the second number slowly. Nobody believes it the first time.
+TEXT
+  }
+
+  p "Three files where the browser had one. The two fragments are ordinary paragraphs — correct, since a step reveal is a thing the presenter does, not a thing the content means. And the last line is the speaker note, sitting in the body as if you had written it there."
+
+  p "The PDF target agrees with Markdown and differs from both. It writes one PDF per site — `pdf/talk.pdf`, named after the site — with one physical page per slide, the site title as a running header and `1/3` style page numbers. It puts the note in the body too. And it orders the pages by the **source**, not by the `deck`: move a section and the deck reorders while the PDF does not."
+
+  callout "A deck is not a handout" {
+    class = ["warning"]
+    body  = "`wcl wdoc pdf talk.wcl` produces a valid PDF, and it is not the deck you presented: the order is the file's, the reveals are gone, and every speaker note is printed. Nothing warns you. When you need a handout, write it as a `book` site over the same content and build the two separately — [Output targets](wdoc_outputs) covers the four targets and [Visibility](wdoc_visibility) covers keeping a block out of one of them."
+  }
+
+  p "The skill target is the plain case: `wcl wdoc skill` builds only sites with `default_template = :ai_skill`, so a document holding nothing but a deck answers `no :ai_skill site to build` and writes nothing."
+
+  h2 "The presentation template"
+
+  p "`:presentation` is a stdlib `template`, declared in `wdoc/presentation.wcl` beside `webpage` and `book`. It declares two slots and one `render` function:"
+
+  code wcl {
+    source = <<'WCL'
+template presentation {
+  slot content: content*
+  slot notes: content* = fn(c: SlotOwner) -> list<Html> []
+  render = fn(c: TemplateCtx) -> list<Html>
+    wdoc_presentation_layout(c)
+}
+WCL
+  }
+
+  p "That is the whole of it, and it explains the two blocks this chapter has treated as special. **`notes` is a slot fill, not a content block.** It is named by a `slot` declaration, so the build lifts a `notes { … }` out of the page body and hands its children to the layout separately — which is why one per page is the limit, and why a site whose template declares no such slot refuses the block outright."
+
+  p "A repeated content slot (`content*`) is what makes this a **collection** template: the site renders once, not once per page, and every member is reachable from the `render` function. [Templates and layouts](wdoc_templates) covers slots, arity and the `TemplateCtx` record in full."
+
+  p "The layout is composed from four public parts, so you can take the deck and add to it:"
+
+  table {
+    rows:
+      | "Part"                             | "Emits" |
+      | "`wdoc_part_presentation_css()`"   | "The deck stylesheet — full-viewport slides, the fade transition, fragment fades, the notes overlay" |
+      | "`wdoc_part_deck(c)`"              | "The grid: `<div class=\"deck\">`, one `<section>` per deck section. Raises the missing-deck error" |
+      | "`wdoc_part_deck_chrome()`"        | "The progress bar, the slide counter and the four nav-hint arrows" |
+      | "`wdoc_part_presentation_player()`" | "The request for the bundled `presentation.js`" |
+      | "`wdoc_presentation_layout(c)`"    | "All four, in that order" |
+  }
+
+  p "A template of your own composes `wdoc_presentation_layout(c)` with whatever else it wants, and declares the same two slots the parts place. This one adds a footer listing the sections and how many slides each holds:"
+
+  code wcl {
+    filename = "branded.wcl"
+    source = <<'WCL'
+template branded_deck {
+  slot content: content*
+  slot notes: content* = fn(c: SlotOwner) -> list<Html> []
+
+  render = fn(c: TemplateCtx) -> list<Html>
+    flatten([
+      wdoc_presentation_layout(c),
+      [el("footer", ["deck-brand"],
+        map(c.deck, fn(sec: DeckSection) -> Html
+          el("span", ["deck-brand-section"], [inl($"${sec.title} (${len(sec.slides)})")])))],
+    ])
+}
+
+site talk {
+  default_template = :branded_deck
+  title            = "Branded"
+  deck {
+    section "Intro"  { slide one }
+    section "Detail" { slide two }
+  }
+}
+
+page one { h1 "One" }
+page two { h2 "Two" }
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build branded.wcl --out out
+wrote 1 page
+$ grep -o '<footer.*</footer>' out/index.html
+<footer class="deck-brand"><span class="deck-brand-section">Intro (1)</span><span class="deck-brand-section">Detail (1)</span></footer>
+TEXT
+  }
+
+  p "`c.deck` is the resolved deck: a `list<DeckSection>`, each holding the section `title` and its `slides` as a `list<PageHandle>`. A handle carries the page's `name`, `title` and `slots`, so `slot(s, :content)` places one slide's body and `slot(s, :notes)` its notes. That is exactly what the stdlib layout does — one section element per `DeckSection`, one slide element per handle."
+
+  p "Two rules govern `c.deck`. It is populated **only** on the presentation build path, and it is an empty list on an ordinary page, so a template that reads it must be a collection template. And only a slide the layout actually places is rendered: a page in the site that no handle reaches is never forced. That is how a deck skips the pages no `slide` names, and it means a slow page costs nothing until a slide shows it."
+
+  p "Writing a template that draws the grid itself, rather than composing `wdoc_part_deck`, is a supported thing to do — but then you own the CSS and the player contract too. Read `wdoc/presentation.wcl` first: the class names in it are what `presentation.js` looks for."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Documents, pages and sites](wdoc_sites) — `site`, `page`, the `sites` array, and how several sites share one document."
+    li "[Templates and layouts](wdoc_templates) — slots, slot arity, collection templates and the whole of `TemplateCtx`."
+    li "[Websites](wdoc_websites) — the `webpage` template, its named slots, and the `menu` that orders a site."
+    li "[Themes and styling](wdoc_styling) — `theme`, `accent` and the `--wdoc-*` variables the deck stylesheet consumes."
+    li "[Output targets](wdoc_outputs) — what `build`, `pdf`, `markdown` and `skill` each produce, in full."
+    li "[Visibility](wdoc_visibility) — `@only` and `@except`, for keeping a block out of one target."
+    li "[Data views](wdoc_data_views) — `wdoc_repeater`, and generating slides from data."
+  }
 }
