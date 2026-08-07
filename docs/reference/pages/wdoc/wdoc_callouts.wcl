@@ -155,18 +155,25 @@ WCL
 
   table {
     rows:
-      | "`class`"     | "Symbol"     | "HTML accent" | "Default icon"        | "Print accent" | "Markdown alert" |
-      | "`note`"      | "`:note`"    | "`#5e81ac`"   | "`lucide.info`"       | "`#5e81ac`"    | "`> [!NOTE]`" |
-      | "`info`"      | "`:info`"    | "`#5e81ac`"   | "`lucide.info`"       | "`#5e81ac`"    | "`> [!NOTE]`" |
-      | "`tip`"       | "`:tip`"     | "`#88c0d0`"   | "`lucide.lightbulb`"  | "`#88c0d0`"    | "`> [!TIP]`" |
-      | "`warning`"   | "`:warning`" | "`#d08770`"   | "`lucide.triangle-alert`" | "`#d08770`" | "`> [!WARNING]`" |
-      | "`error`"     | "`:error`"   | "`#bf616a`"   | "`lucide.circle-x`"   | "`#bf616a`"    | "`> [!CAUTION]`" |
-      | "`success`"   | "`:success`" | "`#a3be8c`"   | "`lucide.circle-check`" | "`#a3be8c`"  | "`> [!TIP]`" |
-      | "none of them" | "no symbol" | "`#888`"      | "no icon"             | "`#888`"       | "`> [!NOTE]`" |
+      | "`class`"      | "Symbol"     | "Default icon"            | "Themed hue"      | "Unthemed accent" | "Print accent" | "Markdown alert" |
+      | "`note`"       | "`:note`"    | "`lucide.info`"           | "`--wdoc-blue`"   | "`#5e81ac`"       | "`#5e81ac`"    | "`> [!NOTE]`" |
+      | "`info`"       | "`:info`"    | "`lucide.info`"           | "`--wdoc-cyan`"   | "`#5e81ac`"       | "`#5e81ac`"    | "`> [!NOTE]`" |
+      | "`tip`"        | "`:tip`"     | "`lucide.lightbulb`"      | "`--wdoc-green`"  | "`#88c0d0`"       | "`#88c0d0`"    | "`> [!TIP]`" |
+      | "`warning`"    | "`:warning`" | "`lucide.triangle-alert`" | "`--wdoc-yellow`" | "`#d08770`"       | "`#d08770`"    | "`> [!WARNING]`" |
+      | "`error`"      | "`:error`"   | "`lucide.circle-x`"       | "`--wdoc-red`"    | "`#bf616a`"       | "`#bf616a`"    | "`> [!CAUTION]`" |
+      | "`success`"    | "`:success`" | "`lucide.circle-check`"   | "`--wdoc-green`"  | "`#a3be8c`"       | "`#a3be8c`"    | "`> [!TIP]`" |
+      | "none of them" | "no symbol"  | "no icon"                 | "not re-pointed"  | "`#888`"          | "`#888`"       | "`> [!NOTE]`" |
 
   }
 
-  p "GitHub offers five alert keywords, so the mapping is not one-to-one at that end: `success` shares `TIP` — the closest positive admonition GitHub has — and `info` shares `NOTE`. The accent colours are the same numbers in the browser and on the page: `lib/callout.wcl` sets them as CSS custom properties, and the PDF backend carries the same six RGB triples. The icons come from the bundled Lucide pack, so a callout draws one with no `iconset` declared. [Icons](wdoc_icons) covers the packs."
+  p "GitHub offers five alert keywords, so the mapping is not one-to-one at that end: `success` shares `TIP` — the closest positive admonition GitHub has — and `info` shares `NOTE`. The icons come from the bundled Lucide pack, so a callout draws one with no `iconset` declared. [Icons](wdoc_icons) covers the packs."
+
+  p "The two colour columns are the same fact in two places, and they part company on a themed site. Every accent rides one CSS custom property, `--callout-accent`. `lib/callout.wcl` gives each kind an unthemed default — those are the hex values above, and they are what a site with no `theme` renders. A site that **does** declare a theme re-points each kind at its palette's hue ring instead, so the browser colour follows the theme rather than the table. This book is `theme = :nord`, so its warnings are the Nord yellow, and `tip` and `success` share one green. Print has no theme to follow: the six RGB triples in the PDF backend are the unthemed values, fixed."
+
+  callout "The demo above is themed; the hex column is not" {
+    class = ["info"]
+    body  = "Hold the six previews next to the `Unthemed accent` column and they will not match, and that is the mechanism working. Build the same six callouts in a `site` with no `theme` field and you get the hex values exactly. [Themes and styling](wdoc_styling) covers the hue ring."
+  }
 
   h3 "One class picks the kind"
 
@@ -192,17 +199,15 @@ WCL
 
   p "A kind name the six do not include is still a perfectly good class. Give it an `accent` and you have styled a new type without writing CSS, because `accent` on a `class` block emits the `--callout-accent` custom property the callout's heading, left border and icon all read:"
 
+  p "One line declares the type. Note where it lands: a `class` is a **document-root** block, so it sits beside your pages rather than inside one — this chapter declares `deploy` immediately above its own `page`, and the rule reaches every page of the book."
+
   code wcl {
     source = <<'WCL'
 class "deploy" { accent = "#b48ead" }
-
-callout "Deploying" {
-  class = ["deploy"]
-  icon  = "lucide.rocket"
-  body  = "A custom type: the `deploy` class sets the accent, `icon` picks the glyph."
-}
 WCL
   }
+
+  p "The callout then names it, and `icon` picks the glyph. The `demo` below shows the source and the live result together — see [Demo blocks](wdoc_demo):"
 
   demo {
     callout "Deploying" {
@@ -212,7 +217,7 @@ WCL
     }
   }
 
-  p "Note where that lands. The `class` block is a **document-root** block, so it sits beside your pages, not inside one — this chapter declares `deploy` immediately above its own `page`. [Themes and styling](wdoc_styling) covers `class`, `accent` and the rest of the styling vocabulary."
+  p "That purple is the colour you asked for, on a themed page, which the six built-in kinds cannot promise. The theme's re-pointing rules name the six kinds one by one; `deploy` is not among them, so nothing overrides your accent. [Themes and styling](wdoc_styling) covers `class`, `accent` and the rest of the styling vocabulary."
 
   callout "A custom type is an HTML-only type" {
     class = ["note"]
@@ -320,7 +325,9 @@ chapter_header "Rolling out a release" {
 WCL
   }
 
-  p "Every one of the four is optional, and each is a plain string that wdoc prints rather than computes. `reading_time` is not measured for you, and `updated` is not read from git — the block records what you tell it. The title and the kicker run through the inline-pattern engine; the meta line does not, and prints literally."
+  p "Every one of the four is optional, and each is a plain string that wdoc prints rather than computes. `reading_time` is not measured for you, and `updated` is not read from git — the block records what you tell it."
+
+  p "How much inline formatting survives depends on which part and which target. The kicker runs through the inline-pattern engine everywhere. The title does in HTML and Markdown, but the PDF backend takes it as plain text, so `**bold**` in a title prints with its asterisks. The meta line runs through the engine on no target at all: HTML escapes it, print draws it as plain text, and Markdown passes it out untouched. Keep markup out of all three and the question never arises."
 
   h3 "The meta line"
 
