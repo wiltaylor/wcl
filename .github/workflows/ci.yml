@@ -46,13 +46,6 @@ jobs:
       - run: just ci::fmt-check
       - run: just ci::workspace-lint
       - run: just ci::workspace-test
-      # Cheap model lint stays separate from the projection build on cost.
-      # Warnings remain advisory; mechanically certain errors fail CI.
-      - run: just ci::wskill-lint
-      # Resolve artifacts from each parsed model, build every projection in
-      # scratch space, and report per-view coverage.
-      - run: just ci::wskill-check
-      - run: just ci::wcl-refcheck
       # The WAD schema heredoc in the scaffold template is canonical — fail
       # on drift between it and the live copy under .wad/.
       - run: just ci::wad-schema-check
@@ -60,18 +53,17 @@ jobs:
       # validate its model and build its book like docs-build below.
       - run: just ci::wad-check
       # Generated data freshness: re-run every extractor and fail if the
-      # committed .wad/data/generated/ lags reality. The facts check pins the
-      # wad wskill's hand-reflected tables to the current WAD schema version.
+      # committed .wad/data/generated/ lags reality.
       - run: just ci::wad-extract-check
-      - run: just ci::wad-facts-check
       - run: just ci::wad-build
       # The shipped wplan template must scaffold, check, and pass its
       # structural gates against the current binary — the moral equivalent
       # of the old "verified tarball".
       - run: just ci::wplan-template-check
-      # The docs/ site is the largest real-world wdoc consumer — building it
-      # catches renderer regressions that unit tests miss, and broken doc
-      # pages, before they reach the deploy workflow.
+      # The docs/ sites are the largest real-world wdoc consumer — building
+      # them catches renderer regressions that unit tests miss, and broken
+      # doc pages, before they reach the deploy workflow. Same two
+      # invocations, same order, as deploy-site.yml.
       - run: just ci::docs-build
 
   # ── Fuzz smoke ────────────────────────────────────────────────────────────

@@ -72,17 +72,10 @@ dev_command dev_docs_build {
   category    = "dev"
 }
 
-dev_command dev_docs_comments {
-  name        = "docs-comments"
-  command     = "just docs-comments [ARGS]..."
-  description = "List review @comments left in docs/ via `just editor`'s preview pane (--format json, or `resolve <id>` to delete one)"
-  category    = "dev"
-}
-
 dev_command dev_docs_serve {
   name        = "docs-serve"
   command     = "just docs-serve [ARGS]..."
-  description = "Serve docs/ in edit mode (landing at /, reference book at /reference/) — click a block to edit it in place. Review comments live in `just editor`'s preview pane (list with `just docs-comments`)"
+  description = "Serve the wcl.dev landing page (docs/landing/main.wcl) in edit mode — click a block to edit it in place"
   category    = "dev"
 }
 
@@ -96,7 +89,7 @@ dev_command dev_docs_serve_ref {
 dev_command dev_editor {
   name        = "editor"
   command     = "just editor [ARGS]..."
-  description = "Open the browser editor on this repo (root document: docs/main.wcl, so the preview pane renders the docs site)"
+  description = "Open the browser editor on this repo (root document: docs/reference/main.wcl, so the preview pane renders the reference book)"
   category    = "dev"
 }
 
@@ -152,7 +145,7 @@ dev_command dev_wad_spec {
 dev_command dev_wdoc_pdf {
   name        = "wdoc-pdf"
   command     = "just wdoc-pdf"
-  description = "Render the example and the docs to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`"
+  description = "Render the example and the reference book to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`"
   category    = "dev"
 }
 
@@ -191,13 +184,6 @@ dev_command dev_wad_extract_check {
   category    = "quality"
 }
 
-dev_command dev_wad_facts_check {
-  name        = "wad-facts-check"
-  command     = "just wad-facts-check"
-  description = "Fail when the wad wskill's hand-reflected fact tables lag the WAD schema version (runs in ci)"
-  category    = "quality"
-}
-
 dev_command dev_wad_schema_check {
   name        = "wad-schema-check"
   command     = "just wad-schema-check"
@@ -209,13 +195,6 @@ dev_command dev_wad_schema_sync {
   name        = "wad-schema-sync"
   command     = "just wad-schema-sync"
   description = "Propagate the canonical WAD base schema to .wad/schema/base.wcl"
-  category    = "quality"
-}
-
-dev_command dev_wcl_refcheck {
-  name        = "wcl-refcheck"
-  command     = "just wcl-refcheck"
-  description = "Fail when the `wcl` wskill's builtin/subcommand reference drifts from the binary it documents (runs in ci)"
   category    = "quality"
 }
 
@@ -237,20 +216,6 @@ dev_command dev_wplan_template_check {
   name        = "wplan-template-check"
   command     = "just wplan-template-check"
   description = "Scaffold the shipped wplan template into target/ and run its structural gates (runs in ci)"
-  category    = "quality"
-}
-
-dev_command dev_wskill_check {
-  name        = "wskill-check"
-  command     = "just wskill-check"
-  description = "Build every declared projection in scratch space and report coverage."
-  category    = "quality"
-}
-
-dev_command dev_wskill_lint {
-  name        = "wskill-lint"
-  command     = "just wskill-lint"
-  description = "Fail on certain lint errors while keeping advisory warnings non-blocking."
   category    = "quality"
 }
 

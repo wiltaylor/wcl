@@ -41,10 +41,10 @@ pipeline ci {
 pipeline deploy_site {
   name    = "Deploy Site"
   repo    = wcl_monorepo
-  trigger = "push to main touching docs/**"
+  trigger = "push to main touching docs/**, install.sh, install.ps1, .github/workflows/deploy-site.yml / workflow_dispatch"
   summary = "Extracted from .github/workflows/deploy-site.yml"
   pipeline_stage st_deploy_site_deploy {
     name = "deploy"
-    summary = "Install Rust toolchain → Build wcl → Build docs site → Stage install scripts → Deploy to Cloudflare Pages"
+    summary = "Install Rust toolchain → Build wcl → Build the landing page → Build the reference book → Stage install scripts → Deploy to Cloudflare Pages"
   }
 }

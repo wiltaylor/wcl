@@ -1,15 +1,28 @@
 name: Deploy Site
 
-# Builds the WCL documentation site (docs/main.wcl -> docs/_site) with the
-# `wcl` CLI and deploys it to Cloudflare Pages (project "wcl-dev", configured
-# in wrangler.toml). Runs only when files under docs/ change on main, so an
-# ordinary code push doesn't trigger a (slow) Rust build + deploy.
+# Builds wcl.dev with the `wcl` CLI and deploys it to Cloudflare Pages
+# (project "wcl-dev", configured in wrangler.toml). Two documents, two
+# invocations, one output tree:
+#
+#   docs/landing/main.wcl   -> docs/_site           (/)
+#   docs/reference/main.wcl -> docs/_site/reference  (/reference/)
+#
+# These are the same two steps, in the same order, that `just docs-build`
+# runs — the gate builds what the deploy ships, so they cannot drift.
+#
+# Runs only when the site's own inputs change on main, so an ordinary code
+# push doesn't trigger a (slow) Rust build + deploy. `workflow_dispatch` is
+# the lever for a redeploy after a renderer change.
 
 on:
   push:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'install.sh'
+      - 'install.ps1'
+      - '.github/workflows/deploy-site.yml'
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -28,18 +41,18 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # The deploy only runs `wcl wdoc build`; the embedded `wcl editor`
-      # frontend is never served here, so skip building it. Without this,
-      # crates/wcl's build.rs panics on a runner that has no pnpm and no
-      # prebuilt editor-ui/dist — installing node + pnpm just to throw the
-      # result away would cost minutes per deploy.
       - name: Build wcl
         run: cargo build --release -p wcl
-        env:
-          WCL_EDITOR_UI_SKIP: '1'
 
-      - name: Build docs site
-        run: ./target/release/wcl wdoc build docs/main.wcl --out docs/_site
+      # A build tree is self-contained and relocatable by design, and `build`
+      # never wipes its `--out` dir. The second invocation therefore writes
+      # into the first one's output safely. No staging directory, and nothing
+      # is copied. Order matters: build the landing first.
+      - name: Build the landing page
+        run: ./target/release/wcl wdoc build docs/landing/main.wcl --out docs/_site
+
+      - name: Build the reference book
+        run: ./target/release/wcl wdoc build docs/reference/main.wcl --out docs/_site/reference
 
       # Ship the install scripts at the site root so the curl/iwr one-liners
       # resolve (https://wcl.dev/install.sh, .../install.ps1). docs/_site is

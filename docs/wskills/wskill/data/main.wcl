@@ -1,7 +1,0 @@
-// Aggregates every data file. Per-type folders each expose a main.wcl.
-// Imported by ../wskill.wcl.
-import "./concept/main.wcl"
-import "./entity/main.wcl"
-import "./fact/main.wcl"
-import "./process/main.wcl"
-import "./indexes.wcl"                  // curated navigation (index blocks)

@@ -150,10 +150,6 @@ fn graph_of(args: &[&str]) -> serde_json::Value {
     serde_json::from_slice(&out.stdout).expect("stdout is JSON")
 }
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
 #[test]
 fn check_rejects_semantic_edges_without_reasons() {
     let tmp = TempDir::new().unwrap();
@@ -1099,39 +1095,6 @@ fn install_refuses_agent_name_collisions() {
         !repo.join(".claude").exists(),
         "collision must write nothing"
     );
-}
-
-#[test]
-fn wskill_projection_ships_the_two_phase_curator_contract() {
-    let out = TempDir::new().unwrap();
-    wcl()
-        .args(["wdoc", "skill"])
-        .arg(repo_root().join("docs/wskills/wskill/wdoc/skill/main.wcl"))
-        .arg("--out")
-        .arg(out.path())
-        .assert()
-        .success();
-
-    let agent = std::fs::read_to_string(out.path().join("agents/wskill-curator.md"))
-        .expect("the wskill ships its curator agent");
-    for required in [
-        "wcl wskill lint",
-        "--severity candidate",
-        "flagged units and their 1-hop neighbours",
-        "Never edit a unit body",
-        "Never invent a reason",
-        "object_kind",
-        "object_id",
-        "author = \"curator\"",
-        "--dry-run",
-        "--message",
-        "No human approval",
-    ] {
-        assert!(
-            agent.contains(required),
-            "missing `{required}` in:\n{agent}"
-        );
-    }
 }
 
 /// The reference file of the authoring commit the audit tests review: `beta`

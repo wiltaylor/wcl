@@ -1,0 +1,45 @@
+// The wcl.dev landing page, authored in wdoc and rendered by `wcl wdoc`.
+//
+//   wcl wdoc serve docs/landing/main.wcl          # just docs-serve
+//   wcl wdoc build docs/landing/main.wcl --out docs/_site
+//     → docs/_site/index.html
+//
+// One document, one site, so `root` stays unset: a single-site document
+// already renders at its own output root. The reference book is a separate
+// document built into `docs/_site/reference/` beside this one, so the link
+// to it is the hand-written `./reference/` — see `just docs-build`.
+//
+// The single `import <wdoc.wcl>` below pulls in the embedded wdoc standard
+// library, so every stdlib block (`page` / `text` / `code` / `callout` /
+// `table` / `h1`..`h6` / …) is in scope here and in every imported page.
+import <wdoc.wcl>
+
+// Reused in hero prose: paints with the active theme's accent hue so it
+// stays readable on dark and light.
+class accent {
+  css = "color:var(--wdoc-accent);font-weight:bold;"
+}
+
+// The `website` template (sticky header + regions), its content authored
+// from the landing components in pages/landing-parts.wcl. Nord theme,
+// cyan accent. Subject is the language itself — wdoc (the tool rendering
+// this very page) is one of WCL's features.
+site wcl {
+  default_template = :website
+  title            = "WCL"
+  theme            = :nord
+  accent           = :cyan
+  theme_toggle     = true
+  // Flat anchor menu (the single landing page carries every section);
+  // dropdown menus are a `webpage`-template feature, so keep it flat.
+  // `Reference` leaves the document, so it is a plain relative href.
+  menu {
+    item "Features"        { href = "#features" }
+    item "Reference"       { href = "./reference/" }
+    item "Getting started" { href = "#start" }
+    item "Source"          { href = "https://github.com/wiltaylor/wcl" }
+  }
+}
+
+import "./pages/landing-parts.wcl"   // the landing components + stylesheet
+import "./pages/index.wcl"
