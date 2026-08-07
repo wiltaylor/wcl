@@ -43,8 +43,8 @@ pub async fn start_stdio() {
 /// the standard `Content-Length`-framed LSP wire protocol. Runs a
 /// fresh [`Backend`] (no document state shared with other sessions)
 /// and returns when the stream closes. This is the transport-agnostic
-/// core behind [`start_tcp`]; `wcl editor` also drives it through an
-/// in-memory duplex bridged to a WebSocket.
+/// core behind [`start_tcp`], so a host embedding the server can drive it
+/// over any stream — an in-memory duplex included.
 pub async fn serve_stream<R, W>(read: R, write: W)
 where
     R: tokio::io::AsyncRead + Unpin,

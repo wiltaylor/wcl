@@ -9,7 +9,6 @@
 
 pub mod build;
 mod card;
-pub mod comments;
 pub mod content;
 mod demo;
 mod dopesheet;
@@ -32,7 +31,6 @@ mod page_metadata;
 pub mod pdf;
 mod radial;
 mod render;
-pub mod review;
 mod routing;
 mod sidecar;
 pub mod sites;
@@ -47,16 +45,13 @@ mod visibility;
 mod wireframe;
 
 pub use build::{
-    BuildError, BuildOptions, PAGES_MANIFEST_HREF, PageSubSite, RebuildOutcome, build,
-    build_incremental, build_with_options, doc_entry_for_page, install_stdlib, open_doc_for_edit,
-    open_doc_for_edit_with_overlay, pages_in_file, schema_registry, subsite_for_page,
+    BuildError, BuildOptions, PageSubSite, RebuildOutcome, build, build_incremental,
+    build_with_options, install_stdlib, open_doc_for_edit, schema_registry, subsite_for_page,
     take_render_warnings, wdoc_environment,
 };
-pub use comments::{CommentRecord, CommentScope};
 pub use force::layout_graph;
 pub use markdown::{markdown, skill};
 pub use pdf::{PageSize, PdfError, pdf};
-pub use review::Handshake;
 pub use sidecar::owner_root;
 pub use sites::{EntryIncludeInfo, EntrySiteInfo, entry_site_info};
 pub use visibility::{DeclaredVisibility, declared_visibility};

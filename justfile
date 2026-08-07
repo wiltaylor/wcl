@@ -36,11 +36,6 @@ vscode-package: vscode-build
 vscode-install: vscode-package
     cd editors/vscode && code --install-extension "$(ls -t wcl-vscode-*.vsix | head -1)" --force
 
-# Build the `wcl editor` frontend (editor-ui/ → editor-ui/dist, embedded by build.rs)
-[group('build')]
-editor-ui-build:
-    cd editor-ui && pnpm install && pnpm build
-
 # Build the wcl CLI in release mode (target/release/wcl)
 [group('build')]
 cli-build:
@@ -75,20 +70,15 @@ workspace-fmt:
 cli-run *ARGS:
     cargo run -p wcl -- {{ARGS}}
 
-# Open the browser editor on this repo (root document: docs/reference/main.wcl, so the preview pane renders the reference book)
-[group('dev')]
-editor *ARGS:
-    cargo run -p wcl -- editor docs/reference/main.wcl --addr 127.0.0.1:8139 {{ARGS}}
-
-# Serve examples/wdoc/main.wcl — hot-reload dev server (--site picks one of its three sites; flags after --). Review comments live in `just editor`'s preview pane.
+# Serve examples/wdoc/main.wcl — hot-reload dev server (--site picks one of its three sites; flags after --)
 [group('dev')]
 wdoc-serve *ARGS:
     cargo run -p wcl -- wdoc serve examples/wdoc/main.wcl {{ARGS}}
 
-# Serve the wcl.dev landing page (docs/landing/main.wcl) in edit mode — click a block to edit it in place
+# Serve the wcl.dev landing page (docs/landing/main.wcl) — hot-reload dev server
 [group('dev')]
 docs-serve *ARGS:
-    cargo run -p wcl -- wdoc serve docs/landing/main.wcl --addr 127.0.0.1:8137 --edit {{ARGS}}
+    cargo run -p wcl -- wdoc serve docs/landing/main.wcl --addr 127.0.0.1:8137 {{ARGS}}
 
 # Two entries mean two `serve` processes on two ports, so the landing's
 # `./reference/` link does not resolve while serving locally.

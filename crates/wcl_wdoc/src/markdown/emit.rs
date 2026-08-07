@@ -147,11 +147,6 @@ impl Emitter<'_> {
         }
         let kind = block.kind();
         match kind {
-            // An `edit_object` is an editor affordance: the button exists only
-            // in the `wcl editor` preview's edit mode, which is an HTML build.
-            // Markdown renders nothing for it — stated here rather than left to
-            // fall through, so the kind is honestly covered on this target.
-            "edit_object" => {}
             // A presentation fragment is a step-reveal wrapper — its children
             // render in place in static output.
             "fragment" => {
@@ -165,13 +160,6 @@ impl Emitter<'_> {
             // and `fragment` take, and the reason `column` is native here at
             // all (until this arm existed it silently dropped its children).
             "column" => {
-                for c in block.blocks() {
-                    self.block(&c, out)?;
-                }
-            }
-            // An `edit_field` binds its children to a data-object field for
-            // the editor's Design mode — a transparent wrapper here.
-            "edit_field" => {
                 for c in block.blocks() {
                     self.block(&c, out)?;
                 }

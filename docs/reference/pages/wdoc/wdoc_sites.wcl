@@ -471,12 +471,10 @@ _site/brand/extra.css
 _site/handbook/deploying.html
 _site/handbook/index.html
 _site/handbook/_wdoc/favicon.svg
-_site/handbook/_wdoc/pages.json
 _site/home.html
 _site/index.html
 _site/product.html
 _site/_wdoc/favicon.svg
-_site/_wdoc/pages.json
 TEXT
   }
 
@@ -490,8 +488,6 @@ TEXT
     li "**`index.html` is a copy**, not a redirect, when a `start` page produced it. The page stays reachable at its own name as well."
     li "**Each site owns a `_wdoc/` directory** holding what its own pages reference: the favicon, the book typography, the shared icon sprite, the search index, and the small player scripts an interactive block pulls in. The last three are paid for only on use — there are no player scripts in the listing above because no page used one, and no icon sprite because no page drew an icon."
   }
-
-  p "`_wdoc/pages.json` is the build's own manifest — the start page and the ordered page names. Tooling reads it; nothing you author does."
 
   h3 "The assets folder"
 

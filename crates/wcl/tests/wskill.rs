@@ -542,7 +542,7 @@ fn op_requires_a_clean_tree_and_commits_the_whole_run_once() {
 }
 
 #[test]
-fn dry_run_with_comments_can_be_replayed_verbatim() {
+fn a_dry_run_preview_can_be_replayed_verbatim() {
     let tmp = TempDir::new().unwrap();
     let dest = scaffolded_wskill(&tmp);
     let dest_str = dest.to_str().unwrap();
@@ -552,10 +552,6 @@ fn dry_run_with_comments_can_be_replayed_verbatim() {
         .args([
             "--op",
             r#"{"op":"pin_unit","index":"reference","unit":"beta"}"#,
-        ])
-        .args([
-            "--comment",
-            r#"{"object_kind":"index","object_id":"reference","body":"This index needs authored prose."}"#,
         ])
         .output()
         .unwrap();
@@ -575,8 +571,6 @@ fn dry_run_with_comments_can_be_replayed_verbatim() {
         String::from_utf8_lossy(&applied.stderr)
     );
     assert_eq!(pinned_line(&dest), "related = [alpha, beta]");
-    let comments = std::fs::read_to_string(dest.join("comments.wcl")).unwrap();
-    assert!(comments.contains("author = \"curator\""), "{comments}");
 }
 
 #[test]
@@ -631,41 +625,6 @@ fn op_rolls_back_when_any_declared_projection_fails_to_build() {
     assert_eq!(pinned_line(&dest), "related = [alpha]");
     assert_eq!(git_output(&dest, &["rev-parse", "HEAD"]), baseline);
     assert_eq!(git_output(&dest, &["status", "--porcelain"]), "");
-}
-
-#[test]
-fn op_commits_curator_comments_with_structural_changes_in_one_run() {
-    let tmp = TempDir::new().unwrap();
-    let dest = scaffolded_wskill(&tmp);
-    git_init(&dest);
-    let baseline = git_output(&dest, &["rev-parse", "HEAD"]);
-
-    wcl()
-        .args(["wskill", "op", dest.to_str().unwrap()])
-        .args([
-            "--op",
-            r#"{"op":"pin_unit","index":"reference","unit":"beta"}"#,
-        ])
-        .args([
-            "--comment",
-            r#"{"object_kind":"index","object_id":"reference","body":"This index needs authored prose."}"#,
-        ])
-        .args(["--message", "curate demo candidates"])
-        .assert()
-        .success();
-
-    let comments = std::fs::read_to_string(dest.join("comments.wcl")).unwrap();
-    assert!(comments.contains("object_kind = \"index\""), "{comments}");
-    assert!(comments.contains("object_id = \"reference\""), "{comments}");
-    assert!(comments.contains("author = \"curator\""), "{comments}");
-    assert_eq!(git_output(&dest, &["status", "--porcelain"]), "");
-    assert_eq!(
-        git_output(
-            &dest,
-            &["rev-list", "--count", &format!("{baseline}..HEAD")]
-        ),
-        "1"
-    );
 }
 
 /// A refused op rolls the whole run back to its clean starting point.

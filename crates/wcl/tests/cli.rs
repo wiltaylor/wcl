@@ -1162,17 +1162,6 @@ fn diff_git_bad_revision_errors() {
         .code(4); // EXIT_IO
 }
 
-#[test]
-fn editor_help_describes_the_command() {
-    wcl()
-        .arg("editor")
-        .arg("--help")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("browser-based editor"))
-        .stdout(predicate::str::contains("--addr"));
-}
-
 /// A document that imports the wdoc stdlib and feeds a concrete-kind
 /// `@children` slot from a `wdoc_repeater` — the shape that forces the
 /// CLI to open with wdoc's expander registered, not a bare environment.

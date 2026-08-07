@@ -9,9 +9,7 @@ use wcl_lang::{
 mod diff;
 mod dump;
 mod edit;
-mod editor;
 mod gitspec;
-mod preview;
 mod scaffold;
 mod serve;
 mod wskill;
@@ -191,19 +189,6 @@ enum Command {
         #[arg(long)]
         log: Option<PathBuf>,
     },
-    /// Serve a browser-based editor for the current directory: a
-    /// gitignore-aware file tree, CodeMirror editing with WCL language
-    /// support and LSP (completion, hover, diagnostics), and a live wdoc
-    /// preview built from the root document down.
-    Editor {
-        /// Root `.wcl` document (defaults to `./main.wcl` when present).
-        /// The preview pane and schema-validated saves need it; plain
-        /// editing works without one.
-        root: Option<PathBuf>,
-        /// Bind address, or `auto` to pick the first free port near 8080.
-        #[arg(long, default_value = "auto")]
-        addr: serve::BindSpec,
-    },
     /// Scaffold a new project folder from a WCL template. `<template>`
     /// is a built-in name (`wcl init --list`), a user template under
     /// `$XDG_DATA_HOME/wcl/templates/<name>/template.wcl`, or a path to a
@@ -318,8 +303,7 @@ enum WskillCommand {
     },
     /// Print the wskill's model — units, index trees, `related` and pin
     /// edges, per-unit block lists, and where each is written — as JSON on
-    /// stdout. No editor, no build: the same model the browser editor's
-    /// graph view draws and the curator audits.
+    /// stdout. No build: the same model the curator audits.
     ///
     /// Examples:
     ///   wcl wskill graph
@@ -398,8 +382,8 @@ enum WskillCommand {
         #[arg(long, value_enum, default_value_t = ReportFormat::Text)]
         format: ReportFormat,
     },
-    /// Apply structural ops to a wskill — the one id-addressed vocabulary
-    /// the browser editor writes through, as JSON on the command line.
+    /// Apply structural ops to a wskill — the one id-addressed vocabulary,
+    /// as JSON on the command line.
     ///
     /// Ops: pin_unit, unpin_unit, reorder_children, related_add,
     /// related_remove, create_index, delete_index, move_index,
@@ -412,11 +396,10 @@ enum WskillCommand {
     ///    "file": "data/indexes.wcl"}
     ///
     /// A real run requires a clean git tree. Ops apply in order through the
-    /// same validating pipeline the editor uses, then every declared
-    /// projection builds and lint counts are compared with the run's
-    /// in-memory baseline. Any failure restores the whole run; success lands
-    /// one git commit. `--comment` includes deferred findings in that commit.
-    /// Ops target the wskill root (`wskill.wcl`), not a projection entry.
+    /// same validating write pipeline, then every declared projection
+    /// builds and lint counts are compared with the run's in-memory
+    /// baseline. Any failure restores the whole run; success lands one git
+    /// commit. Ops target the wskill root (`wskill.wcl`), not a projection entry.
     ///
     /// Exit codes: 0 the gated run committed, 1 an op or run gate was
     /// refused, 2 the input, model or git operation failed.
@@ -433,17 +416,11 @@ enum WskillCommand {
         /// One op, as JSON (repeatable). A JSON array of ops works too.
         #[arg(long = "op", value_name = "JSON")]
         op: Vec<String>,
-        /// File a curator-tagged sidecar comment in the gated commit
-        /// (repeatable JSON). A comment needs `body` plus `page`, or
-        /// `object_kind` + `object_id`.
-        #[arg(long = "comment", value_name = "JSON")]
-        comment: Vec<String>,
         /// Read the ops from a file (an op object or an array of them);
-        /// `-` reads stdin. Default when neither `--op` nor `--comment` is
-        /// given: stdin.
+        /// `-` reads stdin. Default when `--op` is not given: stdin.
         #[arg(long, value_name = "PATH")]
         file: Option<PathBuf>,
-        /// Print the ops and comments that would be applied and write nothing.
+        /// Print the ops that would be applied and write nothing.
         #[arg(long)]
         dry_run: bool,
         /// Git commit subject for the successful gated run.
@@ -571,7 +548,6 @@ enum WdocCommand {
     /// Run a local dev server. Watches the source for `.wcl` changes but
     /// does not rebuild automatically — press Enter in the console (or
     /// `POST /__wdoc_rebuild`) to rebuild, then the browser reloads.
-    /// Editing and review comments live in `wcl editor`, not here.
     Serve {
         /// Path to a WCL source file declaring one or more `page` blocks.
         file: PathBuf,
@@ -588,23 +564,6 @@ enum WdocCommand {
         #[arg(long)]
         site: Option<String>,
     },
-    /// List the review comments stored in the `comments.wcl` sidecars under
-    /// `<file>`'s directory (left from the `wcl editor` preview pane), or
-    /// `resolve <id>` to delete one. JSON output (`--format json`) is aimed
-    /// at an AI agent acting on the notes.
-    Comments {
-        /// Path to the WCL source file (the doc's entry point).
-        file: PathBuf,
-        /// Restrict to one named `site` (reserved; currently lists all).
-        #[arg(long)]
-        site: Option<String>,
-        /// Output format.
-        #[arg(long, value_enum, default_value_t = CommentFormat::Text)]
-        format: CommentFormat,
-        /// `resolve <id>` deletes the comment with that id.
-        #[command(subcommand)]
-        cmd: Option<CommentsSub>,
-    },
     /// List the course answers stored in the `training.wcl` sidecars under
     /// `<file>`'s directory (left by a training site running under
     /// `wcl wdoc serve`), or `grade <id>` to write a verdict back.
@@ -618,29 +577,14 @@ enum WdocCommand {
         /// Path to the WCL source file (the doc's entry point).
         file: PathBuf,
         /// Output format.
-        #[arg(long, value_enum, default_value_t = CommentFormat::Text)]
-        format: CommentFormat,
+        #[arg(long, value_enum, default_value_t = TrainingFormat::Text)]
+        format: TrainingFormat,
         /// Only list answers still awaiting a grader.
         #[arg(long)]
         pending: bool,
         /// `grade <id>` writes a verdict onto that answer.
         #[command(subcommand)]
         cmd: Option<TrainingSub>,
-    },
-    /// Wait for a reviewer to finish, then print the comments — the agent side
-    /// of the review handshake. Blocks until the reviewer clicks "Send to
-    /// agent" in the preview pane of a running `wcl editor`, then lists the
-    /// comments (like `comments`) so the agent can act on them. Run it again
-    /// after making changes: the editor shows the agent is waiting once more,
-    /// so the reviewer can rebuild and keep reviewing. With no editor running
-    /// it just lists the current comments without blocking.
-    Review {
-        /// Path to the WCL source file (the doc's entry point) — the same
-        /// root document the `wcl editor` was started with.
-        file: PathBuf,
-        /// Output format for the comments printed once released.
-        #[arg(long, value_enum, default_value_t = CommentFormat::Json)]
-        format: CommentFormat,
     },
 }
 
@@ -661,19 +605,12 @@ enum TrainingSub {
     },
 }
 
-#[derive(Subcommand)]
-enum CommentsSub {
-    /// Delete the comment with the given id from the source.
-    Resolve { id: String },
-    /// Replace the body of the comment with the given id.
-    Edit { id: String, body: String },
-}
-
+/// Output format for `wcl wdoc training`.
 #[derive(Clone, Copy, clap::ValueEnum)]
-enum CommentFormat {
+enum TrainingFormat {
     /// Human-readable table.
     Text,
-    /// JSON array, one object per comment.
+    /// JSON array, one object per answer.
     Json,
 }
 
@@ -681,7 +618,7 @@ fn main() -> ExitCode {
     // The binary is the toolchain's composition root: it ships wdoc's stdlib
     // *and* the wskill library built on it, so `import <wskill.wcl>` resolves
     // on every path that opens a document — the CLI's own loader, `wdoc build`,
-    // the editor's save pipeline, the LSP.
+    // the LSP.
     wcl_wskill::install_stdlib();
     let cli = Cli::parse();
     let code = match cli.command {
@@ -729,23 +666,6 @@ fn main() -> ExitCode {
                 None => {
                     rt.block_on(wcl_lsp::start_stdio());
                     EXIT_OK
-                }
-            }
-        }
-        Command::Editor { root, addr } => {
-            let rt = match build_runtime() {
-                Ok(rt) => rt,
-                Err(code) => return ExitCode::from(code),
-            };
-            let result = rt.block_on(editor::serve(root, addr));
-            // Bounded teardown so a stray in-flight blocking task can never
-            // hang process exit (mirrors `wdoc serve`).
-            rt.shutdown_timeout(std::time::Duration::from_millis(200));
-            match result {
-                Ok(()) => EXIT_OK,
-                Err(e) => {
-                    eprintln!("editor failed: {e}");
-                    EXIT_IO
                 }
             }
         }
@@ -841,13 +761,12 @@ fn main() -> ExitCode {
             WskillCommand::Op {
                 entry,
                 op,
-                comment,
                 file,
                 dry_run,
                 message,
             } => {
                 let entry = entry.unwrap_or_else(|| PathBuf::from("."));
-                wskill::run_op(&entry, &op, &comment, file.as_deref(), dry_run, &message)
+                wskill::run_op(&entry, &op, file.as_deref(), dry_run, &message)
             }
         },
     };
@@ -1012,10 +931,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             site,
             profile,
         } => {
-            let opts = wcl_wdoc::BuildOptions {
-                profile,
-                ..Default::default()
-            };
+            let opts = wcl_wdoc::BuildOptions { profile };
             let result = wcl_wdoc::build_with_options(&file, &out, site.as_deref(), &opts);
             if result.is_ok() {
                 print_render_warnings();
@@ -1085,19 +1001,12 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
                 }
             }
         }
-        WdocCommand::Comments {
-            file,
-            site: _,
-            format,
-            cmd,
-        } => run_comments(&file, format, cmd),
         WdocCommand::Training {
             file,
             format,
             pending,
             cmd,
         } => run_training(&file, format, pending, cmd),
-        WdocCommand::Review { file, format } => run_review(&file, format),
     }
 }
 
@@ -1107,7 +1016,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
 /// shows up in their browser without a rebuild or a reload.
 fn run_training(
     file: &Path,
-    format: CommentFormat,
+    format: TrainingFormat,
     pending_only: bool,
     cmd: Option<TrainingSub>,
 ) -> u8 {
@@ -1152,7 +1061,7 @@ fn run_training(
         .collect();
 
     match format {
-        CommentFormat::Json => {
+        TrainingFormat::Json => {
             let arr = serde_json::Value::Array(
                 recs.iter()
                     .map(|r| {
@@ -1175,7 +1084,7 @@ fn run_training(
                 .expect("serde_json::Value always serializes (string-keyed objects)");
             println!("{s}");
         }
-        CommentFormat::Text => {
+        TrainingFormat::Text => {
             if recs.is_empty() {
                 eprintln!("no answers");
             }
@@ -1190,167 +1099,6 @@ fn run_training(
         }
     }
     EXIT_OK
-}
-
-/// `wcl wdoc review` — the agent side of the review handshake. Blocks until
-/// the reviewer clicks "Send to agent" in the preview pane of a running
-/// `wcl editor`, then prints the comments. With no editor up, lists them
-/// without blocking.
-fn run_review(file: &Path, format: CommentFormat) -> u8 {
-    let root = file.parent().unwrap_or_else(|| Path::new("."));
-    let hs = wcl_wdoc::Handshake::new(file);
-    if !hs.server_alive() {
-        eprintln!(
-            "no running `wcl editor` found for this document — \
-             listing current comments without waiting."
-        );
-        return print_comments(root, format);
-    }
-    let round = match hs.begin_wait() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("could not start review wait: {e}");
-            return EXIT_IO;
-        }
-    };
-    eprintln!(
-        "waiting for the reviewer — click \"Send to agent\" in the editor's preview pane… (Ctrl-C to stop)"
-    );
-
-    // Poll for release on a small runtime so Ctrl-C cleans up the marker (which
-    // otherwise leaves the toolbar showing the agent as still waiting).
-    let rt = match build_runtime() {
-        Ok(rt) => rt,
-        Err(code) => return code,
-    };
-    let released = rt.block_on(async {
-        loop {
-            tokio::select! {
-                _ = tokio::signal::ctrl_c() => return false,
-                _ = tokio::time::sleep(std::time::Duration::from_millis(400)) => {
-                    if hs.released(round) { return true; }
-                    // If the server went away while we waited, stop blocking.
-                    if !hs.server_alive() { return true; }
-                }
-            }
-        }
-    });
-    hs.end_wait();
-    if !released {
-        eprintln!("review wait cancelled.");
-        return EXIT_OK;
-    }
-    print_comments(root, format)
-}
-
-/// `wcl wdoc comments` — list comments stored in the `comments.wcl` sidecars
-/// under `<file>`'s directory, or `resolve` / `edit` one by id.
-fn run_comments(file: &Path, format: CommentFormat, cmd: Option<CommentsSub>) -> u8 {
-    // Sidecars live beside each wskill / the root doc; scan from `<file>`'s dir.
-    let root = file.parent().unwrap_or_else(|| Path::new("."));
-    match cmd {
-        Some(CommentsSub::Resolve { id }) => {
-            return match wcl_wdoc::comments::resolve(root, &id) {
-                Ok(true) => {
-                    eprintln!("resolved comment {id}");
-                    EXIT_OK
-                }
-                Ok(false) => {
-                    eprintln!("no comment with id {id}");
-                    EXIT_EVAL
-                }
-                Err(err) => {
-                    err.report();
-                    build_error_code(&err)
-                }
-            };
-        }
-        Some(CommentsSub::Edit { id, body }) => {
-            return match wcl_wdoc::comments::edit(root, &id, &body) {
-                Ok(true) => {
-                    eprintln!("edited comment {id}");
-                    EXIT_OK
-                }
-                Ok(false) => {
-                    eprintln!("no comment with id {id}");
-                    EXIT_EVAL
-                }
-                Err(err) => {
-                    err.report();
-                    build_error_code(&err)
-                }
-            };
-        }
-        None => {}
-    }
-    print_comments(root, format)
-}
-
-/// List the comments under `root` and print them in `format`. Shared by
-/// `wcl wdoc comments` (the plain list) and `wcl wdoc review` (after release).
-fn print_comments(root: &Path, format: CommentFormat) -> u8 {
-    let recs = match wcl_wdoc::comments::list(root) {
-        Ok(r) => r,
-        Err(err) => {
-            err.report();
-            return build_error_code(&err);
-        }
-    };
-    match format {
-        CommentFormat::Json => {
-            let arr = serde_json::Value::Array(recs.iter().map(comment_record_json).collect());
-            let s = serde_json::to_string_pretty(&arr)
-                .expect("serde_json::Value always serializes (string-keyed objects)");
-            println!("{s}");
-        }
-        CommentFormat::Text => {
-            if recs.is_empty() {
-                eprintln!("no comments");
-            }
-            for r in &recs {
-                let where_ = match r.scope {
-                    wcl_wdoc::CommentScope::Block => format!(
-                        "page {} → {}",
-                        r.page.as_deref().unwrap_or("(unknown)"),
-                        r.target.as_deref().unwrap_or("(block)")
-                    ),
-                    wcl_wdoc::CommentScope::Page => {
-                        format!("page {}", r.page.as_deref().unwrap_or("(unknown)"))
-                    }
-                    wcl_wdoc::CommentScope::Object => format!(
-                        "{}:{}",
-                        r.object_kind.as_deref().unwrap_or("object"),
-                        r.object_id.as_deref().unwrap_or("(unknown)")
-                    ),
-                };
-                println!("[{}] {} — {}", r.id, where_.trim(), r.body);
-                if let Some(q) = &r.quote {
-                    println!("        quote: {q}");
-                }
-            }
-        }
-    }
-    EXIT_OK
-}
-
-/// Render a [`wcl_wdoc::CommentRecord`] to a JSON object — the one shape
-/// shared by `--format json` and the editor's `/api/comments`.
-pub(crate) fn comment_record_json(r: &wcl_wdoc::CommentRecord) -> serde_json::Value {
-    serde_json::json!({
-        "id": r.id,
-        "scope": r.scope.as_str(),
-        "file": r.file.display().to_string(),
-        "page": r.page,
-        "page_file": r.page_file,
-        "object_kind": r.object_kind,
-        "object_id": r.object_id,
-        "loc": r.loc,
-        "target": r.target,
-        "quote": r.quote,
-        "body": r.body,
-        "author": r.author,
-        "status": r.status,
-    })
 }
 
 /// Plain-stdin REPL with multiline continuation. Reads one line at a
