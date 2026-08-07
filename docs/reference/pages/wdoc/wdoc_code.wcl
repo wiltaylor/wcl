@@ -1,11 +1,409 @@
 // Chapter 23 — Code.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against the sources (#178): `crates/wcl_wdoc/lib/code.wcl`,
+// `src/highlight.rs`, `src/render/content_html.rs`,
+// `src/markdown/content.rs` and `src/pdf/content.rs`. Every listing, tag
+// and command below was built and read back before it was written down —
+// including the language-tag table, which was probed against the loaded
+// syntax set rather than copied from the older reference page.
 page wdoc_code {
   title = "Code"
 
   h1 "Code"
 
-  p "Not written yet. This chapter covers the `code` block, its language, filename and caption, and the chrome each backend draws."
+  p "A `code` block is a source listing: a language tag, a lump of text, and an optional filename. It is the block a technical document uses most, and it is deliberately thin. It measures nothing, draws no chrome and knows nothing about the page around it. It hands the renderer a listing and the language it is written in, and each output target draws that listing the way its own medium wants."
+
+  p "This chapter covers the block and its five fields, the language tags that resolve to a grammar, and what HTML, Markdown and PDF each make of one listing. Every example below was built and read back before it was written down."
+
+  h2 "One listing, three outputs"
+
+  p "Save this as `listing.wcl`. It is a whole document — the import, a site, a page, one `code` block:"
+
+  code wcl {
+    filename = "listing.wcl"
+    source = <<'WCL'
+# listing.wcl — one page, one listing.
+import <wdoc.wcl>
+
+site manual {
+  title = "Manual"
+}
+
+page install {
+  title = "Install"
+
+  h1 "Install"
+
+  p "Fetch the archive, unpack it, and put the binary on your path:"
+
+  code bash {
+    filename = "install.sh"
+    source = <<'SH'
+set -euo pipefail
+
+curl -fsSL https://example.com/tool.tar.gz -o tool.tar.gz
+tar -xzf tool.tar.gz
+install -m 755 tool/bin/tool /usr/local/bin/tool
+SH
+  }
+}
+WCL
+  }
+
+  p "Note the two heredocs. The outer one is the WCL you are reading; the inner one is the listing itself. Both are **raw** heredocs — `<<'TAG'` with the tag quoted — so nothing inside either is escaped or interpolated. That is the form to reach for every time. See [Values and primitives](lang_values) for the whole heredoc grammar."
+
+  p "Build it three ways:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check listing.wcl
+OK
+$ wcl wdoc build listing.wcl --out _site
+wrote 1 page
+$ wcl wdoc markdown listing.wcl --out _md
+wrote 1 page
+$ wcl wdoc pdf listing.wcl --out manual.pdf
+wrote 1 pdf
+TEXT
+  }
+
+  p "One block produced three renderings. The Markdown one is the easiest to read back whole, so start there:"
+
+  code text {
+    source = <<'TEXT'
+$ cat _md/install.md
+# Install
+
+Fetch the archive, unpack it, and put the binary on your path:
+
+`install.sh`
+
+```bash
+set -euo pipefail
+
+curl -fsSL https://example.com/tool.tar.gz -o tool.tar.gz
+tar -xzf tool.tar.gz
+install -m 755 tool/bin/tool /usr/local/bin/tool
+```
+TEXT
+  }
+
+  p "The filename became a line of its own. The language tag became the fence's info string. Nothing else survived, because nothing else means anything in Markdown. [What each backend draws](#what-each-backend-draws) works through the other two."
+
+  h2 "The fields"
+
+  p "`Code` declares five fields and no more. There is no width, no theme, no line range, no highlight-these-lines list."
+
+  table {
+    rows:
+      | "Field"     | "Type"        | "Written as"                     | "What it does" |
+      | "`language`" | "`identifier`" | "the inline label — `code bash {`" | "Picks the highlight grammar and labels the listing" |
+      | "`source`"  | "`utf8`"      | "`source = <<'SH' … SH`"          | "The listing text, verbatim" |
+      | "`filename`" | "`utf8?`"    | "`filename = \"install.sh\"`"      | "Names the listing — see [Filename and caption](#filename-and-caption)" |
+      | "`id`"      | "`identifier?`" | "`id = \"install\"`"             | "HTML only: the `id` attribute on the `<pre>`" |
+      | "`class`"   | "`list<utf8>?`" | "`class = [\"wide\"]`"           | "HTML only: added beside `code-block` on the `<pre>`" |
+  }
+
+  p "`id` and `class` are HTML-shaped, and they behave that way: the Markdown and PDF backends read the same lowered listing and drop both. Reach for them when a stylesheet or a link needs to address one listing on a page, not when you want the listing to look different everywhere."
+
+  h3 "Writing the source"
+
+  p "`source` is an ordinary `utf8` field, so any string expression fills it. In practice it is always a raw heredoc, for one reason: a listing is full of the characters a plain string treats as syntax."
+
+  code wcl {
+    source = <<'WCL'
+# Right: a raw heredoc. Backslashes and ${…} are literal text.
+code python {
+  source = <<'PY'
+path = f"{root}\n{name}"
+PY
+}
+
+# Wrong: an interpolating heredoc. `${root}` is evaluated as WCL.
+code python {
+  source = $<<PY
+path = f"{root}"
+PY
+}
+WCL
+  }
+
+  p "Nothing in `source` runs through the inline-pattern engine either. A listing containing `**stars**` or `[brackets](x)` keeps them exactly as typed — the patterns apply to prose, not to code. See [Text and formatting](wdoc_formatting)."
+
+  h2 "The language tag"
+
+  p "The tag is the block's inline label, so it is written before the brace and nowhere else:"
+
+  code wcl {
+    source = <<'WCL'
+code rust {
+  source = "fn main() {}"
+}
+WCL
+  }
+
+  p "It does two jobs at once, and they are worth keeping apart. It **picks the grammar** the highlighter uses. It is also **shown verbatim** — as the label in the HTML card's header bar, and as the fence info string in Markdown. The two can disagree, and that is not always a mistake: a tag no grammar answers to still labels the listing and still produces a fence a Markdown consumer may know how to colour."
+
+  h3 "Which tags resolve"
+
+  p "wdoc bundles 214 grammars in all: the syntect defaults, two-face's curated extras, and WCL's own — so `code wcl { … }` highlights the language this book is written in. A tag resolves in two steps:"
+
+  list {
+    style = :numbered
+    li "Match the tag against every grammar's **file-extension** list, ignoring case. `rs` finds Rust; `md` finds Markdown; `yml` finds YAML."
+    li "Otherwise match the grammar's **name**, ignoring case. `python` finds Python; `Rust` finds Rust; `dockerfile` finds Dockerfile."
+  }
+
+  p "No match means plain text: the listing renders, escaped and un-coloured. Here are the tags a technical document reaches for most, all checked against the loaded set:"
+
+  table {
+    rows:
+      | "Grammar"       | "Tags that reach it"   | "Grammar"     | "Tags that reach it" |
+      | "WCL"           | "`wcl`"                | "JSON"        | "`json`" |
+      | "Rust"          | "`rust`, `rs`"         | "YAML"        | "`yaml`, `yml`" |
+      | "Python"        | "`python`, `py`"       | "TOML"        | "`toml`" |
+      | "JavaScript"    | "`javascript`, `js`"   | "XML"         | "`xml`" |
+      | "TypeScript"    | "`typescript`, `ts`"   | "INI"         | "`ini`" |
+      | "TypeScriptReact" | "`tsx`"              | "Markdown"    | "`markdown`, `md`" |
+      | "Go"            | "`go`"                 | "SQL"         | "`sql`" |
+      | "C"             | "`c`"                  | "Diff"        | "`diff`" |
+      | "C++"           | "`cpp`, `\"c++\"`"     | "HTML"        | "`html`" |
+      | "C#"            | "`\"c#\"`, `cs`"       | "CSS"         | "`css`, and `scss` for SCSS" |
+      | "Java"          | "`java`"               | "Dockerfile"  | "`dockerfile`" |
+      | "Kotlin"        | "`kotlin`"             | "Makefile"    | "`makefile`, `make`" |
+      | "Ruby"          | "`ruby`, `rb`"         | "CMake"       | "`cmake`" |
+      | "PHP"           | "`php`"                | "Terraform"   | "`terraform`, `hcl`" |
+      | "Swift"         | "`swift`"              | "GraphQL"     | "`graphql`" |
+      | "Haskell"       | "`haskell`, `hs`"      | "Protocol Buffer" | "`proto`, `protobuf`" |
+      | "Scala"         | "`scala`"              | "nginx"       | "`nginx`" |
+      | "Lua"           | "`lua`"                | "LaTeX"       | "`tex`, `latex`" |
+      | "Elixir"        | "`elixir`"             | "reStructuredText" | "`rst`" |
+      | "Nix"           | "`nix`"                | "Bourne Again Shell" | "`bash`, `sh`, `zsh`" |
+      | "Zig"           | "`zig`"                | "Fish"        | "`fish`" |
+      | "Plain Text"    | "`txt`"                | "AWK"         | "`awk`" |
+  }
+
+  p "The list is not the limit. Anything with a Sublime grammar in the bundled set is reachable the same way — Clojure, Erlang, Julia, Dart, Perl, OCaml, F# (as `\"f#\"`), R, VimL, Typst, Svelte, Vue, GLSL, WGSL, jsonnet, x86 assembly and about a hundred and fifty more."
+
+  h3 "Tags that do not resolve"
+
+  p "Some obvious-looking tags find nothing, because neither an extension nor a grammar name spells them that way. Each of these renders as plain text:"
+
+  table {
+    rows:
+      | "Tag"      | "What happens"        | "Write instead" |
+      | "`shell`"  | "plain text"          | "`sh`, `bash` or `zsh`" |
+      | "`console`" | "plain text"         | "`text` — see below" |
+      | "`plaintext`" | "plain text"       | "`text` or `txt`" |
+      | "`csharp`" | "plain text"          | "`\"c#\"` or `cs`" |
+      | "`fsharp`" | "plain text"          | "`\"f#\"`" |
+      | "`powershell`" | "plain text"      | "nothing — no PowerShell grammar ships" |
+  }
+
+  p "`text` is the useful one. No grammar is named `text` and no file extension is `text`, so `code text { … }` falls straight through to plain text — which is exactly what a terminal transcript or a snippet of output wants. Every `$ wcl …` listing in this book is written that way. `txt` reaches the real Plain Text grammar and renders identically."
+
+  callout "A tag with punctuation must be quoted" {
+    class = ["note"]
+    body  = "The tag is an `identifier`, and `c++`, `c#` and `f#` are not valid bare identifiers. Quote them — `code \"c#\" { … }` — exactly as you would quote any other block label. The quotes are about the text, not the declared type; see [Documents, fields and blocks](lang_documents)."
+  }
+
+  callout "A missing tag is not caught" {
+    class = ["warning"]
+    body  = "The schema declares `language` as a required field, but a block with no label at all is not currently refused: `code { source = \"…\" }` passes `wcl check`, renders as plain text, and emits an empty language label and a bare `class=\"language-\"`. That is a gap, not a feature. Always write a tag; write `text` when there is no language."
+  }
+
+  h2 "Filename and caption"
+
+  p "`filename` is the only caption a listing has. There is no `caption` field on `code`, unlike `image` and `table` — the filename **is** the caption, and each backend puts it where a caption belongs in that medium."
+
+  code wcl {
+    source = <<'WCL'
+code python {
+  filename = "fib.py"
+  source = <<'PY'
+def fib(n):
+    return n if n < 2 else fib(n - 1) + fib(n - 2)
+PY
+}
+WCL
+  }
+
+  table {
+    rows:
+      | "Target"   | "Where the filename goes" |
+      | "HTML"     | "The card's header bar, as `<span class=\"code-name\">`, left of the language label" |
+      | "Markdown" | "A backticked line immediately above the fence" |
+      | "PDF"      | "A monospace caption paragraph immediately above the listing" |
+  }
+
+  p "Leave it out and each target simply drops that part: the HTML header bar keeps its window dots and language label, and Markdown and PDF start at the listing. A filename is worth writing whenever the reader is meant to save the listing somewhere — which, in a document that teaches, is most of the time."
+
+  h2 "`code` is not a native block"
+
+  p "Most of the heavyweight blocks in wdoc are **native**: a terminal, a tilemap, a tree, a table. A native block is intercepted in Rust because its output is not expressible in WCL — measured widget layout, calendar arithmetic, an ANSI grid. See [Writing your own blocks](wdoc_extending) for what that means and what it costs."
+
+  p "`code` is not one of them. It is an ordinary `ContentBlock` with an ordinary `lower`, and the whole of it is this:"
+
+  code wcl {
+    filename = "code.wcl (abridged)"
+    source = <<'WCL'
+@block("code")
+type Code extends ContentBlock {
+  @inline(0) language: identifier
+  source:   utf8
+  filename: utf8?
+  id:       identifier?
+  class:    list<utf8>?
+  lower = fn(c: Code) -> list<Content> [
+    Content::Code {
+      source:   c.source,
+      language: c.language,
+      filename: c.filename,
+      id:       c.id,
+      class:    c.class,
+    },
+  ]
+}
+WCL
+  }
+
+  p "`Content::Code` is a node of the semantic content IR — the closed, target-neutral union every backend matches exhaustively. The lowering carries five fields across and stops. It does not build a card. It does not pick a colour. It does not know which target is running."
+
+  p "The alternative is worth picturing, because it is the shape this block deliberately does not have. Build the card in the lowering and the header bar becomes HTML markup — which means a second target wanting a filename has to reach past the lowering and re-read the block's own fields to get one. One payload and three readings of it is what keeps a field from meaning something on one target and nothing on the next. [Output targets](wdoc_outputs) covers the union and the backends in full."
+
+  p "Two consequences follow, and both are practical:"
+
+  list {
+    li "**A listing means the same thing everywhere.** Add a filename and it appears in all three outputs, in the shape each one uses for a caption. There is no target where the field is quietly ignored."
+    li "**Your own block can produce a listing.** A `@block` type extending `ContentBlock` may return a `Content::Code` from its `lower`, and it inherits all three renderings for free. A generated-config block, a `manifest` block that prints itself as JSON — none of them need a line of Rust. See [Writing your own blocks](wdoc_extending)."
+  }
+
+  h2 "What each backend draws"
+
+  p "One `Content::Code`, three chromes. Read the table down a column to see what one target does with a listing, and across a row to see where a field goes on each of them."
+
+  table {
+    rows:
+      | "Aspect"        | "HTML — `wdoc build`"                    | "Markdown — `wdoc markdown`"      | "PDF — `wdoc pdf`" |
+      | "Chrome"        | "A `<figure class=\"code-card\">` with a header bar and three window dots" | "None" | "None" |
+      | "Filename"      | "In the header bar"                      | "A backticked line above the fence" | "A monospace caption line" |
+      | "Language tag"  | "In the header bar, upper-cased by CSS, and as `class=\"language-<tag>\"`" | "The fence info string" | "Not shown" |
+      | "Highlighting"  | "`<span class=\"tok-…\">` runs, coloured by the theme's CSS" | "None — the consumer colours the fence" | "Coloured runs drawn into the page" |
+      | "Line numbers"  | "A CSS counter gutter, always on"        | "None"                            | "None" |
+      | "`id` / `class`" | "On the `<pre>`"                        | "Dropped"                         | "Dropped" |
+  }
+
+  h3 "The HTML code-card"
+
+  p "The book card is a fixed shape. Build the `listing.wcl` from the top of this chapter and read `_site/install.html`, and the listing is exactly this (token spans elided):"
+
+  code html {
+    source = <<'HTML'
+<figure class="code-card">
+  <div class="code-filename">
+    <span class="code-dots"><span></span><span></span><span></span></span>
+    <span class="code-name">install.sh</span>
+    <span class="code-lang">bash</span>
+  </div>
+  <pre class="code-block"><code class="language-bash"><span class="code-line">…</span>…</code></pre>
+</figure>
+HTML
+  }
+
+  p "Three things in there are worth knowing about. The `<span class=\"code-lang\">` holds the tag exactly as you wrote it — `bash`, not `BASH`; the upper-casing is a CSS rule on the class, so a theme may drop it. Every source line is wrapped in its own `<span class=\"code-line\">`, and the gutter numbers are a CSS counter on that wrapper rather than text in the markup — which is why copying a listing out of the page copies the code and not the numbers. And the gutter is not optional: HTML listings always carry line numbers."
+
+  callout "Per-line highlighting restarts the grammar" {
+    class = ["warning"]
+    body  = "Wrapping each line separately is what makes the gutter work, and it has a real cost: the HTML highlighter starts each line from scratch. A construct that spans lines loses its scope after the first one. Give it a Rust block comment and line 1 is comment-coloured, while `spanning lines */` on line 2 comes back as ordinary source with `*` and `/` read as operators. Short listings — what a document carries — are unaffected. The PDF backend has no gutter and carries grammar state across lines, so the same listing prints correctly there. When a listing needs a long block comment, prefer line comments."
+  }
+
+  h3 "The Markdown fence"
+
+  p "Markdown gets no chrome at all, because Markdown has none to give. The filename becomes a backticked line, the tag becomes the info string, and `id` and `class` go nowhere. The one piece of real work is the fence itself: it is widened past the longest backtick run in the source, so a listing that contains a fenced block still nests correctly."
+
+  code wcl {
+    source = <<'WCL'
+code markdown {
+  filename = "readme.md"
+  source = <<'MD'
+Fence inside:
+
+```rust
+fn main() {}
+```
+MD
+}
+WCL
+  }
+
+  p "The three-backtick run inside forces a four-backtick fence around it:"
+
+  code text {
+    source = <<'TEXT'
+`readme.md`
+
+````markdown
+Fence inside:
+
+```rust
+fn main() {}
+```
+````
+TEXT
+  }
+
+  p "Highlighting is not wdoc's job here. The tag rides out on the fence and whatever renders the Markdown — a repository host, a static site, an AI skill folder — colours it with its own grammars. That is also why a tag no syntect grammar answers to is still worth writing: `code shell { … }` is plain text in the built site and a highlighted shell block on a repository host."
+
+  h3 "The PDF listing"
+
+  p "The PDF backend has no CSS to colour a `tok-` class with, so it does the colouring itself: the source is highlighted into runs of text plus an RGB triple, against a light theme chosen to read on a white page, and those runs are drawn into the page. A filename becomes a monospace caption paragraph above the listing. There is no card, no gutter, and no way to restyle the token colours from the document — a PDF listing looks the same whichever theme the site selects. [Output targets](wdoc_outputs) covers the rest of the PDF backend."
+
+  h2 "Colouring the tokens"
+
+  p "In HTML, every token is a `<span>` carrying its syntect scope as a run of classes with a `tok-` prefix, outermost scope first. A Rust `fn` keyword comes out as:"
+
+  code html {
+    source = <<'HTML'
+<span class="tok-storage tok-type tok-function tok-rust">fn</span>
+HTML
+  }
+
+  p "The bundled rules target the short, stable ends of those scopes — `.tok-keyword`, `.tok-string`, `.tok-comment`, `.tok-constant`, `.tok-entity.tok-name.tok-function` and a few more. Each one resolves a palette variable with a literal fallback, so a document with no theme still gets a readable light palette."
+
+  p "Which means the ordinary way to recolour code is not to write CSS at all. A theme's palette carries seven syntax roles; set them and every listing on the site follows:"
+
+  code wcl {
+    source = <<'WCL'
+theme midnight {
+  palette dark {
+    syn_kw      = "#c678dd"
+    syn_str     = "#98c379"
+    syn_num     = "#d19a66"
+    syn_fn      = "#61afef"
+    syn_type    = "#e5c07b"
+    syn_comment = "#7f848e"
+    syn_punct   = "#abb2bf"
+  }
+}
+
+site manual {
+  title = "Manual"
+  theme = :midnight
+}
+WCL
+  }
+
+  p "For anything the roles do not reach — a scope with no bundled rule, or the card chrome itself — declare a `class` block against the `tok-` selector or against `code-card`, `code-filename`, `code-name`, `code-lang` and `code-block`. [Themes and styling](wdoc_styling) covers palettes, roles and `class` blocks in full."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Text and formatting](wdoc_formatting) — prose, headings, and the backtick inline pattern, which is a different thing from this block."
+    li "[Demo blocks](wdoc_demo) — show a snippet and its rendered result side by side, which is a `code` block plus a live rendering."
+    li "[Output targets](wdoc_outputs) — the content IR, the four backends, and what each one can and cannot express."
+    li "[Themes and styling](wdoc_styling) — palettes, the syntax roles, and `class` blocks."
+    li "[Visibility](wdoc_visibility) — `@only` and `@except`, for the listing that should reach one target and not another."
+    li "[Writing your own blocks](wdoc_extending) — `lower`, `@native`, and how a block of yours can produce a listing."
+    li "[Values and primitives](lang_values) — heredocs, raw and interpolating, in full."
+  }
 }
