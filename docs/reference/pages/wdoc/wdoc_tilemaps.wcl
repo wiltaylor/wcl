@@ -1,11 +1,547 @@
 // Chapter 38 — Tilemaps and maps.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #193. Every diagram on this page renders live from the
+// source printed beside it: the sample assets live in `docs/assets/`, one
+// directory above this book's entry file, which is why the paths below
+// start with `../`.
+//
+// The two root-level declarations belong to the chapter's examples: the
+// tileset backs the tilemaps, and the iconset is what a map pin resolves
+// its marker through. Both are document-global, so they sit outside the
+// page like any other registry declaration.
+tileset platformer {
+  source      = "../assets/kenney-platformer.png"
+  tile_width  = 64
+  tile_height = 64
+  columns     = 5
+}
+
+iconset lucide {}
+
+// A pin marker paints with `currentColor`, so a class that sets `color`
+// recolours it — and a `dark` block gives the same pin a second shade.
+class "map-marker" {
+  css = "color: #ebcb8b;"
+  dark { css = "color: #ffd77a;" }
+}
+
 page wdoc_tilemaps {
   title = "Tilemaps and maps"
 
   h1 "Tilemaps and maps"
 
-  p "Not written yet. This chapter covers `tileset`, `tile` and `tilemap` sprite grids, and the `map` block with its layers and pins."
+  p "Two blocks in this chapter draw pictures that have **coordinates**. A `tilemap` paints a grid of small tiles cut out of one shared spritesheet, so a level, a floor plan or a board is a few lines of text rather than an image file. A `map` shows one large picture the reader can pan and zoom, with clickable `pin` markers that open cards of ordinary wdoc content."
+
+  p "They look like different features and they share a spine. Both are **diagram shapes**, so they live inside a `diagram` and take the same placement fields as a `rect`. Both are `@native`: the tile crops, the icon markers and the overlaid cards are drawn in Rust because WCL cannot express them. And both pull in a file from disk, which an HTML build copies into the output's `_wdoc/` folder and links by relative URL — so the site has to be served for the pictures to appear, not opened directly from disk."
+
+  p "Every diagram below renders live from the source printed beside it."
+
+  h2 "Declaring a tileset"
+
+  p "A `tilemap` never names an image. It names a **tileset**, and the tileset names the image. A `tileset` is a root-level declaration — it sits beside your pages, not inside one, exactly like an `iconset`:"
+
+  code wcl {
+    filename = "docs/reference/pages/wdoc/wdoc_tilemaps.wcl"
+    source = <<'WCL'
+tileset platformer {
+  source      = "../assets/kenney-platformer.png"
+  tile_width  = 64
+  tile_height = 64
+  columns     = 5
+}
+WCL
+  }
+
+  p "That is the declaration this chapter's tilemaps draw from. The label — `platformer` — is the name a `tilemap` points at with `set`. `source` resolves **relative to the build's entry file**, not to the file the block is written in. This book is built from `docs/reference/main.wcl`, and the sheet lives in `docs/assets/`, so the path is `../assets/kenney-platformer.png`."
+
+  h3 "How an index finds a tile"
+
+  p "A tileset slices its sheet into a fixed grid, and every cell in that grid gets a number. Numbering runs left to right, top to bottom, from zero. `columns` is the divisor that turns one number back into a position:"
+
+  code text {
+    source = <<'TEXT'
+sheet column = index % columns
+sheet row    = index / columns          # integer division
+
+source x     = margin + column * (tile_width  + spacing)
+source y     = margin + row    * (tile_height + spacing)
+TEXT
+  }
+
+  p "The sample sheet is 320×1024 pixels of 64×64 tiles with no margin and no spacing, so it is 5 columns wide and 16 rows tall. Index 25 is column 0, row 5. Index 28 is column 3 of the same row. That arithmetic is the whole addressing scheme; there is no per-tile name."
+
+  p "`columns` is optional. Left out, it is as many whole tiles as fit across the sheet, which for a sheet with no margin and no spacing is simply the sheet width divided by the tile width. Give it explicitly when the sheet has a ragged last column, or when you want a narrower logical grid than the image allows."
+
+  table {
+    rows:
+      | "Field"                        | "Type"       | "Default"                            | "What it is" |
+      | "label"                        | "`identifier`" | "required"                         | "The name a `tilemap` points at with `set`" |
+      | "`source`"                     | "`utf8`"     | "required"                           | "The spritesheet path, relative to the build entry file" |
+      | "`tile_width` / `tile_height`" | "`i64`"      | "required, must be positive"         | "One tile's size, in sheet pixels" |
+      | "`columns`"                    | "`i64?`"     | "as many whole tiles as fit across"  | "Tiles per sheet row — the divisor above" |
+      | "`margin`"                     | "`i64?`"     | "`0`"                                | "Dead pixels around the whole sheet" |
+      | "`spacing`"                    | "`i64?`"     | "`0`"                                | "Dead pixels between neighbouring tiles" |
+      | "`image_width` / `image_height`" | "`i64?`"   | "read from the file"                 | "The sheet's pixel size — see below" |
+  }
+
+  callout "The build reads the sheet's dimensions for you" {
+    class = ["note"]
+    body  = "wdoc reads the pixel size straight out of the file header, and it understands PNG, GIF and JPEG. Nothing is decoded — it is a few bytes off the front of the file. For any other format (WebP, for instance) the header reader returns nothing and the build fails with `could not read image dimensions … — set image_width / image_height`. Supply **both** overrides or neither: one alone is ignored and the reader runs anyway. When you supply both and the header disagrees with them, the build warns rather than failing, because the tiles will render distorted and a silent stretch is worse than a message."
+  }
+
+  h2 "Painting the grid"
+
+  p "A `tilemap` goes inside a `diagram`, names its `set`, and carries a grid. There are two ways to write that grid, and the symbolic one reads like the thing it draws. Declare a **legend** of `tile` children, one per glyph, then hand `map` a list of strings — one string per row:"
+
+  diagram { width = 280  height = 280
+    tilemap {
+      set   = platformer
+      scale = 0.5
+      tile "#" { index = 25 }   // brown crate — solid ground
+      tile "~" { index = 1 }    // water surface
+      tile "=" { index = 6 }    // deep water
+      tile "T" { index = 16 }   // torch
+      tile "G" { index = 28 }   // grass tuft
+      tile "r" { index = 27 }   // rock
+      map = [
+        "........",
+        "...TG...",
+        "...###..",
+        "........",
+        "r......r",
+        "########",
+        "~~~~~~~~",
+        "========",
+      ]
+    }
+    // Drawn after the tilemap, so it sits on top of the tiles.
+    label "The ledge" { x = 128.0  y = 210.0  font_size = 16.0  fill = "#2e3440" }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 280  height = 280
+  tilemap {
+    set   = platformer
+    scale = 0.5
+    tile "#" { index = 25 }   // brown crate — solid ground
+    tile "~" { index = 1 }    // water surface
+    tile "=" { index = 6 }    // deep water
+    tile "T" { index = 16 }   // torch
+    tile "G" { index = 28 }   // grass tuft
+    tile "r" { index = 27 }   // rock
+    map = [
+      "........",
+      "...TG...",
+      "...###..",
+      "........",
+      "r......r",
+      "########",
+      "~~~~~~~~",
+      "========",
+    ]
+  }
+  // Drawn after the tilemap, so it sits on top of the tiles.
+  label "The ledge" { x = 128.0  y = 210.0  font_size = 16.0  fill = "#2e3440" }
+}
+WCL
+  }
+
+  p "Read the `map` rows and you can see the picture before you render it: a torch and a tuft of grass on a three-tile ledge, two rocks on the ground below, and water under that."
+
+  h3 "The tile legend"
+
+  p "A `tile` block's label is the glyph and its `index` is the tile it stands for. Only the **first character** of the label is read, so `tile \"#\"` and `tile \"#ground\"` bind the same glyph — the rest is a note to yourself. A character the legend does not mention resolves to nothing and leaves the cell blank, which is why `.` is sky here and why the gap under the ledge is empty."
+
+  p "The legend is per tilemap, not per tileset. Two tilemaps drawing from one sheet may spell their glyphs differently, and neither has to declare a glyph it does not use. That is the trade the symbolic form makes: a legend to write, in exchange for a grid you can read."
+
+  p "One thing the legend is not is a check. A glyph you forgot to declare and a glyph you meant to leave blank are the same thing to the renderer — a hole. Count your holes against your map when a tile goes missing."
+
+  p "Note where the `label` sits. It comes after the tilemap in the source, so it draws over it. That is not a special case: a tilemap is a shape among shapes, and a diagram paints its children in the order you write them. Anything you want on top of the tiles goes below the tilemap."
+
+  h3 "Numeric grids"
+
+  p "The other form is `tiles`: raw indices, one inner list per row. It is a `list<list<i64>>`, so [Lists, tensors and records](lang_collections) covers the value shape."
+
+  diagram { width = 180  height = 130
+    tilemap {
+      set   = platformer
+      scale = 0.5
+      tiles = [
+        [ 16, -1, 27 ],
+        [ 25, 25, 25 ],
+        [  6,  6,  6 ],
+      ]
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 180  height = 130
+  tilemap {
+    set   = platformer
+    scale = 0.5
+    tiles = [
+      [ 16, -1, 27 ],
+      [ 25, 25, 25 ],
+      [  6,  6,  6 ],
+    ]
+  }
+}
+WCL
+  }
+
+  p "`-1` is the hole in the top row. Any negative index draws nothing, and so does the index named by `empty`, which defaults to `-1`. Set `empty = 0` when your sheet's tile 0 is the blank one, and zeros become holes without you rewriting the grid."
+
+  p "The two forms are the same feature with different ergonomics, and they are not additive. **`map` wins.** A tilemap carrying both is drawn from `map` alone; `tiles` is not consulted, not merged and not reported."
+
+  table {
+    rows:
+      | "Written with" | "Reads well when"                                    | "Costs you" |
+      | "`map`"        | "The grid is a picture — a level, a floor plan, a board" | "A `tile` legend, and one glyph per tile" |
+      | "`tiles`"      | "The grid is data — generated, computed, or a palette" | "Counting cells to find the one you meant" |
+  }
+
+  p "A grid may be ragged. Rows need not be the same length, the drawn width is the **longest** row, and short rows simply stop. Nothing pads them."
+
+  h3 "The size a tilemap takes"
+
+  p "A tilemap has no `width` or `height` field. Its size falls out of the grid and the sheet:"
+
+  code text {
+    source = <<'TEXT'
+drawn width  = longest row × tile_width  × scale
+drawn height = row count   × tile_height × scale
+TEXT
+  }
+
+  p "So the ledge map above is 8 × 64 × 0.5 = 256 wide and 8 × 64 × 0.5 = 256 tall, inside a 280 × 280 diagram. `scale` is the only size control there is — to draw bigger tiles, scale up; to draw more, add rows."
+
+  h3 "Placement, and how the pixels draw"
+
+  p "Everything else a tilemap takes is the ordinary shape vocabulary: `x` and `y` place its top-left corner in the enclosing `diagram` or `container`, the four `anchor_*` insets place it against an edge instead, and `connect_points` says which sides a diagram edge may attach to. [The diagram canvas](wdoc_diagrams) covers all of them. One detail is specific to fixed-size content: a far anchor offsets by the tilemap's **own** size, because a tilemap cannot be stretched to meet an edge the way a `rect` can. `anchor_right = 20` puts twenty units between the tilemap's right edge and the parent's."
+
+  table {
+    rows:
+      | "Field"          | "Type"              | "Default" | "What it does" |
+      | "`set`"          | "`identifier`"      | "required" | "Which `tileset` to slice" |
+      | "`map`"          | "`list<utf8>?`"     | "—"       | "Symbolic grid, one string per row — wins over `tiles`" |
+      | "`tiles`"        | "`list<list<i64>>?`" | "—"      | "Numeric grid, one inner list per row" |
+      | "`tile` children" | "`tile \"g\" { index = N }`" | "—" | "The glyph legend `map` resolves through" |
+      | "`empty`"        | "`i64?`"            | "`-1`"    | "The index that means \"draw nothing\"" |
+      | "`scale`"        | "`f64?`"            | "`1.0`"   | "Display scale — the only size control" |
+      | "`smooth`"       | "`bool?`"           | "`false`" | "Anti-alias instead of the pixelated default" |
+      | "`x` / `y`"      | "`f64`"             | "`0.0`"   | "Top-left corner in the parent diagram" |
+      | "`anchor_left` / `anchor_right` / `anchor_top` / `anchor_bottom`" | "`f64?`" | "—" | "Place against a parent edge instead" |
+      | "`connect_points`" | "`list<AnchorSide>?`" | "—"  | "Which sides an edge may attach to" |
+      | "`id` / `class`" | "`identifier?` / `list<utf8>?`" | "—" | "Explicit HTML id, extra style classes" |
+  }
+
+  callout "Pixel art is the default, and it is deliberate" {
+    class = ["note"]
+    body  = "A tilemap renders `image-rendering: pixelated`, so a 64-pixel tile blown up stays crisp instead of turning to mush. `smooth = true` opts back into the browser's own smoothing for photographic sheets. Two more things happen for you at every tile edge: each cell's destination edges snap to whole pixels, so a fractional `scale` cannot open a hairline gap between neighbours; and each tile is sampled half a source pixel inside its own boundary, so a brown crate beside a water tile cannot bleed a brown line into it."
+  }
+
+  callout "A tilemap that cannot draw draws nothing" {
+    class = ["warning"]
+    body  = "A `set` naming no declared tileset, a grid with no rows, or a legend that maps none of your glyphs, all draw nothing rather than raising an error. The build stays green and the diagram comes out blank. When a tilemap does not appear, check the spelling of `set` first — that is the failure this silence hides. A **tileset** is stricter, and it is checked whether or not you draw from it: a missing `source`, a non-positive `tile_width`, or a sheet whose dimensions cannot be resolved all fail the build by name."
+  }
+
+  h2 "Maps"
+
+  p "A `map` solves the other half of the problem. There is one big picture — a game world, a campus, a floor of a building — and the reader needs to move around it and ask what things are. A map is a `diagram` shape like a tilemap, but the diagram it sits in becomes **interactive automatically**: wheel to zoom, drag to pan, and a `+` / `−` / `⟲` cluster in the corner. You do not set `pan_zoom` on the diagram; a map is inherently zoomable, so wdoc turns the player on and loads it for you."
+
+  p "**Scroll to zoom, drag to pan, then click a marker.**"
+
+  diagram {
+    width    = 640
+    height   = 320
+    zoom_max = 8.0
+    map "earth" {
+      source = "../assets/map/blue-marble.png"
+      width  = 1280
+      height = 640
+
+      pin "newyork" {
+        x = 377  y = 175
+        icon  = "lucide.building-2"
+        class = ["map-marker"]
+        title = "New York"
+        text { span "Financial capital of the US east coast." {} }
+        callout "Cards hold anything" { class = ["tip"]  body = "A card's body is ordinary wdoc content — text, lists, callouts, code, images." }
+      }
+
+      pin "london" {
+        x = 640  y = 137
+        icon  = "lucide.landmark"
+        class = ["map-marker"]
+        title = "London"
+        text { span "On the prime meridian, longitude 0." {} }
+      }
+
+      pin "dragons" {
+        x = 1177  y = 440
+        icon  = "lucide.triangle-alert"
+        color = "#bf616a"
+        size  = 30.0
+        title = "Here be dragons"
+        text { span "One-off colour, no class." {} }
+      }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width    = 640
+  height   = 320
+  zoom_max = 8.0
+  map "earth" {
+    source = "../assets/map/blue-marble.png"
+    width  = 1280
+    height = 640
+
+    pin "newyork" {
+      x = 377  y = 175
+      icon  = "lucide.building-2"
+      class = ["map-marker"]
+      title = "New York"
+      text { span "Financial capital of the US east coast." {} }
+      callout "Cards hold anything" { class = ["tip"]  body = "A card's body is ordinary wdoc content — text, lists, callouts, code, images." }
+    }
+
+    pin "london" {
+      x = 640  y = 137
+      icon  = "lucide.landmark"
+      class = ["map-marker"]
+      title = "London"
+      text { span "On the prime meridian, longitude 0." {} }
+    }
+
+    pin "dragons" {
+      x = 1177  y = 440
+      icon  = "lucide.triangle-alert"
+      color = "#bf616a"
+      size  = 30.0
+      title = "Here be dragons"
+      text { span "One-off colour, no class." {} }
+    }
+  }
+}
+WCL
+  }
+
+  p "The two numbers that matter most are `width` and `height`. They are **not** the size the map is drawn at — the diagram's own `width` and `height` decide that, and the view is fitted to the diagram like any other. They declare the map's **coordinate space**, and that space is what every `pin` is positioned in."
+
+  p "So there is one obvious way to set them: make them the image's pixel dimensions. The sample image is 1280×640, `width` and `height` say 1280 and 640, and a pin's `x` / `y` is then a pixel coordinate you can read straight off the picture in an image editor. Any other pair works — halve both and pin coordinates are half-pixels — but nothing else is as easy to author."
+
+  table {
+    rows:
+      | "Field"          | "Type"          | "Default" | "What it is" |
+      | "label"          | "`identifier?`" | "—"       | "Optional reference name" |
+      | "`source`"       | "`utf8?`"       | "—"       | "The single whole-map image — the common, layer-less case" |
+      | "`width` / `height`" | "`f64`"     | "required" | "The map's coordinate space, and the pin coordinate space" |
+      | "`layer` children" | "`layer { … }`" | "—"     | "Level-of-detail images; when present, `source` is ignored" |
+      | "`pin` children" | "`pin \"id\" { … }`" | "—" | "Clickable markers and their cards" |
+      | "`tile_size`"    | "`i64?`"        | "`256`"   | "Default tile pixel size for tiled layers" |
+      | "`smooth`"       | "`bool?`"       | "`true`"  | "`false` gives nearest-neighbour, for a pixel-art map" |
+      | "`x` / `y`, `anchor_*`, `connect_points`" | "—" | "—" | "Placement, exactly as on a tilemap" |
+      | "`id` / `class`" | "`identifier?` / `list<utf8>?`" | "—" | "Explicit HTML id, extra style classes on the map group" |
+  }
+
+  p "The diagram keeps its own controls over the reader's camera: `zoom_max` (default `4.0`) is how far in they may go, `zoom_min` (default `1.0`) how far out, and `pan_margin` how far past the edge they may drag. The example lifts `zoom_max` to `8.0` so the markers are readable close up. See [The diagram canvas](wdoc_diagrams)."
+
+  h2 "Pins and cards"
+
+  p "A `pin` is a marker dropped at a coordinate, and optionally a card attached to it. Its label is its **id**, which links the marker to its card and must be unique on the page."
+
+  table {
+    rows:
+      | "Field"        | "Type"           | "Default"          | "What it is" |
+      | "label"        | "`identifier`"   | "required"         | "The pin id — links marker to card, unique per page" |
+      | "`x` / `y`"    | "`f64`"          | "required"         | "Position, in the map's coordinate space" |
+      | "`icon`"       | "`utf8?`"        | "`lucide.map-pin`" | "Icon name, either `set.name` or a bare name" |
+      | "`set`"        | "`identifier?`"  | "—"                | "Which `iconset` a bare `icon` name comes from" |
+      | "`size`"       | "`f64?`"         | "`24`"             | "Marker size, in map units" |
+      | "`class`"      | "`list<utf8>?`"  | "—"                | "Themes the marker" |
+      | "`card_class`" | "`list<utf8>?`"  | "—"                | "Themes the card popup" |
+      | "`color`"      | "`utf8?`"        | "—"                | "One-off marker colour, sugar for a class" |
+      | "`title`"      | "`utf8?`"        | "—"                | "Card heading" |
+      | "children"     | "any `ContentBlock`" | "—"            | "The card body" |
+  }
+
+  p "The marker is anchored by its **bottom centre**, the way a real map pin is: the point of the icon lands on the coordinate, and the glyph sits above it. Behind every marker sits a transparent hit rectangle, so a thin outline icon is as easy to click as a solid one."
+
+  p "`size` is in **map units, not screen pixels**, so a marker scales with the map as the reader zooms — and the default of `24` means different things on different maps. On the 1280-unit map above it is about two per cent of the width. On a 4096-unit map it is a speck, and the fix is to scale `size` with the coordinate space rather than to reach for CSS. The level-of-detail map below sets `size = 56.0` for exactly that reason."
+
+  p "The icon comes from the same registry the `icon` block uses, which means it needs a declared `iconset`. This page declares `iconset lucide {}` at its root; without one, a pin resolves no glyph and leaves an invisible — still clickable — marker. [Icons](wdoc_icons) covers the registry, the bundled packs and the naming."
+
+  p "A pin's child blocks become its **card**: a floating panel anchored to the marker, opened by a click and closed by the `✕`, by clicking outside it, or by clicking the same marker again. The card follows its marker as the reader pans and zooms. A pin with neither a `title` nor a single child block gets no card at all and is simply a marker."
+
+  callout "A card is HTML laid over the drawing" {
+    class = ["note"]
+    body  = "This is why a card holds arbitrary wdoc content — it is rendered through the ordinary page path, not drawn into the SVG. It is also why the cards need a browser: on a static target the map still draws its image and its markers, and the cards do not travel. Press-and-drag on a marker never pans the map, and a press that moves more than a few pixels is a drag rather than a click, so a card cannot open by accident mid-pan."
+  }
+
+  h2 "Levels of detail"
+
+  p "One image cannot serve both views of a large map. Sized for the zoomed-out view it turns to mush up close; sized for the close-up it is megabytes the reader mostly never sees. `layer` children solve that: supply the same map at several resolutions and the player shows the **sharpest layer that suits the current zoom**."
+
+  p "**Zoom in on this one.** At the fitted view it draws a single 1024-pixel image; magnify it and the player swaps in a 2048-pixel layer assembled from eight 512-pixel tiles."
+
+  diagram {
+    width    = 640
+    height   = 320
+    zoom_max = 6.0
+    map "earth-detail" {
+      width     = 2048
+      height    = 1024
+      tile_size = 512
+      // Low-resolution whole image, for the zoomed-out view.
+      layer { source = "../assets/map/lod/low.jpg" }
+      // 4×2 grid of 512px tiles, for the zoomed-in view. These tiles
+      // are JPEGs, so `pattern` replaces the default filename shape.
+      layer { source = "../assets/map/lod"  cols = 4  rows = 2  pattern = "{x}_{y}.jpg" }
+
+      // 2048 units of coordinate space, so 24-unit markers would be
+      // specks — `size` scales with the map, not with the screen.
+      pin "amazon" {
+        x = 683  y = 540
+        icon  = "lucide.trees"
+        class = ["map-marker"]
+        size  = 56.0
+        title = "Amazon basin"
+        text { span "The world's largest rainforest." {} }
+      }
+      pin "sahara" {
+        x = 1109  y = 381
+        icon  = "lucide.sun"
+        color = "#d08770"
+        size  = 56.0
+        title = "Sahara"
+        text { span "The largest hot desert." {} }
+      }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width    = 640
+  height   = 320
+  zoom_max = 6.0
+  map "earth-detail" {
+    width     = 2048
+    height    = 1024
+    tile_size = 512
+    // Low-resolution whole image, for the zoomed-out view.
+    layer { source = "../assets/map/lod/low.jpg" }
+    // 4×2 grid of 512px tiles, for the zoomed-in view. These tiles
+    // are JPEGs, so `pattern` replaces the default filename shape.
+    layer { source = "../assets/map/lod"  cols = 4  rows = 2  pattern = "{x}_{y}.jpg" }
+
+    // 2048 units of coordinate space, so 24-unit markers would be
+    // specks — `size` scales with the map, not with the screen.
+    pin "amazon" {
+      x = 683  y = 540
+      icon  = "lucide.trees"
+      class = ["map-marker"]
+      size  = 56.0
+      title = "Amazon basin"
+      text { span "The world's largest rainforest." {} }
+    }
+    pin "sahara" {
+      x = 1109  y = 381
+      icon  = "lucide.sun"
+      color = "#d08770"
+      size  = 56.0
+      title = "Sahara"
+      text { span "The largest hot desert." {} }
+    }
+  }
+}
+WCL
+  }
+
+  p "A layer is one of two things, and `cols` / `rows` is what tells them apart. Left at their default of `1`, the layer is a **single image** and `source` is that file. Larger, the layer is a **grid of tiles** and `source` is the folder holding them. Each tile's filename comes from `pattern`, with `{x}` and `{y}` replaced by 0-based column and row numbers: the second layer above reads `0_0.jpg` through `3_1.jpg`."
+
+  table {
+    rows:
+      | "Field"       | "Type"    | "Default"        | "What it is" |
+      | "`source`"    | "`utf8`"  | "required"       | "The image file, or the tile folder when tiled" |
+      | "`cols`"      | "`i64?`"  | "`1`"            | "Tiles across — `1` means a single whole image" |
+      | "`rows`"      | "`i64?`"  | "`1`"            | "Tiles down" |
+      | "`pattern`"   | "`utf8?`" | "`{x}_{y}.png`"  | "Tile filename pattern, 0-based" |
+      | "`tile_size`" | "`i64?`"  | "the map's `tile_size`" | "Tile pixel size for this layer" |
+  }
+
+  p "The player picks a layer by resolution, not by a zoom range you declare. Each layer reports a **native width**: for a single image, the pixel width read from the file; for a tiled layer, `cols × tile_size`. On every camera change the player works out how many screen pixels the map's width now spans, and shows the narrowest layer at least that wide — the sharpest one that is not wasted. If none is wide enough it shows the widest it has, so a fully zoomed-in map degrades to its best available layer rather than to nothing."
+
+  p "Two consequences worth knowing. A tiled layer's native width is computed from `cols × tile_size`, never measured from the files, so a `tile_size` that does not match the real tiles will have the player choosing wrongly while everything still draws. And `layer` children **replace** `source`: a map with any layer at all ignores its own `source` field."
+
+  h2 "Theming a map"
+
+  p "Maps ride the ordinary `class` system rather than carrying colours of their own. An icon paints with `currentColor`, so a class that sets `color` recolours a marker — and it can carry a `dark` block, so the same pin takes a second shade under the dark palette:"
+
+  code wcl {
+    source = <<'WCL'
+class "map-marker" {
+  css = "color: #ebcb8b;"
+  dark { css = "color: #ffd77a;" }
+}
+
+pin "newyork" {
+  x = 377  y = 175
+  class = ["map-marker"]
+  title = "New York"
+}
+WCL
+  }
+
+  p "That is the class the gold markers on this page carry. A `class` block is a root-level declaration like the tileset, and it is document-global — see [Themes and styling](wdoc_styling) for the whole system."
+
+  p "Three hooks, three scopes: a pin's `class` themes its marker, its `card_class` themes its card, and the map's own `class` themes the whole group. The one-off `color` field is sugar for a marker colour when a reusable class would be overkill — the `dragons` pin on the first map and the `sahara` pin on the second both use it. The built-in look ships as bare-class defaults, so your classes win without `!important` and a site `theme` styles maps without any per-map CSS."
+
+  h2 "Where the assets land"
+
+  p "Neither block embeds its picture into a site build. Both copy the file into the output's `_wdoc/` folder and reference it by relative URL — a tileset as `_wdoc/tileset-<name>.<ext>`, a map image under a hashed name so two files called `low.jpg` in different folders cannot collide. A tileset is copied only when a rendered tilemap actually drew from it, so an unused declaration adds nothing to the output — though it is still validated, so it cannot name a sheet that is not there."
+
+  p "The consequence is the same one images and icons carry: a built site must be **served** for its pictures to resolve, not opened directly from disk. A PDF has no output folder to copy into, so it takes the other route and embeds the bytes. [Output targets](wdoc_outputs) covers what each backend does with a build."
+
+  h2 "Tilemap, map or image?"
+
+  p "Three blocks put a picture on a page, and picking the wrong one is the mistake this chapter exists to prevent. The question is not what the picture looks like. It is where the picture's structure lives — in a file, in your text, or in the reader's hands."
+
+  table {
+    rows:
+      | "Question"                    | "`image`"                    | "`tilemap`"                                  | "`map`" |
+      | "Draws"                       | "One whole picture"          | "A grid of small tiles cut from one sheet"    | "One large picture, at several resolutions" |
+      | "Assets on disk"              | "One file"                   | "One spritesheet, however big the grid"       | "One file, or a folder of tiles per layer" |
+      | "Authored as"                 | "A path"                     | "Rows of glyphs, or rows of indices"          | "A path plus a list of pins" |
+      | "Sized by"                    | "The file's pixels × `scale`" | "Grid × tile size × `scale`"                 | "Its declared `width` × `height` coordinate space" |
+      | "The reader can"              | "Look"                       | "Look"                                        | "Pan, zoom, click a marker, read a card" |
+      | "Makes its diagram interactive" | "No"                       | "No"                                          | "Yes, with no `pan_zoom`" |
+      | "Changing what it shows means" | "Producing a new file"      | "Editing a line of text"                      | "Producing new files" |
+      | "Reach for it when"           | "The picture is the content" | "The picture is made of repeated parts"       | "The picture is bigger than the page" |
+  }
+
+  p "Read the last row on its own. A `tilemap` is the only one of the three whose content is **text you can diff**: change a `#` to a `~` and the picture changes in the commit, reviewable like any other line. That is what it is for. A `map` is the only one whose content is partly the reader's — what they zoom to and which pin they open is not something you authored. And an `image` is neither, which is exactly right when the picture is simply the picture. [Images, videos and file assets](wdoc_media) covers that third one."
+
+  p "One more distinction that is easy to blur: a tilemap and a map can both hold a grid of image files, and they are not the same grid. A tilemap's grid is **content** — every cell is a tile you chose by index. A map's tiled layer is **delivery** — every tile is a fragment of one picture, and which fragments the reader gets is the player's business, not yours."
+
+  callout "Running these examples yourself" {
+    class = ["note"]
+    body  = "Nothing here depends on the sample files. Point the `tileset` at any spritesheet of equal-sized tiles, set `tile_width` / `tile_height` to that sheet's tile size, and re-index the legend against it — the grids and the prose stay as they are. A map needs any image at all: set `width` / `height` to its pixel dimensions and the pin coordinates become pixels you can read off it. The samples used above are Kenney's \"Platformer Pack\" (64×64 tiles), released under CC0 — browse the packs at [kenney.nl/assets](https://kenney.nl/assets) — and NASA's \"Blue Marble 2002\" (image by Reto Stöckli, NASA Goddard Space Flight Center), public domain."
+  }
+
+  h2 "Where to go next"
+
+  list {
+    li "[The diagram canvas](wdoc_diagrams) — the `diagram` both blocks live in: placement, anchors, layouts, and the pan/zoom controls a map switches on."
+    li "[Images, videos and file assets](wdoc_media) — the `image` block, and how a file gets from your tree into the output."
+    li "[Icons](wdoc_icons) — the `iconset` registry a map pin resolves its marker through."
+    li "[Timelines and dopesheets](wdoc_timelines) — the other block that slices a spritesheet, one frame at a time."
+    li "[Themes and styling](wdoc_styling) — the `class` system behind pin, card and map theming."
+    li "[Output targets](wdoc_outputs) — what a native block does on HTML, PDF, Markdown and skill builds."
+  }
 }
