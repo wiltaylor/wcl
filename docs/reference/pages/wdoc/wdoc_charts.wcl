@@ -1,11 +1,590 @@
 // Chapter 35 — Charts.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #190. Every chart on this page is rendered live by the
+// build, and every snippet was run through `wcl wdoc build` before it was
+// written down. `hbar_chart` below is the chapter's own demonstration
+// block: a user-authored `SvgBlock` declared exactly the way a reader's
+// would be, so the "copy one to build your own" section renders the thing
+// it describes.
+
+// ── The chapter's own chart block ────────────────────────────────────
+// One row per bar, longest bar wins the width. This is the whole of it:
+// a data shape, a block type, and a `lower` that returns SVG.
+//
+// These 34 lines are quoted verbatim by the `code wcl` snippet in the
+// "Copy one to build your own" section — the page cannot print its own
+// source, so edit both or neither.
+union HBarRow { Of { label: utf8  value: f64 } }
+
+@block("hbar_chart")
+type HBarChart extends SvgBlock {
+  x = 0.0
+  y = 0.0
+  width  = 320.0
+  height = 140.0
+  id:   identifier?
+  rows: list<HBarRow>
+
+  lower = fn(c: HBarChart) -> list<Svg> {
+    let n    = len(c.rows);
+    let vmax = fold(map(c.rows, fn(r: HBarRow) -> f64 r.value), 0.000001,
+                    fn(a: f64, v: f64) -> f64 max(a, v));
+    let rh   = c.height / n;
+    flatten(map(range(0, n), fn(i: i64) -> list<Svg> {
+      let r  = at(c.rows, i);
+      let ry = c.y + rh * i;
+      [
+        Svg::Label {
+          content: r.label, x: c.x + 30.0, y: ry + rh / 2.0,
+          font_size: 10.0, fit_width: 56.0, fit_height: 12.0,
+          class: ["wdoc-axis-label"],
+        },
+        Svg::Rect {
+          x: c.x + 64.0, y: ry + rh * 0.15,
+          width: (c.width - 64.0) * r.value / vmax, height: rh * 0.7,
+          class: [chart_series_class(i)],
+        },
+      ]
+    }))
+  }
+}
+
 page wdoc_charts {
   title = "Charts"
 
   h1 "Charts"
 
-  p "Not written yet. This chapter covers the bar, line and pie charts: the series shapes, the axes, the labels, the legends and the colour."
+  p "wdoc ships three chart kinds: `bar_chart`, `line_chart` and `pie_chart`. Each one is a **shape**, not a page block, so it lives inside a `diagram` beside the boxes and arrows. Each one takes its data as a list of records. And each one is written entirely in WCL — the whole family is about 460 lines of `crates/wcl_wdoc/lib/charts.wcl`, and no line of Rust knows that a bar chart exists."
+
+  p "That last fact is the point of this chapter. The three charts are not a plotting library that wdoc happens to bundle. They are three worked examples of the extension mechanism, shipped in the standard library because most documents want them. When the third one does not fit what you are drawing, you copy it and write a fourth. The last section does exactly that."
+
+  p "Every chart on this page is rendered by the build that produced the page, and every command below was run before it was written down."
+
+  h2 "A chart is a shape in a diagram"
+
+  p "Start with one series over four quarters. Save this as `sales.wcl`:"
+
+  code wcl {
+    filename = "sales.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+site sales {
+  title = "Sales"
+  toc { chapter "Quarterly revenue" { page = revenue } }
+}
+
+page revenue {
+  title = "Quarterly revenue"
+
+  h1 "Quarterly revenue"
+
+  diagram { width = 400  height = 240
+    bar_chart { width = 380.0  height = 220.0
+      title      = "Revenue by quarter"
+      x_label    = "Quarter"
+      y_label    = "$k"
+      categories = ["Q1", "Q2", "Q3", "Q4"]
+      series = [
+        { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
+      ]
+    }
+  }
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build sales.wcl --out _site
+wrote 1 page
+TEXT
+  }
+
+  p "That page holds this:"
+
+  diagram { width = 400  height = 240
+    bar_chart { width = 380.0  height = 220.0
+      title      = "Revenue by quarter"
+      x_label    = "Quarter"
+      y_label    = "$k"
+      categories = ["Q1", "Q2", "Q3", "Q4"]
+      series = [
+        { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
+      ]
+    }
+  }
+
+  p "Read the nesting from the outside in. `diagram` is the drawing surface — [The diagram canvas](wdoc_diagrams) covers it in full. `bar_chart` is one shape on that surface, placed by `x` and `y` like any other shape, and sized by `width` and `height`. Nothing else on the page had to change: a chart goes wherever a flowchart box goes."
+
+  p "Move it out of the `diagram` and the build stops. A chart is not a page block:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build sales.wcl --out _site
+wcl::eval::schema_violation
+
+  × block kind 'bar_chart' is not allowed inside 'page'
+TEXT
+  }
+
+  h3 "Sizing"
+
+  p "The two size pairs do different jobs, and note that they are spelled differently too: a `diagram` measures in whole pixels (`width = 380`), a chart in `f64` (`width = 380.0`). The `diagram`'s pair is the **rendered** size of the `<svg>`. The chart's pair is the **coordinate space** it draws in. Between them sits the canvas, which fits its `viewBox` to what was actually drawn plus a 10-pixel margin on each side, and then leaves the browser to scale that box into the rendered size — uniformly, preserving the aspect ratio, centring whatever is left over."
+
+  p "So the two pairs decide a scale factor, and the way to control it is to give the `diagram` **20 pixels more than the chart in each dimension** — the margin. The example above is a 380 × 220 chart in a 400 × 240 `diagram`, which is a `viewBox` of exactly 400 × 240 and a scale of exactly 1: the 10-point labels are 10 points on the page."
+
+  p "Nothing goes wrong when the numbers disagree; the chart is simply drawn at some other size, text included. Equal pairs — a 380 × 220 chart in a 380 × 220 `diagram` — render at about 92%, which no reader will notice. A 240-wide pie in a 600 × 300 `diagram` renders at 115% and floats in the middle of a mostly empty canvas, which they will."
+
+  h2 "Series and slices"
+
+  p "Chart data is a list of records, and there are exactly three record shapes in the family."
+
+  table {
+    rows:
+      | "Union"         | "Shape"                                        | "Used by" |
+      | "`ChartSeries`" | "`{ name: utf8, values: list<f64> }`"          | "`bar_chart`, `line_chart` — one entry per series" |
+      | "`ChartSlice`"  | "`{ label: utf8, value: f64 }`"                | "`pie_chart` — one entry per slice" |
+      | "`ChartPoint`"  | "`{ label: utf8, category: i64, value: f64 }`" | "`line_chart` `points` — one author-pinned annotation" |
+  }
+
+  p "Each is a single-variant union, and you write the bare record. WCL matches `{ name: …, values: … }` against the declared type by **shape** and builds the variant for you — the coercion [Types](lang_types) covers. The long form still works and changes nothing:"
+
+  code wcl {
+    source = <<'WCL'
+# These two are the same value.
+series = [ { name: "2025", values: [42.0, 55.0] } ]
+series = [ ChartSeries::Of { name: "2025", values: [42.0, 55.0] } ]
+WCL
+  }
+
+  p "Values are `f64`. An integer literal promotes, so `values: [42, 55]` builds and plots the same bars as `[42.0, 55.0]` — but write the decimal point anyway. It says the value is a measurement rather than a count, and it keeps the list readable next to a `category: 3`, which really is an integer."
+
+  p "Nothing about the list has to be literal. `series` is an ordinary field, so any expression of the right shape works — see [Charts from document data](#charts-from-document-data) below."
+
+  h2 "Bar charts"
+
+  p "Add a second series and the bars group. Every category gets one slot, the slot is shared by the series in order, and the bars fill 80% of it — the remaining fifth is the gap between groups."
+
+  diagram { width = 400  height = 240
+    bar_chart { width = 380.0  height = 220.0
+      title      = "Revenue by quarter"
+      x_label    = "Quarter"
+      y_label    = "$k"
+      categories = ["Q1", "Q2", "Q3", "Q4"]
+      series = [
+        { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
+        { name: "2026", values: [30.0, 48.0, 52.0, 66.0] },
+      ]
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 400  height = 240
+  bar_chart { width = 380.0  height = 220.0
+    title      = "Revenue by quarter"
+    x_label    = "Quarter"
+    y_label    = "$k"
+    categories = ["Q1", "Q2", "Q3", "Q4"]
+    series = [
+      { name: "2025", values: [42.0, 55.0, 61.0, 78.0] },
+      { name: "2026", values: [30.0, 48.0, 52.0, 66.0] },
+    ]
+  }
+}
+WCL
+  }
+
+  p "The second series brought the legend with it, and it is the only thing that did. See [The legend](#the-legend)."
+
+  p "Bars are drawn from the **bottom of the plot area**, not from a zero line. With the default scale the two are the same thing, because the default lower bound is zero. They part company the moment you set `y_min`, and they part company badly if a value is negative — see [The scale](#the-scale)."
+
+  h2 "Line charts"
+
+  p "A `line_chart` takes the same `series` and the same `categories`. It plots each series as connected segments with a marker at every point, and it adds two fields of its own."
+
+  p "`point_labels = true` prints every point's value above its marker. `points` pins your own annotations — a `ChartPoint` is a label, a `category` (the 0-based x slot) and a `value` (the height, in data units). An annotation belongs to the chart rather than to a series, so it may sit anywhere on the scale:"
+
+  diagram { width = 420  height = 250
+    line_chart { width = 400.0  height = 230.0
+      title      = "Latency (ms)"
+      x_label    = "Day"
+      categories = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+      point_labels = true
+      series = [
+        { name: "p50", values: [12.0, 14.0, 11.0, 18.0, 13.0] },
+        { name: "p99", values: [28.0, 31.0, 26.0, 44.0, 30.0] },
+      ]
+      points = [ { label: "deploy", category: 3, value: 44.0 } ]
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 420  height = 250
+  line_chart { width = 400.0  height = 230.0
+    title      = "Latency (ms)"
+    x_label    = "Day"
+    categories = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    point_labels = true
+    series = [
+      { name: "p50", values: [12.0, 14.0, 11.0, 18.0, 13.0] },
+      { name: "p99", values: [28.0, 31.0, 26.0, 44.0, 30.0] },
+    ]
+    points = [ { label: "deploy", category: 3, value: 44.0 } ]
+  }
+}
+WCL
+  }
+
+  p "Three details of the drawing are worth knowing, because they are what you inherit if you copy the block. A line is a run of separate line segments, not one path — so the join at each point is really two rounded caps meeting, which the `wdoc-line` class supplies rather than the geometry. A marker is a circle of radius 2.6 at every point of every series, the ends included. And `point_labels` labels **every** point of **every** series: on the chart above that is ten labels. Use it on small charts, and use `points` when you want one thing called out."
+
+  callout "point_labels is per chart, points is per annotation" {
+    class = ["note"]
+    body  = "`point_labels` is a `bool` on the chart, not a field of a series: there is no way to label one series and leave the other bare. If that is what you want, pin the labels yourself with `points` — `category` picks the slot and `value` picks the height, so a `ChartPoint` can sit exactly on a marker of the series you care about."
+  }
+
+  h2 "Pie charts"
+
+  p "A `pie_chart` takes `slices` instead of `series` — one `{ label, value }` record each — and it has no axes, no categories and no scale. It has no legend either: each label is drawn inside its own slice."
+
+  diagram { width = 260  height = 260
+    pie_chart { width = 240.0  height = 240.0
+      title = "Market share"
+      slices = [
+        { label: "Alpha", value: 42.0 },
+        { label: "Beta",  value: 31.0 },
+        { label: "Other", value: 27.0 },
+      ]
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 260  height = 260
+  pie_chart { width = 240.0  height = 240.0
+    title = "Market share"
+    slices = [
+      { label: "Alpha", value: 42.0 },
+      { label: "Beta",  value: 31.0 },
+      { label: "Other", value: 27.0 },
+    ]
+  }
+}
+WCL
+  }
+
+  p "Values are **relative**. Each is divided by the total, so they need not sum to 100, or to anything in particular: `[3.0, 1.0]` draws three quarters and one quarter as surely as `[75.0, 25.0]` does. Slices start at twelve o'clock and sweep clockwise in the order you wrote them."
+
+  p "Each arc is a polygon — the centre point, then 49 points sampled along the edge. At the size a document renders that is indistinguishable from a true arc, and it is why the block needs nothing from the renderer that a flowchart box does not."
+
+  callout "Give a pie a square box" {
+    class = ["note"]
+    body  = "The radius is fitted to the smaller of the width and the remaining height, so a wide, short `pie_chart` is a small circle in a wide, mostly empty box rather than an ellipse. The default is 240 × 240. A title takes 22 pixels off the height, and the circle moves down and shrinks to suit."
+  }
+
+  h2 "The scale"
+
+  p "Bar and line charts share one scale, and it fits itself to the data. The lower bound `y_min` defaults to 0. The upper bound `y_max` defaults to the largest value across **every** series, so two series always share one axis and stay comparable. Between the two the chart draws four divisions — five gridlines, five labels, and that count is fixed."
+
+  p "Tick labels are rounded to two decimals, which is what keeps an auto-fitted bound from printing a floating-point tail. Set either bound yourself when the data should be read against a fixed range rather than against itself:"
+
+  code wcl {
+    source = <<'WCL'
+line_chart { width = 380.0  height = 220.0
+  y_min = 0.0
+  y_max = 100.0            # a percentage is always read against 100
+  categories = ["Mon", "Tue", "Wed"]
+  series = [ { name: "coverage", values: [81.0, 84.0, 83.0] } ]
+}
+WCL
+  }
+
+  p "Two things the scale does not do:"
+
+  list {
+    li "**It does not clip.** A value above `y_max` is drawn above the plot area, off the top of the canvas. Nothing warns you; the line simply leaves. If a chart looks empty, check the bounds against the data before you check anything else."
+    li "**It does not handle negative values on its own.** With the default `y_min = 0`, a negative bar is drawn with a negative height, which is not valid SVG and renders as nothing at all. Set `y_min` below your lowest value and the bars come back — measured from the bottom of the plot area, because that is where a bar starts. There is no zero line in the drawing."
+  }
+
+  p "A flat series is safe, and it is worth knowing what it looks like. Four sevens auto-fit to an upper bound of 7, so all four bars are full height — the chart is telling you the truth, which is that the data has no variation. Four zeros are the degenerate case: the upper bound would be zero as well, so it is nudged a fraction above the lower one to keep the scale from dividing by itself. Every tick then reads 0, the bars are zero high, and nothing is drawn. Set `y_max` when a chart has to render even with no data in it."
+
+  h2 "Categories and axis labels"
+
+  p "`categories` names the x slots. Omit it and the slots are numbered from 1. The list has one more job than labelling, though, and it is an easy one to be caught by: **the number of categories decides how many points the chart draws.**"
+
+  table {
+    rows:
+      | "`categories`"          | "What happens" |
+      | "Omitted"               | "The slot count comes from the first series; labels are `1`, `2`, `3`, …" |
+      | "Fewer than the values" | "The chart draws that many slots. The extra values are silently dropped." |
+      | "More than the values"  | "The build fails: `'at': at: index 2 out of bounds`" |
+  }
+
+  p "The failure is the friendlier of the two. A list that is one label short costs you a bar and says nothing, so when a chart is built from one place and labelled from another, derive both from the same list — again, [Charts from document data](#charts-from-document-data)."
+
+  p "The other three text fields are decoration, and all three are optional. `title` is centred at the top of the box, `x_label` sits below the category labels, `y_label` above the y spine. Each one that is present takes vertical room from the plot area, so a chart carrying a title, a legend and an x-axis label has a visibly shorter plot than a bare chart of the same height."
+
+  h2 "The legend"
+
+  p "There is one rule: a bar or line chart draws a legend when it has **more than one series**, and does not when it has one. It is not a field, and there is nothing to switch off. A single-series chart says what it is in the `title`; a two-series chart has to say which is which."
+
+  p "The legend is a row of swatches across the top of the plot, one per series, each carrying that series' palette class and its `name`. A pie chart has no legend at all, and needs none: its slice labels are the legend."
+
+  h2 "Colour"
+
+  p "No chart emits a fill. Every bar, line, marker and slice carries a **class** — `wdoc-series-1` through `wdoc-series-8`, assigned by index and cycled, so a ninth series is `wdoc-series-1` again. All the colour is CSS, which makes recolouring a chart the same job as restyling anything else on the site."
+
+  p "There are two levers, and you want the first one more often than you expect."
+
+  h3 "Change the theme"
+
+  p "The eight palette classes are wired to the theme's hue variables — series 1 is the theme's blue, 2 its green, 3 yellow, 4 red, 5 purple, 6 cyan, 7 orange, 8 pink. Change the site's `theme` and every chart in the document moves with it, in both light and dark mode, along with the diagrams and the code blocks. See [Themes and styling](wdoc_styling)."
+
+  h3 "Redeclare the class"
+
+  p "When one series has to be a particular colour, declare the class. A `class` block at document level is emitted after the bundled default and after the theme's rule, so yours wins by cascade — you are not fighting the theme, you are the last word in it:"
+
+  code wcl {
+    source = <<'WCL'
+class "wdoc-series-1" {
+  fill   = "#c94f7c"
+  stroke = "#c94f7c"
+  dark  { fill = "#e08bab"  stroke = "#e08bab" }
+  light { fill = "#a83a63"  stroke = "#a83a63" }
+}
+WCL
+  }
+
+  p "Set both `fill` and `stroke`, and set them on the same class: bars and slices are filled, lines and markers are stroked. The `dark` and `light` blocks are optional per-mode overrides; without them the outer values are used in both modes. [Themes and styling](wdoc_styling) covers the `class` block in full."
+
+  p "The rest of the chart paints with `currentColor`, so it follows the page's text colour with no configuration at all. Each part has its own class, should you want to reach it:"
+
+  table {
+    rows:
+      | "Class"              | "Paints" |
+      | "`wdoc-series-1..8`" | "Bars, lines, markers, slices, legend swatches — cycled by index" |
+      | "`wdoc-line`"        | "The line-chart stroke width and its rounded joins (no colour: the series class supplies that)" |
+      | "`wdoc-axis`"        | "The x baseline and the y spine" |
+      | "`wdoc-grid`"        | "The horizontal gridlines" |
+      | "`wdoc-axis-label`"  | "Tick values, category labels, `x_label`, `y_label`" |
+      | "`wdoc-chart-title`" | "The `title`" |
+      | "`wdoc-legend`"      | "Legend text, and a pie chart's slice labels" |
+      | "`wdoc-point-label`" | "The values printed by `point_labels = true`" |
+      | "`wdoc-annotation`"  | "A `points` marker and its label" |
+  }
+
+  callout "A chart's own class field paints nothing" {
+    class = ["warning"]
+    body  = "All three charts declare `class: list<utf8>?`, as the stdlib's other shapes do. The chart lowerings ignore it: they never put it on anything they draw, so `bar_chart { class = [\"fancy\"] … }` builds and has no effect whatever. Colour a chart through the series classes above. The `id` field, in contrast, does work — it names the shape, which is how an edge finds it."
+  }
+
+  h2 "Charts from document data"
+
+  p "Every example so far wrote the numbers into the chart. That is right for a chart that illustrates a point, and wrong for one that reports a fact — a document that carries the data as data can chart it, list it and total it without ever writing it twice."
+
+  p "`series`, `categories` and `slices` are ordinary fields holding ordinary expressions, so a gather field and `map` are the whole technique:"
+
+  code wcl {
+    filename = "sales.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+@block("month")
+type Month {
+  @inline(0) name: utf8
+  revenue: f64
+  cost:    f64
+}
+
+@document
+type Sales {
+  @children("month") months: list<Month>
+}
+
+month "Jan" { revenue = 42.0  cost = 30.0 }
+month "Feb" { revenue = 55.0  cost = 34.0 }
+month "Mar" { revenue = 61.0  cost = 39.0 }
+month "Apr" { revenue = 78.0  cost = 41.0 }
+
+site sales {
+  title = "Sales"
+  toc { chapter "Sales" { page = revenue } }
+}
+
+page revenue {
+  title = "Sales"
+
+  h1 "Sales"
+
+  diagram { width = 400  height = 240
+    bar_chart { width = 380.0  height = 220.0
+      title      = "Revenue and cost"
+      y_label    = "$k"
+      categories = map(months, fn(m: Month) -> utf8 m.name)
+      series = [
+        { name: "revenue", values: map(months, fn(m: Month) -> f64 m.revenue) },
+        { name: "cost",    values: map(months, fn(m: Month) -> f64 m.cost) },
+      ]
+    }
+  }
+}
+WCL
+  }
+
+  p "The chart now says what the document says. Add a fifth `month` block and a fifth pair of bars appears, correctly labelled, because the labels and the values are read from the same list — the mismatch [Categories and axis labels](#categories-and-axis-labels) warns about cannot happen here. [Data views](wdoc_data_views) covers the rest of the technique: repeaters, components, and the table that usually belongs beside the chart."
+
+  callout "A top-level table does not reach a gather field" {
+    class = ["warning"]
+    body  = "Four months are four `month` blocks above, and it is tempting to write them as a pipe table instead. Do not, at the document's top level: the rows parse, but they never reach the root gather field, so `months` evaluates to `[]` and the chart draws an empty axis with no error at all. A table inside a block works normally. See [Documents, fields and blocks](lang_documents)."
+  }
+
+  h2 "Copy one to build your own"
+
+  p "The three charts have nothing you do not have. Open `crates/wcl_wdoc/lib/charts.wcl` and the whole family is there, in the language this book documents: some `let` bindings that do arithmetic, three `@block` types, and one `lower` function each that returns a list of SVG primitives. There is no Rust chart code to extend and no plugin to write. A fourth chart is a fourth block type, and it plugs in exactly the way the first three do."
+
+  p "The contract is two lines long:"
+
+  code wcl {
+    source = <<'WCL'
+interface SvgBlock {
+  id:    identifier?
+  lower: fn(&SvgBlock) -> list<Svg>?
+}
+WCL
+  }
+
+  p "Extend `SvgBlock` and a `diagram` accepts your block as a child, because its `@children(SvgBlock)` slot admits the interface rather than a list of kinds. Return `list<Svg>` from `lower` and the renderer draws it. The `Svg` union has seven members — `Rect`, `Circle`, `Line`, `Label`, `Polygon`, `Polyline` and `Link` — and the three stdlib charts are built from the first five."
+
+  p "Here is a whole chart the standard library does not have: a horizontal bar chart, one row per bar, the longest value taking the full width. It is thirty lines, and this page declares them above its own `page` block:"
+
+  code wcl {
+    source = <<'WCL'
+union HBarRow { Of { label: utf8  value: f64 } }
+
+@block("hbar_chart")
+type HBarChart extends SvgBlock {
+  x = 0.0
+  y = 0.0
+  width  = 320.0
+  height = 140.0
+  id:   identifier?
+  rows: list<HBarRow>
+
+  lower = fn(c: HBarChart) -> list<Svg> {
+    let n    = len(c.rows);
+    let vmax = fold(map(c.rows, fn(r: HBarRow) -> f64 r.value), 0.000001,
+                    fn(a: f64, v: f64) -> f64 max(a, v));
+    let rh   = c.height / n;
+    flatten(map(range(0, n), fn(i: i64) -> list<Svg> {
+      let r  = at(c.rows, i);
+      let ry = c.y + rh * i;
+      [
+        Svg::Label {
+          content: r.label, x: c.x + 30.0, y: ry + rh / 2.0,
+          font_size: 10.0, fit_width: 56.0, fit_height: 12.0,
+          class: ["wdoc-axis-label"],
+        },
+        Svg::Rect {
+          x: c.x + 64.0, y: ry + rh * 0.15,
+          width: (c.width - 64.0) * r.value / vmax, height: rh * 0.7,
+          class: [chart_series_class(i)],
+        },
+      ]
+    }))
+  }
+}
+WCL
+  }
+
+  p "It is used like any other chart, and it renders like one:"
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 340  height = 160
+  hbar_chart { width = 320.0  height = 140.0
+    rows = [
+      { label: "Rust",  value: 61.0 },
+      { label: "WCL",   value: 24.0 },
+      { label: "Shell", value: 9.0 },
+    ]
+  }
+}
+WCL
+  }
+
+  diagram { width = 340  height = 160
+    hbar_chart { width = 320.0  height = 140.0
+      rows = [
+        { label: "Rust",  value: 61.0 },
+        { label: "WCL",   value: 24.0 },
+        { label: "Shell", value: 9.0 },
+      ]
+    }
+  }
+
+  p "Four things in those thirty lines are worth naming, because they are the four you copy every time."
+
+  list {
+    li "**The data shape is yours.** `HBarRow` is a single-variant union declared beside the block, exactly as `ChartSeries` is declared beside `bar_chart`. The bare `{ label: …, value: … }` records in the document coerce to it by shape, with no work on your part."
+    li "**`x`, `y`, `width` and `height` carry defaults**, written `width = 320.0` rather than `width: f64`. A default makes the field optional _and_ lets a `:grid` or `:layered` diagram place the shape through a wrapper transform instead of failing on a missing coordinate."
+    li "**The geometry is arithmetic inside a `map`.** `fold` finds the largest value, `range(0, n)` walks the rows, and `flatten` turns a list of small lists into the flat list `lower` has to return. [Builtins](lang_builtins) is the catalogue; the stdlib charts use nothing that is not in it."
+    li "**The palette is shared.** `chart_series_class(i)` is a `let` binding in `charts.wcl`, and it resolves by name in your document, so your chart cycles the same eight classes and answers to the same theme as the built-in ones. Reaching for the shared helper is what makes a new chart look like it belongs."
+  }
+
+  p "Charts have no privileges here. The same interface is behind every shape in [Flowcharts and swimlanes](wdoc_flowcharts) and behind every custom node in a diagram of your own, and it is the subject of [Writing your own blocks](wdoc_extending) — which covers the other two lowering interfaces, page content and terminal widgets, and what to do when a block cannot be expressed in WCL at all."
+
+  h2 "Field reference"
+
+  p "`bar_chart` and `line_chart` share every field below; `line_chart` then adds two."
+
+  table {
+    rows:
+      | "Field"              | "Type"                | "Default"           | "Means" |
+      | "`series`"           | "`list<ChartSeries>`" | "required"          | "One `{ name, values }` record per series" |
+      | "`title`"            | "`utf8?`"             | "none"              | "Centred title above the plot" |
+      | "`categories`"       | "`list<utf8>?`"       | "`1`, `2`, `3`, …"  | "x-slot labels — and the slot count" |
+      | "`x_label`"          | "`utf8?`"             | "none"              | "Axis title below the category labels" |
+      | "`y_label`"          | "`utf8?`"             | "none"              | "Axis title above the y spine" |
+      | "`y_min`"            | "`f64?`"              | "`0.0`"             | "Lower scale bound" |
+      | "`y_max`"            | "`f64?`"              | "largest value"     | "Upper scale bound" |
+      | "`x` / `y`"          | "`f64`"               | "`0.0`"             | "Position within the `diagram`" |
+      | "`width` / `height`" | "`f64`"               | "`360.0` / `220.0`" | "Drawing size — match the `diagram`" |
+      | "`id`"               | "`identifier?`"       | "none"              | "Names the shape, so `id -> other` connects it" |
+      | "`class`"            | "`list<utf8>?`"       | "none"              | "Accepted and ignored — see the warning above" |
+      | "`connect_points`"   | "`list<AnchorSide>?`" | "all four sides"    | "Which sides an edge attaches to" |
+  }
+
+  table {
+    rows:
+      | "`line_chart` only" | "Type"                | "Default" | "Means" |
+      | "`point_labels`"    | "`bool?`"             | "`false`" | "Print every point's value above its marker" |
+      | "`points`"          | "`list<ChartPoint>?`" | "`[]`"    | "Author-pinned annotations" |
+  }
+
+  p "`pie_chart` takes `slices` and the shape fields, and nothing else."
+
+  table {
+    rows:
+      | "Field"              | "Type"                | "Default"  | "Means" |
+      | "`slices`"           | "`list<ChartSlice>`"  | "required" | "One `{ label, value }` record per slice; values are relative" |
+      | "`title`"            | "`utf8?`"             | "none"     | "Centred title above the pie" |
+      | "`x` / `y`"          | "`f64`"               | "`0.0`"    | "Position within the `diagram`" |
+      | "`width` / `height`" | "`f64`"               | "`240.0`"  | "Drawing size — keep it square" |
+      | "`id`"               | "`identifier?`"       | "none"     | "Names the shape for edges" |
+      | "`class`"            | "`list<utf8>?`"       | "none"     | "Accepted and ignored" |
+      | "`connect_points`"   | "`list<AnchorSide>?`" | "all four sides" | "Which sides an edge attaches to" |
+  }
+
+  h2 "Where to go next"
+
+  list {
+    li "[The diagram canvas](wdoc_diagrams) — the surface a chart sits on: sizing, layout modes, pan and zoom."
+    li "[Connections and routing](wdoc_diagram_connections) — a chart has an `id`, so an arrow can point at it."
+    li "[Themes and styling](wdoc_styling) — the `class` block, the theme hues, and light and dark mode."
+    li "[Data views](wdoc_data_views) — repeaters and components, for the table that belongs beside the chart."
+    li "[Timelines and dopesheets](wdoc_timelines) — the other stdlib blocks that cycle the same series palette."
+    li "[Writing your own blocks](wdoc_extending) — the fourth chart, and the two lowering interfaces this chapter did not use."
+  }
 }
