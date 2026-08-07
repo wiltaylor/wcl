@@ -44,24 +44,27 @@ c = a && b || c && d               // (a && b) || (c && d)
 d = -x.field                       // -(x.field) — member access binds tighter than unary
 ```
 
-`&&`, `||` and `??` **short-circuit**. The right side is not evaluated when the left already
-decides the answer, which is what makes `count > 0 && total / count > 5` safe and
-`cached ?? expensive()` cheap.
+`&&`, `||` and `??` **short-circuit**. They skip the right side when the left already decides
+the answer. That is what makes `count > 0 && total / count > 5` safe and `cached ??
+expensive()` cheap.
 
 ## What is *not* an operator
 
-Three shapes other languages spell with an operator are builtin calls here. Writing the
-operator is a parse error, not a subtle bug.
+Three shapes other languages spell with an operator are builtin calls here.
 
-| Instead of | Write | Why |
+| Instead of | Write | Fails as |
 | --- | --- | --- |
-| `2.0 ^ 10.0` | `pow(2.0, 10.0)` | `^` is not a token |
-| `items[0]` | `at(items, 0)` | `[` only opens a list literal, a tensor shape, or a table row |
-| `"a" + "b"` | `concat("a", "b")` or `$"${a}${b}"` | `+` is numeric only — it has no string case |
+| `2.0 ^ 10.0` | `pow(2.0, 10.0)` | parse error — `^` is not a token |
+| `items[0]` | `at(items, 0)` | parse error — `[` only opens a list literal, a tensor shape, or a table row |
+| `"a" + "b"` | `concat("a", "b")` | **evaluation** error — `operator '+' is not defined for utf8 and utf8` |
+
+The first two are parse errors, so you learn about them at once. **The third is not.** `wcl
+check` answers `OK` on `a = "x" + "y"`, and the mistake surfaces only when something reads the
+field. Watch for it.
 
 **String concatenation has no operator.** Use interpolation for anything with more than two
-parts (`$"${host}:${port}"`), `concat(a, b)` for exactly two, `format("{}:{}", host, port)` for
-a template, or `join(parts, "/")` for a list.
+parts (`$"${host}:${port}"`). Use `concat(a, b)` for exactly two, `format("{}:{}", host, port)`
+for a template, and `join(parts, "/")` for a list.
 
 Three more symbols read like operators but are syntax:
 
@@ -132,8 +135,8 @@ The same applies to a variant payload (`data.path` where `data` is a union-typed
 
 ### Off a local or a call — a value
 
-A name bound by a `let` item, a `let … ;` binding or a function parameter holds a **value**, and
-`.` on it chains freely through nested records and variant payloads.
+A `let` item, a `let … ;` binding and a function parameter each bind a **value**. `.` on one of
+those chains freely through nested records and variant payloads.
 
 ```wcl
 let origin = { x: 0.0, inner: { zone: "a" } }
@@ -231,6 +234,6 @@ $ wcl get panel.wcl tier
 "wide"
 ```
 
-Note what each line depends on: `ratio` needs `??` because `width` is optional; `headline` needs
-`format` because `+` would not join a number to a string; `at` appears because there is no index
+Note what each line depends on. `ratio` needs `??` because `width` is optional. `headline` needs
+`format`, because `+` does not join a number to a string. `at` appears because there is no index
 operator.

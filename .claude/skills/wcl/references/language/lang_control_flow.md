@@ -48,13 +48,13 @@ area = match shape {
 }
 ```
 
-Arms are separated by commas. A trailing comma is fine.
+Separate the arms with commas. A trailing comma is fine.
 
 ### The last arm must be irrefutable
 
 **A `match` must end with a bare `_` or a plain binding arm, with no guard and no alternation.**
-This is checked at parse time, not at evaluation. It is how WCL gets exhaustiveness without a
-type-directed check.
+The parser checks this, so you learn about it before evaluation. It is how WCL gets
+exhaustiveness without a type-directed check.
 
 ```wcl
 // Parse error: "match must end with a wildcard or binding arm".
@@ -116,8 +116,8 @@ kind = match tag {
 | `Variant(x)` / `Variant { … }` | **unqualified** — the variant is resolved from the value's own union |
 | `p1 \| p2` | either alternative (arm level; both must bind the same names) |
 
-Two limits: a string pattern must be a `utf8` or `ascii` literal (a `utf16` / `utf32` literal is
-rejected), and there are no list or bare-record patterns — destructuring works through variants.
+Two limits. A string pattern must be a `utf8` or `ascii` literal; a `utf16` or `utf32` literal
+fails. And there are no list or bare-record patterns — you destructure through a variant.
 
 ## `if let`
 

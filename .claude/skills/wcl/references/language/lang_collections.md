@@ -67,8 +67,8 @@ Signatures and return values for all of them are in `lang_builtins.md`.
 ## Tensors
 
 A `tensor<T, [dims…]>` is an N-dimensional array. Unlike a `list<list<…>>` it carries an
-explicit **shape**, so its rank and per-axis sizes are visible to the type system and to any
-host reading the value.
+explicit **shape**. The type system and any host reading the value can therefore see its rank
+and its per-axis sizes.
 
 ```wcl
 type Model {
@@ -124,7 +124,7 @@ resident = { name: "Rex", age: 4u32 }
 
 A record **value** is a bare `{ field: value, … }` literal. There is no `Dog { … }` syntax. The
 literal takes its type from the position it lands in — the declared type of the field,
-parameter or return it fills — and is checked against it there.
+parameter or return it fills. WCL checks it against that type there.
 
 That is why a record literal in a slot with no declared type is untyped and unvalidated: with
 nothing to check against, it is simply an anonymous record.
@@ -134,8 +134,8 @@ type declaration uses, and not the `=` of a document field.
 
 ### Field access
 
-A dotted path off a **local** name — a `let` item, a `let … ;` binding, a function parameter —
-reads a member, and chains through nested records and variant payloads.
+A dotted path off a **local** name reads a member. The local may be a `let` item, a `let … ;`
+binding, or a function parameter. The path chains through nested records and variant payloads.
 
 ```wcl
 let origin = { x: 0.0, inner: { zone: "a" } }
@@ -144,11 +144,11 @@ zone = origin.inner.zone                 // "a"
 name = { let r = at(rows, 0); r.name }   // bind, then read
 ```
 
-> **A document *field* holding a record is not walkable this way.** `meta.region`, where `meta`
-> is a field of the document or of a block, is an unresolved reference: a document path descends
-> through blocks and stops at the field. The same is true of a call result — `at(rows, 0).name`
-> fails with `not_a_reference`. Bind the value with a `let` first, or destructure it with
-> `match`. See `lang_expressions.md`.
+> **A document *field* holding a record is not walkable this way.** A document path descends
+> through blocks and stops at the field. So `meta.region`, where `meta` is a field, is an
+> unresolved reference. A call result behaves the same way: `at(rows, 0).name` fails with
+> `not_a_reference`. Bind the value with a `let` first, or destructure it with `match`. See
+> `lang_expressions.md`.
 
 ### `extends`
 
@@ -209,9 +209,10 @@ series = [
 1. Candidates are the variants whose declared field-**name set** is exactly equal to the
    record's. Not a subset, not a superset — equal.
 2. If more than one candidate survives, the field **types** narrow it further.
-3. Exactly one survivor is the answer. None is a schema violation — `no variant of 'X' matches
-   the supplied shape` — and more than one is an ambiguity error. Both surface when the field is
-   **evaluated**, so a consumer reading the field sees them; `wcl check` alone may not.
+3. Exactly one survivor is the answer. No survivor is the `VariantNoMatch` violation, which
+   reads `no variant of 'X' matches the supplied shape`. More than one survivor is an ambiguity
+   error. Both surface when the field **evaluates**, so a consumer reading the field sees them.
+   `wcl check` alone may not.
 
 Two consequences follow directly:
 

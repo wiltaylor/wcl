@@ -154,8 +154,8 @@ A `table` item writes many records of one shape as pipe rows. It needs two thing
 2. The field it fills is **gathered** — declared with `@children("kind")`, exactly like a nested
    block family. Without the `@children`, the rows parse and validate but nothing reads them.
 
-The field is introduced with a **colon** rather than `=`, because the rows follow on the lines
-beneath it.
+Write the field with a **colon** rather than `=`, because the rows follow on the lines beneath
+it.
 
 ```wcl
 @table("user")
@@ -177,13 +177,12 @@ users:
 ```
 
 Each `| … |` row becomes one `User`. Cells are **expressions** in the row type's field
-positions, not raw text — a cell may be a string, a number, a symbol, or a computed value.
-Columns bind in declaration order, and `wcl check` validates each cell against its column's
-type.
+positions, not raw text. A cell may be a string, a number, a symbol, or a computed value.
+Columns bind in declaration order. `wcl check` validates each cell against its column's type.
 
 A gathered table is not a leaf value, so `wcl get` on the field answers `not_a_leaf`. The rows
-are there for whatever consumes the document — a host, or a template that iterates the gather —
-not for other expressions in the same file.
+are there for whatever consumes the document — a host, or a template that iterates the gather.
+They are not there for other expressions in the same file.
 
 ## `self` and `parent`
 
@@ -265,10 +264,10 @@ A path must end at a leaf value. `wcl get config.wcl services` fails with `not_a
 a gathered block list is not a scalar. Add `--json` for machine-readable output.
 
 > **A path walks the document tree, and stops at a field.** It descends through blocks, nested
-> blocks and gathered lists (by label), and reads the field it lands on. It does **not** continue
-> into that field's *value*: if `meta` holds a record, `meta.region` is an unresolved reference,
-> from `wcl get` and from another field alike. Bind the value to a local first, or destructure it
-> — see `lang_expressions.md`.
+> blocks and gathered lists (by label). It then reads the field it lands on. It does **not**
+> continue into that field's *value*. If `meta` holds a record, `meta.region` is an unresolved
+> reference — from `wcl get` and from another field alike. Bind the value to a local first, or
+> destructure it. See `lang_expressions.md`.
 
 ## A worked example
 

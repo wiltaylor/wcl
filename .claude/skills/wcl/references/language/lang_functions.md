@@ -112,7 +112,7 @@ A function type names only the shapes, not the parameter names.
 
 ## Higher-order functions
 
-Functions take and return functions. That is how the collection builtins are parameterised.
+Functions take and return functions. That is how the collection builtins take their behaviour.
 
 ```wcl
 doubled = map([1, 2, 3], fn(x: i64) -> i64 x * 2)
@@ -138,9 +138,10 @@ Signatures and return values are in `lang_builtins.md`.
 
 ## Closures and capture
 
-A function literal **captures the local bindings in scope where it is written** — the `let … ;`
-bindings of an enclosing block expression, and the parameters of an enclosing function. The
-snapshot is taken when the literal evaluates, and it travels with the value.
+A function literal **captures the local bindings in scope where it is written**. Those are the
+`let … ;` bindings of an enclosing block expression, and the parameters of an enclosing
+function. WCL takes the snapshot when the literal evaluates, and the snapshot travels with the
+value.
 
 ```wcl
 let make_scaler = fn(factor: f64) -> fn(f64) -> f64
@@ -152,9 +153,9 @@ result   = half(9.0)                  // 4.5
 
 Two rules follow:
 
-- **Document-scope names are not captured.** A field, a block, a type or a `let` **item**
-  resolves through the scope chain when the call runs, not when the literal is written. The
-  document is immutable once open, so the answer is the same either way.
+- **A capture holds locals only.** A field, a block, a type or a `let` **item** resolves through
+  the scope chain when the call runs, not when you write the literal. The document is immutable
+  once open, so the answer is the same either way.
 - **A parameter shadows a capture of the same name.** Captures are bound first; parameters are
   bound over them.
 
@@ -164,9 +165,8 @@ rather than hanging.
 ## Evaluation
 
 Function values take part in the document's lazy, cached field evaluation. A field holding a
-call is not evaluated until something reads it, and a cycle between fields is detected and
-reported rather than looping. Each call evaluates the body in a fresh frame. See
-`lang_evaluation.md`.
+call stays unevaluated until something reads it. A cycle between fields reports an error rather
+than looping. Each call evaluates the body in a fresh frame. See `lang_evaluation.md`.
 
 Arguments are ordinary expressions evaluated at the call. A bare record argument coerces to the
 parameter's declared union variant by shape — one of the three places that coercion runs; see

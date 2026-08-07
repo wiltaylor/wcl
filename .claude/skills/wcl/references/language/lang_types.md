@@ -36,15 +36,15 @@ Anywhere a type is expected you may write one of these forms:
 An **interface** name is not in that list on its own: it is legal only behind `&`.
 
 > **Type arguments on a named type are syntax only.** `content<SvgBlock>` parses, formats and
-> can be read back as metadata, but nothing checks arity and nothing substitutes. A named type
+> reads back as metadata. Nothing checks their arity and nothing substitutes them. A named type
 > resolves by its path alone, so `content<Nonsense>` parses happily. There is no `type Foo<T>`
-> declaration form. Full generics are not implemented — treat an argument list on a named type
+> declaration form. Full generics are not implemented, so treat an argument list on a named type
 > as documentation.
 
 ## Records — `type Name { … }`
 
 A `type` with a body declares a named record: a fixed set of named, typed fields. `extends`
-inherits another record's fields. Records are written as bare `{ … }` literals; see
+inherits another record's fields. You write a record value as a bare `{ … }` literal. See
 `lang_collections.md`.
 
 ```wcl
@@ -60,9 +60,9 @@ type Pet extends Dog {
 
 ## Aliases — `type Name = TypeRef`
 
-An alias is a transparent second name for any type, resolved wherever it is used, transitively.
-Its value is that **constraint decorators travel with the name**: every field declared with the
-alias is validated by `wcl check`.
+An alias is a transparent second name for any type. WCL resolves it wherever it is used,
+transitively. Its value is that **constraint decorators travel with the name**: `wcl check`
+validates every field declared with the alias.
 
 ```wcl
 @min(1) @max(65535)
@@ -126,10 +126,10 @@ b = Outline::Circle { radius: 5.0, stroke: none }  // the same value
 
 ### Explicit tag versus bare record
 
-Where the expected type is a union, you may drop the tag and write a bare record. The variant
-is inferred from the record's field-name set, narrowed by field types when two variants share a
-name set. Exactly one match is required: none reports `no variant of 'X' matches the supplied
-shape`, and more than one is an ambiguity error.
+Where the expected type is a union, you may drop the tag and write a bare record. WCL infers
+the variant from the record's field-name set, and narrows by field types when two variants
+share a name set. Exactly one match is required. No match is the `VariantNoMatch` violation —
+`no variant of 'X' matches the supplied shape`. More than one match is an ambiguity error.
 
 ```wcl
 series = [
@@ -177,8 +177,8 @@ interface Sized extends Drawable {
 }
 ```
 
-Extra fields the interface never mentions are fine. Satisfaction is decided on what is present,
-not on what was declared.
+Extra fields the interface never mentions are fine. What the value has decides satisfaction,
+not what its type declared.
 
 > **An interface is only usable through `&`.** A field typed by a bare interface name is a parse
 > error: `interface 'Drawable' must be used through a reference ('&Drawable')`. An interface
@@ -242,11 +242,11 @@ consumer's job.
 `self` and `parent` reify to the same kind of lazily-resolved navigator — see
 `lang_documents.md`.
 
-> **Interface satisfaction is checked structurally, and not everywhere.** Records and
-> variants carrying records are introspected field by field. Closures, lists, tensors, bare
-> scalars — and a reference's block target — are passed through, because the runtime carries no
-> type tag for them. Treat `&T` as documentation of intent plus a resolvable link; do not rely
-> on it to reject a wrong target.
+> **WCL checks interface satisfaction structurally, and not everywhere.** It walks a record, or
+> a variant carrying a record, field by field. It passes through closures, lists, tensors, bare
+> scalars and a reference's block target, because the runtime carries no type tag for them.
+> Treat `&T` as documentation of intent plus a resolvable link. Do not rely on it to reject a
+> wrong target.
 
 ## Optionals — `T?`
 

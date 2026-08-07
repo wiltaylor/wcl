@@ -62,7 +62,7 @@ b = 1u32 == 1i64   // true
 c = 3.0 * 2u8      // 6.0
 ```
 
-Promotion runs **before** the operation, so overflow is judged against the type the operands
+Promotion runs **before** the operation, so WCL judges overflow against the type the operands
 end up sharing:
 
 ```wcl
@@ -114,8 +114,8 @@ timeout = 30s               // 30000000000
 sizes   = [256KiB, 1MiB]    // each element resolves on its own
 ```
 
-Declare your own by hanging `@unit` decorators on a numeric type alias. `factor` is the number
-of base units in one of that unit, and is an ordinary expression:
+To declare your own, put `@unit` decorators on a numeric type alias. `factor` is the number of
+base units in one of that unit. It is an ordinary expression:
 
 ```wcl
 @unit("g", 1)
@@ -203,14 +203,14 @@ See `lang_documents.md`.
 
 ### Reserved words
 
-Six words are reserved by the lexer and cannot be identifiers anywhere:
+The lexer reserves six words. You cannot use them as identifiers anywhere:
 
 `true`, `false`, `none`, `if`, `else`, `match`
 
-Everything else that looks like a keyword — `type`, `interface`, `union`, `symbol_set`, `let`,
-`import`, `namespace`, `use`, `connection`, `fn`, `extends`, `as`, `try`, `catch` — is
-recognised only in a declaration position, so it may also be an ordinary identifier. Keeping
-them for their declaration use reads better.
+Fourteen more words look like keywords: `type`, `interface`, `union`, `symbol_set`, `let`,
+`import`, `namespace`, `use`, `connection`, `fn`, `extends`, `as`, `try` and `catch`. The
+parser recognises each one only in a declaration position, so each may also be an ordinary
+identifier. Keep them for their declaration use — it reads better.
 
 ### Conventions
 
