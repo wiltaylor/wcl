@@ -5,20 +5,29 @@
 // against `crates/wcl_wdoc/src/terminal/` and run through the CLI before it
 // was written down.
 //
-// A custom control used by "Writing your own control" below. It sits here,
+// The custom control used by "Writing your own control" below. It sits here,
 // at file scope, because a `@block` type is a declaration — the page body
-// holds instances, not declarations.
-@block("kbd")
-type Kbd extends TermPrimitive {
-  @inline(0) key: utf8
+// holds instances, not declarations. Keep it in step with the `code wcl`
+// listing beside its rendering.
+@block("spark")
+type Spark extends TermPrimitive {
+  @inline(0) label: utf8?
+  values: list<i64>
   accent: utf8?
   row: i64  col: i64
-  lower = fn(k: Kbd) -> list<TermFundamental> {
-    let acc = if k.accent == none { "magenta" } else { k.accent };
-    [
-      term_run(term_repeat(" ", len(k.key) + 2), 1, 1, none, acc, none),
-      term_run(k.key, 1, 2, "bright_white", acc, true),
-    ]
+  lower = fn(s: Spark) -> list<TermFundamental> {
+    let bars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+    let acc  = if s.accent == none { "cyan" } else { s.accent };
+    # `max` answers an f64, so fold the i64 peak by hand.
+    let top  = fold(s.values, 1, fn(a: i64, v: i64) -> i64 if v > a { v } else { a });
+    let line = join(map(s.values, fn(v: i64) -> utf8 {
+      let i = if v < 0 { 0 } else { v * 7 / top };
+      at(bars, i)
+    }), "");
+    let bar_col = if s.label == none { 1 } else { len(s.label) + 2 };
+    let label_part = if s.label == none { [] }
+      else { [ term_run(s.label, 1, 1, none, none, none) ] };
+    flatten([ label_part, [ term_run(line, 1, bar_col, acc, none, none) ] ])
   }
 }
 
@@ -155,7 +164,7 @@ WCL
     li "**The recording sizes the terminal.** The `width` and `height` in the cast header override `cols` and `rows`. Your block's values are only the fallback for a header that omits them."
     li "**Frames are coalesced.** Events closer together than 1/30 s are merged into one frame, so a chatty recording does not ship one screen per keystroke. The final screen is always captured, and a recording whose first event is delayed gets a blank frame at time zero so it starts empty."
     li "**`autoplay`, `loop` and `speed` are fields, not controls.** They are baked into the frame data at build time. The reader gets a play button over the terminal and a play / pause / replay glyph in the title bar — there is no scrubber and no speed menu."
-    li "**A missing cast is a visible failure, not a crash.** An unreadable path renders `cannot read cast: <path>` in the terminal's place."
+    li "**A missing cast fails in place, not loudly.** In an HTML build an unreadable path renders `cannot read cast: <path>` where the terminal would be. The PDF and Markdown backends do not carry that message: they fall through to an empty grid. Neither is a build error, so check a new recording in a browser build."
   }
 
   p "Replay is the one form a static target cannot reproduce. The Markdown and PDF backends snapshot the recording's **last frame** as a still image — see [Sizing, themes and the other targets](#sizing-themes-and-the-other-targets)."
@@ -331,11 +340,14 @@ WCL
 
   code wcl {
     source = <<'WCL'
-tui_dropdown "Release" { row = 1  col = 1
-  items = ["Debug", "Release", "Profile"]
-  open  = true
+terminal {
+  cols = 40  rows = 5  chrome = false
+  tui_dropdown "Release" { row = 1  col = 1
+    items = ["Debug", "Release", "Profile"]
+    open  = true
+  }
+  tui_dropdown "Release" { row = 1  col = 20 }
 }
-tui_dropdown "Release" { row = 1  col = 20 }
 WCL
   }
 
@@ -469,7 +481,27 @@ WCL
       | "Yours"           | "WCL — a `lower` function" | "The same mechanism, unprivileged" |
   }
 
-  p "Every wdoc block declares **exactly one** of the two, and the build refuses anything else. A type extending `TermPrimitive` with neither fails with `type 'Kbd' declares neither a lower nor @native`. A user type that claims `@native` fails with `wdoc implements no dispatch for \"kbd\" — only wdoc's own blocks can be native`. There is no third state and no stub. [Writing your own blocks](wdoc_extending) covers the rule across all three block families."
+  p "Every wdoc block declares **exactly one** of the two, and the build refuses anything else. Declare neither and the build says so; claim `@native` on a block wdoc does not implement and it says that instead:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build no-lower.wcl --out out
+wdoc::native
+
+  × type 'Spark' declares neither a `lower` nor `@native` — a block is
+  │ rendered by a WCL lowering or by wdoc's Rust dispatch, and its type must
+  │ say which
+
+$ wcl wdoc build claims-native.wcl --out out
+wdoc::native
+
+  × type 'Spark' declares `@native`, but wdoc implements no dispatch for
+  │ "spark" — only wdoc's own blocks can be native; a user block is rendered
+  │ by its `lower`
+TEXT
+  }
+
+  p "There is no third state and no stub. [Writing your own blocks](wdoc_extending) covers the rule across all three block families."
 
   p "What a `lower` returns here is `list<TermFundamental>`, and that union has exactly two variants:"
 
@@ -495,9 +527,25 @@ WCL
 
   p "A terminal widget is never measured. Its size is the number of cells it decides to write, in a font whose every glyph is one cell wide, and you place it by counting. That is the trade: a wireframe lays itself out and you cannot write one in WCL, while a TUI screen you lay out by hand and you can write any control you like. The two families answer different questions — a wireframe asks what a screen should contain, a terminal asks what a screen looks like — and neither is the other's approximation."
 
-  h2 "Placement is the slot's accepts-type"
+  h2 "The TermPrimitive interface"
 
-  p "There is no \"terminal widget\" interface. `TermPrimitive` describes **output** — a `row`, a `col`, and a `lower` producing terminal fundamentals — in exactly the way `ContentBlock` describes page output and `SvgBlock` describes diagram output. What decides where a block may be written is the accepts-type on the slot, and nothing else:"
+  p "One interface stands behind everything placeable in a terminal, and it is three members long:"
+
+  code wcl {
+    source = <<'WCL'
+interface TermPrimitive {
+  row: i64
+  col: i64
+  lower: fn(&TermPrimitive) -> list<TermFundamental>?
+}
+WCL
+  }
+
+  p "A cell position and a way to become text. `term_text` and the two containers satisfy it, every `tui_*` control satisfies it, and so does anything you write. `lower` is declared **optional** on the interface for the reason the last section gave: a native block would otherwise have to fake one, and the exactly-one-of check does that job better than the type system can."
+
+  h3 "Placement is the slot's accepts-type"
+
+  p "There is no \"terminal widget\" interface above `TermPrimitive`. The interface describes **output** — where a block sits and how it becomes text — in exactly the way `ContentBlock` describes page output and `SvgBlock` describes diagram output. What decides where a block may be _written_ is the accepts-type on the slot, and nothing else:"
 
   code wcl {
     source = <<'WCL'
@@ -536,56 +584,67 @@ TEXT
 
   h2 "Writing your own control"
 
-  p "Declare a `@block` type that extends `TermPrimitive`, give it `row` and `col`, and give it a `lower` returning `list<TermFundamental>`. That is the entire contract. Here is a keycap pill — a coloured run of spaces with the key label written on top of it:"
+  p "Declare a `@block` type that extends `TermPrimitive`, give it `row` and `col`, and give it a `lower` returning `list<TermFundamental>`. That is the entire contract. Nothing in the stdlib family is privileged, so a control of your own is built exactly the way `tui_progress` is."
+
+  p "The stdlib has no sparkline, so here is one. It scales a list of counts onto the eight block characters `▁▂▃▄▅▆▇█` and draws them as a single coloured run:"
 
   terminal {
-    cols = 34  rows = 3  chrome = false
-    term_text "press" { row = 1  col = 1 }
-    kbd "Ctrl" { row = 1  col = 7 }
-    kbd "K" { row = 1  col = 14  accent = "blue" }
-    kbd "Esc" { row = 3  col = 7  accent = "red" }
+    cols = 40  rows = 3  chrome = false
+    spark "rps " { row = 1  col = 1  values = [3, 7, 4, 9, 12, 8, 15, 14, 6, 2] }
+    spark "err " { row = 3  col = 1  accent = "red"
+      values = [0, 0, 1, 0, 4, 2, 0, 0, 9, 1]
+    }
   }
 
   code wcl {
     source = <<'WCL'
-@block("kbd")
-type Kbd extends TermPrimitive {
-  @inline(0) key: utf8
+@block("spark")
+type Spark extends TermPrimitive {
+  @inline(0) label: utf8?
+  values: list<i64>
   accent: utf8?
   row: i64  col: i64
-  lower = fn(k: Kbd) -> list<TermFundamental> {
-    let acc = if k.accent == none { "magenta" } else { k.accent };
-    [
-      term_run(term_repeat(" ", len(k.key) + 2), 1, 1, none, acc, none),
-      term_run(k.key, 1, 2, "bright_white", acc, true),
-    ]
+  lower = fn(s: Spark) -> list<TermFundamental> {
+    let bars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+    let acc  = if s.accent == none { "cyan" } else { s.accent };
+    # `max` answers an f64, so fold the i64 peak by hand.
+    let top  = fold(s.values, 1, fn(a: i64, v: i64) -> i64 if v > a { v } else { a });
+    let line = join(map(s.values, fn(v: i64) -> utf8 {
+      let i = if v < 0 { 0 } else { v * 7 / top };
+      at(bars, i)
+    }), "");
+    let bar_col = if s.label == none { 1 } else { len(s.label) + 2 };
+    let label_part = if s.label == none { [] }
+      else { [ term_run(s.label, 1, 1, none, none, none) ] };
+    flatten([ label_part, [ term_run(line, 1, bar_col, acc, none, none) ] ])
   }
 }
 
 terminal {
-  cols = 34  rows = 3  chrome = false
-  term_text "press" { row = 1  col = 1 }
-  kbd "Ctrl" { row = 1  col = 7 }
-  kbd "K" { row = 1  col = 14  accent = "blue" }
-  kbd "Esc" { row = 3  col = 7  accent = "red" }
+  cols = 40  rows = 3  chrome = false
+  spark "rps " { row = 1  col = 1  values = [3, 7, 4, 9, 12, 8, 15, 14, 6, 2] }
+  spark "err " { row = 3  col = 1  accent = "red"
+    values = [0, 0, 1, 0, 4, 2, 0, 0, 9, 1]
+  }
 }
 WCL
   }
 
-  p "Four things in that declaration are worth naming."
+  p "Five things in that declaration are worth naming."
 
   list {
     li "**The type is a declaration, so it sits at file scope** — beside the `page`, not inside it. Instances go in the page body."
-    li "**`lower` narrows its parameter.** The interface declares `fn(&TermPrimitive) -> list<TermFundamental>?`; the implementation takes `Kbd`, so the body reads `k.key` and `k.accent` by name. [Functions](lang_functions) covers why that is legal."
-    li "**`term_run` and `term_repeat` are the stdlib's own helpers**, not private ones. `term_run(content, row, col, fg, bg, bold)` builds a `Text` fundamental with the renderer-only fields left at `none`, and `term_repeat(ch, n)` repeats a character, answering `\"\"` for `n < 1` so a caller need not guard. `term_box_runs` and `term_fill_runs` build a border and a rectangle the same way. They are `let` items, so an expression may call them and the document model never sees them — see [Documents, fields and blocks](lang_documents)."
-    li "**Colour by name, not by drawing.** The pill is a background fill with a bright label on it, which is how every stdlib control is built. It follows the palette, it survives `palette = :light`, and it costs one cell per character."
+    li "**`lower` narrows its parameter.** The interface declares `fn(&TermPrimitive) -> list<TermFundamental>?`; the implementation takes `Spark`, so the body reads `s.values` and `s.accent` by name. [Functions](lang_functions) covers why that is legal."
+    li "**`term_run` and the other helpers are the stdlib's own**, not private ones. `term_run(content, row, col, fg, bg, bold)` builds a `Text` fundamental with the renderer-only fields left at `none`. `term_repeat(ch, n)` repeats a character, answering `\"\"` for `n < 1` so a caller need not guard, and `term_box_runs` / `term_fill_runs` build a border and a rectangle. They are `let` items, so an expression may call them and the document model never sees them — see [Documents, fields and blocks](lang_documents)."
+    li "**The output is one run, and the run is the layout.** Ten values become ten characters, so the bar is exactly `len(values)` cells wide and the caller can budget for it. Widths in this family are always counted like that, never measured."
+    li "**Colour by name, not by drawing.** The bars carry an ANSI name, so they resolve through the terminal's palette and survive `palette = :light`. That is how every stdlib control is built."
   }
 
   p "A default supplied as a field default — `lower = fn(…) …` rather than `lower: fn(…)` — means an individual instance may override it. That is rarely what you want for a control, but it is the same mechanism the stdlib uses, so nothing about your block is second class."
 
   h2 "Sizing, themes and the other targets"
 
-  p "A terminal's pixel size is fixed by the grid, not by the page. Each cell is `round(font_size × 0.6)` wide and `round(font_size × line_height)` tall — `font_size` defaults to `14` and `line_height` to `1.2` — with a `round(font_size × 0.45)` pad on every side and, when `chrome` is on, a `round(font_size × 1.7)` title bar above. A 40 × 6 terminal at the defaults is therefore 332 × 138 pixels. The SVG carries `max-width: 100%`, so a terminal wider than its column shrinks to fit rather than overflowing; drop `font_size` when you would rather it stayed sharp."
+  p "A terminal's pixel size is fixed by the grid, not by the page. `font_size` defaults to `14` and `line_height` to `1.2`. Each cell is `round(font_size × 0.6)` wide and `round(font_size × line_height)` tall. Around the grid sits a `round(font_size × 0.45)` pad, and above it a `round(font_size × 1.7)` title bar when `chrome` is on. A 40 × 6 terminal at the defaults is therefore 332 × 138 pixels. The SVG carries `max-width: 100%`, so a terminal wider than its column shrinks to fit rather than overflowing. Drop `font_size` when you would rather it stayed sharp."
 
   p "Colours come from three layers. The default is a dark terminal on the classic Tango sixteen. `palette = :light` flips the defaults to the site theme's light foreground and background — the named colours keep working, which is the whole point of naming them. `fg` and `bg` override the defaults outright, and a `class` list themes the wrapping element the way it themes any wdoc block; see [Themes and styling](wdoc_styling). Note that a plain, default-coloured cell deliberately carries no colour of its own in the SVG, so it inherits from the element — which is how a class-themed terminal works at all."
 
