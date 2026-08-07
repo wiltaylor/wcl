@@ -8,17 +8,6 @@ code_item code_crate_wcl {
   name      = "Module graph"
   summary   = "Top-level modules, their use-dependencies, and the workspace crates they import (tree-sitter over crates/wcl/src)."
   kind      = :module_graph
-  code_node n_cg_wcl_answer {
-    name = "answer"
-    kind = "module"
-    summary = "1 file, 9 pub items"
-    deps = [n_cg_wcl_xc_wcl_lang]
-  }
-  code_node n_cg_wcl_answer_tui {
-    name = "answer_tui"
-    kind = "module"
-    summary = "1 file, 3 pub items"
-  }
   code_node n_cg_wcl_diff {
     name = "diff"
     kind = "module"
@@ -80,7 +69,7 @@ code_item code_crate_wcl {
   code_node n_cg_wcl_xc_wcl_lang {
     name = "wcl_lang (crate)"
     kind = "extern_crate"
-    summary = "uses Block, DeclName, Decorator, Document, +24 more"
+    summary = "uses Block, Document, Value, ConnectionDecl, +24 more"
   }
   code_node n_cg_wcl_xc_wcl_wdoc {
     name = "wcl_wdoc (crate)"
@@ -549,184 +538,6 @@ code_item code_api_cli_commands {
       visibility = "crate"
     }
   }
-  code_node n_api_cli_commands_SelectKind {
-    name = "SelectKind"
-    kind = "enum"
-    summary = "src/answer.rs"
-    code_member m_n_api_cli_commands_SelectKind_Single {
-      signature = "Single"
-      kind = "variant"
-    }
-    code_member m_n_api_cli_commands_SelectKind_Multi {
-      signature = "Multi"
-      kind = "variant"
-    }
-    code_member m_n_api_cli_commands_SelectKind_Free {
-      signature = "Free"
-      kind = "variant"
-    }
-    code_member m_n_api_cli_commands_SelectKind_as_str {
-      signature = "fn as_str(self) -> &'static str"
-      kind = "method"
-      visibility = "crate"
-    }
-  }
-  code_node n_api_cli_commands_AnswerOption {
-    name = "AnswerOption"
-    kind = "struct"
-    summary = "src/answer.rs"
-    code_member m_n_api_cli_commands_AnswerOption_id {
-      signature = "id: String"
-      kind = "field"
-    }
-    code_member m_n_api_cli_commands_AnswerOption_label {
-      signature = "label: String"
-      kind = "field"
-    }
-    code_member m_n_api_cli_commands_AnswerOption_note {
-      signature = "note: Option<String>"
-      kind = "field"
-    }
-  }
-  code_node n_api_cli_commands_Question {
-    name = "Question"
-    kind = "struct"
-    summary = "src/answer.rs"
-    code_member m_n_api_cli_commands_Question_id {
-      signature = "id: String"
-      kind = "field"
-    }
-    code_member m_n_api_cli_commands_Question_file {
-      signature = "file: PathBuf"
-      kind = "field"
-    }
-    code_member m_n_api_cli_commands_Question_span {
-      signature = "span: Span"
-      kind = "field"
-    }
-    code_member m_n_api_cli_commands_Question_prompt {
-      signature = "prompt: String"
-      kind = "field"
-    }
-    code_member m_n_api_cli_commands_Question_kind {
-      signature = "kind: SelectKind"
-      kind = "field"
-      deps = [n_api_cli_commands_SelectKind]
-    }
-    code_member m_n_api_cli_commands_Question_options {
-      signature = "options: Vec<AnswerOption>"
-      kind = "field"
-      deps = [n_api_cli_commands_AnswerOption]
-    }
-    code_member m_n_api_cli_commands_Question_response_field {
-      signature = "response_field: String"
-      kind = "field"
-    }
-    code_member m_n_api_cli_commands_Question_status_field {
-      signature = "status_field: String"
-      kind = "field"
-    }
-    code_member m_n_api_cli_commands_Question_resolved {
-      signature = "resolved: String"
-      kind = "field"
-    }
-    code_member m_n_api_cli_commands_Question_skipped {
-      signature = "skipped: Option<String>"
-      kind = "field"
-    }
-  }
-  code_node n_api_cli_commands_Outcome {
-    name = "Outcome"
-    kind = "enum"
-    summary = "src/answer.rs"
-    code_member m_n_api_cli_commands_Outcome_Answer {
-      signature = "Answer(String)"
-      kind = "variant"
-    }
-    code_member m_n_api_cli_commands_Outcome_Skip {
-      signature = "Skip"
-      kind = "variant"
-    }
-  }
-  code_node n_api_cli_commands_answer_fns {
-    name = "answer"
-    kind = "fns"
-    summary = "src/answer.rs"
-    code_member m_n_api_cli_commands_answer_fns_pending_questions {
-      signature = "fn pending_questions(doc: &Document, root_file: &Path) -> (Vec<…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_cli_commands_Question]
-    }
-    code_member m_n_api_cli_commands_answer_fns_compose_response {
-      signature = "fn compose_response( kind: SelectKind, picked: &[&AnswerOption]…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_cli_commands_SelectKind, n_api_cli_commands_AnswerOption]
-    }
-    code_member m_n_api_cli_commands_answer_fns_record_outcome {
-      signature = "fn record_outcome( root_file: &Path, q: &Question, outcome: &Ou…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_cli_commands_Question, n_api_cli_commands_Outcome]
-    }
-    code_member m_n_api_cli_commands_answer_fns_run_answer {
-      signature = "fn run_answer( file: &Path, list: bool, id: Option<&str>, text:…"
-      kind = "fn"
-      visibility = "crate"
-    }
-    code_member m_n_api_cli_commands_answer_fns_question_json {
-      signature = "fn question_json(q: &Question) -> serde_json::Value"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_cli_commands_Question]
-    }
-  }
-  code_node n_api_cli_commands_Choice {
-    name = "Choice"
-    kind = "enum"
-    summary = "src/answer_tui.rs"
-    code_member m_n_api_cli_commands_Choice_Selection {
-      signature = "Selection(Vec<usize>, Option<String>)"
-      kind = "variant"
-    }
-    code_member m_n_api_cli_commands_Choice_Skip {
-      signature = "Skip"
-      kind = "variant"
-    }
-    code_member m_n_api_cli_commands_Choice_Later {
-      signature = "Later"
-      kind = "variant"
-    }
-    code_member m_n_api_cli_commands_Choice_Quit {
-      signature = "Quit"
-      kind = "variant"
-    }
-  }
-  code_node n_api_cli_commands_MenuItem {
-    name = "MenuItem"
-    kind = "struct"
-    summary = "src/answer_tui.rs"
-    code_member m_n_api_cli_commands_MenuItem_label {
-      signature = "label: String"
-      kind = "field"
-    }
-    code_member m_n_api_cli_commands_MenuItem_note {
-      signature = "note: Option<String>"
-      kind = "field"
-    }
-  }
-  code_node n_api_cli_commands_answer_tui_fns {
-    name = "answer_tui"
-    kind = "fns"
-    summary = "src/answer_tui.rs"
-    code_member m_n_api_cli_commands_answer_tui_fns_ask {
-      signature = "fn ask( prompt: &str, items: &[MenuItem], multi: bool, skippabl…"
-      kind = "fn"
-      visibility = "crate"
-      deps = [n_api_cli_commands_MenuItem, n_api_cli_commands_Choice]
-    }
-  }
   code_node n_api_cli_commands_ChangeOp {
     name = "ChangeOp"
     kind = "enum"
@@ -1061,10 +872,25 @@ code_item code_api_cli_commands {
       visibility = "crate"
     }
   }
-  code_node n_api_cli_commands_more {
-    name = "… +2 more"
-    kind = "overflow"
-    summary = "2 further public items — see the source."
+  code_node n_api_cli_commands_check_fns {
+    name = "check"
+    kind = "fns"
+    summary = "src/wskill/check.rs"
+    code_member m_n_api_cli_commands_check_fns_run {
+      signature = "fn run(entry: &Path) -> u8"
+      kind = "fn"
+      visibility = "crate"
+    }
+  }
+  code_node n_api_cli_commands_install_fns {
+    name = "install"
+    kind = "fns"
+    summary = "src/wskill/install.rs"
+    code_member m_n_api_cli_commands_install_fns_run {
+      signature = "fn run(entry: &Path, repo: &Path, check: bool) -> u8"
+      kind = "fn"
+      visibility = "crate"
+    }
   }
 }
 
@@ -9299,13 +9125,6 @@ code_item code_mod_wdoc_stdlib {
   name      = "Block vocabulary"
   summary   = "The block kinds each stdlib part declares — the stdlib public surface is its vocabulary."
   kind      = :class_diagram
-  code_node n_wdoc_stdlib_answer {
-    name = "answer"
-    members = [
-      "option",
-      "question",
-    ]
-  }
   code_node n_wdoc_stdlib_callout {
     name = "callout"
     members = [

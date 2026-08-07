@@ -1,6 +1,6 @@
 //! Block-level editing endpoints for the editor's Design mode (WYSIWYG).
 //!
-//! Every mutation composes the same pipeline `wcl set` / `wcl answer` use:
+//! Every mutation composes the same pipeline `wcl set` uses:
 //! [`parse_for_edit`] → span-addressed AST mutators ([`wcl_lang::edit`]) →
 //! [`wcl_format::to_source`] → [`crate::edit::commit`] (write →
 //! schema-validate → rollback). Requests address blocks by the byte spans

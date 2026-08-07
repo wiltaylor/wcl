@@ -69,10 +69,6 @@ specs:
 # Gates + both outputs.
 render: check-full book specs
 
-# Walk pending interview questions interactively and record answers.
-answer:
-    wcl answer plan.wcl
-
 # Live-preview the book.
 serve:
     wcl wdoc serve wdoc/book/main.wcl
@@ -125,7 +121,6 @@ file "schema/plan_schema.wcl" {
 // wplan schema — types for PRD planning documents.
 // Imported by plan.wcl; every data file is reached from there.
 import <wdoc.wcl>
-import <answer.wcl>
 
 // ---- state vocabularies -------------------------------------------------
 symbol_set PlanQuestionState { open answered dropped }
@@ -134,8 +129,14 @@ symbol_set PlanSpecState { todo in_progress implemented verified reviewed merged
 symbol_set PlanPriority { must should could wont }
 
 // ---- interview ----------------------------------------------------------
-@answerable(prompt = "question", response = "answer", status = "status",
-            pending = :open, resolved = :answered, skipped = :dropped)
+// A choice offered by a `question`. `label` falls back to the option's id.
+@block("option")
+type PlanQuestionOption {
+  @inline(0) id: identifier
+  label: utf8?
+  note: utf8?
+}
+
 @block("question")
 type PlanQuestion {
   @inline(0) id: identifier
@@ -143,9 +144,9 @@ type PlanQuestion {
   @default(:open) status: PlanQuestionState
   answer: utf8?
   // :single_select | :multi_select | :free_text (default). Options accelerate
-  // the common case; `wcl answer` always offers free text alongside them.
+  // the common case; free text is always available alongside them.
   kind: symbol?
-  @children("option") options: list<AnswerOption>
+  @children("option") options: list<PlanQuestionOption>
 }
 
 // ---- research -----------------------------------------------------------
@@ -422,8 +423,7 @@ file "questions.wcl" {
   content = <<'WPLAN_QUESTIONS_WCL'
 // Interview questions. The PRD may not be written while any question has
 // status :open (default). Record the user's answer verbatim in `answer`.
-// Answer via `just answer` (interactive), or non-interactively:
-//   wcl answer plan.wcl --id q_example --pick linux --text "..."
+// Then set `status = :answered`.
 // Give likely answers as options where you can - choices are faster for the
 // user and free text is always offered alongside.
 // question q_example {

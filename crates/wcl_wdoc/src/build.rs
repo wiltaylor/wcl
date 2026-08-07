@@ -109,10 +109,6 @@ pub fn schema_registry() -> Registry {
     );
     r.register("wdoc/edit_field.wcl", include_str!("../lib/edit_field.wcl"));
     r.register("wdoc/content.wcl", include_str!("../lib/content.wcl"));
-    // Guided answer mode. A top-level entry (not part of the wdoc prelude):
-    // a data document opts in with `import <answer.wcl>` alone, without
-    // pulling in the whole wdoc page/site vocabulary.
-    r.register("answer.wcl", include_str!("../lib/answer.wcl"));
     for extra in EXTRA_STDLIBS
         .read()
         .unwrap_or_else(|e| e.into_inner())
@@ -276,7 +272,7 @@ pub fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
 
 /// Open `file` as an evaluated [`Document`] exactly the way [`build`] does —
 /// the embedded wdoc schema registry plus the wdoc [`Environment`] — so callers
-/// outside the build (the `wcl editor` save/locate pipeline, `wcl answer`)
+/// outside the build (the `wcl editor` save/locate pipeline)
 /// introspect the same schemas (`@block` / `@table` / `@wdoc.file`) and
 /// resolve the same block kinds the build sees. A plain `Document::from_file`
 /// would miss the wdoc builtins and registry imports.
