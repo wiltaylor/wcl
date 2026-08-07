@@ -14,6 +14,8 @@ page wdoc_demo {
 
   p "It renders them twice over, in fact: once under the site's light palette and once under its dark one, side by side. A reader sees both without touching the theme toggle."
 
+  p "Every file and every command below was run before it was written down, and the two demos on this page are the block demonstrating itself. Type them and compare."
+
   h2 "A demo in one file"
 
   p "Save this as `demo.wcl`. It is complete — a site, a page and one `demo`:"
@@ -92,10 +94,18 @@ TEXT
 
   p "There is no limit of one child. A demo holding three `list` blocks prints all three as one listing and renders all three in each pane — which is how you compare variants of a block side by side, in one demo, rather than three."
 
-  callout "Write title as a field, not as a label" {
-    class = ["warning"]
-    body  = "`title` is declared `@inline(0)`, so `demo \"A tip\" { … }` parses and `wcl check` passes it. The renderer does not read it: it looks the field up by name, and a positional label is not a readable field (see [Documents, fields and blocks](lang_documents)). The caption is silently dropped. Write `title = \"A tip\"` inside the braces."
+  h3 "Write title as a field, not as a label"
+
+  p "`title` is declared `@inline(0)`, so the label form parses and checks green. Rewrite the demo at the top of this chapter as `demo \"A tip, both ways\" { … }` and nothing complains:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check demo.wcl
+OK
+TEXT
   }
+
+  p "The caption is gone from the page all the same. The renderer looks `title` up **by name**, and a positional label is not a readable field — the rule [Documents, fields and blocks](lang_documents) states, met here in the wild. Nothing warns you. Write `title = \"A tip, both ways\"` inside the braces."
 
   h2 "The two panes"
 
@@ -111,9 +121,9 @@ TEXT
 
   p "That is worth knowing because it is the more expensive of the two options and it was chosen deliberately. HTML content would re-theme for free from one render: the two wrappers redefine the custom properties, and the same markup picks up different colours in each. SVG content does not. A wireframe widget bakes its resolved palette into `fill` and `stroke` attributes in Rust rather than deferring to `currentColor`, because the PDF backend has no CSS to defer to. One render of a wireframe therefore carries one palette, and dropping that string into both panes would put dark-mode greys inside the light pane."
 
-  p "So the demo renderer flips the build's UI theme mode, renders the children, flips it back, and renders them again. Build a wireframe demo and read the two panes' `fill` attributes: they differ."
+  p "So the demo renderer flips the build's UI theme mode, renders the children, flips it back, and renders them again. Put a wireframe on a page — inside a `diagram`, since a `wf_*` widget is a diagram shape and not a page block — and read the two panes' `fill` attributes: they differ."
 
-  p "The cost of a second pass is the renderer's side effects, not the markup. Images, icons and videos register themselves as they render, and those registries are keyed by source, so the second pass adds nothing. A demo containing one `callout \"Tip\"` renders two lightbulb icons and the page's sprite sheet still holds exactly one `lucide-lightbulb` symbol."
+  p "The cost of a second pass is the renderer's side effects, not the markup. Images, icons and videos register themselves as they render, and those registries are keyed by source, so the second pass adds nothing. A demo containing one `callout \"Tip\"` renders two lightbulb icons and the site's `_wdoc/icons.svg` sprite sheet still holds exactly one `lucide-lightbulb` symbol."
 
   callout "Read the panes as siblings, not as a before and after" {
     class = ["info"]
@@ -146,7 +156,7 @@ TEXT
     body  = "The row stays a two-column grid either way; the flag only centres and fits the contents. What does stack both panes is the viewport: below `48rem` the grid collapses to one column for every demo, flagged or not. If you need to see a wide diagram at full size, that narrow-viewport layout is the only thing that gives it to you."
   }
 
-  p "Set the flag for anything in the diagram family — flowcharts, sequence and state diagrams, charts, timelines, tilemaps, wireframes. Leave it off for prose, tables, lists, callouts and code. See [The diagram canvas](wdoc_diagrams) and [Wireframes](wdoc_wireframe)."
+  p "Set the flag for anything in the diagram family — flowcharts, sequence and state diagrams, charts, timelines, tilemaps, wireframes. Leave it off for prose, tables, lists, callouts and code. Note that only a few of those are page blocks in their own right: a shape or a `wf_*` widget goes inside a `diagram`, and it is the `diagram` that is the demo's child. `demo { wf_button \"Save\" }` fails with `block kind 'wf_button' is not allowed inside 'demo'`. See [The diagram canvas](wdoc_diagrams) and [Wireframes](wdoc_wireframe)."
 
   h2 "What the example listing shows"
 
