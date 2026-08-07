@@ -227,7 +227,7 @@ TEXT
   p "An operand is an identifier, and resolving it means finding the block that answers to that name. The rule is two steps and a tie-break."
 
   list {
-    li "**Scope first, innermost out.** Starting with the block the statement is written in, each enclosing block is searched for a child that answers to the name. The first hit wins and the search stops."
+    li "**Scope first, innermost out.** Starting with the block the statement is written in, each enclosing block is searched for a descendant that answers to the name — its own children first, then deeper. The first hit wins and the search stops."
     li "**Then the document.** If no enclosing scope has it, one document-wide index answers — and that index holds every block at every depth, not only the top-level ones."
     li "**A block answers to its first label, else to its `id` field.** `service web { … }` answers to `web`. A block with no label but `id = \"web\"` answers to `web` too. A second or third label never identifies a block."
   }
@@ -369,7 +369,33 @@ TEXT
 
   h3 "No schema accepts the pair"
 
-  p "Both operands resolve, but no `connection` declaration admits their types. Add a `queue` block kind that no connection mentions, then point a service at it:"
+  p "Both operands resolve, but no `connection` declaration admits their types. Declare a `queue` kind that no connection mentions, then point a service at it:"
+
+  code wcl {
+    filename = "queues.wcl"
+    source = <<'WCL'
+# queues.wcl — a block kind no connection mentions.
+
+symbol_set EdgeKind { uses }
+
+@block("service") type Service { @inline(0) name: identifier }
+@block("queue")   type Queue   { @inline(0) name: identifier }
+
+connection DependsOn: Service -> Service : EdgeKind
+
+@document
+type Cfg {
+  @children("service")    services: list<Service>
+  @children("queue")      queues:   list<Queue>
+  @connections(DependsOn) edges:    list<DependsOn>
+}
+
+service web
+queue jobs
+
+web -> jobs
+WCL
+  }
 
   code text {
     source = <<'TEXT'
@@ -377,9 +403,9 @@ $ wcl check queues.wcl
 wcl::eval::schema_violation
 
   × no connection schema accepts 'Service -> Queue'
-    ╭─[queues.wcl:26:1]
- 25 │
- 26 │ web -> jobs
+    ╭─[queues.wcl:20:1]
+ 19 │
+ 20 │ web -> jobs
     · ─────┬─────
     ·      ╰── schema violation
     ╰────
@@ -394,6 +420,32 @@ TEXT
 
   p "Declare `DependsOn` and `TalksTo` with identical endpoints, and `web -> db` fits both:"
 
+  code wcl {
+    filename = "ambiguous.wcl"
+    source = <<'WCL'
+# ambiguous.wcl — two connections over one pair of types.
+
+symbol_set EdgeKind { uses }
+
+@block("service") type Service { @inline(0) name: identifier }
+
+connection DependsOn: Service -> Service : EdgeKind
+connection TalksTo:   Service -> Service : EdgeKind
+
+@document
+type Cfg {
+  @children("service")    services: list<Service>
+  @connections(DependsOn) deps:     list<DependsOn>
+  @connections(TalksTo)   calls:    list<TalksTo>
+}
+
+service web
+service db
+
+web -> db
+WCL
+  }
+
   code text {
     source = <<'TEXT'
 $ wcl check ambiguous.wcl
@@ -401,9 +453,9 @@ wcl::eval::schema_violation
 
   × connection 'Service -> Service' matches multiple schemas: DependsOn,
   │ TalksTo
-    ╭─[ambiguous.wcl:21:1]
- 20 │
- 21 │ web -> db
+    ╭─[ambiguous.wcl:20:1]
+ 19 │
+ 20 │ web -> db
     · ────┬────
     ·     ╰── schema violation
     ╰────
@@ -511,7 +563,7 @@ type Screen { @inline(0) id: identifier  title: utf8 }
 type Flow {
   @inline(0) id: identifier
   @ref("screen") entry: identifier         # one id
-  @ref("screen") steps: list<identifier>   # every element checked
+  @ref("screen") steps: list<identifier>   # a list, checked item by item
 }
 
 @document
@@ -576,15 +628,17 @@ TEXT
 
   table {
     rows:
-      | "Form"       | "Written as"                           | "What is checked"                                                                               | "What you get back"                                         | "Reach for it when" |
-      | "`@ref`"     | "`@ref(\"screen\") entry: identifier`" | "A block of that _kind_ exists with that id, anywhere in the document"                          | "The id, unchanged"                                         | "The id itself is the data, and one block names one other" |
-      | "`&T`"       | "`focus: &Drawable`"                   | "The target's _type_ satisfies `T` — structurally for an interface, nominally for a record type" | "A lazy path you can read the target's fields through"      | "You need the target's contents, not its name" |
-      | "Connection" | "`web -> db :uses`"                    | "Both ends name a block, exactly one schema accepts the pair of _types_, the kind is in the set" | "A projected list of `{source, destination, kind}` records" | "The document holds a graph, and something walks the edges" |
+      | "Form"       | "Written as"                           | "What is checked"                                                                                | "Checked by"           | "What you get back"                                         | "Reach for it when" |
+      | "`@ref`"     | "`@ref(\"screen\") entry: identifier`" | "A block of that _kind_ exists with that id, anywhere in the document"                           | "`wcl check`"          | "The id, unchanged"                                         | "The id itself is the data, and one block names one other" |
+      | "`&T`"       | "`focus: &Drawable`"                   | "The target's _type_ satisfies `T` — structurally for an interface, nominally for a record type" | "Whatever reads it"    | "A lazy path you can read the target's fields through"      | "You need the target's contents, not its name" |
+      | "Connection" | "`web -> db :uses`"                    | "Both ends name a block, exactly one schema accepts the pair of _types_, the kind is in the set" | "`wcl check`"          | "A projected list of `{source, destination, kind}` records" | "The document holds a graph, and something walks the edges" |
   }
 
   p "Put it as a question about where the relationship is written. `@ref` and `&T` go **on the block that points**, one field per relationship, and they read well when a block has a few named links: a flow has an entry screen. A connection goes **beside the blocks**, one line per edge, and it reads well when the edges outnumber the blocks and no single block owns them: a service graph, a diagram, a dependency set. Forty edges as forty `@ref` fields is a graph pretending to be a schema; forty arrows is a graph."
 
-  p "The three checks also differ in strength, and the order is worth being blunt about. `&T` is the strongest — it checks the target's type and hands you a value, so a wrong target fails on its shape rather than on its spelling. A connection is next: both ends must exist, and their types must fit a declared schema. `@ref` is the weakest — a kind and an id, matched as strings. Reach down that list only when the stronger form does not fit what you are modelling."
+  p "Mind the fourth column, because it is the difference you feel first. `@ref` and a connection are both **schema-pass** checks: `wcl check` refuses the document. `&T` is not. Its two readings run when the navigator is built, so `wcl check` prints `OK` on a `&Drawable` field pointing at a block with no `x`, and the failure appears as `<error: type 'Note' does not implement interface 'Drawable': missing field 'x'>` the moment `wcl parse` or a host reads through it. [Types](lang_types) has the warning in full."
+
+  p "What the checks catch also differs in strength. `&T` is the strongest thing checked — the target's whole type, not its spelling — but it is checked latest. A connection is next, and it is checked by `check`: both ends must exist, and their types must fit a declared schema. `@ref` is the weakest: a kind and an id, matched as strings. Reach down that list only when the stronger form does not fit what you are modelling."
 
   callout "wdoc's `connection` chapter is about drawing, not declaring" {
     class = ["note"]
