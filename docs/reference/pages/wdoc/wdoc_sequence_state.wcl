@@ -1,11 +1,525 @@
 // Chapter 34 — Sequence and state diagrams.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #189. Every file below was built with `wcl wdoc build`
+// before it was written down, and every `<svg …>` tag and error message
+// quoted here is copied from that output. The live figures repeat the
+// `code wcl` block above them verbatim; keep the two in step.
 page wdoc_sequence_state {
   title = "Sequence and state diagrams"
 
   h1 "Sequence and state diagrams"
 
-  p "Not written yet. This chapter covers `sequence_diagram` and `state_diagram`, and the one geometry lowering that serves every backend."
+  p "Two blocks in this book draw a system's behaviour rather than its parts. A `sequence_diagram` draws **one run** — who spoke to whom, in what order. A `state_diagram` draws **every run** — the states a thing can be in, and what moves it between them. This chapter covers both, the child blocks each takes, and the thing they share with no other block in the standard library: neither of them is drawn in Rust. They are the two page-level blocks whose WCL lowering computes the whole geometry and hands one `Content::Drawing` to every backend."
+
+  p "Neither block takes a coordinate. You declare participants and messages, or states and transitions, and the block works out where everything goes — from the order you wrote them in for a sequence, and from the graph you wrote for a lifecycle. Every file and every figure below was built before it was written down. Type them and compare."
+
+  h2 "A sequence, end to end"
+
+  p "Save this as `signup.wcl`. It is a whole site: the `import`, one `site`, one `page`, one figure."
+
+  code wcl {
+    filename = "signup.wcl"
+    source = <<'WCL'
+# signup.wcl — one page, one figure.
+import <wdoc.wcl>
+
+site signup {
+  title = "Sign-up"
+  toc { chapter "Signing up" { page = flow } }
+}
+
+page flow {
+  title = "Signing up"
+
+  h1 "Signing up"
+
+  sequence_diagram {
+    width = 700
+    desc  = "sign-up with email verification"
+
+    participant "visitor"  { name = "Visitor"  kind = :actor }
+    participant "web"      { name = "Web App" }
+    participant "accounts" { name = "Accounts" }
+    participant "postmark" { name = "Postmark" kind = :external }
+
+    message "m1" { from = "visitor"  to = "web"      text = "Fill in the form" }
+    message "m2" { from = "web"      to = "accounts" text = "POST /accounts" }
+    message "m3" { from = "accounts" to = "accounts" text = "mint verify token" }
+    message "m4" { from = "accounts" to = "postmark" text = "Send verify mail"  kind = :async }
+    message "m5" { from = "accounts" to = "web"      text = "202 Accepted"      kind = :reply }
+    message "m6" { from = "web"      to = "visitor"  text = "Check your inbox"  kind = :reply }
+
+    note "n1" { at = "m4"  text = "Queued, never awaited." }
+  }
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build signup.wcl --out _site
+wrote 1 page
+TEXT
+  }
+
+  p "`_site/flow.html` holds this figure:"
+
+  sequence_diagram {
+    width = 700
+    desc  = "sign-up with email verification"
+
+    participant "visitor"  { name = "Visitor"  kind = :actor }
+    participant "web"      { name = "Web App" }
+    participant "accounts" { name = "Accounts" }
+    participant "postmark" { name = "Postmark" kind = :external }
+
+    message "m1" { from = "visitor"  to = "web"      text = "Fill in the form" }
+    message "m2" { from = "web"      to = "accounts" text = "POST /accounts" }
+    message "m3" { from = "accounts" to = "accounts" text = "mint verify token" }
+    message "m4" { from = "accounts" to = "postmark" text = "Send verify mail"  kind = :async }
+    message "m5" { from = "accounts" to = "web"      text = "202 Accepted"      kind = :reply }
+    message "m6" { from = "web"      to = "visitor"  text = "Check your inbox"  kind = :reply }
+
+    note "n1" { at = "m4"  text = "Queued, never awaited." }
+  }
+
+  p "Four heads across the top, in the order the `participant` blocks appear. A dashed lifeline under each, running a row and a half past the last message. Six rows, in the order the `message` blocks appear. A note in the margin, level with the message it names. Nothing in the file said where any of that goes."
+
+  p "Move the `participant \"postmark\"` block above `participant \"accounts\"` and the two columns swap. Move a `message` and its row moves. That is the whole layout model: **declaration order is the picture**."
+
+  h2 "Participants"
+
+  p "A `participant` is a column. Its label is its id — the string `message` blocks name in `from` and `to`, and the only handle it has. `name` is what the head displays, and defaults to the id, so `participant \"web\"` on its own draws a box reading `web`."
+
+  p "`kind` picks the head shape:"
+
+  table {
+    rows:
+      | "`kind`"      | "Head"                                    | "Reach for it when" |
+      | "`:box`"      | "A filled box (the default)"              | "A component of the system you are describing" |
+      | "`:actor`"    | "A stick figure with the name underneath" | "A person, or anything outside that has intent" |
+      | "`:external`" | "A dashed outline"                        | "A third party you call but do not own" |
+  }
+
+  p "Two more fields tune the column. `link` wraps the head in an in-site link, written the way a link target is written anywhere else: a bare page name, or `site:page`. `class` **replaces** the theme's classes on the head shapes rather than adding to them, so a head you style yourself is a head you style completely; see [Themes and styling](wdoc_styling) first."
+
+  h2 "Messages"
+
+  p "A `message` is a row. Its label is its id, which `note` blocks name in `at`. `from` and `to` are participant ids, `text` is the label drawn above the arrow, and `kind` picks the arrow:"
+
+  table {
+    rows:
+      | "`kind`"   | "Arrow"                             | "Convention" |
+      | "`:sync`"  | "Solid line, filled head (default)" | "A call the sender waits on" |
+      | "`:async`" | "Solid line, open head"             | "A message the sender does not wait on" |
+      | "`:reply`" | "Dashed line, open head"            | "The answer to an earlier message" |
+  }
+
+  p "A message whose `from` and `to` name the **same** participant is not an error and is not a zero-length arrow: it draws the standard self-message loop out of the lifeline and back into it. `text` is optional; leave it off and the arrow carries no label."
+
+  p "One figure exercising all three arrows, both non-default heads, and a self-message:"
+
+  code wcl {
+    source = <<'WCL'
+sequence_diagram {
+  width = 540
+
+  participant "author"  { name = "Author"  kind = :actor }
+  participant "store"   { name = "Store" }
+  participant "scanner" { name = "Scanner" kind = :external }
+
+  message "a" { from = "author"  to = "store"   text = "upload" }
+  message "b" { from = "store"   to = "scanner" text = "scan"     kind = :async }
+  message "c" { from = "scanner" to = "store"   text = "clean"    kind = :reply }
+  message "d" { from = "store"   to = "store"   text = "publish" }
+  message "e" { from = "store"   to = "author"  text = "link"     kind = :reply }
+
+  note "n1" { at = "b"  text = "Open head: nothing waits." }
+}
+WCL
+  }
+
+  sequence_diagram {
+    width = 540
+
+    participant "author"  { name = "Author"  kind = :actor }
+    participant "store"   { name = "Store" }
+    participant "scanner" { name = "Scanner" kind = :external }
+
+    message "a" { from = "author"  to = "store"   text = "upload" }
+    message "b" { from = "store"   to = "scanner" text = "scan"     kind = :async }
+    message "c" { from = "scanner" to = "store"   text = "clean"    kind = :reply }
+    message "d" { from = "store"   to = "store"   text = "publish" }
+    message "e" { from = "store"   to = "author"  text = "link"     kind = :reply }
+
+    note "n1" { at = "b"  text = "Open head: nothing waits." }
+  }
+
+  h2 "Notes"
+
+  p "A `note` puts a sentence in the margin beside one step. `at` is the id of the message it belongs to, and the box lands at that message's row, out past the last lifeline. `text` is the sentence — the box is a fixed 132 by 28 units, so treat it as a caption and not as a place for a paragraph."
+
+  p "A note cannot float free: `at` is required, and the message it names has to exist. There is no note anchored to a participant, and none spanning a range of rows."
+
+  h2 "Sizing a sequence diagram"
+
+  p "Three optional fields set the geometry, in user units, before anything is scaled: `col_width` (the distance between lifelines, default 140), `row_height` (the distance between message rows, default 44) and `header_height` (the y of the first row, below the heads, default 64). Raise `col_width` when long message labels collide; raise `row_height` when the rows feel cramped."
+
+  p "`width` is a different kind of knob, and the one that surprises people. It is the **rendered** width of the `<svg>`, not a crop and not a maximum. The drawing is fitted to its own content first; `width` then scales that fitted box, and the height follows the aspect ratio. Put the same exchange on a page twice, once at the default width and once at 300:"
+
+  code wcl {
+    filename = "sizing.wcl"
+    source = <<'WCL'
+# sizing.wcl — one exchange, two widths. Site and page as in signup.wcl.
+page sizes {
+  title = "Sizing"
+
+  h1 "Sizing"
+
+  sequence_diagram {
+    participant "probe" { name = "Probe" }
+    participant "api"   { name = "API" }
+    message "m1" { from = "probe" to = "api"   text = "GET /health" }
+    message "m2" { from = "api"   to = "probe" text = "200 OK"  kind = :reply }
+  }
+
+  sequence_diagram {
+    width = 300
+    participant "probe" { name = "Probe" }
+    participant "api"   { name = "API" }
+    message "m1" { from = "probe" to = "api"   text = "GET /health" }
+    message "m2" { from = "api"   to = "probe" text = "200 OK"  kind = :reply }
+  }
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build sizing.wcl --out _site
+wrote 1 page
+$ grep -o '<svg[^>]*>' _site/sizes.html
+<svg … width="760" height="518" viewBox="0 -7 280 191">
+<svg … width="300" height="205" viewBox="0 -7 280 191">
+TEXT
+  }
+
+  p "One `viewBox`, two rendered boxes. The default 760 asks for a figure two and a half times the size its content needs, so the height goes with it and a two-message exchange fills half a screen. Setting `width` near the figure's natural size is the fix; there is nothing to crop and nothing to letterbox."
+
+  callout "The height is never yours to set" {
+    class = ["note"]
+    body  = "`sequence_diagram` and `state_diagram` declare `width` and no `height`. The content IR's `Drawing` node does carry an optional height, and these two blocks never fill it in — the aspect ratio of the fitted content decides, always. If a figure is too tall, it has too much in it, or `width` is too large."
+  }
+
+  h2 "A lifecycle, end to end"
+
+  p "The second block draws the other picture. Save this as `review.wcl`:"
+
+  code wcl {
+    filename = "review.wcl"
+    source = <<'WCL'
+# review.wcl — the review lifecycle.
+import <wdoc.wcl>
+
+site review {
+  title = "Review"
+  toc { chapter "The review lifecycle" { page = lifecycle } }
+}
+
+page lifecycle {
+  title = "The review lifecycle"
+
+  h1 "The review lifecycle"
+
+  state_diagram {
+    width     = 640
+    direction = :left_to_right
+    layer_gap = 170
+    desc      = "review lifecycle"
+
+    state "draft"     { name = "Draft"     initial = true }
+    state "review"    { name = "In review" }
+    state "published" { name = "Published" final = true }
+    state "withdrawn" { name = "Withdrawn" final = true }
+
+    transition "t1" { from = "draft"  to = "review"    trigger = "submitted" }
+    transition "t2" { from = "review" to = "published" trigger = "approved"  guard = "two sign-offs" }
+    transition "t3" { from = "draft"  to = "withdrawn" trigger = "author deletes" }
+    transition "t4" { from = "review" to = "review"    trigger = "comment added" }
+  }
+}
+WCL
+  }
+
+  state_diagram {
+    width     = 640
+    direction = :left_to_right
+    layer_gap = 170
+    desc      = "review lifecycle"
+
+    state "draft"     { name = "Draft"     initial = true }
+    state "review"    { name = "In review" }
+    state "published" { name = "Published" final = true }
+    state "withdrawn" { name = "Withdrawn" final = true }
+
+    transition "t1" { from = "draft"  to = "review"    trigger = "submitted" }
+    transition "t2" { from = "review" to = "published" trigger = "approved"  guard = "two sign-offs" }
+    transition "t3" { from = "draft"  to = "withdrawn" trigger = "author deletes" }
+    transition "t4" { from = "review" to = "review"    trigger = "comment added" }
+  }
+
+  p "Again, no coordinates — but this time the order you wrote the states in is **not** the layout. `Draft` is on the left because it is the entry state, and `Published` is two columns further right because two transitions separate them. `Withdrawn` is one column in, level with `In review`, because it is one transition from `Draft`. The boxes fell where the transitions put them. The one number that is a choice here is `layer_gap`: at the default 64 these edge labels are longer than the space between two ranks and print across the boxes. [Direction and spacing](#direction-and-spacing) covers it."
+
+  h2 "States"
+
+  p "A `state` is a box. Its label is its id, the handle `transition` blocks name in `from` and `to`; `name` is the display text and defaults to the id. Two booleans mark the ends of the life:"
+
+  list {
+    li "`initial = true` draws the filled entry dot with a short arrow into the box — the pseudo-state a lifecycle starts at. It also seeds the ranking; see [How states are ranked](#how-states-are-ranked)."
+    li "`final = true` draws the second inner border, the conventional marker for a state nothing leaves."
+  }
+
+  p "Both are ordinary optional fields, so more than one state may carry either. Several `initial` states rank together at the left (or the top), which is how you draw a machine with two entry points."
+
+  p "`width` and `height` default to 110 and 44 and are set per state, for the one whose name will not fit — but the grid they sit in is not. The layout's cell is the **widest** and **tallest** state in the diagram, so one long box spaces every box out. Give a state a bigger box when its name needs one, not to single it out."
+
+  p "`link` makes the box a clickable in-site link, exactly as it does on a participant, and `class` replaces the theme's classes on the box."
+
+  h3 "Pinning a state by hand"
+
+  p "A state with **both** `x` and `y` opts out of auto-layout and sits where you put it. One without the other does not: the test is `x != none && y != none`, so a lone `x` is ignored and the state ranks with the rest. Pinning is the escape hatch for the one box the ranking puts somewhere unreadable — pin every state and you have given up the feature."
+
+  h2 "Transitions"
+
+  p "A `transition` is an edge with two strings on it. `trigger` names the event that fires it; `guard` names the condition that has to hold for the event to count. Both are optional, and together they print at the middle of the arrow in the notation every state chart uses — the trigger, then the guard in square brackets:"
+
+  code wcl {
+    source = <<'WCL'
+transition "t2" {
+  from    = "review"
+  to      = "published"
+  trigger = "approved"
+  guard   = "two sign-offs"
+}
+WCL
+  }
+
+  p "That draws `approved [two sign-offs]`. A transition with no `guard` draws the trigger alone; one with neither draws an unlabelled arrow. `from` and `to` naming the same state draws a self-loop against the side of the box — its east side under `:top_to_bottom` flow, its north side under `:left_to_right`, in both cases the side the outgoing edges do not already use."
+
+  callout "Why not a connection statement?" {
+    class = ["info"]
+    body  = "WCL has a `connection` form — `review -> published :approved` — and [Connections](lang_connections) covers it. It is the wrong tool here. A connection joins two endpoints under one symbol from a declared vocabulary; a transition needs two free strings that reach the renderer as text, and a stable id for anything else to point at. Written as a block, `trigger` and `guard` are ordinary declared fields the lowering reads like any other."
+  }
+
+  h2 "How states are ranked"
+
+  p "Everything the auto-layout does comes out of the transition graph. Every state gets a **rank**, and the rank is its position along the flow axis:"
+
+  list {
+    li "**Seeds** rank 0. Those are the states with `initial = true`. If no state declares one, every state with no incoming transition from another state seeds instead. If there are none of those either — a machine that is one pure cycle — the first state declared does."
+    li "**Everything else is relaxed outwards.** The transitions are walked in declaration order, over and over; a transition whose source already has a rank and whose target does not gives the target the source's rank plus one. A rank, once set, is never changed."
+    li "**Within a rank.** States sharing a rank stack along the cross axis in declaration order."
+    li "**Islands.** A state no seed reaches — a disconnected fragment — ranks 0, alongside the seeds."
+  }
+
+  p "Read the second rule carefully, because it is not shortest-path ranking. The **first** transition to reach a state wins, and \"first\" means the order you wrote the transitions in. Take three states `a`, `b`, `c`, with `a` initial, and three transitions: `a` to `b`, `b` to `c`, `a` to `c`. In that order `c` ranks 2, one further out than `b`. Move the `a` to `c` transition to the top of the block and the same graph ranks `c` at 1, level with `b`. Source order moves boxes in a state diagram too — through the transitions, rather than through the states."
+
+  p "A transition whose target ranks **before** its source is a back-edge: the closing transition of a cycle. It is not drawn through the diagram. It routes around the far side of it, in a lane of its own, so several back-edges do not overlap and none of them cuts across a box. Retry loops are the common case:"
+
+  code wcl {
+    source = <<'WCL'
+state_diagram {
+  width = 460
+  desc  = "job lifecycle"
+
+  state "queued"  { name = "Queued"  initial = true }
+  state "running" { name = "Running" }
+  state "failed"  { name = "Failed" }
+  state "done"    { name = "Done"    final = true }
+
+  transition "t1" { from = "queued"  to = "running" trigger = "worker picks up" }
+  transition "t2" { from = "running" to = "done"    trigger = "exit 0" }
+  transition "t3" { from = "running" to = "failed"  trigger = "exit != 0" }
+  transition "t4" { from = "failed"  to = "queued"  trigger = "retry"  guard = "attempts < 3" }
+}
+WCL
+  }
+
+  state_diagram {
+    width = 460
+    desc  = "job lifecycle"
+
+    state "queued"  { name = "Queued"  initial = true }
+    state "running" { name = "Running" }
+    state "failed"  { name = "Failed" }
+    state "done"    { name = "Done"    final = true }
+
+    transition "t1" { from = "queued"  to = "running" trigger = "worker picks up" }
+    transition "t2" { from = "running" to = "done"    trigger = "exit 0" }
+    transition "t3" { from = "running" to = "failed"  trigger = "exit != 0" }
+    transition "t4" { from = "failed"  to = "queued"  trigger = "retry"  guard = "attempts < 3" }
+  }
+
+  p "`Done` and `Failed` share a rank because both are one step from `Running`, and they stack in the order their `state` blocks were written. `retry [attempts < 3]` leaves `Failed` sideways, runs up a lane east of every box, and comes back into `Queued` from the right — around the figure, not through it."
+
+  h3 "Direction and spacing"
+
+  p "`direction` chooses the flow axis: `:top_to_bottom` is the default, and `:left_to_right` turns the figure on its side. The field is declared as a plain `symbol` rather than a two-value vocabulary, so a misspelt direction is not a build error — anything that is not exactly `:left_to_right` lays out top to bottom. `layer_gap` (default 64) is the space between ranks and `node_gap` (default 48) the space between states inside one. Widen the first when edge labels crowd, the second when boxes in a rank touch."
+
+  h2 "Unknown ids are build errors"
+
+  p "Both blocks join their children by id, and both refuse a name that resolves to nothing. This matters more than it sounds: a figure that fits its own content would happily draw an arrow to an off-grid coordinate and let you ship the picture. Instead the build stops and names the child that lied:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build signup.wcl --out _site        # message "m4" to = "postmar"
+wcl::eval::user_error
+
+  × error: sequence message 'm4' references unknown participant 'postmar'
+
+$ wcl wdoc build signup.wcl --out _site        # note "n1" at = "m9"
+wcl::eval::user_error
+
+  × error: note 'n1' is anchored to unknown message 'm9'
+
+$ wcl wdoc build review.wcl --out _site        # transition "t3" to = "withdrawnn"
+wcl::eval::user_error
+
+  × error: transition 't3' references unknown state 'withdrawnn'
+TEXT
+  }
+
+  p "Note what these are: `user_error`, raised by an `error(…)` call inside the lowering, not a schema violation. The schema cannot catch them. `from`, `to` and `at` are declared as `utf8`, and no rule in the type system says one string has to match another block's label. See [Schemas](lang_schemas) for the checks that do run before evaluation."
+
+  h2 "One geometry, every backend"
+
+  p "Both blocks are page-level content: they extend `ContentBlock`, so they sit wherever a paragraph sits — straight in a `page`, inside a `column`, inside a component's slot. Neither is a shape. Put one inside a `diagram` and the schema stops you:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build signup.wcl --out _site        # the figure wrapped in a diagram
+wcl::eval::schema_violation
+
+  × block kind 'sequence_diagram' is not allowed inside 'diagram'
+TEXT
+  }
+
+  p "What makes them worth a chapter of their own is how they are drawn. Neither is `@native`: no backend has a rendering arm for either kind, and no Rust function knows the word `participant`. Each block declares a `lower` — an ordinary WCL function, in the standard library's `sequence.wcl` and `statechart.wcl` — that turns the child blocks into shapes and returns exactly one node of the content IR:"
+
+  code wcl {
+    source = <<'WCL'
+# The tail of `sequence_diagram`'s lowering, in the wdoc standard library.
+lower = fn(s: SequenceDiagram) -> list<Content> {
+  # … heads, lifelines, message arrows and notes, all computed above …
+  [Content::Drawing {
+    shapes: flatten([heads, lifelines, msgs, notes]),
+    width:  s.width,
+    desc:   s.desc ?? "sequence diagram",
+    id:     s.id,
+    class:  s.class,
+  }]
+}
+WCL
+  }
+
+  p "`shapes` is a `list<Svg>` — the same seven fundamentals the diagram canvas draws with: `Rect`, `Circle`, `Line`, `Polyline`, `Polygon`, `Label` and `Link`. See [The diagram canvas](wdoc_diagrams). A `:box` head is a `Rect` with a `Label` in the middle of it; an `:actor` head is a `Circle`, two `Line`s and a `Polyline`, with the `Label` underneath; a `:sync` arrow is a `Line` and a filled `Polygon`; a `:reply` arrow is that line with a dash pattern and an open `Polyline` chevron. Every number in them is arithmetic over `col_width`, `row_height` and a child's index in its list."
+
+  p "The geometry is therefore computed **once**, in WCL, before any backend is chosen. What a backend receives is a `Drawing`: a list of typed shapes, a width, and an accessible description. All of them hand it to the same fitter, `fit_content_drawing` in `render/svg/standalone.rs`, which unions the shapes' bounding boxes, pads the union by 10 units, and emits a self-contained `<svg>` whose `viewBox` is that padded union and whose height is `width × viewBox height ÷ viewBox width`."
+
+  p "The proof is that the outputs agree. Build `signup.wcl` as a site and then as Markdown, and compare the `<svg>` each produced:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build signup.wcl --out _site
+wrote 1 page
+$ grep -o '<svg[^>]*>' _site/flow.html
+<svg role="img" aria-label="sign-up with email verification"
+     xmlns="http://www.w3.org/2000/svg"
+     width="700" height="383" viewBox="38.825 -7 671.175 367">
+
+$ wcl wdoc markdown signup.wcl --out _md
+wrote 1 page
+$ cat _md/flow.md
+# Signing up
+
+![sign-up with email verification](_wdoc/flow-drawing-1.svg)
+$ grep -o '<svg[^>]*>' _md/_wdoc/flow-drawing-1.svg
+<svg role="img" aria-label="sign-up with email verification"
+     xmlns="http://www.w3.org/2000/svg"
+     width="700" height="383" viewBox="38.825 -7 671.175 367">
+TEXT
+  }
+
+  p "The same `viewBox` and the same fitted height, one written inline into the page and one written out as a standalone `.svg` the Markdown references as an image. The PDF backend takes the third route to the same place: it asks the same fitter for the same string and draws it onto the page. [Output targets](wdoc_outputs) covers all four targets."
+
+  p "Two things follow from the geometry being WCL rather than Rust. The first is that `desc` earns its keep: it becomes the `<svg>`'s `role=\"img\"` accessible name and its `<title>`, and in Markdown it becomes the image's alt text. Omit it and the figure is described as `sequence diagram` or `state diagram`. The second is that an empty figure is not a crash — with no participants, or no states, nothing carries geometry, so the fitter falls back to a strip 40 units tall rather than a full-width square of nothing."
+
+  callout "Nothing here is private" {
+    class = ["info"]
+    body  = "Everything the two lowerings use is available to a block you declare yourself: `extends ContentBlock`, `@children` slots, the `Svg` vocabulary and `Content::Drawing`. A block of your own that computes shapes and returns a `Drawing` reaches every backend the same way, and needs no Rust at all. Pick it a name of its own, though — the built-in kind names are reserved, and re-declaring `sequence_diagram` is a build error. [Writing your own blocks](wdoc_extending) walks that path end to end."
+  }
+
+  h2 "Which block to reach for"
+
+  p "The two look alike in a table of contents and answer different questions. Sequence: what happened, in order, on one trip through the system. State: what one thing can be, over its whole life."
+
+  table {
+    rows:
+      | ""                      | "`sequence_diagram`"                      | "`state_diagram`" |
+      | "Draws"                 | "One run through the system"              | "Every run, as a graph" |
+      | "Reading axes"          | "Participants across, time down"          | "Ranks along `direction`" |
+      | "Children"              | "`participant`, `message`, `note`"        | "`state`, `transition`" |
+      | "Layout comes from"     | "Declaration order, both axes"            | "The transition graph, walked in transition declaration order" |
+      | "Reordering the source" | "Moves a column or a row"                 | "Re-stacks a rank, and can re-rank a state" |
+      | "Edge payload"          | "`text`, `kind`"                          | "`trigger`, `guard`, drawn as `trigger [guard]`" |
+      | "Self-edge"             | "`from == to` draws a self-message loop"  | "`from == to` draws a loop on the box's free side" |
+      | "Cycles"                | "Not expressible — time only runs down"   | "Back-edges route around the figure" |
+      | "Manual placement"      | "None"                                    | "Per state, with both `x` and `y`" |
+      | "Annotation"            | "`note`, anchored to a message"           | "None — put it in the trigger or the guard" |
+      | "Default `width`"       | "760"                                     | "640" |
+  }
+
+  p "When a picture needs both — a protocol whose messages depend on which state the peer is in — draw two figures on one page rather than reaching for a third block. Neither block nests in the other."
+
+  h2 "Figures from data"
+
+  p "The child blocks fill ordinary `@children` slots, so a slot also takes a computed list. A scenario model, or a state machine you already hold as data, can generate its own figure:"
+
+  code wcl {
+    source = <<'WCL'
+sequence_diagram {
+  width = 700
+
+  # The one column that is always there, written by hand …
+  participant "visitor" { name = "Visitor"  kind = :actor }
+  # … and the services this trace happened to touch, spliced in after it.
+  participants = map(trace.services, fn(s: Service) -> Participant {
+    { id: s.name, name: s.label }
+  })
+  messages = map(trace.calls, fn(c: Call) -> Message {
+    { id: c.id, from: c.caller, to: c.callee, text: c.method }
+  })
+}
+
+state_diagram {
+  states      = map(fsm.nodes, fn(n: Node) -> State { { id: n.name, initial: n.entry } })
+  transitions = map(fsm.arcs,  fn(a: Arc) -> Transition {
+    { id: a.name, from: a.tail, to: a.head, trigger: a.on }
+  })
+}
+WCL
+  }
+
+  p "The field name is the plural one the schema declares — `participants`, `messages`, `notes`, `states`, `transitions` — and a bare record becomes the child type by its shape. The two spellings mix inside one block: write the fixed participants as `participant` blocks, splice the generated ones into `participants`, and the blocks come first. [Data views](wdoc_data_views) covers the pattern, and [Functions](lang_functions) the `fn` literal."
+
+  h2 "Where to go next"
+
+  list {
+    li "[The diagram canvas](wdoc_diagrams) — the `diagram` block, the shapes these two lowerings emit, and the layout modes."
+    li "[Connections and routing](wdoc_diagram_connections) — edges on the canvas, where a transition's arrow has a much richer cousin."
+    li "[Flowcharts and swimlanes](wdoc_flowcharts) — the third behaviour diagram: a process, rather than an interaction or a lifecycle."
+    li "[Writing your own blocks](wdoc_extending) — `extends ContentBlock`, `lower`, and returning a `Content::Drawing` of your own."
+    li "[Output targets](wdoc_outputs) — how one drawing becomes HTML, PDF, Markdown and a skill folder."
+    li "[Themes and styling](wdoc_styling) — the theme classes the heads, lifelines, boxes and edge labels carry."
+  }
 }
