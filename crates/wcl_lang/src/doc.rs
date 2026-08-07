@@ -1762,10 +1762,10 @@ impl Document {
     /// [`Document::resolve`] for a reference written in a source whose
     /// namespace is `file_ns`: the name resolves *within its declaring
     /// namespace first*. This is what keeps two same-named types in
-    /// different namespaces apart — a WAD's `wcl.wad.Container` and wdoc's
-    /// diagram `wdoc.Container` are both named `Container`, and resolving a
-    /// `wcl.wad` field's type from the root namespace can answer the wrong
-    /// one.
+    /// different namespaces apart — a user schema's `acme.Container` and
+    /// wdoc's diagram `wdoc.Container` are both named `Container`, and
+    /// resolving an `acme` field's type from the root namespace can answer
+    /// the wrong one.
     pub fn resolve_in<'a>(&'a self, t: &'a TypeRef, file_ns: &[String]) -> ResolvedType<'a> {
         match t {
             TypeRef::Builtin(b) => ResolvedType::Builtin(*b),
@@ -2160,8 +2160,8 @@ impl Document {
     /// where at least one side is a `@child`/`@children` gather slot.
     /// The merge (`doc_schemas_for_ns`) resolves such a name first-wins,
     /// so the shadowed schema's gathered blocks silently vanish from any
-    /// template iterating the field — the failure mode that forced the
-    /// WAD schema to rename its `component` gather to `sw_components`.
+    /// template iterating the field — the failure mode that once forced a
+    /// real schema to rename its `component` gather to `sw_components`.
     /// Pairs are checked across *all* co-governing declarations (not
     /// just root-vs-imported): `is_imported` means "from an imported
     /// file", so two library schemas (e.g. wdoc's `Site` and a base

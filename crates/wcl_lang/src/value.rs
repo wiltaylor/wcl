@@ -45,7 +45,7 @@ pub enum Value {
     /// Lists share their storage (`Arc`): WCL values are immutable, so
     /// a reference to a cached list (a memoised document-level `let`,
     /// a field value, a builtin argument) is a pointer copy, not a
-    /// deep clone. Before this, every reference deep-cloned — wad-sized
+    /// deep clone. Before this, every reference deep-cloned — book-sized
     /// documents spent ~all of their build inside those clones
     /// (PERF-wdoc-let-memoisation.md). Use [`Value::list`] to build
     /// one and [`std::sync::Arc::unwrap_or_clone`] to mutate.

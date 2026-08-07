@@ -138,8 +138,8 @@ impl<'a> TypeDecl<'a> {
     /// The `@child` / `@children` families this type declares, in field
     /// order. Each family's schema resolves through the declaring field's
     /// own type, so a nested kind whose name is shared across namespaces
-    /// (a WAD `container` vs wdoc's diagram-grouping shape) resolves to the
-    /// one the field actually names.
+    /// (an `acme` `container` vs wdoc's diagram-grouping shape) resolves to
+    /// the one the field actually names.
     pub fn child_families(&self) -> Vec<ChildFamily<'a>> {
         let mut out = Vec::new();
         for f in self.effective_fields() {

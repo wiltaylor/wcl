@@ -1,5 +1,0 @@
-// View data hub — user personas, their access grants (security controls
-// only), and their use cases.
-namespace wcl.wad
-import "./personas.wcl"
-import "./use_cases.wcl"

@@ -1,4 +1,0 @@
-// View data hub — doc_items: the documentation artefacts the project ships.
-namespace wcl.wad
-
-import "./documentation.wcl"

@@ -4,8 +4,9 @@
 //! (`doc_schemas_for_ns`), and the merge resolves a field name
 //! first-wins. When the colliding field is a `@child`/`@children`
 //! gather slot, the shadowed schema's gathered blocks silently vanish
-//! from templates iterating it — the failure mode that forced the WAD
-//! schema's `sw_components` rename. These tests pin the
+//! from templates iterating it — the failure mode that once forced a real
+//! schema to rename its `component` gather to `sw_components`. These tests
+//! pin the
 //! `DocumentFieldShadow` warning: when it fires, where it anchors, and
 //! that it never leaks into `schema_errors()` (which gates builds).
 
@@ -82,7 +83,7 @@ fn root_gather_field_shadowing_imported_one_warns() {
 
 #[test]
 fn two_imported_schemas_shadowing_each_other_warn() {
-    // The WAD shape: both @documents live in imported files (the base
+    // The two-library shape: both @documents live in imported files (the base
     // schema is imported from disk too), so a root-vs-imported rule
     // would miss this. The warning anchors at the later declaration.
     let mut reg = Registry::new();
