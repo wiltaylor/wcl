@@ -1,11 +1,917 @@
 // Chapter 12 — How a document evaluates.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #170. Every command in this chapter was run against the
+// `wcl` CLI before it was written down; the outputs are transcripts, not
+// paraphrase. This chapter has no older concept unit behind it — it is
+// written from `crates/wcl_lang` directly.
 page lang_evaluation {
   title = "How a document evaluates"
 
   h1 "How a document evaluates"
 
-  p "Not written yet. This chapter covers the evaluate-and-edit split, lazy fields, cycle detection, JSON serialization and the error model."
+  p "A WCL document does not run. It answers questions. Nothing on the right of an `=` is computed until something demands that field, and once a field has been demanded it never computes again. This chapter is about that machinery: the two ways a file can be opened, the order things really happen in, how a name finds its value, what the document model shows a consumer and what it keeps back, and the three families of error you can get out of a file."
+
+  p "Every file and every command below was run before it was written down. Type them and compare."
+
+  h2 "Two doors into one file"
+
+  p "There are exactly two ways to open a `.wcl` file, and a program picks one per parse. The **evaluating door** (`Document::open`) gives you a lazy, read-only view: fields compute on demand, values cache, and the tree is otherwise immutable. The **editing door** (`parse_for_edit`) gives you an owned syntax tree with public fields: you walk it, change it, print it back to disk, and nothing is ever evaluated."
+
+  p "One file shows both. Save it as `estate.wcl`:"
+
+  code wcl {
+    filename = "estate.wcl"
+    source = <<'WCL'
+# Who runs what.
+@block("service")
+type Service {
+  @inline(0) name: identifier
+  port:     u32
+  region:   utf8
+  budget:   u32
+}
+
+@document
+type Estate {
+  owner:  utf8
+  region: utf8
+  @children("service") services: list<Service>
+}
+
+let org = "acme"
+
+owner  = org                       # the team that carries the pager
+region = "us-east-1"
+
+service web {
+  port   = 8080u32
+  region = "eu-west-1"
+  budget = 100u32 / 0u32
+}
+WCL
+  }
+
+  p "`wcl fmt` goes through the editing door. It parses, prints and stops:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl fmt estate.wcl
+# Who runs what.
+@block("service")
+type Service {
+  @inline(0) name: identifier
+  port: u32
+  region: utf8
+  budget: u32
+}
+
+@document
+type Estate {
+  owner: utf8
+  region: utf8
+  @children("service") services: list<Service>
+}
+
+let org = "acme"
+
+owner = org  # the team that carries the pager
+region = "us-east-1"
+
+service web {
+  port = 8080u32
+  region = "eu-west-1"
+  budget = 100u32 / 0u32
+}
+TEXT
+  }
+
+  p "`wcl parse` goes through the evaluating door. It opens the file as a document and forces every field it can reach:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl parse estate.wcl
+...
+owner = "acme"
+region = "us-east-1"
+service web {
+  port = 8080u32
+  region = "eu-west-1"
+  budget = <error: operator '/' cannot divide by zero>
+}
+TEXT
+  }
+
+  p "Four differences, and every one of them is the split. The comment `# the team that carries the pager` survived the first and is absent from the second. `let org` survived the first and is absent from the second. `owner = org` stayed as written through the first and came back as `\"acme\"` through the second. And `budget` — which the formatter copied out untouched — became an error the moment somebody asked what it was."
+
+  table {
+    rows:
+      | "Question"                          | "Editing door — `parse_for_edit`" | "Evaluating door — `Document::open`" |
+      | "What you get"                       | "An owned `ast::Source` with `pub` fields" | "A lazy, immutable `Document` view" |
+      | "Comments and blank lines"           | "Kept"                            | "Gone"                               |
+      | "`let` items"                        | "Present as items"                | "Invisible"                          |
+      | "Expressions"                        | "As written"                      | "Computed on demand"                 |
+      | "Imports"                            | "An `import` item, not followed"   | "Resolved and merged"                |
+      | "Schema checks"                      | "None"                            | "On request"                         |
+      | "Can you write it back?"             | "Yes — that is the point"         | "No"                                 |
+  }
+
+  p "Every `wcl` subcommand picks one of the two, and [Which command forces what](#which-command-forces-what) at the end of the chapter is that mapping in full."
+
+  h3 "Why a Document has no AST"
+
+  p "The obvious convenience would be a method on `Document` handing back the syntax tree — open once, read the evaluated values, patch a node, carry on. There is deliberately none, and the reason is the cache."
+
+  p "A `Document` memoises. The first read of a field stores its result and every later read returns the stored one. That is what makes a document cheap to consult from a template that touches the same value fifty times. It is also what makes an in-place edit unsound: change the expression behind a field that has already been forced and the document keeps serving the old answer, with nothing to notice the divergence. Rather than police that, the API removes the option. Pick a door per parse."
+
+  callout "Editing means reopening" {
+    class = ["note"]
+    body  = "After you write an edited tree back to disk, the way to see the new values is to open the file again. There is no refresh, no invalidate, no partial recompute. A `Document` describes one snapshot of one file, and a new snapshot is a new `Document`."
+  }
+
+  h3 "Using both doors in turn"
+
+  p "`wcl set` is the worked example of combining them, and it goes through each exactly once. First the evaluating door — `Document::from_file` is the same door taking a path rather than a source string — to find out **where** the field really lives, since a dotted path may resolve through an import and the file you named is not always the file that declares it. Then the editing door on that file, to replace the expression and print the result back:"
+
+  code text {
+    source = <<'TEXT'
+doc   = Document::from_file(file)          # evaluating door
+field = doc.get(path).as_field()           # leaf-only
+home  = field.source_path() ?? file        # may be an imported file
+ast   = parse_for_edit(home)               # editing door
+slot  = find_field_by_span(ast, field.span)
+slot.expr = parse_expr(value)
+write_atomic(home, format::to_source(ast))
+TEXT
+  }
+
+  p "The span is the hinge. A `Field` view knows the byte range its declaration occupies, so the second parse can find the same declaration without matching on names — which matters when the name is ambiguous, and matters more when the two files are different files. [The CLI](lang_cli) covers `set` as a command."
+
+  h2 "Nothing runs until something asks"
+
+  p "Fields evaluate **lazily**. Opening a document parses it, indexes its symbols, follows its top-level imports and builds one empty cache cell per item. It evaluates nothing."
+
+  p "`estate.wcl` above contains `budget = 100u32 / 0u32`. That is not a mistake the parser can see and not a shape the schema objects to — it is a `u32` expression assigned to a `u32` field. So:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check estate.wcl
+OK
+$ wcl get estate.wcl owner
+"acme"
+$ wcl get estate.wcl services.web.budget
+wcl::eval::arithmetic
+
+  × operator '/' cannot divide by zero
+TEXT
+  }
+
+  p "`check` passed, `owner` answered, and `budget` failed — and it failed only when asked. Laziness is not an optimisation detail here; it is the reason the three commands can disagree, and [the error model](#the-error-model) below is largely a map of which command forces what."
+
+  p "Two consequences follow, and [Documents, fields and blocks](lang_documents) leans on both. **Item order does not matter**: a field may read a `let` declared fifty lines below it, because neither exists until one of them is demanded. And **a broken field is local**: `budget` failing did not stop `owner` from answering, and `wcl parse` printed the whole tree with the failure inlined rather than aborting."
+
+  callout "Only what you walk" {
+    class = ["note"]
+    body  = "`wcl get` resolves a dotted path one segment at a time and forces only the cells on that path. `wcl get estate.wcl owner` never looks inside `service web` at all. This scales the way you would hope: in a document that gathers a thousand blocks, a one-field query still evaluates one field."
+  }
+
+  h2 "Each field evaluates once"
+
+  p "The other half of laziness is memoisation. A field's cell holds `Result<Value, EvalError>`, filled on the first demand and returned unchanged on every later one. Save this as `once.wcl`:"
+
+  code wcl {
+    filename = "once.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  base:  u32
+  a:     u32
+  b:     u32
+  total: u32
+}
+
+fn expensive(n: u32) -> u32 { n * 2u32 }
+
+base  = expensive(10u32)
+a     = base + 1u32
+b     = base + 2u32
+total = a + b
+WCL
+  }
+
+  p "`total` reads `a` and `b`; both read `base`; `base` calls `expensive`. Ask for `total` with `--profile` and the CLI prints the call tree it actually walked, as JSON on stderr. Piped through `jq` to keep only the name and the count:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get once.wcl total
+43u32
+
+$ wcl get once.wcl total --profile 2>&1 >/dev/null \
+    | jq -r 'def show($d): "  " * $d
+             + (.key.path // .key.name // .key.kind)
+             + " x" + (.count|tostring), (.children[] | show($d+1)); show(0)'
+root x0
+  total x1
+    a x1
+      base x1
+        expensive x1
+    b x1
+TEXT
+  }
+
+  p "Read the shape rather than the numbers. `base` appears **once**, under `a`, and `b` has no children at all — by the time `b` was forced, `base` already held a value, so reading it cost a cache hit. `expensive` ran once. The tree is not the reference graph; it is the evaluation, and each field appears in it exactly where it was first forced."
+
+  p "Errors cache on exactly the same terms. A field that failed once is a field that fails identically for the rest of the document's life, with the same error value, without re-running anything. That is worth holding on to for the next section."
+
+  h2 "Cycles"
+
+  p "Memoisation gives cycle detection almost for free. Each cell carries an _evaluating_ flag beside its value. Setting it and finding it already set means the evaluator has re-entered a field it is part-way through, which is a cycle; the cell is filled with `EvalError::Cycle` and that becomes the field's value. Save `cycle.wcl`:"
+
+  code wcl {
+    filename = "cycle.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  a: u32
+  b: u32
+  c: u32
+}
+
+a = b
+b = a
+c = 42u32
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check cycle.wcl
+OK
+$ wcl get cycle.wcl a
+wcl::eval::cycle
+
+  × cycle while evaluating 'a'
+
+$ wcl get cycle.wcl b
+wcl::eval::cycle
+
+  × cycle while evaluating 'b'
+
+$ wcl get cycle.wcl c
+42u32
+TEXT
+  }
+
+  p "Three things are on display. `check` is silent, because a cycle is an evaluation fact and nothing forced it. `c` answers, because a cycle poisons its own loop and nothing else. And the message names a **different field** depending on which one you asked for — the error is raised where the loop closes, and the loop closes wherever you entered it."
+
+  p "The caching makes that visible inside a single run. `wcl parse` forces the whole document in declaration order, so `a` goes first, `b` is forced as part of it, and the cycle closes back on `a`:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl parse cycle.wcl
+...
+a = <error: cycle while evaluating 'a'>
+b = <error: cycle while evaluating 'a'>
+c = 42u32
+TEXT
+  }
+
+  p "Both fields report `'a'`. `b` never re-entered itself; it returned what `a` handed it, and cached that. So the cycle error is not a per-field verdict — it is one error value, raised where the loop closed and memoised at every stop on the way back out."
+
+  callout "A cycle is a value, not a crash" {
+    class = ["note"]
+    body  = "There is no unwinding and no abort. The cycle becomes the field's cached result, the surrounding evaluation carries on, and `wcl parse` exits 0 with the error printed in place. Only a command that was asked for the cycling field itself — `wcl get` — reports a failing exit code."
+  }
+
+  p "Two other cycles get their own diagnostic rather than this one. A `union` whose `extends` chain loops back on itself fails with `wcl::eval::union_cycle` at the point of construction. A user `fn` that recurses without a base case is bounded by a nesting cap and fails with `wcl::eval::call_depth_exceeded`. Neither is a field-cell cycle, so neither is reported as one."
+
+  h2 "How a name resolves"
+
+  p "A bare identifier in an expression is resolved against the **lexical** position of the expression — the chain of blocks it is written inside — and then against the document root. The walk is innermost first, and at each level it tries the same things in the same order:"
+
+  list {
+    li "**Host bindings** at this level, if a renderer injected any (a component's parameters, a repeater's loop variable)."
+    li "**A `let` item** declared at this level."
+    li "**A field or nested block** at this level."
+    li "The next level out, from the top of this list."
+    li "**A top-level `let`** — including `fn name(…)`, which is a `let` item in disguise."
+    li "**The document root**, in its own order: the gather and `@connections` fields the `@document` schema projects, then top-level fields, then top-level blocks by kind, then the type, union, symbol-set and interface declarations."
+  }
+
+  p "So an inner binding shadows an outer one, and a `let` shadows a field of the same name at its own level. Save `names.wcl` and watch all of it at once:"
+
+  code wcl {
+    filename = "names.wcl"
+    source = <<'WCL'
+@block("service")
+type Service {
+  @inline(0) name: identifier
+  region:      utf8
+  tier_here:   utf8
+  region_here: utf8
+  region_up:   utf8
+}
+
+@document
+type Cfg {
+  region: utf8
+  @children("service") services: list<Service>
+}
+
+let tier = "gold"
+
+region = "us-east-1"
+
+service web {
+  let tier = "silver"
+
+  region      = "eu-west-1"
+  tier_here   = tier
+  region_here = region
+  region_up   = parent.region
+}
+
+service edge {
+  region      = region
+  tier_here   = tier
+  region_here = region
+  region_up   = parent.region
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl get names.wcl region
+"us-east-1"
+$ wcl get names.wcl services.web.tier_here
+"silver"
+$ wcl get names.wcl services.web.region_here
+"eu-west-1"
+$ wcl get names.wcl services.web.region_up
+"us-east-1"
+$ wcl get names.wcl services.edge.tier_here
+"gold"
+TEXT
+  }
+
+  p "`tier_here` is `\"silver\"` in `web` and `\"gold\"` in `edge`: the block's own `let` won where there was one, and the top-level `let` won where there was not. `region_here` is `\"eu-west-1\"`: the block's own field beat the document's. And `region_up` reaches past the shadow explicitly — `parent` is a navigator, not a lookup, so it names the level rather than searching for a value. [Documents, fields and blocks](lang_documents) covers `self` and `parent`; [Namespaces and imports](lang_namespaces) covers what a `use` or a qualified path does to the root step."
+
+  h3 "A name that names itself"
+
+  p "Look at `service edge` again. It says `region = region`, and by the rules above the right-hand side ought to find the block's own `region` field — itself — and cycle. It does not:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get names.wcl services.edge.region
+"us-east-1"
+TEXT
+  }
+
+  p "The rule that saves it is small and worth stating exactly. Evaluation is single-threaded, so a candidate binding that is already mid-evaluation **is** the binding whose right-hand side is currently being resolved. The walk skips it and keeps going outward. Here that finds the document's `region`, which is almost certainly what the author meant: _this block's region is the estate's region_."
+
+  p "The skipped candidate is remembered rather than discarded. If nothing further out resolves the name, it comes back and produces the real diagnostic. That is the whole difference between the two files:"
+
+  table {
+    rows:
+      | "Written"                                | "Outer binding of that name?" | "Result" |
+      | "`region = region` inside `service edge`" | "Yes — the document's `region`" | "`\"us-east-1\"`" |
+      | "`a = a` at the top level"                | "No"                            | "`cycle while evaluating 'a'`" |
+  }
+
+  callout "Skipped, not forced" {
+    class = ["warning"]
+    body  = "The skipped candidate is set aside without being evaluated. That matters: forcing it to \"check\" would fill its cell with a cycle error, and — because cells are permanent — that error would stick even though the outward walk went on to resolve the name perfectly well. The check has to be a look, not a read."
+  }
+
+  h2 "What the document model shows"
+
+  p "A consumer reads a document through a deliberately narrow surface. `Document::fields` and `Document::blocks` iterate the top-level fields and blocks; `type_decls`, `union_decls`, `symbol_sets`, `connection_decls` and `uses` iterate the declarations; `get` resolves a dotted path. `wcl parse` is nothing but those iterators printed in order, which makes it the easiest way to see the surface from outside."
+
+  p "Save these two files side by side."
+
+  code wcl {
+    filename = "shared.wcl"
+    source = <<'WCL'
+@document
+type Shared {
+  registry: utf8
+}
+
+registry = "ghcr.io/acme"
+WCL
+  }
+
+  code wcl {
+    filename = "surface.wcl"
+    source = <<'WCL'
+import "./shared.wcl"
+
+@table("route")
+type Route {
+  verb: utf8
+  path: utf8
+}
+
+@block("api")
+type Api {
+  @inline(0) name: identifier
+  @children("route") routes: list<Route>
+}
+
+@document
+type Cfg {
+  owner: utf8
+  @children("api") apis: list<Api>
+}
+
+let team = "platform"
+
+fn shout(s: utf8) -> utf8 { s }
+
+owner = shout(team)
+
+api public {
+  routes:
+    | "GET"  | "/users" |
+    | "POST" | "/users" |
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl parse surface.wcl
+...
+owner = "platform"
+registry = "ghcr.io/acme"
+api public {
+  routes:
+    | "GET" | "/users" |
+    | "POST" | "/users" |
+}
+TEXT
+  }
+
+  p "The `let` and the `fn` are gone. The imported `registry` is present, sitting beside the root's own fields as though it had been written here. The table rows are present, because they are inside a block and a block's own view exposes its tables. And `owner` is `\"platform\"` — the call ran, the argument resolved through the invisible `let`, and only the answer survives."
+
+  table {
+    rows:
+      | "Item"                     | "In `fields` / `blocks`" | "Reachable by `wcl get`" | "Note" |
+      | "Top-level field"          | "Yes"                    | "Yes"                    | "" |
+      | "Top-level block"          | "Yes"                    | "Yes — by kind, or by gather field and label" | "" |
+      | "Field of an imported file" | "Yes"                   | "Yes"                    | "Merged in as if local" |
+      | "Nested field or block"    | "No"                     | "Yes"                    | "Reached through its parent's own `fields` / `blocks`" |
+      | "Table rows"               | "No"                     | "No"                     | "A block's own view exposes its tables; a host walks the rows" |
+      | "`let` item"               | "No"                     | "No"                     | "Not in the symbol index at all" |
+      | "`fn` item"                | "No"                     | "No"                     | "A `let` in disguise, so the same answer" |
+      | "A block's labels"         | "No"                     | "No"                     | "Read through the block's label list, not as fields" |
+      | "`import` statement"       | "No"                     | "No"                     | "The imported file's items are merged instead" |
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl get surface.wcl registry
+"ghcr.io/acme"
+$ wcl get surface.wcl team
+no such path: team
+$ wcl get surface.wcl shout
+no such path: shout
+$ wcl get surface.wcl apis.public
+wcl::eval::not_a_leaf
+
+  × cannot evaluate block as a leaf value
+TEXT
+  }
+
+  p "The last one is a distinction the rest of this chapter depends on. `apis.public` resolves — the path is good and the block is there — but a block is not a value. `get` prints values, so it stops with `not_a_leaf` rather than inventing a serialization for a subtree. What a host reads instead is the `Block` view, and from it the block's own fields, blocks, labels and tables."
+
+  callout "The `...` in every parse dump" {
+    class = ["note"]
+    body  = "`wcl parse` prints the declarations before the data, and the first stretch of them is the same in every file — around a hundred and sixty lines of it: the schemas for `@block`, `@children`, `@inline` and the rest, the `std.ByteSize` / `std.Distance` / `std.Duration` unit types, and the `DecoratorPosition` symbol set. Those are synthetic types the host environment injects into every document, and `type_decls` enumerates them alongside your own. They are elided as `...` throughout this book."
+  }
+
+  h2 "Values as JSON"
+
+  p "Every evaluated value can serialize to JSON, and `wcl get --json` is the CLI face of it. The mapping is idiomatic rather than faithful: it emits what a JSON consumer expects to see, not a form WCL could read back."
+
+  code wcl {
+    filename = "shapes.wcl"
+    source = <<'WCL'
+symbol_set Tier { gold  silver }
+
+union Scale {
+  Small { replicas: u32 }
+  Fixed  u32
+  Off    none
+}
+
+@document
+type Cfg {
+  port:    u32
+  ratio:   f64
+  tier:    Tier
+  size:    std.ByteSize
+  tags:    list<utf8>
+  grid:    tensor<u32, [2, 2]>
+  small:   Scale
+  fixed:   Scale
+  off:     Scale
+  missing: utf8?
+}
+
+port    = 8080u32
+ratio   = 0.5
+tier    = :gold
+size    = 512MiB
+tags    = ["edge", "tls"]
+grid    = tensor([1u32, 2u32, 3u32, 4u32], [2, 2])
+small   = Scale::Small { replicas: 2u32 }
+fixed   = Scale::Fixed(7u32)
+off     = Scale::Off
+missing = none
+WCL
+  }
+
+  p "Each row below is one `wcl get shapes.wcl <field>` beside the same command with `--json`. The JSON column is shown on one line; the command pretty-prints it."
+
+  table {
+    rows:
+      | "Field"     | "`wcl get`"                            | "`wcl get --json`" |
+      | "`port`"    | "`8080u32`"                            | "`8080`" |
+      | "`ratio`"   | "`0.5`"                                | "`0.5`" |
+      | "`tier`"    | "`:gold`"                              | "`\"gold\"`" |
+      | "`size`"    | "`536870912`"                          | "`536870912`" |
+      | "`tags`"    | "`[\"edge\", \"tls\"]`"                | "`[\"edge\", \"tls\"]`" |
+      | "`grid`"    | "`tensor[2x2](1u32, 2u32, 3u32, 4u32)`" | "`{\"shape\": [2, 2], \"data\": [1, 2, 3, 4]}`" |
+      | "`small`"   | "`Scale::Small { replicas: 2u32 }`"    | "`{\"Small\": {\"replicas\": 2}}`" |
+      | "`fixed`"   | "`Scale::Fixed(7u32)`"                 | "`{\"Fixed\": 7}`" |
+      | "`off`"     | "`Scale::Off`"                         | "`\"Off\"`" |
+      | "`missing`" | "`none`"                               | "`null`" |
+  }
+
+  p "Read the columns against each other and the shape of the mapping is clear. **The type suffix goes.** `8080u32` is `8080`; JSON has one number type and the variant WCL was carrying is not expressible. **A unit is already gone** by the time serialization runs — `512MiB` became `536870912` during evaluation, not during output. **A symbol becomes its name** as a string; the leading colon is syntax. **A variant becomes a one-key object** named after the variant, or a bare string when it has no payload. **A tensor keeps its shape** as an object, because a nested array would lose the rank. And `none` is `null`."
+
+  p "Two values have no honest JSON form and say so differently. A function serializes as `null`, so a structure containing one survives. A unit literal that never met a declared type is an error rather than a number, because writing the magnitude out would silently drop the unit — [Values and primitives](lang_values) covers that case."
+
+  callout "One direction only" {
+    class = ["warning"]
+    body  = "Values serialize; they do not deserialize. Reading `8080` back gives no way to know it was a `u32` rather than a `u64` or an `i32`, and the evaluator relies on that variant being right. So there is no JSON-to-`Value` path, and no round trip: `wcl get --json` is an output format for a consumer, not an exchange format. A host that needs to write a value back writes WCL — see [the editing door](#two-doors-into-one-file)."
+  }
+
+  callout "There is no whole-document JSON" {
+    class = ["note"]
+    body  = "`--json` serializes one **value**, and `wcl get` requires a path, so there is no way to ask for the file as a whole. A path naming a block answers `not_a_leaf` rather than an object. To emit a whole document as JSON, walk the blocks and fields through a host program and build the shape you want."
+  }
+
+  h2 "The error model"
+
+  p "There are three families of failure, they come from three different stages, and each one has its own exit code. Most confusion about WCL diagnostics is really confusion about which of the three you are looking at."
+
+  table {
+    rows:
+      | "Family"           | "Rust type"           | "Raised when"                        | "Reported by"           | "Exit" |
+      | "Parse error"      | "`ParseError`"        | "The file is opened, always"          | "Every command"         | "1" |
+      | "Schema violation" | "`SchemaViolationKind` inside `EvalError::SchemaViolation`" | "Validation is requested, **and** when a field is forced" | "`wcl check` as a violation; `wcl get` / `wcl parse` as an evaluation failure" | "2 from `check`, 3 from `get`" |
+      | "Evaluation error" | "`EvalError`"         | "A field is forced"                   | "`wcl get`, `wcl parse`" | "3" |
+  }
+
+  p "The three are ordered. A file that does not parse has no document, so nothing else can run. A file that parses can be validated. A file that validates can still fail when a value is finally demanded — that is `estate.wcl`'s `budget`, and it is the ordinary case, not a corner."
+
+  p "The middle row overlaps the bottom one on purpose, and it is the one place the three families are not disjoint. A schema violation _is_ an `EvalError` variant, and some violations are raised on the lazy path rather than by validation: forcing a field checks that the field's own schema declares it. So the same fault reaches you two ways, under two exit codes. Save `zone.wcl`, whose `web` service carries a field its schema never declared:"
+
+  code wcl {
+    filename = "zone.wcl"
+    source = <<'WCL'
+@block("service")
+type Service {
+  @inline(0) name: identifier
+  port: u32
+}
+
+@document
+type Cfg {
+  @children("service") services: list<Service>
+}
+
+service web {
+  port = 8080u32
+  zone = "a"
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check zone.wcl
+wcl::eval::schema_violation
+
+  × field 'zone' is not declared by schema 'Service'
+
+zone.wcl: 1 schema violation
+$ echo $?
+2
+$ wcl get zone.wcl services.web.zone
+wcl::eval::schema_violation
+
+  × field 'zone' is not declared by schema 'Service'
+
+$ echo $?
+3
+TEXT
+  }
+
+  p "Same violation, same message, different family verdict — `check` calls it a schema violation because that is what it was asked for, and `get` calls it a failed evaluation because that is what happened to the field it was asked for. Read the exit code as *which command gave up*, not as *what kind of fault it was*; the `wcl::eval::…` code is the part that names the fault."
+
+  h3 "Parse errors"
+
+  p "A `ParseError` is either an I/O failure or a `SyntaxError`. The syntax form carries the message, the offending span, a label for it, and the source text itself — so it is the one family that always renders with a snippet. Leave a string unterminated in `broken.wcl`:"
+
+  code wcl {
+    filename = "broken.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  owner: utf8
+}
+
+owner = "platform
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check broken.wcl
+wcl::parse
+
+  × newline in string literal
+   ╭─[broken.wcl:6:9]
+ 5 │
+ 6 │ owner = "platform
+   ·         ─────┬────
+   ·              ╰── newline in string literal
+   ╰────
+TEXT
+  }
+
+  p "A syntax error may also carry a **second** span pointing at the prior occurrence that made the first one wrong. Duplicate declarations use it, so the diagnostic shows both lines rather than making you go looking:"
+
+  code wcl {
+    filename = "duplicate.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  owner: utf8
+  port: u32
+}
+
+owner = "platform"
+port  = 8080u32
+port  = 9090u32
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check duplicate.wcl
+wcl::parse
+
+  × duplicate declaration 'port'
+   ╭─[duplicate.wcl:8:1]
+ 7 │ owner = "platform"
+ 8 │ port  = 8080u32
+   · ───────┬───────
+   ·        ╰── first declared here
+ 9 │ port  = 9090u32
+   · ───────┬───────
+   ·        ╰── duplicate declaration
+   ╰────
+TEXT
+  }
+
+  h3 "Schema violations"
+
+  p "A schema violation is one `EvalError` variant carrying a `SchemaViolationKind` tag — thirty-two of them at the time of writing, covering undeclared fields, unregistered block kinds, child cardinality, duplicate ids, interface mismatches, constraint bounds, union dispatch, connection resolution and the rest. The tag is a separate value from the message on purpose: a tool acts on the tag, and only a human reads the sentence. That is how the language server offers a code action for an unknown field without pattern-matching on English."
+
+  p "`wcl check` is the command that asks for them. Save `wrong.wcl`:"
+
+  code wcl {
+    filename = "wrong.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  @min(1) count: u32
+  label:  utf8
+  budget: u32
+}
+
+count  = 0u32
+label  = 42u32
+budget = 1u32 / 0u32
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check wrong.wcl
+wcl::eval::schema_violation
+
+  × field 'count': value 0 is below @min(1)
+
+wcl::eval::schema_violation
+
+  × field 'label' declared as utf8 but value is u32
+
+wrong.wcl: 2 schema violations
+TEXT
+  }
+
+  p "Two violations, not three — and the third field is the interesting one. Validation **does** force the fields it needs: it cannot decide that `0u32` is below `@min(1)`, or that `42u32` is not a `utf8`, without the value in hand. So `wcl check` is not evaluation-free. What it does with a field whose evaluation _fails_ is skip it. There is no value to judge, and reporting the arithmetic fault here would file it under the wrong family; it stays where it belongs, on the next command that actually wants the number:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get wrong.wcl budget
+wcl::eval::arithmetic
+
+  × operator '/' cannot divide by zero
+TEXT
+  }
+
+  p "A few checks are **warnings** rather than errors: conditions that are legal, that existing documents rely on, and that are still very likely a mistake. The one in the set today fires when two `@document` schemas governing one namespace both declare the same gather field, so one schema's blocks silently vanish from the merged view. A root document importing a library that already gathers `parts` is enough:"
+
+  code wcl {
+    filename = "lib.wcl"
+    source = <<'WCL'
+@block("widget")
+type Widget {
+  @inline(0) name: identifier
+}
+
+@document
+type LibDoc {
+  @children("widget") parts: list<Widget>
+}
+WCL
+  }
+
+  code wcl {
+    filename = "root.wcl"
+    source = <<'WCL'
+import "./lib.wcl"
+
+@block("gadget")
+type Gadget {
+  @inline(0) name: identifier
+}
+
+@document
+type Cfg {
+  @children("gadget") parts: list<Gadget>
+}
+
+gadget dial
+WCL
+  }
+
+  p "Warnings print to stderr, `OK` still prints, and the exit code stays 0. The message is one long line; it is wrapped here, and the library's absolute path is elided:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check root.wcl
+warning: gather field 'parts' of @document 'Cfg' (this document) collides with
+'parts' declared by @document 'LibDoc' (.../lib.wcl) — the merged document schema
+resolves 'parts' to only one declaration, so the other schema's gathered blocks
+silently vanish; rename one field
+root.wcl: 1 warning
+OK
+TEXT
+  }
+
+  h3 "Evaluation errors"
+
+  p "`EvalError` has twenty-four variants, each with a stable `wcl::eval::…` code. The full set is best read off the crate; these are the ones you will meet writing documents:"
+
+  table {
+    rows:
+      | "Code"                              | "Means" |
+      | "`wcl::eval::cycle`"                | "A field's evaluation re-entered itself" |
+      | "`wcl::eval::unresolved_reference`" | "A name resolved nowhere on the scope chain or at the root" |
+      | "`wcl::eval::type_mismatch`"        | "An operator has no meaning for those two operand types" |
+      | "`wcl::eval::arithmetic`"           | "Divide by zero, or a result that will not fit the type" |
+      | "`wcl::eval::not_a_leaf`"           | "A block, list of blocks or declaration was asked for as a value" |
+      | "`wcl::eval::schema_violation`"     | "The schema family above, carried on this enum" |
+      | "`wcl::eval::unknown_builtin`"      | "A call named no builtin and no `fn` in scope" |
+      | "`wcl::eval::builtin_arity`"        | "A builtin got the wrong number of arguments" |
+      | "`wcl::eval::builtin_type`"         | "A builtin got arguments of the wrong shape" |
+      | "`wcl::eval::call_arity`"           | "A `fn` got the wrong number of arguments" |
+      | "`wcl::eval::call_depth_exceeded`"  | "A `fn` recursed past the evaluator's nesting cap" |
+      | "`wcl::eval::match_no_arm`"         | "No `match` arm fitted the value" |
+      | "`wcl::eval::unknown_variant`"      | "A `Union::Name` construction named no variant of that union" |
+      | "`wcl::eval::user_error`"           | "The `error()` builtin, or a host raising through the same channel" |
+      | "`wcl::eval::import_failed`"        | "An import did not resolve, or its file did not parse" |
+      | "`wcl::eval::unit_without_type`"    | "A unit literal reached a sink with no declared type behind it" |
+  }
+
+  p "One structural note, because it shows up in tooling. Two of these carry a machine-readable payload beside the sentence: an arithmetic fault says _which_ fault (divide-by-zero versus overflow, and for overflow the type it overflowed) and a schema violation carries its kind and, where it has one, the offending identifier. The rule is the same each time — anything a program might branch on is a field, never a substring of the message."
+
+  h3 "Spans, snippets and machine output"
+
+  p "Every error that names a place in a file carries a span: a byte offset and a length. That is every `SyntaxError` and every `EvalError` variant. The one exception is the I/O half of `ParseError` — a file that could not be read has no position to point at, and it carries the `std::io::Error` and nothing else. Diagnostics are `miette` types, so the code, the message, the span and its label are all structured, and rendering them with a source attached is what draws the pointer-under-the-line snippets above."
+
+  p "Whether you _get_ a snippet depends on whether the reporting path knows which source the span belongs to. A parse error carries its own source, so it always renders one. An evaluation error carries only the span — it is raised deep in a walk that may be crossing several files — so the caller has to supply the text. `wcl check` supplies it where the violation's provenance is known, as it is for a second root `@document` in one namespace:"
+
+  code wcl {
+    filename = "twodocs.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  owner: utf8
+}
+
+@document
+type Extra {
+  team: utf8
+}
+
+owner = "platform"
+team  = "infra"
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check twodocs.wcl
+wcl::eval::schema_violation
+
+  × type 'Extra' declares a second root @document schema (only one root-
+  │ authored @document is allowed per namespace; imported library schemas
+  │ merge automatically)
+    ╭─[twodocs.wcl:7:1]
+  6 │     @document
+  7 │ ╭─▶ type Extra {
+  8 │ │     team: utf8
+  9 │ ├─▶ }
+    · ╰──── schema violation
+ 10 │
+    ╰────
+
+twodocs.wcl: 1 schema violation
+TEXT
+  }
+
+  p "Where it is not known — a violation produced recursively inside a block that may have come from an imported file — the diagnostic prints without a snippet rather than pointing the offsets at the wrong text. The span is still there, and `--json` still reports it:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check wrong.wcl --json
+{
+  "errors": [
+    {
+      "code": "wcl::eval::schema_violation",
+      "length": 13,
+      "message": "field 'count': value 0 is below @min(1)",
+      "offset": 74
+    },
+    {
+      "code": "wcl::eval::schema_violation",
+      "length": 14,
+      "message": "field 'label' declared as utf8 but value is u32",
+      "offset": 88
+    }
+  ],
+  "file": "wrong.wcl",
+  "ok": false,
+  "warnings": []
+}
+TEXT
+  }
+
+  p "That is the form an editor consumes: `offset` and `length` are byte positions in the named file, `code` is the stable identifier, and errors and warnings are separate arrays so an editor can style them apart. The exit code is unchanged by `--json`."
+
+  h2 "Which command forces what"
+
+  p "The whole chapter collapses into one table. \"Forces\" here means _evaluates field values_."
+
+  table {
+    rows:
+      | "Command"     | "Door"                | "Forces"                                  | "Fails on" |
+      | "`wcl fmt`"   | "Editing"             | "Nothing"                                 | "Parse errors only" |
+      | "`wcl check`" | "Evaluating"          | "The values validation needs; skips fields that fail" | "Parse errors, schema violations" |
+      | "`wcl get`"   | "Evaluating"          | "Only the cells on the path you named"    | "All three families" |
+      | "`wcl parse`" | "Evaluating"          | "Everything reachable; prints failures in place" | "Parse errors (an eval error is printed, not fatal)" |
+      | "`wcl set`"   | "Both, in turn"       | "Enough to locate the field's declaration" | "Parse errors, an unresolvable path" |
+      | "`wcl diff`"  | "Evaluating, twice"   | "Both documents"                          | "Parse errors on either side" |
+  }
+
+  p "The two rows worth memorising are the corners. `wcl fmt` is the only command that never evaluates anything, which is why it works on a file whose values are nonsense. And `wcl parse` is the only one that forces everything, which is why it is the right tool when you want to know whether a document is _whole_ rather than merely well-formed."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Documents, fields and blocks](lang_documents) — the item forms whose evaluation this chapter describes, and the `let` that laziness makes possible."
+    li "[Expressions and operators](lang_expressions) — what is actually on the right of the `=` that all of this is deferring."
+    li "[Functions](lang_functions) — `fn` items, closures, and the call frames the profile tree above is counting."
+    li "[Schemas](lang_schemas) — what `wcl check` checks, in full."
+    li "[Namespaces and imports](lang_namespaces) — how imported files merge into one document, and what the root step of a name lookup sees."
+    li "[The CLI](lang_cli) — `check`, `parse`, `get`, `set`, `fmt`, `diff` and their flags."
+  }
 }
