@@ -1,11 +1,696 @@
 // Chapter 2 — Values and primitives.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #160. Every snippet and every command below was run
+// against the `wcl` CLI before it was written down; nothing here is
+// paraphrased from the older concept units without being checked first.
 page lang_values {
   title = "Values and primitives"
 
   h1 "Values and primitives"
 
-  p "Not written yet. This chapter covers numbers and their suffixes, literal units, booleans, symbols, strings, interpolation, heredocs and `none`."
+  p "[Documents, fields and blocks](lang_documents) covered the shapes a document is made of. This chapter covers what goes _inside_ them: the scalar values that may sit on the right of an `=`, in a block label, or in a table cell. There are seven ways to write one — numbers, unit literals, booleans, identifiers, symbols, strings and `none` — and the whole chapter is those seven, in that order. Everything composite (lists, tensors, records, variants) is [Lists, tensors and records](lang_collections)."
+
+  p "Every file and every command below was run before it was written down. Type them and compare."
+
+  h2 "One file, every primitive"
+
+  p "Save this as `release.wcl`. It is a release manifest, and it uses every primitive value the language has:"
+
+  code wcl {
+    filename = "release.wcl"
+    source = <<'WCL'
+# release.wcl — one release, written with every primitive WCL has.
+
+symbol_set Channel { alpha  beta  stable }
+
+@unit("g", 1)
+@unit("kg", 1000)
+type Mass = i64
+
+@block("artifact")
+type Artifact {
+  @inline(0) name: identifier
+  size:     std.ByteSize
+  checksum: ascii
+  signed:   bool
+  notes:    utf8?
+}
+
+@document
+type Release {
+  version:  utf8
+  build:    u32
+  channel:  Channel
+  ratio:    f64
+  timeout:  std.Duration
+  shipping: Mass
+  banner:   utf8
+  @children("artifact") artifacts: list<Artifact>
+}
+
+version  = "2.4.0"
+build    = 0x1F4u32
+channel  = :stable
+ratio    = 0.75
+timeout  = 90s
+shipping = 12kg
+banner   = $"wcl ${version} (build ${build}) on ${channel}"
+
+artifact wcl_linux {
+  size     = 18MiB
+  checksum = ascii"9f2c41ab"
+  signed   = true
+}
+
+artifact wcl_windows {
+  size     = 21MiB
+  checksum = ascii"c30dd5e7"
+  signed   = false
+  notes    = <<'TEXT'
+    Unsigned: the \CI\ runner has no key.
+    TEXT
+}
+WCL
+  }
+
+  p "`wcl check` validates it and says nothing else. `wcl parse` prints what the document _became_, which is the interesting half — seven of the values on that page are not the text you typed:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check release.wcl
+OK
+
+$ wcl parse release.wcl
+...
+version = "2.4.0"
+build = 500u32
+channel = :stable
+ratio = 0.75
+timeout = 90000000000
+shipping = 12000
+banner = "wcl 2.4.0 (build 500) on :stable"
+artifact wcl_linux {
+  size = 18874368
+  checksum = ascii"9f2c41ab"
+  signed = true
+}
+artifact wcl_windows {
+  size = 22020096
+  checksum = ascii"c30dd5e7"
+  signed = false
+  notes = "Unsigned: the \\CI\\ runner has no key.\n"
+}
+TEXT
+  }
+
+  p "`0x1F4u32` became `500u32`, because a radix is how you _write_ a number and not part of it. `90s` became `90000000000` and `12kg` became `12000`, because a unit multiplies. `$\"…\"` became one finished string. The raw heredoc kept both its backslashes. The elided `...` is the built-in schema library, which `wcl parse` prints above your own declarations; the rest of this chapter is those transformations, one at a time."
+
+  h2 "Numbers"
+
+  p "WCL has fourteen numeric types: signed and unsigned integers at six widths, and floats at two. The type is part of the value, not a hint — `500u32` and `500` are different values that happen to compare equal."
+
+  table {
+    rows:
+      | "Width"           | "Signed"  | "Unsigned" | "Float" |
+      | "8-bit"           | "`i8`"    | "`u8`"     | "—"     |
+      | "16-bit"          | "`i16`"   | "`u16`"    | "—"     |
+      | "32-bit"          | "`i32`"   | "`u32`"    | "`f32`" |
+      | "64-bit"          | "`i64`"   | "`u64`"    | "`f64`" |
+      | "128-bit"         | "`i128`"  | "`u128`"   | "—"     |
+      | "pointer width"   | "`isize`" | "`usize`"  | "—"     |
+  }
+
+  p "A literal with no suffix is `i64` if it has no decimal point and `f64` if it has one. Those two are also the only types `wcl parse` prints bare; every other numeric value keeps its suffix in the dump so the output re-parses as the same value. `isize` and `usize` are the pointer width of the machine `wcl` runs on — 64 bits on an ordinary desktop or server, 32 on a smaller target — so avoid them for anything a second machine has to agree with."
+
+  h3 "Writing a number"
+
+  p "Four radixes, a digit separator, and scientific notation:"
+
+  code wcl {
+    source = <<'WCL'
+a = 42            # i64, the default
+b = 200u8         # unsigned 8-bit
+c = 1_000_000     # underscores group digits and are ignored
+d = 0xDEAD_BEEF   # hex (0X works too)
+e = 0b1010_1100   # binary
+f = 0o755         # octal
+g = 3.14          # f64, the default
+h = 1.5f32        # narrowed to 32-bit
+i = 1.5e-3        # 0.0015
+j = -128i8        # the sign is part of the literal
+WCL
+  }
+
+  list {
+    li "**A separator must follow a digit.** `1_000` and `0xDEAD_BEEF` are fine; `0x_1` and `1_` are lex errors."
+    li "**Only decimal has a fractional part.** A `.` after a hex, octal or binary literal is member access, not a decimal point: `0x1.5` parses as `0x1` followed by `.5` and fails as a lookup."
+    li "**The exponent needs the decimal point.** `1.5e-3` is scientific notation. Bare `1e6` is not — see [the suffix slot](#the-suffix-slot) below, which is where the `e6` goes instead."
+    li "**Range is checked at parse time.** `256u8` fails with `literal out of range for u8`, and `-129i8` with `literal out of range for i8`. A negative magnitude under an unsigned suffix is refused outright, whatever its size."
+    li "**The suffix must agree with the shape.** `3.14u8` is `integer suffix 'u8' cannot be applied to a float literal`; `42f32` is the same complaint the other way round."
+    li "**An `f32` literal is narrowed, not rounded to what you wrote.** `3.14f32` is stored as the nearest 32-bit float and prints as `3.140000104904175f32`. Nothing is wrong; `f32` simply cannot hold `3.14`. Use `f64` unless the width is the point."
+  }
+
+  h3 "The suffix slot"
+
+  p "A number has exactly one suffix slot, and two different things compete for it. If the suffix names one of the fourteen numeric types, it **pins the type**. If it names anything else at all, it is a **literal unit** and the number is multiplied — see [Literal units](#literal-units)."
+
+  code wcl {
+    source = <<'WCL'
+a = 200u8    # width suffix: the value is 200, typed u8
+b = 200MiB   # literal unit:  the value is 209715200, typed by the field
+WCL
+  }
+
+  p "There is no third case. An unknown suffix is never an error at the literal — it becomes a unit name and the error, if there is one, arrives when the value meets its declared type. That is why `1e6` does not mean a million: `e6` is not a numeric type, so it is a unit called `e6`, and `'e6' is not a unit of type 'f64'` is what you get. Write `1.0e6`."
+
+  h2 "Numeric promotion"
+
+  p "Arithmetic and comparison accept mixed numeric types. When the two operands share a type the operation runs in that type; when they do not, both are **promoted** to a common one first. The ladder has exactly two rungs: if either side is a float, both become `f64`; otherwise both become `i128`."
+
+  code wcl {
+    source = <<'WCL'
+a = 1 + 2.0        # 3.0    — i64 and f64 meet at f64
+b = 3.0 * 2u8      # 6.0    — same rung
+c = 1u32 == 1i64   # true   — comparison promotes as well
+d = 2u8 < 300u32   # true
+WCL
+  }
+
+  p "Promotion is also what decides whether an operation overflows, and the order matters more than it looks. Overflow is judged in the type the operands **share after promotion**, so widening one side can make the same sum legal:"
+
+  code wcl {
+    source = <<'WCL'
+a = 127i8 + 1i8    # error — both are i8, and 128 is not
+b = 127i8 + 1      # 128i128 — mixed, so both promote first
+WCL
+  }
+
+  p "Write both suffixes when you want the narrow type enforced. Write one when you want the arithmetic to be about the number."
+
+  p "An integer operation with no representable answer is an evaluation error, never a wrapped or truncated value. Floats keep IEEE semantics instead and produce `inf` or `NaN`. All four of these live in one file:"
+
+  code wcl {
+    filename = "arith.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  a: i64
+  b: i8
+  c: f64
+  d: f64
+}
+
+a = 4 / 0
+b = 127i8 + 1i8
+c = 4.0 / 0.0
+d = 0.0 / 0.0
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl get arith.wcl a
+wcl::eval::arithmetic
+
+  × operator '/' cannot divide by zero
+
+$ wcl get arith.wcl b
+wcl::eval::arithmetic
+
+  × operator '+' cannot represent the result in i8 (overflow)
+
+$ wcl get arith.wcl c
+inf
+
+$ wcl get arith.wcl d
+NaN
+TEXT
+  }
+
+  p "Both of those errors are ordinary evaluation errors, so `try … catch` recovers from them like any other. See [Control flow](lang_control_flow), and [Expressions and operators](lang_expressions) for the operator set itself."
+
+  h2 "Literal units"
+
+  p "A numeric literal may carry a **unit**: `18MiB`, `90s`, `3km`, `12kg`. The unit is written attached to the magnitude, in the same lexical slot as a width suffix — `18MiB`, never `18 MiB`. At evaluation the magnitude is multiplied by the unit's factor and the product is stored in the type's **base unit**, so nothing downstream has to remember which unit you wrote."
+
+  p "Units are **type-scoped**. A unit literal does not know what it means on its own; it resolves against the declared type of the field or parameter it lands in, using the `@unit(name, factor)` decorators on that type. The same `5s` is five billion nanoseconds against `std.Duration` and an error against `std.ByteSize`."
+
+  h3 "The three built-in unit types"
+
+  p "Three unit types are always in scope with no `import` — the language injects them into every document:"
+
+  table {
+    rows:
+      | "Type"            | "Base unit"  | "Units it declares" |
+      | "`std.ByteSize`"  | "byte"       | "`B`, then `KiB` `MiB` `GiB` `TiB` `PiB` (×1024ⁿ) and `kB` `MB` `GB` `TB` (×1000ⁿ)" |
+      | "`std.Distance`"  | "millimetre" | "`mm`, `cm`, `dm`, `m`, `km`" |
+      | "`std.Duration`"  | "nanosecond" | "`ns`, `us`, `ms`, `s`, `min`, `h`, `d`" |
+  }
+
+  code wcl {
+    filename = "units.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  buffer:  std.ByteSize
+  radius:  std.Distance
+  timeout: std.Duration
+  sizes:   list<std.ByteSize>
+  half:    std.ByteSize
+  label:   utf8
+}
+
+buffer  = 4MiB
+radius  = 3km
+timeout = 30s
+sizes   = [256KiB, 1MiB]
+half    = 1.5MiB
+label   = format_unit(buffer, "std.ByteSize", "KiB")
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl get units.wcl buffer
+4194304
+$ wcl get units.wcl radius
+3000000
+$ wcl get units.wcl timeout
+30000000000
+$ wcl get units.wcl sizes
+[262144, 1048576]
+$ wcl get units.wcl half
+1572864
+$ wcl get units.wcl label
+"4096 KiB"
+TEXT
+  }
+
+  p "Three things to read off that. A `list<T>` resolves **element by element**, so `[256KiB, 1MiB]` needs no common unit. A fractional magnitude is allowed as long as the product lands whole — `1.5MiB` is 1572864, but `1.5B` is `unit 'B' produces a fractional value for integer type 'std.ByteSize'`. And `format_unit` goes back the other way, in whichever unit you ask for rather than the one that was written: it reads the factor off the named type rather than hard-coding one, so it stays correct if the factor ever changes. [Builtins](lang_builtins) documents it and its lower-level twin `format_unit_value`."
+
+  h3 "Declaring your own units"
+
+  p "Nothing about the mechanism is special to `std.*`. Hang `@unit` decorators on any numeric type alias and that alias gains those units. The factor is how many base units make one of that unit, and it is an ordinary expression:"
+
+  code wcl {
+    source = <<'WCL'
+@unit("g", 1)
+@unit("kg", 1000)
+@unit("t", 1000 * 1000)
+type Mass = i64
+WCL
+  }
+
+  p "That is the whole of `std.ByteSize` too — it is an `i64` alias with ten `@unit` decorators on it. [Decorators](lang_decorators) covers the repeated-decorator form, and [Types](lang_types) covers aliases."
+
+  h3 "When a unit does not resolve"
+
+  p "A unit literal that reaches a type declaring no such unit is an error, and so is one that reaches a plain numeric type with no units at all. Change `buffer` in `units.wcl` above to `5km` and read it back:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get units.wcl buffer
+wcl::eval::unit_no_match
+
+  × 'km' is not a unit of type 'std.ByteSize'
+  help: declare it with `@unit("km", <factor>)` on the type alias, or use one
+        of its declared units
+TEXT
+  }
+
+  callout "A unit resolves when it is read, not when it is checked" {
+    class = ["warning"]
+    body  = "Unit resolution happens during evaluation, and fields evaluate lazily — so `wcl check` prints `OK` on the file above. `wcl get`, `wcl eval` and `wcl parse` all force the field and report it. This is the general shape of laziness rather than anything about units; [How a document evaluates](lang_evaluation) covers which errors surface when."
+  }
+
+  h2 "Booleans"
+
+  p "`bool` has exactly two values, `true` and `false`. Both are reserved words, so nothing in a document can be named either one."
+
+  code wcl {
+    filename = "flags.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  signed:    bool
+  published: bool
+  shippable: bool
+  visible:   bool
+}
+
+signed    = true
+published = false
+
+shippable = signed && !published
+visible   = published || signed == false
+WCL
+  }
+
+  p "Every comparison produces one, and `&&`, `||` and `!` consume them. There is no truthiness in either direction: `true + 1` is `operator '+' is not defined for bool and i64`, and `1 && true` is refused by `&&` in turn. A number is never a condition and a condition is never a number. [Expressions and operators](lang_expressions) has the precedence table."
+
+  h2 "Identifiers"
+
+  p "An identifier is a bare name. The lexical rule is one rule everywhere — fields, types, block kinds, variants, symbols, `let` bindings, imported items: **start with an ASCII letter or an underscore, continue with letters, digits or underscores.** No Unicode, no dashes, no spaces."
+
+  table {
+    rows:
+      | "Name"                        | "Legal" | "Why" |
+      | "`name`, `my_field`"          | "yes"   | "Letters, and an underscore joining them" |
+      | "`_internal`"                 | "yes"   | "An underscore opens a name as happily as a letter does" |
+      | "`v2`, `HTTPStatus`"          | "yes"   | "After the first character, a digit or a capital is just a character" |
+      | "`2nd_attempt`"               | "no"    | "The first character was a digit" |
+      | "`kebab-case`"                | "no"    | "A dash is not a name character — except in a block label, below" |
+  }
+
+  p "`identifier` is also a **type**. Declaring a field as `identifier` rather than `utf8` says the value is a name something else may point at, not free text — which is what the reference checking in [Schemas](lang_schemas) hangs off. A quoted string in an `identifier` slot coerces to the identifier it names, so `owner = platform` and `owner = \"platform\"` are the same value; both print as bare `platform`."
+
+  h3 "Where a label is looser"
+
+  p "Block labels are the one place a bare name may carry `-` and `/` connectors, so kebab-case names and path-like names need no quoting. The connector sits directly between name parts, with no spaces around it:"
+
+  code wcl {
+    filename = "routes.wcl"
+    source = <<'WCL'
+@block("route")
+type Route { @inline(0) name: identifier }
+
+@document
+type Cfg { @children("route") routes: list<Route> }
+
+route health-check        # kebab-case, no quotes needed
+route api/v1/users        # path-like, likewise
+route "health-check"      # quoting still works, and addresses the same
+WCL
+  }
+
+  h3 "Reserved words"
+
+  p "Exactly six words are reserved by the lexer. They are values and control-flow keywords, and they cannot be used as a name in any position:"
+
+  table {
+    rows:
+      | "Reserved"            | "Because it is" |
+      | "`true`, `false`"     | "A boolean literal" |
+      | "`none`"              | "The absent-value literal" |
+      | "`if`, `else`, `match`" | "Control flow" |
+  }
+
+  p "That is the whole list. `type`, `interface`, `union`, `symbol_set`, `let`, `fn`, `import`, `use`, `namespace`, `connection`, `extends` and `as` are recognised only in declaration position, so `type = 1` is a legal field. It reads badly; the language will not stop you."
+
+  callout "Conventions, not rules" {
+    class = ["note"]
+    body  = "The standard library uses `snake_case` for fields, `let` bindings, block kinds and symbols, and `PascalCase` for types, interfaces, unions, variants and symbol sets. Nothing enforces this. Pick a style and hold it."
+  }
+
+  h2 "Symbols"
+
+  p "A **symbol** is written `:name` — a colon with no space, then an identifier. It is a name used as a value: a tag, an enum-like choice, a mode. Where a string says \"here is some text\", a symbol says \"here is one of a set of things\"."
+
+  code wcl {
+    source = <<'WCL'
+shade   = :amber
+edge    = :uses
+channel = :stable
+WCL
+  }
+
+  p "A field declared `symbol` accepts any symbol at all; nothing validates which. That is the right type for an open-ended tag."
+
+  h3 "Symbol sets"
+
+  p "When the vocabulary is closed, declare it. A `symbol_set` is a top-level item naming the members, and a field declared with the set's name accepts only those:"
+
+  code wcl {
+    filename = "channel.wcl"
+    source = <<'WCL'
+symbol_set Channel { alpha  beta  stable }
+
+@document
+type Cfg {
+  channel: Channel
+  tag:     symbol
+}
+
+channel = :stable
+tag     = :anything_goes
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check channel.wcl
+OK
+
+$ wcl check channel.wcl                     # after channel = :qa
+wcl::eval::schema_violation
+
+  × field 'channel' declared as symbol_set 'Channel' but ':qa' is not one of
+  │ its members
+
+channel.wcl: 1 schema violation
+TEXT
+  }
+
+  p "A `symbol_set` is one of the thirteen item forms from [chapter 1](lang_documents#the-thirteen-item-forms), and it is the language's enum. [Types](lang_types) covers it beside the other declaration forms."
+
+  h2 "Strings"
+
+  p "A double-quoted literal is a string, and it is `utf8` unless you say otherwise. A string may not contain a bare newline — for multi-line text use a heredoc, below."
+
+  h3 "Four encodings"
+
+  p "The encoding is part of the type, not a rendering choice. A prefix on the literal picks it:"
+
+  code wcl {
+    source = <<'WCL'
+name  = "hello"          # utf8, the default
+label = utf8"hello"      # the same, written explicitly
+tag   = ascii"id-007"
+wide  = utf16"hello"
+quad  = utf32"hello"
+WCL
+  }
+
+  table {
+    rows:
+      | "Type"     | "Holds" |
+      | "`utf8`"   | "Variable-width Unicode, 1–4 bytes per character. The default." |
+      | "`ascii`"  | "7-bit text, one byte per character. A non-ASCII character in the literal is a lex error." |
+      | "`utf16`"  | "UTF-16 code units, two bytes per BMP code point." |
+      | "`utf32`"  | "Code points, four bytes each." |
+  }
+
+  callout "The four do not mix" {
+    class = ["warning"]
+    body  = "A `utf8` field will not take an `ascii` literal, and an `ascii` field will not take a plain one: `field 'a' declared as utf8 but value is ascii`. Two strings that print the same are still two types. Convert at the host layer, or declare the field as the encoding you are going to write."
+  }
+
+  h3 "Escapes"
+
+  p "Inside a plain double-quoted string, five escapes are recognised, and only five: `\\\\`, `\\\"`, `\\n`, `\\t` and `\\r`. (An interpolated literal adds a sixth, `\\$`, which the next section covers.) `\\u{263A}` is not among them — it fails with `invalid escape '\\u'` — and neither is any other letter you might expect. Write the character itself; the file is UTF-8."
+
+  code wcl {
+    source = <<'WCL'
+greeting = "Hello,\nworld!"
+quoted   = "She said \"hi\"."
+smiley   = "☺"
+WCL
+  }
+
+  p "For backslash-heavy text — regexes, LaTeX, Windows paths — reach for a raw heredoc instead of escaping every one."
+
+  h3 "Interpolation"
+
+  p "Interpolation is **opt-in**, and the opt-in is a `$` before the opening quote. Inside a `$\"…\"` literal, a `${ … }` slot evaluates any expression and splices the result in. Without the `$`, the same slot is ordinary text and nothing evaluates:"
+
+  code wcl {
+    source = <<'WCL'
+plain  = "cost: ${1 + 1}"    # "cost: ${1 + 1}"
+live   = $"cost: ${1 + 1}"   # "cost: 2"
+
+banner = $"wcl ${version} (build ${build}) on ${channel}"
+WCL
+  }
+
+  p "That `banner` is the one from `release.wcl`, and it evaluates to `\"wcl 2.4.0 (build 500) on :stable\"`. Note what each slot contributed: the `u32` lost its suffix, and the symbol kept its colon. A slot renders the value the way a person reads it, which is not the way `wcl parse` dumps it — `format(…)` in [Builtins](lang_builtins) is the same rendering, callable."
+
+  p "All four encodings take the `$` prefix (`$ascii\"…\"`, `$utf16\"…\"`). Inside an interpolated literal `\\$` escapes a literal dollar; inside a plain one `\\$` is an invalid escape, because there is nothing there to escape. A slot must stay on one line, and may not contain a heredoc."
+
+  h3 "Heredocs"
+
+  p "`<<TAG` opens a heredoc. The body starts on the next line and runs to the first line whose trimmed content is exactly `TAG`. Escapes are interpreted, exactly as in a quoted string, and the body always ends with a newline."
+
+  p "Common leading whitespace is stripped, so a heredoc indents with the block it sits in. Read that rule precisely: the amount stripped is the **smallest indent of any non-blank body line**. The closing tag's own indentation is not what decides it, and blank lines do not count:"
+
+  code wcl {
+    filename = "here.wcl"
+    source = <<'WCL'
+@document
+type Cfg { note: utf8 }
+
+note = <<END
+  First line.
+    Indented two more.
+  Second line.
+  END
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl get here.wcl note
+"First line.\n  Indented two more.\nSecond line.\n"
+TEXT
+  }
+
+  p "Two spaces came off every line, because two is the least any line had. The deeper line kept its extra two. A `$<<TAG` opener adds interpolation, and an encoding prefix works here too (`ascii<<TAG`)."
+
+  h3 "Raw heredocs"
+
+  p "Quote the tag — `<<'TAG'` — and the body is taken **verbatim**. No escape decoding, no `${ … }` slots, nothing between what you typed and the value. Indentation is still stripped, so it still sits inside a block comfortably."
+
+  code wcl {
+    filename = "raw.wcl"
+    source = <<'WCL'
+@document
+type Cfg { regex: utf8 }
+
+regex = <<'RAW'
+  \d{3}-\d{4}  ${not_a_slot}
+  RAW
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl get raw.wcl regex
+"\\d{3}-\\d{4}  ${not_a_slot}\n"
+TEXT
+  }
+
+  p "Written as a plain `<<RAW` that same body is a parse error — `invalid escape '\\d'` — which is the practical reason the form exists. Use `<<'TAG'` for regexes, LaTeX, shell snippets, Windows paths, and for the code samples in a document like this one. Note the closing tag is the bare word: `<<'RAW'` opens, `RAW` closes."
+
+  h2 "none"
+
+  p "`none` is the absence of a value. A field may hold it only if its declared type is optional — `utf8?`, `Limits?`, `list<T>?`. Against a required type it is a schema violation like any other wrong value: `field 'region' declared as utf8 but value is none`."
+
+  code wcl {
+    filename = "none.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  region:   utf8?
+  fallback: utf8
+  isnone:   bool
+}
+
+region   = none
+fallback = region ?? "us-east-1"
+isnone   = region == none
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl get none.wcl region
+none
+$ wcl get none.wcl fallback
+"us-east-1"
+$ wcl get none.wcl isnone
+true
+TEXT
+  }
+
+  p "`??` is the none-coalescing operator: it evaluates its left side, and only if that is `none` does it evaluate its right. It short-circuits, so the fallback costs nothing when it is not needed."
+
+  callout "Written none and absent are not the same thing" {
+    class = ["note"]
+    body  = "`region = none` is a field that holds `none`. Leaving the line out entirely is a field that does not exist: `wcl check` still passes, because the type is optional, but `wcl get` answers `no such path: region` rather than `none`. Both are legal; only the first is addressable."
+  }
+
+  h2 "Three ways to write a name"
+
+  p "Strings, identifiers and symbols overlap where it matters most — all three can carry the word `web`. The separate reference pages this book replaced described them one at a time, so the choice never came up. It is the choice you will make most often, so here it is in one place:"
+
+  code wcl {
+    filename = "names.wcl"
+    source = <<'WCL'
+symbol_set Channel { alpha  beta  stable }
+
+@block("target")
+type Target {
+  @inline(0) name: identifier
+  title:   utf8
+  owner:   identifier
+  channel: Channel
+  tag:     symbol
+}
+
+@document
+type Cfg {
+  @children("target") targets: list<Target>
+}
+
+target web {
+  title   = "Web front end"
+  owner   = platform
+  channel = :stable
+  tag     = :anything_goes
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl get names.wcl targets.web.title
+"Web front end"
+$ wcl get names.wcl targets.web.owner
+platform
+$ wcl get names.wcl targets.web.channel
+:stable
+$ wcl get names.wcl targets.web.tag
+:anything_goes
+TEXT
+  }
+
+  table {
+    rows:
+      | "Written"  | "Declared as"  | "What checks it"                    | "Reach for it when" |
+      | "`\"web\"`"  | "`utf8`"       | "Nothing — any text at all"         | "A person reads the value" |
+      | "`web`"    | "`identifier`" | "The reference rules of [Schemas](lang_schemas)" | "Something else in the document points at it" |
+      | "`:web`"   | "`symbol`"     | "Nothing — any symbol at all"       | "It is a tag, and the vocabulary is open" |
+      | "`:web`"   | "a `symbol_set`" | "Membership of the set"           | "It is one of a closed set of choices" |
+  }
+
+  p "Change one line at a time and watch which ones the tool catches. `tag = \"stable\"` fails — `field 'tag' declared as symbol but value is utf8` — because a string is not a symbol however much it looks like one. `channel = :qa` fails on membership. But `owner = \"platform\"` **passes**: a string in an `identifier` slot coerces, so quoting a reference is a style choice rather than a mistake. And `title = platform` passes `wcl check` and then fails on `wcl get` with `unresolved reference 'platform'` — a bare name in an expression is a lookup, and the lookup is lazy."
+
+  p "The rule underneath: `utf8` is text, `identifier` is a name in this document's namespace, and `symbol` is a name from a vocabulary. Only an `identifier` is ever resolved, and only a `symbol_set` member is ever checked against a list."
+
+  h2 "Every primitive at a glance"
+
+  table {
+    rows:
+      | "Value"      | "Written"                    | "Declared as"                        | "`wcl get` prints" |
+      | "Integer"    | "`42`, `0x1F4u32`, `1_000`"  | "`i8` … `u128`, `isize`, `usize`"    | "`42`, `500u32`" |
+      | "Float"      | "`0.75`, `1.5e-3`, `1.5f32`" | "`f32`, `f64`"                       | "`0.75`, `1.5f32`" |
+      | "Unit literal" | "`18MiB`, `90s`, `12kg`"   | "any numeric alias carrying `@unit`" | "`18874368` — the base-unit product" |
+      | "Boolean"    | "`true`, `false`"            | "`bool`"                             | "`true`" |
+      | "String"     | "`\"2.4.0\"`, `ascii\"9f2c41ab\"`" | "`utf8`, `ascii`, `utf16`, `utf32`"  | "`\"2.4.0\"`, `ascii\"9f2c41ab\"`" |
+      | "Identifier" | "`platform`"                 | "`identifier`"                       | "`platform`" |
+      | "Symbol"     | "`:stable`"                  | "`symbol`, or a `symbol_set`"        | "`:stable`" |
+      | "Absence"    | "`none`"                     | "any optional type, `T?`"            | "`none`" |
+  }
+
+  p "Read the last two columns together. What `wcl get` prints is always legal WCL for the same value — suffix, prefix and colon included — so a dump re-parses as what it dumped. The one row where the _text_ does not survive is the unit literal, and that is the point of it: `18MiB` was never a value, only a way of writing `18874368`. Printing a value is the quickest way to find out what it really is."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Lists, tensors and records](lang_collections) — the composite values these scalars go into."
+    li "[Types](lang_types) — aliases, unions, interfaces, `symbol_set`, and the `@min` / `@max` / `@non_empty` constraints that narrow a primitive."
+    li "[Expressions and operators](lang_expressions) — the full operator set, precedence, and where `??` sits in it."
+    li "[Schemas](lang_schemas) — what `identifier` buys you: `@ref`, `&T` and the reference checking."
+    li "[Builtins](lang_builtins) — `format`, `format_unit`, and the string functions that search, split and join."
+    li "[How a document evaluates](lang_evaluation) — why a unit error waits for `wcl get`."
+  }
 }
