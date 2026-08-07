@@ -113,9 +113,9 @@ TEXT
       | "Imports"                            | "An `import` item, not followed"   | "Resolved and merged"                |
       | "Schema checks"                      | "None"                            | "On request"                         |
       | "Can you write it back?"             | "Yes — that is the point"         | "No"                                 |
-      | "CLI commands using it"              | "`fmt`, the write half of `set`"  | "`check`, `parse`, `get`, `diff`, the read half of `set`" |
-
   }
+
+  p "Every `wcl` subcommand picks one of the two, and [Which command forces what](#which-command-forces-what) at the end of the chapter is that mapping in full."
 
   h3 "Why a Document has no AST"
 
@@ -130,7 +130,7 @@ TEXT
 
   h3 "Using both doors in turn"
 
-  p "`wcl set` is the worked example of combining them, and it goes through each exactly once. First the evaluating door, to find out **where** the field really lives — a dotted path may resolve through an import, so the file you named is not always the file that declares it. Then the editing door on that file, to replace the expression and print the result back:"
+  p "`wcl set` is the worked example of combining them, and it goes through each exactly once. First the evaluating door — `Document::from_file` is the same door taking a path rather than a source string — to find out **where** the field really lives, since a dotted path may resolve through an import and the file you named is not always the file that declares it. Then the editing door on that file, to replace the expression and print the result back:"
 
   code text {
     source = <<'TEXT'
@@ -466,7 +466,6 @@ TEXT
       | "`fn` item"                | "No"                     | "No"                     | "A `let` in disguise, so the same answer" |
       | "A block's labels"         | "No"                     | "No"                     | "Read through the block's label list, not as fields" |
       | "`import` statement"       | "No"                     | "No"                     | "The imported file's items are merged instead" |
-
   }
 
   code text {
@@ -548,7 +547,6 @@ WCL
       | "`fixed`"   | "`Scale::Fixed(7u32)`"                 | "`{\"Fixed\": 7}`" |
       | "`off`"     | "`Scale::Off`"                         | "`\"Off\"`" |
       | "`missing`" | "`none`"                               | "`null`" |
-
   }
 
   p "Read the columns against each other and the shape of the mapping is clear. **The type suffix goes.** `8080u32` is `8080`; JSON has one number type and the variant WCL was carrying is not expressible. **A unit is already gone** by the time serialization runs — `512MiB` became `536870912` during evaluation, not during output. **A symbol becomes its name** as a string; the leading colon is syntax. **A variant becomes a one-key object** named after the variant, or a bare string when it has no payload. **A tensor keeps its shape** as an object, because a nested array would lose the rank. And `none` is `null`."
@@ -573,15 +571,72 @@ WCL
     rows:
       | "Family"           | "Rust type"           | "Raised when"                        | "Reported by"           | "Exit" |
       | "Parse error"      | "`ParseError`"        | "The file is opened, always"          | "Every command"         | "1" |
-      | "Schema violation" | "`SchemaViolationKind` inside `EvalError::SchemaViolation`" | "Validation is requested" | "`wcl check`" | "2" |
+      | "Schema violation" | "`SchemaViolationKind` inside `EvalError::SchemaViolation`" | "Validation is requested, **and** when a field is forced" | "`wcl check` as a violation; `wcl get` / `wcl parse` as an evaluation failure" | "2 from `check`, 3 from `get`" |
       | "Evaluation error" | "`EvalError`"         | "A field is forced"                   | "`wcl get`, `wcl parse`" | "3" |
   }
 
   p "The three are ordered. A file that does not parse has no document, so nothing else can run. A file that parses can be validated. A file that validates can still fail when a value is finally demanded — that is `estate.wcl`'s `budget`, and it is the ordinary case, not a corner."
 
+  p "The middle row overlaps the bottom one on purpose, and it is the one place the three families are not disjoint. A schema violation _is_ an `EvalError` variant, and some violations are raised on the lazy path rather than by validation: forcing a field checks that the field's own schema declares it. So the same fault reaches you two ways, under two exit codes. Save `zone.wcl`, whose `web` service carries a field its schema never declared:"
+
+  code wcl {
+    filename = "zone.wcl"
+    source = <<'WCL'
+@block("service")
+type Service {
+  @inline(0) name: identifier
+  port: u32
+}
+
+@document
+type Cfg {
+  @children("service") services: list<Service>
+}
+
+service web {
+  port = 8080u32
+  zone = "a"
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check zone.wcl
+wcl::eval::schema_violation
+
+  × field 'zone' is not declared by schema 'Service'
+
+zone.wcl: 1 schema violation
+$ echo $?
+2
+$ wcl get zone.wcl services.web.zone
+wcl::eval::schema_violation
+
+  × field 'zone' is not declared by schema 'Service'
+
+$ echo $?
+3
+TEXT
+  }
+
+  p "Same violation, same message, different family verdict — `check` calls it a schema violation because that is what it was asked for, and `get` calls it a failed evaluation because that is what happened to the field it was asked for. Read the exit code as *which command gave up*, not as *what kind of fault it was*; the `wcl::eval::…` code is the part that names the fault."
+
   h3 "Parse errors"
 
-  p "A `ParseError` is either an I/O failure or a `SyntaxError`. The syntax form carries the message, the offending span, a label for it, and the source text itself — so it is the one family that always renders with a snippet:"
+  p "A `ParseError` is either an I/O failure or a `SyntaxError`. The syntax form carries the message, the offending span, a label for it, and the source text itself — so it is the one family that always renders with a snippet. Leave a string unterminated in `broken.wcl`:"
+
+  code wcl {
+    filename = "broken.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  owner: utf8
+}
+
+owner = "platform
+WCL
+  }
 
   code text {
     source = <<'TEXT'
@@ -598,7 +653,22 @@ wcl::parse
 TEXT
   }
 
-  p "A syntax error may also carry a **second** span pointing at the prior occurrence that made the first one wrong. Duplicate declarations use it, so the diagnostic shows both lines rather than making you go looking. Give a file two `port` fields and:"
+  p "A syntax error may also carry a **second** span pointing at the prior occurrence that made the first one wrong. Duplicate declarations use it, so the diagnostic shows both lines rather than making you go looking:"
+
+  code wcl {
+    filename = "duplicate.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  owner: utf8
+  port: u32
+}
+
+owner = "platform"
+port  = 8080u32
+port  = 9090u32
+WCL
+  }
 
   code text {
     source = <<'TEXT'
@@ -669,9 +739,24 @@ TEXT
   p "A few checks are **warnings** rather than errors: conditions that are legal, that existing documents rely on, and that are still very likely a mistake. The one in the set today fires when two `@document` schemas governing one namespace both declare the same gather field, so one schema's blocks silently vanish from the merged view. A root document importing a library that already gathers `parts` is enough:"
 
   code wcl {
+    filename = "lib.wcl"
+    source = <<'WCL'
+@block("widget")
+type Widget {
+  @inline(0) name: identifier
+}
+
+@document
+type LibDoc {
+  @children("widget") parts: list<Widget>
+}
+WCL
+  }
+
+  code wcl {
     filename = "root.wcl"
     source = <<'WCL'
-import "./lib.wcl"          # declares @document LibDoc with a `parts` gather
+import "./lib.wcl"
 
 @block("gadget")
 type Gadget {
@@ -730,9 +815,27 @@ TEXT
 
   h3 "Spans, snippets and machine output"
 
-  p "Every error in all three families carries a span: a byte offset into a file and a length. Diagnostics are `miette` types, so the code, the message, the span and its label are all structured, and rendering them with a source attached is what draws the pointer-under-the-line snippets above."
+  p "Every error that names a place in a file carries a span: a byte offset and a length. That is every `SyntaxError` and every `EvalError` variant. The one exception is the I/O half of `ParseError` — a file that could not be read has no position to point at, and it carries the `std::io::Error` and nothing else. Diagnostics are `miette` types, so the code, the message, the span and its label are all structured, and rendering them with a source attached is what draws the pointer-under-the-line snippets above."
 
-  p "Whether you _get_ a snippet depends on whether the reporting path knows which source the span belongs to. A parse error carries its own source, so it always renders one. An evaluation error carries only the span — it is raised deep in a walk that may be crossing several files — so the caller has to supply the text. `wcl check` supplies it where the violation's provenance is known:"
+  p "Whether you _get_ a snippet depends on whether the reporting path knows which source the span belongs to. A parse error carries its own source, so it always renders one. An evaluation error carries only the span — it is raised deep in a walk that may be crossing several files — so the caller has to supply the text. `wcl check` supplies it where the violation's provenance is known, as it is for a second root `@document` in one namespace:"
+
+  code wcl {
+    filename = "twodocs.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  owner: utf8
+}
+
+@document
+type Extra {
+  team: utf8
+}
+
+owner = "platform"
+team  = "infra"
+WCL
+  }
 
   code text {
     source = <<'TEXT'
@@ -750,6 +853,8 @@ wcl::eval::schema_violation
     · ╰──── schema violation
  10 │
     ╰────
+
+twodocs.wcl: 1 schema violation
 TEXT
   }
 
