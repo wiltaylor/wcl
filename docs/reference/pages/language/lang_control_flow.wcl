@@ -1,0 +1,11 @@
+// Chapter 6 — Control flow.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_control_flow {
+  title = "Control flow"
+
+  h1 "Control flow"
+
+  p "Not written yet. This chapter covers `if` and `else`, `match`, `if let`, block expressions, `let` bindings, and `try` and `catch`."
+}

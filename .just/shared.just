@@ -189,10 +189,20 @@ wplan-template-check: require-cargo
 
 # ── Builds the gate depends on ────────────────────────────────────────────
 
-# Build the project's docs/ site into docs/_site/ (gitignored)
+# The second invocation is the combined reference book (#157), which is
+# written one chapter at a time alongside the site it replaces. It lands at
+# `reference-next` only while both exist: the old docs/main.wcl already
+# builds a `reference` sub-site whose page names collide with the new book's,
+# and a build never wipes its output dir. At the switchover (#206) the old
+# entry goes, the landing becomes its own document, and the two invocations
+# become `docs/landing/main.wcl --out docs/_site` plus
+# `docs/reference/main.wcl --out docs/_site/reference`.
+#
+# Build the project's docs/ sites into docs/_site/ (gitignored)
 [group('dev')]
 docs-build *ARGS: require-cargo
     cargo run -p wcl -- wdoc build docs/main.wcl --out docs/_site {{ARGS}}
+    cargo run -p wcl -- wdoc build docs/reference/main.wcl --out docs/_site/reference-next {{ARGS}}
 
 # The output dir is wiped first: a build never deletes pages that no longer
 # exist, so removed entities would otherwise linger as orphaned HTML.

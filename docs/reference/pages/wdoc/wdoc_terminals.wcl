@@ -1,0 +1,11 @@
+// Chapter 39 — Terminals and TUI.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_terminals {
+  title = "Terminals and TUI"
+
+  h1 "Terminals and TUI"
+
+  p "Not written yet. This chapter covers `terminal` and `term_text` grids, the terminal primitive interface, and the TUI widget family."
+}

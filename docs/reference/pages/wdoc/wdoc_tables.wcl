@@ -1,0 +1,11 @@
+// Chapter 25 — Lists and tables.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_tables {
+  title = "Lists and tables"
+
+  h1 "Lists and tables"
+
+  p "Not written yet. This chapter covers `list` and `li`, `table` in both authored forms, alignment and captions."
+}

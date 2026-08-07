@@ -1,0 +1,11 @@
+// Chapter 15 — Documents, pages and sites.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_sites {
+  title = "Documents, pages and sites"
+
+  h1 "Documents, pages and sites"
+
+  p "Not written yet. This chapter covers the entry document, the `site` block, `page` blocks, `toc` and `menu`, and the output tree."
+}

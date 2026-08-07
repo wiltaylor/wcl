@@ -1,0 +1,11 @@
+// Chapter 3 — Lists, tensors and records.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_collections {
+  title = "Lists, tensors and records"
+
+  h1 "Lists, tensors and records"
+
+  p "Not written yet. This chapter covers list and tensor literals, record literals, field access, and bare-record coercion to a union variant."
+}

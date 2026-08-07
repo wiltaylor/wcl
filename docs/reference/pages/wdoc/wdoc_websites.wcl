@@ -1,0 +1,11 @@
+// Chapter 17 — Websites.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_websites {
+  title = "Websites"
+
+  h1 "Websites"
+
+  p "Not written yet. This chapter covers the website template, named slots and the slot contract, head assets, and the assets folder."
+}

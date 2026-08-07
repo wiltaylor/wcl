@@ -1,0 +1,11 @@
+// Chapter 10 — Decorators.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_decorators {
+  title = "Decorators"
+
+  h1 "Decorators"
+
+  p "Not written yet. This chapter covers what a decorator is, the authored and host-declared vocabularies, `@declares_kind`, and reading decorators back."
+}

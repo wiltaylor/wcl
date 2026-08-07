@@ -1,0 +1,11 @@
+// Chapter 23 — Code.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_code {
+  title = "Code"
+
+  h1 "Code"
+
+  p "Not written yet. This chapter covers the `code` block, its language, filename and caption, and the chrome each backend draws."
+}

@@ -1,0 +1,11 @@
+// Chapter 19 — Themes and styling.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_styling {
+  title = "Themes and styling"
+
+  h1 "Themes and styling"
+
+  p "Not written yet. This chapter covers `theme` and `palette`, the seven built-in themes, the style rule vocabulary, and scoped palettes."
+}
