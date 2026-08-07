@@ -100,6 +100,11 @@ wdoc-serve *ARGS:
 docs-serve *ARGS:
     cargo run -p wcl -- wdoc serve docs/main.wcl --addr 127.0.0.1:8137 --edit {{ARGS}}
 
+# Serve the combined reference book (docs/reference/main.wcl) — hot-reload dev server
+[group('dev')]
+docs-serve-ref *ARGS:
+    cargo run -p wcl -- wdoc serve docs/reference/main.wcl --addr 127.0.0.1:8138 {{ARGS}}
+
 # Serve the WCL architecture book (.wad/) — hot-reload dev server. Review comments live in `just editor`'s preview pane
 [group('dev')]
 wad-serve *ARGS:

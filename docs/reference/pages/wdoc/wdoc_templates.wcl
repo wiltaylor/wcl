@@ -1,0 +1,11 @@
+// Chapter 16 — Templates and layouts.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_templates {
+  title = "Templates and layouts"
+
+  h1 "Templates and layouts"
+
+  p "Not written yet. This chapter covers the three template kinds, the template context, the template parts, and the `el` constructor family."
+}

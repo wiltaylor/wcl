@@ -1,0 +1,11 @@
+// Chapter 36 — Timelines and dopesheets.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_timelines {
+  title = "Timelines and dopesheets"
+
+  h1 "Timelines and dopesheets"
+
+  p "Not written yet. This chapter covers `timeline` calendar math, ranges and milestones, and `dopesheet` tracks, keys and frames."
+}

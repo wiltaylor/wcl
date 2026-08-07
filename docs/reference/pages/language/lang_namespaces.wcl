@@ -1,0 +1,11 @@
+// Chapter 8 — Namespaces and imports.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_namespaces {
+  title = "Namespaces and imports"
+
+  h1 "Namespaces and imports"
+
+  p "Not written yet. This chapter covers `namespace` and `use` declarations, qualified kind names, disk and system imports, and how they resolve."
+}

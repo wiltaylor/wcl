@@ -1,0 +1,11 @@
+// Chapter 2 — Values and primitives.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_values {
+  title = "Values and primitives"
+
+  h1 "Values and primitives"
+
+  p "Not written yet. This chapter covers numbers and their suffixes, literal units, booleans, symbols, strings, interpolation, heredocs and `none`."
+}

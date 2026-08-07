@@ -1,0 +1,11 @@
+// Chapter 18 — Presentations.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_presentations {
+  title = "Presentations"
+
+  h1 "Presentations"
+
+  p "Not written yet. This chapter covers `deck`, `section`, `slide`, `fragment` and `notes`, and how a deck builds on each target."
+}

@@ -1,0 +1,11 @@
+// Chapter 37 — Trees, node tables and cards.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_tree {
+  title = "Trees, node tables and cards"
+
+  h1 "Trees, node tables and cards"
+
+  p "Not written yet. This chapter covers `tree` and `tree_node`, `node_table` and `node_row`, and the `card` shape."
+}

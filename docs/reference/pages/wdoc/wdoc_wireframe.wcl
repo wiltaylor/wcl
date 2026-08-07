@@ -1,0 +1,11 @@
+// Chapter 40 — Wireframes.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_wireframe {
+  title = "Wireframes"
+
+  h1 "Wireframes"
+
+  p "Not written yet. This chapter covers the wireframe widget family in four groups, and how a widget is a diagram shape rather than a page block."
+}

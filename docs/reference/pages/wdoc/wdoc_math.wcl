@@ -1,0 +1,11 @@
+// Chapter 28 — Math.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_math {
+  title = "Math"
+
+  h1 "Math"
+
+  p "Not written yet. This chapter covers the `math` block, inline and display equations, and the supported LaTeX subset."
+}

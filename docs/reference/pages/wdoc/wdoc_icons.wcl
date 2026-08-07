@@ -1,0 +1,11 @@
+// Chapter 27 — Icons.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_icons {
+  title = "Icons"
+
+  h1 "Icons"
+
+  p "Not written yet. This chapter covers the `icon` block, the bundled packs and their licensing, custom icon sets, and both galleries."
+}

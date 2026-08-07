@@ -1,0 +1,11 @@
+// Chapter 41 — Writing your own blocks.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_extending {
+  title = "Writing your own blocks"
+
+  h1 "Writing your own blocks"
+
+  p "Not written yet. This chapter covers the lowering mechanism, the three lowering interfaces, the semantic content IR, and native blocks."
+}

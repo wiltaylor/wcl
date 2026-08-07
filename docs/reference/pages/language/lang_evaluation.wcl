@@ -1,0 +1,11 @@
+// Chapter 12 — How a document evaluates.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_evaluation {
+  title = "How a document evaluates"
+
+  h1 "How a document evaluates"
+
+  p "Not written yet. This chapter covers the evaluate-and-edit split, lazy fields, cycle detection, JSON serialization and the error model."
+}

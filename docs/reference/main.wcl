@@ -1,0 +1,127 @@
+// The WCL reference — one book covering the language and wdoc.
+//
+//   wcl wdoc serve docs/reference/main.wcl        # just docs-serve-ref
+//   wcl wdoc build docs/reference/main.wcl --out <dir>
+//
+// One document, one site, so no page carries a `sites` array and `root`
+// stays unset: a single-site document already renders at its own output
+// root. The single `import <wdoc.wcl>` pulls in the embedded wdoc standard
+// library, so every stdlib block (`page` / `h1` / `p` / `code` / ...) is in
+// scope here and in every imported page.
+//
+// The 42 chapters are the tree settled in #156. Every page exists from the
+// skeleton commit (#157) onwards, because a `toc` entry naming an unknown
+// page — and a link to one — is a build error: without the whole tree in
+// place no chapter could cross-reference another until the last one landed.
+// Chapters arrive one issue at a time and replace their stub in place.
+import <wdoc.wcl>
+
+site reference {
+  default_template = :book
+  title            = "WCL Reference"
+  theme            = :nord
+  accent           = :cyan
+  theme_toggle     = true
+  search           = true
+
+  // The two part headings are page-less `chapter`s: grouping, not pages.
+  // The front matter sits above both.
+  toc {
+    chapter "0. Introduction & Quick Start"                  { page = intro }
+
+    chapter "The WCL language" {
+      chapter "1. Documents, fields and blocks"                { page = lang_documents }
+      chapter "2. Values and primitives"                       { page = lang_values }
+      chapter "3. Lists, tensors and records"                  { page = lang_collections }
+      chapter "4. Types"                                       { page = lang_types }
+      chapter "5. Expressions and operators"                   { page = lang_expressions }
+      chapter "6. Control flow"                                { page = lang_control_flow }
+      chapter "7. Functions"                                   { page = lang_functions }
+      chapter "8. Namespaces and imports"                      { page = lang_namespaces }
+      chapter "9. Schemas"                                     { page = lang_schemas }
+      chapter "10. Decorators"                                 { page = lang_decorators }
+      chapter "11. Connections"                                { page = lang_connections }
+      chapter "12. How a document evaluates"                   { page = lang_evaluation }
+      chapter "13. Builtins"                                   { page = lang_builtins }
+      chapter "14. The CLI"                                    { page = lang_cli }
+    }
+
+    chapter "wdoc" {
+      chapter "15. Documents, pages and sites"                 { page = wdoc_sites }
+      chapter "16. Templates and layouts"                      { page = wdoc_templates }
+      chapter "17. Websites"                                   { page = wdoc_websites }
+      chapter "18. Presentations"                              { page = wdoc_presentations }
+      chapter "19. Themes and styling"                         { page = wdoc_styling }
+      chapter "20. Visibility"                                 { page = wdoc_visibility }
+      chapter "21. Output targets"                             { page = wdoc_outputs }
+      chapter "22. Text and formatting"                        { page = wdoc_formatting }
+      chapter "23. Code"                                       { page = wdoc_code }
+      chapter "24. Callouts, footnotes and chapter headers"    { page = wdoc_callouts }
+      chapter "25. Lists and tables"                           { page = wdoc_tables }
+      chapter "26. Images, videos and file assets"             { page = wdoc_media }
+      chapter "27. Icons"                                      { page = wdoc_icons }
+      chapter "28. Math"                                       { page = wdoc_math }
+      chapter "29. Data views"                                 { page = wdoc_data_views }
+      chapter "30. Demo blocks"                                { page = wdoc_demo }
+      chapter "31. The diagram canvas"                         { page = wdoc_diagrams }
+      chapter "32. Connections and routing"                    { page = wdoc_diagram_connections }
+      chapter "33. Flowcharts and swimlanes"                   { page = wdoc_flowcharts }
+      chapter "34. Sequence and state diagrams"                { page = wdoc_sequence_state }
+      chapter "35. Charts"                                     { page = wdoc_charts }
+      chapter "36. Timelines and dopesheets"                   { page = wdoc_timelines }
+      chapter "37. Trees, node tables and cards"               { page = wdoc_tree }
+      chapter "38. Tilemaps and maps"                          { page = wdoc_tilemaps }
+      chapter "39. Terminals and TUI"                          { page = wdoc_terminals }
+      chapter "40. Wireframes"                                 { page = wdoc_wireframe }
+      chapter "41. Writing your own blocks"                    { page = wdoc_extending }
+    }
+  }
+}
+
+// Front matter.
+import "./pages/intro.wcl"
+
+// Part I — the WCL language.
+import "./pages/language/lang_documents.wcl"
+import "./pages/language/lang_values.wcl"
+import "./pages/language/lang_collections.wcl"
+import "./pages/language/lang_types.wcl"
+import "./pages/language/lang_expressions.wcl"
+import "./pages/language/lang_control_flow.wcl"
+import "./pages/language/lang_functions.wcl"
+import "./pages/language/lang_namespaces.wcl"
+import "./pages/language/lang_schemas.wcl"
+import "./pages/language/lang_decorators.wcl"
+import "./pages/language/lang_connections.wcl"
+import "./pages/language/lang_evaluation.wcl"
+import "./pages/language/lang_builtins.wcl"
+import "./pages/language/lang_cli.wcl"
+
+// Part II — wdoc.
+import "./pages/wdoc/wdoc_sites.wcl"
+import "./pages/wdoc/wdoc_templates.wcl"
+import "./pages/wdoc/wdoc_websites.wcl"
+import "./pages/wdoc/wdoc_presentations.wcl"
+import "./pages/wdoc/wdoc_styling.wcl"
+import "./pages/wdoc/wdoc_visibility.wcl"
+import "./pages/wdoc/wdoc_outputs.wcl"
+import "./pages/wdoc/wdoc_formatting.wcl"
+import "./pages/wdoc/wdoc_code.wcl"
+import "./pages/wdoc/wdoc_callouts.wcl"
+import "./pages/wdoc/wdoc_tables.wcl"
+import "./pages/wdoc/wdoc_media.wcl"
+import "./pages/wdoc/wdoc_icons.wcl"
+import "./pages/wdoc/wdoc_math.wcl"
+import "./pages/wdoc/wdoc_data_views.wcl"
+import "./pages/wdoc/wdoc_demo.wcl"
+import "./pages/wdoc/wdoc_diagrams.wcl"
+import "./pages/wdoc/wdoc_diagram_connections.wcl"
+import "./pages/wdoc/wdoc_flowcharts.wcl"
+import "./pages/wdoc/wdoc_sequence_state.wcl"
+import "./pages/wdoc/wdoc_charts.wcl"
+import "./pages/wdoc/wdoc_timelines.wcl"
+import "./pages/wdoc/wdoc_tree.wcl"
+import "./pages/wdoc/wdoc_tilemaps.wcl"
+import "./pages/wdoc/wdoc_terminals.wcl"
+import "./pages/wdoc/wdoc_wireframe.wcl"
+import "./pages/wdoc/wdoc_extending.wcl"

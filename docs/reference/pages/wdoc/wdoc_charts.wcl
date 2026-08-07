@@ -1,0 +1,11 @@
+// Chapter 35 — Charts.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_charts {
+  title = "Charts"
+
+  h1 "Charts"
+
+  p "Not written yet. This chapter covers the bar, line and pie charts: the series shapes, the axes, the labels, the legends and the colour."
+}

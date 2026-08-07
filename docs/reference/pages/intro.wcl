@@ -1,0 +1,14 @@
+// Chapter 0 — Introduction & Quick Start.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page intro {
+  // Served at the book's root (`/reference/`).
+  start = true
+
+  title = "Introduction & Quick Start"
+
+  h1 "Introduction & Quick Start"
+
+  p "Not written yet. This chapter introduces WCL, installs it, and walks a first document through `wcl check` and `wcl eval`."
+}

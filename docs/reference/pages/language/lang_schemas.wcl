@@ -1,0 +1,11 @@
+// Chapter 9 — Schemas.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_schemas {
+  title = "Schemas"
+
+  h1 "Schemas"
+
+  p "Not written yet. This chapter covers the schema decorators that declare a document shape, and how document schemas compose per namespace."
+}

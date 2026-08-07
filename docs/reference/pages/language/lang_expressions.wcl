@@ -1,0 +1,11 @@
+// Chapter 5 — Expressions and operators.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_expressions {
+  title = "Expressions and operators"
+
+  h1 "Expressions and operators"
+
+  p "Not written yet. This chapter covers member access, indexing, calls, the operator precedence table, numeric promotion and the `??` operator."
+}
