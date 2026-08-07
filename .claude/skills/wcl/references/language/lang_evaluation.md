@@ -1,8 +1,8 @@
 # How a document evaluates
 
-This page is the model behind the surprises: why a broken field can sit in a file that
-`wcl check` calls `OK`, why a `let` you can plainly see is not in the JSON, and why a tool that
-edits a file has to reopen it before reading a value back.
+This page is the model behind three surprises. Why does a broken field sit in a file that
+`wcl check` calls `OK`? Why is a `let` you can plainly see absent from the JSON? Why must a
+tool that edits a file re-open it before it reads a value back?
 
 ## Two paths, and you pick one per parse
 
@@ -16,14 +16,12 @@ WCL has two mutually exclusive entry points.
 | Schema checks | Run | Do not run |
 | Mutation | Impossible | The point |
 
-**There is deliberately no AST escape hatch on `Document`.** Mixing editing and evaluation in
-one parse would silently invalidate the document's cached field values, so the API makes you
-choose. A host that edits a file and then wants a value out of it re-opens the file as a
-`Document`.
+**There is deliberately no AST escape hatch on `Document`.** One parse that both edits and
+evaluates would silently invalidate the cached field values. The API therefore makes you
+choose. A host that edits a file and then wants a value out of it re-opens it as a `Document`.
 
-This is why `wcl fmt` and `wcl set` preserve your comments and blank-line groupings — they run
-on the editing path, over a real AST — while `wcl get` and `wcl check` see only evaluated
-values.
+This is why `wcl fmt` and `wcl set` preserve your comments and blank-line groupings. They run
+on the editing path, over a real AST. `wcl get` and `wcl check` see only evaluated values.
 
 ## Fields evaluate lazily, and cache
 
@@ -49,11 +47,11 @@ wcl::eval::user_error
   × error: boom
 ```
 
-### The consequence worth remembering
+### Validation skips a field that fails to evaluate
 
-**Validation does not force a field whose expression fails.** A field that errors during
-evaluation is *skipped* by the schema check rather than reported, because a computed field may
-legitimately refer to bindings that only exist once a host expands it. So:
+**Validation does not force a field whose expression fails.** The schema check *skips* a field
+that errors during evaluation instead of reporting it. A computed field may legitimately refer
+to bindings that only exist once a host expands it. So:
 
 ```console
 $ wcl check b.wcl
@@ -69,7 +67,7 @@ wcl::eval::schema_violation
   × field 's' declared as utf8 but value is i64
 ```
 
-— but a value it *cannot* evaluate is not an error. There is one exception: a literal list whose
+— but a value it *cannot* evaluate is not an error. There is one exception. A literal list whose
 element type is a union is static authored data, so a failure to infer one of its record
 variants is reported.
 
@@ -101,8 +99,8 @@ itself.
 
 A bare identifier inside a block resolves by walking the enclosing block frames innermost to
 outermost, then falling through to the document root. A frame carries the block's fields, its
-nested blocks and its `let` bindings — plus, when a host expands a `@contextual` block, the
-bindings that expansion injected (a loop variable, a component's slot values).
+nested blocks and its `let` bindings. When a host expands a `@contextual` block, the frame also
+carries the bindings that expansion injected — a loop variable, a component's slot values.
 
 At the root, the search covers the root file **and every eagerly-imported file**, which is what
 makes an imported declaration usable as if local.
@@ -138,9 +136,9 @@ $ wcl get root.wcl servers.main.host
 ```
 
 **`let` items are invisible to the document view.** A top-level `let name = expr` is a
-composition helper: sibling and descendant expressions resolve it by name, but it is absent from
-`fields`, from `blocks`, from `get`, from JSON and from schema validation. It is not in the
-symbol index either.
+composition helper. Sibling and descendant expressions resolve it by name. It is absent from
+`fields`, from `blocks`, from `get`, from JSON and from schema validation, and it is not in the
+symbol index.
 
 ```wcl
 let base = 10
@@ -172,8 +170,8 @@ Two more things a path lookup will not do:
 ## JSON serialization
 
 Values serialize **one way only**. There is a custom `Serialize` impl and deliberately no
-`Deserialize`: round-tripping JSON back into a value would lose the numeric variant (`i32` vs
-`i64` vs `u32`), which the evaluator assumes is preserved.
+`Deserialize`. Round-tripping JSON back into a value would lose the numeric variant — `i32` vs
+`i64` vs `u32` — which the evaluator assumes is preserved.
 
 | Value | JSON |
 | --- | --- |
@@ -232,19 +230,8 @@ names helps you read a message and search for its cause:
   `InvalidDecoratorApplicability`.
 - Graphs: `UnknownConnectionOperand`, `UnknownConnection`, `AmbiguousConnection`,
   `UnknownConnectionKind`, `DanglingReference`.
-- Advisory: `DocumentFieldShadow` — a **warning**, never an error. See
-  [`lang_schemas.md`](lang_schemas.md).
-
-Warnings go to stderr and never change the exit code:
-
-```console
-$ wcl check n.wcl
-warning: gather field 'widgets' … silently vanish; rename one field
-n.wcl: 1 warning
-OK
-```
-
-`wcl check --json` emits errors and warnings as structured data instead.
+- Advisory: `DocumentFieldShadow` — a **warning**, never an error. It is the only one, and
+  [`lang_schemas.md`](lang_schemas.md) carries the transcript and the fix.
 
 ## Gotchas
 

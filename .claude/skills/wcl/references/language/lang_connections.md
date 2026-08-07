@@ -230,11 +230,11 @@ d.wcl: 1 schema violation
 
 - **`@ref`** when one block names another and you want the id checked. It stays a scalar field,
   it reads as a property, and it costs nothing to add to an existing schema.
-- **A connection** when the relationship is an edge in its own right — when it has a *kind*,
-  when both ends matter symmetrically, or when a consumer wants the whole edge list rather than
-  a walk over blocks.
-- **`@by_ref`** on a block type when a nested block should reify as a resolvable reference
-  rather than an inlined copy, so a cross-cutting definition (a colour, a palette entry) is
+- **A connection** when the relationship is an edge in its own right. Reach for it when the
+  edge has a *kind*, or when both ends matter symmetrically. Reach for it too when a consumer
+  wants the whole edge list rather than a walk over blocks.
+- **`@by_ref`** on a block type when a nested block must reify as a resolvable reference rather
+  than an inlined copy. A cross-cutting definition — a colour, a palette entry — is then
   declared once and pointed at from many places.
 
 ## Gotchas

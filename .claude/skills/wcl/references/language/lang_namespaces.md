@@ -71,8 +71,8 @@ wcl::parse
 | `use ns as Alias` | Namespace alias — members are reachable as `Alias.Name`. |
 | `use ns.{A, B as C}` | Binds several members in one declaration. |
 
-The two bare forms are told apart by what the path names: a path that names a declaration binds
-that leaf, and a path that is only a **prefix** of declarations becomes a wildcard search path.
+What the path names tells the two bare forms apart. A path that names a declaration binds that
+leaf. A path that is only a **prefix** of declarations becomes a wildcard search path.
 
 ```wcl
 import "./lib.wcl"
@@ -85,15 +85,15 @@ use company.net.{Server, Pool as P}
 ```
 
 **You often need no `use` at all.** Importing a namespaced file adds that file's namespace to
-this file's resolution search paths, so a bare reference to an imported declaration already
-resolves. `use` is for a shorter name, a different name, or an explicit record of the
+this file's resolution search paths. A bare reference to an imported declaration therefore
+already resolves. `use` is for a shorter name, a different name, or an explicit record of the
 dependency.
 
 ## Qualified block kinds
 
 Block (and table) kinds are namespace-scoped too. A **bare** kind prefers a declaration in the
-referencing file's own namespace and falls back to an imported one — so your own
-`@block("server")` deterministically shadows a library's.
+referencing file's own namespace, and falls back to an imported one. Your own
+`@block("server")` therefore shadows a library's, deterministically.
 
 Write `ns::kind` at the instance site to pick the other one:
 
@@ -148,8 +148,8 @@ import <wdoc.wcl>
 ```
 
 A system import is *never* touched against the filesystem. It resolves inside the registry's
-own namespace under a virtual root, so a registered file's own system imports are
-**importer-relative**: a library part registered under `wskill/component/` reaches wdoc's
+own namespace, under a virtual root. A registered file's own system imports are therefore
+**importer-relative**. A library part registered under `wskill/component/` reaches wdoc's
 library as `<../../wdoc.wcl>`, with `.` and `..` collapsed lexically. A system import naming an
 unregistered key fails with `no system import registered for <key>`.
 
@@ -160,9 +160,9 @@ unregistered key fails with `no system import registered for <key>`.
 - **Name resolution is order-independent.** The importer's declarations and every imported
   file's declarations participate in one search. It does not matter whether the `import` line
   sits above or below the use of the name.
-- **Each module loads at most once per document.** A repeated `import <wdoc.wcl>` in several
-  files, or a diamond where two imports pull in the same third file, is a silent no-op the
-  second time. Declarations are never duplicated.
+- **Each module loads at most once per document.** The second load is a silent no-op — a
+  repeated `import <wdoc.wcl>` in several files, or a diamond where two imports pull in the
+  same third file. Declarations are never duplicated.
 - **A cycle is an error.** Re-entering a path still in the active import chain reports:
 
   ```console
@@ -182,8 +182,8 @@ unregistered key fails with `no system import registered for <key>`.
 
 ## Splicing a subtree with an in-block import
 
-An `import` written **inside a block** does something extra: the imported file's top-level
-block instances become children of the enclosing block, exactly as if written inline. They are
+An `import` written **inside a block** does something extra. The imported file's top-level block
+instances become children of the enclosing block, exactly as if written inline. They are
 validated against the parent's `@child` / `@children` slots like any literal child. This is how
 you factor a long nested subtree into its own file.
 

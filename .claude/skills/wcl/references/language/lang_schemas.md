@@ -1,7 +1,7 @@
 # Schemas
 
 A schema is an ordinary `type` declaration carrying decorators. The decorators say what the
-type means structurally: which keyword authors it, which labels are positional, which nested
+type means structurally. Which keyword authors it, which labels are positional, which nested
 kinds it accepts, and which type is the document root. `wcl check` enforces the result.
 
 This page covers the *structural* decorators. The full decorator vocabulary, including the ones
@@ -26,9 +26,9 @@ server web {
 }
 ```
 
-Read it as: `Server` instances are written with the keyword `server`; the first label fills
-`id`; `port` is optional because it has a default; and `Config` is the document root, gathering
-every top-level `server` block into `servers`.
+Read it as four statements. You write a `Server` instance with the keyword `server`. The first
+label fills `id`. `port` is optional, because it has a default. `Config` is the document root,
+and it gathers every top-level `server` block into `servers`.
 
 Note the two different assignment tokens. A **type declaration** uses `:` (`host: utf8`). An
 **instance** uses `=` (`host = "localhost"`). Mixing them is the most common first mistake.
@@ -62,8 +62,9 @@ wcl::eval::schema_violation
   × block 'recipe' contains 3 children (max allowed: 2)
 ```
 
-`required_fields` is the escape hatch for a field the *type* must leave optional (because it is
-`@schemaless`, or because a subtype fills it) but an instance must still write.
+`required_fields` is the escape hatch for a field the *type* must leave optional but an instance
+must still write. The type leaves it optional because it is `@schemaless`, or because a subtype
+fills it.
 
 ## `@inline(slot)` — positional labels
 
@@ -201,8 +202,8 @@ top-level field and block against it. A top-level value with no `@document` in s
 error (`NoDocumentSchema`).
 
 **The effective document schema for a namespace is the merge of every `@document` type visible
-there.** A top-level field or block is legal if *any* member declares it. This is deliberate,
-and it is what lets you `import <wdoc.wcl>` and still declare your own root `@document` to add
+there.** A top-level field or block is legal if *any* member declares it. This is deliberate. It
+is what lets you `import <wdoc.wcl>` and still declare your own root `@document` to add
 top-level tags of your own:
 
 ```wcl
@@ -239,19 +240,19 @@ wcl::eval::schema_violation
 When both a root-authored and an imported schema declare the same field name, the
 root-authored one is preferred for type checks.
 
-### The gather-field name collision hazard
+### How a gather field collides
 
-Read this one twice; it is the failure that costs the most time.
+Read this one twice. It is the failure that costs the most time.
 
-Merged document schemas share **one flat field-name space**. If your `@document` declares a
-gather field (`@child` / `@children`) whose name a library's `@document` already uses, the
-merge resolves that name to only one declaration — and the other schema's gathered blocks
-silently vanish from anything iterating the field. A template's `each = widgets` then fails as
+Merged document schemas share **one flat space of field names**. Say your `@document` declares
+a gather field (`@child` / `@children`) under a name a library's `@document` already uses. The
+merge then resolves that name to one declaration only. The other schema's gathered blocks
+silently vanish from anything that iterates the field. A template's `each = widgets` fails as
 an *unresolved reference*, at build time, far from the cause.
 
-`wcl check` reports this as a **warning**, not an error, because merging is a designed feature
-and existing documents must keep building. Warnings go to stderr and never change the exit
-code, so read them:
+`wcl check` reports this as a **warning**, not an error. Merging is a designed feature, and
+existing documents must keep building. Warnings go to stderr and never change the exit code, so
+read them:
 
 ```console
 $ wcl check n.wcl

@@ -1,7 +1,7 @@
 # Decorators
 
-A decorator is an `@name(...)` annotation attached to a declaration. It is not a comment: every
-decorator has a **schema**, its arguments are typed and validated, and a decorator with no
+A decorator is an `@name(...)` annotation attached to a declaration. It is not a comment. Every
+decorator has a **schema**, and its arguments are typed and validated. A decorator with no
 declaration anywhere in the document is an error.
 
 ```console
@@ -91,10 +91,10 @@ Host-behaviour, covered below:
 | `@declares_kind(name?, params, body?)` | type | Instances of the type declare block kinds of their own. |
 | `@block_slot` | type | A `slot name: Type` names a nested-block hole, not a scalar parameter. |
 
-### The built-in schemas occupy 23 type names
+### These schemas occupy 23 type names
 
-Each built-in decorator is backed by a real type declaration injected into the **root**
-namespace. Declaring a type of your own by one of those names fails before evaluation:
+A real type declaration backs each built-in decorator, injected into the **root** namespace.
+Declare a type of your own under one of those names and it fails before evaluation:
 
 ```console
 $ wcl check t.wcl
@@ -103,12 +103,12 @@ wcl::parse
   × duplicate declaration 'Table'
 ```
 
-The 23 taken names are `AppliesTo`, `Block`, `BlockSlot`, `ByRefDecorator`, `Child`,
-`Children`, `Connections`, `Contextual`, `DeclaresKind`, `Decorator`, `DecoratorPosition`,
-`Default`, `DocDecorator`, `Document`, `DynamicDecorator`, `Inline`, `MaxDecorator`,
-`MinDecorator`, `NonEmptyDecorator`, `RefDecorator`, `Schemaless`, `Table` and `Unit`.
+The taken names are `AppliesTo`, `Block`, `BlockSlot`, `ByRefDecorator`, `Child`, `Children`,
+`Connections`, `Contextual`, `DeclaresKind`, `Decorator`, `DecoratorPosition`, `Default`,
+`DocDecorator`, `Document`, `DynamicDecorator`, `Inline`, `MaxDecorator`, `MinDecorator`,
+`NonEmptyDecorator`, `RefDecorator`, `Schemaless`, `Table` and `Unit`.
 
-`Table` and `Document` are the two that bite in practice. Either rename your type, or declare a
+`Table` and `Document` are the two that bite in practice. Rename your type, or declare a
 `namespace` — a namespaced `type Table` is fine, because the collision is per namespace.
 
 ## `@unit` — literal-unit suffixes
@@ -236,12 +236,14 @@ Three consequences to respect:
 
 1. **The derived schemas are built lazily and cached.** Deriving one evaluates the declarer's
    labels and param blocks, so it cannot happen at parse time.
-2. **A derived schema is not a declaration.** It is reachable through kind lookup, but it does
-   not appear among the document's type declarations — the document never declared it. Anything
-   introspecting by walking declarations will not find it.
-3. **A collision is an error, not a precedence rule.** If a `@declares_kind` instance declares a
-   kind that a `@block` / `@table` type also declares, the two dispatch paths disagree about
-   the winner, so the collision itself is reported (`DeclaredKindCollision`).
+2. **A derived schema is not a declaration.** Kind lookup reaches it, but it does not appear
+   among the document's type declarations, because the document never declared it. Anything
+   that introspects by walking declarations will not find it.
+3. **A collision is an error, not a precedence rule.** Say a `@declares_kind` instance declares
+   a kind that a `@block` / `@table` type also declares. Expansion would prefer the declarer
+   and schema lookup would prefer the declared type, so instances behave incoherently. The
+   collision check therefore looks the kind up **without** the derived-schema fallback, so a
+   declared kind cannot collide with itself. It reports the clash as `DeclaredKindCollision`.
 
 Note in the example that `metric_card` is legal inside `panel`, which declares no such child
 kind. A derived kind is marked contextual, which is the next decorator.
@@ -251,8 +253,8 @@ kind. A derived kind is marked contextual, which is the next decorator.
 `@contextual` on a `@block` type says two things:
 
 - The block is legal **wherever nested blocks are allowed at all**. No parent has to list it as
-  a child kind, and its body is not validated in place, because the body only means something
-  once expanded with bindings.
+  a child kind. Its body is not validated in place either, because the body only means
+  something once expanded with bindings.
 - Its children are **generated**. The host registers an *expander* — a callback on the
   `Environment` — that says what a block of that kind expands to. The language consults it when
   it projects a `@children("kind")` slot, so generated blocks land in the slot exactly like
@@ -341,15 +343,53 @@ it is written bare — not as a string.
 `@doc("…")` and a plain `//` comment above a declaration are separate channels.
 `decorator_arg(x, "doc", "text")` reads the first; `doc_comment(x)` reads the second.
 
-To declare a decorator from a **Rust host** rather than in WCL, build it with
-`Environment::decorator` / `DecoratorBuilder` — run `cargo doc` on `wcl_lang` for the API.
+## Declaring one from a Rust host
+
+A host can inject a decorator schema instead of writing it in WCL. It builds the same type a
+`@decorator("name")` declaration would, then adds it to the `Environment`:
+
+```rust
+use wcl_lang::{
+    BuiltinType, DecoratorBuilder, Environment, TypeBuilder, TypeFieldBuilder, TypeRef, Value,
+};
+
+let inline = |n: u64| DecoratorBuilder::new(["inline"]).positional(Value::U64(n));
+
+let mut env = Environment::new();
+env.add_type(
+    TypeBuilder::new(["Range"])
+        .decorator(DecoratorBuilder::new(["decorator"]).positional(Value::Utf8("range".into())))
+        .field(TypeFieldBuilder::new("min", TypeRef::Builtin(BuiltinType::I64)).decorator(inline(0)))
+        .field(TypeFieldBuilder::new("max", TypeRef::Builtin(BuiltinType::I64)).decorator(inline(1)))
+        .build(),
+);
+```
+
+That is the exact equivalent of the WCL declaration above it. The `@inline(N)` decorators are
+not optional: without them the slots are named-only, so `@range(0, 100)` fails with
+`positional argument 1 for decorator '@range' has no @inline(0) slot in schema 'Range'`.
+
+Three builders, each consuming `self` so calls chain:
+
+| Builder | Methods |
+| --- | --- |
+| `TypeBuilder` | `new(path)`, `decorator(d)`, `field(f)`, `build()` |
+| `TypeFieldBuilder` | `new(name, ty)`, `optional(bool)`, `decorator(d)` |
+| `DecoratorBuilder` | `new(path)`, `positional(Value)`, `named(name, Value)` |
+
+Add each finished type with `Environment::add_type`, then open the document with
+`Document::open_with(source, name, &env)`. Run `cargo doc` on `wcl_lang` for the exact
+signatures.
+
+A host-injected schema behaves exactly like an authored one. The document does not import it,
+and it is in scope for every file that environment opens.
 
 ## Gotchas
 
 - An undeclared decorator is an error, not an ignored annotation. Importing the library that
   declares it is usually the fix.
-- The built-in decorator schemas take 23 type names in the root namespace. `type Table` and
-  `type Document` fail as `duplicate declaration`; declare a `namespace` or rename.
+- The built-in schemas take 23 root-namespace type names. `type Table` and `type Document` fail
+  as `duplicate declaration`.
 - A decorator applies to the **next declaration only**.
 - Positional arguments exist only where the schema wrote `@inline(N)`. Everything else is
   `name = value`.

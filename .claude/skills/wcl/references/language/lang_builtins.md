@@ -87,7 +87,7 @@ reverse([1, 2, 3])   // reverse the order → [3, 2, 1]
 slice("hello", 0, 2)   // characters from index 0 up to (not incl.) 2 → "he"
 sort([3, 1, 2])   // sort numerically → [1, 2, 3]
 sort_by(["abc", "a", "ab"], fn(s: utf8) -> i64 { len(s) })   // sort by length → ["a", "ab", "abc"]
-sort_connected(nodes, edges)   // cluster edge-connected items together → the reordered nodes
+sort_connected([{ id: "a" }, { id: "b" }, { id: "c" }], [{ source: "a", destination: "c" }])   // pull "c" up beside "a" → [{ id: "a" }, { id: "c" }, { id: "b" }]
 sum([1, 2, 3, 4])   // add up the elements → 10
 tail([1, 2, 3])   // everything after the first → [2, 3]
 take([1, 2, 3, 4], 2)   // keep the first 2 elements → [1, 2]
@@ -298,7 +298,7 @@ panic("invariant violated")   // abort with an unrecoverable failure → (aborts
 ## Notes on the sharp edges
 
 - **`len` counts characters, not bytes**, for a string.
-- **`at` errors on an out-of-range or negative index**; `slice` clamps its bounds instead, and
+- **`at` errors on an out-of-range or negative index.** `slice` clamps its bounds instead.
   `head` / `find` / `min_by` / `max_by` answer `none` on an empty list.
 - **`index_of` answers `-1`** when the value is absent, not `none`.
 - **`sum` needs a non-empty, homogeneous numeric list.** Mixed widths are not summed for you.
@@ -311,8 +311,8 @@ panic("invariant violated")   // abort with an unrecoverable failure → (aborts
 - **`error` and `panic` abort evaluation**; `assert` answers `none` when it passes. Because
   fields evaluate lazily, a field that calls one of these is only reached if something asks for
   it — see [`lang_evaluation.md`](lang_evaluation.md).
-- **`eval` parses and evaluates a string in the current scope.** It is a real escape hatch and
-  it defeats every static check; prefer a `fn` item.
+- **`eval` parses and evaluates a string in the current scope.** It is a real escape hatch, and
+  it defeats every static check. Prefer a `fn` item.
 - **The reflection family takes a declaration reference, not a string.** `type_fields(Image)`,
   not `type_fields("Image")`. `decorators_for_kind` is the exception — a kind *is* a string.
 - **`glob_overlaps` is deliberately conservative.** It may answer `true` for an exotic
@@ -321,8 +321,8 @@ panic("invariant violated")   // abort with an unrecoverable failure → (aborts
 ## Three more that only exist under wdoc
 
 A host may register builtins of its own. wdoc adds three. They are in the environment the `wcl`
-CLI builds, so `builtin_names()` run through the CLI answers 103 names, not 100 — but they are
-only useful in a document that imports the wdoc standard library:
+CLI builds, so `builtin_names()` run through the CLI answers 103 names rather than 100. They
+are useful only in a document that imports the wdoc standard library:
 
 | Name | Purpose |
 | --- | --- |
