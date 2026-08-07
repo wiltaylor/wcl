@@ -1,11 +1,604 @@
 // Chapter 39 — Terminals and TUI.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #194. Every terminal on this page is rendered live by the
+// build, and every claim about defaults, precedence and errors was checked
+// against `crates/wcl_wdoc/src/terminal/` and run through the CLI before it
+// was written down.
+//
+// A custom control used by "Writing your own control" below. It sits here,
+// at file scope, because a `@block` type is a declaration — the page body
+// holds instances, not declarations.
+@block("kbd")
+type Kbd extends TermPrimitive {
+  @inline(0) key: utf8
+  accent: utf8?
+  row: i64  col: i64
+  lower = fn(k: Kbd) -> list<TermFundamental> {
+    let acc = if k.accent == none { "magenta" } else { k.accent };
+    [
+      term_run(term_repeat(" ", len(k.key) + 2), 1, 1, none, acc, none),
+      term_run(k.key, 1, 2, "bright_white", acc, true),
+    ]
+  }
+}
+
 page wdoc_terminals {
   title = "Terminals and TUI"
 
   h1 "Terminals and TUI"
 
-  p "Not written yet. This chapter covers `terminal` and `term_text` grids, the terminal primitive interface, and the TUI widget family."
+  p "A `terminal` block draws a monospace character grid as inline SVG, using a bundled JetBrains Mono Nerd Font so box-drawing characters, powerline separators and Nerd Font icons all land on the grid. It is not a screenshot and it is not a code block. It is a `cols` × `rows` array of cells, each holding one character, a foreground colour, a background colour and eight ANSI style bits — and everything in this chapter exists to fill cells."
+
+  p "Three things fill them: child blocks you place at cell coordinates, a `text` field fed to a real virtual terminal, or an `asciinema` recording replayed frame by frame. On top of the placement path sits a family of TUI controls — progress bars, buttons, spinners, inputs, dropdowns, checkboxes, radios and two containers — for mocking up a text user interface without recording one."
+
+  p "Every terminal on this page is rendered by the build you are reading. Copy the source beside it and you get the picture above it."
+
+  h2 "A terminal is a grid of cells"
+
+  p "Write a `terminal` in a page body and place `term_text` children inside it. A position is a **1-based `(row, col)` pair**: `row = 1  col = 1` is the top-left cell."
+
+  terminal {
+    cols = 44  rows = 5  title = "grid"
+    term_text "row 1, col 1" { row = 1  col = 1 }
+    term_text "row 3, col 8" { row = 3  col = 8  fg = "cyan" }
+    term_text "row 5, col 30" { row = 5  col = 30  fg = "green"  bold = true }
+  }
+
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 44  rows = 5  title = "grid"
+  term_text "row 1, col 1" { row = 1  col = 1 }
+  term_text "row 3, col 8" { row = 3  col = 8  fg = "cyan" }
+  term_text "row 5, col 30" { row = 5  col = 30  fg = "green"  bold = true }
+}
+WCL
+  }
+
+  p "`cols` and `rows` default to `80` and `24`. `title` and the window chrome are drawn above the grid and cost no cells; set `chrome = false` to drop the title bar and its close button. The chrome is worth keeping when the terminal stands alone, and worth dropping when you are showing one control in isolation, as most of the small examples below do."
+
+  p "A cell holds exactly one character. The `len` builtin counts characters too, so when you compute a width in WCL — the padding of a button, the fill of a bar — `len` and the grid agree. A run of text containing `\\n` starts a new row at the **same column**, which is how you place a paragraph without one `term_text` per line."
+
+  terminal {
+    cols = 30  rows = 3  chrome = false
+    term_text "one\ntwo\nthree" { row = 1  col = 4  fg = "yellow" }
+  }
+
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 30  rows = 3  chrome = false
+  term_text "one\ntwo\nthree" { row = 1  col = 4  fg = "yellow" }
+}
+WCL
+  }
+
+  callout "Off-grid writes are dropped, not reported" {
+    class = ["warning"]
+    body  = "A cell outside `cols` × `rows` is discarded silently. `term_text \"hello\" { row = 40  col = 1 }` in a 24-row terminal draws nothing, and `wcl check` says `OK` — the coordinates are perfectly legal values, and the grid is what refuses them. When a widget you placed does not appear, count rows before you suspect the widget."
+  }
+
+  h2 "Three ways to fill the grid"
+
+  p "The `terminal` block accepts three sources of content, and it takes **exactly one**. They are not layered: the block picks a source and ignores the rest."
+
+  table {
+    rows:
+      | "Source"       | "Written as"                 | "Filled by"                                  | "Reach for it when" |
+      | "Children"     | "`term_text` / widget blocks" | "You, at cell coordinates"                  | "You are drawing a picture of an interface" |
+      | "Inline text"  | "`text = \"…\"`"              | "A virtual terminal, laying the string out"  | "You have output text and want it framed" |
+      | "Replay"       | "`source = \"rec.cast\"`"     | "An asciinema recording, frame by frame"     | "You want the session as it happened" |
+  }
+
+  p "Precedence runs down that table. A `source` wins over everything. Failing that, a non-empty `text` wins over the children. Only when there is neither are the child blocks drawn. This terminal declares both a `text` and a child, and the child is not there:"
+
+  terminal {
+    cols = 30  rows = 3  chrome = false
+    text = "alpha\nbeta"
+    term_text "never drawn" { row = 3  col = 1  fg = "red" }
+  }
+
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 30  rows = 3  chrome = false
+  text = "alpha\nbeta"
+  term_text "never drawn" { row = 3  col = 1  fg = "red" }
+}
+WCL
+  }
+
+  p "That is a silent override, not an error, so keep one source per terminal."
+
+  h3 "Inline text"
+
+  p "`text = \"…\"` is fed to a real virtual terminal and the visible screen is snapshotted into the grid. That means it lays out the way a terminal would: a bare `\\n` is promoted to a carriage return plus a line feed so each authored line starts at column 1, a `\\t` advances to the next tab stop, and a `\\r` returns to the start of the line so anything after it **overwrites** what was there."
+
+  terminal {
+    cols = 34  rows = 4  title = "vt"
+    text = "col\tsize\nweb\t512\r>>>"
+  }
+
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 34  rows = 4  title = "vt"
+  text = "col\tsize\nweb\t512\r>>>"
+}
+WCL
+  }
+
+  callout "You cannot type an escape sequence" {
+    class = ["warning"]
+    body  = "The virtual terminal interprets ANSI escapes, but a WCL string literal cannot carry one. The escape table is exactly `\\\"`, `\\\\`, `\\n`, `\\t`, `\\r` — plus `\\$` inside an interpolating form. There is no `\\e`, no `\\x1b` and no `\\u`, and an unknown escape is a **parse** error: `text = \"\\e[31mred\"` fails with `invalid escape '\\e'` before evaluation ever starts. So the `text` path is for layout, not for colour. Colour authored text with `term_text` and its `fg` / `bg` fields, and colour recorded text with a `.cast` file, which carries real escape bytes."
+  }
+
+  h3 "Replaying an asciinema recording"
+
+  p "Point `source` at an asciicast v2 file, relative to the document, and the build parses it, replays it through the same virtual terminal, and ships the frames to a small bundled JS player. Record one with `asciinema rec demo.cast`; the format is a JSON header line followed by one JSON `[time, \"o\", data]` array per output event."
+
+  code wcl {
+    source = <<'WCL'
+terminal {
+  source   = "casts/deploy.cast"
+  title    = "deploy"
+  autoplay = true
+  loop     = true
+  speed    = 1.5
+}
+WCL
+  }
+
+  p "Four facts about that build are worth knowing before you record:"
+
+  list {
+    li "**The recording sizes the terminal.** The `width` and `height` in the cast header override `cols` and `rows`. Your block's values are only the fallback for a header that omits them."
+    li "**Frames are coalesced.** Events closer together than 1/30 s are merged into one frame, so a chatty recording does not ship one screen per keystroke. The final screen is always captured, and a recording whose first event is delayed gets a blank frame at time zero so it starts empty."
+    li "**`autoplay`, `loop` and `speed` are fields, not controls.** They are baked into the frame data at build time. The reader gets a play button over the terminal and a play / pause / replay glyph in the title bar — there is no scrubber and no speed menu."
+    li "**A missing cast is a visible failure, not a crash.** An unreadable path renders `cannot read cast: <path>` in the terminal's place."
+  }
+
+  p "Replay is the one form a static target cannot reproduce. The Markdown and PDF backends snapshot the recording's **last frame** as a still image — see [Sizing, themes and the other targets](#sizing-themes-and-the-other-targets)."
+
+  h2 "term_text, the one primitive"
+
+  p "`term_text` is the only thing the renderer draws. Its label is the content, `row` and `col` place it, and ten optional fields carry the full terminal presentation:"
+
+  table {
+    rows:
+      | "Field"      | "Type"  | "Draws" |
+      | "`fg`"       | "`utf8?`" | "Foreground colour" |
+      | "`bg`"       | "`utf8?`" | "Background colour" |
+      | "`bold`"     | "`bool?`" | "Heavier weight — the colour is left alone, so `fg = \"green\"  bold = true` stays green" |
+      | "`dim`"      | "`bool?`" | "Foreground blended 45% toward the background" |
+      | "`italic`"   | "`bool?`" | "Italic face" |
+      | "`underline`"| "`bool?`" | "Underline" |
+      | "`strike`"   | "`bool?`" | "Line through" |
+      | "`blink`"    | "`bool?`" | "A one-second blink animation (HTML only)" |
+      | "`inverse`"  | "`bool?`" | "Foreground and background swapped" |
+      | "`conceal`"  | "`bool?`" | "Foreground forced to the background — invisible, but selectable" |
+  }
+
+  terminal {
+    cols = 46  rows = 6  title = "styles"
+    term_text "bold" { row = 1  col = 2  bold = true }
+    term_text "dim" { row = 1  col = 8  dim = true }
+    term_text "italic" { row = 1  col = 13  italic = true }
+    term_text "underline" { row = 1  col = 21  underline = true }
+    term_text "strike" { row = 1  col = 32  strike = true }
+    term_text " inverse " { row = 3  col = 2  inverse = true }
+    term_text " on red " { row = 3  col = 13  bg = "red"  fg = "bright_white" }
+    term_text "blink" { row = 3  col = 24  blink = true  fg = "yellow" }
+    term_text "conceal" { row = 3  col = 32  conceal = true }
+    term_text "green on 236, bold" { row = 5  col = 2  fg = "green"  bg = "236"  bold = true }
+  }
+
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 46  rows = 6  title = "styles"
+  term_text "bold" { row = 1  col = 2  bold = true }
+  term_text "dim" { row = 1  col = 8  dim = true }
+  term_text "italic" { row = 1  col = 13  italic = true }
+  term_text "underline" { row = 1  col = 21  underline = true }
+  term_text "strike" { row = 1  col = 32  strike = true }
+  term_text " inverse " { row = 3  col = 2  inverse = true }
+  term_text " on red " { row = 3  col = 13  bg = "red"  fg = "bright_white" }
+  term_text "blink" { row = 3  col = 24  blink = true  fg = "yellow" }
+  term_text "conceal" { row = 3  col = 32  conceal = true }
+  term_text "green on 236, bold" { row = 5  col = 2  fg = "green"  bg = "236"  bold = true }
+}
+WCL
+  }
+
+  h3 "How a colour is spelled"
+
+  p "`fg` and `bg` are strings, and one field accepts four spellings:"
+
+  table {
+    rows:
+      | "Spelling"        | "Example"        | "Means" |
+      | "ANSI name"       | "`\"red\"`, `\"bright_blue\"`" | "One of the sixteen themeable slots" |
+      | "256-colour index"| "`\"208\"`, `\"236\"`" | "An index into the full 256-colour space" |
+      | "Hex"             | "`\"#ff5fd2\"`, `\"#0f0\"`" | "A literal RGB colour, three or six digits" |
+      | "Default"         | "`\"default\"`, or the field omitted" | "The terminal's own foreground / background" |
+  }
+
+  p "The eight base names are `black`, `red`, `green`, `yellow`, `blue`, `magenta` (also `purple`), `cyan` and `white` (also `grey` / `gray`). Prefix any of them with `bright_` — or `bright`, or `bright-` — for the top eight slots. Case does not matter. **An unrecognised name is not an error**: it falls back to the default colour, so a typo like `fg = \"gren\"` renders in the default foreground and never complains."
+
+  p "Prefer a name to a hex value. The sixteen named slots resolve through the terminal's palette, so they stay legible when a terminal is switched to `palette = :light`, and a hex value does not. Reach for hex when you want a specific brand colour that must not move."
+
+  h2 "Boxes, fills and glyphs"
+
+  p "Three convenience blocks sit above `term_text`. Each is defined in WCL, and each decomposes into text runs — the renderer never learns about them:"
+
+  list {
+    li "`term_box` draws a `width` × `height` border with an optional `title` written into the top edge. `border` picks the glyph set: `:single` (the default), `:double`, `:rounded`, `:heavy` or `:ascii`."
+    li "`term_fill` fills a `width` × `height` region with a repeated character — the label is the character."
+    li "`term_glyph` is one styled run at a position. It is `term_text` with only `fg` / `bg` / `bold`, and it exists so a widget's own output and a hand-placed glyph read the same."
+  }
+
+  terminal {
+    cols = 46  rows = 8  title = "boxes"
+    term_box { row = 1  col = 1  width = 20  height = 4  border = :rounded  fg = "cyan"  title = " rounded " }
+    term_box { row = 1  col = 24  width = 20  height = 4  border = :double  fg = "magenta"  title = " double " }
+    term_fill "·" { row = 6  col = 1  width = 20  height = 2  fg = "bright_black" }
+    term_glyph "▲" { row = 6  col = 24  fg = "green"  bold = true }
+    term_text "term_glyph" { row = 6  col = 26 }
+  }
+
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 46  rows = 8  title = "boxes"
+  term_box { row = 1  col = 1  width = 20  height = 4  border = :rounded  fg = "cyan"  title = " rounded " }
+  term_box { row = 1  col = 24  width = 20  height = 4  border = :double  fg = "magenta"  title = " double " }
+  term_fill "·" { row = 6  col = 1  width = 20  height = 2  fg = "bright_black" }
+  term_glyph "▲" { row = 6  col = 24  fg = "green"  bold = true }
+  term_text "term_glyph" { row = 6  col = 26 }
+}
+WCL
+  }
+
+  p "A box's `title` is drawn over the top edge starting two cells in, so pad it with spaces — `\" rounded \"`, not `\"rounded\"` — unless you want the border to run straight into the word. Nothing clips the title against the box width; a title longer than the box simply writes past its corner."
+
+  h2 "The TUI widget family"
+
+  p "Nine `tui_*` blocks build a text user interface out of the same cells. Seven are leaf controls and two are containers. The leaves are colour-forward and occupy a single row — they lean on background fills and accent colours rather than on box-drawing, because colour reads at a glance and ASCII art does not. Only an open dropdown and the two containers claim more than one row."
+
+  table {
+    rows:
+      | "Block"          | "Draws"                                           | "The fields that matter" |
+      | "`tui_progress`" | "A two-tone bar, optional label, optional `NN%`"   | "`value`, `max` (`100`), `width` (`24`), `show_value` (`true`)" |
+      | "`tui_button`"   | "A label centred on a solid fill"                 | "`width` (label + 4), `accent` (`blue`), `fg` (`bright_white`)" |
+      | "`tui_spinner`"  | "One frame of a spinner, optional label"          | "`frame` (`0`), `kind` (braille), `accent` (`cyan`)" |
+      | "`tui_input`"    | "An accent bar, then a value or a muted placeholder" | "`value`, `focused`, `accent` (`blue`)" |
+      | "`tui_dropdown`" | "A label and a caret; the option list when open"  | "`items`, `open`, `selected`, `width`, `accent` (`blue`)" |
+      | "`tui_checkbox`" | "`■` or `□`, then a label"                        | "`checked`, `accent` (`green`), `muted` (`bright_black`)" |
+      | "`tui_radio`"    | "`◉` or `○`, then a label"                        | "`selected`, `accent` (`green`), `muted` (`bright_black`)" |
+      | "`tui_panel`"    | "A bordered box holding children"                 | "`width`, `height`, `title`, `border` (`:rounded`), `accent` (`bright_black`)" |
+      | "`tui_group`"    | "An optional heading over children"               | "`title`" |
+  }
+
+  p "Every one of them also takes `row` and `col`, because every one of them is a `TermPrimitive`."
+
+  h3 "The seven leaf controls"
+
+  terminal {
+    cols = 52  rows = 9  title = "controls"
+    tui_progress "images " { row = 1  col = 1  value = 100  width = 20 }
+    tui_progress "config " { row = 2  col = 1  value = 62  width = 20  accent = "cyan" }
+    tui_progress { row = 3  col = 9  value = 3  max = 4  width = 20  show_value = false  accent = "yellow" }
+    tui_spinner "waiting" { row = 5  col = 1  frame = 3 }
+    tui_checkbox "telemetry" { row = 5  col = 14  checked = true }
+    tui_radio "dark" { row = 5  col = 30  selected = true }
+    tui_input "search projects" { row = 7  col = 1  focused = true }
+    tui_button "Apply" { row = 9  col = 1  accent = "green" }
+    tui_button "Cancel" { row = 9  col = 11  accent = "red" }
+  }
+
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 52  rows = 9  title = "controls"
+  tui_progress "images " { row = 1  col = 1  value = 100  width = 20 }
+  tui_progress "config " { row = 2  col = 1  value = 62  width = 20  accent = "cyan" }
+  tui_progress { row = 3  col = 9  value = 3  max = 4  width = 20  show_value = false  accent = "yellow" }
+  tui_spinner "waiting" { row = 5  col = 1  frame = 3 }
+  tui_checkbox "telemetry" { row = 5  col = 14  checked = true }
+  tui_radio "dark" { row = 5  col = 30  selected = true }
+  tui_input "search projects" { row = 7  col = 1  focused = true }
+  tui_button "Apply" { row = 9  col = 1  accent = "green" }
+  tui_button "Cancel" { row = 9  col = 11  accent = "red" }
+}
+WCL
+  }
+
+  p "Read the three bars together. `value` is clamped into `0`..`max`, and the readout is an integer percentage of `max` — the third bar's `value = 3  max = 4` would read `75%`, but it sets `show_value = false` and drops the readout entirely. A label is the block's inline argument, and the bar starts one blank cell after it. Nothing aligns columns for you, which is why the two labels above are padded to a common width by hand and the third bar is placed at `col = 9` to line up with them."
+
+  p "The spinner is a still picture. A rendered document does not animate, so `frame` chooses which frame of the cycle to draw, and the index wraps — `frame = 13` on the ten-frame braille set is `frame = 3`. `kind = :circle` gives `◐◓◑◒` and `kind = :line` gives `|/—\\`; anything else, including the documented `:dots`, gives the braille set."
+
+  p "`tui_input` shows its `value` when it has one and its inline placeholder, in muted grey, when it does not. `focused = true` adds a cursor after the text. A dropdown is the one control that grows downward:"
+
+  terminal {
+    cols = 40  rows = 5  chrome = false
+    tui_dropdown "Release" { row = 1  col = 1
+      items = ["Debug", "Release", "Profile"]
+      open  = true
+    }
+    tui_dropdown "Release" { row = 1  col = 20 }
+  }
+
+  code wcl {
+    source = <<'WCL'
+tui_dropdown "Release" { row = 1  col = 1
+  items = ["Debug", "Release", "Profile"]
+  open  = true
+}
+tui_dropdown "Release" { row = 1  col = 20 }
+WCL
+  }
+
+  p "Open, the caret flips to `▴` and one filled row per item drops below the field; closed, it is the label and a `▾`. The highlighted row defaults to the item **equal to the field's text**, which is why `\"Release\"` is lit above without an explicit `selected`. Give a `selected` index to override it, or an index no item has — `-1` — to highlight none. `width` defaults to the longest of the label and the items, plus three cells for padding and the caret."
+
+  h3 "The two containers"
+
+  p "`tui_panel` and `tui_group` hold `TermPrimitive` children, and the children's coordinates are **relative to the container**. A panel's content origin is one cell inside its border; a group's is the row under its title, or its own row when it has none."
+
+  terminal {
+    cols = 46  rows = 8  chrome = false
+    tui_panel { row = 1  col = 1  width = 26  height = 8  title = " Build "  accent = "cyan"
+      tui_group { row = 1  col = 1  title = "Targets"
+        tui_checkbox "linux" { row = 1  col = 1  checked = true }
+        tui_checkbox "macos" { row = 2  col = 1 }
+      }
+      tui_progress { row = 5  col = 1  value = 40  width = 14 }
+    }
+    tui_panel { row = 1  col = 29  width = 18  height = 8  title = " Log "  border = :heavy
+      term_text "ok  fetch" { row = 1  col = 1  fg = "green" }
+      term_text "ok  build" { row = 2  col = 1  fg = "green" }
+      term_text "..  test" { row = 3  col = 1  fg = "yellow" }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+terminal {
+  cols = 46  rows = 8  chrome = false
+  tui_panel { row = 1  col = 1  width = 26  height = 8  title = " Build "  accent = "cyan"
+    tui_group { row = 1  col = 1  title = "Targets"
+      tui_checkbox "linux" { row = 1  col = 1  checked = true }
+      tui_checkbox "macos" { row = 2  col = 1 }
+    }
+    tui_progress { row = 5  col = 1  value = 40  width = 14 }
+  }
+  tui_panel { row = 1  col = 29  width = 18  height = 8  title = " Log "  border = :heavy
+    term_text "ok  fetch" { row = 1  col = 1  fg = "green" }
+    term_text "ok  build" { row = 2  col = 1  fg = "green" }
+    term_text "..  test" { row = 3  col = 1  fg = "yellow" }
+  }
+}
+WCL
+  }
+
+  p "Follow one checkbox out to the screen. `linux` sits at row 1 of the group, the group sits at row 1 of the panel's content area, and the panel's content area starts at row 2 of the panel, which is placed at row 1 of the terminal. The offsets add up: it lands on terminal row 3, under the group's `Targets` heading on row 2. That is the whole layout model — there is no other one."
+
+  callout "A container does not clip its children" {
+    class = ["note"]
+    body  = "`width` and `height` size the border a panel draws, and nothing more. A child placed past the bottom edge draws over the border and out into the terminal; only the terminal's own `cols` × `rows` discards anything. Size a panel to its contents by counting, the way you size everything else here."
+  }
+
+  h2 "A worked example"
+
+  p "Nothing above needed more than one control. Here is a whole screen: a panel framing a group of targets, two labelled bars, a spinner and a pair of buttons. Save it as `deploy.wcl` and build it with `wcl wdoc build deploy.wcl --out out`."
+
+  terminal {
+    cols = 52  rows = 12  title = "deploy"
+
+    tui_panel {
+      row = 1  col = 1  width = 52  height = 12
+      title = " deploy "  border = :rounded  accent = "cyan"
+
+      tui_group {
+        row = 1  col = 2  title = "Targets"
+        tui_checkbox "staging" { row = 1  col = 1  checked = true }
+        tui_checkbox "production" { row = 2  col = 1 }
+      }
+
+      tui_progress "images " { row = 5  col = 2  value = 100  width = 20 }
+      tui_progress "config " { row = 6  col = 2  value = 62  width = 20  accent = "cyan" }
+
+      tui_spinner "waiting for health checks" { row = 8  col = 2  frame = 3 }
+
+      tui_button "Apply" { row = 10  col = 2  accent = "green" }
+      tui_button "Cancel" { row = 10  col = 12  accent = "red" }
+    }
+  }
+
+  code wcl {
+    filename = "deploy.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+site demo { title = "Demo" }
+
+page deploy {
+  title = "Deploy"
+
+  h1 "Deploy"
+
+  terminal {
+    cols = 52  rows = 12  title = "deploy"
+
+    tui_panel {
+      row = 1  col = 1  width = 52  height = 12
+      title = " deploy "  border = :rounded  accent = "cyan"
+
+      tui_group {
+        row = 1  col = 2  title = "Targets"
+        tui_checkbox "staging" { row = 1  col = 1  checked = true }
+        tui_checkbox "production" { row = 2  col = 1 }
+      }
+
+      tui_progress "images " { row = 5  col = 2  value = 100  width = 20 }
+      tui_progress "config " { row = 6  col = 2  value = 62  width = 20  accent = "cyan" }
+
+      tui_spinner "waiting for health checks" { row = 8  col = 2  frame = 3 }
+
+      tui_button "Apply" { row = 10  col = 2  accent = "green" }
+      tui_button "Cancel" { row = 10  col = 12  accent = "red" }
+    }
+  }
+}
+WCL
+  }
+
+  p "Twenty-two lines of layout, and every number in them is a cell count you can verify by reading the picture. Change `value = 62` to `value = 20` and the bar moves; change `frame = 3` and the spinner turns."
+
+  h2 "What is native and what lowers"
+
+  p "Two kinds in this whole family are implemented in Rust, and it is worth knowing which, because it is the line between what you can extend and what you cannot."
+
+  table {
+    rows:
+      | "Kind"            | "Implemented by" | "Why" |
+      | "`terminal`"      | "Rust — `@native`" | "The cell grid, the palette, the virtual terminal and the asciicast replay are not expressible in WCL" |
+      | "`term_text`"     | "Rust — `@native`" | "It **is** the drawing operation: a run of characters written into cells" |
+      | "`term_box`, `term_fill`, `term_glyph`" | "WCL — a `lower` function" | "Borders and fills are text; the box glyphs are a five-way `if`" |
+      | "The nine `tui_*` controls" | "WCL — a `lower` function" | "A bar, a caret, a filled label: all of them are text runs" |
+      | "Yours"           | "WCL — a `lower` function" | "The same mechanism, unprivileged" |
+  }
+
+  p "Every wdoc block declares **exactly one** of the two, and the build refuses anything else. A type extending `TermPrimitive` with neither fails with `type 'Kbd' declares neither a lower nor @native`. A user type that claims `@native` fails with `wdoc implements no dispatch for \"kbd\" — only wdoc's own blocks can be native`. There is no third state and no stub. [Writing your own blocks](wdoc_extending) covers the rule across all three block families."
+
+  p "What a `lower` returns here is `list<TermFundamental>`, and that union has exactly two variants:"
+
+  code wcl {
+    source = <<'WCL'
+union TermFundamental {
+  Text     { content: utf8  row: i64  col: i64  fg: utf8?  bg: utf8?  bold: bool? }
+  Children { row: i64  col: i64 }
+}
+WCL
+  }
+
+  p "`Text` is a run of characters. `Children` is a hole: it marks where the block's own child blocks are drawn, and it is the only reason a container can exist. `tui_panel` returns its border as `Text` runs plus a single `Children { row: 2, col: 2 }`, and that one value is the whole of \"children sit inside the border\"."
+
+  callout "A widget never reads its own row and col" {
+    class = ["note"]
+    body  = "A `lower` lays its output out from **its own** top-left, `(1, 1)`. The renderer adds the widget's `row` / `col` and the origin of every container above it. That is what lets the same `tui_progress` sit loose in a terminal, inside a panel, or inside a group inside a panel, with no code in the widget for any of the three. Read `p.row` inside a `lower` and you will double the offset."
+  }
+
+  h3 "There is no measured layout here"
+
+  p "This is the comparison worth drawing, because wdoc has a second widget family that works the other way. The `wf_*` [wireframe](wdoc_wireframe) widgets are native **and measured**: the renderer measures a widget's content, derives its size from it, and packs rows, columns and grids from those measurements, which is exactly why they cannot be WCL — a lowering has no way to ask how big its own text turned out."
+
+  p "A terminal widget is never measured. Its size is the number of cells it decides to write, in a font whose every glyph is one cell wide, and you place it by counting. That is the trade: a wireframe lays itself out and you cannot write one in WCL, while a TUI screen you lay out by hand and you can write any control you like. The two families answer different questions — a wireframe asks what a screen should contain, a terminal asks what a screen looks like — and neither is the other's approximation."
+
+  h2 "Placement is the slot's accepts-type"
+
+  p "There is no \"terminal widget\" interface. `TermPrimitive` describes **output** — a `row`, a `col`, and a `lower` producing terminal fundamentals — in exactly the way `ContentBlock` describes page output and `SvgBlock` describes diagram output. What decides where a block may be written is the accepts-type on the slot, and nothing else:"
+
+  code wcl {
+    source = <<'WCL'
+@block("terminal")
+@native
+type Terminal extends ContentBlock {
+  # ...
+  @children(TermPrimitive) children: list<TermPrimitive>
+}
+
+@block("tui_panel")
+type TuiPanel extends TermPrimitive {
+  # ...
+  @children(TermPrimitive) children: list<TermPrimitive>
+}
+WCL
+  }
+
+  p "`terminal` extends `ContentBlock`, so a page accepts it. Its `children` slot accepts `TermPrimitive`, so it accepts `term_text` and every widget. `tui_panel` extends `TermPrimitive` — that is what makes it placeable in a terminal — and declares the same slot, so it accepts the same things a terminal does. One interface, read twice, and the direction of the read is the difference."
+
+  p "Cross the slots and `wcl check` names the kind and the parent:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check page-with-p-inside-terminal.wcl
+wcl::eval::schema_violation
+
+  × block kind 'p' is not allowed inside 'terminal'
+
+$ wcl check page-with-loose-term-text.wcl
+wcl::eval::schema_violation
+
+  × block kind 'term_text' is not allowed inside 'page'
+TEXT
+  }
+
+  h2 "Writing your own control"
+
+  p "Declare a `@block` type that extends `TermPrimitive`, give it `row` and `col`, and give it a `lower` returning `list<TermFundamental>`. That is the entire contract. Here is a keycap pill — a coloured run of spaces with the key label written on top of it:"
+
+  terminal {
+    cols = 34  rows = 3  chrome = false
+    term_text "press" { row = 1  col = 1 }
+    kbd "Ctrl" { row = 1  col = 7 }
+    kbd "K" { row = 1  col = 14  accent = "blue" }
+    kbd "Esc" { row = 3  col = 7  accent = "red" }
+  }
+
+  code wcl {
+    source = <<'WCL'
+@block("kbd")
+type Kbd extends TermPrimitive {
+  @inline(0) key: utf8
+  accent: utf8?
+  row: i64  col: i64
+  lower = fn(k: Kbd) -> list<TermFundamental> {
+    let acc = if k.accent == none { "magenta" } else { k.accent };
+    [
+      term_run(term_repeat(" ", len(k.key) + 2), 1, 1, none, acc, none),
+      term_run(k.key, 1, 2, "bright_white", acc, true),
+    ]
+  }
+}
+
+terminal {
+  cols = 34  rows = 3  chrome = false
+  term_text "press" { row = 1  col = 1 }
+  kbd "Ctrl" { row = 1  col = 7 }
+  kbd "K" { row = 1  col = 14  accent = "blue" }
+  kbd "Esc" { row = 3  col = 7  accent = "red" }
+}
+WCL
+  }
+
+  p "Four things in that declaration are worth naming."
+
+  list {
+    li "**The type is a declaration, so it sits at file scope** — beside the `page`, not inside it. Instances go in the page body."
+    li "**`lower` narrows its parameter.** The interface declares `fn(&TermPrimitive) -> list<TermFundamental>?`; the implementation takes `Kbd`, so the body reads `k.key` and `k.accent` by name. [Functions](lang_functions) covers why that is legal."
+    li "**`term_run` and `term_repeat` are the stdlib's own helpers**, not private ones. `term_run(content, row, col, fg, bg, bold)` builds a `Text` fundamental with the renderer-only fields left at `none`, and `term_repeat(ch, n)` repeats a character, answering `\"\"` for `n < 1` so a caller need not guard. `term_box_runs` and `term_fill_runs` build a border and a rectangle the same way. They are `let` items, so an expression may call them and the document model never sees them — see [Documents, fields and blocks](lang_documents)."
+    li "**Colour by name, not by drawing.** The pill is a background fill with a bright label on it, which is how every stdlib control is built. It follows the palette, it survives `palette = :light`, and it costs one cell per character."
+  }
+
+  p "A default supplied as a field default — `lower = fn(…) …` rather than `lower: fn(…)` — means an individual instance may override it. That is rarely what you want for a control, but it is the same mechanism the stdlib uses, so nothing about your block is second class."
+
+  h2 "Sizing, themes and the other targets"
+
+  p "A terminal's pixel size is fixed by the grid, not by the page. Each cell is `round(font_size × 0.6)` wide and `round(font_size × line_height)` tall — `font_size` defaults to `14` and `line_height` to `1.2` — with a `round(font_size × 0.45)` pad on every side and, when `chrome` is on, a `round(font_size × 1.7)` title bar above. A 40 × 6 terminal at the defaults is therefore 332 × 138 pixels. The SVG carries `max-width: 100%`, so a terminal wider than its column shrinks to fit rather than overflowing; drop `font_size` when you would rather it stayed sharp."
+
+  p "Colours come from three layers. The default is a dark terminal on the classic Tango sixteen. `palette = :light` flips the defaults to the site theme's light foreground and background — the named colours keep working, which is the whole point of naming them. `fg` and `bg` override the defaults outright, and a `class` list themes the wrapping element the way it themes any wdoc block; see [Themes and styling](wdoc_styling). Note that a plain, default-coloured cell deliberately carries no colour of its own in the SVG, so it inherits from the element — which is how a class-themed terminal works at all."
+
+  p "On the static targets a terminal is an image of itself. The PDF backend paints a self-contained SVG with the palette baked in, and the Markdown backend writes the SVG to a file under `_wdoc/` and references it — using the terminal's `title`, then its `id`, then the word `terminal` as the alt text, so **set a `title` on any terminal that matters**. A replay terminal has no player on either target and is snapshotted at its last frame. If that is not the frame you want a reader of the PDF to see, `@except(backends = [:pdf])` the replay and place a still terminal beside it; [Visibility](wdoc_visibility) and [Output targets](wdoc_outputs) cover the axis and the four targets."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Wireframes](wdoc_wireframe) — the other widget family, measured and laid out for you."
+    li "[Writing your own blocks](wdoc_extending) — `lower`, `@native` and the exactly-one-of rule across all three block families."
+    li "[Themes and styling](wdoc_styling) — `class`, `theme`, and how a palette reaches a block."
+    li "[Output targets](wdoc_outputs) — what HTML, PDF, Markdown and skill builds each do with a native block."
+    li "[Images, videos and file assets](wdoc_media) — when a real screenshot beats a drawn one."
+    li "[Functions](lang_functions) — the `fn` literals, parameter narrowing and closures a `lower` is written with."
+  }
 }
