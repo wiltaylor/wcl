@@ -1,10 +1,9 @@
 // Chapter 6 — Control flow.
 //
-// Every snippet and every command output below was run against the `wcl`
-// CLI before it was written down. Where the older concept units and the
-// code disagree, the code won: `if` branches are *not* cross-checked
-// against each other, and a record pattern ignores unlisted fields with
-// or without `..`.
+// Written against the parser and evaluator, not the older concept units.
+// Where the two disagreed the code won: `if` branches are *not*
+// cross-checked against each other, and a record pattern ignores
+// unlisted fields with or without `..`.
 page lang_control_flow {
   title = "Control flow"
 
@@ -23,7 +22,7 @@ page lang_control_flow {
     li "`??` — produce a fallback value when the left side is `none`."
   }
 
-  p "Every command below was run before it was written down. Type them and compare."
+  p "Every file and every command below was run before it was written down. Type them and compare."
 
   h2 "One file, every form"
 
@@ -111,15 +110,19 @@ $ wcl get release.wcl services.web.budget
 TEXT
   }
 
-  p "Now change one line and watch `plan` follow it. Nothing else in the file moves:"
+  p "Now edit the `rollout` field and read `plan` again. Nothing else in the file moves. Change the line to `rollout = Rollout::AllAtOnce`:"
 
   code text {
     source = <<'TEXT'
-$ # rollout = Rollout::AllAtOnce
 $ wcl get release.wcl services.web.plan
 "all at once"
+TEXT
+  }
 
-$ # rollout = Rollout::BlueGreen { window_minutes: 30u32 }
+  p "Then to `rollout = Rollout::BlueGreen { window_minutes: 30u32 }`:"
+
+  code text {
+    source = <<'TEXT'
 $ wcl get release.wcl services.web.plan
 "blue/green over 30m"
 TEXT
@@ -159,7 +162,7 @@ TEXT
 
   callout "The branches are not checked against each other" {
     class = ["warning"]
-    body  = "`if cond { 1 } else { \"x\" }` is legal. Only the branch that actually runs produces a value, and only that value meets the field's declared type. With `cond` false the field gets `\"x\"` and `wcl check` prints `OK`; flip `cond` to true and the same file fails with `field 'a' declared as utf8 but value is i64`. A branch you never take is a branch nothing checks. Write both branches at one type yourself — the tool will not do it for you."
+    body  = "`if cond { 1 } else { \"x\" }` is legal. Only the branch that runs produces a value, and only that value meets the field's declared type. With `cond` false the field gets `\"x\"` and `wcl check` prints `OK`. Flip `cond` to true and the same file fails with `field 'a' declared as utf8 but value is i64`. A branch you never take is a branch nothing checks. Write both branches at one type yourself."
   }
 
   h3 "A branchless if is none"
@@ -199,6 +202,11 @@ TEXT
 
   code text {
     source = <<'TEXT'
+$ cat title.wcl
+@document
+type Cfg { title: utf8 }
+title = if false { "yes" }
+
 $ wcl check title.wcl
 wcl::eval::schema_violation
 
@@ -241,7 +249,7 @@ WCL
 
   h3 "Guards"
 
-  p "An `if expr` between the pattern and the `=>` is a **guard**. The arm fires only when the pattern fits _and_ the guard is true. A pattern that fits with a false guard does not stop the search — the next arm is tried, which is how the two `Rollout::Canary` arms above divide one variant between them."
+  p "An `if expr` between the pattern and the `=>` is a **guard**. The arm fires only when the pattern fits _and_ the guard is true. A pattern that fits with a false guard does not stop the search. WCL goes on to the next arm, which is how the two `Rollout::Canary` arms above divide one variant between them."
 
   code wcl {
     source = <<'WCL'
@@ -289,6 +297,18 @@ TEXT
 
   code text {
     source = <<'TEXT'
+$ cat guarded.wcl
+@document
+type Cfg { a: utf8 }
+let n = 1
+a = match n {
+  0 => "zero",
+  k if k > 0 => "pos",
+}
+
+$ wcl check guarded.wcl
+wcl::parse
+
   × match must end with a wildcard or binding arm with no guard
    ╭─[guarded.wcl:6:3]
  5 │   0 => "zero",
@@ -304,12 +324,12 @@ TEXT
 
   callout "Cheap, not clever" {
     class = ["note"]
-    body  = "The trade is deliberate. A type-directed exhaustiveness check would let you drop `_ => …` after covering every variant of a union — and would then have to re-check every `match` in every importing document each time that union grew. The structural rule is decided by the parser alone, so it costs nothing and never changes its mind. The price is a `_` arm you may know is unreachable."
+    body  = "The trade is deliberate. A type-directed exhaustiveness check would let you drop `_ => …` once you cover every variant of a union. It would then have to re-check every `match` in every importing document each time that union grew. The structural rule is decided by the parser alone, so it costs nothing and never changes its mind. The price is a `_` arm you may know is unreachable."
   }
 
   h2 "Patterns"
 
-  p "One vocabulary serves `match` and `if let`. Every row below was run:"
+  p "One vocabulary serves `match` and `if let`:"
 
   table {
     rows:
@@ -335,6 +355,18 @@ TEXT
 
   code text {
     source = <<'TEXT'
+$ cat alt.wcl
+@document
+type Cfg { a: utf8 }
+let n = 1
+a = match n {
+  0 | k => "x",
+  _ => "y",
+}
+
+$ wcl check alt.wcl
+wcl::parse
+
   × match alternatives bind different names
    ╭─[alt.wcl:5:7]
  4 │ a = match n {
@@ -350,6 +382,12 @@ TEXT
 
   code text {
     source = <<'TEXT'
+$ cat lit.wcl
+union Shape { Empty none  Square f64 }
+@document
+type Cfg { a: utf8 }
+a = match Shape::Empty { Shape::Empty => "empty", _ => "other" }
+
 $ wcl check lit.wcl
 wcl::parse
 
@@ -406,7 +444,7 @@ WCL
     body  = "A plain `if` may drop its `else`; an `if let` may not. `a = if let S::Circle(r) = s { \"c\" }` fails to parse with `'if let' requires an 'else' branch`. This is scope, not a semantic obstacle — the evaluator would happily answer `none` on a no-match, exactly as a branchless `if` does. Until it is lifted, write `else { none }` yourself, and give the field an optional type."
   }
 
-  p "An `if let` also takes no guard. `if let P = x if cond { … }` is a parse error. Put the test inside the `then` block, or use a `match` arm with a guard — which is what an `if let` with a guard would have been anyway."
+  p "An `if let` also takes no guard. `if let P = x if cond { … }` is a parse error. Put the test inside the `then` block, or write a `match` arm with a guard. That arm is what a guarded `if let` would have been anyway."
 
   h2 "Which one to reach for"
 
@@ -472,9 +510,9 @@ TEXT
       | "`match`"  | "Every pattern, in order"        | "Each arm's own names"  | "Two or more cases each deserve their own answer" |
   }
 
-  p "Two rules of thumb follow. If your `match` has one interesting arm and a `_`, an `if let` says the same thing in one line. If the only question you are asking is whether a value is `none`, `??` says it in half a line — and `??` short-circuits, so the fallback never evaluates when the left side is present."
+  p "Two rules of thumb follow. If your `match` has one interesting arm and a `_`, an `if let` says the same thing in one line. If the only question you ask is whether a value is `none`, `??` says it in half a line."
 
-  p "`??` is the loosest-binding operator in the language and it chains left to right, so `a ?? b ?? c` is `(a ?? b) ?? c` and stops at the first value that is not `none`. [Expressions and operators](lang_expressions) has the full precedence table."
+  p "`??` also short-circuits. The fallback never evaluates when the left side is present, and a chain stops at the first value that is not `none`. [Expressions and operators](lang_expressions) covers where `??` sits in the precedence table."
 
   h2 "Block expressions"
 
@@ -498,19 +536,11 @@ WCL
     li "**Bindings are ordered.** A binding may read the ones above it, and only those."
   }
 
-  p "Blocks appear anywhere an expression does: on the right of a field, as an `if` arm, as a `match` arm body, as a function body, and on either side of a `try`. Use one when a calculation has steps worth naming. Both spellings below produce `12.0`. The second is not shorter, and it is the one you can read:"
+  p "Blocks appear anywhere an expression does: on the right of a field, as an `if` arm, as a `match` arm body, as a function body, and on either side of a `try`. Use one when a calculation has steps worth naming. The one-expression spelling below produces the same `12.0`, and says nothing about what the numbers are:"
 
   code wcl {
     source = <<'WCL'
-# One expression. Correct, and nothing says what the numbers are.
 budget = 0.25 * (if self.env == :prod { 4.0 } else { 1.0 }) * self.replicas
-
-# The same arithmetic, with the steps named.
-budget = {
-  let per_replica = 0.25;
-  let multiplier  = if self.env == :prod { 4.0 } else { 1.0 };
-  per_replica * multiplier * self.replicas
-}
 WCL
   }
 
@@ -592,7 +622,26 @@ report = try {
 WCL
   }
 
-  p "Every evaluation failure is catchable, and the message is the one the CLI would have printed. Here is a `try.wcl` whose four fields each wrap a different way to fail — a division by zero, a name that is not there, a pair of fields that read each other, and a raised error:"
+  p "Every evaluation failure is catchable, and the message is the one the CLI would have printed. Save this as `try.wcl`. Its four fields wrap four ways to fail: a division by zero, a name that is not there, a pair of fields that read each other, and a raised error."
+
+  code wcl {
+    filename = "try.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  arithmetic: utf8  missing: utf8  cyclic: utf8  raised: utf8
+  x: utf8  y: utf8
+}
+
+x = y
+y = x
+
+arithmetic = try 100 / 0 catch e => e
+missing    = try nonexistent catch e => e
+cyclic     = try x catch e => e
+raised     = try error("boom") catch e => e
+WCL
+  }
 
   code text {
     source = <<'TEXT'
@@ -607,7 +656,7 @@ $ wcl get try.wcl raised
 TEXT
   }
 
-  p "That last one is the `error(\"boom\")` builtin. `panic` and a failed `assert` render the same way, and `try` catches all three — the names differ in intent, not in what they do. [Builtins](lang_builtins) covers them."
+  p "That last one is the `error(\"boom\")` builtin. `panic` and a failed `assert` render the same way, and `try` catches all three. The names differ in intent, not in what they do. [Builtins](lang_builtins) covers them."
 
   p "What `try` does **not** catch is a schema violation, because a violation is not an evaluation failure. The body succeeds, produces a value, and the value is then measured against the declared type:"
 
