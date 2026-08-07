@@ -10,6 +10,10 @@
 // ── The chapter's own chart block ────────────────────────────────────
 // One row per bar, longest bar wins the width. This is the whole of it:
 // a data shape, a block type, and a `lower` that returns SVG.
+//
+// These 34 lines are quoted verbatim by the `code wcl` snippet in the
+// "Copy one to build your own" section — the page cannot print its own
+// source, so edit both or neither.
 union HBarRow { Of { label: utf8  value: f64 } }
 
 @block("hbar_chart")
@@ -75,7 +79,7 @@ page revenue {
 
   h1 "Quarterly revenue"
 
-  diagram { width = 380  height = 220
+  diagram { width = 400  height = 240
     bar_chart { width = 380.0  height = 220.0
       title      = "Revenue by quarter"
       x_label    = "Quarter"
@@ -99,7 +103,7 @@ TEXT
 
   p "That page holds this:"
 
-  diagram { width = 380  height = 220
+  diagram { width = 400  height = 240
     bar_chart { width = 380.0  height = 220.0
       title      = "Revenue by quarter"
       x_label    = "Quarter"
@@ -126,7 +130,11 @@ TEXT
 
   h3 "Sizing"
 
-  p "Give the chart the same `width` and `height` as its `diagram`, and note the two spellings: a `diagram` measures in whole pixels (`width = 380`), a chart in `f64` (`width = 380.0`). The reason to match them is that the two numbers do different jobs. The `diagram`'s pair becomes the rendered size of the `<svg>`; the chart's pair is the coordinate space it draws in. The canvas then fits its `viewBox` to whatever was actually drawn, so a 240-wide pie inside a 600-wide `diagram` is not a small pie on a wide canvas — it is a pie scaled up by two and a half, with 10-point labels rendered at 25. Match the sizes and the chart is drawn at the size you asked for."
+  p "The two size pairs do different jobs, and note that they are spelled differently too: a `diagram` measures in whole pixels (`width = 380`), a chart in `f64` (`width = 380.0`). The `diagram`'s pair is the **rendered** size of the `<svg>`. The chart's pair is the **coordinate space** it draws in. Between them sits the canvas, which fits its `viewBox` to what was actually drawn plus a 10-pixel margin on each side, and then leaves the browser to scale that box into the rendered size — uniformly, preserving the aspect ratio, centring whatever is left over."
+
+  p "So the two pairs decide a scale factor, and the way to control it is to give the `diagram` **20 pixels more than the chart in each dimension** — the margin. The example above is a 380 × 220 chart in a 400 × 240 `diagram`, which is a `viewBox` of exactly 400 × 240 and a scale of exactly 1: the 10-point labels are 10 points on the page."
+
+  p "Nothing goes wrong when the numbers disagree; the chart is simply drawn at some other size, text included. Equal pairs — a 380 × 220 chart in a 380 × 220 `diagram` — render at about 92%, which no reader will notice. A 240-wide pie in a 600 × 300 `diagram` renders at 115% and floats in the middle of a mostly empty canvas, which they will."
 
   h2 "Series and slices"
 
@@ -158,7 +166,7 @@ WCL
 
   p "Add a second series and the bars group. Every category gets one slot, the slot is shared by the series in order, and the bars fill 80% of it — the remaining fifth is the gap between groups."
 
-  diagram { width = 380  height = 220
+  diagram { width = 400  height = 240
     bar_chart { width = 380.0  height = 220.0
       title      = "Revenue by quarter"
       x_label    = "Quarter"
@@ -173,7 +181,7 @@ WCL
 
   code wcl {
     source = <<'WCL'
-diagram { width = 380  height = 220
+diagram { width = 400  height = 240
   bar_chart { width = 380.0  height = 220.0
     title      = "Revenue by quarter"
     x_label    = "Quarter"
@@ -198,7 +206,7 @@ WCL
 
   p "`point_labels = true` prints every point's value above its marker. `points` pins your own annotations — a `ChartPoint` is a label, a `category` (the 0-based x slot) and a `value` (the height, in data units). An annotation belongs to the chart rather than to a series, so it may sit anywhere on the scale:"
 
-  diagram { width = 400  height = 230
+  diagram { width = 420  height = 250
     line_chart { width = 400.0  height = 230.0
       title      = "Latency (ms)"
       x_label    = "Day"
@@ -214,7 +222,7 @@ WCL
 
   code wcl {
     source = <<'WCL'
-diagram { width = 400  height = 230
+diagram { width = 420  height = 250
   line_chart { width = 400.0  height = 230.0
     title      = "Latency (ms)"
     x_label    = "Day"
@@ -230,7 +238,7 @@ diagram { width = 400  height = 230
 WCL
   }
 
-  p "Three details of the drawing are worth knowing, because they are what you inherit if you copy the block. A line is a run of separate line segments, not one path — the rounded joins come from the `wdoc-line` class rather than from the geometry. A marker is a circle of radius 2.6 at every point of every series, the ends included. And `point_labels` labels **every** point of **every** series: on the chart above that is ten labels. Use it on small charts, and use `points` when you want one thing called out."
+  p "Three details of the drawing are worth knowing, because they are what you inherit if you copy the block. A line is a run of separate line segments, not one path — so the join at each point is really two rounded caps meeting, which the `wdoc-line` class supplies rather than the geometry. A marker is a circle of radius 2.6 at every point of every series, the ends included. And `point_labels` labels **every** point of **every** series: on the chart above that is ten labels. Use it on small charts, and use `points` when you want one thing called out."
 
   callout "point_labels is per chart, points is per annotation" {
     class = ["note"]
@@ -241,7 +249,7 @@ WCL
 
   p "A `pie_chart` takes `slices` instead of `series` — one `{ label, value }` record each — and it has no axes, no categories and no scale. It has no legend either: each label is drawn inside its own slice."
 
-  diagram { width = 260  height = 240
+  diagram { width = 260  height = 260
     pie_chart { width = 240.0  height = 240.0
       title = "Market share"
       slices = [
@@ -254,7 +262,7 @@ WCL
 
   code wcl {
     source = <<'WCL'
-diagram { width = 260  height = 240
+diagram { width = 260  height = 260
   pie_chart { width = 240.0  height = 240.0
     title = "Market share"
     slices = [
@@ -300,7 +308,7 @@ WCL
     li "**It does not handle negative values on its own.** With the default `y_min = 0`, a negative bar is drawn with a negative height, which is not valid SVG and renders as nothing at all. Set `y_min` below your lowest value and the bars come back — measured from the bottom of the plot area, because that is where a bar starts. There is no zero line in the drawing."
   }
 
-  p "A series whose values are all equal is safe: the upper bound is nudged a fraction above the lower one, so a flat series draws full-height bars rather than dividing by zero."
+  p "A flat series is safe, and it is worth knowing what it looks like. Four sevens auto-fit to an upper bound of 7, so all four bars are full height — the chart is telling you the truth, which is that the data has no variation. Four zeros are the degenerate case: the upper bound would be zero as well, so it is nudged a fraction above the lower one to keep the scale from dividing by itself. Every tick then reads 0, the bars are zero high, and nothing is drawn. Set `y_max` when a chart has to render even with no data in it."
 
   h2 "Categories and axis labels"
 
@@ -311,7 +319,7 @@ WCL
       | "`categories`"          | "What happens" |
       | "Omitted"               | "The slot count comes from the first series; labels are `1`, `2`, `3`, …" |
       | "Fewer than the values" | "The chart draws that many slots. The extra values are silently dropped." |
-      | "More than the values"  | "The build fails: `'at': index 2 out of bounds`" |
+      | "More than the values"  | "The build fails: `'at': at: index 2 out of bounds`" |
   }
 
   p "The failure is the friendlier of the two. A list that is one label short costs you a bar and says nothing, so when a chart is built from one place and labelled from another, derive both from the same list — again, [Charts from document data](#charts-from-document-data)."
@@ -369,7 +377,7 @@ WCL
 
   callout "A chart's own class field paints nothing" {
     class = ["warning"]
-    body  = "Every chart declares `class: list<utf8>?`, because every shape does. The chart lowerings ignore it: they never put it on anything they draw, so `bar_chart { class = [\"fancy\"] … }` builds and has no effect whatever. Colour a chart through the series classes above. The `id` field, in contrast, does work — it names the shape, which is how an edge finds it."
+    body  = "All three charts declare `class: list<utf8>?`, as the stdlib's other shapes do. The chart lowerings ignore it: they never put it on anything they draw, so `bar_chart { class = [\"fancy\"] … }` builds and has no effect whatever. Colour a chart through the series classes above. The `id` field, in contrast, does work — it names the shape, which is how an edge finds it."
   }
 
   h2 "Charts from document data"
@@ -410,7 +418,7 @@ page revenue {
 
   h1 "Sales"
 
-  diagram { width = 380  height = 220
+  diagram { width = 400  height = 240
     bar_chart { width = 380.0  height = 220.0
       title      = "Revenue and cost"
       y_label    = "$k"
@@ -447,7 +455,7 @@ interface SvgBlock {
 WCL
   }
 
-  p "Extend `SvgBlock` and a `diagram` accepts your block as a child, because its `@children(SvgBlock)` slot admits the interface rather than a list of kinds. Return `list<Svg>` from `lower` and the renderer draws it — out of the same seven primitives the stdlib charts use: `Rect`, `Circle`, `Line`, `Label`, `Polygon`, `Polyline` and `Link`."
+  p "Extend `SvgBlock` and a `diagram` accepts your block as a child, because its `@children(SvgBlock)` slot admits the interface rather than a list of kinds. Return `list<Svg>` from `lower` and the renderer draws it. The `Svg` union has seven members — `Rect`, `Circle`, `Line`, `Label`, `Polygon`, `Polyline` and `Link` — and the three stdlib charts are built from the first five."
 
   p "Here is a whole chart the standard library does not have: a horizontal bar chart, one row per bar, the longest value taking the full width. It is thirty lines, and this page declares them above its own `page` block:"
 
@@ -494,7 +502,7 @@ WCL
 
   code wcl {
     source = <<'WCL'
-diagram { width = 320  height = 140
+diagram { width = 340  height = 160
   hbar_chart { width = 320.0  height = 140.0
     rows = [
       { label: "Rust",  value: 61.0 },
@@ -506,7 +514,7 @@ diagram { width = 320  height = 140
 WCL
   }
 
-  diagram { width = 320  height = 140
+  diagram { width = 340  height = 160
     hbar_chart { width = 320.0  height = 140.0
       rows = [
         { label: "Rust",  value: 61.0 },
