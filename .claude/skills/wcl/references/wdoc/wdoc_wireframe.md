@@ -4,8 +4,8 @@ The `wf_*` family mocks up a user interface: windows, device frames, panels, inp
 controls. The output is a static SVG drawing. Nothing is interactive.
 
 **A widget is a diagram shape, not a page block.** Every `wf_*` type extends the `Widget`
-interface, which extends `SvgBlock`. So a widget is a legal child of a `diagram` or a
-`container` — placed by `x` / `y` or anchors, connectable by edges, mixable with `rect`,
+interface, which extends `SvgBlock`. A widget is therefore a legal child of a `diagram` or a
+`container`. Place it by `x` / `y` or by anchors, connect it by edges, and mix it with `rect`,
 `card` and every other shape. Writing `wf_button` straight into a page body is a schema error.
 
 ```wcl

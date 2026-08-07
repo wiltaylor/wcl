@@ -185,10 +185,10 @@ silently. Pick by what you are passing, and use the long form when an element ne
 An empty `class` or `attrs` list emits no attribute at all, so `el("li", [], kids)` renders
 `<li>`.
 
-**The trade-off:** `Html` nodes render fully in HTML, and the Markdown and PDF walkers flatten
-them — headings stay headings and `Inline` text keeps its markers, while chrome such as
-backdrops and icon badges drops away. Prefer `Content` when a concept exists there; reach for
-`Html` when it does not.
+**The trade-off:** `Html` nodes render fully in HTML. The Markdown and PDF walkers flatten them.
+Headings stay headings and `Inline` text keeps its markers, but chrome such as a backdrop or an
+icon badge drops away. Prefer `Content` when a concept exists there. Reach for `Html` when it
+does not.
 
 ## Recursion
 

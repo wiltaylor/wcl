@@ -204,6 +204,6 @@ map "dungeon" {
 - **A map's `width` / `height` are the pin coordinate space**, not a display size. The diagram's
   own `width` / `height` frame it on the page.
 - **A map makes its diagram interactive by itself.** Adding `pan_zoom = true` is redundant.
-- **Assets need a server.** Tiles, sheets and map images are copied into `_wdoc/` and fetched by
-  URL, so they render when the output is served, and not from a page opened straight off disk.
+- **Assets need a server.** wdoc copies tiles, sheets and map images into `_wdoc/` and fetches
+  them by URL. They render when the output is served, not from a page opened straight off disk.
 - **Pin ids must be unique per page**, because they link a marker to its card.

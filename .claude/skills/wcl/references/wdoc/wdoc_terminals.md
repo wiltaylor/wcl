@@ -3,7 +3,7 @@
 A `terminal` is a monospace character grid rendered as inline SVG, drawn with a bundled
 JetBrains Mono Nerd Font. Box-drawing glyphs, powerline symbols and Nerd Font icons all render.
 
-`terminal` `extends ContentBlock`, so it is a **page block**: write it in a `page` body, a
+`terminal` `extends ContentBlock`, so it is a **page block**. Write it in a `page` body, a
 `card` body, a `column`, or anywhere else a `ContentBlock` is accepted. It is not a diagram
 shape.
 
@@ -71,14 +71,14 @@ does not.
 
 ## Boxes, fills and glyphs
 
-Three helpers save you writing the runs by hand. Each one **lowers to `term_text` runs** — the
+Three helpers save you writing the runs by hand. Each one lowers to styled-text runs. The
 renderer paints glyphs, never vector chrome.
 
 | Block | Fields beyond `row` / `col` / `fg` / `bg` / `bold` | Draws |
 | --- | --- | --- |
-| `term_box` | `width`, `height`, `border`, `title` | A bordered box, optional title in the top edge. |
-| `term_glyph` | `glyph` (`@inline(0)`) | One styled run — the ergonomic single-run form. |
-| `term_fill` | `ch` (`@inline(0)`), `width`, `height` | A rectangle of one repeated character. |
+| `term_box` | `width`, `height` (both required), `border`, `title` | A bordered box, optional title in the top edge. |
+| `term_glyph` | `glyph` (`@inline(0)`, required) | One styled run — the ergonomic single-run form. |
+| `term_fill` | `ch` (`@inline(0)`), `width`, `height` (all required) | A rectangle of one repeated character. |
 
 `border` takes `:single` (default), `:double`, `:rounded`, `:heavy` or `:ascii`.
 
@@ -205,9 +205,9 @@ union TermFundamental {
 
 - `Text` is a styled run. `Children` marks the **content origin** of a container: the renderer
   draws the block's child widgets there, and recurses.
-- Shared helpers save you building records by hand: `term_run(content, row, col, fg, bg, bold)`
-  builds a `Text`; `term_repeat(ch, n)` repeats a character (`n < 1` gives `""`);
-  `term_fill_runs(...)` and `term_box_runs(...)` build a filled rectangle and a bordered box.
+- Shared helpers save you building records by hand. `term_run(content, row, col, fg, bg, bold)`
+  builds a `Text`. `term_repeat(ch, n)` repeats a character, and gives `""` when `n < 1`.
+  `term_fill_runs(...)` builds a filled rectangle, and `term_box_runs(...)` a bordered box.
 - **Lay your widget out from its own `(1, 1)`.** Never read your own `row` / `col`. The renderer
   owns placement and offsets the runs it gets back. That is what lets containers nest widgets.
 - Prefer ANSI colour names for accents, so an instance follows the site theme. Leave label text
