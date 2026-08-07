@@ -6,7 +6,9 @@
 //
 // The `wdoc-ch25-right` class is declared at the top level (a `class` block
 // is site-wide, not page-scoped) because the alignment section applies it to
-// a live table further down.
+// a live table further down — the same shape `docs/pages/reference/wdoc/
+// styling.wcl` uses for its `sty-accent` demo. The `wdoc-ch25-` prefix keeps
+// the rule from reaching the other 41 chapters under a name they might want.
 class "wdoc-ch25-right" {
   nest "th:nth-child(3), td:nth-child(3)" { css = "text-align: right;" }
 }
@@ -16,7 +18,9 @@ page wdoc_tables {
 
   h1 "Lists and tables"
 
-  p "Two blocks put a sequence of things on a page. A `list` puts them one under another; a `table` puts them on a grid. Neither renders through the semantic content IR — both are `@native`, and the last section of this chapter says why that is a property of how you _write_ them rather than an omission. This chapter covers `list` and `li`, nesting and numbering, `table` in both of its authoring forms, what a cell may hold, and the two things a `table` has no field for: alignment and captions."
+  p "Two blocks put a sequence of things on a page. A `list` puts them one under another; a `table` puts them on a grid. Neither renders through the semantic content IR. Both are `@native`, and [Why both are native](#why-both-are-native) says why that is a property of how you _write_ them rather than an omission."
+
+  p "This chapter covers `list` and `li`, nesting and numbering, and `table` in both of its authoring forms. It covers what a cell may hold. It also covers the two things a `table` has no field for: alignment and captions."
 
   p "Every example below was built before it was written down. Type them and compare."
 
@@ -100,7 +104,7 @@ TEXT
 MD
   }
 
-  p "Two things to notice already. The `` `wcl check config.wcl` `` inside an `li` and the `**Rejects**` inside a cell both survived: item text and cell text run through the inline-pattern engine, exactly as a `p` does. And the Markdown sub-steps restarted at `1.`, where the HTML build numbers them `2.1` and `2.2`. That difference is [numbering](#numbering), below, and it is the one place these blocks do not agree across targets."
+  p "Two things to notice already. The `` `wcl check config.wcl` `` inside an `li` and the `**Rejects**` inside a cell both survived: item text and cell text run through the inline-pattern engine, exactly as a `p` does. And the Markdown sub-steps restarted at `1.`, where the HTML build numbers them `2.1` and `2.2`. [Numbering](#numbering) covers that, and it is the first of three places where these two blocks do not agree across targets — [cells](#cells) and [alignment](#alignment) are the other two."
 
   h2 "Lists"
 
@@ -411,7 +415,7 @@ table {
 WCL
   }
 
-  p "The third column right-aligns:"
+  p "The third column right-aligns. A `class` block is site-wide, so this chapter declares the same rule under the prefixed name `wdoc-ch25-right` to keep a generic `num-right` out of the other 41 chapters — the table below is that one:"
 
   table {
     class = ["wdoc-ch25-right"]
