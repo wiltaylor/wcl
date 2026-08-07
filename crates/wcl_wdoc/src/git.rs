@@ -1,9 +1,9 @@
 //! Reading a document tree **at a git revision**.
 //!
 //! Anything that compares two versions of a document — `wcl diff`'s
-//! `<rev>:<path>` side, `wcl wad spec`'s reviewed baseline, an audit of a
-//! model at two revisions — needs the same thing: the whole tree at that
-//! revision on disk, so imports, the wdoc registry and relative paths resolve
+//! `<rev>:<path>` side, an audit of a model at two revisions — needs the
+//! same thing: the whole tree at that revision on disk, so imports, the
+//! wdoc registry and relative paths resolve
 //! exactly like a real checkout with no special loader. [`materialize_rev`] extracts it into a temp dir
 //! (`git archive | tar`); the caller then opens the file from there normally.
 //!

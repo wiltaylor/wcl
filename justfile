@@ -70,16 +70,6 @@ fuzz-run TARGET *ARGS:
 workspace-fmt:
     cargo fmt --all
 
-# Propagate the canonical WAD base schema to .wad/schema/base.wcl
-[group('quality')]
-wad-schema-sync:
-    @{{heredoc}}; heredoc {{wad_template}} WAD_SCHEMA_BASE_WCL > .wad/schema/base.wcl && echo "synced .wad/schema/base.wcl"
-
-# Print the canonical wplan plan schema (the scaffold template's heredoc) to stdout
-[private]
-wplan-schema-extract:
-    @sed -n "/<<'WPLAN_SCHEMA_WCL'/,/^WPLAN_SCHEMA_WCL$/p" crates/wcl/src/scaffold/templates/wplan.wcl | sed '1d;$d'
-
 # Run the CLI: just cli-run -- parse examples/basic.wcl
 [group('dev')]
 cli-run *ARGS:
@@ -107,21 +97,6 @@ docs-serve *ARGS:
 [group('dev')]
 docs-serve-ref *ARGS:
     cargo run -p wcl -- wdoc serve docs/reference/main.wcl --addr 127.0.0.1:8138 {{ARGS}}
-
-# Serve the WCL architecture book (.wad/) — hot-reload dev server. Review comments live in `just editor`'s preview pane
-[group('dev')]
-wad-serve *ARGS:
-    cargo run -p wcl -- wdoc serve .wad/wdoc/book/main.wcl --addr 127.0.0.1:8138 {{ARGS}}
-
-# Render the WCL architecture book as AI-consumable Markdown into .wad/_md/ (gitignored)
-[group('dev')]
-wad-md *ARGS:
-    cargo run -p wcl -- wdoc markdown .wad/wdoc/book/main.wcl --out .wad/_md {{ARGS}}
-
-# Derive a change-spec skeleton for the WAD from a reviewed revision: just wad-spec HEAD~3
-[group('dev')]
-wad-spec REV:
-    cargo run -p wcl -- wad spec --from {{REV}} .wad/wad.wcl
 
 # Render the reference book to Markdown under docs/_md/ (gitignored) —
 # smoke-tests `wcl wdoc markdown` (folder of .md + standalone .svg diagrams)

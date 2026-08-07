@@ -3,8 +3,8 @@
 //! A quoted ref (`system = "alpha"`) must evaluate to the same
 //! `Value::Identifier` a bare ref (`system = alpha`) does, so template
 //! joins (`c.system == s.id`) hold regardless of authoring style. The
-//! motivating failure: a weak model authored an entire WAD with quoted
-//! refs — `wcl check` passed, every derived C4 view silently rendered
+//! motivating failure: a weak model authored an entire model document with
+//! quoted refs — `wcl check` passed, every derived view silently rendered
 //! empty.
 
 use wcl_lang::{Document, Value};

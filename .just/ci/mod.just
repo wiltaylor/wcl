@@ -19,11 +19,7 @@ main:
 # toolchain plus cargo-fuzz, which most machines don't have. CI runs it as its
 # own job (`just ci::fuzz-sweep`), and it is guarded so a machine without the
 # tooling says so instead of failing obscurely.
-#
-# One part is not side-effect-free: `wad-extract-check` regenerates the tracked
-# files under .wad/data/generated/, because freshness can't be judged without
-# re-running the extractors. See its own doc comment.
 
-# Everything a change must pass before it can merge: fmt, lint, tests, WAD schema drift, artifact freshness, doc builds
+# Everything a change must pass before it can merge: fmt, lint, tests, doc builds
 [group('ci')]
-check: fmt-check workspace-lint workspace-test wad-schema-check wad-check wad-extract-check wad-build wplan-template-check docs-build
+check: fmt-check workspace-lint workspace-test docs-build

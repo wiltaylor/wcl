@@ -353,7 +353,7 @@ fn collect_ref_ids(value: &Value, out: &mut Vec<String>) {
 
 /// The block's identity label: its first label, when the block's resolved
 /// schema declares `@inline(0) id: identifier` — i.e. the label IS an id
-/// (a WAD `component`, a wskill `concept`, a wplan `spec`). The field must
+/// (a wskill `concept`, an `acme` `component`). The field must
 /// be *named* `id`: identifier-typed labels under other names are
 /// parameters (`code wcl`'s language, a component's `name`), which repeat
 /// freely. `None` for unlabeled blocks and schema-less kinds.

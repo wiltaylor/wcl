@@ -41,7 +41,7 @@ fn schema(types: usize) -> String {
 
 /// A root document importing the schema: `blocks` blocks spread across
 /// the kinds, `conns` connection statements between kind0 items, the
-/// wad-shaped root lets, a field re-referencing the union projection,
+/// aggregating root lets, a field re-referencing the union projection,
 /// and a block whose field calls the named fn from a `map` closure.
 fn root(types: usize, blocks: usize, conns: usize) -> String {
     let mut s = String::from("import <schema.wcl>\n");

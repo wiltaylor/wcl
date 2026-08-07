@@ -3183,7 +3183,7 @@ fn build_cross_container_edge_avoids_top_border() {
     // Two stroke-bordered containers (their top borders sit at y=0) hold
     // node_tables, with a cross-container FK between rows. The elbow router
     // must not run the edge flush along a container's top border line — the
-    // wad ER-diagram symptom. (The routing.rs unit test proves the
+    // ER-diagram symptom. (The routing.rs unit test proves the
     // mechanism with a before/after control; this guards the end-to-end
     // threading of container borders into the router.)
     let tmp = TempDir::new().expect("mkdir tempdir");
@@ -11232,7 +11232,7 @@ page index {
 
 #[test]
 fn computed_children_splice_matches_literal_for_custom_lower() {
-    // The data-driven authoring path the wad book uses: a `@children`
+    // The data-driven authoring path a model book uses: a `@children`
     // slot fed by a computed splice (`items = map(data, …)`) reaches a
     // custom shape's `lower` schema-completed exactly like literal
     // child blocks (optionals → none).

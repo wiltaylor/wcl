@@ -1,4 +1,0 @@
-// View data hub — external systems: contacts, endpoints, API refs, security notes.
-// Import one file per entry (or small group) below.
-namespace wcl.wad
-import "./externals.wcl"

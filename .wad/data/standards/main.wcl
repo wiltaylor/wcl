@@ -1,4 +1,0 @@
-// View data hub — standards and their rules.
-// Import one file per entry (or small group) below.
-namespace wcl.wad
-import "./standards.wcl"
