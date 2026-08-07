@@ -1,11 +1,774 @@
 // Chapter 29 — Data views.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Every file and every command in this chapter was run against the `wcl`
+// CLI before it was written down. The live examples on the page use the
+// components declared below; their `ch29_` prefix keeps the globally
+// registered kind names out of the other forty-one chapters' way.
+
+// A callout card driven by three slots. The live instances further down
+// the page are the same declaration the first code block shows.
+wdoc_component ch29_metric {
+  slot label:  utf8
+  slot value:  f64
+  slot status: utf8 = "note"
+  wdoc_body {
+    callout $"${label}" { class = [status]  body = $"Currently at **${value}%**" }
+  }
+}
+
+// A layout wrapper: `wdoc_content` marks where the instance's own nested
+// blocks land.
+wdoc_component ch29_panel {
+  slot title:   utf8
+  slot content: content
+  wdoc_body {
+    h4 $"${title}"
+    wdoc_content
+  }
+}
+
+// The record type the live `type_table` at the end of the chapter reflects.
+@block("ch29_server")
+type Ch29Server {
+  @doc("How the fleet refers to this host.")
+  @inline(0) name: identifier
+  @doc("What it runs.")
+  role: utf8
+  @doc("Current utilisation, per cent.")
+  cpu: f64
+  @doc("A callout class: `note`, `warning` or `error`.")
+  status: utf8
+  @doc("Prose about this host, rendered wherever a `project` asks for it.")
+  @child("body") overview: WdocAddressableBody?
+}
+
 page wdoc_data_views {
   title = "Data views"
 
   h1 "Data views"
 
-  p "Not written yet. This chapter covers components and slots, repeaters, partials, the `body` and `project` pair, and schema-reflected tables."
+  p "A **data view** is document content computed from data rather than typed out block by block. You declare the data once, as a `let` list or as blocks a `@document` schema gathers. Every card, table, chart, diagram and page then derives from that one declaration. Change the data and every view moves with it."
+
+  p "wdoc gives you seven mechanisms for it. The chapter takes them in the order you meet them:"
+
+  list {
+    li "A **component** — a reusable fragment of markup with named slots."
+    li "A **content slot** — a hole in a component that the caller fills with blocks."
+    li "A **repeater** — render one body once per element of a list."
+    li "**`wdoc_instance`** — let the data pick which component renders it."
+    li "**`partial` / `collect`** — scatter tagged content, gather it in one place."
+    li "**`body` / `project`** — attach content to a data record, render it elsewhere."
+    li "**`type_table`** — build a table out of a schema."
+  }
+
+  p "It ends with the comparison between the seven, and with the one naming hazard that silently empties a repeater."
+
+  p "Every file below was run before it was written down. Type them and compare."
+
+  h2 "One worked example"
+
+  p "Start with the whole thing. Save this as `fleet.wcl`. It declares a record type, two records, one component, and a page that renders three views of the same two records:"
+
+  code wcl {
+    filename = "fleet.wcl"
+    source = <<'WCL'
+# fleet.wcl — one data set, three views of it.
+import <wdoc.wcl>
+
+# What a host is. The `@doc` text reaches the generated table at the bottom.
+@block("server")
+type Server {
+  @doc("How the fleet refers to this host.")
+  @inline(0) name: identifier
+  @doc("What it runs.")                            role:   utf8
+  @doc("Current utilisation, per cent.")           cpu:    f64
+  @doc("A callout class: note, warning or error.") status: utf8
+  @doc("Prose about this host, rendered wherever a `project` asks for it.")
+  @child("body") overview: WdocAddressableBody?
+}
+
+@document
+type Fleet {
+  @children("server") servers: list<Server>
+}
+
+server web1 {
+  role   = "frontend"
+  cpu    = 42.0
+  status = "note"
+  body { p $"Terminates TLS for the estate. Sitting at ${cpu}%." }
+}
+
+server db1 {
+  role   = "database"
+  cpu    = 88.0
+  status = "warning"
+  body { p $"The primary. Sitting at ${cpu}%." }
+}
+
+# One card, written once, stamped per host.
+wdoc_component metric {
+  slot label:  utf8
+  slot value:  f64
+  slot status: utf8 = "note"
+  wdoc_body {
+    callout $"${label}" { class = [status]  body = $"Currently at **${value}%**" }
+  }
+}
+
+site handbook {
+  default_template = :book
+  title            = "Fleet"
+  toc { chapter "Fleet" { page = fleet } }
+}
+
+page fleet {
+  title = "Fleet"
+  h1 "Fleet"
+
+  wdoc_repeater { each = servers  as = :s
+    h2 $"${s.name}"
+    project { from = s.overview }
+    metric { label = s.role  value = s.cpu  status = s.status }
+  }
+
+  h2 "Every host at a glance"
+
+  table {
+    header = ["Host", "Role", "CPU %"]
+    rows   = map(servers, fn(s: Server) -> list<utf8> [s.name, s.role, $"${s.cpu}"])
+  }
+
+  h2 "What a server record holds"
+
+  type_table { type = Server }
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check fleet.wcl
+OK
+$ wcl wdoc build fleet.wcl --out _site
+wrote 1 page
+TEXT
+  }
+
+  p "One page comes out, and nothing on it was written twice. The `web1` and `db1` headings, their prose and their cards come from the repeater. The table rows come from `map`. The property table at the bottom comes from the schema. Adding a third `server` block adds a heading, a paragraph, a card and a table row — and changes nothing else in the file."
+
+  p "The rest of the chapter takes that file apart."
+
+  h2 "Components"
+
+  p "A `wdoc_component` is a named fragment of ordinary wdoc markup with named holes in it. Declare it at the **document root** — beside your pages, not inside one — with a `slot` per hole and a `wdoc_body` holding the markup:"
+
+  code wcl {
+    source = <<'WCL'
+wdoc_component metric {
+  slot label:  utf8
+  slot value:  f64
+  slot status: utf8 = "note"
+  wdoc_body {
+    callout $"${label}" { class = [status]  body = $"Currently at **${value}%**" }
+  }
+}
+WCL
+  }
+
+  p "Instantiate it by writing its **own name** as a block, anywhere a content block is legal. The instance's fields fill the slots:"
+
+  code wcl {
+    source = <<'WCL'
+metric { label = "CPU"    value = 42.0  status = "warning" }
+metric { label = "Memory" value = 12.0 }
+WCL
+  }
+
+  p "That is the live pair below — the second instance takes the `status` slot's default:"
+
+  ch29_metric { label = "CPU"    value = 42.0  status = "warning" }
+  ch29_metric { label = "Memory" value = 12.0 }
+
+  h3 "The wdoc_body"
+
+  p "The `wdoc_body` is the template half of a component. It holds ordinary wdoc blocks, and it renders once per instance with that instance's slot values bound in scope."
+
+  p "A slot value reaches those blocks two ways. In text, through an interpolated string — `$\"${label}\"`, with the `$` prefix that makes the string interpolating rather than literal ([Values and primitives](lang_values)). In a field, as a bare reference — `class = [status]`. Both are ordinary WCL name resolution."
+
+  p "A `wdoc_body` is declared `@schemaless`, and the reason is worth knowing. A body is a template, so its blocks only mean something once an instance expands them. A component used inside a diagram legitimately holds diagram shapes rather than page content, and checking the body where it sits would reject that. Whether the expansion is legal is settled where the instance sits, not where the template does."
+
+  h3 "The derived kind schema"
+
+  p "`metric { … }` is not special syntax. `WdocComponent` carries `@declares_kind`, which is the language's word for _instances of this type declare block kinds of their own_. So when you write `wdoc_component metric`, the language derives a `@block(\"metric\")` schema from that instance's slot blocks. `metric { … }` is then checked against it like any other block."
+
+  p "The derivation is mechanical. One field per slot, in declaration order. A slot carrying a `?` or a default is optional. Every other slot is listed in the derived `required_fields`."
+
+  p "So the two ordinary block errors both fire on a component instance. Add either of these to `fleet.wcl`'s page, beside the repeater rather than inside it:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check fleet.wcl        # page holds `metric { label = "Memory" }`
+wcl::eval::schema_violation
+
+  × block 'metric' is missing required field 'value'
+
+fleet.wcl: 1 schema violation
+
+$ wcl check fleet.wcl        # page holds `metric { … colour = "red" }`
+wcl::eval::schema_violation
+
+  × field 'colour' is not declared by schema 'metric'
+
+fleet.wcl: 1 schema violation
+TEXT
+  }
+
+  p "There is no component vocabulary inside the language, and no hand-rolled slot checker. An unfilled slot is a missing required field. A misspelt slot is an unknown field. See [Schemas](lang_schemas) for the two errors in their ordinary setting."
+
+  callout "A slot's declared type is not checked" {
+    class = ["warning"]
+    body  = "Membership and required-ness are the whole of the check on a component instance. The derived schema stops there. `value = \"twelve\"` against `slot value: f64` passes `wcl check` today. The same value in an ordinary `cpu: f64` field fails with `field 'cpu' declared as f64 but value is utf8`. Annotate your slots anyway — the type says what the slot is for, and it is what makes `?` mean optional. Do not expect the tool to hold you to it."
+  }
+
+  p "The scope of that check is narrower still, and this is the part to remember. An instance written **inside a generator's body** — a `wdoc_repeater`, another component, a `wdoc_instance` — is not checked at all. A generator is `@contextual`: its body only means anything once it expands, and it expands at render time, long after `wcl check` has finished. So the repeater in `fleet.wcl` will happily carry a `metric` with no `value` at all:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check fleet.wcl        # repeater holds `metric { label = s.role  status = s.status }`
+OK
+$ wcl wdoc build fleet.wcl --out _site
+wrote 1 page
+TEXT
+  }
+
+  p "The page renders, and each card reads _Currently at none%_. Nothing warned you. Slot mistakes surface where the instance is written flat; inside a generator they surface only in the output, so read what a generated page actually says."
+
+  h3 "slot and wdoc_slot"
+
+  p "There are two spellings of a slot declaration, and the newer one is the typed one:"
+
+  table {
+    rows:
+      | "Written as"                | "Means" |
+      | "`slot label: utf8`"        | "Required. The type annotation is retained." |
+      | "`slot label: utf8?`"       | "Optional. Absent at the instance, the slot is `none`." |
+      | "`slot status: utf8 = \"note\"`" | "Optional, with a fallback the body sees when the instance omits it." |
+      | "`slot content: content`"   | "A **content hole**, not a parameter — see [Content slots](#content-slots)." |
+      | "`wdoc_slot label`"         | "The older untyped form. Required." |
+      | "`wdoc_slot status { default = \"note\" }`" | "The older form's fallback, written as a field." |
+  }
+
+  p "Both spellings may appear in one component, and one derivation reads both. An untyped `wdoc_slot` derives a permissive `@schemaless utf8` field, which is the compatibility older documents rely on. Reach for `slot` in new work."
+
+  h3 "Content slots"
+
+  p "A slot whose type is `content` is a different animal: it is a hole for **blocks**, not for a value. It derives no field on the instance schema at all. Instead the instance fills it by nesting blocks, and the body renders them."
+
+  p "The simplest case has one hole. `wdoc_content` in the body marks where the instance's own nested blocks land:"
+
+  code wcl {
+    source = <<'WCL'
+wdoc_component panel {
+  slot title:   utf8
+  slot content: content
+  wdoc_body {
+    h4 $"${title}"
+    wdoc_content          # the caller's nested blocks render here
+  }
+}
+
+panel { title = "A framed note"
+  p "Anything nested in the instance renders at wdoc_content."
+  list {
+    li "including lists"
+    li "and more"
+  }
+}
+WCL
+  }
+
+  p "Live:"
+
+  ch29_panel { title = "A framed note"
+    p "Anything nested in the instance renders at `wdoc_content`."
+    list {
+      li "including lists"
+      li "and more"
+    }
+  }
+
+  p "`content` is the reserved name for the loose children. Every nested block the instance does not put in a named hole goes there, and `wdoc_content` is the marker that renders it. A component with **several** holes names them. Each is then both filled and rendered by its own name:"
+
+  code wcl {
+    source = <<'WCL'
+wdoc_component splitcard {
+  slot title: utf8
+  slot left:  content
+  slot right: content?
+  wdoc_body {
+    h4 $"${title}"
+    left                  # renders whatever the instance's `left { … }` holds
+    right
+  }
+}
+
+splitcard { title = "Two holes"
+  left  { p "LEFT" }
+  right { p "RIGHT" }
+}
+
+splitcard { title = "One hole"
+  left { p "ONLY LEFT" }   # `right` is optional, so this is legal
+}
+WCL
+  }
+
+  p "A content hole is not a field, so `wcl check` has nothing to miss. Drop the `left { … }` fill from the last instance above and `check` still prints `OK`. The **build** is what refuses it, and it names both the component and the slot:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check splitcard.wcl
+OK
+$ wcl wdoc build splitcard.wcl --out _site
+component `splitcard`: required slot `left` is unfilled
+$ echo $?
+3
+TEXT
+  }
+
+  p "Scalar slots are the schema's business; content slots are the renderer's."
+
+  h2 "Repeating over data"
+
+  p "A `wdoc_repeater` renders its body once per element of the list its `each` field evaluates to, binding each element to the symbol its `as` field names:"
+
+  code wcl {
+    source = <<'WCL'
+wdoc_repeater { each = servers  as = :s
+  h2 $"${s.name}"
+  p  $"${s.role}, at ${s.cpu}%"
+}
+WCL
+  }
+
+  p "The binding is an ordinary name, in scope for the whole body. So it reaches every field of every block inside, a nested component instance included. That is how the worked example stamps one card per host:"
+
+  code wcl {
+    source = <<'WCL'
+wdoc_repeater { each = servers  as = :s
+  metric { label = s.role  value = s.cpu  status = s.status }
+}
+WCL
+  }
+
+  p "`as` is optional. Without it the binding is called `it`. Bindings also **stack**: a repeater inside a component body sees the loop variable and the enclosing component's slots. That is how a component takes a whole list through one slot and names the layout for it:"
+
+  code wcl {
+    source = <<'WCL'
+wdoc_component fleet_panel {
+  slot heading: utf8
+  slot rows:    list<Server>
+  wdoc_body {
+    h3 $"${heading}"
+    wdoc_repeater { each = rows  as = :s
+      metric { label = s.role  value = s.cpu  status = s.status }
+    }
+  }
+}
+
+fleet_panel { heading = "Fleet"  rows = servers }
+WCL
+  }
+
+  p "Where the data comes from is not the repeater's business. A `let` list of records, a `@children` gather field, the result of `map` or `filter` over either — anything that evaluates to a list will do. See [Lists, tensors and records](lang_collections) and [Functions](lang_functions)."
+
+  h3 "What each does and does not report"
+
+  p "The two failure modes differ, and the difference is deliberate. An `each` expression that **fails to evaluate** is a real error. The build says so, with a snippet:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build typo.wcl --out _site
+wcl::eval::unresolved_reference
+
+  × unresolved reference 'inventory'
+   ╭─[typo.wcl:6:26]
+ 5 │   h1 "Fleet"
+ 6 │   wdoc_repeater { each = inventory  as = :s
+   ·                          ────┬────
+   ·                              ╰── does not resolve
+ 7 │     h2 $"${s.name}"
+   ╰────
+TEXT
+  }
+
+  p "An `each` that evaluates to something that is **not a list** — a number, a record, `none` — renders nothing, silently. So does an empty list, which is the point: a repeater over no data is not an error. If a repeater you expected to produce rows produces none and the build stays green, its `each` resolved to a non-list. [The gather-field name collision](#the-gather-field-name-collision) is the usual reason."
+
+  h3 "A repeater is the one iteration concept"
+
+  p "The same block repeats at every level of a document, because every container that walks its children expands repeaters first. Four placements are worth knowing by name:"
+
+  table {
+    rows:
+      | "Written inside"     | "Body holds"        | "Produces" |
+      | "A `page`"           | "Content blocks"    | "Repeated page content" |
+      | "A `diagram` or `container`" | "Diagram shapes" | "One shape per element — see [The diagram canvas](wdoc_diagrams)" |
+      | "The **document root**" | "`page` blocks"  | "One rendered page per element; the page's interpolated label is its route" |
+      | "A `toc` or `chapter`" | "`chapter` blocks" | "One navigation entry per element" |
+  }
+
+  p "The last two together give a whole catalogue site with no hand-written page or chapter boilerplate:"
+
+  code wcl {
+    source = <<'WCL'
+let containers = [
+  { id: "web", name: "Web App" },
+  { id: "api", name: "API" },
+  { id: "db",  name: "Database" },
+]
+
+# At the document root: one rendered page per element.
+wdoc_repeater { each = containers  as = :c
+  page $"cont_${c.id}" {
+    title = c.name
+    h1 $"${c.name}"
+  }
+}
+
+site catalogue {
+  default_template = :book
+  toc {
+    chapter "Containers" {
+      # Inside the TOC: one entry per element, naming the generated page.
+      wdoc_repeater { each = containers  as = :c
+        chapter $"${c.name}" { page = $"cont_${c.id}" }
+      }
+    }
+  }
+}
+WCL
+  }
+
+  callout "A generated route is a slug" {
+    class = ["note"]
+    body  = "The page's interpolated label becomes its route, so it must be non-empty, hold only `A-Za-z0-9_-`, and be unique within its site. A colliding or space-bearing route fails the build. Build one from prose with `to_lower(replace(name, \" \", \"-\"))`. Links to a generated page resolve normally: the pages exist before links are checked, so a link whose target is computed from the same data works."
+  }
+
+  p "A repeater also composes with itself and with components in any order. A repeater inside a component body, a component instance inside a repeater body, a repeater inside a repeater: all ordinary. Diagram shapes are where this pays off most. See [Connections and routing](wdoc_diagram_connections) for a graph whose nodes and edges both come from one list."
+
+  h2 "Choosing the component from data"
+
+  p "Writing a component's name as a block fixes the choice in the source. `wdoc_instance` instead renders the component named by the **value** of its `component` field, so each element of a list can pick its own:"
+
+  code wcl {
+    source = <<'WCL'
+let widgets = [
+  { kind: "badge", text: "one" },
+  { kind: "pill",  text: "two" },
+]
+
+wdoc_repeater { each = widgets  as = :w
+  wdoc_instance { component = w.kind  text = w.text }
+}
+WCL
+  }
+
+  p "The instance's like-named fields fill the target's slots, falling back to each slot's `default` exactly as a direct instantiation does. `wdoc_instance` is `@schemaless`, so the forwarded fields need no schema of their own — which also means none of them are checked. A `component` value naming no declared component renders nothing."
+
+  h2 "Scatter and collect"
+
+  p "Components and repeaters both assemble content **at one spot**. A `partial` does the opposite. It deposits tagged content wherever you happen to be writing. A `collect` with the same tag then gathers every deposit in the document, and renders them somewhere else in document order. It is the appendix, the glossary, the collected-sidebars pattern."
+
+  code wcl {
+    source = <<'WCL'
+partial aside { callout "From section one" { body = "A point to collect later." } }
+
+# ... prose, other blocks, other pages, other imported files ...
+
+partial aside { callout "From section two" { body = "Another point." } }
+
+# Gather every `aside` deposit here, in document order:
+collect aside
+WCL
+  }
+
+  p "A deposit is **invisible where it is written**. Set `show_here = true` to render it in place as well as at the collect site:"
+
+  code wcl {
+    source = <<'WCL'
+partial aside { show_here = true  p "Pinned in place and also collected." }
+WCL
+  }
+
+  p "Two `partial ch29_aside` deposits sit in this page's source immediately below this paragraph, and neither of them renders there. The `collect` that follows them picks up both:"
+
+  partial ch29_aside { callout "From the first deposit" { class = ["note"]  body = "Written where the prose needed it." } }
+
+  partial ch29_aside { callout "From the second deposit" { class = ["tip"]  body = "Written somewhere else entirely." } }
+
+  collect ch29_aside
+
+  callout "What a collect reaches" {
+    class = ["note"]
+    body  = "Collection is **document-global**, not page-local. A `collect` gathers matching deposits from the root document and every file a top-level `import` pulls in, whichever page each one sits on. Tag distinctly, or one page's sidebars turn up in another's appendix. Three limits follow. A file brought in by a block-scoped (lazy) `import` is not reached. A `partial` nested inside another partial's body belongs to that body, and is not collected separately. A collected body should carry no `id`s, because per-page id checks run before collection. Finally, a `collect` whose gathered content holds a `collect` of the same tag renders nothing for the inner one: the cycle is broken rather than followed."
+  }
+
+  h2 "Content that rides on a record"
+
+  p "A `partial` addresses content by **tag**. That is the right handle when the content is a loose deposit and the gathering site is a fixed place in the document. It is the wrong handle when the content belongs to a **record**. Each server, each tutorial step, each API endpoint carries its own prose, and that prose has to travel with the record wherever the record is rendered."
+
+  p "That is what `body` and `project` are for. A `body` is a chunk of renderable content attached to a data record as a property. A `project` renders the body its `from` field resolves to."
+
+  code wcl {
+    source = <<'WCL'
+@block("server")
+type Server {
+  @inline(0) name: identifier
+  cpu: f64
+  @child("body") overview: WdocAddressableBody?   # content rides on the record
+}
+
+server web1 {
+  cpu = 42.0
+  body { p $"Terminates TLS. Sitting at ${cpu}%." }
+}
+
+page fleet {
+  wdoc_repeater { each = servers  as = :s
+    h2 $"${s.name}"
+    project { from = s.overview }                 # render THIS record's body
+  }
+}
+WCL
+  }
+
+  p "Three things about that are worth spelling out."
+
+  list {
+    li "**A `body` never renders where it is written.** It is not a content block, so a page renderer walks straight past it. The only way to its contents is a `project`."
+    li "**`${…}` inside a body resolves against the record it hangs on.** `${cpu}` above is `web1`'s `cpu`, and the rendered line reads _Terminates TLS. Sitting at 42%._ You are not copying the record's fields into the prose by hand."
+    li "**`from` carries an address, not a copy.** `body` is declared `@by_ref`. So when the repeater reads a server record as data, the record's `overview` slot reifies to a reference rather than to inlined content. `s.overview` is therefore the address of _that_ server's fragment, and one line of `project` renders a different body per element."
+  }
+
+  h3 "Addressing a body"
+
+  p "How you name a body depends on how it is attached."
+
+  table {
+    rows:
+      | "Attached as"                         | "Addressed by"                    | "Write the body as" |
+      | "A single `@child(\"body\")` slot"     | "The slot: `from = s.overview`"   | "`body { … }`" |
+      | "A `@children(\"body\")` list"         | "The slot: `from = t.notes`, which renders every body in the list, in order" | "`body intro { … }`" |
+      | "Standalone at the document root"      | "Its label, through the root's `bodies` field" | "`body glossary { … }`" |
+  }
+
+  p "A `body` in a list, or one standing alone at the root, needs the `@inline(0)` label — that is what the path segment matches. A `body` filling a single `@child` slot is already named by the slot, so its label may be dropped."
+
+  p "A `project` written at page scope — outside any repeater, with nothing bound — names the full path from a root gather field instead:"
+
+  code wcl {
+    source = <<'WCL'
+project { from = tutorials.deploy.steps.1.detail }
+WCL
+  }
+
+  p "Records carrying a body nest to any depth, and a numeric `@inline(0)` label is fine. Read that path as [Documents, fields and blocks](lang_documents) reads any other: `tutorials` is the root gather field, `deploy` and `1` are labels, `steps` is a nested gather field, `detail` is the body slot."
+
+  callout "steps.1 is a label, not an index" {
+    class = ["warning"]
+    body  = "`steps.1` matches the step **labelled** `1`. It is not the first element of the list. Relabel the steps `10`, `20`, `30` and `steps.1` resolves to nothing, while `steps.10` resolves to the first one. Path segments address blocks by label everywhere in WCL; a body slot is no exception."
+  }
+
+  h3 "When a project has nothing to render"
+
+  p "`from` must evaluate to a body reference. Anything else is a build error naming the block:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build fleet.wcl --out _site
+wcl::eval::user_error
+
+  × error: `project`'s `from` did not resolve to a body reference; it must
+  │ name an addressable `body` (e.g. a `@by_ref` property of the data being
+  │ generated from)
+   ╭─[fleet.wcl:6:3]
+ 6 │   project { from = "nope" }
+   ·   ────────────┬────────────
+   ·               ╰── error raised here
+   ╰────
+TEXT
+  }
+
+  p "A `from` that resolves to a path holding something other than a body reports the path it followed instead — _project target tutorials.deploy did not resolve to a body_. And a body that projects itself terminates rather than recursing: the inner projection renders nothing and the outer one completes."
+
+  h2 "Tables from the schema"
+
+  p "The last data view takes its data from the **schema** rather than from records. `type_table { type = T }` reflects a type's fields into a documentation table, so a reference page cannot drift from the declaration it documents."
+
+  code wcl {
+    source = <<'WCL'
+@block("server")
+type Server {
+  @doc("How the fleet refers to this host.")
+  @inline(0) name: identifier
+  @doc("What it runs.") role: utf8
+  @hidden internal_seed: u32?
+  @child("body") overview: WdocAddressableBody?
+}
+
+page reference {
+  type_table { type = Server }
+}
+WCL
+  }
+
+  p "Reflecting this chapter's own `Ch29Server` type gives:"
+
+  type_table { type = Ch29Server }
+
+  p "Two tables come out. The first lists the scalar properties — name, type, whether the field is required, and the description. The second is headed **Child blocks**. It lists the type's `@child` / `@children` slots, with what each accepts and whether it holds one block or a list. It is omitted entirely when the type has no block slots. Fields inherited through `extends` are included, own fields first."
+
+  p "Two decorators steer the output, and both are authored on the **schema**, not on the table:"
+
+  table {
+    rows:
+      | "Decorator"       | "Effect" |
+      | "`@doc(\"…\")`"    | "The description column. A language built-in — see [Decorators](lang_decorators)." |
+      | "`@hidden`"       | "Drops the field from the generated table. Declared by wdoc." |
+  }
+
+  p "Function-typed fields are dropped automatically, which is what keeps every block type's `lower` hook out of its own reference table. See [Writing your own blocks](wdoc_extending) for what `lower` is."
+
+  h3 "Reflecting a whole document"
+
+  p "`block_reference { type = MyDoc }` walks a `@document` type's block slots. It emits an `h3` plus a `type_table` for each, so a document schema documents its own top-level tags with no hand-maintained list:"
+
+  code wcl {
+    source = <<'WCL'
+import <wdoc.wcl>
+
+@document
+type MyDoc {
+  @children("widget") widgets:  list<Widget>
+  @child("settings")  settings: Settings
+}
+
+@block("widget")   type Widget   { @inline(0) id: identifier  @doc("Pixels wide.") width: u32 }
+@block("settings") type Settings { @doc("UI theme") theme: utf8 }
+
+page reference {
+  block_reference { type = MyDoc }   # one heading + property table per block
+}
+WCL
+  }
+
+  p "Both components are thin wrappers over reflection builtins. `type_fields` gives the field list, `child_types` a type's block-slot element types, and `decorator_arg` the `@block(\"…\")` kind name that becomes each heading. See [Builtins](lang_builtins). Drop to the repeater directly when you want a different layout:"
+
+  code wcl {
+    source = <<'WCL'
+wdoc_repeater { each = child_types(MyDoc)  as = :b
+  type_table { type = b }
+}
+WCL
+  }
+
+  callout "A union or interface slot documents as one name" {
+    class = ["note"]
+    body  = "`child_types` resolves a slot to its declared element type. A slot that accepts a union or an interface resolves to that type's name. `type_table` documents a single concrete type, so such a slot is not expanded into a table per member. Document the members individually."
+  }
+
+  h2 "The gather-field name collision"
+
+  p "Here is the one hazard that will cost you an afternoon. Every data view above reads a gather field, and the names a data-view author reaches for are exactly the names wdoc's own `@document` schema already uses."
+
+  p "`@document` schemas **compose per namespace**. Importing `<wdoc.wcl>` and declaring your own root `@document` is not a conflict but a merge, and that is what lets you add top-level tags of your own ([Schemas](lang_schemas)). The merged schema is one flat name space, though. A gather field declared on both sides resolves to only one of the two declarations."
+
+  code wcl {
+    filename = "clash.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+@document
+type App {
+  @children("component") pages: list<Component>   # `pages` is already wdoc's
+}
+
+@block("component")
+type Component { @inline(0) id: identifier  name: utf8 }
+
+component web { name = "Web" }
+component api { name = "API" }
+
+site s { default_template = :book  title = "T"  toc { chapter "C" { page = c } } }
+
+page c {
+  title = "Components"
+  h1 "Components"
+  wdoc_repeater { each = pages  as = :x
+    h2 $"${x.name}"
+  }
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check clash.wcl
+warning: gather field 'pages' of @document 'App' (this document) collides with
+'pages' declared by @document 'wdoc.Site' (<wcl-system>/wdoc/core.wcl) — the
+merged document schema resolves 'pages' to only one declaration, so the other
+schema's gathered blocks silently vanish; rename one field
+clash.wcl: 1 warning
+OK
+
+$ wcl wdoc build clash.wcl --out _site
+wrote 1 page
+TEXT
+  }
+
+  p "The build is green and the page is empty. Two `component` blocks are in the file; the repeater rendered nothing at all, because `each = pages` resolved to the other declaration. Nothing failed — the check is a **warning**, and the repeater's silent-on-a-non-list rule swallowed the rest."
+
+  p "The names to avoid are the ones wdoc's own `@document` already gathers. At the time of writing that is `pages`, `sites`, `components`, `partials`, `bodies`, `generators`, `includes`, `agents`, `styles`, `themes`, `templates`, `patterns`, `iconsets`, `tilesets`, `classes`, `bases`, `font_faces`, `media` and `keyframes`. Do not learn the list — a wdoc release may add to it. Notice instead how many of them are the natural name for a data-view gather."
+
+  p "The fix is one word. Name yours `sw_components`, `catalog_pages`, `service_bodies`. Then let the warning be the thing that tells you, because it always will."
+
+  h2 "Choosing a mechanism"
+
+  p "Seven tools, and the choice between them is nearly always decided by one question: **where does the content live, and what addresses it?**"
+
+  table {
+    rows:
+      | "Mechanism"          | "Content lives"                  | "Addressed by"          | "Reach for it when" |
+      | "`wdoc_component`"   | "In the component's `wdoc_body`" | "The component's name"  | "One layout, many call sites with different values" |
+      | "`wdoc_content` / a `content` slot" | "At the call site" | "The slot's name"       | "The component frames content the caller writes" |
+      | "`wdoc_repeater`"    | "In the repeater's body"         | "Nothing — it is written where it renders" | "One body, once per element of a list" |
+      | "`wdoc_instance`"    | "In some component's body"       | "A **value**"           | "The data chooses which component renders it" |
+      | "`partial` / `collect`" | "Wherever you wrote the deposit" | "A **tag**"          | "Content is scattered; one place assembles it" |
+      | "`body` / `project`" | "Inside a data record"           | "A **reference** to that record's slot" | "Prose belongs to a record and travels with it" |
+      | "`type_table`"       | "In the schema"                  | "A **type**"            | "The table is the declaration, restated" |
+  }
+
+  p "Three of those pairs look alike and are not:"
+
+  list {
+    li "**`wdoc_instance` against a component instance.** Both render a component. A component instance names it in the source; `wdoc_instance` names it with a value. Use the plain form until an element of your data has to decide."
+    li "**`partial` / `collect` against `body` / `project`.** Both write content in one place and render it in another. A partial is addressed by a tag, so many deposits share one name and the collect site takes all of them. A body is addressed by a reference to the record that owns it, so one `project` inside a repeater renders a different fragment per element. If the content belongs to a record, it wants a `body`; if it belongs to a stretch of the narrative, it wants a `partial`."
+    li "**A component with a list slot against a repeater.** A repeater iterates. A component with a `list`-typed slot iterates _and_ names the layout, so the call site reads `fleet_panel { rows = servers }` instead of a loop. Reach for the component the second time you write the same loop."
+  }
+
+  p "The mechanisms compose without ceremony, because they are all block expansion. A repeater inside a component body inside a repeater is ordinary. A `project` inside a component body inside a diagram is ordinary. Anything that walks a container's children expands generators first, so a generated block participates exactly as an authored one does."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Lists, tensors and records](lang_collections) — the list values a repeater iterates, and `map` / `filter` / `flatten` for shaping them."
+    li "[Schemas](lang_schemas) — `@document` merging, gather fields, and the collision warning above in its own setting."
+    li "[Decorators](lang_decorators) — `@doc`, and what a decorator is before wdoc adds `@hidden`."
+    li "[Builtins](lang_builtins) — `type_fields`, `child_types`, `decorator_arg` and the rest of the reflection surface."
+    li "[Lists and tables](wdoc_tables) — a `table`'s `header` / `rows` fields, which is where a computed table's cells land."
+    li "[Charts](wdoc_charts) — feeding `map`ped data straight into a chart's value fields."
+    li "[The diagram canvas](wdoc_diagrams) and [Connections and routing](wdoc_diagram_connections) — repeater-generated shapes and computed `edges`."
+    li "[Writing your own blocks](wdoc_extending) — when a component is not enough and you want a block kind of your own."
+  }
 }
