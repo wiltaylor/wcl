@@ -5,27 +5,28 @@ description: "WCL and wdoc. WCL is a typed configuration and schema language —
 
 # WCL and wdoc
 
-**WCL** is a typed configuration and schema language. A `.wcl` file carries both the data and
-the schema that describes it: types with widths and encodings, unions and interfaces,
-decorators that declare which blocks and fields are legal, expressions and functions in field
-positions, and a document model that gathers nested blocks into typed lists. `wcl check`
-validates a file against its own schema; `wcl get` resolves a dotted path out of it.
+**WCL** is a typed configuration and schema language. A `.wcl` file carries the data and the
+schema that describes it. The schema gives you types with widths and encodings, unions,
+interfaces, and decorators that declare which blocks and fields are legal. A field holds an
+expression or a function, not only a literal. A document model gathers nested blocks into
+typed lists. `wcl check` validates a file against its own schema. `wcl get` resolves a dotted
+path out of it.
 
-**wdoc** is a document generator whose vocabulary is ordinary WCL blocks. A document writes
+**wdoc** is a document generator. Its vocabulary is ordinary WCL blocks. A document writes
 `import <wdoc.wcl>` and gains `site`, `page`, `h1`, `code`, `table`, `diagram` and the rest.
-`wcl wdoc build` renders it to a static website, `wcl wdoc markdown` to a folder of `.md`
-files, `wcl wdoc pdf` to a paginated PDF. wdoc is not a second language — it is a schema
-written in WCL, and `wdoc` is a subcommand of the `wcl` CLI.
+`wcl wdoc build` renders it to a static website. `wcl wdoc markdown` renders it to a folder of
+`.md` files, and `wcl wdoc pdf` to a paginated PDF. wdoc is not a second language — it is a
+schema written in WCL, and `wdoc` is a subcommand of the `wcl` CLI.
 
 ## How to use this skill
 
 **This file is a router. It holds no reference material.** Find the one or two entries below
-that match the question, open those files, and read nothing else. Each reference stands alone:
-it does not send you to a website, to this repository, or to another reference for its content.
+that match the question. Open those files. Read nothing else. Each reference stands alone: it
+does not send you to a website, to this repository, or to another reference for its content.
 
-If you have not used WCL before, read [`references/intro.md`](references/intro.md) first — what
-WCL is, how it differs from JSON and YAML, install, and a first document through `wcl check`,
-`wcl get` and `wcl wdoc build`.
+Read [`references/intro.md`](references/intro.md) first if you have not used WCL before. It
+covers what WCL is, how it differs from JSON and YAML, and the install. It then walks a first
+document through `wcl check`, `wcl get` and `wcl wdoc build`.
 
 ## The language — `references/language/`
 
