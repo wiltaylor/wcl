@@ -270,8 +270,8 @@ fn init_unknown_template_errors() {
 
 /// The wskill scaffold writes the topic's own files ONLY: the base schema,
 /// the optional-view schemas and the shared wdoc templates ship embedded in
-/// the binary (`crates/wcl_wskill/lib/`) and arrive by import. All four
-/// projections still build from what is written.
+/// the binary (`crates/wcl_wskill/lib/`) and arrive by import. Every
+/// projection still builds from what is written.
 #[test]
 fn init_wskill_scaffolds_entries_only_and_builds_every_projection() {
     let tmp = TempDir::new().expect("mkdir tempdir");
@@ -300,7 +300,6 @@ fn init_wskill_scaffolds_entries_only_and_builds_every_projection() {
         "schema/presentation.wcl",
         "schema/training.wcl",
         "wdoc/component/common.wcl",
-        "wdoc/component/skill_md.wcl",
         "wdoc/pages/overview.wcl",
     ] {
         assert!(
@@ -319,9 +318,7 @@ fn init_wskill_scaffolds_entries_only_and_builds_every_projection() {
         "wskill: book entry does not import the shared template: {book}"
     );
 
-    // A content index must project in both link-bearing views. Keep this in
-    // the scaffold test because the skill entry is topic-owned generated code,
-    // while the book entry delegates to the embedded template.
+    // A content index must project in the link-bearing views.
     writeln!(
         std::fs::OpenOptions::new()
             .append(true)
@@ -336,21 +333,19 @@ fn init_wskill_scaffolds_entries_only_and_builds_every_projection() {
     for rel in [
         "wskill.wcl",
         "wdoc/book/main.wcl",
-        "wdoc/skill/main.wcl",
         "wdoc/presentation/main.wcl",
         "wdoc/training/main.wcl",
     ] {
         wcl().arg("check").arg(dest.join(rel)).assert().success();
     }
 
-    for (cmd, entry, out) in [
-        ("build", "wdoc/book/main.wcl", "out/book"),
-        ("skill", "wdoc/skill/main.wcl", "out/skill"),
-        ("build", "wdoc/presentation/main.wcl", "out/presentation"),
-        ("build", "wdoc/training/main.wcl", "out/training"),
+    for (entry, out) in [
+        ("wdoc/book/main.wcl", "out/book"),
+        ("wdoc/presentation/main.wcl", "out/presentation"),
+        ("wdoc/training/main.wcl", "out/training"),
     ] {
         wcl()
-            .args(["wdoc", cmd])
+            .args(["wdoc", "build"])
             .arg(dest.join(entry))
             .arg("--out")
             .arg(dest.join(out))
@@ -358,22 +353,14 @@ fn init_wskill_scaffolds_entries_only_and_builds_every_projection() {
             .success();
     }
     assert!(
-        dest.join("out/skill/SKILL.md").exists(),
-        "wskill: the skill projection wrote no SKILL.md"
-    );
-    assert!(
         dest.join("out/book/index_guided.html").exists(),
         "wskill: the book projection wrote no bodied-index page"
     );
+    let alpha_book = std::fs::read_to_string(dest.join("out/book/concept_alpha.html"))
+        .expect("read rendered book unit");
     assert!(
-        dest.join("out/skill/references/index_guided.md").exists(),
-        "wskill: the skill projection wrote no bodied-index page"
-    );
-    let alpha_skill = std::fs::read_to_string(dest.join("out/skill/references/concept_alpha.md"))
-        .expect("read rendered skill unit");
-    assert!(
-        alpha_skill.contains("Beta follows Alpha."),
-        "wskill: the skill projection dropped a related-edge reason"
+        alpha_book.contains("Beta follows Alpha."),
+        "wskill: the book projection dropped a related-edge reason"
     );
 
     writeln!(

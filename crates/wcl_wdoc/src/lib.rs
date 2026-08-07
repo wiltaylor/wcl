@@ -23,7 +23,6 @@ mod inline;
 mod layered;
 mod map;
 mod markdown;
-pub use markdown::GENERATED_AGENT_MARKER;
 mod math;
 mod native;
 mod node_table;
@@ -50,7 +49,7 @@ pub use build::{
     take_render_warnings, wdoc_environment,
 };
 pub use force::layout_graph;
-pub use markdown::{markdown, skill};
+pub use markdown::markdown;
 pub use pdf::{PageSize, PdfError, pdf};
 pub use sidecar::owner_root;
 pub use sites::{EntryIncludeInfo, EntrySiteInfo, entry_site_info};

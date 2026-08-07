@@ -358,23 +358,20 @@ TEXT
 
   p "Two different sources landing on one output path is a build error rather than a silent overwrite. Rename one, or send it to a different `dir`. Referencing the *same* source twice is not a collision — repeat references share one copy."
 
-  h3 "Skill folders"
+  h3 "A worked layout"
 
-  p "The `:ai_skill` target is where `dir` was designed. A skill folder has a conventional shape — `SKILL.md`, `references/`, `scripts/`, `assets/` — and `file` is how you populate the last two:"
+  p "`dir` is what lets a build write a folder a reader — or a tool — can navigate by convention. Give the scripts and the data files a home of their own, and the rest of the output keeps to `_wdoc/`:"
 
   code wcl {
     filename = "main.wcl"
     source = <<'WCL'
 import <wdoc.wcl>
 
-site helper {
-  default_template = :ai_skill
-  skill { name = "demo"  description = "A demo skill." }
-}
+site helper { title = "Helper" }
 
 page overview {
   start = true
-  h1 "Demo skill"
+  h1 "Helper"
   file "src/setup.sh"    { dir = "scripts"  as = "run setup" }
   file "assets/logo.svg" { dir = "assets" }
   image "assets/hero.png" { alt = "The Earth" }
@@ -389,15 +386,16 @@ WCL
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc skill main.wcl --out _skill
+$ wcl wdoc markdown main.wcl --out _md
 wrote 2 pages
 
-$ find _skill -type f | sort
-_skill/assets/logo.svg
-_skill/references/usage.md
-_skill/scripts/setup.sh
-_skill/SKILL.md
-_skill/_wdoc/image-hero-8572175c.png
+$ find _md -type f | sort
+_md/assets/logo.svg
+_md/index.md
+_md/overview.md
+_md/scripts/setup.sh
+_md/usage.md
+_md/_wdoc/image-hero-8572175c.png
 TEXT
   }
 
@@ -413,7 +411,7 @@ $ wcl wdoc pdf main.wcl --out handbook.pdf
 wcl::eval::user_error
 
   × error: `file` has no :pdf implementation (it is native
-  │ on :html, :markdown, :skill); remove the block or waive it here with
+  │ on :html, :markdown); remove the block or waive it here with
   │ `@except(backends = [:pdf])`
     ╭─[main.wcl:25:3]
  24 │
@@ -599,7 +597,6 @@ TEXT
       | "Inspects the file's contents" | "Its header, for the natural size" | "Never" | "Never" |
       | "HTML" | "`<img>`" | "Click-to-play facade" | "A link, or silence" |
       | "Markdown" | "`![alt](path)`" | "A link to the file or the URL" | "A link, or silence" |
-      | "Skill folder" | "As Markdown, into `_wdoc/`" | "As Markdown" | "As Markdown, into `dir`" |
       | "PDF" | "Embedded, local sources only" | "Poster, plus a link when online" | "**Refused** — waive with `@except`" |
   }
 

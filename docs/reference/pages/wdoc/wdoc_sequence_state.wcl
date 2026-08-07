@@ -519,7 +519,7 @@ WCL
     li "[Connections and routing](wdoc_diagram_connections) — edges on the canvas, where a transition's arrow has a much richer cousin."
     li "[Flowcharts and swimlanes](wdoc_flowcharts) — the third behaviour diagram: a process, rather than an interaction or a lifecycle."
     li "[Writing your own blocks](wdoc_extending) — `extends ContentBlock`, `lower`, and returning a `Content::Drawing` of your own."
-    li "[Output targets](wdoc_outputs) — how one drawing becomes HTML, PDF, Markdown and a skill folder."
+    li "[Output targets](wdoc_outputs) — how one drawing becomes HTML, PDF and Markdown."
     li "[Themes and styling](wdoc_styling) — the theme classes the heads, lifelines, boxes and edge labels carry."
   }
 }

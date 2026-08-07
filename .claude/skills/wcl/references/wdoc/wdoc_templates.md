@@ -28,14 +28,10 @@ With neither field set, a page renders bare: its blocks go straight into `<body>
 | `:book` | A fixed left sidebar with a nested chapter tree, a reading column, an "on this page" rail, and previous/next pagination. | `toc`, `sidebar_footer` |
 | `:website` | A slot-driven marketing shell: sticky header, `banner`, `hero`, content plus `sidebar`, `footer`. | `menu` |
 | `:presentation` | A slide deck rendered as one `index.html`. | `deck` |
-| `:ai_skill` | A Claude skill folder. Markdown only — build it with `wcl wdoc skill`. | `skill` |
 
-The first four are ordinary `template` blocks in the standard library. None of them is special.
+All four are ordinary `template` blocks in the standard library. None of them is special.
 Each one is a composition of the public parts listed below, so you can call, extend or rebuild
 it.
-
-`:ai_skill` is the odd one out. It is a **Rust target selector**, not a `template` block. It
-declares no slots and has no parts, so do not look for a `wdoc_ai_skill_layout`.
 
 ## Page templates and collection templates
 

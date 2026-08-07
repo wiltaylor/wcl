@@ -7,7 +7,7 @@ use super::support::{discover, open_graph, render_view, report, scratch};
 /// resolve every declared artifact entry, build it into scratch space, and
 /// report the model nodes each projection reaches.
 pub(crate) fn run(entry: &Path) -> u8 {
-    let collection = match discover(entry) {
+    let roots = match discover(entry) {
         Ok(collection) => collection,
         Err(error) => return report(error),
     };
@@ -17,7 +17,7 @@ pub(crate) fn run(entry: &Path) -> u8 {
     };
 
     let mut artifacts = 0usize;
-    for (root_n, root) in collection.roots.iter().enumerate() {
+    for (root_n, root) in roots.iter().enumerate() {
         let graph = match open_graph(root) {
             Ok(graph) => graph,
             Err(error) => return report(error),
@@ -44,8 +44,8 @@ pub(crate) fn run(entry: &Path) -> u8 {
     println!(
         "checked {artifacts} artifact{} across {} wskill{}",
         plural_suffix(artifacts),
-        collection.roots.len(),
-        plural_suffix(collection.roots.len())
+        roots.len(),
+        plural_suffix(roots.len())
     );
     WSKILL_OK
 }

@@ -37,29 +37,21 @@ const MAX_DEPTH: usize = 8;
 /// ([`crate::visibility::block_visible`]) can honour the `backends=[…]`
 /// axis of `@only` / `@except`, and so [`crate::native`] can refuse a
 /// native block on a target it doesn't cover.
-///
-/// `Skill` runs the Markdown emitter, but it is its own target: it writes
-/// a skill folder, routes `file`s to `scripts/` / `assets/`, and has no
-/// `markdown_source`. Naming it separately is what lets an author write
-/// `@except(backends = [:skill])` — before this the skill build reported
-/// itself as `:markdown` and could not be addressed.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Backend {
     Html,
     Pdf,
     Markdown,
-    Skill,
 }
 
 impl Backend {
     /// The symbol an author writes in a `backends=[…]` axis
-    /// (`:html` / `:pdf` / `:markdown` / `:skill`).
+    /// (`:html` / `:pdf` / `:markdown`).
     pub(crate) fn symbol(self) -> &'static str {
         match self {
             Backend::Html => "html",
             Backend::Pdf => "pdf",
             Backend::Markdown => "markdown",
-            Backend::Skill => "skill",
         }
     }
 }
@@ -108,19 +100,6 @@ pub(crate) struct InlinePatterns {
     /// path reaches it via `files()`; populated lazily as `file` blocks are
     /// rendered, copying any local file into its `dir`.
     files: FileRegistry,
-    /// Skill-target link layout. `Some(start_page)` puts internal page links
-    /// into the skill folder shape (`SKILL.md` for the start page,
-    /// `references/<name>.md` otherwise). `skill_current_ref` is `true` while
-    /// rendering a reference page (one level deep), so its links get a `../`
-    /// prefix. Both are interior-mutable, set per page by the skill backend.
-    skill_start: RefCell<Option<String>>,
-    skill_current_ref: RefCell<bool>,
-    /// Overrides the page-name set used to validate / rewrite internal links
-    /// while the skill layout is active. `None` ⇒ use the current site's
-    /// `page_names`. The HTML `markdown_source` block sets this to the *skill*
-    /// site's page names so a skill page's Markdown (links into `references/…`)
-    /// reproduces faithfully even though it is rendered inside the book build.
-    skill_pages: RefCell<Option<HashSet<String>>>,
     /// The current site's output directory (set per build by `set_output_dir`).
     /// Rides here so the `markdown_source` block reaches it — its Markdown
     /// lowering writes any nested diagram SVGs under `<output_dir>/_wdoc/`,
@@ -240,9 +219,6 @@ impl InlinePatterns {
             images,
             videos,
             files,
-            skill_start: RefCell::new(None),
-            skill_current_ref: RefCell::new(false),
-            skill_pages: RefCell::new(None),
             output_dir: RefCell::new(std::path::PathBuf::new()),
             ui_theme: RefCell::new(crate::render::UiTheme::default()),
             backend,
@@ -328,20 +304,6 @@ impl InlinePatterns {
         &self.files
     }
 
-    /// Enable the skill-folder link layout: internal page links resolve to
-    /// `SKILL.md` (for `start_page`) or `references/<name>.md`. Called once
-    /// per skill site by the skill backend.
-    pub(crate) fn set_skill_layout(&self, start_page: String) {
-        *self.skill_start.borrow_mut() = Some(start_page);
-    }
-
-    /// Mark whether the page now rendering is a reference page (one level
-    /// deep under `references/`), so its internal links get a `../` prefix.
-    /// Called per page by the skill backend.
-    pub(crate) fn set_skill_current_reference(&self, is_reference: bool) {
-        *self.skill_current_ref.borrow_mut() = is_reference;
-    }
-
     /// Record the current site's output directory so the `markdown_source`
     /// block can write the diagram SVGs its Markdown lowering produces into
     /// `<output_dir>/_wdoc/` (the same place the rest of the build's assets go).
@@ -352,41 +314,6 @@ impl InlinePatterns {
     /// The current site's output directory (see [`set_output_dir`]).
     pub(crate) fn output_dir(&self) -> std::path::PathBuf {
         self.output_dir.borrow().clone()
-    }
-
-    /// Run `f` with the skill-folder link layout temporarily active: bare
-    /// internal page links resolve into `SKILL.md` / `references/<name>.md`,
-    /// validated against `pages` (the *skill* site's page names) rather than
-    /// the current site's, and prefixed with `../` when `reference`. The prior
-    /// skill state is restored afterwards. Used by the HTML `markdown_source`
-    /// block to reproduce a skill page's Markdown inside the book build.
-    pub(crate) fn with_skill_layout<R>(
-        &self,
-        start_page: String,
-        reference: bool,
-        pages: HashSet<String>,
-        f: impl FnOnce() -> R,
-    ) -> R {
-        let prev_start = self.skill_start.replace(Some(start_page));
-        let prev_ref = self.skill_current_ref.replace(reference);
-        let prev_pages = self.skill_pages.replace(Some(pages));
-        let out = f();
-        *self.skill_start.borrow_mut() = prev_start;
-        *self.skill_current_ref.borrow_mut() = prev_ref;
-        *self.skill_pages.borrow_mut() = prev_pages;
-        out
-    }
-
-    /// Relative prefix from the current page's output location back to the
-    /// build root, for root-relative asset URLs (images, diagram SVGs,
-    /// shipped files). `"../"` while a skill reference page (one level deep
-    /// under `references/`) renders, else `""`.
-    pub(crate) fn asset_prefix(&self) -> &'static str {
-        if *self.skill_current_ref.borrow() {
-            "../"
-        } else {
-            ""
-        }
     }
 
     /// Drain accumulated unknown-page link errors. Build calls
@@ -802,46 +729,6 @@ impl InlinePatterns {
     /// an internal page link at its `.md` sibling instead of `.html`;
     /// external / anchor / path-relative hrefs pass through unchanged.
     fn markdown_href(&self, href: &str) -> String {
-        // Skill target: a bare internal page link resolves into the skill
-        // folder layout — `SKILL.md` for the start page, `references/<name>.md`
-        // otherwise — prefixed with `../` when the current page is itself a
-        // reference. External / anchor / path-relative hrefs and `site:page`
-        // cross-site links fall through to the normal resolver below.
-        if let Some(start) = self.skill_start.borrow().clone()
-            && !is_external_href(href)
-        {
-            let (target, frag) = match href.find('#') {
-                Some(i) => (&href[..i], &href[i..]),
-                None => (href, ""),
-            };
-            if !target.contains(':') {
-                // While `markdown_source` previews a skill page inside the
-                // book build, validate links against the skill site's page
-                // names (set via `with_skill_layout`); otherwise the current
-                // site's set.
-                let known = match &*self.skill_pages.borrow() {
-                    Some(pages) => pages.contains(target),
-                    None => self.page_names.contains(target),
-                };
-                if known {
-                    let rel = if target == start {
-                        "SKILL.md".to_string()
-                    } else {
-                        format!("references/{target}.md")
-                    };
-                    let up = if *self.skill_current_ref.borrow() {
-                        "../"
-                    } else {
-                        ""
-                    };
-                    return format!("{up}{rel}{frag}");
-                }
-                self.link_errors
-                    .borrow_mut()
-                    .push(format!("link to unknown page '{target}'"));
-                return href.to_string();
-            }
-        }
         let resolved = self.resolve_href(href);
         if is_external_href(href) {
             return resolved;

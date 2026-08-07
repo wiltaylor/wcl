@@ -4,7 +4,7 @@
 //!
 //! Unlike `import` (which merges another file's blocks into this
 //! document), an included document is built independently — exactly as if
-//! `wcl wdoc build` / `wcl wdoc skill` had been run on it — and its
+//! `wcl wdoc build` had been run on it — and its
 //! self-contained output tree is copied under a subdirectory of this build.
 //!
 //! Two discovery modes, exactly one per `include`:
@@ -21,8 +21,7 @@
 //! member to build, threaded as the recursive build's `site_filter`.
 //!
 //! [`resolve_included`] is the single source of truth shared by the build
-//! and skill pipelines (which recurse per entry) and the `included_sites`
-//! builtin (which exposes a `{ name, href, title, summary }` list to WCL for
+//! pipeline (which recurses per entry) and the `included_sites` builtin (which exposes a `{ name, href, title, summary }` list to WCL for
 //! navigation), so built output paths and nav hrefs cannot drift.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -268,7 +267,6 @@ pub(crate) fn resolve_included(
 /// Read every `include` block on `doc`, resolve them, and validate the
 /// combined output layout (no collision with a reserved site directory or
 /// the shared asset folder; no two includes targeting the same subdir).
-/// Shared by the build and skill fan-out steps.
 pub(crate) fn collect_includes(
     doc: &Document,
     base_dir: Option<&Path>,
@@ -407,8 +405,7 @@ pub(crate) fn read_entry_meta(
 /// the chain is too deep or `file` is already an ancestor being built, else
 /// record its canonical path in `seen` and return it. The caller removes it
 /// from `seen` on exit (so the same document can build in two independent
-/// branches, but not within its own ancestry). Shared by the build and skill
-/// guarded-recursion wrappers.
+/// branches, but not within its own ancestry).
 pub(crate) fn guard_enter(
     file: &Path,
     seen: &mut HashSet<PathBuf>,

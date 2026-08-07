@@ -5,8 +5,7 @@
 //
 //   sites      — site name (the `@inline(0) name` on a `site` block)
 //   templates  — template kind (:webpage / :book / :presentation)
-//   backends   — output target (:html / :pdf / :markdown / :skill;
-//                a skill build reports :skill, not :markdown)
+//   backends   — output target (:html / :pdf / :markdown)
 //
 // Within an axis the values are OR'd; the specified axes are AND'd. A block
 // renders iff `@only` (if present) matches AND `@except` (if present) does not

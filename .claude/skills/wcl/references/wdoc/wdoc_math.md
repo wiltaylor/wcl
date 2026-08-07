@@ -102,7 +102,7 @@ LaTeX-to-SVG leaf they share.
 | --- | --- |
 | HTML | A centred `<div class="wdoc-math">` around an inline `<svg role="math">`, sized in `em` so it tracks the surrounding font. |
 | PDF | The same SVG, drawn natively. |
-| Markdown / skill | `$$\n…\n$$` — the LaTeX is kept textual, not rasterised, so a Markdown renderer with math support handles it. |
+| Markdown | `$$\n…\n$$` — the LaTeX is kept textual, not rasterised, so a Markdown renderer with math support handles it. |
 
 Long equations scroll horizontally in HTML rather than overflowing the page
 (`overflow-x: auto` on `.wdoc-math`).

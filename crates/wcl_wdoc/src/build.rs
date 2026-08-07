@@ -534,9 +534,9 @@ pub(crate) fn reserved_kind_errors(doc: &Document) -> Vec<Report> {
 /// a Rust-dispatched kind ([`reserved_kind_errors`]), and a coherent rendering
 /// declaration on every block type ([`crate::native::native_errors`]).
 ///
-/// The four entry points (HTML / Markdown / PDF / skill) call this one
-/// function right after `schema_errors`, so a fifth cannot pick up half the
-/// contract — before it existed the skill target ran neither check.
+/// The three entry points (HTML / Markdown / PDF) call this one
+/// function right after `schema_errors`, so a fourth cannot pick up half the
+/// contract.
 pub(crate) fn contract_errors(doc: &Document) -> Vec<Report> {
     if !crate::native::has_wdoc_native_declaration(doc) {
         return vec![miette::miette!(
@@ -835,16 +835,9 @@ fn build_inner(
             if chosen.is_empty() {
                 return Err(BuildError::BadPage(format!("unknown site \"{want}\"")));
             }
-            if chosen.iter().any(|s| is_skill_site(s)) {
-                return Err(BuildError::BadPage(format!(
-                    "site \"{want}\" is a skill (`default_template = :ai_skill`) — \
-                     build it with `wcl wdoc skill`"
-                )));
-            }
             chosen
         }
-        // Skill sites are a separate target — skip them in the HTML build.
-        None => specs.iter().filter(|s| !is_skill_site(s)).collect(),
+        None => specs.iter().collect(),
     };
 
     // Cross-site link context, built from every declared site (so a
@@ -1176,20 +1169,6 @@ pub(crate) fn root_site_name(specs: &[SiteSpec<'_>]) -> Result<Option<String>, B
         }
     }
     Ok(root)
-}
-
-/// Whether `spec` is a skill site (`default_template = :ai_skill`). Such a
-/// site is built only by the skill target (`wcl wdoc skill`); the HTML /
-/// PDF / Markdown targets skip it, so a single document can carry a web book
-/// and a skill that share pages — such a document declares two sites, so
-/// each page names the ones it belongs to (a shared page lists both).
-pub(crate) fn is_skill_site(spec: &SiteSpec<'_>) -> bool {
-    spec.block.as_ref().is_some_and(is_skill_site_block)
-}
-
-/// Block-level form of [`is_skill_site`], shared with site enumeration.
-pub(crate) fn is_skill_site_block(block: &Block<'_>) -> bool {
-    field_symbol(block, "default_template").as_deref() == Some("ai_skill")
 }
 
 /// One site to render: its name (the `site` block's inline label, `None`
@@ -2632,14 +2611,6 @@ fn build_normal_page(
         }
     }
     let mut rendered = match template_name {
-        // `:ai_skill` is a Markdown-only target, not an HTML template.
-        Some(name) if name == "ai_skill" => {
-            return Err(BuildError::BadPage(
-                "`default_template = :ai_skill` is a skill target, not an HTML template — \
-                 build it with `wcl wdoc skill`"
-                    .into(),
-            ));
-        }
         Some(name) => {
             let Some(tmpl) = find_template(ctx.doc, &name) else {
                 return Err(BuildError::BadTemplate(name));
@@ -3020,7 +2991,7 @@ pub(crate) fn page_name(page: &Block<'_>) -> Option<String> {
 /// per element of its `each` list — the data-driven page generator.
 /// Pages keep source order (each repeater expands in place); nested
 /// repeaters recurse. The result is an ordinary page list every backend
-/// (HTML / PDF / Markdown / skill) consumes unchanged, so the rest of the
+/// (HTML / PDF / Markdown) consumes unchanged, so the rest of the
 /// pipeline (site grouping, link validation, rendering) needs no further
 /// awareness of generation.
 pub(crate) fn collect_pages(doc: &Document) -> Result<Vec<Block<'_>>, BuildError> {
