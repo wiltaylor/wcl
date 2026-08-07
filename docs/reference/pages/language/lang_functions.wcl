@@ -12,7 +12,7 @@ page lang_functions {
 
   p "A function in WCL is a **value**, the same way a number or a list is a value. You write one with `fn`, bind it to a name or hand it straight to another function, and call it with parentheses. There is one calling convention and it is deliberately small: one parameter list, filled left to right, every time. No default arguments, no named arguments, no overloading."
 
-  p "This chapter covers the literal, the `fn` item that names one, the type that describes one, the builtins that take one, and what a function can see while it runs. It ends with the file the whole chapter builds towards."
+  p "This chapter covers the literal, the `fn` item that names one, the type that describes one, and the builtins that call one. It also covers what a function can see while it runs. It ends with the file the whole chapter builds towards."
 
   p "Every file and every command below was run before it was written down. Type them and compare."
 
@@ -85,13 +85,25 @@ let add2 = fn(x: i64, y: i64) -> i64 x + y
 WCL
   }
 
-  p "The two lines are one item form. Chapter 1 counts thirteen item forms and fourteen spellings for exactly this reason: a `fn` item **is** a `let` item, parsed into the same node and resolved by the same path."
+  p "The two lines are one item form. Chapter 1 counts thirteen item forms and fourteen spellings for exactly this reason. A `fn` item **is** a `let` item: the same node, the same resolution path."
 
   h3 "let items as composition helpers"
 
   p "So everything [`let` items](lang_documents#let-items) says applies to a `fn` item unchanged, and the part that matters most is what a `let` is _for_. A `let` binds a name that sibling and descendant expressions may read, and nothing else can see at all. It is scaffolding that helps you write the data — not data. Reach for it when only other expressions need the value; reach for a field when a consumer of the document is meant to read it."
 
-  p "A function is the purest case of that. It has no meaning to a consumer reading the file back, so the natural place to put one is a binding that leaves no trace. Both spellings are invisible to `wcl get`, to `wcl parse` output, to a JSON serialization and to schema validation:"
+  p "A function is the purest case of that. It means nothing to a consumer reading the file back. So the natural place to put one is a binding that leaves no trace. Both spellings are invisible to `wcl get`, to `wcl parse` output, to a JSON serialization and to schema validation:"
+
+  code wcl {
+    filename = "calc.wcl"
+    source = <<'WCL'
+@document
+type Cfg { total: i64 }
+
+fn add(x: i64, y: i64) -> i64 x + y
+
+total = add(10i64, 20i64)
+WCL
+  }
 
   code text {
     source = <<'TEXT'
@@ -108,7 +120,7 @@ TEXT
 
   p "A `fn` item adds exactly two things over `let name = fn(…)`."
 
-  p "**It is indexed.** A plain `let` is deliberately kept out of the symbol index, so that it cannot leak into a document's field list, into `wcl get`, or into any query that walks named symbols. A `fn` item opts back in as a function declaration. That index is what the language server reads, so a `fn` item — and only a `fn` item — gets an outline entry, a hover card and go-to-definition. See [The CLI](lang_cli) for `wcl lsp`."
+  p "**It is indexed.** The parser deliberately keeps a plain `let` out of the symbol index. That is what stops it leaking into a document's field list, or into `wcl get`. A `fn` item opts back in, as a function declaration. The language server reads that index. A `fn` item — and only a `fn` item — gets an outline entry, a hover card and go-to-definition. See [The CLI](lang_cli) for `wcl lsp`."
 
   p "Being indexed has a second, sharper effect: **a duplicate name is caught.** Two `fn` items sharing a name are a parse error. Two `let` bindings sharing a name are not, and the first one silently wins."
 
@@ -126,6 +138,7 @@ wcl::parse
  4 │ fn f(x: i64) -> i64 2i64
    · ────────────┬───────────
    ·             ╰── duplicate declaration
+ 5 │ a = f(1i64)
    ╰────
 
 $ wcl check dup-let.wcl
@@ -135,12 +148,12 @@ $ wcl get dup-let.wcl a
 TEXT
   }
 
-  p "**It takes decorators.** A `let` refuses them outright; a `fn` item accepts them, and the decorator system knows `fn` as a position of its own, alongside `field`, `block` and `type`."
+  p "**It takes decorators.** A `let` refuses them outright. A `fn` item accepts them, and the decorator system knows `fn` as a position of its own, alongside `field`, `block` and `type`."
 
   code wcl {
     source = <<'WCL'
-@doc("Clamp a value into [lo, hi].")
-fn clamp_to(x: f64, lo: f64, hi: f64) -> f64 min(max(x, lo), hi)
+@doc("Trim a label and lower-case it.")
+fn tidy(s: utf8) -> utf8 to_lower(trim(s))
 WCL
   }
 
@@ -160,11 +173,11 @@ wcl::parse
 TEXT
   }
 
-  p "[Decorators](lang_decorators) covers what may be written there. So: reach for `fn name(…)` for anything you want to find again, and for `let name = fn(…)` when the function is a one-off you happen to need twice."
+  p "[Decorators](lang_decorators) covers what may be written there. So reach for `fn name(…)` for anything you want to find again. Reach for `let name = fn(…)` when the function is a one-off you need twice."
 
   h3 "Where a fn item may sit"
 
-  p "Anywhere a `let` item may sit — the top level of a file, or inside a block, where it is scoped to that block and its descendants:"
+  p "Anywhere a `let` item may sit: the top level of a file, or inside a block. Inside a block it is scoped to that block and its descendants:"
 
   code wcl {
     filename = "ports.wcl"
@@ -225,7 +238,7 @@ TEXT
 
   h2 "Function types"
 
-  p "`fn(T1, T2, …) -> R` is a **type**, and it describes a callable. Note how it differs from the literal: a type names the parameter types only, because a parameter's name is not part of what a caller has to satisfy."
+  p "`fn(T1, T2, …) -> R` is a **type**, and it describes a callable. Note how it differs from the literal. A type names the parameter types only, because a parameter's name is no part of a caller's contract."
 
   table {
     rows:
@@ -290,10 +303,18 @@ TEXT
 
   h2 "Higher-order functions"
 
-  p "A function that takes or returns another function is called higher-order, and WCL needs no extra machinery for it: a function is a value, so it passes and returns like one. This is how the collection builtins are parameterised."
+  p "A function that takes or returns another function is called higher-order. WCL needs no machinery for it: a function is a value, so it passes and returns like one. That is how the collection builtins take their behaviour from you."
 
   code wcl {
+    filename = "hof.wcl"
     source = <<'WCL'
+@document
+type Cfg {
+  doubled: list<i64>
+  evens:   list<i64>
+  total:   i64
+}
+
 doubled = map([1i64, 2i64, 3i64], fn(x: i64) -> i64 x * 2i64)
 evens   = filter([1i64, 2i64, 3i64, 4i64], fn(x: i64) -> bool x % 2i64 == 0i64)
 total   = fold([1i64, 2i64, 3i64], 0i64, fn(acc: i64, x: i64) -> i64 acc + x)
@@ -311,7 +332,7 @@ $ wcl get hof.wcl total
 TEXT
   }
 
-  p "Eleven builtins take a function. These are the ones worth knowing by heart:"
+  p "Eleven builtins **call** the function you hand them. Learn these by heart:"
 
   table {
     rows:
@@ -329,29 +350,31 @@ TEXT
       | "`map_values(r, f)`"  | "`fn(T) -> U`"          | "a record — same keys, transformed values" |
   }
 
-  p "[Builtins](lang_builtins) documents each in full, and [Lists, tensors and records](lang_collections) covers the collections they walk. They compose the way you would expect:"
+  p "[Builtins](lang_builtins) documents each in full, and [Lists, tensors and records](lang_collections) covers the collections they walk. They compose the way you would expect. A **named** function goes in by name, with no wrapper and no call parentheses:"
 
   code wcl {
+    filename = "words.wcl"
     source = <<'WCL'
-b = join(sort_by(["pear", "fig", "apple"], fn(s: utf8) -> i64 len(s)), ", ")
+@document
+type Cfg {
+  shortest_first: utf8
+  slugs:          list<utf8>
+}
+
+fn slug(s: utf8) -> utf8 replace(to_lower(s), " ", "-")
+
+shortest_first = join(sort_by(["pear", "fig", "apple"], fn(s: utf8) -> i64 len(s)), ", ")
+slugs          = map(["Hello World", "Bye Now"], slug)
 WCL
   }
 
   code text {
     source = <<'TEXT'
-$ wcl get shape.wcl b
+$ wcl get words.wcl shortest_first
 "fig, pear, apple"
+$ wcl get words.wcl slugs
+["hello-world", "bye-now"]
 TEXT
-  }
-
-  p "A named function goes in by name — no wrapper, no call parentheses:"
-
-  code wcl {
-    source = <<'WCL'
-fn slug(s: utf8) -> utf8 replace(to_lower(s), " ", "-")
-
-a = map(["Hello World", "Bye Now"], slug)     # ["hello-world", "bye-now"]
-WCL
   }
 
   callout "A builtin is not a value" {
@@ -407,7 +430,7 @@ $ wcl get capture.wcl a
 TEXT
   }
 
-  p "Names at **document** scope are not captured, and do not need to be. A document is immutable once it is open, so a `let` item, a field or a block resolves correctly by walking the scope chain when the call runs. That is why the recursive `fact` above works, and why a function may read a field declared below it."
+  p "Names at **document** scope are not captured, and do not need to be. A document is immutable once it is open. A `let` item, a field or a block therefore resolves correctly by a scope walk at call time. That is why the recursive `fact` above works, and why a function may read a field declared below it."
 
   p "Inside a call, names resolve in this order. The last binding of a name wins:"
 
@@ -420,7 +443,7 @@ TEXT
 
   callout "Close over what you use" {
     class = ["warning"]
-    body  = "A free name — one the function neither captured nor declared as a parameter — is resolved where the call happens, not where the function was written. A function whose body names `ghost` will happily pick up a `ghost` that the **caller** had in a local binding, and then fail at some other call site that has none. Nothing warns you. Write functions that use their parameters, their captures and document-scope names; treat anything else as a bug you have not hit yet."
+    body  = "A **free name** is one the function neither captured nor took as a parameter. The call site resolves it, not the place you wrote the function. A function whose body names `ghost` picks up whatever `ghost` the **caller** holds in a local binding. At the next call site, which has none, it fails. Nothing warns you. Write functions that use their parameters, their captures and document-scope names; treat anything else as a bug you have not hit yet."
   }
 
   h2 "No defaults and no named arguments"
@@ -463,7 +486,7 @@ wcl::parse
 TEXT
   }
 
-  p "And there are no **named** arguments at the call site, in either spelling — `greet(name = \"x\")` fails the same way:"
+  p "And there are no **named** arguments at the call site. `greet(name = \"x\")` fails too, on the `=` rather than the `:`:"
 
   code text {
     source = <<'TEXT'
@@ -505,7 +528,7 @@ eli(tag, id, cls, kids)      # … with an explicit HTML id
 WCL
   }
 
-  p "Two consequences follow, and both are worth copying when you write a constructor family of your own. First, an optional value goes in as an ordinary argument: since `?` cannot appear in a parameter list, every wdoc function annotates its optionals as though they were required and lets the `none` flow through. Second, `ela` and `eli` take the **same** number of arguments, so arity cannot separate them — calling one where you meant the other silently drops the id, or the attrs. Pick by what you are passing. [Documents, pages and sites](wdoc_sites) documents the family; [Writing your own blocks](wdoc_extending) is where you will be calling it."
+  p "Two consequences follow, and both are worth copying when you write a constructor family of your own. First, an optional value goes in as an ordinary argument. `?` cannot appear in a parameter list, so every wdoc function annotates its optionals as though they were required, and lets the `none` flow through. Second, `ela` and `eli` take the **same** number of arguments, so arity cannot separate them. Call one where you meant the other and it silently drops the id, or the attrs. Pick by what you are passing. [Documents, pages and sites](wdoc_sites) documents the family; [Writing your own blocks](wdoc_extending) is where you will be calling it."
 
   h2 "Four ways to write a function down"
 
@@ -513,11 +536,11 @@ WCL
 
   table {
     rows:
-      | "Form"                     | "Named" | "In the symbol index" | "Takes decorators" | "A duplicate name is"        | "Reach for it when" |
-      | "Literal at the call site" | "No"    | "No"                  | "No"               | "n/a"                        | "The function is an argument and nothing else" |
-      | "`let f = fn(…)`"          | "Yes"   | "No"                  | "No"               | "Silently ignored — first wins" | "A one-off you happen to need twice" |
-      | "`fn f(…)`"                | "Yes"   | "Yes"                 | "Yes"              | "A parse error"              | "Anything you want to find again" |
-      | "A `fn`-typed field"       | "Yes"   | "As a field"          | "As a field"       | "A schema error"             | "The document is _configuring_ behaviour" |
+      | "Form"                     | "Named" | "In the symbol index" | "Takes decorators" | "Document data" | "Reach for it when" |
+      | "Literal at the call site" | "No"    | "No"                  | "No"               | "No"            | "The function is an argument and nothing else" |
+      | "`let f = fn(…)`"          | "Yes"   | "No"                  | "No"               | "No"            | "A one-off you happen to need twice" |
+      | "`fn f(…)`"                | "Yes"   | "Yes"                 | "Yes"              | "No"            | "Anything you want to find again" |
+      | "A `fn`-typed field"       | "Yes"   | "As a field"          | "As a field"       | "**Yes**"       | "The document is _configuring_ behaviour" |
   }
 
   p "The fourth row is the one the others cannot substitute for. A `let` and a `fn` item are scaffolding: they help you write the data, then vanish. A `fn`-typed field **is** data — schema-checked, addressable by path, part of what a host reads back. That is the same distinction chapter 1 draws between a field and a `let`, and it holds for functions exactly as it holds for numbers."
@@ -613,9 +636,9 @@ TEXT
   list {
     li "**No overloading.** One name, one function. Two `fn` items sharing a name is `duplicate declaration`."
     li "**No default or named arguments, and no optional parameters.** Every call fills every parameter, in order. See [above](#no-defaults-and-no-named-arguments)."
-    li "**No generics.** There is no `fn name<T>(…)` form — `fn f<T>(x: i64) -> i64 x` fails with `expected '(' after fn name`. A signature names concrete types; the higher-order builtins are polymorphic because they are implemented in Rust, not because you can write one."
-    li "**No argument or return type checking.** Arity is checked, types are not. The annotations are documentation, and the [schema](lang_schemas) is where a wrong value is finally caught."
-    li "**Builtins are not values.** They are callable by name and not passable by name. Wrap one in a literal."
+    li "**No generics.** There is no `fn name<T>(…)` form — `fn f<T>(x: i64) -> i64 x` fails with `expected '(' after fn name`. A signature names concrete types. The higher-order builtins take any type because Rust implements them, not because you could write one."
+    li "**No argument or return type checking.** WCL checks the argument count and nothing else. The annotations are documentation, and the [schema](lang_schemas) catches the wrong value in the end."
+    li "**Builtins are not values.** Wrap one in a literal to pass it."
     li "**No serialization.** A function value is `null` in JSON, and `fn(x: i64) -> i64 { ... }` in `wcl get`."
     li "**A depth ceiling.** 256 nested calls, then `call depth limit exceeded (max 256)`."
   }
