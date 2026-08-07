@@ -31,7 +31,6 @@
 namespace wcl.wskill
 
 import <../wdoc.wcl>
-import <../answer.wcl>      // @answerable + the `option` block for `question`s
 
 // `EntityKind` / `ArtifactKind` are referenced below but declared by the
 // wskill's own `schema/kinds.wcl` — the topic OWNS its vocabularies, so they
@@ -247,7 +246,7 @@ type Research {
 }
 
 // ---------------------------------------------------------------------------
-// Open questions (update-workflow metadata, answered via answer mode)
+// Open questions (update-workflow metadata, answered by hand)
 // ---------------------------------------------------------------------------
 
 // A question's lifecycle: :open (needs an answer) → :answered, or :dropped
@@ -258,31 +257,34 @@ symbol_set QuestionStatus { open answered dropped }
 // is ALWAYS also available — options accelerate, they never constrain.
 symbol_set QuestionKind { single_select multi_select free_text }
 
+// A choice offered by a `question`. `label` falls back to the option's id.
+@block("option")
+type QuestionOption {
+  @inline(0) id: identifier
+  label: utf8?    // display label; defaults to the id
+  note: utf8?     // optional respondent-facing hint
+}
+
 // An open question about the topic, captured while authoring: an unclear
 // fact, a decision only the topic owner can make, a gap found during an
-// update sweep. Wired for guided answer mode via `@answerable` —
-// `wcl answer wskill.wcl` walks the :open ones in the terminal and writes
-// `answer` + `status` straight back into the data file, one question at a
-// time. When `kind` is omitted, a question with `option`
+// update sweep. The topic owner writes `answer` + `status` straight into the
+// data file. When `kind` is omitted, a question with `option`
 // children behaves as :single_select and one without as :free_text.
 // Like `source`, a question is update-workflow metadata and never renders
 // as topic content: fold an :answered question's answer into real units on
 // the next sweep, then delete the block.
-@answerable(prompt = "question", response = "answer", status = "status",
-            pending = :open, resolved = :answered, skipped = :dropped)
 @block("question")
 type Question {
   @inline(0) id: identifier
   question: utf8                 // the prompt shown to the respondent
   @default(:open) status: QuestionStatus
-  answer:   utf8?                // written by answer mode (or by hand)
+  answer:   utf8?                // the recorded answer
   kind:     QuestionKind?        // omit to infer from the presence of options
   context:  utf8?                // why it's asked / what the answer unblocks
   unit:     identifier?          // unit the answer should update, when known
   index:    identifier?          // provisional index node this research item covers
-  // Choices, as `option <id> { label = … }` children (the answer stdlib's
-  // block; `label` falls back to the option's id).
-  @children("option") options: list<AnswerOption>
+  // Choices, as `option <id> { label = … }` children.
+  @children("option") options: list<QuestionOption>
   @default([]) tags: list<utf8>
 }
 

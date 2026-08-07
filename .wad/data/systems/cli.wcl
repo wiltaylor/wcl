@@ -95,28 +95,6 @@ cli_command cmd_diff {
     description = "The flat change array for scripting." }
 }
 
-cli_command cmd_answer {
-  name      = "wcl answer"
-  summary   = "Walk a document's pending `@answerable` interview questions and record the answers — the respondent-facing counterpart to editing the WCL by hand."
-  component = cli_commands
-  cli_arg a_file { name = "<file>"
-    description = "The WCL document (imports are followed; each answer lands in the file that declares its question)." }
-  cli_flag f_list { name = "--list"
-    description = "List the pending questions as JSON (id, prompt, kind, options, skippable) instead of prompting." }
-  cli_flag f_id { name = "--id"  value = "<id>"
-    description = "Answer one question non-interactively: the question block's label." }
-  cli_flag f_text { name = "--text"  value = "<text>"
-    description = "Free-text answer for `--id`; may combine with `--pick`." }
-  cli_flag f_pick { name = "--pick"  value = "<option>"
-    description = "Pick an option by its id for `--id` (repeatable)." }
-  cli_flag f_skip { name = "--skip"
-    description = "Skip the `--id` question: writes its declared skipped status." }
-  cli_example ex0 { command = "wcl answer plan.wcl"
-    description = "Interactive walk-through: arrow-key menus for choice questions, free text always available, each answer written back immediately." }
-  cli_example ex1 { command = "wcl answer plan.wcl --id q_platforms --pick linux --text \"and CI runners\""
-    description = "Record one answer from a script or agent." }
-}
-
 cli_command cmd_repl {
   name      = "wcl repl"
   summary   = "Read-eval-print loop for ad-hoc WCL expressions."
