@@ -10,7 +10,7 @@ page lang_schemas {
 
   p "A schema says what a document may contain. It is not a separate file format, and it is not a comment convention. A schema is ordinary WCL: `type` declarations carrying decorators. `@document` names the type that governs the root. `@block` and `@table` register block kinds. `@inline`, `@child`, `@children` and `@default` say how each block is written. `@schemaless` is the way out when the shape is genuinely open."
 
-  p "This chapter covers those decorators, the checks each one turns on, and the one rule that surprises people: **`@document` schemas compose**. Several may govern one namespace, and their merge is the effective root schema. That merge is what lets you import a library and still add top-level tags of your own — and it is also the source of the quietest failure in the language, which gets its own section."
+  p "This chapter covers those decorators and the checks each one turns on. It also covers the one rule that surprises people: **`@document` schemas compose**. Several may govern one namespace, and their merge is the effective root schema. That merge lets you import a library and still add top-level tags of your own. It also hides the quietest failure in the language, which gets its own section."
 
   p "Every file and every command below was run before it was written down. Type them and compare."
 
@@ -62,6 +62,8 @@ stage deploy {
 WCL
   }
 
+  p "Two commands read it. `wcl check` validates the whole file against the schema; `wcl get` walks a dotted path to one value:"
+
   code text {
     source = <<'TEXT'
 $ wcl check pipeline.wcl
@@ -85,7 +87,7 @@ TEXT
 
   h2 "The decorators that build a schema"
 
-  p "Eight decorators do the work. The table is the map of the rest of the chapter."
+  p "Eight decorators do the work. This table maps each one to the section that covers it."
 
   table {
     rows:
@@ -178,7 +180,7 @@ TEXT
 
   callout "Two ways to be refused, and they read differently" {
     class = ["note"]
-    body  = "`has no @block or @table declaration` means the kind does not exist. `is not allowed inside 'x'` means it exists but has nowhere to land here — see [the next section](#child-and-children-where-a-nested-block-lands). Inside a block body the second message wins even for an entirely unknown kind, so a typo'd `task` inside a `stage` reports `block kind 'task' is not allowed inside 'stage'`, not the missing declaration. At the document root you get the first message."
+    body  = "`has no @block or @table declaration` means the kind does not exist. `is not allowed inside 'x'` means it exists but has nowhere to land here — see [the next section](#child-and-children-where-a-nested-block-lands). Inside a block body the second message wins, even for an entirely unknown kind. A typo'd `task` inside a `stage` reports `block kind 'task' is not allowed inside 'stage'`. At the document root you get the first message instead."
   }
 
   p "Kind strings are unique **per namespace**. Two declarations claiming `\"step\"` in one namespace are ambiguous, and the second one is the error:"
@@ -226,18 +228,18 @@ TEXT
 
   code wcl {
     source = <<'WCL'
-@block("route")
-type Route {
-  @inline(0) verb: utf8      # first label
+@block("artifact")
+type Artifact {
   @inline(1) path: utf8      # second label
-  handler: identifier
+  @inline(0) kind: utf8      # first label
+  sha: utf8
 }
 
-route "GET" "/users" { handler = list_users }
+artifact "binary" "target/release/wcl" { sha = "9f2c4a" }
 WCL
   }
 
-  p "The slot number, not the declaration order, decides which label lands where. Writing `@inline(1) path` above `@inline(0) verb` swaps nothing: `route \"GET\" \"/users\"` still means `verb = \"GET\"`."
+  p "Note the declaration order. `path` comes first and takes the second label, because the **slot number** decides, not the position in the type. That instance means `kind = \"binary\"` and `path = \"target/release/wcl\"`. [Documents, fields and blocks](lang_documents#blocks-and-labels) covers labels from the writing side, including when to quote one."
 
   p "One `@inline` field is special by **name**. A field called `id`, declared `@inline(0) id: identifier`, makes the first label the block's identity, and two siblings of one kind may not share it:"
 
@@ -280,7 +282,7 @@ TEXT
 
   callout "Labels are not counted or typed" {
     class = ["warning"]
-    body  = "`@inline` says which field a label fills. It does not make `wcl check` verify how many labels an instance wrote, or what type they hold. Against the `Service` above, both `service web extra { … }` and `service 42 { … }` print `OK`. Only a `@table` row has its values counted — see [that section](#table-a-kind-whose-instances-are-rows). Write your labels correctly; the tool will not catch you."
+    body  = "`@inline` says which field a label fills. It does not make `wcl check` verify how many labels an instance wrote, or what type they hold. Against the `Artifact` above, both `artifact \"binary\" \"a\" \"b\" { … }` and `artifact 42 { … }` print `OK`. Only a `@table` row has its values counted — see [that section](#table-a-kind-whose-instances-are-rows). Write your labels correctly; the tool will not catch you."
   }
 
   h2 "@child and @children — where a nested block lands"
@@ -421,6 +423,8 @@ check ready {
 WCL
   }
 
+  p "Both blocks land in the one slot, each as its own variant:"
+
   code text {
     source = <<'TEXT'
 $ wcl check checks.wcl
@@ -430,7 +434,7 @@ $ wcl get checks.wcl checks.ready.probes
 TEXT
   }
 
-  p "Neither `http` nor `shell` carries a `@block` declaration, and neither needs one — `url` matched `Http`, `cmd` matched `Shell`. This is the same shape-based dispatch a bare record goes through in a union-typed field; [Lists, tensors and records](lang_collections#bare-records-become-union-variants) covers the matching rule, and [Types](lang_types) covers unions and interfaces."
+  p "Neither `http` nor `shell` carries a `@block` declaration, and neither needs one — `url` matched `Http`, `cmd` matched `Shell`. A bare record in a union-typed field goes through the same shape-based dispatch. [Lists, tensors and records](lang_collections#bare-records-become-union-variants) covers the matching rule; [Types](lang_types) covers unions and interfaces."
 
   h2 "required_fields — what an instance must write"
 
@@ -600,7 +604,7 @@ api.wcl: 1 schema violation
 TEXT
   }
 
-  p "A `@table` type is still a block kind, so a row may be written the long way — and written that way, its labels **are** counted against the declared field list:"
+  p "A `@table` type is still a block kind, so you may write a row the long way. Written that way, its labels **are** counted against the declared field list:"
 
   code text {
     source = <<'TEXT'
@@ -614,9 +618,14 @@ api.wcl: 1 schema violation
 TEXT
   }
 
-  p "That count is the only arity check in the language, and it does not reach the pipe form. A short pipe row, a long one and a wrongly-typed cell all pass; the same row spelled as a block is caught."
+  p "That count reaches only the block form. The pipe form checks nothing: a short row, a long row and a wrongly-typed cell all pass. [Documents, fields and blocks](lang_documents#tables) makes the same point from the writing side."
 
-  p "A row is meant to be flat, and the checker treats it that way: validation of a `@table` block stops at the value count. A `@table` type declares no `@child` or `@children` slots, so nothing inside a row is placed — and nothing inside one is checked either. Blocks nested in a row are silently ignored. Keep your rows to their cells."
+  p "Validation of a `@table` block stops at that count. A row nests nothing, so the checker never looks inside one — a block written in a row simply disappears. Keep a row to its cells."
+
+  callout "Every declared field is a column" {
+    class = ["warning"]
+    body  = "The count above is the type's whole field list, `@child` and `@children` slots included. Give a `@table` type a `@children(\"note\", min = 1) notes: list<Note>` and you have not opened it to nested blocks — you have added a third column. A two-cell row now fails with `table row for 'route' has 2 values, expected 3`, a third cell satisfies it, and the `min = 1` never runs. Declare child slots on `@block` types only."
+  }
 
   h2 "@schemaless — the way out"
 
@@ -690,7 +699,7 @@ TEXT
 
   h2 "Where each check runs"
 
-  p "The root and a block body are not checked alike. A block body gets the full walk; the root gets membership and nothing more. That difference is invisible until you write a constraint at the root and it never fires, so here it is in one table:"
+  p "The checker treats the root and a block body differently. A block body gets the full walk; the root gets membership and nothing more. You will not notice until you write a constraint at the root and it never fires. Here is the difference in one table:"
 
   table {
     rows:
@@ -759,6 +768,8 @@ type CatalogDoc {
 WCL
   }
 
+  p "The document imports it and declares a root schema of its own:"
+
   code wcl {
     filename = "app.wcl"
     source = <<'WCL'
@@ -776,6 +787,8 @@ service web { port = 8080u32 }
 WCL
   }
 
+  p "Both halves check, and both halves read:"
+
   code text {
     source = <<'TEXT'
 $ wcl check app.wcl
@@ -791,7 +804,7 @@ TEXT
 
   h3 "One root-authored @document per namespace"
 
-  p "Merging is not unlimited. Imported schemas merge silently, however many modules ship one. What is refused is a **second root-authored** `@document` in one namespace — you get one root schema of your own, and it composes with whatever the imports provide. Split `AppDoc` in two and the second half is the error:"
+  p "Merging is not unlimited. Imported schemas merge silently, however many modules ship one. What the checker refuses is a **second root-authored** `@document` in one namespace. You get one root schema of your own, and it composes with whatever the imports provide. Split `AppDoc` in two and the second half is the error:"
 
   code wcl {
     filename = "app-two-roots.wcl"
@@ -861,7 +874,7 @@ tool ripgrep { }
 WCL
   }
 
-  p "The document is valid. Both blocks are declared, both are allowed, nothing is ill-typed. But `services` now gathers `tool` blocks, and the `service` blocks are unreachable through it:"
+  p "The document is valid. The schema declares both kinds and allows both of them, and no value is ill-typed. But `services` now gathers `tool` blocks, so no path reaches a `service` through it:"
 
   code text {
     source = <<'TEXT'
@@ -879,7 +892,7 @@ TEXT
 
   callout "This is a build-time failure, one layer up" {
     class = ["warning"]
-    body  = "The damage lands where the field is _iterated_. A wdoc template writing `each = services` renders the wrong blocks, or fails with `unresolved reference` at build time — long after `wcl check` said `OK`, and with no mention of the collision. This is why a schema built to compose with a large library names its gathers away from the obvious word: `sw_components`, not `components`. A library gather field and a document gather field sharing a name is a rename, not a debugging session. Heed the warning."
+    body  = "The damage lands where the field is _iterated_. A wdoc template writing `each = services` renders the wrong blocks, or fails at build time with `unresolved reference`. That is long after `wcl check` said `OK`, and it names no collision. This is why a schema built to compose with a large library names its gathers away from the obvious word: `sw_components`, not `components`. A library gather field and a document gather field sharing a name is a rename, not a debugging session. Heed the warning."
   }
 
   h2 "How a validation error reads"
@@ -897,7 +910,7 @@ pipeline.wcl: 1 schema violation
 TEXT
   }
 
-  p "Read it in three parts. `field 'zone'` is what you wrote. `is not declared by` is the rule. `schema 'Step'` is the type that was consulted — which is usually the fastest thing to check, because a violation you did not expect often means a different schema resolved than you thought."
+  p "Read it in three parts. `field 'zone'` is what you wrote. `is not declared by` is the rule. `schema 'Step'` names the type the checker consulted. Check that part first: a violation you did not expect usually means a different schema resolved than you thought."
 
   p "The messages are stable enough to grep for. These are the ones this chapter has produced:"
 
