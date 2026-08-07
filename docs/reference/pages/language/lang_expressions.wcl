@@ -169,14 +169,15 @@ TEXT
 
   code text {
     source = <<'TEXT'
-wcl> ports[0]
+$ wcl repl
+wcl> [10, 20, 30][0]
 parse error: wcl::parse
 
   × expected end of input after expression, found '['
-   ╭─[<repl>:1:6]
- 1 │ ports[0]
-   ·      ┬
-   ·      ╰── unexpected trailing token
+   ╭─[<repl>:1:13]
+ 1 │ [10, 20, 30][0]
+   ·             ┬
+   ·             ╰── unexpected trailing token
    ╰────
 TEXT
   }
@@ -252,7 +253,7 @@ TEXT
     rows:
       | "Written"      | "Means"                                  | "Works on"                   | "Missing element" |
       | "`at(xs, 0)`"  | "the element at position 0"              | "a list or tensor value"     | "an error" |
-      | "`steps.1`"    | "the block whose first label is `1`"     | "a gather field or table"    | "unresolved reference" |
+      | "`steps.1`"    | "the block whose first label is `1`"     | "a `@children` gather field" | "unresolved reference" |
       | "`ports.0`"    | "nothing — lists have no members"        | "—"                          | "unresolved reference" |
   }
 
@@ -388,6 +389,8 @@ TEXT
   }
 
   p "Read `2u8 + 300u32` closely: the result is neither a `u8` nor a `u32`. The operands disagreed, both went to `i128`, and `i128` is what came back. The promotion ladder has exactly these two rungs — there is no `u8` → `u16` → `u32` staircase, and no unsigned result type is ever chosen for a mixed pair."
+
+  p "`i128` is the top of the integer rung, so one mixed pair has nowhere to promote to: a `u128` larger than `i128::MAX` beside any other numeric type. That is reported as a type mismatch rather than an overflow, because the operator was never reached — `340282366920938463463374607431768211455u128 + 1u32` answers `operator '+' is not defined for u128 and u32`. Two `u128`s never promote at all, so they add, overflow and compare normally."
 
   p "A declared field type then converts the result on the way in, which is why `report.wcl` never mentions `i128` or `f64`. `cost: f64` accepts the `f64` the multiplication produced; a field declared `u32` accepts an `i128` result that fits and rejects one that does not. [Schemas](lang_schemas) covers the conversion, and [Values and primitives](lang_values) the numeric types themselves."
 
