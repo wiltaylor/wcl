@@ -8,7 +8,7 @@ page wdoc_diagrams {
 
   h1 "The diagram canvas"
 
-  p "A `diagram` is a page block that draws SVG. You give it a canvas — a `width` and a `height` — and fill it with **shapes**: boxes, circles, lines, text, and the grouping shapes that hold them. Shapes carry ids, and an id is what an edge connects. Most of what wdoc draws is a shape on this canvas: flowcharts, charts, trees, wireframes and maps are all diagram children, so the rules in this chapter are the rules they obey too."
+  p "A `diagram` is a page block that draws SVG. You give it a canvas — a `width` and a `height` — and fill it with **shapes**: boxes, circles, lines, text, and the grouping shapes that hold them. A shape carries an id, and an id is what an edge connects. Most of what wdoc draws is a shape on this canvas. Flowcharts, charts, trees, wireframes and maps are all diagram children, so the rules in this chapter are their rules too."
 
   p "This chapter covers the canvas itself, the five primitive shapes, the two grouping shapes, how a shape is painted, and the five layout modes that decide where a shape ends up. [Connections and routing](wdoc_diagram_connections) covers the arrows between shapes; [Flowcharts and swimlanes](wdoc_flowcharts) covers the labelled shapes built on top of these."
 
@@ -104,7 +104,7 @@ HTML
 
   p "`width` and `height` are the size the diagram occupies on the page, in pixels, and they are also the **parent box** — the rectangle that anchored children resolve against, which the next section covers. They are declared as `i64`, so write them without a decimal point: `width = 320`, not `320.0` — the callout below says what the decimal point costs. Shape geometry is `f64` instead, and takes either spelling."
 
-  p "What `width` and `height` are _not_ is a window onto the drawing. The `viewBox` is computed by fitting every shape's bounding box, plus every routed edge, and padding the result by 10 units on each side. In the example above the leftmost content starts at x = 20 and the topmost at y = 35 (the circle's centre less its radius), so the box begins at `10 25`; the rightmost content ends at x = 285 and the lowest at y = 150, so the box spans `285 135`."
+  p "What `width` and `height` are _not_ is a window onto the drawing. The renderer fits the `viewBox` around every shape's bounding box and every routed edge, then pads the result by 10 units on each side. Read `10 25 285 135` back against the example. The leftmost content starts at x = 20 and the topmost at y = 35 — the circle's centre less its radius — so the box begins at 10, 25. The rightmost content ends at x = 285 and the lowest at y = 150, so it spans 285 by 135."
 
   p "The consequence is that a diagram never clips. Content is scaled to fit the declared box, preserving aspect ratio, so shrinking `width` shrinks the picture rather than cropping it. What `width` and `height` really control is **how big the drawing is on the page, and what shape the frame is**. Give a tall drawing a wide frame and it will be letterboxed, not cut."
 
@@ -217,7 +217,7 @@ rect { class = ["tile"]  x = 20.0  y = 20.0  width = 80.0  height = 40.0 }
 WCL
   }
 
-  p "The four painting fields a `class` (and its `dark {}` / `light {}` blocks) may set are `fill`, `stroke`, `stroke_width` and `opacity`. Anything else goes in the block's `css` field. The stdlib ships ready-made shape classes that read the theme palette — `wdoc-node`, `wdoc-process`, `wdoc-decision`, `wdoc-terminator` for shape bodies and `wdoc-shape-text` for their captions — so a shape needs no colours of its own to look like it belongs. [Themes and styling](wdoc_styling) covers the class system as a whole."
+  p "The four painting fields a `class` (and its `dark {}` / `light {}` blocks) may set are `fill`, `stroke`, `stroke_width` and `opacity`. Other CSS goes in the block's `css` field, as a declaration string. The stdlib ships ready-made shape classes that read the theme palette — `wdoc-node`, `wdoc-process`, `wdoc-decision`, `wdoc-terminator` for shape bodies and `wdoc-shape-text` for their captions — so a shape needs no colours of its own to look like it belongs. [Themes and styling](wdoc_styling) covers the class system as a whole."
 
   p "**Opacity is class-only.** No shape declares an `opacity` field; the union of every paint field on `rect` is `fill` and `stroke`. If you want a translucent shape, it gets a class."
 
@@ -272,13 +272,15 @@ WCL
 
   table {
     rows:
-      | "Mode"       | "Positions come from"                                  | "Reach for it when" |
-      | "`:free`"    | "each shape's own `x` / `y` and anchors (the default)"  | "The picture is a drawing — a figure, an annotated screenshot, a layout you have in mind" |
-      | "`:grid`"    | "cell index: `columns`, `cell_width`, `cell_height`, `gap`" | "The shapes are a uniform set with no graph — a legend, a palette, a matrix" |
-      | "`:layered`" | "topological rank over the edges"                      | "The graph is a **DAG** and the direction of flow is the point" |
-      | "`:force`"   | "a force simulation over the edges"                    | "The graph is cyclic or undirected and clustering is the point" |
-      | "`:radial`"  | "graph distance from a hub"                            | "One entity is the subject and the rest hang off it" |
+      | "Mode"       | "Positions come from"                                        | "Reads the edges" |
+      | "`:free`"    | "each shape's own `x` / `y` and anchors (the default)"        | "No" |
+      | "`:grid`"    | "cell index: `columns`, `cell_width`, `cell_height`, `gap`"   | "No" |
+      | "`:layered`" | "topological rank"                                           | "Yes" |
+      | "`:force`"   | "a force simulation"                                         | "Yes" |
+      | "`:radial`"  | "graph distance from a hub"                                  | "Yes" |
   }
+
+  p "[Choosing a layout](#choosing-a-layout) at the end of the chapter is the other half of this table — which mode suits which picture."
 
   p "Two rules apply to the automatic modes. First, they assign **positions only** — a shape's size is still its own `width` and `height`. (A `:grid` cell additionally becomes the child's parent box, so an anchored child can be sized by it.) Second, under the three graph solvers a shape that declares neither gets an 80×40 cell from the solver, which is the trap the primitives' zero defaults set:"
 
@@ -335,16 +337,16 @@ WCL
     width  = 320
     height = 220
     desc   = "The example graph placed by hand."
-    rect { id = fa  x = 130.0  y = 10.0   width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = fb  x = 10.0   y = 92.0   width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = fc  x = 130.0  y = 92.0   width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = fe  x = 250.0  y = 92.0   width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = fd  x = 70.0   y = 174.0  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    fa -> fb
-    fa -> fc
-    fa -> fe
-    fb -> fd
-    fc -> fd
+    rect { id = free_a  x = 130.0  y = 10.0   width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = free_b  x = 10.0   y = 92.0   width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = free_c  x = 130.0  y = 92.0   width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = free_e  x = 250.0  y = 92.0   width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = free_d  x = 70.0   y = 174.0  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    free_a -> free_b
+    free_a -> free_c
+    free_a -> free_e
+    free_b -> free_d
+    free_c -> free_d
   }
 
   p "**`:layered`** — rank order, read top to bottom. The fan-out and the rejoin are the shape of the picture, and `e` sits on the middle rank because that is where its one edge puts it:"
@@ -354,16 +356,16 @@ WCL
     height = 220
     layout = :layered
     desc   = "The example graph ranked topologically."
-    rect { id = la  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = lb  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = lc  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = le  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = ld  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    la -> lb
-    la -> lc
-    la -> le
-    lb -> ld
-    lc -> ld
+    rect { id = lay_a  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = lay_b  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = lay_c  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = lay_e  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = lay_d  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    lay_a -> lay_b
+    lay_a -> lay_c
+    lay_a -> lay_e
+    lay_b -> lay_d
+    lay_c -> lay_d
   }
 
   p "**`:force`** — the same shapes relaxed by repulsion and springs. No axis means anything here; adjacency does:"
@@ -374,16 +376,16 @@ WCL
     layout  = :force
     routing = :straight
     desc    = "The example graph relaxed by the force solver."
-    rect { id = oa  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = ob  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = oc  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = oe  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = od  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    oa -> ob
-    oa -> oc
-    oa -> oe
-    ob -> od
-    oc -> od
+    rect { id = force_a  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = force_b  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = force_c  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = force_e  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = force_d  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    force_a -> force_b
+    force_a -> force_c
+    force_a -> force_e
+    force_b -> force_d
+    force_c -> force_d
   }
 
   p "**`:radial`** — `a` named as the hub. Its three neighbours take the first ring; `d`, two edges out, takes the second:"
@@ -392,19 +394,19 @@ WCL
     width   = 320
     height  = 280
     layout  = :radial
-    hub     = ra
+    hub     = rad_a
     routing = :straight
     desc    = "The example graph as a hub and two rings."
-    rect { id = ra  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = rb  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = rc  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = re  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    rect { id = rd  width = 60.0  height = 36.0  class = ["wdoc-node"] }
-    ra -> rb
-    ra -> rc
-    ra -> re
-    rb -> rd
-    rc -> rd
+    rect { id = rad_a  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = rad_b  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = rad_c  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = rad_e  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rect { id = rad_d  width = 60.0  height = 36.0  class = ["wdoc-node"] }
+    rad_a -> rad_b
+    rad_a -> rad_c
+    rad_a -> rad_e
+    rad_b -> rad_d
+    rad_c -> rad_d
   }
 
   p "Four pictures, one graph. Which is right depends on what you are showing: a pipeline wants the axis `:layered` gives it, a peer network wants the clustering `:force` finds, and a system context wants the hub `:radial` puts in the middle. The rest of this section is what each mode does with the shapes it is given."
@@ -443,7 +445,7 @@ WCL
 
   h3 "force"
 
-  p "`:force` treats each shape as a charged particle that repels every other shape, with a spring along each edge pulling its endpoints toward an ideal length. The system is relaxed over a fixed number of steps, then swept for any boxes still overlapping, and the result is normalised so the content starts at the origin. Connected shapes end up close, unconnected ones drift apart, and clusters become visible without anyone declaring them."
+  p "`:force` treats each shape as a charged particle that repels every other shape. A spring along each edge pulls its two endpoints toward an ideal length. The solver relaxes that system over a fixed number of steps, then sweeps any boxes still overlapping apart, then shifts the result so the content starts at the origin. Connected shapes end up close, unconnected ones drift apart, and clusters become visible without anyone declaring them."
 
   p "**The simulation is deterministic.** There is no random number generator: the starting positions come from a golden-angle spiral offset by `seed`, and every force is accumulated in a fixed order. The same document builds the same picture on every machine, which is what lets a diagram's SVG be committed and diffed. Five knobs tune it:"
 
@@ -486,7 +488,19 @@ WCL
 
   h3 "radial"
 
-  p "`:radial` puts one shape at the centre and rings the rest around it by graph distance — a breadth-first walk out from the hub, with anything it cannot reach landing on the outermost ring. `hub` names the centre; omit it and the highest-degree shape is elected. `radius` sets the first ring (auto-fitted to the shape sizes by default), `ring_gap` the distance added per ring after it — 120 — `start_angle` where each ring's first shape sits (the top, by default), and `node_gap` the minimum clearance between neighbours on a ring. Note that `node_gap` is one field with two defaults: 24 here, 40 under `:layered`. Radial pairs well with `routing = :straight`, since spokes have no reason to bend."
+  p "`:radial` puts one shape at the centre and rings the rest around it by graph distance. The rings come from a breadth-first walk out of the hub, and anything the walk cannot reach lands on the outermost ring. Four knobs and the hub control it:"
+
+  table {
+    rows:
+      | "Field"         | "Default"            | "Effect" |
+      | "`hub`"         | "highest-degree shape" | "The shape at the centre" |
+      | "`radius`"      | "auto-fit"           | "Radius of the first ring, edge to edge from the hub" |
+      | "`ring_gap`"    | "120"                | "Radius added for each ring after the first" |
+      | "`start_angle`" | "the top"            | "Where each ring's first shape sits, in radians" |
+      | "`node_gap`"    | "24"                 | "Minimum clearance between neighbours on a ring" |
+  }
+
+  p "Note that `node_gap` is one field with two defaults: 24 here, 40 under `:layered`. Radial pairs well with `routing = :straight`, since a spoke has no reason to bend."
 
   callout "Labels and lines are annotations, not nodes" {
     class = ["note"]
