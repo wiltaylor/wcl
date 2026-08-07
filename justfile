@@ -126,14 +126,6 @@ docs-comments *ARGS:
 md-build *ARGS:
     cargo run -p wcl -- wdoc markdown docs/main.wcl --out docs/_md {{ARGS}}
 
-# Render and install every wskill's AI skills and agents into the committed
-# `.claude/` tree. The command discovers artifacts from each parsed registry,
-# validates names before writing and replaces generated folders wholesale.
-# Install generated skills/agents and remove stale generated output.
-[group('dev')]
-skills-install:
-    cargo run -p wcl -- wskill install docs/wskills --repo .
-
 # Render the example and the docs to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`
 [group('dev')]
 wdoc-pdf: (wdoc-pdf-render "examples/wdoc/main.wcl" "target/pdf/examples") (wdoc-pdf-render "docs/main.wcl" "target/pdf/docs")

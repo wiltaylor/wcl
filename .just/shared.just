@@ -95,13 +95,6 @@ wskill-lint: require-cargo
         cargo run -q -p wcl -- wskill lint "$d" --severity error || exit 1; \
     done
 
-# Render the install set in scratch space and compare it to committed output.
-# Cover artifact drift, cross-wskill agent collisions, and stale output.
-# Fail on drift, collisions, or stale output; exempt hand-authored artifacts.
-[group('quality')]
-skills-check: require-cargo
-    cargo run -p wcl -- wskill install docs/wskills --repo . --check
-
 # Two comparisons: the documented builtin names vs `builtin_names()`, and the
 # documented subcommand tree vs `wcl --help` / `wcl wdoc --help` /
 # `wcl wad --help`. The wskill IS the WCL language/CLI/builtin reference, so a
