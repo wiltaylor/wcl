@@ -1,0 +1,11 @@
+// Chapter 21 — Output targets.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_outputs {
+  title = "Output targets"
+
+  h1 "Output targets"
+
+  p "Not written yet. This chapter covers the build, serve, PDF and Markdown targets, and what each backend can and cannot render."
+}

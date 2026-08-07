@@ -1,0 +1,11 @@
+// Chapter 4 — Types.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_types {
+  title = "Types"
+
+  h1 "Types"
+
+  p "Not written yet. This chapter covers type aliases, unions, interfaces, optionals, symbol sets, reference types and the type constraints."
+}

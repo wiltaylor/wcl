@@ -1,0 +1,11 @@
+// Chapter 11 — Connections.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_connections {
+  title = "Connections"
+
+  h1 "Connections"
+
+  p "Not written yet. This chapter covers `connection` declarations, connection statements, the `@connections` decorator and reference integrity."
+}

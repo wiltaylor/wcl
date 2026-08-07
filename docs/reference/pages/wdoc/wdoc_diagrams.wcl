@@ -1,0 +1,11 @@
+// Chapter 31 — The diagram canvas.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_diagrams {
+  title = "The diagram canvas"
+
+  h1 "The diagram canvas"
+
+  p "Not written yet. This chapter covers the `diagram` block, the primitive and composite shapes, shape styling, and the layout modes."
+}

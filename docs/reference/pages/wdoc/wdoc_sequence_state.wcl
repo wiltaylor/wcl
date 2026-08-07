@@ -1,0 +1,11 @@
+// Chapter 34 — Sequence and state diagrams.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_sequence_state {
+  title = "Sequence and state diagrams"
+
+  h1 "Sequence and state diagrams"
+
+  p "Not written yet. This chapter covers `sequence_diagram` and `state_diagram`, and the one geometry lowering that serves every backend."
+}

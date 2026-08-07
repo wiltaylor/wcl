@@ -1,0 +1,11 @@
+// Chapter 24 — Callouts, footnotes and chapter headers.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_callouts {
+  title = "Callouts, footnotes and chapter headers"
+
+  h1 "Callouts, footnotes and chapter headers"
+
+  p "Not written yet. This chapter covers the `callout` kinds, `footnote` and `footnotes`, and the `chapter_header` meta line."
+}

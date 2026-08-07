@@ -1,0 +1,11 @@
+// Chapter 30 — Demo blocks.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_demo {
+  title = "Demo blocks"
+
+  h1 "Demo blocks"
+
+  p "Not written yet. This chapter covers the `demo` block: the source and the live preview side by side, and how it degrades."
+}

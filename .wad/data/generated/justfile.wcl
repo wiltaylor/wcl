@@ -68,7 +68,7 @@ dev_command dev_cli_run {
 dev_command dev_docs_build {
   name        = "docs-build"
   command     = "just docs-build [ARGS]..."
-  description = "Build the project's docs/ site into docs/_site/ (gitignored)"
+  description = "Build the project's docs/ sites into docs/_site/ (gitignored)"
   category    = "dev"
 }
 
@@ -83,6 +83,13 @@ dev_command dev_docs_serve {
   name        = "docs-serve"
   command     = "just docs-serve [ARGS]..."
   description = "Serve docs/ in edit mode (landing at /, reference book at /reference/) — click a block to edit it in place. Review comments live in `just editor`'s preview pane (list with `just docs-comments`)"
+  category    = "dev"
+}
+
+dev_command dev_docs_serve_ref {
+  name        = "docs-serve-ref"
+  command     = "just docs-serve-ref [ARGS]..."
+  description = "Serve the combined reference book (docs/reference/main.wcl) — hot-reload dev server"
   category    = "dev"
 }
 

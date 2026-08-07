@@ -1,0 +1,11 @@
+// Chapter 33 — Flowcharts and swimlanes.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_flowcharts {
+  title = "Flowcharts and swimlanes"
+
+  h1 "Flowcharts and swimlanes"
+
+  p "Not written yet. This chapter covers the flowchart node kinds, the layered auto-layout, and how to compose swim-lanes from primitives."
+}

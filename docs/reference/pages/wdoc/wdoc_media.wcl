@@ -1,0 +1,11 @@
+// Chapter 26 — Images, videos and file assets.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_media {
+  title = "Images, videos and file assets"
+
+  h1 "Images, videos and file assets"
+
+  p "Not written yet. This chapter covers `image` sources, sizing and crops, the `video` block, the `file` block, and path resolution."
+}

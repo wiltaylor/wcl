@@ -1,0 +1,11 @@
+// Chapter 20 — Visibility.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_visibility {
+  title = "Visibility"
+
+  h1 "Visibility"
+
+  p "Not written yet. This chapter covers the `@only` and `@except` decorators, the backends and sites axes, and how the two axes interact."
+}

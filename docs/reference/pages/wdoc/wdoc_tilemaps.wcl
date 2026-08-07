@@ -1,0 +1,11 @@
+// Chapter 38 — Tilemaps and maps.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_tilemaps {
+  title = "Tilemaps and maps"
+
+  h1 "Tilemaps and maps"
+
+  p "Not written yet. This chapter covers `tileset`, `tile` and `tilemap` sprite grids, and the `map` block with its layers and pins."
+}

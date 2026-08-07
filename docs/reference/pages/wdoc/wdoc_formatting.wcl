@@ -1,0 +1,11 @@
+// Chapter 22 — Text and formatting.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_formatting {
+  title = "Text and formatting"
+
+  h1 "Text and formatting"
+
+  p "Not written yet. This chapter covers headings, `p`, `text` and `span`, `column`, and the inline pattern vocabulary."
+}

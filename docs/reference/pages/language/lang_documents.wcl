@@ -1,0 +1,11 @@
+// Chapter 1 — Documents, fields and blocks.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_documents {
+  title = "Documents, fields and blocks"
+
+  h1 "Documents, fields and blocks"
+
+  p "Not written yet. This chapter covers a `.wcl` file as a document: fields, blocks, labels, nesting, tables, `self` and `parent`, and `let` items."
+}

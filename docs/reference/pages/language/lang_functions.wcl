@@ -1,0 +1,11 @@
+// Chapter 7 — Functions.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_functions {
+  title = "Functions"
+
+  h1 "Functions"
+
+  p "Not written yet. This chapter covers function literals, `fn` items, function types, higher-order functions, closures and capture."
+}

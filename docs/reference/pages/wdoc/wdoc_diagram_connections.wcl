@@ -1,0 +1,11 @@
+// Chapter 32 — Connections and routing.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page wdoc_diagram_connections {
+  title = "Connections and routing"
+
+  h1 "Connections and routing"
+
+  p "Not written yet. This chapter covers edges between shapes, ports and anchors, the routing modes, arrowheads and edge labels."
+}

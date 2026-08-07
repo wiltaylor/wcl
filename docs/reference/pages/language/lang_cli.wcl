@@ -1,0 +1,11 @@
+// Chapter 14 — The CLI.
+//
+// Skeleton stub (#157). The chapter is written against its own issue; keep
+// the page name, replace the body.
+page lang_cli {
+  title = "The CLI"
+
+  h1 "The CLI"
+
+  p "Not written yet. This chapter covers every `wcl` subcommand, its flags and its exit codes."
+}
