@@ -168,22 +168,23 @@ WCL
       | "Go"            | "`go`"                 | "SQL"         | "`sql`" |
       | "C"             | "`c`"                  | "Diff"        | "`diff`" |
       | "C++"           | "`cpp`, `\"c++\"`"     | "HTML"        | "`html`" |
-      | "C#"            | "`\"c#\"`, `cs`"       | "CSS"         | "`css`, and `scss` for SCSS" |
-      | "Java"          | "`java`"               | "Dockerfile"  | "`dockerfile`" |
-      | "Kotlin"        | "`kotlin`"             | "Makefile"    | "`makefile`, `make`" |
-      | "Ruby"          | "`ruby`, `rb`"         | "CMake"       | "`cmake`" |
-      | "PHP"           | "`php`"                | "Terraform"   | "`terraform`, `hcl`" |
-      | "Swift"         | "`swift`"              | "GraphQL"     | "`graphql`" |
-      | "Haskell"       | "`haskell`, `hs`"      | "Protocol Buffer" | "`proto`, `protobuf`" |
-      | "Scala"         | "`scala`"              | "nginx"       | "`nginx`" |
-      | "Lua"           | "`lua`"                | "LaTeX"       | "`tex`, `latex`" |
-      | "Elixir"        | "`elixir`"             | "reStructuredText" | "`rst`" |
-      | "Nix"           | "`nix`"                | "Bourne Again Shell" | "`bash`, `sh`, `zsh`" |
-      | "Zig"           | "`zig`"                | "Fish"        | "`fish`" |
+      | "C#"            | "`\"c#\"`, `cs`"       | "CSS"         | "`css`" |
+      | "Java"          | "`java`"               | "SCSS"        | "`scss`" |
+      | "Kotlin"        | "`kotlin`"             | "Dockerfile"  | "`dockerfile`" |
+      | "Ruby"          | "`ruby`, `rb`"         | "Makefile"    | "`makefile`, `make`" |
+      | "PHP"           | "`php`"                | "CMake"       | "`cmake`" |
+      | "Swift"         | "`swift`"              | "Terraform"   | "`terraform`, `hcl`" |
+      | "Haskell"       | "`haskell`, `hs`"      | "GraphQL"     | "`graphql`" |
+      | "Scala"         | "`scala`"              | "Protocol Buffer" | "`proto`, `protobuf`" |
+      | "Lua"           | "`lua`"                | "nginx"       | "`nginx`" |
+      | "Elixir"        | "`elixir`"             | "LaTeX"       | "`tex`, `latex`" |
+      | "Nix"           | "`nix`"                | "reStructuredText" | "`rst`" |
+      | "Zig"           | "`zig`"                | "Bourne Again Shell (bash)" | "`bash`, `sh`, `zsh`" |
+      | "Julia"         | "`julia`"              | "Fish"        | "`fish`" |
       | "Plain Text"    | "`txt`"                | "AWK"         | "`awk`" |
   }
 
-  p "The list is not the limit. Anything with a Sublime grammar in the bundled set is reachable the same way — Clojure, Erlang, Julia, Dart, Perl, OCaml, F# (as `\"f#\"`), R, VimL, Typst, Svelte, Vue, GLSL, WGSL, jsonnet, x86 assembly and about a hundred and fifty more."
+  p "The list is not the limit. Anything with a Sublime grammar in the bundled set is reachable the same way — Clojure, Erlang, Dart, Perl, OCaml, F# (as `\"f#\"`), R, VimL, Typst, Svelte, Vue, GLSL, WGSL, jsonnet, x86 assembly and about a hundred and fifty more."
 
   h3 "Tags that do not resolve"
 
@@ -214,7 +215,7 @@ WCL
 
   h2 "Filename and caption"
 
-  p "`filename` is the only caption a listing has. There is no `caption` field on `code`, unlike `image` and `table` — the filename **is** the caption, and each backend puts it where a caption belongs in that medium."
+  p "`filename` is the only caption a listing has. There is no `caption` field on `code` — the filename **is** the caption, and each backend puts it where a caption belongs in that medium."
 
   code wcl {
     source = <<'WCL'
@@ -319,7 +320,7 @@ HTML
 
   h3 "The Markdown fence"
 
-  p "Markdown gets no chrome at all, because Markdown has none to give. The filename becomes a backticked line, the tag becomes the info string, and `id` and `class` go nowhere. The one piece of real work is the fence itself: it is widened past the longest backtick run in the source, so a listing that contains a fenced block still nests correctly."
+  p "The one piece of real work Markdown does is the fence itself. It is widened past the longest backtick run in the source, so a listing that contains a fenced block still nests correctly."
 
   code wcl {
     source = <<'WCL'
