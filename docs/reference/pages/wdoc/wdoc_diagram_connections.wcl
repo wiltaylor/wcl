@@ -1,11 +1,478 @@
 // Chapter 32 — Connections and routing.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #187. Every diagram below was built with `wcl wdoc
+// build` before it was written down, and the SVG each one emits was
+// read back out of the generated HTML. Where this chapter contradicts
+// the older concept units, the code is what it follows.
 page wdoc_diagram_connections {
   title = "Connections and routing"
 
   h1 "Connections and routing"
 
-  p "Not written yet. This chapter covers edges between shapes, ports and anchors, the routing modes, arrowheads and edge labels."
+  p "A `diagram` places shapes. An **edge** wires two of them together, and this chapter is about the wire: how you declare it, where it attaches, how it crosses the canvas, and what it may say on the way. [The diagram canvas](wdoc_diagrams) covers the shapes and the layouts that position them. Everything here starts after the shapes are placed."
+
+  p "Every example below was built before it was written down. Type them and compare."
+
+  h2 "A wired diagram"
+
+  p "Four boxes and four edges. Save it as `pipeline.wcl`:"
+
+  code wcl {
+    filename = "pipeline.wcl"
+    source = <<'WCL'
+# pipeline.wcl — four boxes, four edges.
+import <wdoc.wcl>
+
+site pipeline {
+  title = "Pipeline"
+  toc { chapter "Pipeline" { page = pipeline } }
+}
+
+page pipeline {
+  title = "The ingest pipeline"
+
+  h1 "The ingest pipeline"
+
+  diagram {
+    width  = 460
+    height = 220
+
+    process "gateway" { id = gateway  x = 10.0   y = 88.0   width = 100.0  height = 44.0  fill = "#88c0d0" }
+    process "queue"   { id = queue    x = 170.0  y = 88.0   width = 100.0  height = 44.0  fill = "#ebcb8b" }
+    process "worker"  { id = worker   x = 330.0  y = 20.0   width = 100.0  height = 44.0  fill = "#a3be8c" }
+    process "archive" { id = archive  x = 330.0  y = 156.0  width = 100.0  height = 44.0  fill = "#b48ead" }
+
+    gateway -> queue   :flow
+    queue   -> worker  :flow
+    queue   -> archive :data
+    worker  -> queue   :data
+  }
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check pipeline.wcl
+OK
+$ wcl wdoc build pipeline.wcl --out site
+wrote 1 page
+TEXT
+  }
+
+  p "`process` is a labelled box from [Flowcharts and swimlanes](wdoc_flowcharts). Nothing here depends on it: a plain `rect` wires up the same way. A box with a word in it simply makes a better picture. That is the whole file, and it renders this:"
+
+  diagram {
+    width  = 460
+    height = 220
+
+    process "gateway" { id = gateway  x = 10.0   y = 88.0   width = 100.0  height = 44.0  fill = "#88c0d0" }
+    process "queue"   { id = queue    x = 170.0  y = 88.0   width = 100.0  height = 44.0  fill = "#ebcb8b" }
+    process "worker"  { id = worker   x = 330.0  y = 20.0   width = 100.0  height = 44.0  fill = "#a3be8c" }
+    process "archive" { id = archive  x = 330.0  y = 156.0  width = 100.0  height = 44.0  fill = "#b48ead" }
+
+    gateway -> queue   :flow
+    queue   -> worker  :flow
+    queue   -> archive :data
+    worker  -> queue   :data
+  }
+
+  p "Four things happened that nothing in the file asked for, and they are the four subjects of this chapter. The edges found the shapes by `id`. Each one picked a side of each box to attach to. The two edges leaving `queue` left through **one** shared point and branched further out, rather than fanning from two different places. And `worker -> queue` bent around the boxes instead of cutting through them."
+
+  p "Open `site/pipeline.html` and the first of the four edges is one line of SVG:"
+
+  code text {
+    source = <<'TEXT'
+<polyline points="110,110 170,110" fill="none" stroke="currentColor"
+          marker-end="url(#wdoc-arrow)" data-kind="flow" />
+TEXT
+  }
+
+  p "A polyline, a shared arrowhead marker, and the kind carried through as a data attribute. Nothing else. Keep that shape in mind — most of what follows is a rule about one of its parts."
+
+  h2 "The two ways to write an edge"
+
+  p "There are exactly two, and they are not the same tool. The `->` **statement** is a connection statement, the language form [Connections](lang_connections) describes; the `edges` **field** is an ordinary field holding a list of records."
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  rect { id = a  x = 10.0   y = 40.0  width = 90.0  height = 40.0 }
+  rect { id = b  x = 260.0  y = 40.0  width = 90.0  height = 40.0 }
+
+  a -> b :flow                                              # the statement form
+
+  edges = [                                                 # the record form
+    { source: "a", destination: "b", label: "async", dash: "5 4" }
+  ]
+}
+WCL
+  }
+
+  p "Both forms feed one list. The renderer reads the statements first, then the field, then draws the concatenation. A diagram may use both. The two above draw two edges between the same pair of boxes."
+
+  table {
+    rows:
+      | "" | "`a -> b :flow`" | "`edges = [ { … } ]`" |
+      | "Endpoints"   | "Bare ids — `a -> b`"             | "Strings — `source: \"a\"`" |
+      | "Kind"        | "The `:symbol` after the arrow"   | "The `kind` member" |
+      | "Label"       | "Only through a labelling kind"   | "The `label` member" |
+      | "Dashes"      | "No"                              | "The `dash` member" |
+      | "Computable"  | "No — the statement is literal"   | "Yes — it is an expression" |
+      | "Reach for it when" | "You are drawing a picture" | "The edges come from data" |
+  }
+
+  p "The last row is the real division. A `->` statement is written out, one per line, by a person looking at a diagram. An `edges` field is an expression. It may be a `map` over a data table, a `filter` over a list of relationships, or anything else [Data views](wdoc_data_views) can build. That is why the record form carries the presentation payload: a generated edge has nobody to hand-write a label for it."
+
+  callout "Endpoint strings, not identifiers" {
+    class = ["warning"]
+    body  = "In the record form an endpoint is a **string**. `{ source: \"a\" }` works; `{ source: a }` does not, because a bare `a` is a reference expression, not an id. It is not an error either — the edge is silently absent from the render. If a computed edge does not appear, check the quotes first."
+  }
+
+  h2 "Endpoints are ids"
+
+  p "An edge names shapes by their `id` field, not by position, label or block order. Every shape kind that can be an endpoint declares `id: identifier?`. That covers the `rect`, `circle`, `line`, `label` and `polygon` fundamentals, plus `container`. It covers the flowchart, chart, card, tree, node table, timeline, image, icon, map and tilemap shapes too. A shape with no `id` still draws; it is simply not wireable."
+
+  p "Ids are resolved against the **whole diagram**, at any depth. A `container` nests shapes and may carry its own `edges`. Every edge in the tree still draws into one coordinate space. So an edge inside a container may name a shape outside it, and vice versa."
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  container { id = tier  padding = 12.0  stroke = "#5e81ac"
+    rect { id = a  x = 0.0  y = 0.0  width = 80.0  height = 36.0 }
+    rect { id = b  x = 0.0  y = 60.0  width = 80.0  height = 36.0 }
+    a -> b                    # inside the container
+  }
+  rect { id = c  x = 240.0  y = 40.0  width = 80.0  height = 36.0 }
+  b -> c                      # crosses out of it
+}
+WCL
+  }
+
+  callout "An id is unique across the page, not the diagram" {
+    class = ["warning"]
+    body  = "Two diagrams on one page may not both hold a shape with `id = a`. The build refuses it with `page \"…\": duplicate id \"a\"`, because a page's ids are one namespace. Give each diagram's shapes their own names, or drop the `id` from shapes that no edge connects."
+  }
+
+  p "An endpoint naming no shape is a **warning**, not a build failure. The edge is dropped and the rest of the diagram renders:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build typo.wcl --out site
+warning: diagram edge a → c: endpoint 'c' matches no shape id
+wrote 1 page
+TEXT
+  }
+
+  p "That leniency is deliberate, and it costs you the typo check you would otherwise get. A `->` statement's endpoints are declared as `&SvgBlock` references. `wcl check` would normally verify those against the blocks in the file. The `Edge` connection carries `@dynamic`, which switches that check off. The reason is [repeaters](wdoc_data_views): a `wdoc_repeater` builds shape ids at render time out of interpolated strings, and no static check can see them."
+
+  code wcl {
+    source = <<'WCL'
+node_table { id = orders  x = 250.0  y = 10.0  width = 160.0  title = "orders"
+  wdoc_repeater { each = ["id", "user_id"]  as = :c
+    node_row { id = $"orders_${c}"  p $"${c}: int" }
+  }
+}
+# `orders_user_id` exists only after the repeater runs — yet it is addressable.
+users_id -> orders_user_id :data
+WCL
+  }
+
+  p "`@dynamic` is per connection declaration, not global. Your own connection type keeps full reference checking unless you ask for the same freedom — see [Connections](lang_connections) and [Decorators](lang_decorators)."
+
+  h2 "Ports and anchors"
+
+  p "An edge does not attach to a shape. It attaches to one of the shape's **anchors**: a point on its bounding box that edges may leave from or arrive at. By default a shape exposes four, the midpoint of each side, named by compass point."
+
+  table {
+    rows:
+      | "Side"    | "Anchor point" |
+      | "`:north`" | "Top edge, centred" |
+      | "`:east`"  | "Right edge, centred" |
+      | "`:south`" | "Bottom edge, centred" |
+      | "`:west`"  | "Left edge, centred" |
+  }
+
+  p "Restrict the set with `connect_points`. It is the one control the author has over where a wire lands, and it is worth reaching for whenever the automatic choice reads badly:"
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 420  height = 160
+  rect { id = p  x = 10.0   y = 60.0  width = 90.0  height = 40.0  connect_points = [:south] }
+  rect { id = r  x = 320.0  y = 60.0  width = 90.0  height = 40.0  connect_points = [:north] }
+  p -> r
+}
+WCL
+  }
+
+  p "Both boxes sit at the same height. An unrestricted edge would run flat from the right side of one to the left side of the other. Restricted, it must leave through the floor of `p` and arrive through the ceiling of `r`. The router therefore dips below the first box, crosses, then climbs over the second to drop in from above:"
+
+  diagram {
+    width = 420  height = 160
+    rect { id = p  x = 10.0   y = 60.0  width = 90.0  height = 40.0  connect_points = [:south]  fill = "#88c0d0" }
+    rect { id = r  x = 320.0  y = 60.0  width = 90.0  height = 40.0  connect_points = [:north]  fill = "#a3be8c" }
+    p -> r
+  }
+
+  h3 "Choosing between the anchors"
+
+  p "Given a set of anchors at each end, the renderer picks the closest pair. Two adjustments ride on top of that, and they are why a busy diagram stays readable."
+
+  list {
+    li "**Sources converge.** Several edges leaving one shape in the same direction share a single anchor, then branch further out. The grouping is per facing side. A hub radiating four ways is therefore not bundled into one point; only co-directional edges are."
+    li "**Destinations spread.** Several edges arriving on one side each get their own slot along it, 12 units apart. Arrowheads stacked on one point read as a single edge. In an A → B → C chain that would hide the through-edge under its neighbours."
+  }
+
+  p "The `queue` box in the first example shows the first rule. Its two outbound edges both head east, so both leave at `270,110` — the east midpoint — and only separate once clear of the box."
+
+  h3 "Round shapes and row ports"
+
+  p "Two shape families override the four-anchor default."
+
+  p "A `circle` and a flowchart `node` are round. Under straight routing they attach on the **circle boundary**, along the line joining the two centres. The arrow then points radially at the shape and touches its outline, instead of reaching for a corner-ish cardinal point."
+
+  p "A `node_table` exposes an anchor per **row**, not per table. Each `node_row` defaults to `:west` and `:east` only, the sides that face a table beside it. This is what makes a foreign key drawable: the edge connects two rows, not two boxes."
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 420  height = 150  routing = :straight
+  node_table { id = users  x = 10.0  y = 10.0  width = 160.0  title = "users"
+    node_row { id = users_id     p "id: int" }
+    node_row { id = users_email  p "email: text" }
+  }
+  node_table { id = orders  x = 250.0  y = 10.0  width = 160.0  title = "orders"
+    node_row { id = orders_id    p "id: int" }
+    node_row { id = orders_user  p "user_id: int" }
+  }
+  users_id -> orders_user :data
+}
+WCL
+  }
+
+  diagram {
+    width = 420  height = 150  routing = :straight
+    node_table { id = users  x = 10.0  y = 10.0  width = 160.0  title = "users"
+      node_row { id = users_id     p "id: int" }
+      node_row { id = users_email  p "email: text" }
+    }
+    node_table { id = orders  x = 250.0  y = 10.0  width = 160.0  title = "orders"
+      node_row { id = orders_id    p "id: int" }
+      node_row { id = orders_user  p "user_id: int" }
+    }
+    users_id -> orders_user :data
+  }
+
+  p "[Trees, node tables and cards](wdoc_tree) covers the `node_table` shape itself."
+
+  callout "An empty connect_points is not \"attach anywhere\"" {
+    class = ["warning"]
+    body  = "`connect_points = []` removes every anchor, and the two routing modes then part company. Straight routing falls back to the bounding-box centres, so the line is drawn under both shapes and you see only the middle of it. Elbow routing has no direction to leave in, so it **drops the edge with no warning at all**. Omit the field to get all four sides; never write it empty."
+  }
+
+  h2 "Routing modes"
+
+  p "Routing is set on the **diagram**, with the `routing` field. It applies to every edge in that diagram, including the edges declared inside its nested containers. There is no per-edge override. There are two modes."
+
+  table {
+    rows:
+      | "Mode" | "Draws" | "Emits" | "Reach for it when" |
+      | "`:elbow`" | "An orthogonal polyline that routes around the other shapes" | "`<polyline>`" | "The default. Boxes on a grid, flowcharts, architecture" |
+      | "`:straight`" | "One direct line between the two anchors" | "`<line>`" | "Nothing is in the way, or the crossings are the point" |
+  }
+
+  p "Compare them on the same four boxes. Open `pipeline.wcl` from the top of the chapter and add one field to its `diagram`:"
+
+  code wcl {
+    source = <<'WCL'
+routing = :straight
+WCL
+  }
+
+  p "Nothing else changes. The same four shapes and the same four statements now render this:"
+
+  // The `2` suffixes are invisible to the reader — a page's shape ids are
+  // one namespace, so this second copy cannot reuse the first's names.
+  diagram {
+    width   = 460
+    height  = 220
+    routing = :straight
+
+    process "gateway" { id = gateway2  x = 10.0   y = 88.0   width = 100.0  height = 44.0  fill = "#88c0d0" }
+    process "queue"   { id = queue2    x = 170.0  y = 88.0   width = 100.0  height = 44.0  fill = "#ebcb8b" }
+    process "worker"  { id = worker2   x = 330.0  y = 20.0   width = 100.0  height = 44.0  fill = "#a3be8c" }
+    process "archive" { id = archive2  x = 330.0  y = 156.0  width = 100.0  height = 44.0  fill = "#b48ead" }
+
+    gateway2 -> queue2   :flow
+    queue2   -> worker2  :flow
+    queue2   -> archive2 :data
+    worker2  -> queue2   :data
+  }
+
+  p "Two differences are worth naming. The diagonals now cross the gaps directly, which is shorter and often clearer. And `worker -> queue` and `queue -> worker` lie **on top of each other**. A straight line between two anchor pairs has no room to differ. Straight routing skips the source-convergence pass for the same reason. Convergence is what elbow routing wants; it would make every straight spoke leave through one side and cut across its own shape."
+
+  callout "There is no curved routing" {
+    class = ["note"]
+    body  = "`:elbow` and `:straight` are the whole set — the `EdgeRouting` symbol set has two members and the renderer has two branches. Nor is there a curve to fall back on: the diagram vocabulary draws rectangles, circles, lines, polylines, polygons and text, and no arcs or Bézier segments anywhere. An edge in wdoc is always straight segments. If you want a swept connector, draw it yourself as a shape — see [Writing your own blocks](wdoc_extending)."
+  }
+
+  h3 "What elbow routing actually does"
+
+  p "It is a search, not a formula, and knowing that explains its behaviour under pressure. Each edge takes an `A*` search over a grid of 10-unit cells laid across the diagram. Every other shape is an obstacle, inflated by 4 units of breathing room. The first and last leg must travel perpendicular to the side their anchor sits on. A wire therefore always leaves and arrives square to the outline. Turns cost extra, which keeps the paths long and straight rather than staircased. A run flush along a visible `container` border costs extra too, so an edge never merges into a boundary line. Crossing one stays allowed: a crossing pays that cost just once."
+
+  p "The source and destination shapes stay in the obstacle list. Only the cells at their anchors are opened up. That is what stops the router taking a shortcut through the destination just because it is the destination."
+
+  h3 "When a route cannot be found"
+
+  p "A failed search relaxes the padding — 4 units, then 1, then 0 — and tries again. That threads a corridor which is genuinely open but merely too narrow for the grid. A failure at zero padding means no orthogonal path exists, and the build **stops**:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build packed.wcl --out site
+diagram edge a → b could not be routed around intervening shapes — the layout
+is too tightly packed. Increase the diagram's spacing (node_gap / layer_gap)
+or size, or set routing: "straight".
+TEXT
+  }
+
+  p "That is a hard failure with a non-zero exit, unlike the missing-endpoint warning above. The distinction is worth stating plainly. An endpoint you misspelled is your mistake, and the page is still worth building. An edge the renderer cannot draw would leave a picture that silently lies about your architecture. Take the message at face value: the fixes it names are the fixes."
+
+  callout "A diagram can also be too big to route" {
+    class = ["note"]
+    body  = "The routing grid is capped at four million cells. Coordinates in the tens of thousands of units exceed it. Such a diagram reports `diagram is too large to route edges` instead of the packing message. Same remedy: smaller coordinates, or `routing = :straight`, which needs no grid at all."
+  }
+
+  h3 "Parallel edges"
+
+  p "One more pass runs after every edge is planned. It looks for **middle** segments that share a corridor — same axis, same coordinate, overlapping range — and nudges them apart. The step is `edge_separation`, 4 units by default:"
+
+  code wcl {
+    source = <<'WCL'
+edge_separation = 12.0
+WCL
+  }
+
+  p "Two exclusions keep it from undoing the anchor work. First and last segments never move, so edges leaving a shared anchor stay aligned where they leave it. And a group whose members all share a source anchor, or all share a destination anchor, is left alone entirely. That bundle is meant to read as one trunk splitting at the far end. Spreading it into parallel lines would be the defect, not the fix."
+
+  p "The pass runs under `:elbow` only. A straight edge is a single segment with no middle to nudge, so `edge_separation` does nothing to it. That is the other half of why two straight edges between one pair of shapes coincide."
+
+  h2 "Arrowheads"
+
+  p "Every edge carries the same arrowhead, and it always sits at the destination end. Each diagram defines one `<marker id=\"wdoc-arrow\">`, which every edge references as `marker-end`. The head is a filled triangle painted `currentColor`, so it follows the diagram's stroke colour."
+
+  p "Three consequences follow, and all three are about direction rather than decoration."
+
+  list {
+    li "**An edge is single-headed.** There is no `marker-start`, and no field that adds one. A relationship you would draw with a double-headed arrow is two edges."
+    li "**Direction is the source and the destination, and nothing else.** `a -> b` and `b -> a` are different edges. Reverse an arrow by swapping the two ids, not by styling."
+    li "**The head is not configurable per edge.** Its size, shape and fill are fixed by the marker. What you can vary per edge is the line: its dashes, its colour, its width — see [Edge kinds](#edge-kinds) below."
+  }
+
+  h2 "Labels on edges"
+
+  p "A label renders as a `<text>` element at the edge's midpoint, carrying the `wdoc-edge-label` class. Placement goes by arc length, not by straight-line distance. On a bent polyline the label therefore lands halfway **along the wire**, not halfway between the two boxes. A nudge then clears it of the stroke by half its own measured extent, above a horizontal run and left of a vertical one."
+
+  p "The label joins the diagram's fit-to-viewport pass. A label wider than the shapes around it therefore does not clip at the canvas edge."
+
+  p "There are two ways to get one. The first is the `label` member of a record edge:"
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 420  height = 120
+  rect { id = a  x = 10.0   y = 40.0  width = 90.0  height = 40.0 }
+  rect { id = b  x = 320.0  y = 40.0  width = 90.0  height = 40.0 }
+  edges = [ { source: "a", destination: "b", label: "ships to", dash: "5 4" } ]
+}
+WCL
+  }
+
+  diagram {
+    width = 420  height = 120
+    rect { id = a  x = 10.0   y = 40.0  width = 90.0  height = 40.0  fill = "#88c0d0" }
+    rect { id = b  x = 320.0  y = 40.0  width = 90.0  height = 40.0  fill = "#a3be8c" }
+    edges = [ { source: "a", destination: "b", label: "ships to", dash: "5 4" } ]
+  }
+
+  p "The second is the `:yes` and `:no` edge kinds. A `->` statement has no room for a label: the grammar is an arrow and an optional symbol, and that is all. A decision branch is the one case where every edge in the picture needs a word on it. So it says its word through the kind:"
+
+  code wcl {
+    source = <<'WCL'
+diagram {
+  width = 420  height = 200
+  decision "cached?" { id = q  x = 150.0  y = 10.0   width = 120.0  height = 60.0 }
+  process  "serve"   { id = y  x = 10.0   y = 140.0  width = 110.0  height = 44.0 }
+  process  "fetch"   { id = n  x = 300.0  y = 140.0  width = 110.0  height = 44.0 }
+  q -> y :yes
+  q -> n :no
+}
+WCL
+  }
+
+  diagram {
+    width = 420  height = 200
+    decision "cached?" { id = q  x = 150.0  y = 10.0   width = 120.0  height = 60.0 }
+    process  "serve"   { id = y  x = 10.0   y = 140.0  width = 110.0  height = 44.0 }
+    process  "fetch"   { id = n  x = 300.0  y = 140.0  width = 110.0  height = 44.0 }
+    q -> y :yes
+    q -> n :no
+  }
+
+  p "`:yes` and `:no` are the only two kinds that label themselves. Every other kind is silent. [Flowcharts and swimlanes](wdoc_flowcharts) covers the `decision` and `process` shapes above."
+
+  callout "One label per edge, and no styling hook of its own" {
+    class = ["note"]
+    body  = "A record's `label` overrides a labelling kind, so `{ kind: :yes, label: \"cache hit\" }` renders `cache hit`. There is no second label, no start or end label, and no per-edge control over placement. Restyle every edge label at once through the `wdoc-edge-label` class — see [Themes and styling](wdoc_styling)."
+  }
+
+  h2 "Edge kinds"
+
+  p "The `:kind` after an arrow tags the edge. Five are built in, from the `EdgeKind` symbol set:"
+
+  table {
+    rows:
+      | "Kind" | "Means" | "Renders as" |
+      | "`:default`" | "A plain directed edge" | "Nothing extra — this is what an untagged `a -> b` becomes" |
+      | "`:flow`"    | "Control or process flow" | "Nothing extra" |
+      | "`:data`"    | "Data flow"               | "Nothing extra" |
+      | "`:yes`"     | "The taken branch of a decision" | "The word `yes` at the midpoint" |
+      | "`:no`"      | "The untaken branch"      | "The word `no` at the midpoint" |
+  }
+
+  p "The \"nothing extra\" column is the correction this chapter owes you. A kind does not carry a built-in look. It emits a `data-kind` attribute on the edge element, and the shipped themes style none of them. Out of the box, `:flow` and `:data` draw exactly like `:default`."
+
+  callout "A kind is a hook, not a style" {
+    class = ["warning"]
+    body  = "Tagging an edge `:data` changes nothing you can see until you write a rule for it. Do not tag edges expecting a picture to change; tag them so that one rule can change all of them at once."
+  }
+
+  p "Writing that rule takes one `base` block. `base` declares a raw selector, which is what you need here — `data-kind` is an attribute, not a class:"
+
+  code wcl {
+    source = <<'WCL'
+base "[data-kind=\"data\"]" {
+  css = "stroke-dasharray:6 4;opacity:0.7;"
+}
+
+base "[data-kind=\"flow\"]" {
+  css = "stroke-width:2;"
+}
+WCL
+  }
+
+  p "A `base` block sits at the top level of the document, beside your pages. It applies to every site in that document unless you narrow it with `sites`. [Themes and styling](wdoc_styling) covers `base`, `class` and the rest of the styling system."
+
+  p "Three tools hold the same idea at three scales. A `dash` on a record edge styles **one** edge, and travels with the data that produced it. A `class` on a shape styles that shape. A `base` rule on `data-kind` styles **every** edge of a kind across the whole book. Reach for the last one when the kind means something — when `:data` is a claim about your architecture rather than a shade of grey."
+
+  h2 "Where to go next"
+
+  list {
+    li "[The diagram canvas](wdoc_diagrams) — the shapes, the coordinate space, and the layouts that place the boxes these edges join."
+    li "[Flowcharts and swimlanes](wdoc_flowcharts) — the `process` / `decision` / `terminator` vocabulary, where `:yes` and `:no` earn their keep."
+    li "[Trees, node tables and cards](wdoc_tree) — `node_table` and its per-row ports."
+    li "[Data views](wdoc_data_views) — repeaters and components, the source of the generated ids a `@dynamic` endpoint may name."
+    li "[Connections](lang_connections) — the `connection` declaration and the `->` statement as language forms, including `@dynamic`."
+    li "[Themes and styling](wdoc_styling) — `class`, `base`, and the theme variables an edge's colour comes from."
+  }
 }
