@@ -1,11 +1,449 @@
 // Chapter 24 — Callouts, footnotes and chapter headers.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Every snippet below was built with `wcl wdoc build`, `wcl wdoc markdown`
+// and `wcl wdoc pdf` before it was written down, and the outputs quoted
+// are the ones those commands produced.
+//
+// This page's own footnotes are named `ir` and `sep` on purpose: the
+// `[^id]` rewrite is a page-wide string replacement, so a footnote named
+// `drain` would rewrite the `[^drain]` inside the code samples too. That
+// is the hazard the chapter documents, demonstrated by avoiding it.
+
+// The custom callout type demonstrated under "A callout of your own". A
+// `class` is a document-root block, so it sits beside the page rather than
+// inside it.
+class "deploy" { accent = "#b48ead" }
+
 page wdoc_callouts {
   title = "Callouts, footnotes and chapter headers"
 
   h1 "Callouts, footnotes and chapter headers"
 
-  p "Not written yet. This chapter covers the `callout` kinds, `footnote` and `footnotes`, and the `chapter_header` meta line."
+  p "Three blocks in this chapter are **apparatus**: they mark a page up rather than being its prose. A `callout` lifts one paragraph out of the flow and gives it a type. A `footnotes` section collects the notes that the `[^id]` markers in your prose point at. A `chapter_header` opens a page with a kicker, a title and a meta line."
+
+  p "They belong in one chapter for a reason beyond page furniture. Each lowers to exactly **one node of the semantic content IR** — `Content::Callout`, `Content::Footnotes`, `Content::ChapterHeader` — and all four output targets render that node from the same declaration[^ir]. No backend re-implements a callout. That is why this chapter can tell you what each block becomes in HTML, in Markdown and in print, and why the three answers differ where they do. [Writing your own blocks](wdoc_extending) covers the lowering mechanism itself."
+
+  p "Every file and every output below was built with `wcl wdoc build`, `wcl wdoc markdown` and `wcl wdoc pdf` before it was written down. Type them and compare."
+
+  h2 "One page, three blocks"
+
+  p "Save this as `apparatus.wcl`. It is a complete document: a `site`, one `page`, and all three blocks."
+
+  code wcl {
+    filename = "apparatus.wcl"
+    source = <<'WCL'
+# apparatus.wcl — a page with all three apparatus blocks.
+import <wdoc.wcl>
+
+site manual {
+  default_template = :book
+  title            = "Manual"
+  toc { chapter "Rollout" { page = rollout } }
+}
+
+page rollout {
+  title = "Rollout"
+
+  chapter_header "Rolling out a release" {
+    kicker       = "Chapter 3 · Operations"
+    reading_time = "6 min read"
+    updated      = "2026-08-07"
+    version      = "deploy-tool 2.1"
+  }
+
+  p "Drain the node before you restart it[^drain]. The scheduler needs 30 seconds[^grace]."
+
+  callout "Check the queue depth" {
+    class = ["warning"]
+    body  = "A **backed-up** queue means the drain will not finish. Watch `queue_depth` first."
+  }
+
+  footnotes {
+    footnote drain { text = "`drain` marks the node unschedulable and waits." }
+    footnote grace { text = "The **grace period** is configurable." }
+  }
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build apparatus.wcl --out out
+wrote 1 page
+TEXT
+  }
+
+  p "Here is what `out/rollout.html` holds, with the template chrome and the stylesheet dropped:"
+
+  code html {
+    filename = "out/rollout.html (excerpt)"
+    source = <<'HTML'
+<header class="chapter-header">
+  <p class="chapter-kicker">Chapter 3 · Operations</p>
+  <h1 class="heading-1" id="rolling-out-a-release">Rolling out a release</h1>
+  <p class="chapter-meta">6 min read · 2026-08-07 · deploy-tool 2.1</p>
+</header>
+<p>Drain the node before you restart it<sup class="footnote-ref" id="fnref-drain"><a href="#fn-drain">1</a></sup>. The scheduler needs 30 seconds<sup class="footnote-ref" id="fnref-grace"><a href="#fn-grace">2</a></sup>.</p>
+<div class="callout warning">
+  <div class="callout-heading">
+    <svg class="wdoc-icon callout-icon"><use href="_wdoc/icons.svg#lucide-triangle-alert"/></svg>
+    <p class="callout-title"><span>Check the queue depth</span></p>
+  </div>
+  <div class="callout-body"><p>A <span class="bold">backed-up</span> queue means the drain will not finish. Watch <span class="code">queue_depth</span> first.</p></div>
+</div>
+<section class="wdoc-footnotes">
+  <div class="wdoc-footnotes-title">Footnotes</div>
+  <ol class="wdoc-footnote-list">
+    <li class="wdoc-footnote-item" id="fn-drain"><span class="code">drain</span> marks the node unschedulable and waits.<a class="wdoc-footnote-back" href="#fnref-drain">↩</a></li>
+    <li class="wdoc-footnote-item" id="fn-grace">The <span class="bold">grace period</span> is configurable.<a class="wdoc-footnote-back" href="#fnref-grace">↩</a></li>
+  </ol>
+</section>
+HTML
+  }
+
+  p "Four things in that output are not in the source, and each is a section of this chapter. The callout grew an icon and a `warning` class. The `[^drain]` in the prose became a numbered superscript. The footnote list is anchored at `fn-drain`, and the superscript at `fnref-drain`. And the chapter header's three meta fields collapsed into one line, joined by a separator[^sep] that nothing in `apparatus.wcl` chose."
+
+  h2 "Callouts"
+
+  p "A `callout` is an admonition: a coloured heading with an icon over a body of prose. It takes its heading as the inline label, and everything else as fields."
+
+  code wcl {
+    source = <<'WCL'
+callout "Check the queue depth" {
+  class = ["warning"]
+  body  = "A **backed-up** queue means the drain will not finish."
+  icon  = "lucide.siren"     # optional — overrides the per-kind default
+  id    = queue_depth        # optional — an explicit HTML id
+}
+WCL
+  }
+
+  p "Both the heading and the `body` run through the inline-pattern engine, so `**bold**`, `` `code` ``, `[links](wdoc_formatting)`, `:icons:` and `$math$` all work in either. See [Text and formatting](wdoc_formatting)."
+
+  h3 "The six kinds"
+
+  p "There are six built-in kinds, and you select one by putting its name in `class`:"
+
+  demo {
+    callout "Note" {
+      class = ["note"]
+      body  = "Background the reader should keep in mind."
+    }
+    callout "Info" {
+      class = ["info"]
+      body  = "Neutral information worth surfacing."
+    }
+    callout "Tip" {
+      class = ["tip"]
+      body  = "A shortcut or a better way round."
+    }
+    callout "Warning" {
+      class = ["warning"]
+      body  = "Something to be careful about."
+    }
+    callout "Error" {
+      class = ["error"]
+      body  = "A failure, or a hard constraint."
+    }
+    callout "Success" {
+      class = ["success"]
+      body  = "Confirm that an action completed."
+    }
+  }
+
+  p "The class name is read **once**, in the block's own lowering, and carried on from there as a `CalloutKind` symbol — `:note`, `:info`, `:tip`, `:warning`, `:error`, `:success`. Each backend maps that symbol to its own vocabulary. None of them matches a class name, which is why the six kinds mean the same thing in every output:"
+
+  table {
+    rows:
+      | "`class`"      | "Symbol"     | "Default icon"            | "Themed hue"      | "Unthemed accent" | "Print accent" | "Markdown alert" |
+      | "`note`"       | "`:note`"    | "`lucide.info`"           | "`--wdoc-blue`"   | "`#5e81ac`"       | "`#5e81ac`"    | "`> [!NOTE]`" |
+      | "`info`"       | "`:info`"    | "`lucide.info`"           | "`--wdoc-cyan`"   | "`#5e81ac`"       | "`#5e81ac`"    | "`> [!NOTE]`" |
+      | "`tip`"        | "`:tip`"     | "`lucide.lightbulb`"      | "`--wdoc-green`"  | "`#88c0d0`"       | "`#88c0d0`"    | "`> [!TIP]`" |
+      | "`warning`"    | "`:warning`" | "`lucide.triangle-alert`" | "`--wdoc-yellow`" | "`#d08770`"       | "`#d08770`"    | "`> [!WARNING]`" |
+      | "`error`"      | "`:error`"   | "`lucide.circle-x`"       | "`--wdoc-red`"    | "`#bf616a`"       | "`#bf616a`"    | "`> [!CAUTION]`" |
+      | "`success`"    | "`:success`" | "`lucide.circle-check`"   | "`--wdoc-green`"  | "`#a3be8c`"       | "`#a3be8c`"    | "`> [!TIP]`" |
+      | "none of them" | "no symbol"  | "no icon"                 | "not re-pointed"  | "`#888`"          | "`#888`"       | "`> [!NOTE]`" |
+
+  }
+
+  p "GitHub offers five alert keywords, so the mapping is not one-to-one at that end: `success` shares `TIP` — the closest positive admonition GitHub has — and `info` shares `NOTE`. The icons come from the bundled Lucide pack, so a callout draws one with no `iconset` declared. [Icons](wdoc_icons) covers the packs."
+
+  p "The two colour columns are the same fact in two places, and they part company on a themed site. Every accent rides one CSS custom property, `--callout-accent`. `lib/callout.wcl` gives each kind an unthemed default — those are the hex values above, and they are what a site with no `theme` renders. A site that **does** declare a theme re-points each kind at its palette's hue ring instead, so the browser colour follows the theme rather than the table. This book is `theme = :nord`, so its warnings are the Nord yellow, and `tip` and `success` share one green. Print has no theme to follow: the six RGB triples in the PDF backend are the unthemed values, fixed."
+
+  callout "The demo above is themed; the hex column is not" {
+    class = ["info"]
+    body  = "Hold the six previews next to the `Unthemed accent` column and they will not match, and that is the mechanism working. Build the same six callouts in a `site` with no `theme` field and you get the hex values exactly. [Themes and styling](wdoc_styling) covers the hue ring."
+  }
+
+  h3 "One class picks the kind"
+
+  p "`class` is a list, and it is a **style hook that happens to carry the kind**, not a kind field. A callout may hold several classes; exactly one kind comes out of them. The lowering tests them in a fixed order and takes the first hit:"
+
+  list {
+    li "`warning`"
+    li "`error`"
+    li "`success`"
+    li "`tip`"
+    li "`info`"
+    li "`note`"
+  }
+
+  p "So `class = [\"tip\", \"warning\"]` is a warning, whichever order you wrote them in. The HTML keeps both names — the kind first, then whatever you supplied that is not already there — and renders `<div class=\"callout warning tip\">`. A class the list does not name leaves the callout **kind-less**: no accent class, no icon, the neutral grey accent, and `> [!NOTE]` in Markdown."
+
+  callout "Write one kind per callout" {
+    class = ["warning"]
+    body  = "Two kind names in one `class` list is not an error and will not warn. It silently resolves to whichever is higher in the list above. Put the kind first and keep your own class names distinct from the six."
+  }
+
+  h3 "A callout of your own"
+
+  p "A kind name the six do not include is still a perfectly good class. Give it an `accent` and you have styled a new type without writing CSS, because `accent` on a `class` block emits the `--callout-accent` custom property the callout's heading, left border and icon all read:"
+
+  p "One line declares the type. Note where it lands: a `class` is a **document-root** block, so it sits beside your pages rather than inside one — this chapter declares `deploy` immediately above its own `page`, and the rule reaches every page of the book."
+
+  code wcl {
+    source = <<'WCL'
+class "deploy" { accent = "#b48ead" }
+WCL
+  }
+
+  p "The callout then names it, and `icon` picks the glyph. The `demo` below shows the source and the live result together — see [Demo blocks](wdoc_demo):"
+
+  demo {
+    callout "Deploying" {
+      class = ["deploy"]
+      icon  = "lucide.rocket"
+      body  = "A custom type: the `deploy` class sets the accent, `icon` picks the glyph."
+    }
+  }
+
+  p "That purple is the colour you asked for, on a themed page, which the six built-in kinds cannot promise. The theme's re-pointing rules name the six kinds one by one; `deploy` is not among them, so nothing overrides your accent. [Themes and styling](wdoc_styling) covers `class`, `accent` and the rest of the styling vocabulary."
+
+  callout "A custom type is an HTML-only type" {
+    class = ["note"]
+    body  = "`deploy` is not a `CalloutKind`, so the node carries no kind at all. In HTML that is fine: your class paints it. In Markdown it becomes `> [!NOTE]`, and in print it takes the neutral grey accent — neither target has any way to learn your colour. If a callout has to read as a warning everywhere, give it `class = [\"warning\", \"deploy\"]` and let `deploy` do the extra painting."
+  }
+
+  h3 "The body is one paragraph"
+
+  p "`body` is a `utf8` field, not a nested block list. A callout holds prose and nothing else — no code sample, no list, no nested diagram. That is deliberate: the printed callout paints one shaped heading over one shaped body, and a box that could hold a page could not be painted at all."
+
+  p "When the box has to sit beside something richer, put the richer thing next to it rather than inside it. A `code` block after the callout reads the same way and works on every target — see [Code](wdoc_code)."
+
+  h2 "Footnotes"
+
+  p "A footnote is two halves in two places. The **definitions** live in a `footnotes` block, conventionally at the foot of the page. The **references** are `[^id]` markers written inline in your prose."
+
+  code wcl {
+    source = <<'WCL'
+p "Drain the node before you restart it[^drain]."
+
+footnotes {
+  footnote drain { text = "`drain` marks the node unschedulable and waits." }
+  footnote grace { text = "The **grace period** is configurable." }
+}
+WCL
+  }
+
+  p "A `footnote` carries exactly two things: its `id`, written as the inline label and typed as an `identifier`, and its `text`, which runs through the inline-pattern engine like any other prose. It is not a block that renders on its own — it has no lowering and no native implementation, exactly like an `li` under a `list`. Only the parent `footnotes` block renders, and it maps each definition into one entry of its content node."
+
+  p "The section title is fixed. The `footnotes` block always lowers with the title `\"Footnotes\"`; the IR field behind it is optional, so another block lowering to `Content::Footnotes` may set its own or omit it, but the stdlib block gives you no field to change it."
+
+  h3 "The marker is the id"
+
+  p "This is the fact everything else hangs off. A footnote's **marker is its declaration id**, not a number. The id is what both ends of the link are anchored on:"
+
+  table {
+    rows:
+      | "Anchor"        | "Where"                                     | "What writes it" |
+      | "`fn-<id>`"     | "the `<li>` in the footnote list"           | "the HTML reading of `Content::Footnotes`" |
+      | "`fnref-<id>`"  | "the `<sup>` planted in your prose"         | "the page-wide `[^id]` rewrite" |
+      | "`[^<id>]:`"    | "the definition line in Markdown"           | "the Markdown reading — a real GFM label" |
+      | "`<id>. `"      | "the prefix on the printed note"            | "the PDF reading" |
+
+  }
+
+  p "Read the HTML excerpt at the top of this chapter against that table. `id=\"fn-drain\"` on the list item, `href=\"#fn-drain\"` on the superscript, `id=\"fnref-drain\"` on the superscript, and `href=\"#fnref-drain\"` on the `↩` back-link that returns you to where you were reading. Two anchors, four references, one id."
+
+  p "The rewrite is what joins them, and it is a separate pass over the finished page. It scans the rendered HTML for `id=\"fn-…\"` definitions, then replaces each matching `[^id]` in the page with the superscript. That order has a consequence worth stating plainly: a footnote you define but never reference still renders, and its `↩` points at an anchor that is not on the page."
+
+  h3 "Numbering follows the definitions"
+
+  p "The number a reader sees is not part of the marker. It comes from the `<ol>` in HTML, and from the rewrite pass in the prose — which numbers by the order the **definitions** appear, not the order the references do."
+
+  p "Swap the two references in the prose of `apparatus.wcl` and leave the `footnotes` block alone:"
+
+  code wcl {
+    source = <<'WCL'
+p "First a reference to grace[^grace], then to drain[^drain]."
+
+footnotes {
+  footnote drain { text = "Defined first." }
+  footnote grace { text = "Defined second." }
+}
+WCL
+  }
+
+  code html {
+    source = <<'HTML'
+<p>First a reference to grace<sup class="footnote-ref" id="fnref-grace"><a href="#fn-grace">2</a></sup>,
+   then to drain<sup class="footnote-ref" id="fnref-drain"><a href="#fn-drain">1</a></sup>.</p>
+HTML
+  }
+
+  p "The first marker in the text is number 2. Order your `footnote` blocks the way you want them numbered, and the references will follow. If you want them numbered in reading order, write the definitions in reading order."
+
+  h3 "What the rewrite will and will not touch"
+
+  p "Only ids with a definition are rewritten. That is what lets a regex character class survive in a code sample: `[^abc]` is left alone because no footnote is called `abc`. But understand _why_ it survives, because the rule is narrower than it looks."
+
+  callout "The rewrite is a string replacement over the whole page" {
+    class = ["warning"]
+    body  = "It runs after the page is rendered, over the finished HTML — code samples included. It does not know what a code block is. Define a footnote called `1` and every literal `[^1]` on that page becomes a footnote link, inside your `code` block as much as in your prose. Name your footnotes after what they say (`drain`, `grace`, `retry-budget`), never after something that could appear in a listing."
+  }
+
+  p "This chapter takes its own advice. Its two live footnotes are called `ir` and `sep`, because `drain` and `grace` appear in the code samples above and would have been rewritten inside them."
+
+  callout "Footnote links need a template" {
+    class = ["note"]
+    body  = "The rewrite pass runs when a page renders **through a template** — which is every book, website and deck. A site with no `default_template` and no per-page template renders the definitions correctly and leaves every `[^id]` in the prose as literal text. The same is true of the heading anchor ids, for the same reason. See [Templates and layouts](wdoc_templates)."
+  }
+
+  h2 "Chapter headers"
+
+  p "A `chapter_header` is a page's opening block: a kicker above the title, the title itself, and a meta line under it. It takes the title as its inline label and four optional strings:"
+
+  code wcl {
+    source = <<'WCL'
+chapter_header "Rolling out a release" {
+  kicker       = "Chapter 3 · Operations"   # the eyebrow above the title
+  reading_time = "6 min read"
+  updated      = "2026-08-07"
+  version      = "deploy-tool 2.1"
+  id           = rollout_header             # optional explicit HTML id
+}
+WCL
+  }
+
+  p "Every one of the four is optional, and each is a plain string that wdoc prints rather than computes. `reading_time` is not measured for you, and `updated` is not read from git — the block records what you tell it."
+
+  p "How much inline formatting survives depends on which part and which target. The kicker runs through the inline-pattern engine everywhere. The title does in HTML and Markdown, but the PDF backend takes it as plain text, so `**bold**` in a title prints with its asterisks. The meta line runs through the engine on no target at all: HTML escapes it, print draws it as plain text, and Markdown passes it out untouched. Keep markup out of all three and the question never arises."
+
+  h3 "The meta line"
+
+  p "`reading_time`, `updated` and `version` are not three separate fields on the page. They are three parts of one line, and the line is assembled from whichever of them you set, **in that order**, joined by the separator `\" · \"`. Set one and you get one part with no separator at all. Set none and there is no meta line."
+
+  table {
+    rows:
+      | "Fields set"                          | "The line" |
+      | "all three"                           | "`6 min read · 2026-08-07 · deploy-tool 2.1`" |
+      | "`updated` + `version`"               | "`2026-08-07 · deploy-tool 2.1`" |
+      | "`version` only"                      | "`deploy-tool 2.1`" |
+      | "none"                                | "no line is emitted" |
+
+  }
+
+  p "That separator is one shared fact, not three coincidences: HTML, Markdown and PDF all read the assembled line from the same function. A meta line reads identically in the browser, in the Markdown output and on the printed page. Only its wrapper differs."
+
+  h3 "A chapter header is the page h1"
+
+  p "The header emits `<h1 class=\"heading-1\">` for its title — the same shape an `h1` block emits, and for the same reason. The page-wide heading pass matches that shape, so a chapter header's title gets an anchor id derived from its text exactly as any other heading does. `\"Rolling out a release\"` became `id=\"rolling-out-a-release\"` in the excerpt at the top of this chapter, and another page links to it by writing that slug after a `#` — `[the rollout header](rollout#rolling-out-a-release)`."
+
+  p "The practical rule follows: **use `chapter_header` instead of `h1`, not as well as it.** Writing both gives the page two level-one headings, two anchor ids and two entries in every outline that reads them."
+
+  callout "The CSS knows about a subtitle; the block does not" {
+    class = ["note"]
+    body  = "The stylesheet carries a `.chapter-subtitle` rule and the content node carries a `subtitle` field, but `chapter_header` declares no such field. Writing one fails the build with `field 'subtitle' is not declared by schema 'ChapterHeader'`. The field is reachable only from a block of your own that lowers to `Content::ChapterHeader` — see [Writing your own blocks](wdoc_extending)."
+  }
+
+  h2 "Three blocks across the targets"
+
+  p "This is the comparison worth keeping. Build `apparatus.wcl` a second and a third time:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc markdown apparatus.wcl --out md
+wrote 1 page
+$ wcl wdoc pdf apparatus.wcl --out pdf
+wrote 1 pdf
+TEXT
+  }
+
+  p "`md/rollout.md`, in full:"
+
+  code markdown {
+    filename = "md/rollout.md"
+    source = <<'MD'
+_Chapter 3 · Operations_
+
+# Rolling out a release
+
+_6 min read · 2026-08-07 · deploy-tool 2.1_
+
+Drain the node before you restart it\[^drain\]. The scheduler needs 30 seconds\[^grace\].
+
+> [!WARNING]
+> **Check the queue depth**
+>
+> A **backed-up** queue means the drain will not finish. Watch `queue_depth` first.
+
+## Footnotes
+
+[^drain]: `drain` marks the node unschedulable and waits.
+
+[^grace]: The **grace period** is configurable.
+MD
+  }
+
+  p "And the same page as text out of the PDF:"
+
+  code text {
+    source = <<'TEXT'
+$ pdftotext pdf/manual.pdf -
+...
+Chapter 3 · Operations
+
+Rolling out a release
+6 min read · 2026-08-07 · deploy-tool 2.1
+Drain the node before you restart it[^drain]. The scheduler needs 30 seconds[^grace].
+Check the queue depth
+A backed-up queue means the drain will not finish. Watch queue_depth first.
+
+Footnotes
+drain. drain marks the node unschedulable and waits.
+grace. The grace period is configurable.
+TEXT
+  }
+
+  p "Read the three outputs against each other and the whole design shows through:"
+
+  table {
+    rows:
+      | "Block"           | "HTML"                                        | "Markdown"                          | "PDF" |
+      | "`callout`"       | "`<div class=\"callout warning\">` + icon + accent" | "`> [!WARNING]` alert blockquote" | "a box with the kind's accent, bold heading" |
+      | "`footnotes`"     | "`<ol>` numbered, `fn-`/`fnref-` anchors, `↩` back-links" | "`[^id]:` GFM definition lines" | "a level-2 heading, then `id. text` paragraphs" |
+      | "`[^id]` in prose" | "a numbered superscript link"                | "**escaped, left as text**"         | "**left as text**" |
+      | "`chapter_header`" | "`<header>` + kicker `<p>` + `<h1>` + meta `<p>`" | "`_kicker_`, `# title`, `_meta_`" | "a paragraph, a level-1 heading, a paragraph" |
+
+  }
+
+  p "Two rows of that table deserve a sentence each. The reference row is the one asymmetry in the whole chapter: definitions cross to Markdown as real GFM labels, and references do not cross at all. The inline engine that would have to rewrite them runs before the page's definitions are known, and it cannot tell `[^drain]` in prose from `[^0-9]` in a regex without them — the same fact that makes the HTML rewrite a separate, definition-driven pass. And the footnote row shows what the marker being an id really buys: the reader sees `1` in the browser, `[^drain]` in Markdown and `drain.` in print, from one declaration, because the number was never the thing being carried."
+
+  p "The `:skill` target shares the Markdown reading, so a skill folder gets the Markdown column. [Output targets](wdoc_outputs) covers all four."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Text and formatting](wdoc_formatting) — the inline-pattern engine a callout heading, a callout body and a footnote's text all run through."
+    li "[Icons](wdoc_icons) — the packs behind a callout's default glyph, and the `pack.name` an `icon` field takes."
+    li "[Themes and styling](wdoc_styling) — `class`, `accent`, and where a custom callout type gets its colour."
+    li "[Templates and layouts](wdoc_templates) — the pass that plants footnote links and heading anchors runs here."
+    li "[Output targets](wdoc_outputs) — the four backends this chapter kept comparing."
+    li "[Writing your own blocks](wdoc_extending) — lowering a block of your own to `Content::Callout` or `Content::ChapterHeader`."
+  }
+
+  footnotes {
+    footnote ir { text = "The union is closed and every backend matches it exhaustively, so a variant added to it is a compile error in three renderers rather than silence in three outputs." }
+    footnote sep { text = "A middle dot with a space either side. It is one shared function, not three copies — see [The meta line](#the-meta-line)." }
+  }
 }
