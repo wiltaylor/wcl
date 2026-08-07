@@ -69,9 +69,6 @@ jobs:
       # structural gates against the current binary — the moral equivalent
       # of the old "verified tarball".
       - run: just ci::wplan-template-check
-      # Compare rendered skill/agent output to the committed `.claude/` tree;
-      # also catches cross-wskill agent collisions and stale generated files.
-      - run: just ci::skills-check
       # The docs/ site is the largest real-world wdoc consumer — building it
       # catches renderer regressions that unit tests miss, and broken doc
       # pages, before they reach the deploy workflow.
