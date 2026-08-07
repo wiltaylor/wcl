@@ -15,19 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          # Full history: extract_releases.py derives .wad release data from
-          # git tags, and the wad-extract-check freshness gate re-runs it.
-          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: taiki-e/install-action@just
-      # uv runs the .wad extractor scripts (wad-extract-check).
-      # Pinned to an exact patch, unlike every other action here: setup-uv
-      # stopped publishing floating major tags after v7, so `@v9` doesn't
-      # resolve. Bump this literal when moving to a newer uv setup action.
-      - uses: astral-sh/setup-uv@v9.0.0
       # node + pnpm: crates/wcl's build.rs builds the `wcl editor` frontend
       # (editor-ui/ → embedded dist) when it is stale or missing.
       - uses: pnpm/action-setup@v6
@@ -46,20 +37,6 @@ jobs:
       - run: just ci::fmt-check
       - run: just ci::workspace-lint
       - run: just ci::workspace-test
-      # The WAD schema heredoc in the scaffold template is canonical — fail
-      # on drift between it and the live copy under .wad/.
-      - run: just ci::wad-schema-check
-      # The reference WAD (.wad/) is the first wcl-init-wad consumer —
-      # validate its model and build its book like docs-build below.
-      - run: just ci::wad-check
-      # Generated data freshness: re-run every extractor and fail if the
-      # committed .wad/data/generated/ lags reality.
-      - run: just ci::wad-extract-check
-      - run: just ci::wad-build
-      # The shipped wplan template must scaffold, check, and pass its
-      # structural gates against the current binary — the moral equivalent
-      # of the old "verified tarball".
-      - run: just ci::wplan-template-check
       # The docs/ sites are the largest real-world wdoc consumer — building
       # them catches renderer regressions that unit tests miss, and broken
       # doc pages, before they reach the deploy workflow. Same two

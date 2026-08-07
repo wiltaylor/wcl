@@ -3473,9 +3473,10 @@ fn duplicate_root_block_kind_same_namespace_errors() {
 
 // ─── Namespace-scoped resolution across files ─────────────────────
 //
-// Regression tests for the namespaced-schema bugs found by the `wad`
-// migration: a bare kind must prefer its own namespace's declaration
-// even when the declaration and the instance live in *different files*
+// Regression tests for the namespaced-schema bugs a multi-namespace
+// document model exposed: a bare kind must prefer its own namespace's
+// declaration even when the declaration and the instance live in
+// *different files*
 // (independent of root import order), and `connection` dispatch must
 // resolve endpoint types relative to the declaring file's namespace.
 

@@ -135,9 +135,10 @@ fn unresolvable_reflection_target_errors_instead_of_empty() {
 
 /// A gather field's element type must resolve in the namespace that DECLARED
 /// it, not the document root's. Two libraries may each declare a `Widget`
-/// (wdoc's diagram `container` shape and a WAD's C4 `container` are the real
-/// pair); resolving the WAD gather's `list<Widget>` from the root namespace
-/// answers whichever library happens to win the bare lookup, which silently
+/// (wdoc's diagram `container` shape and an `acme` C4 `container` are the
+/// real pair); resolving the `acme` gather's `list<Widget>` from the root
+/// namespace answers whichever library happens to win the bare lookup,
+/// which silently
 /// hands schema introspection the wrong type.
 #[test]
 fn field_types_resolve_in_their_declaring_namespace() {

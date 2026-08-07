@@ -1,5 +1,0 @@
-// View data hub — stakeholders, RACI rows, and ADRs.
-// Import one file per entry (or small group) below.
-namespace wcl.wad
-import "./overview.wcl"
-import "./articles.wcl"

@@ -1,4 +1,0 @@
-// View data hub — domain objects and glossary terms.
-// Import one file per entry (or small group) below.
-namespace wcl.wad
-import "./domain.wcl"

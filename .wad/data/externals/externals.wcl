@@ -1,5 +1,0 @@
-// External systems — third parties the toolchain integrates with as part
-// of its function. WCL currently has none: it is a self-contained toolchain.
-// Everything it merely runs, builds, or ships on — GitHub, Cloudflare,
-// crates.io — is infrastructure (view 5), not an external system.
-namespace wcl.wad

@@ -1709,7 +1709,7 @@ impl<'a> TypeField<'a> {
     /// declaration that owns it. Prefer this over
     /// `doc.resolve(field.type_ref())`, which resolves from the document's
     /// root namespace and so can answer a same-named type from another
-    /// namespace (`wdoc.Container` for a `wcl.wad` field typed `Container`).
+    /// namespace (`wdoc.Container` for an `acme` field typed `Container`).
     pub fn resolved_type(&self) -> ResolvedType<'a> {
         self.doc.resolve_in(&self.ast.ty, self.file_ns)
     }
