@@ -1,11 +1,512 @@
 // Chapter 37 — Trees, node tables and cards.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Every diagram on this page is live: the book renders the same blocks the
+// snippet beside it shows. Every claim was checked against a real build —
+// the HTML, the Markdown and the PDF targets — before it was written down.
+//
+// Each example is a live block followed by a hand-written `code wcl` copy
+// of the same source. That duplication is deliberate. A `demo` block would
+// remove it — it prints its children's source and renders them — but it
+// prints the *formatter's* layout, one field per line, which turns a
+// compact `tree_node "a.md" { icon = "file-text" }` into three lines and
+// teaches a shape nobody authors. It also renders every diagram twice, in
+// both palettes. Keep the pair in step by hand; edit both or neither.
+//
+// The `iconset` below is document-root state, not page content. It is here
+// so the tree demo draws real glyphs, and it is the same line the snippet
+// tells a reader to type. Declaring one twice in the book is harmless: the
+// first set that carries the glyph wins.
+iconset lucide {}
+
+// Backs the data-driven `node_table` demo, and is the same list its snippet
+// prints. A `let` is invisible to the document model, so it adds nothing to
+// the book but the rows it generates.
+let document_columns = [
+  { name: "id",         sql: "uuid primary key" },
+  { name: "slug",       sql: "text not null" },
+  { name: "updated_at", sql: "timestamptz" },
+]
+
 page wdoc_tree {
   title = "Trees, node tables and cards"
 
   h1 "Trees, node tables and cards"
 
-  p "Not written yet. This chapter covers `tree` and `tree_node`, `node_table` and `node_row`, and the `card` shape."
+  p "Three diagram shapes hold **content** rather than geometry. A `tree` draws an indented file-explorer view of nested nodes. A `node_table` draws a titled box of rows, each row a connection target of its own. A `card` draws one box whose body is arbitrary wdoc content. This chapter covers all three together. One question separates them: what does the renderer measure? No single shape shows you the answer."
+
+  p "All three are `@block(…) extends SvgBlock`. Each is a child of a `diagram` or a `container`, placed by `x` / `y` or by anchors, and connectable by edges. All three are also `@native`: their output is not expressible as a WCL lowering, so Rust draws them. [Writing your own blocks](wdoc_extending) covers what `@native` means for a block you declare yourself."
+
+  p "Every example below was built before it was written down. Type them and compare."
+
+  h2 "One document to run them in"
+
+  p "Save this as `shapes.wcl` and build it with `wcl wdoc build shapes.wcl --out _site`. It is the frame every later snippet drops into — replace the `diagram` and rebuild."
+
+  code wcl {
+    filename = "shapes.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+# Tree-node icons resolve through a declared iconset, never straight from
+# a bundled pack. `iconset lucide {}` names the pack after itself.
+iconset lucide {}
+
+site shapes {
+  title            = "Shapes"
+  default_template = :book
+
+  toc {
+    chapter "Shapes" { page = shapes_page }
+  }
+}
+
+page shapes_page {
+  title = "Shapes"
+
+  h1 "Shapes"
+
+  diagram { width = 360  height = 180
+    tree {
+      tree_node "site/" {
+        icon = "folder"
+        tree_node "index.md" { icon = "file-text" }
+        tree_node "about.md" { icon = "file-text" }
+      }
+      tree_node "config.toml" { icon = "settings" }
+    }
+  }
+}
+WCL
+  }
+
+  p "That builds one page holding one tree. The rest of this chapter changes only the `diagram` block."
+
+  h2 "The tree shape"
+
+  p "A `tree` renders one row per `tree_node`, indented by depth, with ├─ └─ │ connector guides drawn between a parent and its children. A node's label is its positional slot, so `tree_node \"about.md\"` is the whole declaration of a leaf. Nodes nest to any depth."
+
+  diagram { width = 380  height = 200
+    tree {
+      tree_node "site/" {
+        icon  = "folder"
+        color = "#88c0d0"
+        tree_node "content/" {
+          icon = "folder"
+          tree_node "index.md" { icon = "file-text" }
+          tree_node "about.md" { icon = "file-text" }
+        }
+        tree_node "static/" {
+          icon = "folder"
+          tree_node "logo.svg" { icon = "image" }
+        }
+      }
+      tree_node "config.toml" { icon = "settings" }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 380  height = 200
+  tree {
+    tree_node "site/" {
+      icon  = "folder"
+      color = "#88c0d0"
+      tree_node "content/" {
+        icon = "folder"
+        tree_node "index.md" { icon = "file-text" }
+        tree_node "about.md" { icon = "file-text" }
+      }
+      tree_node "static/" {
+        icon = "folder"
+        tree_node "logo.svg" { icon = "image" }
+      }
+    }
+    tree_node "config.toml" { icon = "settings" }
+  }
+}
+WCL
+  }
+
+  h3 "How a tree is measured"
+
+  p "A tree flattens to rows in **pre-order** — a node, then its children, then the next sibling — and every row is exactly `row_height` tall. From that, two numbers follow."
+
+  list {
+    li "**The height is derived, never authored.** It is the flattened node count times `row_height`. The tree above holds seven nodes at the default 24, so it is 168 units tall. A `height` field does not exist on `tree`; setting one is a schema violation."
+    li "**A row is a fixed box, not a measured one.** The renderer cannot measure text. A long label overflows its row instead of growing it. Raise `row_height`, or shorten the label."
+  }
+
+  p "Width is the ordinary shape question: `width` (default 280) or the `anchor_*` insets, exactly as for a `rect`. Depth costs `indent` units per level (default 18), which is horizontal only — depth never changes a row's height."
+
+  p "Top-level nodes draw no connector at all. The guides start one level in. A guide is the line from a parent to its children, and a top-level node has no parent inside the tree."
+
+  h3 "Icons and colour"
+
+  p "A node's `icon` names a glyph, and a glyph resolves only through a **declared `iconset`**. Declare none, and `icon = \"folder\"` draws nothing. The renderer reserves the space only after the glyph resolves. The row then reads exactly as if you never wrote `icon` — no gap, no placeholder, nothing to see. Check the `iconset` first when a tree comes out bare. Name a set with `icon_set`, or let the first declared set that carries the glyph win. [Icons](wdoc_icons) covers declaring sets and the bundled packs."
+
+  p "A node's `color` is any CSS colour and paints **that node's** label and icon. It is not inherited: in the tree above, `site/` is blue and its children are not. Colour every node you want coloured."
+
+  callout "Two class fields, two targets" {
+    class = ["note"]
+    body  = "`class` on the `tree` is added to **every** node's label. `class` on a `tree_node` is added to that node's label only. Both stack on top of the built-in `wdoc-tree-label` class, so your rules win by ordinary CSS specificity. The connector guides carry `wdoc-tree-guide` and take no user classes at all. [Themes and styling](wdoc_styling) covers declaring the rules."
+  }
+
+  h3 "Connecting to a node"
+
+  p "Give a node an `id` and it becomes an edge target of its own. The tree registers each id'd node as a sub-shape, whose box is that node's row across the full tree width. An ordinary `a -> b` connection statement then lands on the row."
+
+  diagram { width = 520  height = 150  routing = :straight
+    tree {
+      tree_node "static/" {
+        icon = "folder"
+        tree_node "logo.svg"  { id = logo  icon = "image" }
+        tree_node "print.css" { icon = "file-code" }
+      }
+    }
+    card { id = note  x = 340.0  y = 24.0  width = 150.0  height = 56.0
+      p "Copied verbatim."
+    }
+    note -> logo
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 520  height = 150  routing = :straight
+  tree {
+    tree_node "static/" {
+      icon = "folder"
+      tree_node "logo.svg"  { id = logo  icon = "image" }
+      tree_node "print.css" { icon = "file-code" }
+    }
+  }
+  card { id = note  x = 340.0  y = 24.0  width = 150.0  height = 56.0
+    p "Copied verbatim."
+  }
+  note -> logo
+}
+WCL
+  }
+
+  p "A node exposes **west and east only**, and that is not configurable — `tree_node` declares no `connect_points` field. The geometry is the reason. A row spans the tree's whole width and sits flush against its neighbours. A north or south attachment would land on the row above or below. The `tree` block does carry `connect_points`, and those sides govern edges aimed at the tree as a whole."
+
+  h3 "tree and tree_node fields"
+
+  table {
+    rows:
+      | "`tree` field" | "Type" | "Default" | "Meaning" |
+      | "`x`, `y`"          | "`f64`"                | "`0.0`"     | "Top-left placement in the diagram." |
+      | "`width`"           | "`f64`"                | "`280.0`"   | "Tree width. There is no `height` — it is derived." |
+      | "`anchor_left`, `anchor_right`, `anchor_top`, `anchor_bottom`" | "`f64?`" | "—" | "Anchor insets, as on any shape." |
+      | "`row_height`"      | "`f64`"                | "`24.0`"    | "Height of every node row." |
+      | "`indent`"          | "`f64`"                | "`18.0`"    | "Horizontal indent added per depth level." |
+      | "`id`"              | "`identifier?`"        | "—"         | "Edge target for the whole tree." |
+      | "`class`"           | "`list<utf8>?`"        | "—"         | "Classes added to every node's label." |
+      | "`connect_points`"  | "`list<AnchorSide>?`"  | "all four"  | "Sides the whole tree attaches edges on." |
+      | "`nodes`"           | "`@children(\"tree_node\")`" | "—"   | "The top-level nodes, top to bottom." |
+  }
+
+  table {
+    rows:
+      | "`tree_node` field" | "Type" | "Default" | "Meaning" |
+      | "`title`"    | "`utf8`, `@inline(0)`"        | "—" | "The label — the node's positional slot." |
+      | "`icon`"     | "`utf8?`"                     | "—" | "Glyph name, resolved through a declared `iconset`." |
+      | "`icon_set`" | "`utf8?`"                     | "—" | "Which declared set to draw `icon` from." |
+      | "`color`"    | "`utf8?`"                     | "—" | "CSS colour for this node's label and icon." |
+      | "`id`"       | "`identifier?`"               | "—" | "Edge target for this node's row." |
+      | "`class`"    | "`list<utf8>?`"               | "—" | "Classes added to this node's label." |
+      | "`children`" | "`@children(\"tree_node\")`"  | "—" | "Nodes nested under this one." |
+  }
+
+  p "Nesting is capped at 64 levels as a backstop against a pathological tree; anything deeper is dropped rather than drawn."
+
+  h2 "The node_table shape"
+
+  p "A `node_table` is an optional title over a stack of rows. Each row holds arbitrary wdoc content and exposes its **own** connection points. An edge therefore attaches to one row — a foreign-key column, a class field — instead of to the whole box. That is what makes it the shape for ER diagrams and UML class diagrams."
+
+  diagram { width = 480  height = 170  routing = :straight
+    node_table { id = doc
+      x = 10.0  y = 10.0  width = 170.0
+      title = "document"
+      node_row { id = doc_id   p "`id` uuid PK" }
+      node_row { id = doc_slug p "`slug` text" }
+    }
+    node_table { id = rev
+      x = 290.0  y = 10.0  width = 170.0
+      title = "revision"
+      node_row { id = rev_id  p "`id` uuid PK" }
+      node_row { id = rev_doc
+        connect_points = [:west]
+        p "`document_id` uuid FK"
+      }
+    }
+    rev_doc -> doc_id :data
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 480  height = 170  routing = :straight
+  node_table { id = doc
+    x = 10.0  y = 10.0  width = 170.0
+    title = "document"
+    node_row { id = doc_id   p "`id` uuid PK" }
+    node_row { id = doc_slug p "`slug` text" }
+  }
+  node_table { id = rev
+    x = 290.0  y = 10.0  width = 170.0
+    title = "revision"
+    node_row { id = rev_id  p "`id` uuid PK" }
+    node_row { id = rev_doc
+      connect_points = [:west]
+      p "`document_id` uuid FK"
+    }
+  }
+  rev_doc -> doc_id :data
+}
+WCL
+  }
+
+  p "The edge is written `rev_doc -> doc_id`, naming two **rows**, not two tables. Both ends are ordinary connection statements — [Connections and routing](wdoc_diagram_connections) covers the grammar, the kinds and the routing modes."
+
+  h3 "Rows, ports and where an edge lands"
+
+  p "The small dots beside the rows are not decoration. A row draws one **port** marker per exposed side, at exactly the point an edge attaches, from the same list the router reads. Marker and anchor cannot disagree, so what you see is where an arrow will land."
+
+  p "A row exposes `[:west, :east]` unless you say otherwise. The `revision` foreign-key row above sets `connect_points = [:west]` and grows one dot instead of two. The right-hand side stops being an attachment point at the moment it stops being drawn."
+
+  p "Height works as it does for a tree, with one extra term. A table is `header_height` (28, counted only when a `title` is set) plus one `row_height` (30) per row. The `document` table above is 28 + 2 × 30 = 88 units tall. Omit `title` and the header vanishes along with its 28 units, which is the shape you want for a plain list of connectable rows."
+
+  callout "A row with no content draws no box" {
+    class = ["warning"]
+    body  = "A row's body is rendered first, and an empty result is skipped: `node_row { id = spacer }` emits no content box at all. Its **ports still appear**, and an edge aimed at it still resolves. An accidentally-empty row therefore reads as a gap in the table, with dots floating beside it. If a row is meant to be blank, say so with `p \" \"` rather than leaving the body out."
+  }
+
+  h3 "node_table and node_row fields"
+
+  table {
+    rows:
+      | "`node_table` field" | "Type" | "Default" | "Meaning" |
+      | "`x`, `y`"          | "`f64`"                | "`0.0`"    | "Top-left placement in the diagram." |
+      | "`width`"           | "`f64`"                | "`200.0`"  | "Table width. There is no `height` — it is derived." |
+      | "`anchor_left`, `anchor_right`, `anchor_top`, `anchor_bottom`" | "`f64?`" | "—" | "Anchor insets, as on any shape." |
+      | "`title`"           | "`utf8?`"              | "—"        | "Header text. Omit it for a header-less table." |
+      | "`header_height`"   | "`f64`"                | "`28.0`"   | "Header height, counted only when `title` is set." |
+      | "`row_height`"      | "`f64`"                | "`30.0`"   | "Height of every row." |
+      | "`id`"              | "`identifier?`"        | "—"        | "Edge target for the whole table." |
+      | "`class`"           | "`list<utf8>?`"        | "—"        | "Classes added to the frame." |
+      | "`connect_points`"  | "`list<AnchorSide>?`"  | "all four" | "Sides the whole table attaches edges on." |
+      | "`rows`"            | "`@children(\"node_row\")`" | "—"   | "The rows, top to bottom." |
+  }
+
+  table {
+    rows:
+      | "`node_row` field" | "Type" | "Default" | "Meaning" |
+      | "`id`"             | "`identifier?`"       | "—"                | "Edge target for this row." |
+      | "`class`"          | "`list<utf8>?`"       | "—"                | "Classes added to this row's content box." |
+      | "`connect_points`" | "`list<AnchorSide>?`" | "`[:west, :east]`" | "Sides this row exposes a port and an anchor on." |
+      | "`body`"           | "`@children(ContentBlock)`" | "—"          | "The row's content — paragraphs, code, lists." |
+  }
+
+  h3 "Rows from data"
+
+  p "A schema you already hold as data should not be retyped as literal rows. A `node_table` expands a `wdoc_repeater` in place. That makes the headline case ordinary: one row per column of a table the document already describes. A `tree`'s nodes expand the same way."
+
+  diagram { width = 320  height = 180
+    node_table { x = 10.0  y = 10.0  width = 240.0
+      title = "document"
+      wdoc_repeater { each = document_columns  as = :col
+        node_row { p $"`${col.name}` — ${col.sql}" }
+      }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+# A list you already have, wherever it comes from.
+let document_columns = [
+  { name: "id",         sql: "uuid primary key" },
+  { name: "slug",       sql: "text not null" },
+  { name: "updated_at", sql: "timestamptz" },
+]
+
+diagram { width = 320  height = 180
+  node_table { x = 10.0  y = 10.0  width = 240.0
+    title = "document"
+    wdoc_repeater { each = document_columns  as = :col
+      node_row { p $"`${col.name}` — ${col.sql}" }
+    }
+  }
+}
+WCL
+  }
+
+  p "Literal rows and generated rows mix freely, in source order. [Data views](wdoc_data_views) covers `wdoc_repeater`, its `as` binding and the components that build on it."
+
+  h2 "The card shape"
+
+  p "A `card` is one box whose body is arbitrary wdoc content — prose with inline formatting, lists, code, callouts, even a nested `diagram`. Where a `node_table` is a stack of small content boxes, a card is a single large one."
+
+  diagram { width = 420  height = 190
+    card { x = 10.0  y = 10.0  width = 250.0  height = 160.0
+      title = "Release checklist"
+      p "Everything a **card** body may hold:"
+      list {
+        li "inline `code` and _emphasis_"
+        li "lists, like this one"
+      }
+      callout "Even a callout" {
+        class = ["note"]
+        body  = "Nested content, inside a diagram shape."
+      }
+    }
+  }
+
+  code wcl {
+    source = <<'WCL'
+diagram { width = 420  height = 190
+  card { x = 10.0  y = 10.0  width = 250.0  height = 160.0
+    title = "Release checklist"
+    p "Everything a **card** body may hold:"
+    list {
+      li "inline `code` and _emphasis_"
+      li "lists, like this one"
+    }
+    callout "Even a callout" {
+      class = ["note"]
+      body  = "Nested content, inside a diagram shape."
+    }
+  }
+}
+WCL
+  }
+
+  p "A card is the one shape of the three whose size you author outright: `width` (default 160) and `height` (default 90) are both fields, because there are no rows to count. Nothing measures the body, so content that does not fit is clipped. Size the card for its content."
+
+  p "`title` is **plain text**, not a content block — it renders as a bold line above the body and takes no inline markup. Put anything richer in the body as an ordinary heading or paragraph."
+
+  callout "An empty card renders nothing" {
+    class = ["warning"]
+    body  = "A card with neither a `title` nor a body that produces output emits no SVG at all — not an empty box. `card { x = 0.0  y = 0.0 }` is invisible. The card still counts for the diagram's viewBox fit, so the symptom is a diagram with unexplained empty space rather than a build error."
+  }
+
+  h3 "card fields"
+
+  table {
+    rows:
+      | "`card` field" | "Type" | "Default" | "Meaning" |
+      | "`x`, `y`"         | "`f64`"                | "`0.0`"    | "Top-left placement in the diagram." |
+      | "`width`"          | "`f64`"                | "`160.0`"  | "Card width." |
+      | "`height`"         | "`f64`"                | "`90.0`"   | "Card height — authored, not derived." |
+      | "`anchor_left`, `anchor_right`, `anchor_top`, `anchor_bottom`" | "`f64?`" | "—" | "Anchor insets, as on any shape." |
+      | "`title`"          | "`utf8?`"              | "—"        | "Plain-text heading above the body." |
+      | "`id`"             | "`identifier?`"        | "—"        | "Edge target for the card." |
+      | "`class`"          | "`list<utf8>?`"        | "—"        | "Classes added to the card box." |
+      | "`connect_points`" | "`list<AnchorSide>?`"  | "all four" | "Sides the card attaches edges on." |
+      | "`on`"             | "`utf8?`"              | "—"        | "ISO date, read only when the card is a `timeline` child." |
+      | "`side`"           | "`symbol?`"            | "—"        | "`:near` / `:far` / `:auto`, read only on a `timeline`." |
+      | "`body`"           | "`@children(ContentBlock)`" | "—"   | "The card's content." |
+  }
+
+  p "`on` and `side` are the card's second job. A `timeline` reads them off each card child and places the card against its axis instead of at `x` / `y`. That is why a rich timeline event is written as a card. [Timelines and dopesheets](wdoc_timelines) covers that placement; everywhere else the two fields are ignored."
+
+  h2 "Choosing between the three"
+
+  p "The three shapes overlap enough to be confusable and differ in ways no single page about one of them can show. This is the comparison."
+
+  table {
+    rows:
+      | "Question"                    | "`tree`"                            | "`node_table`"                              | "`card`" |
+      | "What one row holds"          | "A label, an icon, a colour"        | "Any `ContentBlock`s"                       | "Any `ContentBlock`s — one row, the whole box" |
+      | "Drawn as"                    | "SVG text, lines and glyphs"        | "SVG frame around HTML rows"                | "HTML in one box" |
+      | "Height"                      | "Derived: nodes × `row_height`"     | "Derived: header + rows × `row_height`"     | "Authored: `height`" |
+      | "Structure"                   | "Nests to any depth"                | "One flat stack"                            | "One box; the content nests" |
+      | "Edge can target"             | "The tree, or any node with an `id`"| "The table, or any row with an `id`"        | "The card" |
+      | "Sub-part attach sides"       | "West and east, fixed"              | "Per-row `connect_points`"                  | "Not applicable" |
+      | "Visible ports"               | "None"                              | "One dot per exposed side, per row"         | "None" |
+      | "Survives a PDF build"        | "Yes — it is SVG"                   | "No — rows go blank"                        | "Yes — repainted natively" |
+  }
+
+  p "Read the **Drawn as** row together with the **Survives a PDF build** row: they are one fact seen twice. A tree draws SVG primitives, so every target reproduces it unchanged. A `node_table` row and a `card` body are HTML, and the next section is about what happens to HTML inside an SVG."
+
+  h2 "Why a card body is HTML"
+
+  p "A card body, a `node_table` row body and a `node_table` title are all HTML. Each one sits in an SVG `<foreignObject>`, so the browser lays it out in place. Nothing in that sentence mentions the build's output target — and that is deliberate. **The block renderer that draws a card body is the HTML one, in every build.** A PDF build's diagram still calls it. A Markdown build's diagram still calls it."
+
+  h3 "Two backends are checked, not one"
+
+  p "That has a consequence a `@native` block cannot ignore. A native block declares which targets implement it, and using it on a target that does not is a build error. [Visibility](wdoc_visibility) covers `@native` coverage and the `@except` waiver. Inside a card, **two** targets have to cover the block, because two are involved:"
+
+  list {
+    li "the **renderer** actually running, which for a card body is always `:html`;"
+    li "the **output** the build is producing — `:html`, `:pdf`, `:markdown` or `:skill`."
+  }
+
+  p "The `file` block is the case that makes the difference visible. `file` ships an asset into the output folder, and a PDF has no output folder beside it. So `file` is native on `:html`, `:markdown` and `:skill` — never `:pdf`. Drop one into the card in `shapes.wcl` and build to PDF:"
+
+  code wcl {
+    filename = "shapes.wcl"
+    source = <<'WCL'
+diagram { width = 300  height = 140
+  card { x = 10.0  y = 10.0  width = 260.0  height = 110.0
+    title = "Note"
+    p "Body text."
+    file "notes.txt" { as = "download" }
+  }
+}
+WCL
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc pdf shapes.wcl --out out
+wcl::eval::user_error
+
+  × error: `file` has no :pdf implementation (it is native
+  │ on :html, :markdown, :skill); remove the block or waive it here with
+  │ `@except(backends = [:pdf])`
+    ╭─[shapes.wcl:25:7]
+ 24 │       p "Body text."
+ 25 │       file "notes.txt" { as = "download" }
+    ·       ──────────────────┬─────────────────
+    ·                         ╰── error raised here
+ 26 │     }
+    ╰────
+TEXT
+  }
+
+  p "The renderer accepts the block: `file` is native on `:html`. The output refuses it. A build that asked only the renderer would ship a PDF linking to a file it never wrote. Build the same page to HTML and it passes, because there the two questions share one answer."
+
+  h3 "What each target really shows"
+
+  p "The three targets embed the diagram differently, and a card body follows the SVG wherever it goes."
+
+  table {
+    rows:
+      | "Target" | "How the diagram arrives" | "What becomes of a card body" | "What becomes of a node_table row" |
+      | "HTML"     | "Inline `<svg>` in the page"      | "Rendered HTML, live"                    | "Rendered HTML, live" |
+      | "Markdown" | "An `.svg` file, referenced as an image" | "Carried inside the SVG, verbatim" | "Carried inside the SVG, verbatim" |
+      | "PDF"      | "The SVG rasterised into the page"| "Repainted natively over an empty box"   | "Lost — an empty box remains" |
+  }
+
+  p "Markdown is the plainest illustration of the rule. The diagram becomes an image reference to `_wdoc/<page>-diagram-1.svg`, and that `.svg` file holds the card's `<p>` elements exactly as the HTML build wrote them. A browser opening the image renders them; a Markdown viewer that only rasterises may not. The HTML is in the file either way."
+
+  p "PDF is where the two shapes part company. The PDF backend cannot draw a `<foreignObject>` at all. It replaces every one with a plain rounded box, then re-collects each **card**'s title and body and paints them natively on top. Nothing does that for a `node_table`, so its rows and its title come out blank."
+
+  callout "Mixing a card with another content shape can cost you the card too" {
+    class = ["warning"]
+    body  = "The PDF card overlay pairs boxes with cards by position, and proceeds only when the counts match exactly. A diagram holding a `card` **and** a `node_table` carries more boxes than cards. The pass gives up, embeds the plain SVG, and the card body goes blank beside the table's rows. A card in a `diagram` of its own keeps its body. The table loses its rows either way — that is the row above, not this warning."
+  }
+
+  p "None of this touches a `tree`. Its rows are `<text>`, its guides are `<line>` and its icons are `<use>` — SVG all the way down, on every target. That is the whole reason it is worth having a shape that gives up rich content to keep it."
+
+  h2 "Where to go next"
+
+  list {
+    li "[The diagram canvas](wdoc_diagrams) — the `diagram` block, its layout modes, and the primitive shapes these three sit beside."
+    li "[Connections and routing](wdoc_diagram_connections) — the `a -> b` statement, anchors, routing modes and edge labels."
+    li "[Icons](wdoc_icons) — declaring an `iconset`, the bundled packs, and what `icon_set` picks between."
+    li "[Timelines and dopesheets](wdoc_timelines) — where a card's `on` and `side` fields are read."
+    li "[Data views](wdoc_data_views) — `wdoc_repeater` and the components that generate rows and nodes."
+    li "[Output targets](wdoc_outputs) — the four backends and what each one does with a page."
+    li "[Writing your own blocks](wdoc_extending) — `lower` against `@native`, and which one a new shape wants."
+  }
 }
