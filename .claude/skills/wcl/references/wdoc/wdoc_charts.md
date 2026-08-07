@@ -124,8 +124,8 @@ diagram { width = 240  height = 240
 ```
 
 The chart draws the slices clockwise from the top, in declaration order, as 48-segment polygon
-arcs — there is no arc primitive. Each slice's share is its `value` over the total, so the values need no
-normalising: raw counts work.
+arcs — there is no arc primitive. Each slice's share is its `value` over the total, so the
+values need no normalising. Raw counts work.
 
 The slice label sits inside the slice. There is no legend and no percentage; write the number
 into the label if a reader needs it.

@@ -168,8 +168,8 @@ diagram { width = 320  height = 200  routing = :straight  layout = :radial  hub 
 Use `:straight` with `:radial` and `:force`, where the picture is a graph and the bends of elbow
 routing add nothing. Keep `:elbow` for flowcharts and box-and-line architecture diagrams.
 
-`edge_separation` (default 4) is the nudge step that pulls overlapping parallel elbow paths
-apart, so two edges over the same route stay legible. It has no effect under `:straight`.
+`edge_separation` (default 4) is the step that pulls overlapping parallel elbow paths apart, so
+two edges over the same route stay legible. It has no effect under `:straight`.
 
 ## Arrowheads and labels
 
@@ -192,8 +192,9 @@ class "wdoc-edge-label" { css = "font-weight: 600;" }
   on every one of them.
 - Endpoint ids are bare identifiers in a `->` statement (`a -> b`) and **quoted strings** in an
   `edges` record (`source: "a"`).
-- `a -> a` in a diagram draws a degenerate zero-length arrow. Diagram edges have no self-loop.
-  Use a `state_diagram` transition or a `sequence_diagram` message for that — both draw a real
-  loop.
+- `a -> a` draws a real self-loop: an elbow path out of one side of the shape and back into
+  another. One case defeats it. The shape may already carry two or more other edges
+  toward one side. Those edges then share one anchor, that anchor takes both ends of the loop,
+  and the loop collapses to a zero-length path. Nothing on the shape overrides it.
 - A dropped edge is a warning, not an error. Read the build output.
 - Kind styling is yours to write. Do not expect `:flow` to look different by itself.

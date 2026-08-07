@@ -69,7 +69,7 @@ diagram { width = 260  height = 90
 `layout = :layered` on the diagram ranks the shapes topologically from the edge graph, then
 elbow-routes the arrows.
 
-| Knob | Meaning |
+| Field | Meaning |
 | --- | --- |
 | `direction` | `:top_to_bottom` (default) or `:left_to_right`. |
 | `layer_gap` | Spacing between ranks. |
@@ -107,12 +107,13 @@ layout.
 
 ## Swimlanes
 
-wdoc has no swimlane block. You compose one: draw each lane as a translucent `rect` band, name
-it with a `label`, and place the nodes inside their lane with `x` / `y`. The lanes are ordinary
-shapes, so everything else keeps working — icons, decisions, boundaries, edges that cross lanes.
+wdoc has no swimlane block. You compose one from three parts. Draw each lane as a translucent
+`rect` band. Name it with a `label`. Place the nodes inside their lane with `x` / `y`. The lanes
+are ordinary shapes, so everything else keeps working — icons, decisions, boundaries, and edges
+that cross lanes.
 
 Composing lanes means placing by hand, so **do not set an auto-layout on a swimlane diagram**.
-Leave `layout` at its default and keep `routing = :elbow`, which is what makes a lane-crossing
+Leave `layout` at its default. Keep `routing = :elbow`, which is what makes a lane-crossing
 arrow read as a right-angled hand-off.
 
 Use a translucent grey for the bands (`"#7f7f7f14"` and `"#7f7f7f2e"`), so they read on light

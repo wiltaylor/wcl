@@ -32,7 +32,7 @@ has its own reference:
 `sequence_diagram` and `state_diagram` are the exception: they are page blocks of their own, not
 diagram shapes. See [`wdoc_sequence_state.md`](wdoc_sequence_state.md).
 
-## Numbers: the one mistake to avoid
+## Integer and decimal fields
 
 `diagram.width` and `diagram.height` are `i64`. Every shape coordinate is `f64`.
 
@@ -63,12 +63,12 @@ The same rule holds for every other `i64` field: `columns`, `seed`, `iterations`
 | `desc` | `utf8?` | Accessible name — becomes `<title>` plus `role="img"` and `aria-label`. |
 | `layout` | `symbol?` | `:free` (default) / `:grid` / `:layered` / `:force` / `:radial`. |
 | `routing` | `symbol?` | Edge routing: `:elbow` (default) / `:straight`. |
-| `edge_separation` | `f64?` | Nudge step that separates parallel edges (default 4). |
+| `edge_separation` | `f64?` | Step that separates parallel edges (default 4). |
 | `pan_zoom` | `bool?` | Wrap the SVG in an interactive pan and zoom viewport. |
 | `zoom_min` / `zoom_max` | `f64?` | Zoom clamp (defaults 1.0 and 4.0). `1.0` is the fitted view. |
 | `pan_margin` | `f64?` | Extra overscroll past the content bounds, in px (default 0). |
 
-The per-layout knobs (`columns`, `cell_width`, `layer_gap`, `repulsion`, `hub`, …) are listed
+The per-layout fields (`columns`, `cell_width`, `layer_gap`, `repulsion`, `hub`, …) are listed
 with their layout mode below. Routing, edges and `connect_points` belong to
 [`wdoc_diagram_connections.md`](wdoc_diagram_connections.md).
 
@@ -81,7 +81,7 @@ Give every diagram a `desc`. Without one, a screen reader announces nothing at a
 
 ## Placing a shape
 
-Two ways, and they combine per axis.
+There are two ways to place a shape. They combine per axis.
 
 **Coordinates.** `x` / `y` are the top-left corner, in canvas units. `circle` uses `cx` / `cy`
 for its centre instead, and `line` uses `x1` / `y1` / `x2` / `y2`.
@@ -119,7 +119,7 @@ diagram { width = 200  height = 90
 }
 ```
 
-`x`, `y`, `width`, `height`, `fill`, `stroke`. The workhorse box.
+`x`, `y`, `width`, `height`, `fill`, `stroke`. This is the box shape you reach for first.
 
 ### circle
 
@@ -129,8 +129,8 @@ diagram { width = 200  height = 100
 }
 ```
 
-`cx`, `cy`, `r`, `fill`, `stroke`. Positioned by its centre. An edge to a circle attaches on
-the circle boundary rather than a bounding-box side.
+`cx`, `cy`, `r`, `fill`, `stroke`. A circle is positioned by its centre. An edge to a circle
+attaches on the circle boundary rather than a bounding-box side.
 
 ### line
 
@@ -140,8 +140,8 @@ diagram { width = 200  height = 80
 }
 ```
 
-`x1`, `y1`, `x2`, `y2`, `stroke`. A bare segment with no arrowhead. For an arrow between two
-shapes, use an edge (`a -> b`), not a `line`.
+`x1`, `y1`, `x2`, `y2`, `stroke`. A line is a bare segment with no arrowhead. For an arrow
+between two shapes, use an edge (`a -> b`), not a `line`.
 
 ### label
 
@@ -154,8 +154,8 @@ diagram { width = 200  height = 60
 The text is the inline label. `x` / `y` position it, `fill` colours it. Named `label`, not
 `text`, because `text` is the page-level prose block.
 
-Omit `font_size` and give `fit_width` / `fit_height` instead: the renderer then picks a size
-that fits the text inside that region. Every stdlib shape labels itself this way, which is why
+Omit `font_size`. Give `fit_width` / `fit_height` instead. The renderer then picks a size that
+fits the text inside that region. Every stdlib shape labels itself this way, which is why
 a long label shrinks rather than overflowing.
 
 ### polygon
@@ -166,8 +166,9 @@ diagram { width = 200  height = 100
 }
 ```
 
-`points` is a space-separated list of `x,y` pairs, as one string. Closed and filled. There is
-no ellipse primitive — the stdlib `terminator` approximates one with a 40-point polygon.
+`points` is a space-separated list of `x,y` pairs, as one string. The renderer closes and fills
+the shape. There is no ellipse primitive. The stdlib `terminator` approximates one with a
+40-point polygon.
 
 ### image
 
@@ -204,7 +205,7 @@ diagram { width = 240  height = 130
 - `padding` insets the children from that chrome and grows the outer box by `2 * padding`.
 - The container **auto-fits its content** under `:grid` and `:layered`. A declared `width` /
   `height` is a minimum, never a ceiling.
-- A container runs its own `layout` over its children, and takes the same layout knobs the
+- A container runs its own `layout` over its children, and takes the same layout fields the
   diagram does. Nest them freely.
 - The chrome is **not** an obstacle. Edges route straight through it.
 
@@ -270,7 +271,7 @@ diagram { width = 260  height = 130  layout = :grid
 }
 ```
 
-Knobs: `columns`, `cell_width`, `cell_height`, `gap`. Each child receives the cell size as its
+Fields: `columns`, `cell_width`, `cell_height`, `gap`. Each child receives the cell size as its
 parent box, so an anchored child stretches to the cell.
 
 ### :layered
@@ -285,7 +286,7 @@ diagram { width = 320  height = 220  layout = :layered  layer_gap = 22.0
 }
 ```
 
-Knobs: `direction` (`:top_to_bottom` default, or `:left_to_right`), `layer_gap` between ranks,
+Fields: `direction` (`:top_to_bottom` default, or `:left_to_right`), `layer_gap` between ranks,
 `node_gap` within a rank. This is the flowchart layout — see
 [`wdoc_flowcharts.md`](wdoc_flowcharts.md).
 
@@ -304,9 +305,9 @@ diagram { width = 320  height = 240  layout = :force  routing = :straight
 }
 ```
 
-Knobs: `iterations` (300), `repulsion` (9000), `link_distance` (60), `gravity` (0.05), `seed`
-(1). The solver is **deterministic for a given seed** — a rebuild reproduces the same picture,
-and changing `seed` re-rolls the arrangement. Best for cyclic or undirected graphs with no
+Fields: `iterations` (300), `repulsion` (9000), `link_distance` (60), `gravity` (0.05), `seed`
+(1). The solver is **deterministic for a given seed**. A rebuild reproduces the same picture,
+and a new `seed` gives a new arrangement. Best for cyclic or undirected graphs with no
 natural rank.
 
 ### :radial
@@ -323,7 +324,7 @@ diagram { width = 360  height = 300  layout = :radial  hub = api  routing = :str
 }
 ```
 
-Knobs: `hub` (defaults to the highest-degree shape), `radius` (auto-fit), `ring_gap` (120 per
+Fields: `hub` (defaults to the highest-degree shape), `radius` (auto-fit), `ring_gap` (120 per
 outer ring), `start_angle` in radians (`-PI/2`, i.e. top), `node_gap` as the minimum gap
 between ring neighbours. A shape's ring is its graph distance from the hub. Pair it with
 `routing = :straight` for clean spokes.
