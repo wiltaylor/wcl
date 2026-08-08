@@ -54,7 +54,7 @@ Documents and presentation:
 - [`wdoc_websites.md`](references/wdoc/wdoc_websites.md) — the website template, named slots and the slot contract, head assets, the assets folder.
 - [`wdoc_presentations.md`](references/wdoc/wdoc_presentations.md) — `deck`, `section`, `slide`, `fragment` and `notes`, and how a deck builds on each target.
 - [`wdoc_styling.md`](references/wdoc/wdoc_styling.md) — `theme` and `palette`, the built-in themes, the style rule vocabulary, scoped palettes.
-- [`wdoc_visibility.md`](references/wdoc/wdoc_visibility.md) — `@only` and `@except`, the backends and sites axes, how the two axes interact.
+- [`wdoc_visibility.md`](references/wdoc/wdoc_visibility.md) — `@only` and `@except`, the sites, templates and backends axes, and waiving a native block on an uncovered target.
 - [`wdoc_outputs.md`](references/wdoc/wdoc_outputs.md) — the build, serve, PDF and Markdown targets, and what each backend can and cannot render.
 
 Content blocks:

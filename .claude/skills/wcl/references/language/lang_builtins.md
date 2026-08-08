@@ -318,16 +318,15 @@ panic("invariant violated")   // abort with an unrecoverable failure → (aborts
 - **`glob_overlaps` is deliberately conservative.** It may answer `true` for an exotic
   negated-class pairing that shares no real path. It never answers `false` when one exists.
 
-## Three more that only exist under wdoc
+## Two more that only exist under wdoc
 
-A host may register builtins of its own. wdoc adds three. They are in the environment the `wcl`
-CLI builds, so `builtin_names()` run through the CLI answers 103 names rather than 100. They
+A host may register builtins of its own. wdoc adds two. They are in the environment the `wcl`
+CLI builds, so `builtin_names()` run through the CLI answers 102 names rather than 100. They
 are useful only in a document that imports the wdoc standard library:
 
 | Name | Purpose |
 | --- | --- |
 | `page_metadata(ctx)` | A page's position, neighbours and active path in the shared site reading order. |
-| `included_sites(...)` | The sites an entry document includes, for a registry-style landing page. |
 | `__wdoc_slot(slots, name, field)` | Internal: resolve one field of a declared template slot. |
 
 See [`../wdoc/wdoc_templates.md`](../wdoc/wdoc_templates.md) and

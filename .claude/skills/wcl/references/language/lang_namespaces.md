@@ -149,7 +149,7 @@ import <wdoc.wcl>
 
 A system import is *never* touched against the filesystem. It resolves inside the registry's
 own namespace, under a virtual root. A registered file's own system imports are therefore
-**importer-relative**. A library part registered under `wskill/component/` reaches wdoc's
+**importer-relative**. A library part registered under `mylib/component/` reaches wdoc's
 library as `<../../wdoc.wcl>`, with `.` and `..` collapsed lexically. A system import naming an
 unregistered key fails with `no system import registered for <key>`.
 
