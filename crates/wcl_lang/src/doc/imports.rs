@@ -199,7 +199,7 @@ pub(super) fn resolve_import_path_kind(
 /// The same rule [`resolve_import_path_kind`] applies, in the vocabulary a
 /// [`Registry`](super::Registry) speaks: keys, not `<wcl-system>` paths. For a
 /// caller that reads a registered file directly rather than through a loader
-/// (`wcl_wskill` walks its own embedded library) — so that it cannot disagree
+/// (a library walking its own embedded parts) — so that it cannot disagree
 /// with the resolver about what `<../../wdoc.wcl>` means.
 pub fn system_import_key(importer: Option<&str>, path: &str) -> String {
     let dir = importer

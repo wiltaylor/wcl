@@ -14,7 +14,6 @@ path = "src/main.rs"
 wcl_lang = { workspace = true }
 wcl_lsp = { workspace = true }
 wcl_wdoc = { workspace = true }
-wcl_wskill = { workspace = true }
 clap = { workspace = true }
 miette = { workspace = true }
 thiserror = { workspace = true }

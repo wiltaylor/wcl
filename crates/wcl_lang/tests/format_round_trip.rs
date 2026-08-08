@@ -167,8 +167,7 @@ fn deeply_nested_input_errors_instead_of_overflowing_the_stack() {
 fn match_inside_interpolation_slot_stays_single_line() {
     // Regression: a `${match … { … }}` slot used to print the match
     // multi-line — but an interpolation slot must not span lines, so the
-    // output failed to re-parse (found via the editor's set_visibility
-    // commit on the wskill training template).
+    // output failed to re-parse.
     let out = round_trip("@schemaless x = $\"a${match y { none => \"\", s => $\" - ${s}\" }}b\"\n");
     assert!(
         out.contains("${match y { none => \"\", s => $\" - ${s}\" }}"),

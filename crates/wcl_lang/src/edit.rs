@@ -3,9 +3,9 @@
 //! These operate on the owned, fully-public [`ast`] returned by
 //! [`crate::parse_for_edit`]: locate a node by its byte [`Span`], build new
 //! nodes, and splice them into an items list. They are deliberately
-//! schema-agnostic — the caller (`wcl set`, `wcl wskill op`) resolves
-//! schema concerns (inline-label slots, child kinds)
-//! and hands these helpers the concrete values to write. Synthesised nodes
+//! schema-agnostic — the caller (`wcl set`) resolves schema concerns
+//! (inline-label slots, child kinds) and hands these helpers the concrete
+//! values to write. Synthesised nodes
 //! carry a zero [`Span::new(0, 0)`]; the source printer re-lays them out, so
 //! the result round-trips through [`crate::format::to_source`].
 //!
@@ -656,7 +656,7 @@ mod tests {
         let block = find_block_by_span(&mut ast.items, span).unwrap();
         // Add a second decorator with symbol-list args.
         let list = Expr::ListLit {
-            elements: vec![Expr::Symbol("deck".into()), Expr::Symbol("training".into())],
+            elements: vec![Expr::Symbol("deck".into()), Expr::Symbol("print".into())],
             elem_trivia: vec![Default::default(), Default::default()],
             trailing_trivia: Vec::new(),
             span: Span::new(0, 0),
@@ -664,7 +664,7 @@ mod tests {
         set_or_remove_decorator(block, "except", vec![("sites".to_string(), list)]);
         let out = format::to_source(&ast);
         assert!(out.contains("@only(sites = [:book])"), "{out}");
-        assert!(out.contains("@except(sites = [:deck, :training])"), "{out}");
+        assert!(out.contains("@except(sites = [:deck, :print])"), "{out}");
         reparse(&out);
 
         // Replace it (single symbol) — the old one goes, order stable.
@@ -686,7 +686,7 @@ mod tests {
         set_or_remove_decorator(block, "except", vec![("sites".to_string(), list)]);
         let out = format::to_source(&ast);
         assert!(out.contains("@except(sites = [:deck])"), "{out}");
-        assert!(!out.contains(":training"), "{out}");
+        assert!(!out.contains(":print"), "{out}");
 
         // Empty args ⇒ removed entirely; the other decorator survives.
         let mut ast = parse_for_edit(&out, "t").unwrap();

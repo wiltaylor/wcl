@@ -31,13 +31,11 @@ pub mod pdf;
 mod radial;
 mod render;
 mod routing;
-mod sidecar;
 pub mod sites;
 mod terminal;
 mod text;
 mod tileset;
 mod timeline;
-pub mod training;
 mod tree;
 mod video;
 mod visibility;
@@ -45,13 +43,12 @@ mod wireframe;
 
 pub use build::{
     BuildError, BuildOptions, PageSubSite, RebuildOutcome, build, build_incremental,
-    build_with_options, install_stdlib, open_doc_for_edit, schema_registry, subsite_for_page,
-    take_render_warnings, wdoc_environment,
+    build_with_options, open_doc_for_edit, schema_registry, subsite_for_page, take_render_warnings,
+    wdoc_environment,
 };
 pub use force::layout_graph;
 pub use markdown::markdown;
 pub use pdf::{PageSize, PdfError, pdf};
-pub use sidecar::owner_root;
 pub use sites::{EntryIncludeInfo, EntrySiteInfo, entry_site_info};
 pub use visibility::{DeclaredVisibility, declared_visibility};
 
