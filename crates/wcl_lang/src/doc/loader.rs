@@ -115,8 +115,7 @@ impl Registry {
 
     /// Fold `other`'s files into this registry, `other` winning on a shared
     /// name — the same "later registration wins" rule [`register`] follows.
-    /// This is how one embedded stdlib layers onto another (a toolchain that
-    /// ships wdoc's library *and* a format built on it).
+    /// This is how one embedded stdlib layers onto another.
     ///
     /// [`register`]: Registry::register
     pub fn extend(&mut self, other: Registry) {

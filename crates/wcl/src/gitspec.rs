@@ -1,9 +1,8 @@
 //! The `<rev>:<path>` argument convention `wcl diff` accepts on either side.
 //!
 //! Classifying a CLI argument is a CLI concern and stays here; reading the
-//! tree at the named revision is [`wcl_wdoc::git`]'s, so a library (the
-//! wskill model, which loads at a revision to diff two graphs) can do it
-//! without the binary.
+//! tree at the named revision is [`wcl_wdoc::git`]'s, so a library that opens
+//! a document at a revision does not have to go through the binary.
 
 use std::path::{Path, PathBuf};
 

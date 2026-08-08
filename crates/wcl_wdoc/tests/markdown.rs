@@ -316,7 +316,7 @@ fn cross_root_children_render_in_a_page() {
     // count instead of silently dropping the block.
     let body = "interface Node { id: identifier }\n\
         @block(\"concept\") type Concept extends Node {\n  @inline(0) id: identifier\n  name: utf8\n}\n\
-        @document type Wskill { @children(\"concept\") concepts: list<Concept> }\n\
+        @document type Topic { @children(\"concept\") concepts: list<Concept> }\n\
         site s { default_template = :book  title = \"R\"  root = true\n  toc { chapter \"C\" { page = home } }\n}\n\
         page home { sites = [:s]  start = true\n  h1 \"Heading\"\n  p $\"count = ${len(concepts)}\"\n}\n\
         concept \"intro\" { name = \"Intro\" }\n\

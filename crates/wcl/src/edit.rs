@@ -1,4 +1,4 @@
-//! Shared editing core for the writing commands (`wcl wskill op`).
+//! The editing core a writing command uses.
 //!
 //! Every write goes through the same edit pipeline `wcl set` uses —
 //! `parse_for_edit` → mutate the owned AST by byte span →
@@ -9,6 +9,11 @@
 //! on-disk baseline. Validation reopens the document the way the build does,
 //! via [`wcl_wdoc::open_doc_for_edit`], so a write is checked against the
 //! same `@block` / `@table` schemas the renderer uses.
+//!
+//! No caller is left in the binary: the last one went with the command that
+//! wrote structural edits. The module stays, tested, until the end-of-strip
+//! cleanup pass (#215) decides what survives.
+#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 
