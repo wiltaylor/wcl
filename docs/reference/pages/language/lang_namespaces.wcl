@@ -247,7 +247,7 @@ RUST
 
   p "A later registration under the same name wins. `Registry::extend` folds one registry into another by the same rule. That is how a tool built on `wdoc` layers its own library over `wdoc`'s, with neither side knowing about the other."
 
-  p "Registry names are importer-relative in their own namespace, exactly as disk paths are on disk. `wdoc.wcl` writes `import <wdoc/prelude.wcl>`, and that file — registered as `wdoc/prelude.wcl` — writes `import <core.wcl>` for its sibling, which resolves to `wdoc/core.wcl`. `..` works and means what it looks like: a part registered as `wskill/component/common.wcl` reaches the other library with `import <../../wdoc.wcl>`."
+  p "Registry names are importer-relative in their own namespace, exactly as disk paths are on disk. `wdoc.wcl` writes `import <wdoc/prelude.wcl>`, and that file — registered as `wdoc/prelude.wcl` — writes `import <core.wcl>` for its sibling, which resolves to `wdoc/core.wcl`. `..` works and means what it looks like: a part registered as `mylib/component/common.wcl` reaches the other library with `import <../../wdoc.wcl>`."
 
   p "A system import naming something unregistered fails at open time, and says so in the registry's own vocabulary rather than the filesystem's:"
 

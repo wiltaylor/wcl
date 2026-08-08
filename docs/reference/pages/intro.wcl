@@ -451,7 +451,7 @@ TEXT
     li "[Documents, fields and blocks](lang_documents) — fields, blocks, labels, tables and `let` items in full. The next chapter, and the one to read first."
     li "[Values and primitives](lang_values) — the seven ways to write a scalar, and which of them the checker judges."
     li "[Schemas](lang_schemas) — `@document`, `@block`, `@child`, `@children`, `@inline`, `@table`, and exactly what `wcl check` checks."
-    li "[The CLI](lang_cli) — `check`, `parse`, `eval`, `set`, `fmt`, `diff`, `init`, `repl`, `lsp`, `editor`, `wdoc` and `wskill`."
+    li "[The CLI](lang_cli) — `parse`, `check`, `eval` / `get`, `set`, `fmt`, `diff`, `init`, `repl`, `lsp` and the four `wdoc` targets."
     li "[Documents, pages and sites](wdoc_sites) — the start of Part II, and the wdoc equivalent of chapter 1."
   }
 }

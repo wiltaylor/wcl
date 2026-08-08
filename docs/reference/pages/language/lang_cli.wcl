@@ -1,11 +1,751 @@
 // Chapter 14 — The CLI.
 //
-// Skeleton stub (#157). The chapter is written against its own issue; keep
-// the page name, replace the body.
+// Written against #213, the wave-5 pass over the *stripped* CLI. The
+// subcommand list, the flags and the exit codes were read out of
+// `crates/wcl/src/main.rs`; every transcript below was captured from a real
+// `wcl` run against a real file before it was written down.
+//
+// Flat and hand-maintained (#156): there is no generator behind this page. A
+// subcommand added to `Command` / `WdocCommand` needs an `h2` here, and a flag
+// added to one needs a row in that subcommand's table.
 page lang_cli {
   title = "The CLI"
 
   h1 "The CLI"
 
-  p "Not written yet. This chapter covers every `wcl` subcommand, its flags and its exit codes."
+  p "`wcl` is one binary with thirteen commands. Nine read or rewrite a document — `parse`, `check`, `eval` (aliased `get`), `set`, `fmt`, `diff`, `init`, `repl` and `lsp`. Four sit under `wcl wdoc` and render a document to a website, a dev server, a PDF or a folder of Markdown. This chapter covers all of them: what each one takes, every flag it accepts, and what it prints."
+
+  p "It also covers the two things every command shares — the exit code it returns, and the fact that each one opens a document exactly the way the next one does."
+
+  h2 "One binary, one document model"
+
+  p "Each command below names a `<file>`. That file is the **entry document**: `wcl` parses it, follows its imports, and works on the result. Nothing is configured outside the file. There is no project file, no lockfile, no `wcl.toml`."
+
+  p "Every command that opens a document opens it the same way. Disk imports resolve relative to the importing file, and system imports (`import <wdoc.wcl>`) resolve against the embedded wdoc standard library. That is why `wcl check` validates a wdoc document as thoroughly as `wcl wdoc build` does — the schemas are in scope for both."
+
+  callout "The wdoc library is always in scope" {
+    class = ["note"]
+    body  = "The CLI does not read a document's imports to decide whether it is \"a wdoc document\". Every open carries the wdoc registry and the wdoc environment. The cost is that wdoc's own builtins (`page_metadata`, `__wdoc_slot`) resolve in any file. The benefit is that a wdoc page's schema violations surface under plain `wcl check`."
+  }
+
+  p "Two flags work before any command:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl --version
+wcl 0.33.2-alpha-156-ge82e431c
+
+$ wcl --help
+WCL command-line interface
+
+Usage: wcl <COMMAND>
+...
+TEXT
+  }
+
+  p "`wcl <command> --help` prints the same detail for one command, including every flag this chapter lists."
+
+  h2 "Exit codes"
+
+  p "Five exit codes, and each one means the same thing in every command. A script can branch on them without reading any output:"
+
+  table {
+    rows:
+      | "Code" | "Name"   | "Means" |
+      | "0"    | "OK"     | "The command did what it was asked." |
+      | "1"    | "Parse"  | "The source did not parse. Also reported when the entry file cannot be read at all." |
+      | "2"    | "Schema" | "The document parsed, but it violates its own schema." |
+      | "3"    | "Eval"   | "Evaluation failed — an unresolved name, a type mismatch, a path that resolves to nothing, a refused block." |
+      | "4"    | "I/O"    | "The document was good; writing the output, copying an asset or reaching the disk was not." |
+  }
+
+  p "Diagnostics go to **stderr** and results go to **stdout**. So `wcl get f.wcl path > value.txt` captures the value and leaves the error text on the terminal."
+
+  h2 "wcl parse"
+
+  p "Parses a file, forces every field, and prints the whole evaluated document tree."
+
+  code text {
+    source = <<'TEXT'
+$ wcl parse <file> [--profile]
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument"    | "Meaning" |
+      | "`<file>`"    | "Path to a WCL source file." |
+      | "`--profile`" | "Record a call-tree profile of the forcing and print it as JSON on stderr after the dump." |
+  }
+
+  p "Use it to see what a document _became_ rather than what you typed. Take the inventory from [Documents, fields and blocks](lang_documents):"
+
+  code text {
+    source = <<'TEXT'
+$ wcl parse inventory.wcl
+...
+owner = "platform"
+service web {
+  port = 8080u32
+  region = "us-east-1"
+}
+service db {
+  port = 5432u32
+  region = "us-east-1"
+}
+TEXT
+  }
+
+  p "The `...` stands for real output. `parse` prints **everything in scope**, and that includes the language's own decorator declarations (`@block`, `@children`, `@inline`, …) and the `std` unit types, because they are declarations the document can see. Your own items follow them, in source order. Pipe through `tail` when you want only the data."
+
+  p "`parse` forces the document, so it is also the blunt way to make every lazy field run. An evaluation error that a field would raise, it raises here. [How a document evaluates](lang_evaluation) covers what forcing means and what `--profile` measures."
+
+  h2 "wcl check"
+
+  p "Parses a file and validates it against its own schema. On success it prints one word."
+
+  code text {
+    source = <<'TEXT'
+$ wcl check <file> [--json]
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument" | "Meaning" |
+      | "`<file>`" | "Path to a WCL source file, or `-` to read from stdin. Relative imports then resolve against the current directory." |
+      | "`--json`" | "Emit a JSON result object on stdout instead of human-readable diagnostics. Exit codes do not change." |
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl check inventory.wcl
+OK
+$ echo $?
+0
+TEXT
+  }
+
+  p "A violation names the field and the schema, points at the source, and sets exit 2:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check sch.wcl
+wcl::eval::schema_violation
+
+  × top-level field 'zone' is not declared by @document schema 'C'
+
+sch.wcl: 1 schema violation
+$ echo $?
+2
+TEXT
+  }
+
+  p "`--json` is the form a CI job or an editor wants. The object always carries the same four keys, so a consumer never has to branch on success:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check sch.wcl --json
+{
+  "errors": [
+    {
+      "code": "wcl::eval::schema_violation",
+      "length": 10,
+      "message": "top-level field 'zone' is not declared by @document schema 'C'",
+      "offset": 45
+    }
+  ],
+  "file": "sch.wcl",
+  "ok": false,
+  "warnings": []
+}
+TEXT
+  }
+
+  p "`offset` and `length` are byte positions into the file, which is what an editor needs to underline the span. A clean file gives `\"ok\": true` and two empty lists."
+
+  callout "check is the whole gate" {
+    class = ["info"]
+    body  = "`wcl check` runs the parser **and** the schema validator, not only the parser. Reach for it in a pre-commit hook, in CI, and any time you want to know a file is good without printing it. It is also the one command that reads stdin, so `cat generated.wcl | wcl check -` validates a document that was never written to disk."
+  }
+
+  h2 "wcl eval and wcl get"
+
+  p "Resolves one dotted path out of a document and prints the value. `get` is an alias for `eval`. They are the same command, and `get` reads better."
+
+  code text {
+    source = <<'TEXT'
+$ wcl get  <file> <path> [--json] [--profile]
+$ wcl eval <file> <path> [--json] [--profile]
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument"    | "Meaning" |
+      | "`<file>`"    | "Path to a WCL source file." |
+      | "`<path>`"    | "Dotted path, resolved from the document root." |
+      | "`--json`"    | "Print the value as JSON instead of the WCL display form. A function value cannot be serialized and becomes `null`." |
+      | "`--profile`" | "Record a call-tree profile of this evaluation and print it as JSON on stderr." |
+  }
+
+  h3 "Reading a path"
+
+  p "A path walks the same tree `wcl parse` prints: a field name, a gather field, a block label, a nested block, a field on it."
+
+  code text {
+    source = <<'TEXT'
+$ wcl get inventory.wcl owner
+"platform"
+$ wcl get inventory.wcl services.web.port
+8080u32
+$ wcl get inventory.wcl services.web.region
+"us-east-1"
+TEXT
+  }
+
+  p "The output is the **WCL display form**, not JSON: a string keeps its quotes, and a number keeps its type suffix. That is deliberate. `8080u32` tells you the declared type as well as the value, which a bare `8080` would not."
+
+  p "Only what the document model exposes is addressable. A `let` item is not, because it is not document data, and a table row is not, because it has no name and no label. [Documents, fields and blocks](lang_documents) covers why."
+
+  h3 "When the path is wrong"
+
+  p "A path that resolves to nothing exits 3 and offers the nearest name it can see:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get inventory.wcl services.web.prot
+no such path: services.web.prot
+did you mean: service?
+$ echo $?
+3
+TEXT
+  }
+
+  p "A path that resolves to a **block** rather than to a value is also an error, because a block is not a leaf:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get inventory.wcl services.web --json
+wcl::eval::not_a_leaf
+
+  × cannot evaluate block as a leaf value
+TEXT
+  }
+
+  p "Address a field inside the block instead, or use `wcl parse` when you want the subtree."
+
+  h3 "Feeding another program"
+
+  p "`--json` is the form to pipe. It emits the value as ordinary JSON, so `jq` and every other tool reads it without knowing that WCL exists:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl get inventory.wcl services.web.port --json
+8080
+$ PORT=$(wcl get inventory.wcl services.web.port --json)
+TEXT
+  }
+
+  p "Note what JSON drops: the `u32` suffix, and the unit on a value such as `512MiB` (which was already the number 536870912 by then). JSON has one number type. When the type matters to the consumer, read the WCL form; when only the number matters, read the JSON."
+
+  callout "Inspecting a document you did not write" {
+    class = ["tip"]
+    body  = "Three commands answer three different questions. `wcl check` asks _is this file valid?_ `wcl parse` asks _what is in it?_ `wcl get` asks _what is this one value?_ Start with `parse` piped through a pager to find the path you want, then use `get` for the value. `--profile` on either one answers a fourth question — _why is it slow?_ — by printing the evaluation call tree."
+  }
+
+  h2 "wcl set"
+
+  p "Replaces the value of one field, in place, on disk."
+
+  code text {
+    source = <<'TEXT'
+$ wcl set <file> <path> <value>
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument"  | "Meaning" |
+      | "`<file>`"  | "Entry document. Imports are followed." |
+      | "`<path>`"  | "Dotted path to the field whose value is replaced." |
+      | "`<value>`" | "The new value, written as a WCL **expression**." |
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl set inventory.wcl services.web.port 9090u32
+updated services.web.port in inventory.wcl
+TEXT
+  }
+
+  p "`set` is the edit path, not the evaluation path. It works on the syntax tree, so the file keeps its comments, its blank-line groupings and its layout. Only the one expression changes. [How a document evaluates](lang_evaluation) covers the split."
+
+  p "The value is parsed as an expression, so the shell and WCL both want a say in the quoting. A string needs quotes that survive the shell:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl set inventory.wcl owner '"infrastructure"'
+$ wcl set inventory.wcl services.web.port 9090u32
+$ wcl set site.wcl accent :gold
+$ wcl set site.wcl tags '[:a, :b]'
+TEXT
+  }
+
+  p "Two behaviours are worth knowing before you script this."
+
+  p "**`set` follows imports.** When `<path>` resolves through an import, `set` edits the file that actually _declares_ the field, which need not be the file you named. That is usually what you want and occasionally a surprise. The message names the file it wrote."
+
+  p "**`set` does not validate.** It re-parses its own output before writing, so it cannot leave a broken file behind, and it writes atomically. It does not run the schema. A `set` that violates a `@min`, or writes a `utf8` where a `u32` is declared, is written anyway. Follow a scripted `set` with a `wcl check`:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl set inventory.wcl services.web.port 9090u32 && wcl check inventory.wcl
+updated services.web.port in inventory.wcl
+OK
+TEXT
+  }
+
+  p "A path that names nothing exits 3 and changes no file:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl set inventory.wcl services.web.nope 1u32
+no such path: services.web.nope
+did you mean: service?
+TEXT
+  }
+
+  h2 "wcl fmt"
+
+  p "Re-emits a file in canonical form."
+
+  code text {
+    source = <<'TEXT'
+$ wcl fmt <file> [--in-place] [--indent N] [--no-trailing-comma]
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument"              | "Default" | "Meaning" |
+      | "`<file>`"              | "—"       | "Path to a WCL source file, or `-` to read stdin and write to stdout." |
+      | "`--in-place`"          | "off"     | "Overwrite the file, atomically. Without it the formatted source goes to stdout and the file is untouched." |
+      | "`--indent N`"          | "2"       | "Spaces per indentation level." |
+      | "`--no-trailing-comma`" | "off"     | "Drop the trailing comma the formatter puts after every `match` arm. The parser accepts either form." |
+  }
+
+  p "The formatter normalizes what has no meaning and keeps what does. Indentation, brace style, number radix, string-delimiter choice and spacing are rewritten. Comments survive, blank-line groupings survive up to one blank line, and item order is never touched."
+
+  code text {
+    source = <<'TEXT'
+$ cat ugly.wcl
+owner="x"
+@document
+type C { owner: utf8 }
+
+$ wcl fmt ugly.wcl
+owner = "x"
+@document
+type C {
+  owner: utf8
+}
+TEXT
+  }
+
+  p "One choice it does rewrite is the comment marker: `//` becomes `#`. Both forms parse; the canonical form is `#`."
+
+  h3 "Checking format in CI"
+
+  p "There is no `--check` flag. Compare the formatter's output against the file instead. This is the whole recipe, and it needs nothing but `diff`:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl fmt config.wcl | diff -u config.wcl - && echo "formatted"
+formatted
+TEXT
+  }
+
+  p "`diff` exits non-zero on any difference, so the `&&` chain fails the job, and the unified diff shows the reviewer exactly what `--in-place` would have done. Across a tree, drive it with `find`:"
+
+  code text {
+    source = <<'TEXT'
+$ find . -name '*.wcl' -exec sh -c 'wcl fmt "$1" | diff -u "$1" -' _ {} \; && echo "all formatted"
+TEXT
+  }
+
+  p "Pair it with `wcl check` in the same job. `fmt` says the file is _tidy_; `check` says it is _valid_. Neither implies the other: a badly formatted file can be perfectly valid, and a beautifully formatted one can violate every constraint its schema declares."
+
+  callout "Formatting is not validation" {
+    class = ["warning"]
+    body  = "`wcl fmt` parses. It does not evaluate and it does not run the schema, so it formats a document whose fields cannot resolve. A gate that runs only `fmt` proves nothing about the data. Run `check` too."
+  }
+
+  h2 "wcl diff"
+
+  p "Compares two documents and prints what changed."
+
+  code text {
+    source = <<'TEXT'
+$ wcl diff <old> <new> [--format wcl|json]
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument"   | "Meaning" |
+      | "`<old>`"    | "The base document — a path, or a `<rev>:<path>` git specifier." |
+      | "`<new>`"    | "The new document — a path, or a `<rev>:<path>` git specifier." |
+      | "`--format`" | "`wcl` (default) prints a re-parseable WCL tree; `json` prints the flat change array." |
+  }
+
+  p "This is not `diff(1)`. It compares the **evaluated** documents, with imports resolved, so it reports changes in the data rather than in the text. Each top-level block is an entity keyed `kind:label`, and a nested field edit is reported by path, recursing into lists by index."
+
+  code text {
+    source = <<'TEXT'
+$ wcl diff inventory.wcl inv2.wcl
+# wcl diff inventory.wcl -> inv2.wcl — generated
+
+modified "service:web" {
+  field "port" {
+    kind = :changed
+    old = 8080u32
+    new = 9090u32
+  }
+}
+TEXT
+  }
+
+  p "The output is itself valid WCL, which is the point of the default format: a change set is a document, so anything that reads WCL reads a diff. `--format json` gives the same information as a flat array for a script:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl diff inventory.wcl inv2.wcl --format json
+[
+  {
+    "entity": "service:web",
+    "field": "port",
+    "kind": "changed",
+    "new": 9090,
+    "old": 8080,
+    "op": "modified"
+  }
+]
+TEXT
+  }
+
+  p "A formatting-only edit produces **no diff at all**, because the values did not change. Neither does a comment edit, a reordering, or a rewrite that moves a field into an import. That property is what makes this command useful in review."
+
+  h3 "Reading a revision out of git"
+
+  p "Either side may be a `<rev>:<path>` specifier. `wcl` materializes that revision into a temporary tree, so the old document's **imports resolve from that same revision** rather than from your working copy:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl diff HEAD~1:config.wcl config.wcl
+$ wcl diff main:a.wcl feature:a.wcl --format json
+$ wcl diff v1.2.0:schema/main.wcl schema/main.wcl
+TEXT
+  }
+
+  h3 "Upgrading a document"
+
+  p "The revision form is what makes `wcl diff` an upgrade tool and not only a review tool. When a library you import gains fields, changes a default or renames a kind, the question is never \"what did the text do\". It is \"what did my data become\". Ask that directly:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl diff v0.4.0:main.wcl main.wcl
+TEXT
+  }
+
+  p "Both sides evaluate against their own imports, so the answer folds in everything the upgrade changed underneath you: a new default that now fills a field you never wrote, a computed value that moved because a builtin changed, a block that gathers somewhere else now. An empty diff after a library bump is a real result — the data did not change, whatever the release notes say."
+
+  p "The working order for an upgrade is three commands. Bump the import. Run `wcl check` to find what no longer validates, and fix that. Then run `wcl diff <old-rev>:main.wcl main.wcl` to see what moved silently. The third step is the one people skip, and it is the one that catches a default you did not know you relied on."
+
+  h2 "wcl init"
+
+  p "Scaffolds a project folder from a WCL template."
+
+  code text {
+    source = <<'TEXT'
+$ wcl init <template> [dest] [-D key=value]... [--answers f] [--defaults] [--force]
+$ wcl init --list
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument"        | "Meaning" |
+      | "`<template>`"    | "A built-in name, a user template name, or a path to a template `.wcl` file (or a folder holding `template.wcl`). Optional with `--list`." |
+      | "`[dest]`"        | "Destination directory. Defaults to the answered `name` property, then to the template name." |
+      | "`-D key=value`"  | "Answer one property inline. Repeatable. Highest precedence." |
+      | "`--answers <f>`" | "Answer file, `.wcl` or `.json`." |
+      | "`--defaults`"    | "Never prompt: use each property's default, and fail on a property that has none." |
+      | "`--force`"       | "Write into the destination even if it exists and is not empty." |
+      | "`--list`"        | "List the templates and exit." |
+  }
+
+  p "Start with `--list`, which shows the built-ins, your own templates, and where the latter live:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl init --list
+Built-in templates:
+  minimal
+  page
+  book
+  website
+  presentation
+
+User templates (/home/you/.local/share/wcl/templates):
+  (none — add one as <that dir>/<name>/template.wcl)
+
+Usage: wcl init <template> [dest]   (<template> may also be a path to a .wcl file or a folder containing template.wcl)
+TEXT
+  }
+
+  p "Then scaffold. `--defaults` makes the run non-interactive, which is what you want in a script:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl init book ./handbook -D name=handbook --defaults
+Created ./handbook from template 'book'
+  main.wcl
+  schema/main.wcl
+  data/main.wcl
+  wdoc/main.wcl
+TEXT
+  }
+
+  p "Without `--defaults` and without a `-D`, `init` prompts for each property the template declares and shows its default. An answer file supplies the same values from disk:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl init ./my-template.wcl ./out --answers answers.json
+TEXT
+  }
+
+  h3 "Where an answer comes from"
+
+  p "Four sources, in this precedence order. The first one that has an answer wins:"
+
+  list {
+    li "**`-D key=value`** on the command line."
+    li "**`--answers <file>`** — a `.wcl` or `.json` file of `key = value` pairs."
+    li "**The interactive prompt** — skipped entirely under `--defaults`."
+    li "**The property's `default`** — and a property with no default, under `--defaults`, is an error."
+  }
+
+  p "Template resolution has its own order: **built-in name, then user template, then disk path**. A built-in name therefore shadows a user template of the same name. Give yours a distinct name, or pass a path."
+
+  p "A template is itself a WCL document. It declares `property` blocks for the questions and `file` / `folder` blocks for what to generate. [Namespaces and imports](lang_namespaces) covers the `import <scaffold.wcl>` a template opts in with."
+
+  callout "Two rules that catch every template author" {
+    class = ["warning"]
+    body  = "A generated file's content must use the **interpolating** heredoc, `$<<TAG`. A plain `<<TAG` is literal, so `${answer(\"name\")}` lands in the output word for word. And a `property` instance sets its fields with `=` (`prompt = \"Project name\"`), because it is a block instance and not a `type` declaration."
+  }
+
+  h2 "wcl repl"
+
+  p "A read-eval-print loop for WCL expressions."
+
+  code text {
+    source = <<'TEXT'
+$ wcl repl [file]
+TEXT
+  }
+
+  p "With no argument it evaluates self-contained expressions — arithmetic, string operations, builtin calls. With a file, identifiers additionally resolve against that document's top-level fields:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl repl inventory.wcl
+wcl> owner
+"platform"
+wcl> len(services)
+2
+wcl> :quit
+TEXT
+  }
+
+  p "`:quit` or `:q` exits, and so does EOF (Ctrl-D). There is no history and no line editing — it reads lines, which is exactly what makes it scriptable. A multi-line expression continues automatically while brackets are unbalanced, and the prompt changes to `... `."
+
+  p "The exit code depends on whether a human was watching. An **interactive** session always exits 0: you saw the error and recovered from it. A **piped** session reports the worst thing that happened — 3 if any evaluation failed, else 1 if any parse failed — so a script can detect it:"
+
+  code text {
+    source = <<'TEXT'
+$ printf '1 + 2\nlen([1,2,3])\n' | wcl repl
+3
+3
+$ echo $?
+0
+
+$ printf '1 +* 2\n' | wcl repl
+parse error: wcl::parse
+
+  × expected value, found '*'
+   ╭─[<repl>:1:4]
+ 1 │ 1 +* 2
+   ·    ┬
+   ·    ╰── expected value
+   ╰────
+
+$ echo $?
+1
+TEXT
+  }
+
+  h2 "wcl lsp"
+
+  p "Runs the WCL language server."
+
+  code text {
+    source = <<'TEXT'
+$ wcl lsp [--tcp host:port] [--log file]
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument"        | "Meaning" |
+      | "`--tcp <addr>`"  | "Listen on `host:port` instead of using stdio. Each connection is an independent LSP session." |
+      | "`--log <file>`"  | "Write `tracing` log lines to this file." |
+  }
+
+  p "The default transport is **stdio**, which is what an editor expects. You normally never type this command; you configure your editor to spawn it. `--tcp 127.0.0.1:9257` is for attaching a debug client by hand."
+
+  p "`--log` takes a file and only a file. The server never logs to stderr, because that would corrupt the stdio LSP stream."
+
+  p "The server provides diagnostics, formatting, document symbols, workspace symbol search, go-to-definition and find-references across files, hover, completion, signature help, semantic tokens and schema-violation code actions. An open buffer shadows the copy on disk, so a cross-file lookup sees your unsaved edit."
+
+  h2 "wcl wdoc build"
+
+  p "Renders every `page` in a document to HTML."
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build <file> --out <dir> [--site NAME] [--profile]
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument"        | "Meaning" |
+      | "`<file>`"        | "The entry document." |
+      | "`--out <dir>`"   | "Output directory. Created if missing. **Required.**" |
+      | "`--site <name>`" | "Build only this site, flat at `<out>`. Omitted, every site renders into `<out>/<name>/`." |
+      | "`--profile`"     | "Print the evaluation profile as JSON on stderr." |
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build main.wcl --out _site
+wrote 2 pages
+TEXT
+  }
+
+  p "[Output targets](wdoc_outputs) covers what lands in `<out>`, what `--site` does to the layout, and the rule that `build` never wipes the directory it writes into."
+
+  h2 "wcl wdoc serve"
+
+  p "Runs a local dev server over the same build."
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc serve <file> [--addr ADDR] [--out DIR] [--site NAME]
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument" | "Default"          | "Meaning" |
+      | "`<file>`" | "—"                | "The entry document." |
+      | "`--addr`" | "`127.0.0.1:8080`" | "Bind address, or `auto` to take the first free port near 8080." |
+      | "`--out`"  | "a temp directory" | "Output directory. A temp directory is removed on shutdown." |
+      | "`--site`" | "every site"       | "Serve only this site, at `/`. Omitted, each site is served under `/<name>/` with a chooser at `/`." |
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc serve main.wcl --out _serve
+rendered 2 pages
+serving http://127.0.0.1:8080  (source: main.wcl, out: _serve)
+auto-rebuild is off — press Enter here to rebuild after edits
+TEXT
+  }
+
+  p "The last line is the surprising part, and it is deliberate: the watcher **accumulates** changes and rebuilds only when you ask. [Output targets](wdoc_outputs) covers the loop, the two triggers, and what an incremental rebuild really re-renders."
+
+  h2 "wcl wdoc pdf"
+
+  p "Renders each site to a PDF. Pure Rust — no browser, no external tools."
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc pdf <file> --out <dir> [--site NAME] [--page-size a4|letter]
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument"        | "Default"    | "Meaning" |
+      | "`<file>`"        | "—"          | "The entry document." |
+      | "`--out <dir>`"   | "—"          | "Output directory. Created if missing. **Required.**" |
+      | "`--site <name>`" | "every site" | "Render only this site. With no `site` block, the source file stem names the PDF." |
+      | "`--page-size`"   | "`a4`"       | "`a4` or `letter`." |
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc pdf main.wcl --out _pdf
+wrote 1 pdf
+$ ls _pdf
+handbook.pdf
+TEXT
+  }
+
+  p "The output is named after the **site**, not after the source file. [Output targets](wdoc_outputs) covers what a PDF can and cannot carry."
+
+  h2 "wcl wdoc markdown"
+
+  p "Renders every page to a folder of Markdown files. `wcl wdoc md` is an alias."
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc markdown <file> --out <dir> [--site NAME]
+$ wcl wdoc md       <file> --out <dir> [--site NAME]
+TEXT
+  }
+
+  table {
+    rows:
+      | "Argument"        | "Meaning" |
+      | "`<file>`"        | "The entry document." |
+      | "`--out <dir>`"   | "Output directory. Created if missing. **Required.**" |
+      | "`--site <name>`" | "Render only this site, flat at `<out>`. Omitted, each site gets its own `<out>/<name>/`." |
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc markdown main.wcl --out _md
+wrote 1 page
+$ find _md -type f
+_md/index.md
+_md/one.md
+_md/_wdoc/one-diagram-1.svg
+TEXT
+  }
+
+  p "One `.md` per page, plus the standalone `.svg` files the Markdown references for diagrams, terminals and wireframes. [Output targets](wdoc_outputs) covers the conversions."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Documents, fields and blocks](lang_documents) — the tree `parse`, `get` and `set` walk."
+    li "[How a document evaluates](lang_evaluation) — the evaluate-and-edit split behind `get` and `set`, and the error model behind the exit codes."
+    li "[Namespaces and imports](lang_namespaces) — how the imports every command follows resolve."
+    li "[Builtins](lang_builtins) — every function an expression in a `repl` session or a `set` value can call."
+    li "[Output targets](wdoc_outputs) — the four `wcl wdoc` commands in depth."
+    li "[Documents, pages and sites](wdoc_sites) — what a document must declare before `wcl wdoc build` has anything to render."
+  }
 }

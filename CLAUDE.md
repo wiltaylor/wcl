@@ -67,13 +67,12 @@ Prefer these over re-deriving behaviour from source:
   `pages/wdoc/wdoc_*.wcl`. **A doc change belongs here** (and in its skill mirror). The
   tree is fixed by #156, and the whole skeleton landed at once (#157), because a `toc`
   entry or a link naming an unknown page is a build error. Chapters replaced their stub one
-  issue at a time, so a remaining stub is unwritten, not missing — `lang_cli`,
-  `wdoc_outputs` and `wdoc_visibility` are still stubs. Browse with `just docs-serve-ref`
-  (`:8138`).
+  issue at a time; all 42 are written (#213 took the last three — `lang_cli`,
+  `wdoc_visibility` and `wdoc_outputs`). Browse with `just docs-serve-ref` (`:8138`).
 - **The skill** (`.claude/skills/wcl/`) — `SKILL.md` routes to one or two
   `references/**.md` files and holds no reference material itself. Each reference stands
-  alone: it never sends the reader to a website, to this repo, or to another reference. The
-  stubs mirror the book's stubs.
+  alone: it never sends the reader to a website, to this repo, or to another reference. All
+  42 mirror a written chapter.
 - **The landing page** (`docs/landing/`) — `main.wcl` plus
   `pages/{landing-parts,index}.wcl`: the one-page `website`-template site at `/`, built
   from the `lp_*` components it declares itself. Browse with `just docs-serve` (`:8137`).

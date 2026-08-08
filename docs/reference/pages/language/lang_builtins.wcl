@@ -116,7 +116,7 @@ WCL
   code text {
     source = <<'TEXT'
 $ wcl get catalogue.wcl count
-103
+102
 $ wcl get catalogue.wcl first
 ["__wdoc_slot", "abs", "acos"]
 $ wcl get catalogue.wcl sig
@@ -124,14 +124,14 @@ $ wcl get catalogue.wcl sig
 TEXT
   }
 
-  p "The count is 103 rather than 100, and the first name is one you did not write, because the environment a builtin lives in belongs to the **host**, not to the language. The `wcl` CLI is a wdoc-aware host: it registers wdoc's three builtins into every document it opens, whether or not the document imports wdoc. The bare language registers one hundred. `wcl repl` shows both, because a REPL started with a file opens it the way the CLI opens any document, and a REPL started without one evaluates against an empty document in the plain language environment:"
+  p "The count is 102 rather than 100, and the first name is one you did not write, because the environment a builtin lives in belongs to the **host**, not to the language. The `wcl` CLI is a wdoc-aware host: it registers wdoc's two builtins into every document it opens, whether or not the document imports wdoc. The bare language registers one hundred. `wcl repl` shows both, because a REPL started with a file opens it the way the CLI opens any document, and a REPL started without one evaluates against an empty document in the plain language environment:"
 
   code text {
     source = <<'TEXT'
 $ echo 'len(builtin_names())' | wcl repl
 100
 $ echo 'len(builtin_names())' | wcl repl release.wcl
-103
+102
 TEXT
   }
 
@@ -145,7 +145,7 @@ TEXT
       | "`reflect`" | "12" | "[Reflection](#reflection)" |
       | "`paths`" | "3" | "[Paths and globs](#paths-and-globs)" |
       | "`units`" | "2" | "[Units](#units)" |
-      | "wdoc, via the host" | "3" | "[Builtins the host adds](#builtins-the-host-adds)" |
+      | "wdoc, via the host" | "2" | "[Builtins the host adds](#builtins-the-host-adds)" |
   }
 
   h2 "Choosing between the near-twins"

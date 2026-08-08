@@ -41,7 +41,6 @@ These tags are legal at the top level of a wdoc document:
 | `inline_pattern` | a custom prose pattern |
 | `iconset`, `tileset` | asset registries |
 | `wdoc_component`, `wdoc_repeater`, `partial`, `body` | reusable content |
-| `include` | other wdoc documents shipped into this output |
 
 A document with **no** `site` block still builds. Each page renders bare: its blocks go
 straight into `<body>`, with no template, no theme and no navigation.
@@ -67,7 +66,7 @@ site docs {
 | `root` | `bool?` | `true` renders this site at `/`; the others go under `/<name>/`. At most one site may set it. |
 | `default_template` | `symbol?` | `:webpage`, `:book`, `:presentation`, `:website`, or the name of your own `template`. |
 | `title` | `utf8?` | Shown in the header or the sidebar, and in the browser tab as `<page title> — <site title>`. |
-| `summary` | `utf8?` | A one-line description. No built-in template renders it. The `included_sites(...)` builtin surfaces it for a landing page. |
+| `summary` | `utf8?` | A one-line description. No built-in template renders it; a template of your own can read it off the site block. |
 | `icon` | `utf8?` | A favicon path, resolved against the document and copied into `_wdoc/`. An `http(s)://` or `data:` URL passes through. Absent means a default WCL icon ships. |
 | `stylesheets` | `list<utf8>?` | Each href becomes a `<link rel="stylesheet">` in every page head. |
 | `scripts` | `list<utf8>?` | Each src becomes a deferred `<script>` in every page head. |
@@ -282,41 +281,6 @@ so `/<site>/` always lands somewhere.
 
 A template on a sub-site sees a back-link to the root site (`TemplateCtx.home_href` and
 `home_title`). Both are empty on the root site and in a single-site build.
-
-### Included documents
-
-An `include` block names a folder of **other** wdoc documents. The build renders each one
-independently and ships its whole output — pages and its own `_wdoc/` — into a subdirectory of
-this output. It does **not** merge them into this document; that is what `import` does.
-
-Pick exactly one discovery mode:
-
-```wcl
-include "projects" { pattern = "main.wcl" }          // recursive filename glob
-include "members"  { entry   = "wdoc/book/main.wcl" } // a fixed path per immediate subfolder
-```
-
-| Field | Meaning |
-| --- | --- |
-| label | The folder to scan, resolved against this document. |
-| `pattern` | A recursive filename glob (`*`, `?`). The sub-site name is the matching file's parent folder. |
-| `entry` | A relative path checked inside each **immediate** subdirectory. No recursion. |
-| `site` | Which named site of a multi-site member to build. Passed as `--site`. |
-| `prefix` | Overrides the output subdirectory, so two includes over one folder can target different places. |
-
-The `included_sites(options)` builtin returns one `{ name, href, title, summary }` record per
-match. A `wdoc_repeater` inside a `menu` or a `toc` can then build navigation from it. Pass the
-**same** options you gave the `include` block, or the hrefs will not line up. A record uses `:`
-for its fields, not the `=` a block uses:
-
-```wcl
-wdoc_repeater { each = included_sites({ folder: "members", entry: "main.wcl", site: "book" })  as = :m
-  item $"${m.title}" { href = m.href }
-}
-```
-
-The HTML build and the dev server embed sub-sites. The Markdown and PDF targets define
-`included_sites` — so a document still parses — but embed nothing.
 
 ## Gotchas
 
