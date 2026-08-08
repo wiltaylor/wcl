@@ -12,7 +12,7 @@ use crate::convert::span_to_range;
 /// (`import <wdoc.wcl>`) resolve through the caller's loader (the embedded
 /// registry over an overlay of open buffers), relative imports resolve
 /// against `base_dir`, and the wdoc [`Environment`](wcl_lang::Environment)
-/// supplies builtins like `included_sites`. A bare `Document::open` would
+/// supplies builtins like `page_metadata`. A bare `Document::open` would
 /// flag all three as errors in perfectly valid documents.
 fn open_document(
     source: &str,
@@ -24,7 +24,7 @@ fn open_document(
         source,
         uri,
         base_dir.map(Path::to_path_buf),
-        &wcl_wdoc::wdoc_environment(base_dir),
+        &wcl_wdoc::wdoc_environment(),
         loader,
     )
 }

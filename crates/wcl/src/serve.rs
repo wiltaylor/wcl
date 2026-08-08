@@ -98,8 +98,6 @@ struct ServeState {
     /// Bumped after every build attempt — success *and* failure — so
     /// a browser parked on the error page reloads when the fix lands.
     generation: tokio::sync::watch::Sender<u64>,
-    /// Watched source root; `/__wdoc_rebuild` page paths are sandboxed to it.
-    watch_root: PathBuf,
     /// Source `.wcl` files changed since the last rebuild. The watcher
     /// accumulates here instead of rebuilding; a rebuild is triggered manually
     /// (Enter in the console, or `POST /__wdoc_rebuild`) and drains this.
@@ -112,10 +110,6 @@ struct ServeState {
 
 /// A rebuild request handed to the rebuild worker.
 struct RebuildReq {
-    /// The page the request came from (`POST /__wdoc_rebuild`), used to
-    /// scope the rebuild to that page's included sub-site. `None` for a console
-    /// (Enter) rebuild, which rebuilds the whole served site.
-    page_file: Option<PathBuf>,
     /// Resolved when the build finishes, so the HTTP handler can report the
     /// result. `None` for the console path.
     done: Option<tokio::sync::oneshot::Sender<RebuildReport>>,
@@ -124,8 +118,6 @@ struct RebuildReq {
 /// What a rebuild did, returned to the `/__wdoc_rebuild` caller.
 struct RebuildReport {
     ok: bool,
-    /// What was rebuilt — `"site"` or the sub-site's output subdir.
-    scope: String,
     /// Human summary (page count, or the first line of the error).
     summary: String,
 }
@@ -165,61 +157,31 @@ fn run_build(file: &Path, out: &Path, site: Option<&str>, state: &ServeState, re
     state.generation.send_modify(|g| *g += 1);
 }
 
-/// Handle one [`RebuildReq`]. When the request names a page that belongs to an
-/// included sub-site, rebuild **only** that sub-site into its
-/// output subdir, draining just the pending changes under it — so a rebuild
-/// requested from a sub-site page is fast and scoped. Otherwise (console Enter,
-/// or a root page) drain all pending and rebuild the top-level site. Records
-/// the outcome in `state`, bumps the live-reload generation, and returns a
-/// report.
+/// Handle one [`RebuildReq`]: drain every pending change and rebuild the
+/// served site. A drained set goes through [`build_incremental`], which scopes
+/// the work to the pages those files declare; nothing pending means a full
+/// build. Records the outcome in `state`, bumps the live-reload generation,
+/// and returns a report.
 fn run_rebuild_request(
     file: &Path,
     out: &Path,
     site: Option<&str>,
     state: &ServeState,
-    page_file: Option<PathBuf>,
 ) -> RebuildReport {
     let opts = BuildOptions::default();
-
-    // Scope to the page's sub-site when the request names one.
-    if let Some(pf) = page_file.as_deref()
-        && let Some(sub) = wcl_wdoc::subsite_for_page(file, pf)
-    {
-        let changed = drain_pending_under(state, Some(&sub.src_root));
-        let sub_out = out.join(&sub.out_subdir);
-        let scope = sub.out_subdir.display().to_string();
-        let result = build_incremental(&sub.entry, &sub_out, sub.site.as_deref(), &opts, &changed);
-        return finish_rebuild(state, scope, result.map(rebuild_summary));
-    }
-
-    // Whole-site rebuild: drain everything pending; full when nothing's pending.
-    let changed = drain_pending_under(state, None);
+    let changed = drain_pending(state);
     let result = if changed.is_empty() {
         build_with_options(file, out, site, &opts).map(|(n, _)| format!("{} (full)", page_count(n)))
     } else {
         build_incremental(file, out, site, &opts, &changed).map(rebuild_summary)
     };
-    finish_rebuild(state, "site".to_string(), result)
+    finish_rebuild(state, result)
 }
 
-/// Drain pending changed paths: those under `scope` (a sub-site source root),
-/// leaving the rest queued; or *all* of them when `scope` is `None`.
-fn drain_pending_under(state: &ServeState, scope: Option<&Path>) -> Vec<PathBuf> {
+/// Take every pending changed path, sorted and deduplicated.
+fn drain_pending(state: &ServeState) -> Vec<PathBuf> {
     let mut g = state.pending.lock().unwrap_or_else(|e| e.into_inner());
-    let mut taken = match scope {
-        None => std::mem::take(&mut *g),
-        Some(root) => {
-            let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-            let (under, rest): (Vec<_>, Vec<_>) =
-                std::mem::take(&mut *g).into_iter().partition(|p| {
-                    std::fs::canonicalize(p)
-                        .map(|c| c.starts_with(&root))
-                        .unwrap_or(false)
-                });
-            *g = rest;
-            under
-        }
-    };
+    let mut taken = std::mem::take(&mut *g);
     taken.sort();
     taken.dedup();
     taken
@@ -229,28 +191,22 @@ fn drain_pending_under(state: &ServeState, scope: Option<&Path>) -> Vec<PathBuf>
 /// build the [`RebuildReport`]. `result` is `Ok(summary)` or the build error.
 fn finish_rebuild(
     state: &ServeState,
-    scope: String,
     result: Result<String, wcl_wdoc::BuildError>,
 ) -> RebuildReport {
     let report = match result {
         Ok(summary) => {
             print_edge_warnings();
-            eprintln!("rebuilt {scope}: {summary}");
+            eprintln!("rebuilt: {summary}");
             *state.error.write().unwrap_or_else(|e| e.into_inner()) = None;
-            RebuildReport {
-                ok: true,
-                scope,
-                summary,
-            }
+            RebuildReport { ok: true, summary }
         }
         Err(err) => {
-            eprintln!("rebuild failed ({scope}):");
+            eprintln!("rebuild failed:");
             err.report();
             let plain = err.render_plain();
             *state.error.write().unwrap_or_else(|e| e.into_inner()) = Some(plain.clone());
             RebuildReport {
                 ok: false,
-                scope,
                 summary: plain.lines().next().unwrap_or("build failed").to_string(),
             }
         }
@@ -327,7 +283,6 @@ pub(crate) async fn serve(
         out: out_dir.clone(),
         error: RwLock::new(None),
         generation: tokio::sync::watch::Sender::new(0),
-        watch_root: watch_root.clone(),
         pending: Mutex::new(Vec::new()),
         rebuild_tx: rebuild_tx.clone(),
     });
@@ -359,13 +314,7 @@ pub(crate) async fn serve(
                     Ok(0) | Err(_) => break,
                     Ok(_) => {
                         // A console Enter rebuilds the whole served site.
-                        if trigger
-                            .send(RebuildReq {
-                                page_file: None,
-                                done: None,
-                            })
-                            .is_err()
-                        {
+                        if trigger.send(RebuildReq { done: None }).is_err() {
                             break;
                         }
                     }
@@ -404,18 +353,12 @@ pub(crate) async fn serve(
     let rb_out = out_dir.clone();
     let rb_site = site.clone();
     let rb_state = Arc::clone(&state);
-    // Rebuild worker: one build per request. Scopes to the request's sub-site
-    // when given (`POST /__wdoc_rebuild` with a `page_file`), else rebuilds
-    // the whole site (console Enter). Reports completion back when asked.
+    // Rebuild worker: one build per request. Every request rebuilds the served
+    // site, incrementally when files are pending. Reports completion back when
+    // asked.
     let rebuild_loop = async move {
         while let Some(req) = rebuild_rx.recv().await {
-            let report = run_rebuild_request(
-                &rb_file,
-                &rb_out,
-                rb_site.as_deref(),
-                &rb_state,
-                req.page_file,
-            );
+            let report = run_rebuild_request(&rb_file, &rb_out, rb_site.as_deref(), &rb_state);
             if let Some(done) = req.done {
                 let _ = done.send(report);
             }
@@ -524,29 +467,15 @@ async fn handle_reload(State(state): State<Arc<ServeState>>, uri: Uri) -> Respon
         .into_response()
 }
 
-/// Request a rebuild over HTTP. Scopes to the current page's sub-site (from
-/// the optional `page_file` body field) and **waits** for the build to finish,
-/// so the caller can show a running/done indication; the reload long-poll then
-/// reloads the page when the generation bumps. A missing `page_file` (or a
-/// root page) rebuilds the whole site.
-async fn handle_rebuild(State(state): State<Arc<ServeState>>, body: String) -> Response {
-    let page_file = serde_json::from_str::<serde_json::Value>(&body)
-        .ok()
-        .and_then(|v| {
-            v.get("page_file")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_string)
-        })
-        .filter(|s| !s.is_empty())
-        .and_then(|f| sandboxed(&state.watch_root, Path::new(&f)));
-
+/// Request a rebuild over HTTP. Rebuilds the served site and **waits** for the
+/// build to finish, so the caller can show a running/done indication; the
+/// reload long-poll then reloads the page when the generation bumps. The
+/// request body is ignored.
+async fn handle_rebuild(State(state): State<Arc<ServeState>>) -> Response {
     let (tx, rx) = tokio::sync::oneshot::channel();
     if state
         .rebuild_tx
-        .send(RebuildReq {
-            page_file,
-            done: Some(tx),
-        })
+        .send(RebuildReq { done: Some(tx) })
         .is_err()
     {
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, "rebuild worker is gone");
@@ -556,20 +485,11 @@ async fn handle_rebuild(State(state): State<Arc<ServeState>>, body: String) -> R
             StatusCode::OK,
             &serde_json::json!({
                 "ok": report.ok,
-                "scope": report.scope,
                 "summary": report.summary,
             }),
         ),
         Err(_) => json_error(StatusCode::INTERNAL_SERVER_ERROR, "rebuild was cancelled"),
     }
-}
-
-/// Canonicalize `file` and confirm it sits inside `root`, so a rebuild
-/// request can't escape the served source tree. Returns the canonical path.
-fn sandboxed(root: &Path, file: &Path) -> Option<PathBuf> {
-    let root = std::fs::canonicalize(root).ok()?;
-    let file = std::fs::canonicalize(file).ok()?;
-    file.starts_with(&root).then_some(file)
 }
 
 pub(crate) fn json_response(status: StatusCode, value: &serde_json::Value) -> Response {

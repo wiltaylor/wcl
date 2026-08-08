@@ -188,15 +188,16 @@ type MenuItem {
   href: utf8?
   @children("item") children: list<MenuItem>
   // A nested `wdoc_repeater` (body = `item` blocks) emits one sub-entry
-  // per element — e.g. one dropdown entry per `included_sites(...)` record.
+  // per element — e.g. one dropdown entry per record in a `body` block's
+  // list of releases.
   @children("wdoc_repeater") generators: list<WdocRepeater>
 }
 
 // The site's navbar menu — an ordered, nestable tree of `item`s.
 // Declared inside the `site` block; rendered by the `webpage` template.
 // A `wdoc_repeater` here (body = `item` blocks) emits one entry per
-// element, so a menu can be data-driven (e.g. one entry per sub-site
-// discovered by `included_sites(...)`).
+// element, so a menu can be data-driven (e.g. `each` a list of records
+// declared in a `body` block, one menu entry per record).
 @block("menu")
 type Menu {
   @children("item") items: list<MenuItem>
@@ -246,9 +247,9 @@ type SiteConfig {
   @doc("Site title shown in the header / sidebar.")
   title:            utf8?
   // A one-line description of the site. Not rendered by the built-in
-  // templates; it's metadata a parent collection surfaces through the
-  // `included_sites(...)` builtin (see `include.wcl`) for landing-page links.
-  @doc("One-line site description. Surfaced by `included_sites(...)` (not rendered by the built-in templates).")
+  // templates; it's metadata a document (or a template of its own) can
+  // read off the `site` block.
+  @doc("One-line site description. Metadata only — the built-in templates do not render it.")
   summary:          utf8?
   // Path to a favicon image, resolved relative to the document and copied
   // into `_wdoc/` (external `http(s)://` / `data:` URLs pass through).

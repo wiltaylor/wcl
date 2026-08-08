@@ -40,16 +40,15 @@ fn cli_loader() -> wcl_lang::FileLoader {
 /// unconditionally wdoc-aware for schemas ([`cli_loader`] threads the
 /// registry into every open, not just wdoc documents), and behaviour
 /// follows schemas. The only widening is that wdoc's own builtins
-/// (`included_sites`) are in scope everywhere — which turns what used to
-/// be an "unknown builtin" error in a wdoc document under `wcl check`
-/// into a working call.
-fn cli_environment(base_dir: Option<&Path>) -> Environment {
-    wcl_wdoc::wdoc_environment(base_dir)
+/// (`page_metadata`, `__wdoc_slot`) are in scope everywhere — which turns
+/// what used to be an "unknown builtin" error in a wdoc document under
+/// `wcl check` into a working call.
+fn cli_environment() -> Environment {
+    wcl_wdoc::wdoc_environment()
 }
 
 fn open_document(file: &Path, profile: bool) -> Result<Document, ParseError> {
-    let mut doc =
-        Document::from_file_with_loader(file, &cli_environment(file.parent()), cli_loader())?;
+    let mut doc = Document::from_file_with_loader(file, &cli_environment(), cli_loader())?;
     if profile {
         doc.enable_profiling();
     }
@@ -567,7 +566,6 @@ fn build_error_code(err: &wcl_wdoc::BuildError) -> u8 {
         wcl_wdoc::BuildError::BadTemplate(_) => EXIT_SCHEMA,
         wcl_wdoc::BuildError::Tileset(_) => EXIT_SCHEMA,
         wcl_wdoc::BuildError::EdgeRouting(_) => EXIT_SCHEMA,
-        wcl_wdoc::BuildError::IncludeCycle(_) => EXIT_EVAL,
     }
 }
 
@@ -900,7 +898,7 @@ fn run_check(file: &Path, json: bool) -> u8 {
             &src,
             &name,
             base_dir.clone(),
-            &cli_environment(base_dir.as_deref()),
+            &cli_environment(),
             cli_loader(),
         )
     } else {
