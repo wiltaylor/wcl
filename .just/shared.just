@@ -90,11 +90,28 @@ docs-build *ARGS: require-cargo
 #
 # It rides `docs-build` rather than deploy-site.yml because a docs change
 # reaches the deploy only through `main`, and `just ci::check` gates that.
+#
+# Two patterns, because a page carries URLs in two vocabularies. The first is
+# the `href` / `src` attribute. The second is a CSS declaration value —
+# `src: url(…)` in an `@font-face`, and `background-image` / `mask` / `cursor`
+# on the same shape for free. #279 added it: the stylesheet is inlined into
+# every page, so three dangling font URLs sat on the live landing page while an
+# attribute-only scan reported the site clean.
+#
+# The CSS pattern wants a raw quote or none. A page that *shows* CSS in a code
+# listing has its quotes escaped to `&#39;`, and prose about a URL is not a URL.
+#
+# Only the root-absolute half is here. Whether a font URL has a file behind it
+# is the walk's question, and the walk answers it — over the fixture book, in
+# Rust, on both halves at once (`crates/wcl_wdoc/tests/support/relocatable.rs`).
 
 # Check the built docs/ sites for root-absolute URLs (they must all be relative)
 [group('dev')]
 docs-relative-urls: docs-build
-    @hits="$(grep -rnoE '(href|src)="/[^"]*"' docs/_site --include='*.html' || true)"; \
+    @hits="$(grep -rnoE --include='*.html' \
+        -e '(href|src)="/[^"]*"' \
+        -e "[:,] *url\([\"']?/[^)]*\)" \
+        docs/_site || true)"; \
     if [ -n "$hits" ]; then \
         echo "root-absolute URLs in the built site — every URL must be relative:" >&2; \
         echo "$hits" >&2; \

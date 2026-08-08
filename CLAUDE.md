@@ -317,12 +317,14 @@ fmt-check   workspace-lint   workspace-test   docs-build   docs-relative-urls
 ```
 
 `docs-relative-urls` depends on `docs-build` and greps the sites it just wrote for a
-root-absolute `href="/…"` / `src="/…"`. A build tree is relocatable — the book is deployed
-under `/reference/`, a directory the build was never told about — and an absolute URL
-breaks that. The Rust tests resolve every local target over a fixture book
-(`crates/wcl_wdoc/tests/build.rs`, `crates/wcl/tests/wdoc.rs`, sharing the walk in
-`crates/wcl_wdoc/tests/support/relocatable.rs`); this part stays a grep, and only exists to
-catch an absolute link typed into a real page. Because it depends on `docs-build`,
+root-absolute `href="/…"` / `src="/…"`, **and** for a root-absolute CSS `url(…)` — the
+`@font-face` `src:` descriptor lives inside an inlined `<style>`, where an attribute-only
+scan cannot see it (#279). A build tree is relocatable — the book is deployed under
+`/reference/`, a directory the build was never told about — and an absolute URL breaks
+that. The Rust tests resolve every local target, attribute and stylesheet alike, over a
+fixture book (`crates/wcl_wdoc/tests/build.rs`, `crates/wcl/tests/wdoc.rs`, sharing the walk
+in `crates/wcl_wdoc/tests/support/relocatable.rs`); this part stays a grep, and only exists
+to catch an absolute link typed into a real page. Because it depends on `docs-build`,
 `.github/workflows/ci.yml` runs the two as one step — separate `just` invocations don't
 share a dependency graph, so naming both would render the sites twice.
 
