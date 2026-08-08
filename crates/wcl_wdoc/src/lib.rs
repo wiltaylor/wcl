@@ -18,7 +18,6 @@ pub mod git;
 mod highlight;
 mod icons;
 mod image;
-mod include;
 mod inline;
 mod layered;
 mod map;
@@ -31,7 +30,6 @@ pub mod pdf;
 mod radial;
 mod render;
 mod routing;
-pub mod sites;
 mod terminal;
 mod text;
 mod tileset;
@@ -42,14 +40,12 @@ mod visibility;
 mod wireframe;
 
 pub use build::{
-    BuildError, BuildOptions, PageSubSite, RebuildOutcome, build, build_incremental,
-    build_with_options, open_doc_for_edit, schema_registry, subsite_for_page, take_render_warnings,
-    wdoc_environment,
+    BuildError, BuildOptions, RebuildOutcome, build, build_incremental, build_with_options,
+    open_doc_for_edit, schema_registry, take_render_warnings, wdoc_environment,
 };
 pub use force::layout_graph;
 pub use markdown::markdown;
 pub use pdf::{PageSize, PdfError, pdf};
-pub use sites::{EntryIncludeInfo, EntrySiteInfo, entry_site_info};
 pub use visibility::{DeclaredVisibility, declared_visibility};
 
 /// Highlight `source` as HTML `<span class="tok-…">` runs using the same

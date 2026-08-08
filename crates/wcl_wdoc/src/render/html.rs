@@ -218,8 +218,9 @@ pub(crate) fn read_menu_items(block: &Block<'_>) -> Vec<MenuNode> {
 
 /// Append one menu child to `out`: an `item` becomes a node (recursing for
 /// nested items / repeaters); a `wdoc_repeater` expands to one node per
-/// element of its `each` list — data-driven navigation (e.g. one entry per
-/// `included_sites(...)` record). Other kinds are ignored.
+/// element of its `each` list — data-driven navigation (e.g. `each` a list
+/// of records declared in a `body` block, one entry per record). Other
+/// kinds are ignored.
 fn push_menu_child(it: &Block<'_>, out: &mut Vec<MenuNode>) {
     match it.kind() {
         "item" => out.push(MenuNode {

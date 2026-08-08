@@ -51,7 +51,7 @@ pub fn markdown(
         &user_src,
         &name,
         base_dir.clone(),
-        &crate::build::wdoc_environment(base_dir.as_deref()),
+        &crate::build::wdoc_environment(),
         loader,
     )
     .map_err(|e| BuildError::Parse(Report::new(e)))?;
