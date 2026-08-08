@@ -12277,104 +12277,13 @@ page index {
 // ---------------------------------------------------------------------------
 // Relocatable output — a build tree works from whatever directory it lands in.
 //
-// The deploy bets on this: `just docs-build` renders the landing page into
-// `docs/_site` and then the reference book into `docs/_site/reference`, with
-// no copy or rewrite step between them. Nothing else asserts it, so this walks
-// every emitted `.html` and checks both halves of the property — no URL is
-// root-absolute, and every URL naming a local file resolves to a real file.
-//
-// `crates/wcl/tests/wdoc.rs` runs the same walk over the same fixture book
-// through `wcl wdoc build --out`, which is the invocation the workflow uses.
-// Keep the two in step.
+// The walk itself lives in `tests/support/relocatable.rs`, shared with
+// `crates/wcl/tests/wdoc.rs`, which runs it over the same fixture book built
+// through `wcl wdoc build --out`. One walk, two ways in.
 // ---------------------------------------------------------------------------
 
-/// Every `href=` / `src=` attribute value in one HTML document.
-///
-/// A deliberately literal scan rather than a parse: the emitted markup is our
-/// own, always double-quotes its attributes, and a test that reimplements less
-/// is a test that can be trusted to fail for the right reason.
-fn html_urls(html: &str) -> Vec<String> {
-    let mut urls = Vec::new();
-    for attr in ["href=\"", "src=\""] {
-        let mut rest = html;
-        while let Some(start) = rest.find(attr) {
-            rest = &rest[start + attr.len()..];
-            let Some(end) = rest.find('"') else { break };
-            urls.push(rest[..end].replace("&amp;", "&"));
-            rest = &rest[end + 1..];
-        }
-    }
-    urls
-}
-
-/// True for a URL that names a file inside the build tree (so it must resolve
-/// on disk). Fragments, external schemes and protocol-relative URLs point
-/// outside it and carry no on-disk target.
-fn is_local_target(url: &str) -> bool {
-    !url.is_empty()
-        && !url.starts_with('#')
-        && !url.starts_with("//")
-        && !url.contains("://")
-        && !url.starts_with("data:")
-        && !url.starts_with("mailto:")
-}
-
-/// Assert the build tree under `root` is relocatable: every `href`/`src` in
-/// every `.html` under it is relative, and every one naming a local file
-/// resolves to a file that exists.
-fn assert_relocatable(root: &Path) {
-    let mut checked_pages = 0usize;
-    let mut checked_urls = 0usize;
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(&dir).expect("read build tree") {
-            let path = entry.expect("dir entry").path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if path.extension().is_none_or(|e| e != "html") {
-                continue;
-            }
-            let html = std::fs::read_to_string(&path).expect("read page");
-            let page_dir = path.parent().expect("page has a parent");
-            checked_pages += 1;
-            for url in html_urls(&html) {
-                assert!(
-                    !url.starts_with('/'),
-                    "{}: root-absolute URL {url:?} — the tree stops working \
-                     the moment it is served from a subdirectory",
-                    path.display()
-                );
-                if !is_local_target(&url) {
-                    continue;
-                }
-                let bare = url.split(['#', '?']).next().unwrap_or(&url);
-                if bare.is_empty() {
-                    continue;
-                }
-                let target = page_dir.join(bare);
-                assert!(
-                    target.exists(),
-                    "{}: {url:?} resolves to {}, which does not exist",
-                    path.display(),
-                    target.display()
-                );
-                checked_urls += 1;
-            }
-        }
-    }
-    // A walk that found nothing would pass silently, which is the one way this
-    // test could rot into a no-op.
-    assert!(
-        checked_pages >= 3,
-        "expected the fixture's pages, walked {checked_pages}"
-    );
-    assert!(
-        checked_urls >= 8,
-        "expected local URLs to check, checked {checked_urls}"
-    );
-}
+#[path = "support/relocatable.rs"]
+mod relocatable;
 
 #[test]
 fn a_build_into_a_nested_out_dir_is_relocatable() {
@@ -12384,5 +12293,48 @@ fn a_build_into_a_nested_out_dir_is_relocatable() {
     let nested = out.path().join("site").join("reference");
     let main = examples_dir().join("wdoc_relocatable").join("main.wcl");
     build_ok(&main, &nested);
-    assert_relocatable(&nested);
+    // Three pages, and the fixture's own links, icon sprite, favicon and
+    // image put well over eight local URLs on them.
+    relocatable::assert_relocatable(&nested, 3, 8);
+}
+
+// The walk is only worth having if it can fail, and every one of its three
+// verdicts fails silently by degrading into a pass. These pin each of them
+// against a hand-made tree, so a refactor of the walk can't quietly neuter it.
+
+#[test]
+#[should_panic(expected = "root-absolute URL")]
+fn the_walk_rejects_a_root_absolute_url() {
+    let out = TempDir::new().expect("mkdir out");
+    std::fs::write(out.path().join("p.html"), "<a href=\"/oops\">x</a>").expect("write page");
+    relocatable::assert_relocatable(out.path(), 1, 0);
+}
+
+#[test]
+#[should_panic(expected = "does not exist")]
+fn the_walk_rejects_a_local_url_with_no_file_behind_it() {
+    let out = TempDir::new().expect("mkdir out");
+    std::fs::write(out.path().join("p.html"), "<img src=\"nope.png\">").expect("write page");
+    relocatable::assert_relocatable(out.path(), 1, 0);
+}
+
+#[test]
+#[should_panic(expected = "expected at least 3 pages")]
+fn the_walk_rejects_a_tree_it_found_nothing_in() {
+    let out = TempDir::new().expect("mkdir out");
+    relocatable::assert_relocatable(out.path(), 3, 0);
+}
+
+#[test]
+fn the_walk_passes_urls_that_leave_the_tree() {
+    // A fragment, another host, and a protocol-relative URL: none of them has
+    // an on-disk target, and none of them is anchored at *this* tree's root.
+    let out = TempDir::new().expect("mkdir out");
+    std::fs::write(
+        out.path().join("p.html"),
+        "<a href=\"#here\">a</a><a href=\"https://example.com/x\">b</a>\
+         <a href=\"//cdn.example.com/x\">c</a>",
+    )
+    .expect("write page");
+    relocatable::assert_relocatable(out.path(), 1, 0);
 }

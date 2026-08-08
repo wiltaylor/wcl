@@ -719,7 +719,6 @@ mod tests {
     struct Harness {
         src: TempDir,
         out: TempDir,
-        main: PathBuf,
         state: Arc<ServeState>,
         app: Router,
     }
@@ -776,19 +775,20 @@ mod tests {
             Harness {
                 src,
                 out,
-                main,
                 state,
                 app,
             }
         }
 
-        /// `GET path`, returning the status and the body as text.
-        async fn get(&self, path: &str) -> (StatusCode, String) {
+        /// Drive one request through the real router, returning the status and
+        /// the body as text.
+        async fn send(&self, method: &str, path: &str) -> (StatusCode, String) {
             let res = self
                 .app
                 .clone()
                 .oneshot(
                     Request::builder()
+                        .method(method)
                         .uri(path)
                         .body(Body::empty())
                         .expect("build request"),
@@ -802,25 +802,16 @@ mod tests {
             (status, String::from_utf8_lossy(&bytes).into_owned())
         }
 
+        /// `GET path`, returning the status and the body as text.
+        async fn get(&self, path: &str) -> (StatusCode, String) {
+            self.send("GET", path).await
+        }
+
         /// `POST /__wdoc_rebuild`, returning the decoded JSON report.
         async fn rebuild(&self) -> serde_json::Value {
-            let res = self
-                .app
-                .clone()
-                .oneshot(
-                    Request::builder()
-                        .method("POST")
-                        .uri("/__wdoc_rebuild")
-                        .body(Body::empty())
-                        .expect("build request"),
-                )
-                .await
-                .expect("router response");
-            assert_eq!(res.status(), StatusCode::OK);
-            let bytes = to_bytes(res.into_body(), usize::MAX)
-                .await
-                .expect("read body");
-            serde_json::from_slice(&bytes).expect("rebuild report is JSON")
+            let (status, body) = self.send("POST", "/__wdoc_rebuild").await;
+            assert_eq!(status, StatusCode::OK);
+            serde_json::from_str(&body).expect("rebuild report is JSON")
         }
 
         /// Rewrite a page file and note it as pending, exactly as the watcher
@@ -856,7 +847,8 @@ mod tests {
         // Every served page carries the live-reload script, appended after
         // the document — that is how the browser learns a rebuild happened.
         assert!(before.contains("/__wdoc_reload"), "{before}");
-        let b_before = std::fs::read_to_string(h.out.path().join("b.html")).expect("read b.html");
+        let b = h.out.path().join("b.html");
+        let b_written_before = std::fs::metadata(&b).expect("stat b.html").modified().ok();
 
         h.edit_page("a", "Edited A!");
         let report = h.rebuild().await;
@@ -878,9 +870,14 @@ mod tests {
             !after.contains("Original A."),
             "stale page served:\n{after}"
         );
-        // Targeted means targeted: page B was not re-rendered.
-        let b_after = std::fs::read_to_string(h.out.path().join("b.html")).expect("read b.html");
-        assert_eq!(b_before, b_after, "page B must not be re-rendered");
+        // Targeted means targeted: B's file was never written again. Its bytes
+        // would be identical either way (the build is deterministic), so the
+        // write timestamp is what actually separates the two branches.
+        let b_written_after = std::fs::metadata(&b).expect("stat b.html").modified().ok();
+        assert_eq!(
+            b_written_before, b_written_after,
+            "page B must not be re-rendered"
+        );
     }
 
     #[tokio::test]
@@ -929,8 +926,5 @@ mod tests {
         let (status, page) = h.get("/a").await;
         assert_eq!(status, StatusCode::OK);
         assert!(page.contains("Fixed A."), "{page}");
-        // `main` is still where the harness left it — the rebuild worker
-        // rebuilds the document it was started on, not a re-resolved one.
-        assert!(h.main.is_file());
     }
 }

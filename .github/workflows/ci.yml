@@ -33,10 +33,12 @@ jobs:
       # them catches renderer regressions that unit tests miss, and broken
       # doc pages, before they reach the deploy workflow. Same two
       # invocations, same order, as deploy-site.yml.
-      - run: just ci::docs-build
-      # Every URL the two sites emit must be relative, or the book breaks the
-      # moment it is served from `/reference/`. Cheap grep; the Rust tests do
-      # the resolving walk over a fixture book.
+      #
+      # Two gate parts, one step: `docs-relative-urls` depends on `docs-build`
+      # and greps what it just wrote for a root-absolute `href="/…"` / `src="/…"`,
+      # which would break the book the moment it is served from `/reference/`.
+      # Naming both here would render the sites twice — separate `just`
+      # invocations don't share a dependency graph, where `just ci::check` does.
       - run: just ci::docs-relative-urls
 
   # ── Fuzz smoke ────────────────────────────────────────────────────────────
