@@ -12368,15 +12368,19 @@ fn style_asset_refs(html: &str) -> Vec<String> {
     refs
 }
 
-/// Assert every `_wdoc/…` asset the page's CSS names was actually written.
-fn assert_style_assets_exist(out: &Path, html: &str) {
-    for name in style_asset_refs(html) {
-        let target = out.join("_wdoc").join(&name);
+/// Assert every `_wdoc/…` asset the page's CSS names was actually written,
+/// and return how many it checked, so a caller can put a floor under the walk
+/// (a scan that found nothing would otherwise pass silently).
+fn assert_style_assets_exist(out: &Path, html: &str) -> usize {
+    let names = style_asset_refs(html);
+    for name in &names {
+        let target = out.join("_wdoc").join(name);
         assert!(
             target.exists(),
             "page CSS references _wdoc/{name}, which the build did not write"
         );
     }
+    names.len()
 }
 
 #[test]
@@ -12447,6 +12451,36 @@ fn a_site_less_document_ships_no_bundled_font_urls() {
 }
 
 #[test]
+fn a_documents_own_font_face_survives_the_drop() {
+    // The drop is keyed on the *file named*, not on where the rule was
+    // written — a document may ship its own asset into `_wdoc/` (a `file`
+    // block's default folder) and declare a face for it. That rule is not
+    // ours to judge, and an imported page is still the author's file.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(tmp.path().join("MyOwnFace.woff2"), b"not really a font").expect("write face");
+    write_fixture(
+        tmp.path().join("styles.wcl"),
+        "font_face \"'My Own Face'\" {\n  \
+         src = \"url('_wdoc/MyOwnFace.woff2') format('woff2')\"\n}\n",
+    );
+    let src = tmp.path().join("t.wcl");
+    write_fixture(
+        &src,
+        "import \"./styles.wcl\"\nsite s { title = \"S\" }\n\
+         page index { sites = [:s]\n  file \"./MyOwnFace.woff2\" {}\n  p { text = \"hi\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("MyOwnFace.woff2"),
+        "the document's own @font-face rule was dropped:\n{html}"
+    );
+    assert!(assert_style_assets_exist(out.path(), &html) > 0);
+}
+
+#[test]
 fn the_relocatable_fixture_book_ships_no_dangling_font_urls() {
     // The same check over the fixture the relocatable walk uses: a real
     // two-site book, built into a nested `--out`, with no terminal anywhere.
@@ -12455,24 +12489,22 @@ fn the_relocatable_fixture_book_ships_no_dangling_font_urls() {
     let main = examples_dir().join("wdoc_relocatable").join("main.wcl");
     build_ok(&main, &nested);
 
-    let mut walked = 0usize;
-    let mut stack = vec![nested.clone()];
-    while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(&dir).expect("read build tree") {
-            let path = entry.expect("dir entry").path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if path.extension().is_none_or(|e| e != "html") {
-                continue;
-            }
-            let html = std::fs::read_to_string(&path).expect("read page");
-            // Assets are addressed relative to the page, so a sub-site page
-            // reaches its own site directory, not the tree root.
-            assert_style_assets_exist(path.parent().expect("page has a parent"), &html);
-            walked += 1;
-        }
-    }
-    assert!(walked >= 3, "walked only {walked} pages");
+    let pages = relocatable::html_pages(&nested);
+    // Assets are addressed relative to the page, so a sub-site page reaches
+    // its own site directory, not the tree root.
+    let checked: usize = pages
+        .iter()
+        .map(|(path, html)| {
+            assert_style_assets_exist(path.parent().expect("page has a parent"), html)
+        })
+        .sum();
+    assert!(pages.len() >= 3, "walked only {} pages", pages.len());
+    assert!(
+        checked >= BOOK_FONT_FACE_COUNT,
+        "expected at least {BOOK_FONT_FACE_COUNT} stylesheet asset refs, checked {checked}"
+    );
 }
+
+/// The book typography faces every themed site carries. A floor under the
+/// scan above: were it to stop finding `<style>` refs, it would pass silently.
+const BOOK_FONT_FACE_COUNT: usize = 13;

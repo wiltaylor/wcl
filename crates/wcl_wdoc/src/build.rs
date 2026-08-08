@@ -1048,7 +1048,7 @@ struct CssBuckets {
 /// themed site, the terminal faces only when a page uses a terminal — but the
 /// stdlib's `@font-face` rules naming them are declared unconditionally, so a
 /// site that skips a family would otherwise ship URLs pointing at files that
-/// are not there. [`Self::ships`] is the one answer both halves read.
+/// are not there. [`Self::resolves`] is the one answer both halves read.
 ///
 /// The flags describe the *output tree*, not this build: an incremental
 /// targeted render reuses the assets the prior full build wrote, so it must
@@ -1063,22 +1063,32 @@ struct BundledFonts {
 }
 
 impl BundledFonts {
-    /// Whether `_wdoc/<file>` is a bundled font this output tree carries. A
-    /// bundled font absent from both tables is not shipped by any build, so
-    /// it answers `false` too; `stdlib_font_faces_name_bundled_files` pins
-    /// every stdlib rule against the tables, so a newly bundled face that is
-    /// never registered fails a test rather than vanishing from the CSS.
-    fn ships(&self, file: &str) -> bool {
+    /// Whether a `_wdoc/<file>` reference resolves against this output tree.
+    ///
+    /// A file **neither** table lists is not a bundled font, so it is not
+    /// ours to judge and always resolves: the drop is keyed on *being a
+    /// bundled face of a family this site skips*, never on being
+    /// unrecognised. A document may ship its own asset into `_wdoc/` (a
+    /// `file` block's default folder) and name it from its own `font_face`,
+    /// and that rule must survive.
+    fn resolves_file(&self, file: &str) -> bool {
         let named = |files: &[(&str, &[u8])]| files.iter().any(|(name, _)| *name == file);
-        (self.book && named(BOOK_FONT_FILES))
-            || (self.terminal && named(crate::terminal::FONT_FILES))
+        if named(BOOK_FONT_FILES) {
+            self.book
+        } else if named(crate::terminal::FONT_FILES) {
+            self.terminal
+        } else {
+            true
+        }
     }
 
-    /// Whether a library `@font-face` rule resolves against this output tree:
-    /// every `_wdoc/…` file its `src` names must be shipped. A rule naming no
-    /// bundled asset (an external URL) always resolves.
+    /// Whether a `@font-face` rule resolves against this output tree: every
+    /// `_wdoc/…` file its `src` names must be one this tree carries. A rule
+    /// naming no bundled asset (an external URL) always resolves.
     fn resolves(&self, src: &str) -> bool {
-        bundled_asset_refs(src).iter().all(|f| self.ships(f))
+        bundled_asset_refs(src)
+            .iter()
+            .all(|f| self.resolves_file(f))
     }
 }
 
@@ -1102,15 +1112,14 @@ fn bundled_asset_refs(css: &str) -> Vec<&str> {
 /// classes). `is_lib` is the origin, carried through expansion. Non-CSS,
 /// non-generator blocks (pages, etc.) contribute nothing, exactly as before.
 ///
-/// A library `font_face` naming a bundled font this site does not ship is
-/// dropped (see [`BundledFonts`]). A user rule passes through: its URLs are
-/// the author's to resolve.
+/// A `font_face` naming a bundled font this site does not ship is dropped
+/// (see [`BundledFonts`]). The test is on the *file named*, not on where the
+/// rule was written: `is_lib` marks any imported file, a user's own pages
+/// included, so it says nothing about whose font this is.
 fn collect_css_block(b: &Block<'_>, is_lib: bool, fonts: BundledFonts, css: &mut CssBuckets) {
     match b.kind() {
         "class" | "base" | "font_face" | "media" | "keyframes" => {
-            if b.kind() == "font_face"
-                && is_lib
-                && !fonts.resolves(&field_utf8(b, "src").unwrap_or_default())
+            if b.kind() == "font_face" && !fonts.resolves(&field_utf8(b, "src").unwrap_or_default())
             {
                 return;
             }
@@ -2951,15 +2960,17 @@ fn collect_duplicate_id(block: &Block<'_>, seen: &mut HashSet<String>) -> Option
 mod tests {
     use super::*;
 
-    /// Every bundled font a stdlib `@font-face` rule names must appear in one
-    /// of the two file tables — otherwise [`BundledFonts::ships`] would answer
-    /// `false` for it and the rule would silently disappear from every page.
-    /// Bundling a new face means adding it to its table.
+    /// Every `.woff2` a stdlib `@font-face` rule names must be in one of the
+    /// two file tables, and every table entry must have a rule. A face
+    /// bundled without a table entry would never be written for the family
+    /// that gates it; one written without a rule is dead weight.
     #[test]
     fn stdlib_font_faces_name_bundled_files() {
-        let all = BundledFonts {
-            book: true,
-            terminal: true,
+        let tabled = |file: &str| {
+            BOOK_FONT_FILES
+                .iter()
+                .chain(crate::terminal::FONT_FILES)
+                .any(|(name, _)| *name == file)
         };
         let registry = schema_registry();
         let mut seen = 0usize;
@@ -2970,7 +2981,7 @@ mod tests {
                 }
                 seen += 1;
                 assert!(
-                    all.ships(file),
+                    tabled(file),
                     "{name} references _wdoc/{file}, which no bundled font table lists"
                 );
             }
@@ -2982,16 +2993,19 @@ mod tests {
         );
     }
 
-    /// A rule naming no bundled asset (an external URL) always resolves; one
-    /// naming a family the site skips does not.
+    /// A rule naming a bundled face resolves only where that family ships. A
+    /// rule naming anything else — an external URL, or an asset the document
+    /// put in `_wdoc/` itself — is not ours to judge and always resolves.
     #[test]
     fn bundled_font_rules_resolve_against_the_shipped_families() {
         let external = "url('https://example.test/x.woff2') format('woff2')";
         let terminal = "url('_wdoc/JetBrainsMonoNerdFontMono-Regular.woff2') format('woff2')";
         let book = "url('_wdoc/SourceSerif4-Regular.woff2') format('woff2')";
+        let authored = "url('_wdoc/MyOwnFace.woff2') format('woff2')";
 
         let none = BundledFonts::default();
         assert!(none.resolves(external));
+        assert!(none.resolves(authored));
         assert!(!none.resolves(terminal));
         assert!(!none.resolves(book));
 
@@ -3000,6 +3014,7 @@ mod tests {
             terminal: false,
         };
         assert!(themed.resolves(book));
+        assert!(themed.resolves(authored));
         assert!(!themed.resolves(terminal));
     }
 }
