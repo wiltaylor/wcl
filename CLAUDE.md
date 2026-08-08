@@ -49,7 +49,8 @@ update only one copy, the other copy is now wrong and no build will tell you.
 - `editors/tree-sitter-wcl` — a tree-sitter grammar stub
   (`editors/tree-sitter-wcl/README.md`).
 - `examples/` — fixture files the tests use, including `imports/` for module loading,
-  `errors/` for negative diagnostics, `warnings/`, and `wdoc/`.
+  `errors/` for negative diagnostics, `warnings/`, `wdoc/`, and `wdoc_relocatable/` (the
+  small book the relocatable-output tests build into a nested `--out`).
 - `docs/` — wcl.dev, authored in WCL and built with `wcl wdoc`. Two entry documents:
   `landing/main.wcl` (the page at `/`) and `reference/main.wcl` (the 42-chapter book at
   `/reference/`). The book draws the sample media in `docs/assets/` as `../assets/…`.
@@ -310,11 +311,21 @@ A task is **not done** until the merge bar passes:
 just ci::check
 ```
 
-That is the **`ci` just module** (`.just/ci/mod.just`) — the whole gate. It runs four parts:
+That is the **`ci` just module** (`.just/ci/mod.just`) — the whole gate. It runs five parts:
 
 ```
-fmt-check   workspace-lint   workspace-test   docs-build
+fmt-check   workspace-lint   workspace-test   docs-build   docs-relative-urls
 ```
+
+`docs-relative-urls` depends on `docs-build` and greps the sites it just wrote for a
+root-absolute `href="/…"` / `src="/…"`. A build tree is relocatable — the book is deployed
+under `/reference/`, a directory the build was never told about — and an absolute URL
+breaks that. The Rust tests resolve every local target over a fixture book
+(`crates/wcl_wdoc/tests/build.rs`, `crates/wcl/tests/wdoc.rs`, sharing the walk in
+`crates/wcl_wdoc/tests/support/relocatable.rs`); this part stays a grep, and only exists to
+catch an absolute link typed into a real page. Because it depends on `docs-build`,
+`.github/workflows/ci.yml` runs the two as one step — separate `just` invocations don't
+share a dependency graph, so naming both would render the sites twice.
 
 `just ci::<part>` runs one part, and that is exactly what each step of
 `.github/workflows/ci.yml` invokes, so the workflow and the local gate cannot drift. While

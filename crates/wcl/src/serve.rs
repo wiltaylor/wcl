@@ -230,6 +230,43 @@ fn page_count(n: usize) -> String {
     format!("{n} page{}", if n == 1 { "" } else { "s" })
 }
 
+/// Assemble the dev server's routes over `state`.
+///
+/// One generic static handler resolves any request path against the output
+/// tree, so it serves both the flat single-site layout and the nested
+/// multi-site one (`/<site>/…`, `/<site>/_wdoc/…`) plus the generated chooser
+/// at `/`, with no per-route knowledge. The reload and rebuild endpoints sit
+/// outside the output tree's namespace.
+///
+/// A function rather than an expression inside [`serve`] so the tests can drive
+/// the real router in process, without a listener or a `notify` watcher.
+fn router(state: Arc<ServeState>) -> Router {
+    Router::new()
+        .route("/__wdoc_reload", get(handle_reload))
+        .route("/__wdoc_rebuild", axum::routing::post(handle_rebuild))
+        .fallback(get(handle_static))
+        .with_state(state)
+        .layer(middleware::from_fn(log_requests))
+}
+
+/// Rebuild worker: one build per request, until the request channel closes.
+/// Every request rebuilds the served site, incrementally when files are
+/// pending. Reports completion back when asked.
+async fn rebuild_worker(
+    file: PathBuf,
+    out: PathBuf,
+    site: Option<String>,
+    state: Arc<ServeState>,
+    mut requests: tokio::sync::mpsc::UnboundedReceiver<RebuildReq>,
+) {
+    while let Some(req) = requests.recv().await {
+        let report = run_rebuild_request(&file, &out, site.as_deref(), &state);
+        if let Some(done) = req.done {
+            let _ = done.send(report);
+        }
+    }
+}
+
 pub(crate) async fn serve(
     file: PathBuf,
     out: Option<PathBuf>,
@@ -277,7 +314,7 @@ pub(crate) async fn serve(
 
     // Rebuilds are triggered manually (not on every file change). Both the
     // console (stdin Enter) and the `/__wdoc_rebuild` endpoint send on this.
-    let (rebuild_tx, mut rebuild_rx) = tokio::sync::mpsc::unbounded_channel::<RebuildReq>();
+    let (rebuild_tx, rebuild_rx) = tokio::sync::mpsc::unbounded_channel::<RebuildReq>();
 
     let state = Arc::new(ServeState {
         out: out_dir.clone(),
@@ -349,33 +386,15 @@ pub(crate) async fn serve(
         }
     };
 
-    let rb_file = file.clone();
-    let rb_out = out_dir.clone();
-    let rb_site = site.clone();
-    let rb_state = Arc::clone(&state);
-    // Rebuild worker: one build per request. Every request rebuilds the served
-    // site, incrementally when files are pending. Reports completion back when
-    // asked.
-    let rebuild_loop = async move {
-        while let Some(req) = rebuild_rx.recv().await {
-            let report = run_rebuild_request(&rb_file, &rb_out, rb_site.as_deref(), &rb_state);
-            if let Some(done) = req.done {
-                let _ = done.send(report);
-            }
-        }
-    };
+    let rebuild_loop = rebuild_worker(
+        file.clone(),
+        out_dir.clone(),
+        site.clone(),
+        Arc::clone(&state),
+        rebuild_rx,
+    );
 
-    // One generic static handler resolves any request path against the
-    // output tree, so it serves both the flat single-site layout and the
-    // nested multi-site one (`/<site>/…`, `/<site>/_wdoc/…`) plus the
-    // generated chooser at `/`, with no per-route knowledge. The reload
-    // endpoint sits outside the output tree's namespace.
-    let app = Router::new()
-        .route("/__wdoc_reload", get(handle_reload))
-        .route("/__wdoc_rebuild", axum::routing::post(handle_rebuild))
-        .fallback(get(handle_static))
-        .with_state(Arc::clone(&state))
-        .layer(middleware::from_fn(log_requests));
+    let app = router(Arc::clone(&state));
 
     let listener = match addr {
         BindSpec::Auto => bind_auto(DEFAULT_BIND).await?,
@@ -675,5 +694,237 @@ mod tests {
     fn reload_script_targets_the_reload_route() {
         assert!(RELOAD_SCRIPT.contains("/__wdoc_reload"));
         assert!(RELOAD_SCRIPT.contains("location.reload()"));
+    }
+
+    // ── The rebuild round trip, end to end ───────────────────────────────
+    //
+    // The three tests above compare strings. What they cannot see is the
+    // server's one moving part: a change lands in `pending`, a rebuild
+    // request drains it, `build_incremental` re-renders just the pages those
+    // files declare, and the next `GET` serves the rewritten page. Every step
+    // of that chain fails *silently* when it breaks — a stale page in the dev
+    // server, not a compile error — so it is driven here for real.
+    //
+    // In process, over the real `Router`, rather than by spawning the binary:
+    // seeding `pending` by hand is what reaches the incremental branch at all,
+    // and a spawned server only gets there when the `notify` watcher fires.
+
+    use axum::body::to_bytes;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    /// Everything [`serve`] wires together except the listener and the
+    /// watcher: a small book on disk, its build output, the shared state, a
+    /// running rebuild worker, and the router.
+    struct Harness {
+        src: TempDir,
+        out: TempDir,
+        state: Arc<ServeState>,
+        app: Router,
+    }
+
+    impl Harness {
+        /// Lay out a two-page book (`main.wcl` + a page file each), run the
+        /// initial full build, and start the rebuild worker.
+        fn start() -> Self {
+            let src = TempDir::new().expect("mkdir src");
+            let out = TempDir::new().expect("mkdir out");
+            let main = src.path().join("main.wcl");
+            std::fs::write(
+                &main,
+                "import <wdoc.wcl>\n\
+                 site docs {\n  \
+                   default_template = :book\n  \
+                   title = \"Docs\"\n  \
+                   toc {\n    \
+                     chapter \"A\" { page = \"a\" }\n    \
+                     chapter \"B\" { page = \"b\" }\n  \
+                   }\n\
+                 }\n\
+                 import \"./a.wcl\"\n\
+                 import \"./b.wcl\"\n",
+            )
+            .expect("write main.wcl");
+            write_page(src.path(), "a", "Original A.");
+            write_page(src.path(), "b", "Original B.");
+
+            let (rebuild_tx, rebuild_rx) = tokio::sync::mpsc::unbounded_channel::<RebuildReq>();
+            let state = Arc::new(ServeState {
+                out: out.path().to_path_buf(),
+                error: RwLock::new(None),
+                generation: tokio::sync::watch::Sender::new(0),
+                pending: Mutex::new(Vec::new()),
+                rebuild_tx,
+            });
+
+            run_build(&main, out.path(), None, &state, false);
+            assert!(
+                state.error.read().unwrap().is_none(),
+                "the initial build must succeed"
+            );
+
+            tokio::spawn(rebuild_worker(
+                main.clone(),
+                out.path().to_path_buf(),
+                None,
+                Arc::clone(&state),
+                rebuild_rx,
+            ));
+
+            let app = router(Arc::clone(&state));
+            Harness {
+                src,
+                out,
+                state,
+                app,
+            }
+        }
+
+        /// Drive one request through the real router, returning the status and
+        /// the body as text.
+        async fn send(&self, method: &str, path: &str) -> (StatusCode, String) {
+            let res = self
+                .app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(path)
+                        .body(Body::empty())
+                        .expect("build request"),
+                )
+                .await
+                .expect("router response");
+            let status = res.status();
+            let bytes = to_bytes(res.into_body(), usize::MAX)
+                .await
+                .expect("read body");
+            (status, String::from_utf8_lossy(&bytes).into_owned())
+        }
+
+        /// `GET path`, returning the status and the body as text.
+        async fn get(&self, path: &str) -> (StatusCode, String) {
+            self.send("GET", path).await
+        }
+
+        /// `POST /__wdoc_rebuild`, returning the decoded JSON report.
+        async fn rebuild(&self) -> serde_json::Value {
+            let (status, body) = self.send("POST", "/__wdoc_rebuild").await;
+            assert_eq!(status, StatusCode::OK);
+            serde_json::from_str(&body).expect("rebuild report is JSON")
+        }
+
+        /// Rewrite a page file and note it as pending, exactly as the watcher
+        /// would have after an editor save.
+        fn edit_page(&self, name: &str, body: &str) {
+            let path = write_page(self.src.path(), name, body);
+            self.state.pending.lock().unwrap().push(path);
+        }
+    }
+
+    /// Write `<name>.wcl` under `dir` as a one-paragraph page of the `docs`
+    /// site. The page files don't re-import the wdoc schema — it resolves
+    /// document-wide through `main.wcl`, exactly like the real docs.
+    fn write_page(dir: &Path, name: &str, body: &str) -> PathBuf {
+        let path = dir.join(format!("{name}.wcl"));
+        std::fs::write(
+            &path,
+            format!(
+                "page {name} {{\n  sites = [:docs]\n  h1 \"Page {name}\"\n  p \"{body}\"\n}}\n"
+            ),
+        )
+        .expect("write page file");
+        path
+    }
+
+    #[tokio::test]
+    async fn a_pending_change_rebuilds_just_that_page_and_the_next_get_serves_it() {
+        let h = Harness::start();
+
+        let (status, before) = h.get("/a").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(before.contains("Original A."), "{before}");
+        // Every served page carries the live-reload script, appended after
+        // the document — that is how the browser learns a rebuild happened.
+        assert!(before.contains("/__wdoc_reload"), "{before}");
+        let b = h.out.path().join("b.html");
+        let b_written_before = std::fs::metadata(&b).expect("stat b.html").modified().ok();
+
+        h.edit_page("a", "Edited A!");
+        let report = h.rebuild().await;
+
+        assert_eq!(report["ok"], serde_json::json!(true), "{report}");
+        // The *targeted* branch: one named page, not "N pages (full)". A
+        // mis-drained `pending` would fall back to a full build and this
+        // summary is the only place that shows.
+        assert_eq!(
+            report["summary"],
+            serde_json::json!("1 page (a)"),
+            "{report}"
+        );
+
+        let (status, after) = h.get("/a").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(after.contains("Edited A!"), "{after}");
+        assert!(
+            !after.contains("Original A."),
+            "stale page served:\n{after}"
+        );
+        // Targeted means targeted: B's file was never written again. Its bytes
+        // would be identical either way (the build is deterministic), so the
+        // write timestamp is what actually separates the two branches.
+        let b_written_after = std::fs::metadata(&b).expect("stat b.html").modified().ok();
+        assert_eq!(
+            b_written_before, b_written_after,
+            "page B must not be re-rendered"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_rebuild_with_nothing_pending_rebuilds_the_whole_site() {
+        let h = Harness::start();
+
+        let report = h.rebuild().await;
+        assert_eq!(report["ok"], serde_json::json!(true), "{report}");
+        assert_eq!(
+            report["summary"],
+            serde_json::json!("2 pages (full)"),
+            "an empty `pending` means a full build:\n{report}"
+        );
+        // The drain is a take, so a second request has nothing left either.
+        assert!(h.state.pending.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_failed_rebuild_reports_and_serves_the_build_failure_page() {
+        let h = Harness::start();
+
+        // Break page A, and note it exactly as the watcher would.
+        let a = h.src.path().join("a.wcl");
+        std::fs::write(&a, "page a {\n  sites = [:docs]\n  p \n").expect("break a.wcl");
+        h.state.pending.lock().unwrap().push(a);
+
+        let report = h.rebuild().await;
+        assert_eq!(report["ok"], serde_json::json!(false), "{report}");
+
+        // While the last build is broken, every HTML request gets the failure
+        // page rather than stale content.
+        let (status, page) = h.get("/a").await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(page.contains("Build failed"), "{page}");
+        assert!(!page.contains("Original A."), "stale page served:\n{page}");
+        // The reload long-poll answers with the bumped generation, so the
+        // parked browser replaces the failure page when a build succeeds.
+        let (status, generation) = h.get("/__wdoc_reload").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(generation.trim(), "2", "a failed build still bumps");
+
+        // The fix lands, and the page comes back.
+        h.edit_page("a", "Fixed A.");
+        let report = h.rebuild().await;
+        assert_eq!(report["ok"], serde_json::json!(true), "{report}");
+        let (status, page) = h.get("/a").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(page.contains("Fixed A."), "{page}");
     }
 }

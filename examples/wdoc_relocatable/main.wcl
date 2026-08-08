@@ -1,0 +1,69 @@
+// A deliberately small book whose only job is to exercise **relocatable
+// output**: a build tree that works from whatever directory it is dropped
+// into, because every link and asset reference inside it is relative.
+//
+// The real deploy bets on that property — `just docs-build` renders the
+// landing page into `docs/_site` and then the reference book into
+// `docs/_site/reference`, with no copy or rewrite step in between — so this
+// book is built into a *nested* `--out` by both the library test
+// (`crates/wcl_wdoc/tests/build.rs`) and the CLI test
+// (`crates/wcl/tests/wdoc.rs`), which then walk every emitted `.html`.
+//
+// It carries one of each thing that emits a URL: two pages that link to each
+// other (page links + the book sidebar), an `iconset` (the shared icon
+// sprite), an `image` (an asset copied into `_wdoc/`), and a `class` (the
+// stylesheet). Keep it that way — the point is coverage of URL *sources*,
+// not of page content.
+//
+// A second, non-root site puts one page a directory *down* from the root, so
+// the walk also covers the references that have to climb back out
+// (`../_wdoc/…`, `../index.html`) rather than only the flat ones.
+import <wdoc.wcl>
+
+iconset ui {
+  pack  = "lucide"
+  color = "#5e81ac"
+}
+
+class "note" {
+  css = "padding:0.5rem;border:1px solid #999;"
+}
+
+site handbook {
+  default_template = :book
+  title = "Relocatable handbook"
+  root  = true
+  toc {
+    chapter "Start" { page = "index" }
+    chapter "Guide" { page = "guide" }
+  }
+}
+
+site appendix {
+  default_template = :webpage
+  title = "Appendix"
+}
+
+page index {
+  sites = [:handbook]
+  start = true
+  h1 "Relocatable handbook"
+  p "An icon :ui.house:, an image, and a link to the [guide](guide)."
+  image "coin.png" { alt = "A coin"  width = 16  height = 16 }
+}
+
+page guide {
+  sites = [:handbook]
+  h1 "Guide"
+  p "Back to the [start](index)."
+  p "Styled prose." { class = ["note"] }
+}
+
+// Lives at `appendix/notes.html`, one directory below the root site.
+page notes {
+  sites = [:appendix]
+  start = true
+  h1 "Notes"
+  p "An icon :ui.house: and the same image, a directory down."
+  image "coin.png" { alt = "A coin"  width = 16  height = 16 }
+}

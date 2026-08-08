@@ -12273,3 +12273,68 @@ page index {
     // The listing is highlighted (the syntect line wrapper the gutter counts).
     assert!(html.contains("class=\"code-line\""), "{html}");
 }
+
+// ---------------------------------------------------------------------------
+// Relocatable output — a build tree works from whatever directory it lands in.
+//
+// The walk itself lives in `tests/support/relocatable.rs`, shared with
+// `crates/wcl/tests/wdoc.rs`, which runs it over the same fixture book built
+// through `wcl wdoc build --out`. One walk, two ways in.
+// ---------------------------------------------------------------------------
+
+#[path = "support/relocatable.rs"]
+mod relocatable;
+
+#[test]
+fn a_build_into_a_nested_out_dir_is_relocatable() {
+    let out = TempDir::new().expect("mkdir out");
+    // Nested, and nothing tells the build where it sits: the tree has to be
+    // relative to work at all.
+    let nested = out.path().join("site").join("reference");
+    let main = examples_dir().join("wdoc_relocatable").join("main.wcl");
+    build_ok(&main, &nested);
+    // Three pages, and the fixture's own links, icon sprite, favicon and
+    // image put well over eight local URLs on them.
+    relocatable::assert_relocatable(&nested, 3, 8);
+}
+
+// The walk is only worth having if it can fail, and every one of its three
+// verdicts fails silently by degrading into a pass. These pin each of them
+// against a hand-made tree, so a refactor of the walk can't quietly neuter it.
+
+#[test]
+#[should_panic(expected = "root-absolute URL")]
+fn the_walk_rejects_a_root_absolute_url() {
+    let out = TempDir::new().expect("mkdir out");
+    std::fs::write(out.path().join("p.html"), "<a href=\"/oops\">x</a>").expect("write page");
+    relocatable::assert_relocatable(out.path(), 1, 0);
+}
+
+#[test]
+#[should_panic(expected = "does not exist")]
+fn the_walk_rejects_a_local_url_with_no_file_behind_it() {
+    let out = TempDir::new().expect("mkdir out");
+    std::fs::write(out.path().join("p.html"), "<img src=\"nope.png\">").expect("write page");
+    relocatable::assert_relocatable(out.path(), 1, 0);
+}
+
+#[test]
+#[should_panic(expected = "expected at least 3 pages")]
+fn the_walk_rejects_a_tree_it_found_nothing_in() {
+    let out = TempDir::new().expect("mkdir out");
+    relocatable::assert_relocatable(out.path(), 3, 0);
+}
+
+#[test]
+fn the_walk_passes_urls_that_leave_the_tree() {
+    // A fragment, another host, and a protocol-relative URL: none of them has
+    // an on-disk target, and none of them is anchored at *this* tree's root.
+    let out = TempDir::new().expect("mkdir out");
+    std::fs::write(
+        out.path().join("p.html"),
+        "<a href=\"#here\">a</a><a href=\"https://example.com/x\">b</a>\
+         <a href=\"//cdn.example.com/x\">c</a>",
+    )
+    .expect("write page");
+    relocatable::assert_relocatable(out.path(), 1, 0);
+}

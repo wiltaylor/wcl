@@ -76,3 +76,27 @@ docs-build *ARGS: require-cargo
     rm -rf docs/_site
     cargo run -p wcl -- wdoc build docs/landing/main.wcl --out docs/_site {{ARGS}}
     cargo run -p wcl -- wdoc build docs/reference/main.wcl --out docs/_site/reference {{ARGS}}
+
+# A build tree is relocatable: every URL in it is relative, so the tree works
+# from whatever directory it is served out of. The book relies on it — it is
+# deployed under `/reference/`, a directory the build was never told about.
+#
+# This part is deliberately a grep and nothing more. Resolving every target in
+# shell would reimplement the walk the Rust tests already do
+# (`crates/wcl_wdoc/tests/build.rs`, `crates/wcl/tests/wdoc.rs`), over a fixture
+# book, both halves of the property, in a language that can say what it means.
+# What those tests cannot see is a human typing an absolute link into a real
+# page, so that is the one thing this part looks for — on the two real sites.
+#
+# It rides `docs-build` rather than deploy-site.yml because a docs change
+# reaches the deploy only through `main`, and `just ci::check` gates that.
+
+# Check the built docs/ sites for root-absolute URLs (they must all be relative)
+[group('dev')]
+docs-relative-urls: docs-build
+    @hits="$(grep -rnoE '(href|src)="/[^"]*"' docs/_site --include='*.html' || true)"; \
+    if [ -n "$hits" ]; then \
+        echo "root-absolute URLs in the built site — every URL must be relative:" >&2; \
+        echo "$hits" >&2; \
+        exit 1; \
+    fi
