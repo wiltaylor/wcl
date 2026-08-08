@@ -781,8 +781,14 @@ fn build_inner(
         }
         if multi && root_site.is_none() {
             // No root site ⇒ the root is a generated chooser (site-agnostic,
-            // so only the global/unscoped CSS).
-            write_chooser_index(out_dir, &site_css(&doc, None, None), &build_set)?;
+            // so only the global/unscoped CSS). Each site's bundled assets
+            // live under its own subdirectory, so the chooser's own `_wdoc/`
+            // carries no fonts and its CSS must name none.
+            write_chooser_index(
+                out_dir,
+                &site_css(&doc, None, None, BundledFonts::default()),
+                &build_set,
+            )?;
         }
 
         Ok(count)
@@ -1037,6 +1043,57 @@ struct CssBuckets {
     user_rules: Vec<String>,
 }
 
+/// Which families of bundled font files a site's output tree carries. The
+/// embedded faces are written conditionally — the book typography only for a
+/// themed site, the terminal faces only when a page uses a terminal — but the
+/// stdlib's `@font-face` rules naming them are declared unconditionally, so a
+/// site that skips a family would otherwise ship URLs pointing at files that
+/// are not there. [`Self::ships`] is the one answer both halves read.
+///
+/// The flags describe the *output tree*, not this build: an incremental
+/// targeted render reuses the assets the prior full build wrote, so it must
+/// keep the same rules.
+#[derive(Clone, Copy, Default)]
+struct BundledFonts {
+    /// The book typography (Source Serif 4 / IBM Plex Sans / JetBrains Mono),
+    /// written for a themed site.
+    book: bool,
+    /// The terminal grid's JetBrains Mono Nerd Font faces.
+    terminal: bool,
+}
+
+impl BundledFonts {
+    /// Whether `_wdoc/<file>` is a bundled font this output tree carries. A
+    /// bundled font absent from both tables is not shipped by any build, so
+    /// it answers `false` too; `stdlib_font_faces_name_bundled_files` pins
+    /// every stdlib rule against the tables, so a newly bundled face that is
+    /// never registered fails a test rather than vanishing from the CSS.
+    fn ships(&self, file: &str) -> bool {
+        let named = |files: &[(&str, &[u8])]| files.iter().any(|(name, _)| *name == file);
+        (self.book && named(BOOK_FONT_FILES))
+            || (self.terminal && named(crate::terminal::FONT_FILES))
+    }
+
+    /// Whether a library `@font-face` rule resolves against this output tree:
+    /// every `_wdoc/…` file its `src` names must be shipped. A rule naming no
+    /// bundled asset (an external URL) always resolves.
+    fn resolves(&self, src: &str) -> bool {
+        bundled_asset_refs(src).iter().all(|f| self.ships(f))
+    }
+}
+
+/// The `_wdoc/<file>` names a CSS value references, in source order.
+fn bundled_asset_refs(css: &str) -> Vec<&str> {
+    let prefix = format!("{}/", crate::terminal::ASSET_DIR);
+    css.split(&prefix)
+        .skip(1)
+        .map(|tail| {
+            let end = tail.find(['\'', '"', ')', ' ']).unwrap_or(tail.len());
+            &tail[..end]
+        })
+        .collect()
+}
+
 /// Collect a top-level block's CSS contribution into `css`. A structured CSS
 /// block deposits directly; a generator (`wdoc_repeater`,
 /// `wdoc_instance`, or a `wdoc_component` instance) is expanded and its
@@ -1044,9 +1101,19 @@ struct CssBuckets {
 /// can emit `class` blocks (the "repeater anywhere" hook for design-system
 /// classes). `is_lib` is the origin, carried through expansion. Non-CSS,
 /// non-generator blocks (pages, etc.) contribute nothing, exactly as before.
-fn collect_css_block(b: &Block<'_>, is_lib: bool, css: &mut CssBuckets) {
+///
+/// A library `font_face` naming a bundled font this site does not ship is
+/// dropped (see [`BundledFonts`]). A user rule passes through: its URLs are
+/// the author's to resolve.
+fn collect_css_block(b: &Block<'_>, is_lib: bool, fonts: BundledFonts, css: &mut CssBuckets) {
     match b.kind() {
         "class" | "base" | "font_face" | "media" | "keyframes" => {
+            if b.kind() == "font_face"
+                && is_lib
+                && !fonts.resolves(&field_utf8(b, "src").unwrap_or_default())
+            {
+                return;
+            }
             if let Some(rule) = render_css_block(b) {
                 if is_lib {
                     &mut css.lib_rules
@@ -1059,25 +1126,30 @@ fn collect_css_block(b: &Block<'_>, is_lib: bool, css: &mut CssBuckets) {
         _ if b.binding_scope_depth() > MAX_LOWER_DEPTH => {}
         "wdoc_repeater" => {
             for c in expand_repeater_children(b) {
-                collect_css_block(&c, is_lib, css);
+                collect_css_block(&c, is_lib, fonts, css);
             }
         }
         "wdoc_instance" => {
             for c in expand_instance_children(b) {
-                collect_css_block(&c, is_lib, css);
+                collect_css_block(&c, is_lib, fonts, css);
             }
         }
         kind => {
             if let Some(def) = b.doc().kind_declarer(kind) {
                 for c in expand_component_children(b, &def) {
-                    collect_css_block(&c, is_lib, css);
+                    collect_css_block(&c, is_lib, fonts, css);
                 }
             }
         }
     }
 }
 
-fn site_css(doc: &Document, site_name: Option<&str>, site_block: Option<&Block<'_>>) -> String {
+fn site_css(
+    doc: &Document,
+    site_name: Option<&str>,
+    site_block: Option<&Block<'_>>,
+    fonts: BundledFonts,
+) -> String {
     let mut css = CssBuckets::default();
     for (origin, b) in doc.blocks_with_source() {
         if !block_in_site(&b, site_name) {
@@ -1087,7 +1159,7 @@ fn site_css(doc: &Document, site_name: Option<&str>, site_block: Option<&Block<'
         // source has no origin. Carried through generator expansion so a
         // user `wdoc_repeater` that emits `class` blocks still lands in the
         // user bucket (and thus wins over library defaults).
-        collect_css_block(&b, origin.is_some(), &mut css);
+        collect_css_block(&b, origin.is_some(), fonts, &mut css);
     }
     let CssBuckets {
         lib_rules,
@@ -1173,10 +1245,6 @@ fn build_site(
     // folders, the search index and icon sprite) rather than rewriting them.
     let write_shared = target.is_none();
 
-    // The page <style>: bundled theme + structured rules, scoped
-    // to this site (global blocks plus those whose `sites` list names it).
-    let css = site_css(doc, spec.name.as_deref(), spec.block.as_ref());
-
     // Terminal + pan/zoom assets, scoped to this site's pages, so a site
     // that uses neither pays nothing. The `uses_*` flags drive each page's
     // `<script>` tags, so they're computed regardless; only the asset
@@ -1185,6 +1253,19 @@ fn build_site(
     if uses_terminals && write_shared {
         write_terminal_assets(out_dir)?;
     }
+
+    // Which bundled faces this output tree carries — the same two conditions
+    // the font writes below use, so the CSS can't name a file the build
+    // skips. A themed site gets the book typography; a terminal on any of
+    // its pages gets the Nerd Font grid faces.
+    let fonts = BundledFonts {
+        book: spec.block.is_some(),
+        terminal: uses_terminals,
+    };
+
+    // The page <style>: bundled theme + structured rules, scoped
+    // to this site (global blocks plus those whose `sites` list names it).
+    let css = site_css(doc, spec.name.as_deref(), spec.block.as_ref(), fonts);
     let uses_pan_zoom = spec.pages.iter().any(crate::render::uses_pan_zoom);
     let uses_map = spec.pages.iter().any(crate::render::uses_map);
     // A map drives the same viewBox camera as a pan/zoom diagram, so it
@@ -1334,10 +1415,11 @@ fn build_site(
     // via the image registry (already copied after the page loop); an
     // external URL passes through. Absent ⇒ ship the embedded default.
     // Book typography (Source Serif 4 / IBM Plex Sans / JetBrains Mono) is
-    // referenced by the always-bundled `wdoc-fonts` `@font-face` rules, so a
-    // themed site needs the faces on disk. Written once with the other shared
-    // assets; a bare (site-less) document renders unthemed and skips them.
-    if spec.block.is_some() && write_shared {
+    // referenced by the `wdoc-fonts` `@font-face` rules, so a themed site
+    // needs the faces on disk. Written once with the other shared assets; a
+    // bare (site-less) document renders unthemed and skips them — and skips
+    // their rules too, via the same `fonts.book` flag.
+    if fonts.book && write_shared {
         write_book_font_assets(out_dir)?;
     }
 
@@ -2863,4 +2945,61 @@ fn collect_duplicate_id(block: &Block<'_>, seen: &mut HashSet<String>) -> Option
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every bundled font a stdlib `@font-face` rule names must appear in one
+    /// of the two file tables — otherwise [`BundledFonts::ships`] would answer
+    /// `false` for it and the rule would silently disappear from every page.
+    /// Bundling a new face means adding it to its table.
+    #[test]
+    fn stdlib_font_faces_name_bundled_files() {
+        let all = BundledFonts {
+            book: true,
+            terminal: true,
+        };
+        let registry = schema_registry();
+        let mut seen = 0usize;
+        for (name, source) in registry.iter() {
+            for file in bundled_asset_refs(source) {
+                if !file.ends_with(".woff2") {
+                    continue;
+                }
+                seen += 1;
+                assert!(
+                    all.ships(file),
+                    "{name} references _wdoc/{file}, which no bundled font table lists"
+                );
+            }
+        }
+        assert_eq!(
+            seen,
+            BOOK_FONT_FILES.len() + crate::terminal::FONT_FILES.len(),
+            "a bundled font face is declared without a stdlib @font-face rule, or twice"
+        );
+    }
+
+    /// A rule naming no bundled asset (an external URL) always resolves; one
+    /// naming a family the site skips does not.
+    #[test]
+    fn bundled_font_rules_resolve_against_the_shipped_families() {
+        let external = "url('https://example.test/x.woff2') format('woff2')";
+        let terminal = "url('_wdoc/JetBrainsMonoNerdFontMono-Regular.woff2') format('woff2')";
+        let book = "url('_wdoc/SourceSerif4-Regular.woff2') format('woff2')";
+
+        let none = BundledFonts::default();
+        assert!(none.resolves(external));
+        assert!(!none.resolves(terminal));
+        assert!(!none.resolves(book));
+
+        let themed = BundledFonts {
+            book: true,
+            terminal: false,
+        };
+        assert!(themed.resolves(book));
+        assert!(!themed.resolves(terminal));
+    }
 }

@@ -12338,3 +12338,141 @@ fn the_walk_passes_urls_that_leave_the_tree() {
     .expect("write page");
     relocatable::assert_relocatable(out.path(), 1, 0);
 }
+
+// ── Bundled font URLs ──────────────────────────────────────────────────
+//
+// The relocatable walk above covers `href` / `src` attributes. A page's
+// inlined stylesheet also names assets, in `@font-face` `src: url(…)`
+// values, and the bundled faces are written conditionally — the book
+// typography only for a themed site, the terminal faces only when a page
+// uses a terminal. These tests check the other half of that: the CSS names
+// only what the build wrote.
+
+/// Every `_wdoc/…` asset a page's `<style>` blocks reference, in source
+/// order. Literal, like the relocatable walk, and for the same reason.
+fn style_asset_refs(html: &str) -> Vec<String> {
+    let mut refs = Vec::new();
+    for style in html.split("<style").skip(1) {
+        let Some(body) = style.split_once('>').map(|(_, rest)| rest) else {
+            continue;
+        };
+        let body = body.split("</style>").next().unwrap_or(body);
+        for tail in body.split("_wdoc/").skip(1) {
+            refs.push(
+                tail.chars()
+                    .take_while(|c| !matches!(c, '\'' | '"' | ')' | ' '))
+                    .collect(),
+            );
+        }
+    }
+    refs
+}
+
+/// Assert every `_wdoc/…` asset the page's CSS names was actually written.
+fn assert_style_assets_exist(out: &Path, html: &str) {
+    for name in style_asset_refs(html) {
+        let target = out.join("_wdoc").join(&name);
+        assert!(
+            target.exists(),
+            "page CSS references _wdoc/{name}, which the build did not write"
+        );
+    }
+}
+
+#[test]
+fn a_terminal_free_site_ships_no_dangling_font_urls() {
+    // The bundled terminal faces are written only when a page uses a
+    // terminal, so a site without one must not carry the `@font-face` rules
+    // naming them — the URLs would point at files that are not there.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    write_fixture(
+        &src,
+        "site s { title = \"S\" }\npage index { sites = [:s]\n  p { text = \"hi\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        !html.contains("JetBrainsMonoNerdFontMono"),
+        "terminal-free site still emits the terminal @font-face rules:\n{html}"
+    );
+    // The book typography *is* shipped for a themed site, so its rules stay.
+    assert!(
+        html.contains("SourceSerif4-Regular.woff2"),
+        "book typography @font-face rules missing:\n{html}"
+    );
+    assert_style_assets_exist(out.path(), &html);
+}
+
+#[test]
+fn a_site_with_a_terminal_keeps_its_font_urls() {
+    // The mirror of the above: a page with a terminal ships the faces, so it
+    // keeps the rules that name them.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    write_fixture(
+        &src,
+        "site s { title = \"S\" }\npage index { sites = [:s]\n  \
+         terminal { cols = 8 rows = 1 text = \"hi\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("JetBrainsMonoNerdFontMono-Regular.woff2"),
+        "a site with a terminal lost its @font-face rules:\n{html}"
+    );
+    assert_style_assets_exist(out.path(), &html);
+}
+
+#[test]
+fn a_site_less_document_ships_no_bundled_font_urls() {
+    // A bare document renders unthemed and writes no bundled fonts at all,
+    // so it must carry neither family's `@font-face` rules.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    write_fixture(&src, "page index {\n  p { text = \"hi\" }\n}\n");
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        !html.contains("SourceSerif4") && !html.contains("JetBrainsMonoNerdFontMono"),
+        "site-less document emits bundled @font-face rules:\n{html}"
+    );
+    assert_style_assets_exist(out.path(), &html);
+}
+
+#[test]
+fn the_relocatable_fixture_book_ships_no_dangling_font_urls() {
+    // The same check over the fixture the relocatable walk uses: a real
+    // two-site book, built into a nested `--out`, with no terminal anywhere.
+    let out = TempDir::new().expect("mkdir out");
+    let nested = out.path().join("deep").join("deeper");
+    let main = examples_dir().join("wdoc_relocatable").join("main.wcl");
+    build_ok(&main, &nested);
+
+    let mut walked = 0usize;
+    let mut stack = vec![nested.clone()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("read build tree") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().is_none_or(|e| e != "html") {
+                continue;
+            }
+            let html = std::fs::read_to_string(&path).expect("read page");
+            // Assets are addressed relative to the page, so a sub-site page
+            // reaches its own site directory, not the tree root.
+            assert_style_assets_exist(path.parent().expect("page has a parent"), &html);
+            walked += 1;
+        }
+    }
+    assert!(walked >= 3, "walked only {walked} pages");
+}
