@@ -20,7 +20,6 @@
 //! [`InlinePatterns`] context, which every backend threads through its block
 //! dispatch — so the same predicate gates HTML, PDF, and Markdown.
 
-use wcl_lang::ast;
 use wcl_lang::{Block, Decorator, Value};
 
 use crate::inline::InlinePatterns;
@@ -76,64 +75,6 @@ fn axis_ok(d: &Decorator<'_>, name: &str, current: Option<&str>) -> bool {
     match current {
         Some(v) => list.iter().any(|s| s == v),
         None => false,
-    }
-}
-
-/// A block's declared visibility on the **sites** axis, in the form a writer
-/// needs: the `@except(sites = [:…])` names it lists, plus `custom` for
-/// anything richer.
-///
-/// `custom` blocks are read-only to any mechanical writer — it cannot express
-/// what they say, so it must leave them alone and send the author to the
-/// source.
-pub struct DeclaredVisibility {
-    pub except_sites: Vec<String>,
-    pub custom: bool,
-}
-
-/// The block's declared visibility read off the **AST** instead of the
-/// evaluated document view — the reading every *writer* wants, because only
-/// the parse distinguishes a literal `[:deck]` (rewritable) from an
-/// expression that happens to evaluate to one (not).
-pub fn declared_visibility(block: &ast::Block) -> DeclaredVisibility {
-    let mut except_sites: Vec<String> = Vec::new();
-    let mut custom = false;
-    for d in &block.decorators {
-        let name = match d.name.as_slice() {
-            [n] => n.as_str(),
-            [ns, n] if ns == "wdoc" => n.as_str(),
-            _ => continue,
-        };
-        match name {
-            "only" => custom = true,
-            "except" => {
-                if !d.positional.is_empty() {
-                    custom = true;
-                }
-                for arg in &d.named {
-                    if arg.name != "sites" {
-                        custom = true;
-                        continue;
-                    }
-                    match &arg.value {
-                        ast::Expr::ListLit { elements, .. }
-                            if elements.iter().all(|e| matches!(e, ast::Expr::Symbol(_))) =>
-                        {
-                            except_sites.extend(elements.iter().filter_map(|e| match e {
-                                ast::Expr::Symbol(s) => Some(s.clone()),
-                                _ => None,
-                            }));
-                        }
-                        _ => custom = true,
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    DeclaredVisibility {
-        except_sites,
-        custom,
     }
 }
 

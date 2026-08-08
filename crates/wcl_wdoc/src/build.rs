@@ -165,28 +165,6 @@ pub fn wdoc_environment() -> Environment {
     env
 }
 
-/// Open `file` as an evaluated [`Document`] exactly the way [`build`] does —
-/// the embedded wdoc schema registry plus the wdoc [`Environment`] — so a
-/// caller outside the build ([`crate::sites::entry_site_info`], a write
-/// pipeline) introspects the same schemas (`@block` / `@table`) and resolves
-/// the same block kinds the build sees. A plain `Document::from_file` would
-/// miss the wdoc builtins and registry imports.
-pub fn open_doc_for_edit(file: &Path) -> Result<Document, wcl_lang::ParseError> {
-    // `ParseError` carries `#[from] io::Error`, so a read failure surfaces as
-    // one error type alongside any syntax error.
-    let user_src = fs::read_to_string(file)?;
-    let name = file.display().to_string();
-    let base_dir = file.parent().map(Path::to_path_buf);
-    let loader = schema_registry().loader(disk_loader());
-    Document::open_at_with_loader(
-        &user_src,
-        &name,
-        base_dir.clone(),
-        &wdoc_environment(),
-        loader,
-    )
-}
-
 pub enum BuildError {
     Io(std::io::Error, String),
     Parse(Report),
