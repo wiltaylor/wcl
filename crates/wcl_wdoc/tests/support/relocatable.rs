@@ -69,16 +69,10 @@ fn classify(url: &str) -> UrlKind {
     }
 }
 
-/// Assert the build tree under `root` is relocatable: no `href`/`src` in any
-/// `.html` under it is root-absolute, and every one naming a local file
-/// resolves to a file that exists.
-///
-/// `min_pages` / `min_urls` are the floor the caller expects to have walked. A
-/// walk that found nothing would pass silently, which is the one way this
-/// could rot into a no-op.
-pub fn assert_relocatable(root: &Path, min_pages: usize, min_urls: usize) {
-    let mut walked_pages = 0usize;
-    let mut checked_urls = 0usize;
+/// Every `.html` under `root`, as `(path, contents)`. The one tree walk the
+/// checks over a build share, so a second one can't drift from it.
+pub fn html_pages(root: &Path) -> Vec<(std::path::PathBuf, String)> {
+    let mut pages = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         for entry in std::fs::read_dir(&dir).expect("read build tree") {
@@ -91,30 +85,46 @@ pub fn assert_relocatable(root: &Path, min_pages: usize, min_urls: usize) {
                 continue;
             }
             let html = std::fs::read_to_string(&path).expect("read page");
-            let page_dir = path.parent().expect("page has a parent");
-            walked_pages += 1;
-            for url in html_urls(&html) {
-                match classify(&url) {
-                    UrlKind::RootAbsolute => panic!(
-                        "{}: root-absolute URL {url:?} — the tree stops working \
-                         the moment it is served from a subdirectory",
-                        path.display()
-                    ),
-                    UrlKind::External => {}
-                    UrlKind::Local => {
-                        let bare = url.split(['#', '?']).next().unwrap_or(&url);
-                        if bare.is_empty() {
-                            continue;
-                        }
-                        let target = page_dir.join(bare);
-                        assert!(
-                            target.exists(),
-                            "{}: {url:?} resolves to {}, which does not exist",
-                            path.display(),
-                            target.display()
-                        );
-                        checked_urls += 1;
+            pages.push((path, html));
+        }
+    }
+    pages
+}
+
+/// Assert the build tree under `root` is relocatable: no `href`/`src` in any
+/// `.html` under it is root-absolute, and every one naming a local file
+/// resolves to a file that exists.
+///
+/// `min_pages` / `min_urls` are the floor the caller expects to have walked. A
+/// walk that found nothing would pass silently, which is the one way this
+/// could rot into a no-op.
+pub fn assert_relocatable(root: &Path, min_pages: usize, min_urls: usize) {
+    let mut walked_pages = 0usize;
+    let mut checked_urls = 0usize;
+    for (path, html) in html_pages(root) {
+        let page_dir = path.parent().expect("page has a parent");
+        walked_pages += 1;
+        for url in html_urls(&html) {
+            match classify(&url) {
+                UrlKind::RootAbsolute => panic!(
+                    "{}: root-absolute URL {url:?} — the tree stops working \
+                     the moment it is served from a subdirectory",
+                    path.display()
+                ),
+                UrlKind::External => {}
+                UrlKind::Local => {
+                    let bare = url.split(['#', '?']).next().unwrap_or(&url);
+                    if bare.is_empty() {
+                        continue;
                     }
+                    let target = page_dir.join(bare);
+                    assert!(
+                        target.exists(),
+                        "{}: {url:?} resolves to {}, which does not exist",
+                        path.display(),
+                        target.display()
+                    );
+                    checked_urls += 1;
                 }
             }
         }
