@@ -12273,3 +12273,116 @@ page index {
     // The listing is highlighted (the syntect line wrapper the gutter counts).
     assert!(html.contains("class=\"code-line\""), "{html}");
 }
+
+// ---------------------------------------------------------------------------
+// Relocatable output — a build tree works from whatever directory it lands in.
+//
+// The deploy bets on this: `just docs-build` renders the landing page into
+// `docs/_site` and then the reference book into `docs/_site/reference`, with
+// no copy or rewrite step between them. Nothing else asserts it, so this walks
+// every emitted `.html` and checks both halves of the property — no URL is
+// root-absolute, and every URL naming a local file resolves to a real file.
+//
+// `crates/wcl/tests/wdoc.rs` runs the same walk over the same fixture book
+// through `wcl wdoc build --out`, which is the invocation the workflow uses.
+// Keep the two in step.
+// ---------------------------------------------------------------------------
+
+/// Every `href=` / `src=` attribute value in one HTML document.
+///
+/// A deliberately literal scan rather than a parse: the emitted markup is our
+/// own, always double-quotes its attributes, and a test that reimplements less
+/// is a test that can be trusted to fail for the right reason.
+fn html_urls(html: &str) -> Vec<String> {
+    let mut urls = Vec::new();
+    for attr in ["href=\"", "src=\""] {
+        let mut rest = html;
+        while let Some(start) = rest.find(attr) {
+            rest = &rest[start + attr.len()..];
+            let Some(end) = rest.find('"') else { break };
+            urls.push(rest[..end].replace("&amp;", "&"));
+            rest = &rest[end + 1..];
+        }
+    }
+    urls
+}
+
+/// True for a URL that names a file inside the build tree (so it must resolve
+/// on disk). Fragments, external schemes and protocol-relative URLs point
+/// outside it and carry no on-disk target.
+fn is_local_target(url: &str) -> bool {
+    !url.is_empty()
+        && !url.starts_with('#')
+        && !url.starts_with("//")
+        && !url.contains("://")
+        && !url.starts_with("data:")
+        && !url.starts_with("mailto:")
+}
+
+/// Assert the build tree under `root` is relocatable: every `href`/`src` in
+/// every `.html` under it is relative, and every one naming a local file
+/// resolves to a file that exists.
+fn assert_relocatable(root: &Path) {
+    let mut checked_pages = 0usize;
+    let mut checked_urls = 0usize;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("read build tree") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().is_none_or(|e| e != "html") {
+                continue;
+            }
+            let html = std::fs::read_to_string(&path).expect("read page");
+            let page_dir = path.parent().expect("page has a parent");
+            checked_pages += 1;
+            for url in html_urls(&html) {
+                assert!(
+                    !url.starts_with('/'),
+                    "{}: root-absolute URL {url:?} — the tree stops working \
+                     the moment it is served from a subdirectory",
+                    path.display()
+                );
+                if !is_local_target(&url) {
+                    continue;
+                }
+                let bare = url.split(['#', '?']).next().unwrap_or(&url);
+                if bare.is_empty() {
+                    continue;
+                }
+                let target = page_dir.join(bare);
+                assert!(
+                    target.exists(),
+                    "{}: {url:?} resolves to {}, which does not exist",
+                    path.display(),
+                    target.display()
+                );
+                checked_urls += 1;
+            }
+        }
+    }
+    // A walk that found nothing would pass silently, which is the one way this
+    // test could rot into a no-op.
+    assert!(
+        checked_pages >= 3,
+        "expected the fixture's pages, walked {checked_pages}"
+    );
+    assert!(
+        checked_urls >= 8,
+        "expected local URLs to check, checked {checked_urls}"
+    );
+}
+
+#[test]
+fn a_build_into_a_nested_out_dir_is_relocatable() {
+    let out = TempDir::new().expect("mkdir out");
+    // Nested, and nothing tells the build where it sits: the tree has to be
+    // relative to work at all.
+    let nested = out.path().join("site").join("reference");
+    let main = examples_dir().join("wdoc_relocatable").join("main.wcl");
+    build_ok(&main, &nested);
+    assert_relocatable(&nested);
+}

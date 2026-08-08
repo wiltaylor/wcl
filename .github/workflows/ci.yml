@@ -34,6 +34,10 @@ jobs:
       # doc pages, before they reach the deploy workflow. Same two
       # invocations, same order, as deploy-site.yml.
       - run: just ci::docs-build
+      # Every URL the two sites emit must be relative, or the book breaks the
+      # moment it is served from `/reference/`. Cheap grep; the Rust tests do
+      # the resolving walk over a fixture book.
+      - run: just ci::docs-relative-urls
 
   # ── Fuzz smoke ────────────────────────────────────────────────────────────
   # Bounded sweep over every wcl_lang fuzz target (~15s each) so parser /
