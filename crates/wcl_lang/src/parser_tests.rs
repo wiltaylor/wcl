@@ -1966,7 +1966,7 @@ fn invalid_digit_for_base_is_rejected_not_unit_suffix() {
 
 /// An `if` may omit its `else`; the branch is absent in the AST (rather
 /// than a synthesised `none` block) and the expression's span ends at the
-/// then-block's `}` — the span the editor stamps as `data-wcl-span`.
+/// then-block's `}`.
 #[test]
 fn parse_if_without_else_leaves_the_branch_absent() {
     let src = "x = if c { 1 }";

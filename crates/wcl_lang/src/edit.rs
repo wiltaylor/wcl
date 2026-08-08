@@ -3,8 +3,8 @@
 //! These operate on the owned, fully-public [`ast`] returned by
 //! [`crate::parse_for_edit`]: locate a node by its byte [`Span`], build new
 //! nodes, and splice them into an items list. They are deliberately
-//! schema-agnostic — the caller (the `wcl editor` save pipeline, or
-//! `wcl set`) resolves schema concerns (inline-label slots, child kinds)
+//! schema-agnostic — the caller (`wcl set`, `wcl wskill op`) resolves
+//! schema concerns (inline-label slots, child kinds)
 //! and hands these helpers the concrete values to write. Synthesised nodes
 //! carry a zero [`Span::new(0, 0)`]; the source printer re-lays them out, so
 //! the result round-trips through [`crate::format::to_source`].
@@ -114,8 +114,7 @@ pub fn set_or_insert_field(block: &mut ast::Block, name: &str, expr: Expr) {
 }
 
 /// Remove the `name = expr` field item from `block`, if present. Returns
-/// whether a field was removed. Used to clear an optional field (e.g. the
-/// editor's "reset position" dropping a shape's `x`/`y`).
+/// whether a field was removed. Used to clear an optional field.
 pub fn remove_field(block: &mut ast::Block, name: &str) -> bool {
     let before = block.items.len();
     block
@@ -381,8 +380,7 @@ pub fn move_block_by_span(items: &mut [Item], span: Span, down: bool) -> bool {
 /// Replace the block's decorator with the single-segment name `name` with a
 /// fresh one carrying `named` arguments, or remove it entirely when `named`
 /// is empty. Existing decorators with other names keep their order; a new
-/// decorator appends. Used for the editor's visibility toggles
-/// (`@except(sites = [:deck])`).
+/// decorator appends. Used for visibility toggles (`@except(sites = [:deck])`).
 pub fn set_or_remove_decorator(block: &mut ast::Block, name: &str, named: Vec<(String, Expr)>) {
     block
         .decorators

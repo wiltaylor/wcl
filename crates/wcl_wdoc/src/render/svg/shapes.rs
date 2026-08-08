@@ -371,49 +371,6 @@ pub(crate) fn build_metrics(block: &Block<'_>, bbox: (f64, f64, f64, f64)) -> Sh
     }
 }
 
-/// In edit mode (the `wcl editor` preview), the anchor attributes stamped
-/// onto each diagram child's wrapping `<g>` so the Design-mode client can
-/// map a click inside the SVG back to the declaring WCL block:
-/// `data-wcl-shape` (marks a diagram child, distinguishing it from page
-/// blocks) + the same `data-wcl-kind` / `data-wcl-span` / `data-wcl-file`
-/// triple `anchor_block` stamps on HTML blocks, plus `data-wcl-shape-id` —
-/// the shape's OWN id, the name `a -> b` connections use, which the span
-/// alone can't supply (and which is the only per-instance identity a
-/// repeater-generated shape has, since every iteration shares one span).
-/// Empty outside edit mode, so plain / comment-mode / Markdown / PDF builds
-/// are byte-identical.
-pub(crate) fn shape_anchor_attrs(block: &Block<'_>, patterns: &InlinePatterns) -> String {
-    if !patterns.edit_mode() {
-        return String::new();
-    }
-    let span = block.span();
-    let id = match field_id(block, "id") {
-        Some(id) => format!(" data-wcl-shape-id=\"{}\"", escape_html(&id)),
-        None => String::new(),
-    };
-    format!(
-        " data-wcl-shape data-wcl-kind=\"{}\" data-wcl-span=\"{}:{}\" data-wcl-file=\"{}\"{id}",
-        escape_html(block.kind()),
-        span.start,
-        span.end,
-        escape_html(block.named_source().name()),
-    )
-}
-
-/// Wrap a rendered free-layout shape in an anchored, transform-less `<g>`
-/// (a rendering no-op) in edit mode; pass it through untouched otherwise.
-pub(crate) fn wrap_shape_anchor(
-    block: &Block<'_>,
-    rendered: String,
-    patterns: &InlinePatterns,
-) -> String {
-    let attrs = shape_anchor_attrs(block, patterns);
-    if attrs.is_empty() {
-        return rendered;
-    }
-    format!("<g{attrs}>{rendered}</g>")
-}
-
 pub(crate) fn render_shape(
     block: &Block<'_>,
     parent_w: f64,

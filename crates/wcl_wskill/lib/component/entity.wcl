@@ -15,9 +15,7 @@ wdoc_component entity_body {
   wdoc_slot backlinks
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
-    edit_field { kind = "entity" target = $"${unit.id}" field = "name" plain = true
-      h1 $"${unit.name}"
-    }
+    h1 $"${unit.name}"
     p  $"_${kind_text($"${unit.kind}")}_"
     wdoc_repeater { each = match unit.summary { none => [], s => [s] }  as = :s  p $"${s}" }
     wdoc_repeater { each = match unit.body { none => [], _ => [true] }  as = :_b

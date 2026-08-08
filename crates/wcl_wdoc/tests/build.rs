@@ -1,11 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
-use wcl_lang::DeclName;
-use wcl_wdoc::{
-    BuildError, BuildOptions, RebuildOutcome, build, build_incremental, build_with_options,
-    open_doc_for_edit,
-};
+use wcl_wdoc::{BuildError, BuildOptions, RebuildOutcome, build, build_incremental};
 
 fn examples_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -171,46 +167,6 @@ page index {{ p "Retired fields" }}
         Err(_) => panic!("expected 52 schema violations for tag + retired fields"),
         Ok(_) => panic!("tag and retired class shorthand fields were accepted"),
     }
-}
-
-#[test]
-fn wdoc_file_decorator_resolves_in_qualified_and_bare_forms() {
-    let tmp = TempDir::new().expect("mkdir tempdir");
-    let src = tmp.path().join("decorators.wcl");
-    write_fixture(
-        &src,
-        r#"
-@block("thing")
-@wdoc.file("qualified.wcl")
-@file("bare.wcl")
-type Thing { @inline(0) id: identifier }
-"#,
-    );
-    let doc = open_doc_for_edit(&src).expect("open with wdoc standard library");
-    let paths: Vec<_> = doc
-        .type_decl("Thing")
-        .expect("Thing declaration")
-        .decorators()
-        .filter(|decorator| decorator.name() == "file")
-        .map(|decorator| {
-            assert_eq!(
-                decorator.schema().expect("file schema").full_name(),
-                "wdoc.FilePlacement"
-            );
-            decorator
-                .resolved_arg_value("path")
-                .expect("path slot")
-                .expect("path evaluates")
-        })
-        .collect();
-
-    assert_eq!(
-        paths,
-        vec![
-            wcl_lang::Value::Utf8("qualified.wcl".to_string()),
-            wcl_lang::Value::Utf8("bare.wcl".to_string()),
-        ]
-    );
 }
 
 #[test]
@@ -8797,91 +8753,26 @@ fn wireframe_site_ui_theme_decouples_from_doc_theme() {
     );
 }
 
-/// Render the wireframe fixture with the editor's edit-mode build (shape
-/// anchors + layout-container guides) and return its HTML.
-fn wireframe_edit_html(body: &str) -> String {
-    let tmp = TempDir::new().expect("mkdir tempdir");
-    let src = tmp.path().join("wf.wcl");
-    write_fixture(
-        &src,
-        format!("page index {{\n  diagram {{ width = 800  height = 600\n{body}\n  }}\n}}\n"),
-    );
-    let out = TempDir::new().expect("mkdir out");
-    let opts = BuildOptions {
-        edit_mode: true,
-        ..Default::default()
-    };
-    if build_with_options(&src, out.path(), None, &opts).is_err() {
-        panic!("edit-mode build failed");
-    }
-    std::fs::read_to_string(out.path().join("index.html")).expect("read")
-}
-
-#[test]
-fn wireframe_layout_guides_are_edit_mode_only() {
-    // A layout container draws its guide chrome — the `data-wf-guide` group
-    // and the `data-wf-slot` drop zones — only on edit-mode builds; published
-    // output stays untouched.
-    let body = "  wf_grid { columns = 2\n    wf_button \"A\"\n    wf_button \"B\"\n    wf_button \"C\"\n  }";
-    let edit = wireframe_edit_html(body);
-    assert!(
-        edit.contains("data-wf-guide") && edit.contains("data-wf-slot=\"0\""),
-        "edit build missing the grid guide chrome:\n{edit}"
-    );
-    // Three children in a 2-column grid → a 2×2 cell lattice whose trailing
-    // empty cell is still a drop zone (slot 3 = append).
-    assert!(
-        edit.contains("data-wf-slot=\"3\""),
-        "trailing empty cell of the partial last row not stamped:\n{edit}"
-    );
-    let plain = wireframe_html(body);
-    assert!(
-        !plain.contains("data-wf-guide") && !plain.contains("data-wf-slot"),
-        "plain build must not emit layout guides:\n{plain}"
-    );
-}
-
 #[test]
 fn wireframe_empty_grid_keeps_placeholder_footprint() {
-    // An empty grid renders a visible placeholder — a tagged dashed box of
-    // `columns × 2` empty cells — instead of collapsing to 0×0, so the
-    // editor can see, select and drop into it.
-    let edit = wireframe_edit_html("  wf_grid { columns = 2 }");
+    // An empty grid keeps a placeholder footprint — `columns` × 2 empty cells
+    // of EMPTY_CELL_W × EMPTY_CELL_H — instead of collapsing to 0×0, so the
+    // measured size and the drawn box agree. A sibling laid out after it is
+    // pushed down by that height rather than overlapping it.
+    let html =
+        wireframe_html("  wf_column {\n    wf_grid { columns = 2 }\n    wf_label \"after\"\n  }");
+    // Two placeholder rows (34 + 8 gap + 34 = 76) precede the label, so its
+    // baseline sits below the grid's footprint rather than at the top.
+    let y = html
+        .split(">after<")
+        .next()
+        .and_then(|before| before.rsplit(" y=\"").next())
+        .and_then(|s| s.split('"').next())
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("no y on the trailing label:\n{html}"));
     assert!(
-        edit.contains(">grid ·2</text>"),
-        "empty grid missing its kind tag:\n{edit}"
-    );
-    for slot in 0..4 {
-        assert!(
-            edit.contains(&format!("data-wf-slot=\"{slot}\"")),
-            "empty grid missing placeholder cell {slot}:\n{edit}"
-        );
-    }
-    // The placeholder cells have real geometry (EMPTY_CELL_W × EMPTY_CELL_H).
-    assert!(
-        edit.contains("data-wf-slot=\"0\" x=\"0.00\" y=\"0.00\" width=\"72.00\" height=\"34.00\""),
-        "placeholder cell has no geometry:\n{edit}"
-    );
-}
-
-#[test]
-fn wireframe_row_gaps_are_insertion_slots() {
-    // A populated row stamps an invisible insertion strip over each
-    // inter-child gap: a drop between child 0 and 1 inserts at position 1.
-    let edit = wireframe_edit_html(
-        "  wf_row {\n    wf_button \"A\"\n    wf_button \"B\"\n    wf_button \"C\"\n  }",
-    );
-    assert!(
-        edit.contains("data-wf-guide"),
-        "row guide chrome missing:\n{edit}"
-    );
-    assert!(
-        edit.contains("data-wf-slot=\"1\"") && edit.contains("data-wf-slot=\"2\""),
-        "row gap insertion strips missing:\n{edit}"
-    );
-    assert!(
-        !edit.contains("data-wf-slot=\"3\""),
-        "a row has no trailing slot (the backing rect appends):\n{edit}"
+        y > 76.0,
+        "the empty grid must occupy its placeholder height (label y = {y}):\n{html}"
     );
 }
 
@@ -12293,45 +12184,6 @@ fn incremental_targets_only_the_edited_page() {
 }
 
 #[test]
-fn full_build_writes_page_manifest_targeted_leaves_it() {
-    let tmp = TempDir::new().expect("mkdir tempdir");
-    let main = write_incremental_book(tmp.path());
-    let out = TempDir::new().expect("mkdir out");
-    build_ok(&main, out.path());
-
-    // A full build writes the per-site page manifest the editor's lazy
-    // preview rebuild maps `<name>.html` requests through.
-    let manifest_path = out.path().join(wcl_wdoc::PAGES_MANIFEST_HREF);
-    let before = std::fs::read_to_string(&manifest_path).expect("read pages.json");
-    let v: serde_json::Value = serde_json::from_str(&before).expect("parse pages.json");
-    assert_eq!(v["start"], "index", "no page sets start = true");
-    let pages: Vec<&str> = v["pages"]
-        .as_array()
-        .expect("pages array")
-        .iter()
-        .filter_map(serde_json::Value::as_str)
-        .collect();
-    assert_eq!(pages, vec!["a", "b"]);
-
-    // A targeted rebuild reuses the prior full build's manifest untouched.
-    let a = tmp.path().join("a.wcl");
-    std::fs::write(
-        &a,
-        "page a {\n  sites = [:docs]\n  h1 \"Page A\"\n  p \"Edited A content!\"\n}\n",
-    )
-    .expect("rewrite a.wcl");
-    match rebuild(&main, out.path(), &[a]) {
-        RebuildOutcome::Targeted { pages } => assert_eq!(pages, vec!["a".to_string()]),
-        RebuildOutcome::Full { pages } => panic!("expected targeted, got full ({pages} pages)"),
-    }
-    let after = std::fs::read_to_string(&manifest_path).expect("re-read pages.json");
-    assert_eq!(
-        before, after,
-        "targeted rebuild must not rewrite the manifest"
-    );
-}
-
-#[test]
 fn incremental_falls_back_when_site_file_changes() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let main = write_incremental_book(tmp.path());
@@ -12456,12 +12308,10 @@ fn incremental_reuses_an_already_present_icon() {
     }
 }
 
-/// `markdown_source` renders its body to a highlighted Markdown code block,
-/// rewrites internal links into the skill-folder layout, and — in comment
-/// mode — carries a `data-wcl-block` anchor so the review client can attach a
-/// comment (an agent then fixes the named source).
+/// `markdown_source` renders its body to a highlighted Markdown code block
+/// and rewrites internal links into the skill-folder layout.
 #[test]
-fn markdown_source_previews_skill_markdown_and_is_commentable() {
+fn markdown_source_previews_skill_markdown() {
     let tmp = TempDir::new().expect("tempdir");
     let out = TempDir::new().expect("out");
     let main = tmp.path().join("main.wcl");
@@ -12477,13 +12327,7 @@ fn markdown_source_previews_skill_markdown_and_is_commentable() {
          page other_ref { h1 \"Other\" }\n",
     );
 
-    let opts = BuildOptions {
-        comment_mode: true,
-        ..Default::default()
-    };
-    if build_with_options(&main, out.path(), None, &opts).is_err() {
-        panic!("build with comment mode failed");
-    }
+    build_ok(&main, out.path());
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
 
     // The body lowered to Markdown, shown in a highlighted `markdown` code block.
@@ -12501,344 +12345,6 @@ fn markdown_source_previews_skill_markdown_and_is_commentable() {
     assert!(
         html.contains("../references/other_ref.md"),
         "expected skill-folder link rewrite, got:\n{html}"
-    );
-    // Comment mode anchors the block so a reviewer can pin a note to it.
-    assert!(
-        html.contains("data-wcl-kind=\"markdown_source\""),
-        "expected a comment anchor on the markdown_source block, got:\n{html}"
-    );
-}
-
-/// Edit mode (the `wcl editor` preview build) stamps each block with its
-/// source span and home file (plus the shared `data-wcl-*` block anchor and
-/// the page-block span on the wrapper) so an editor client can map a rendered
-/// block back to the source that declares it. A plain build emits none of
-/// this markup.
-#[test]
-fn edit_mode_stamps_source_span_and_file_anchors() {
-    let tmp = TempDir::new().expect("tempdir");
-    let out = TempDir::new().expect("out");
-    let main = tmp.path().join("main.wcl");
-    write_fixture(
-        &main,
-        "site s { default_template = :webpage  root = true }\n\
-         page index { start = true\n  h1 \"Hello\"\n  p \"Body.\"\n }\n",
-    );
-
-    let opts = BuildOptions {
-        edit_mode: true,
-        ..Default::default()
-    };
-    if build_with_options(&main, out.path(), None, &opts).is_err() {
-        panic!("build with edit mode failed");
-    }
-    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-
-    // Each block carries its kind, a byte span, and its home file.
-    assert!(
-        html.contains("data-wcl-kind=\"h1\""),
-        "expected a block anchor, got:\n{html}"
-    );
-    assert!(
-        html.contains("data-wcl-span=\""),
-        "expected a source span anchor in edit mode, got:\n{html}"
-    );
-    assert!(
-        html.contains("data-wcl-file=\""),
-        "expected a home-file anchor in edit mode, got:\n{html}"
-    );
-    // The page wrapper carries the page block's own span for top-level inserts.
-    assert!(
-        html.contains("data-wcl-page-span=\""),
-        "expected the page-block span on the wrapper, got:\n{html}"
-    );
-    assert!(
-        html.contains("data-wcl-slot=\"content\""),
-        "expected the reserved content slot on the page wrapper, got:\n{html}"
-    );
-
-    // A plain build leaks none of the editor markup.
-    if build_with_options(&main, out.path(), None, &BuildOptions::default()).is_err() {
-        panic!("plain build failed");
-    }
-    let plain = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    assert!(
-        !plain.contains("data-wcl-span=") && !plain.contains("data-wcl-block"),
-        "plain build must not emit editor anchors, got:\n{plain}"
-    );
-}
-
-#[test]
-fn edit_mode_wraps_each_slot_with_its_own_provenance() {
-    let tmp = TempDir::new().expect("tempdir");
-    let out = TempDir::new().expect("out");
-    let main = tmp.path().join("main.wcl");
-    let layout = tmp.path().join("layout.wcl");
-    std::fs::write(
-        &layout,
-        r#"
-template article {
-  slot content: content
-  slot hero: content?
-  slot sidebar: content?
-  slot footer: content = fn(c: TemplateCtx) -> list<Html> [
-    el("footer", [], [raw(c.title)])
-  ]
-  render = fn(c: TemplateCtx) -> list<Html>
-    flatten([slot(c, :hero), slot(c, :content), slot(c, :footer)])
-}
-"#,
-    )
-    .expect("write layout fixture");
-    write_fixture(
-        &main,
-        r#"
-import "./layout.wcl"
-site { default_template = :article title = "Layout fallback" }
-page index {
-  hero { h1 "Page hero" }
-  p "Body."
-}
-"#,
-    );
-    let opts = BuildOptions {
-        edit_mode: true,
-        ..Default::default()
-    };
-    if let Err(err) = build_with_options(&main, out.path(), None, &opts) {
-        panic!("edit build: {}", err.render_plain());
-    }
-    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read html");
-
-    let slot_wrapper_opening_tag = |slot: &str| {
-        let slot_attr = format!("data-wcl-slot=\"{slot}\"");
-        let slot_at = html
-            .find(&slot_attr)
-            .unwrap_or_else(|| panic!("missing {slot_attr}:\n{html}"));
-        let start = html[..slot_at]
-            .rfind("<div ")
-            .unwrap_or_else(|| panic!("missing wrapper start for {slot}:\n{html}"));
-        let end = html[slot_at..]
-            .find('>')
-            .map(|offset| slot_at + offset + 1)
-            .unwrap_or_else(|| panic!("missing wrapper end for {slot}:\n{html}"));
-        &html[start..end]
-    };
-
-    let page_file = format!("data-wcl-page-file=\"{}\"", main.display());
-    for slot in ["content", "hero", "sidebar"] {
-        let opening_tag = slot_wrapper_opening_tag(slot);
-        assert!(
-            opening_tag.contains(&page_file),
-            "{slot} must belong to the page: {opening_tag}"
-        );
-        assert!(
-            opening_tag.contains("data-wcl-page-span=\""),
-            "{slot}: {opening_tag}"
-        );
-    }
-
-    let fallback = slot_wrapper_opening_tag("footer");
-    assert!(
-        fallback.contains(&format!("data-wcl-file=\"{}\"", layout.display())),
-        "fallback must belong to the layout declaration: {fallback}"
-    );
-    assert!(fallback.contains("data-wcl-span=\""), "{fallback}");
-    assert!(!fallback.contains("data-wcl-page-file="), "{fallback}");
-
-    assert!(html.contains("Page hero"), "named slot content: {html}");
-    assert!(html.contains("Layout fallback"), "fallback content: {html}");
-}
-
-/// Edit mode anchors each diagram child shape: a free-layout child gets a
-/// transform-less wrapping `<g>` carrying `data-wcl-shape` + kind/span/file,
-/// a solver-laid child gets the same attributes on its existing translate
-/// wrapper, and the `<svg>` root carries the effective `data-wcl-layout`.
-#[test]
-fn edit_mode_anchors_diagram_shapes() {
-    let tmp = TempDir::new().expect("tempdir");
-    let out = TempDir::new().expect("out");
-    let main = tmp.path().join("main.wcl");
-    write_fixture(
-        &main,
-        "site s { default_template = :webpage  root = true }\n\
-         page index { start = true\n\
-           diagram {\n    width = 320\n    height = 160\n\
-             rect { id = a  x = 20.0  y = 30.0  width = 80.0  height = 50.0 }\n\
-             container { id = c  width = 120.0  height = 100.0\n\
-               circle { id = n  cx = 30.0  cy = 30.0  r = 20.0 }\n    }\n  }\n\
-           diagram {\n    width = 400\n    height = 300\n    layout = :layered\n\
-             process p1 \"Start\"\n    process p2 \"End\"\n    p1 -> p2\n  }\n }\n",
-    );
-
-    let opts = BuildOptions {
-        edit_mode: true,
-        ..Default::default()
-    };
-    if build_with_options(&main, out.path(), None, &opts).is_err() {
-        panic!("build with edit mode failed");
-    }
-    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-
-    // Free layout: each child is wrapped in an anchored, transform-less <g>.
-    assert!(
-        html.contains("<g data-wcl-shape data-wcl-kind=\"rect\" data-wcl-span=\""),
-        "expected an anchored free-layout rect, got:\n{html}"
-    );
-    // The shape's own id rides along: it is the name `a -> b` connections
-    // use, and the only per-instance identity a repeater-generated shape has.
-    assert!(
-        html.contains("data-wcl-shape-id=\""),
-        "expected a stamped shape id, got:\n{html}"
-    );
-    // The nested container and its own child are both anchored.
-    assert!(
-        html.contains("data-wcl-shape data-wcl-kind=\"container\""),
-        "expected an anchored container, got:\n{html}"
-    );
-    assert!(
-        html.contains("data-wcl-shape data-wcl-kind=\"circle\""),
-        "expected an anchored nested circle, got:\n{html}"
-    );
-    // Solver layout: the attrs ride the existing translate wrapper.
-    assert!(
-        html.contains("\" data-wcl-shape data-wcl-kind=\"process\""),
-        "expected anchored layered shapes, got:\n{html}"
-    );
-    let planned = html
-        .split("data-wcl-shape data-wcl-kind=\"process\"")
-        .next()
-        .expect("split");
-    assert!(
-        planned
-            .rsplit("<g ")
-            .next()
-            .is_some_and(|tail| tail.starts_with("transform=\"translate(")),
-        "process anchor should sit on the translate wrapper, got:\n{html}"
-    );
-    // The svg roots carry the effective layout for the Design client.
-    assert!(
-        html.contains("data-wcl-layout=\"free\""),
-        "expected the free diagram's layout attr, got:\n{html}"
-    );
-    assert!(
-        html.contains("data-wcl-layout=\"layered\""),
-        "expected the layered diagram's layout attr, got:\n{html}"
-    );
-
-    // A plain build leaks none of the shape markup.
-    if build_with_options(&main, out.path(), None, &BuildOptions::default()).is_err() {
-        panic!("plain build failed");
-    }
-    let plain = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    assert!(
-        !plain.contains("data-wcl-shape") && !plain.contains("data-wcl-layout"),
-        "plain build must not emit shape anchors, got:\n{plain}"
-    );
-}
-
-/// Edit mode anchors each `li` item too — items render directly (not through
-/// the block dispatcher), and the Design mode's item-level editing needs each
-/// `<li>`'s own source span, not just the outer `list`'s.
-#[test]
-fn edit_mode_anchors_list_items() {
-    let tmp = TempDir::new().expect("tempdir");
-    let out = TempDir::new().expect("out");
-    let main = tmp.path().join("main.wcl");
-    write_fixture(
-        &main,
-        "site s { default_template = :webpage  root = true }\n\
-         page index { start = true\n  list {\n    li \"First\"\n    li \"Second\" {\n      li \"Nested\"\n    }\n  }\n }\n",
-    );
-
-    let opts = BuildOptions {
-        edit_mode: true,
-        ..Default::default()
-    };
-    if build_with_options(&main, out.path(), None, &opts).is_err() {
-        panic!("build with edit mode failed");
-    }
-    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    // Every item — including the nested one — carries its own anchor.
-    assert_eq!(
-        html.matches("data-wcl-kind=\"li\"").count(),
-        3,
-        "expected all three li items anchored, got:\n{html}"
-    );
-    assert!(
-        html.contains("<li data-wcl-block data-wcl-kind=\"li\" data-wcl-span=\""),
-        "expected span-stamped li tags, got:\n{html}"
-    );
-
-    // A plain build emits clean list markup.
-    if build_with_options(&main, out.path(), None, &BuildOptions::default()).is_err() {
-        panic!("plain build failed");
-    }
-    let plain = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    assert!(
-        !plain.contains("data-wcl-kind=\"li\""),
-        "plain build must not anchor list items, got:\n{plain}"
-    );
-}
-
-/// `edit_field` is a transparent wrapper binding its children to one field of
-/// a data object: the children render in place in every mode; edit mode
-/// additionally stamps `data-wcl-field-kind` / `-target` / `-name` (and the
-/// `plain` flag) onto the first child's root tag. It never becomes a block
-/// anchor target itself.
-#[test]
-fn edit_field_binds_children_in_edit_mode_only() {
-    let tmp = TempDir::new().expect("tempdir");
-    let out = TempDir::new().expect("out");
-    let main = tmp.path().join("main.wcl");
-    write_fixture(
-        &main,
-        "site s { default_template = :webpage  root = true }\n\
-         page index { start = true\n\
-           edit_field { kind = \"concept\"  target = \"alpha\"  field = \"name\"\n    h1 \"Hello\"\n  }\n\
-           edit_field { kind = \"concept\"  target = \"alpha\"  field = \"summary\"  plain = true\n    p \"Lede.\"\n  }\n\
-         }\n",
-    );
-
-    let opts = BuildOptions {
-        edit_mode: true,
-        ..Default::default()
-    };
-    if build_with_options(&main, out.path(), None, &opts).is_err() {
-        panic!("build with edit mode failed");
-    }
-    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    assert!(html.contains(">Hello<"), "wrapped h1 must render:\n{html}");
-    assert!(
-        html.contains("data-wcl-field-kind=\"concept\"")
-            && html.contains("data-wcl-field-target=\"alpha\"")
-            && html.contains("data-wcl-field-name=\"name\""),
-        "expected field-binding attributes, got:\n{html}"
-    );
-    assert!(
-        html.contains("data-wcl-field-plain"),
-        "expected the plain flag on the summary binding, got:\n{html}"
-    );
-    // The binding rides the child's root tag (which keeps its own block
-    // anchor); the wrapper itself is not a block target.
-    assert!(
-        !html.contains("data-wcl-kind=\"edit_field\""),
-        "edit_field must not be a selectable block, got:\n{html}"
-    );
-
-    // Outside edit mode the children render unchanged, with no bindings.
-    if build_with_options(&main, out.path(), None, &BuildOptions::default()).is_err() {
-        panic!("plain build failed");
-    }
-    let plain = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    assert!(
-        plain.contains(">Hello<"),
-        "wrapped h1 must render:\n{plain}"
-    );
-    assert!(plain.contains("Lede."), "wrapped p must render:\n{plain}");
-    assert!(
-        !plain.contains("data-wcl-field-"),
-        "plain build must not emit field bindings, got:\n{plain}"
     );
 }
 

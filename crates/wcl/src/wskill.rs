@@ -7,7 +7,7 @@
 //! editor running.
 //!
 //! `op` is the write host: the library turns an op into file changes, and
-//! [`crate::edit::commit`] — the editor's own write / validate / roll-back
+//! [`crate::edit::commit`] — the shared write / validate / roll-back
 //! pipeline — puts them on disk.
 
 use std::collections::{BTreeMap, HashMap};
@@ -133,7 +133,7 @@ pub(crate) fn run_lint(
 // `op` — apply the id-addressed op vocabulary
 // ---------------------------------------------------------------------------
 
-/// Run `wcl wskill op [<entry>] [--op <json>]… [--comment <json>]…`.
+/// Run `wcl wskill op [<entry>] [--op <json>]…`.
 ///
 /// Every op is re-addressed against a freshly loaded model and written through
 /// the validating editor pipeline. The run starts from a clean git tree,
@@ -143,38 +143,26 @@ pub(crate) fn run_lint(
 pub(crate) fn run_op(
     entry: &Path,
     inline: &[String],
-    comment_texts: &[String],
     file: Option<&Path>,
     dry_run: bool,
     message: &str,
 ) -> u8 {
-    let mut comments = match decode_comments(comment_texts) {
-        Ok(comments) => comments,
-        Err(e) => {
-            eprintln!("{e}");
-            return WSKILL_TOOL_FAILURE;
-        }
-    };
-    let source = match read_ops(inline, file, comments.is_empty()) {
+    let source = match read_ops(inline, file) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("{e}");
             return WSKILL_TOOL_FAILURE;
         }
     };
-    let (ops, piped_comments) = match decode_batch(&source) {
-        Ok(batch) => batch,
+    let ops = match decode_batch(&source) {
+        Ok(ops) => ops,
         Err(e) => {
             eprintln!("{e}");
             return WSKILL_TOOL_FAILURE;
         }
     };
-    comments.extend(piped_comments);
-    if ops.is_empty() && comments.is_empty() {
-        eprintln!(
-            "no ops or comments given — pass `--op <json>`, `--comment <json>`, \
-             `--file <path>`, or pipe ops in"
-        );
+    if ops.is_empty() {
+        eprintln!("no ops given — pass `--op <json>`, `--file <path>`, or pipe ops in");
         return WSKILL_TOOL_FAILURE;
     }
 
@@ -193,30 +181,14 @@ pub(crate) fn run_op(
     // resolving them against the model: each op is addressed against the tree
     // the ops before it left, so anything past the first is unanswerable
     // until they have actually applied. What it does show is the op list as
-    // the vocabulary spells it, which is the same JSON the editor sends —
-    // and which this command reads back.
+    // the vocabulary spells it, which is the JSON this command reads back.
     if dry_run {
         let list: Vec<serde_json::Value> = ops.iter().map(ops::to_json).collect();
-        if comments.is_empty() {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&list).expect("ops serialize")
-            );
-        } else {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "ops": list,
-                    "comments": comments.iter().map(PendingComment::to_json).collect::<Vec<_>>(),
-                }))
-                .expect("ops and comments serialize")
-            );
-        }
-        eprintln!(
-            "{}, {} — nothing written",
-            plural(ops.len(), "op"),
-            plural(comments.len(), "comment")
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&list).expect("ops serialize")
         );
+        eprintln!("{} — nothing written", plural(ops.len(), "op"));
         return WSKILL_OK;
     }
 
@@ -254,19 +226,6 @@ pub(crate) fn run_op(
             serde_json::to_string(&ops::to_json(op)).expect("an op serializes")
         );
     }
-    let comments_file = root
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("comments.wcl");
-    for (i, comment) in comments.iter().enumerate() {
-        if let Err(e) = rollback
-            .capture(std::iter::once(comments_file.as_path()))
-            .and_then(|()| comment.add_to(&comments_file))
-        {
-            rollback_run(&rollback, &format!("comment {}: {e}", i + 1));
-            return WSKILL_FINDINGS;
-        }
-    }
     match lint_counts(&root) {
         Ok(after) => {
             let regressions: Vec<String> = after
@@ -300,108 +259,6 @@ pub(crate) fn run_op(
     }
     eprintln!("applied {}", plural(ops.len(), "op"));
     WSKILL_OK
-}
-
-#[derive(Debug)]
-struct PendingComment {
-    page: Option<String>,
-    page_file: Option<String>,
-    loc: Option<String>,
-    target: Option<String>,
-    object_kind: Option<String>,
-    object_id: Option<String>,
-    body: String,
-    author: Option<String>,
-    quote: Option<String>,
-}
-
-impl PendingComment {
-    fn as_new_comment(&self) -> wcl_wdoc::comments::NewComment<'_> {
-        wcl_wdoc::comments::NewComment {
-            page: self.page.as_deref(),
-            page_file: self.page_file.as_deref(),
-            loc: self.loc.as_deref(),
-            target: self.target.as_deref(),
-            object_kind: self.object_kind.as_deref(),
-            object_id: self.object_id.as_deref(),
-            body: &self.body,
-            author: self.author.as_deref(),
-            quote: self.quote.as_deref(),
-        }
-    }
-
-    fn validate(&self) -> Result<(), String> {
-        self.as_new_comment()
-            .validate()
-            .map_err(|e| e.render_plain())
-    }
-
-    fn add_to(&self, file: &Path) -> Result<(), String> {
-        wcl_wdoc::comments::add_addressed(file, self.as_new_comment())
-            .map(|_| ())
-            .map_err(|e| e.render_plain())
-    }
-
-    fn to_json(&self) -> serde_json::Value {
-        serde_json::json!({
-            "page": self.page,
-            "page_file": self.page_file,
-            "loc": self.loc,
-            "target": self.target,
-            "object_kind": self.object_kind,
-            "object_id": self.object_id,
-            "body": self.body,
-            "author": self.author,
-            "quote": self.quote,
-        })
-    }
-}
-
-fn decode_comments(texts: &[String]) -> Result<Vec<PendingComment>, String> {
-    let mut out = Vec::new();
-    for text in texts {
-        let value: serde_json::Value = serde_json::from_str(text.trim())
-            .map_err(|e| format!("the comments are not JSON: {e}"))?;
-        let items = match value {
-            serde_json::Value::Array(items) => items,
-            one => vec![one],
-        };
-        for item in items {
-            let string = |key: &str| {
-                item.get(key)
-                    .and_then(serde_json::Value::as_str)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-            };
-            let body = string("body")
-                .filter(|body| !body.trim().is_empty())
-                .ok_or_else(|| format!("comment {}: missing `body`", out.len() + 1))?;
-            let comment = PendingComment {
-                page: string("page"),
-                page_file: string("page_file"),
-                loc: string("loc"),
-                target: string("target"),
-                object_kind: string("object_kind"),
-                object_id: string("object_id"),
-                body,
-                author: match string("author") {
-                    Some(author) if author != "curator" => {
-                        return Err(format!(
-                            "comment {}: curator comments cannot use author `{author}`",
-                            out.len() + 1
-                        ));
-                    }
-                    _ => Some("curator".to_string()),
-                },
-                quote: string("quote"),
-            };
-            comment
-                .validate()
-                .map_err(|e| format!("comment {}: {e}", out.len() + 1))?;
-            out.push(comment);
-        }
-    }
-    Ok(out)
 }
 
 fn lint_counts(root: &Path) -> Result<BTreeMap<(Severity, Rule), usize>, String> {
@@ -438,7 +295,7 @@ fn build_projections(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Apply one op through the editor's validating write pipeline.
+/// Apply one op through the validating write pipeline.
 ///
 /// The model is re-read per op rather than kept: an op rewrites the files the
 /// next one is addressed against, and a stale [`Graph`](wcl_wskill::Graph)
@@ -596,18 +453,14 @@ fn root_doc(entry: &Path) -> Result<PathBuf, String> {
 
 /// The op JSON, from `--op` values and/or `--file` — stdin when the caller
 /// named neither, so a curator can pipe the list it just built.
-fn read_ops(
-    inline: &[String],
-    file: Option<&Path>,
-    stdin_when_empty: bool,
-) -> Result<Vec<String>, String> {
+fn read_ops(inline: &[String], file: Option<&Path>) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = inline.to_vec();
     match file {
         Some(path) if path == Path::new("-") => out.push(read_stdin()?),
         Some(path) => out.push(
             std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?,
         ),
-        None if out.is_empty() && stdin_when_empty => out.push(read_stdin()?),
+        None if out.is_empty() => out.push(read_stdin()?),
         None => {}
     }
     Ok(out)
@@ -621,35 +474,23 @@ fn read_stdin() -> Result<String, String> {
     Ok(buf)
 }
 
-/// Decode every op and embedded comment. Besides the original op object/array
-/// forms, this accepts the `{ ops, comments }` envelope printed by a dry run,
-/// so the preview can be piped back verbatim for the real run.
-fn decode_batch(texts: &[String]) -> Result<(Vec<Op>, Vec<PendingComment>), String> {
+/// Decode every op. Besides the plain op object/array forms — a dry run
+/// prints the latter, so its preview pipes back verbatim for the real run —
+/// this accepts an `{ ops }` envelope.
+fn decode_batch(texts: &[String]) -> Result<Vec<Op>, String> {
     let mut ops_out = Vec::new();
-    let mut comment_texts = Vec::new();
     for text in texts {
         let v: serde_json::Value =
             serde_json::from_str(text.trim()).map_err(|e| format!("the ops are not JSON: {e}"))?;
         if let serde_json::Value::Object(batch) = &v
-            && (batch.contains_key("ops") || batch.contains_key("comments"))
+            && let Some(batch_ops) = batch.get("ops")
         {
-            let batch_ops = batch
-                .get("ops")
-                .cloned()
-                .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
-            decode_op_value(batch_ops, &mut ops_out)?;
-            if let Some(comments) = batch.get("comments") {
-                comment_texts.push(
-                    serde_json::to_string(comments)
-                        .expect("a parsed comment batch serializes back to JSON"),
-                );
-            }
+            decode_op_value(batch_ops.clone(), &mut ops_out)?;
             continue;
         }
         decode_op_value(v, &mut ops_out)?;
     }
-    let comments = decode_comments(&comment_texts)?;
-    Ok((ops_out, comments))
+    Ok(ops_out)
 }
 
 fn decode_op_value(value: serde_json::Value, out: &mut Vec<Op>) -> Result<(), String> {

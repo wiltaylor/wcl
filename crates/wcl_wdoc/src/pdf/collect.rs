@@ -66,13 +66,6 @@ fn collect_block(
         return;
     }
     let kind = block.kind();
-    // An `edit_object` is an editor affordance: the button exists only in the
-    // `wcl editor` preview's edit mode, which is an HTML build. A PDF renders
-    // nothing for it — stated here rather than left to fall through, so the
-    // kind is honestly covered on this target.
-    if kind == "edit_object" {
-        return;
-    }
     // A presentation fragment is a step-reveal wrapper — in a static PDF its
     // children simply render in place.
     if kind == "fragment" {
@@ -87,14 +80,6 @@ fn collect_block(
     // and `fragment` take, and the reason `column` is native here at all
     // (until this arm existed it silently dropped its children).
     if kind == "column" {
-        for child in block.blocks() {
-            collect_block(doc, &child, patterns, base_dir, out);
-        }
-        return;
-    }
-    // An `edit_field` binds its children to a data-object field for the
-    // editor's Design mode — a transparent wrapper here.
-    if kind == "edit_field" {
         for child in block.blocks() {
             collect_block(doc, &child, patterns, base_dir, out);
         }

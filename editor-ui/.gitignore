@@ -1,5 +1,0 @@
-node_modules/
-dist/
-# pnpm 10.34 installs `path:` git subdir deps from a lockfile as the raw
-# monorepo tarball (no subdir extraction, no prepare) — do not commit it.
-pnpm-lock.yaml

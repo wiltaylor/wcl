@@ -1,9 +1,8 @@
 //! Introspect the sites an entry document declares — the `site` blocks
 //! plus the sub-site members its `include` blocks resolve to. This is the
 //! building block a host uses to enumerate every previewable site in a
-//! workspace (`wcl editor`'s site picker): scan for candidate entry files,
-//! call [`entry_site_info`] on each, and nest members under their
-//! including entry.
+//! workspace: scan for candidate entry files, call [`entry_site_info`] on
+//! each, and nest members under their including entry.
 
 use std::path::{Path, PathBuf};
 
