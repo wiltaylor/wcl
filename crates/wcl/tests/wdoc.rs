@@ -83,5 +83,7 @@ fn wcl_wdoc_build_into_a_nested_out_dir_is_relocatable() {
         .success()
         .stdout(predicate::str::contains("wrote 3 pages"));
 
-    relocatable::assert_relocatable(&nested, 3, 8);
+    // Eight attribute URLs and the book typography's thirteen font faces are
+    // a floor each side of the walk, so neither half can rot into a no-op.
+    relocatable::assert_relocatable(&nested, 3, 8, 13);
 }

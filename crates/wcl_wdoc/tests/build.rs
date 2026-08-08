@@ -12294,8 +12294,9 @@ fn a_build_into_a_nested_out_dir_is_relocatable() {
     let main = examples_dir().join("wdoc_relocatable").join("main.wcl");
     build_ok(&main, &nested);
     // Three pages, and the fixture's own links, icon sprite, favicon and
-    // image put well over eight local URLs on them.
-    relocatable::assert_relocatable(&nested, 3, 8);
+    // image put well over eight local URLs on them. Each page's stylesheet
+    // then names the book typography, which is a face per rule.
+    relocatable::assert_relocatable(&nested, 3, 8, BOOK_FONT_FACE_COUNT);
 }
 
 // The walk is only worth having if it can fail, and every one of its three
@@ -12307,7 +12308,7 @@ fn a_build_into_a_nested_out_dir_is_relocatable() {
 fn the_walk_rejects_a_root_absolute_url() {
     let out = TempDir::new().expect("mkdir out");
     std::fs::write(out.path().join("p.html"), "<a href=\"/oops\">x</a>").expect("write page");
-    relocatable::assert_relocatable(out.path(), 1, 0);
+    relocatable::assert_relocatable(out.path(), 1, 0, 0);
 }
 
 #[test]
@@ -12315,14 +12316,14 @@ fn the_walk_rejects_a_root_absolute_url() {
 fn the_walk_rejects_a_local_url_with_no_file_behind_it() {
     let out = TempDir::new().expect("mkdir out");
     std::fs::write(out.path().join("p.html"), "<img src=\"nope.png\">").expect("write page");
-    relocatable::assert_relocatable(out.path(), 1, 0);
+    relocatable::assert_relocatable(out.path(), 1, 0, 0);
 }
 
 #[test]
 #[should_panic(expected = "expected at least 3 pages")]
 fn the_walk_rejects_a_tree_it_found_nothing_in() {
     let out = TempDir::new().expect("mkdir out");
-    relocatable::assert_relocatable(out.path(), 3, 0);
+    relocatable::assert_relocatable(out.path(), 3, 0, 0);
 }
 
 #[test]
@@ -12337,7 +12338,7 @@ fn the_walk_rejects_a_root_absolute_font_url() {
         "<style>@font-face { src: url('/_wdoc/X.woff2') format('woff2'); }</style>",
     )
     .expect("write page");
-    relocatable::assert_relocatable(out.path(), 1, 0);
+    relocatable::assert_relocatable(out.path(), 1, 0, 0);
 }
 
 #[test]
@@ -12349,21 +12350,23 @@ fn the_walk_rejects_a_font_url_with_no_file_behind_it() {
         "<style>@font-face { src: url('_wdoc/Gone.woff2') format('woff2'); }</style>",
     )
     .expect("write page");
-    relocatable::assert_relocatable(out.path(), 1, 0);
+    relocatable::assert_relocatable(out.path(), 1, 0, 0);
 }
 
 #[test]
-fn the_walk_ignores_css_a_page_merely_prints() {
+fn the_walk_ignores_css_outside_a_style_body() {
     // A code listing showing a `@font-face` is prose about a URL, not one the
-    // browser will fetch. It is outside every `<style>` body, and its quotes
-    // are escaped — resolving it would fail on a page that is perfectly fine.
+    // browser will fetch, and resolving it would fail a page that is fine.
+    // Being outside every `<style>` body is the whole of what keeps it out —
+    // the escaped quotes are a symptom, not the test.
     let out = TempDir::new().expect("mkdir out");
     std::fs::write(
         out.path().join("p.html"),
-        "<pre><code>@font-face { src: url(&#39;/nowhere/X.woff2&#39;); }</code></pre>",
+        "<pre><code>@font-face { src: url(&#39;/nowhere/X.woff2&#39;); }</code></pre>\
+         <p>and unquoted: url(/nowhere/Y.woff2)</p>",
     )
     .expect("write page");
-    relocatable::assert_relocatable(out.path(), 1, 0);
+    relocatable::assert_relocatable(out.path(), 1, 0, 0);
 }
 
 #[test]
@@ -12377,7 +12380,7 @@ fn the_walk_passes_urls_that_leave_the_tree() {
          <a href=\"//cdn.example.com/x\">c</a>",
     )
     .expect("write page");
-    relocatable::assert_relocatable(out.path(), 1, 0);
+    relocatable::assert_relocatable(out.path(), 1, 0, 0);
 }
 
 // ── Bundled font URLs ──────────────────────────────────────────────────
