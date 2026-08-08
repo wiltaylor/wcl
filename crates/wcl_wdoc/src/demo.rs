@@ -8,9 +8,11 @@
 //! [`crate::render::theme`]; CSS custom properties inherit, so each wrapper
 //! re-themes its own subtree regardless of the reader's global theme toggle.
 //!
-//! The children are rendered to HTML *once* and the string is reused for both
-//! panes, so the block renderer's registry side effects (images / icons /
-//! videos) fire a single time.
+//! The children are rendered to HTML *twice*, once per pane, with the build's
+//! UI theme mode flipped each time — SVG content bakes the resolved palette in
+//! Rust (for PDF parity), so one render cannot suit both panes. The block
+//! renderer's registry writes (images / icons / videos) are keyed by source,
+//! so the second pass is idempotent.
 
 use std::fmt::Write as _;
 use std::path::Path;

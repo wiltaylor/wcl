@@ -955,8 +955,8 @@ pub(crate) fn render_block(
         // `base_dir` lets a `source` recording path resolve relative to
         // the source file.
         "terminal" => Some(crate::terminal::render_terminal(doc, block, base_dir)),
-        // Renders its body to a Markdown string (the same output the Markdown /
-        // skill backend produces) and shows it in a highlighted `code` block.
+        // Renders its body to a Markdown string (the same output the Markdown
+        // backend produces) and shows it in a highlighted `code` block.
         // Special-cased here because reaching into the Markdown emitter from a
         // WCL `lower` isn't possible. Book-only — it is `@native(backends =
         // [:html])`, so another target refuses it above rather than quietly

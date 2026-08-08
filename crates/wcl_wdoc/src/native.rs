@@ -15,7 +15,7 @@
 //! 1. **[`NATIVE_DISPATCH`]** — the registry: every natively-rendered kind
 //!    with the backends whose dispatch handles it.
 //! 2. **[`native_errors`]** — the schema-time cross-check, reached through
-//!    [`crate::build::contract_errors`] by all four entry points. It
+//!    [`crate::build::contract_errors`] by all three entry points. It
 //!    reads both directions: a declared target with no Rust implementation,
 //!    and a Rust implementation no type declares, are equally errors — the
 //!    second is how the last stub `lower` got in.
