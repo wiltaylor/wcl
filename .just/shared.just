@@ -92,25 +92,29 @@ docs-build *ARGS: require-cargo
 # reaches the deploy only through `main`, and `just ci::check` gates that.
 #
 # Two patterns, because a page carries URLs in two vocabularies. The first is
-# the `href` / `src` attribute. The second is a CSS declaration value —
-# `src: url(…)` in an `@font-face`, and `background-image` / `mask` / `cursor`
-# on the same shape for free. #279 added it: the stylesheet is inlined into
-# every page, so three dangling font URLs sat on the live landing page while an
-# attribute-only scan reported the site clean.
+# the `href` / `src` attribute. The second is a CSS `url(…)` — the `src:` of an
+# `@font-face`, and `background-image` / `mask` / `cursor` / `@import` on the
+# same shape for free. #279 added it: the stylesheet is inlined into every
+# page, so three dangling font URLs sat on the live landing page while an
+# attribute-only scan called the site clean.
 #
-# The CSS pattern wants a raw quote or none. A page that *shows* CSS in a code
-# listing has its quotes escaped to `&#39;`, and prose about a URL is not a URL.
+# The CSS pattern takes any `url(` and asks only whether the target is anchored
+# at `/`. That reaches one page listing CSS as an example, where the quotes come
+# out as `&#39;` and the pattern therefore misses the quoted form but not the
+# bare one. A bare absolute URL in a listing is worth a second look anyway, and
+# the grep is meant to be read when it fires.
 #
-# Only the root-absolute half is here. Whether a font URL has a file behind it
-# is the walk's question, and the walk answers it — over the fixture book, in
-# Rust, on both halves at once (`crates/wcl_wdoc/tests/support/relocatable.rs`).
+# Only the root-absolute half is here. Whether a URL has a file behind it is the
+# walk's question, and the walk answers it — attribute and stylesheet alike, on
+# both halves, over the fixture book, in Rust, where it can say what it means
+# (`crates/wcl_wdoc/tests/support/relocatable.rs`).
 
 # Check the built docs/ sites for root-absolute URLs (they must all be relative)
 [group('dev')]
 docs-relative-urls: docs-build
     @hits="$(grep -rnoE --include='*.html' \
         -e '(href|src)="/[^"]*"' \
-        -e "[:,] *url\([\"']?/[^)]*\)" \
+        -e "url\([\"']?/[^)]*\)" \
         docs/_site || true)"; \
     if [ -n "$hits" ]; then \
         echo "root-absolute URLs in the built site — every URL must be relative:" >&2; \

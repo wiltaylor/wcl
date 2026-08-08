@@ -15,14 +15,16 @@
 //! the files below one.
 //!
 //! **Scope.** `href` and `src` attributes, plus the `url(…)` values in the
-//! stylesheet each page inlines — mostly `@font-face` `src:` descriptors.
-//! Those resolve since #276 stopped the renderer emitting an `@font-face`
-//! rule for a bundled family the site does not ship, so #279 widened the walk
-//! to them: a font URL is a URL, and it breaks the tree the same way.
+//! stylesheet each page inlines — mostly `@font-face` `src:` descriptors. #276
+//! stopped the renderer emitting an `@font-face` rule for a bundled family the
+//! site does not ship, so those resolve now, and #279 widened the walk to
+//! them. A font URL is a URL. It breaks the tree the same way.
 //!
-//! The CSS half is scoped to `<style>` bodies. A page may also *show* CSS in a
-//! code listing, where the quotes come out as `&#39;` — that is prose about a
-//! URL, not one the browser will fetch, and the walk must not resolve it.
+//! The CSS half reads `<style>` bodies and nothing else. A page may also
+//! *show* CSS, in a code listing. That is prose about a URL, not one the
+//! browser will fetch, and resolving it would fail a page that is fine. The
+//! scoping is the whole defence — escaped quotes are not, because a listing
+//! moved inside a `<style>` body would be read like any other rule.
 
 use std::path::Path;
 
@@ -47,10 +49,10 @@ fn html_urls(html: &str) -> Vec<String> {
 
 /// Every `url(…)` target in the page's inlined stylesheets.
 ///
-/// `<style>` bodies only, so a code listing that happens to show CSS stays out
-/// of it. Public because `wcl_wdoc/tests/build.rs` reads the same values to
-/// check the conditionally-written `_wdoc/…` faces, and one scanner cannot
-/// drift from itself.
+/// `<style>` bodies only, so a code listing that shows CSS stays out of it.
+/// Public because `wcl_wdoc/tests/build.rs` reads the same values to check the
+/// conditionally-written `_wdoc/…` faces, and one scanner cannot drift from
+/// itself.
 pub fn style_urls(html: &str) -> Vec<String> {
     let mut urls = Vec::new();
     for style in html.split("<style").skip(1) {
@@ -121,39 +123,50 @@ pub fn html_pages(root: &Path) -> Vec<(std::path::PathBuf, String)> {
 /// root-absolute, and every one naming a local file resolves to a file that
 /// exists.
 ///
-/// `min_pages` / `min_urls` are the floor the caller expects to have walked. A
-/// walk that found nothing would pass silently, which is the one way this
-/// could rot into a no-op.
-pub fn assert_relocatable(root: &Path, min_pages: usize, min_urls: usize) {
+/// `min_pages`, `min_attr_urls` and `min_style_urls` are the floor the caller
+/// expects to have walked. A walk that found nothing would pass silently,
+/// which is the one way this could rot into a no-op.
+///
+/// The two URL floors are separate on purpose. One combined count lets either
+/// half rot to zero and still clear the bar, because the other half carries
+/// it — the fixture book alone puts thirteen font URLs on every page.
+pub fn assert_relocatable(
+    root: &Path,
+    min_pages: usize,
+    min_attr_urls: usize,
+    min_style_urls: usize,
+) {
     let mut walked_pages = 0usize;
-    let mut checked_urls = 0usize;
+    let mut checked_attr_urls = 0usize;
+    let mut checked_style_urls = 0usize;
     for (path, html) in html_pages(root) {
         let page_dir = path.parent().expect("page has a parent");
         walked_pages += 1;
-        for url in html_urls(&html).into_iter().chain(style_urls(&html)) {
-            match classify(&url) {
-                UrlKind::RootAbsolute => panic!(
-                    "{}: root-absolute URL {url:?} — the tree stops working \
-                     the moment it is served from a subdirectory",
-                    path.display()
-                ),
-                UrlKind::External => {}
-                UrlKind::Local => {
-                    let bare = url.split(['#', '?']).next().unwrap_or(&url);
-                    if bare.is_empty() {
-                        continue;
-                    }
-                    let target = page_dir.join(bare);
-                    assert!(
-                        target.exists(),
-                        "{}: {url:?} resolves to {}, which does not exist",
-                        path.display(),
-                        target.display()
-                    );
-                    checked_urls += 1;
+        // One verdict, applied to both vocabularies; the counts stay apart.
+        let resolves = |url: &String| match classify(url) {
+            UrlKind::RootAbsolute => panic!(
+                "{}: root-absolute URL {url:?} — the tree stops working \
+                 the moment it is served from a subdirectory",
+                path.display()
+            ),
+            UrlKind::External => false,
+            UrlKind::Local => {
+                let bare = url.split(['#', '?']).next().unwrap_or(url);
+                if bare.is_empty() {
+                    return false;
                 }
+                let target = page_dir.join(bare);
+                assert!(
+                    target.exists(),
+                    "{}: {url:?} resolves to {}, which does not exist",
+                    path.display(),
+                    target.display()
+                );
+                true
             }
-        }
+        };
+        checked_attr_urls += html_urls(&html).iter().filter(|u| resolves(u)).count();
+        checked_style_urls += style_urls(&html).iter().filter(|u| resolves(u)).count();
     }
     assert!(
         walked_pages >= min_pages,
@@ -161,7 +174,13 @@ pub fn assert_relocatable(root: &Path, min_pages: usize, min_urls: usize) {
         root.display()
     );
     assert!(
-        checked_urls >= min_urls,
-        "expected at least {min_urls} local URLs to resolve, checked {checked_urls}"
+        checked_attr_urls >= min_attr_urls,
+        "expected at least {min_attr_urls} local attribute URLs to resolve, \
+         checked {checked_attr_urls}"
+    );
+    assert!(
+        checked_style_urls >= min_style_urls,
+        "expected at least {min_style_urls} local stylesheet URLs to resolve, \
+         checked {checked_style_urls}"
     );
 }
