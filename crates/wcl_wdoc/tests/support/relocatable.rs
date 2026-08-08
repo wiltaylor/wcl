@@ -15,13 +15,12 @@
 //! the files below one.
 //!
 //! **Scope.** `href` and `src` only. The stylesheet each page inlines also
-//! emits `url(…)` font references, and those are *not* all resolvable today:
-//! the wdoc stdlib declares the terminal `@font-face` rules unconditionally
-//! (`crates/wcl_wdoc/lib/terminal.wcl`) while the font files are copied only
-//! when a page uses a terminal (`build.rs`, guarded by `uses_terminal`), so a
-//! site with no terminal ships three dangling font URLs. That is a real bug in
-//! the renderer, not in this walk; widening the walk to `url(…)` is the right
-//! move once it is fixed.
+//! emits `url(…)` font references. Those resolve now — #276 stopped the
+//! renderer emitting an `@font-face` rule for a bundled family the site does
+//! not ship — so widening this walk to `url(…)` has become possible; it is
+//! tracked as #279 rather than done here. Until then the `@font-face` URLs
+//! are covered by their own tests in `wcl_wdoc/tests/build.rs`, which check
+//! that every `_wdoc/…` a page's CSS names was written.
 
 use std::path::Path;
 
