@@ -15,3 +15,10 @@ crates/wcl_lang/fuzz/target/
 crates/wcl_lang/fuzz/artifacts/
 crates/wcl_lang/fuzz/coverage/
 .playwright-cli/
+
+# Orca-managed workspace state, created by the Orca IDE per checkout.
+.orca
+
+# Local scratch: throwaway notes, prototypes and research findings.
+# Never committed — anything worth keeping belongs in an issue or the book.
+.scratch/
