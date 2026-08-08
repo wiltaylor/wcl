@@ -15,7 +15,7 @@ page lang_cli {
 
   p "`wcl` is one binary with thirteen commands. Nine read or rewrite a document — `parse`, `check`, `eval` (aliased `get`), `set`, `fmt`, `diff`, `init`, `repl` and `lsp`. Four sit under `wcl wdoc` and render a document to a website, a dev server, a PDF or a folder of Markdown. This chapter covers all of them: what each one takes, every flag it accepts, and what it prints."
 
-  p "It also covers the two things every command shares — the exit code it returns, and the fact that each one opens a document exactly the way the next one does."
+  p "It also covers the two things every command shares. Each returns the same exit code for the same kind of failure, and each opens a document exactly the way the next one does."
 
   h2 "One binary, one document model"
 
@@ -96,7 +96,7 @@ service db {
 TEXT
   }
 
-  p "The `...` stands for real output. `parse` prints **everything in scope**, and that includes the language's own decorator declarations (`@block`, `@children`, `@inline`, …) and the `std` unit types, because they are declarations the document can see. Your own items follow them, in source order. Pipe through `tail` when you want only the data."
+  p "The `...` stands for real output. `parse` prints **everything in scope**. That includes the language's own decorator declarations (`@block`, `@children`, `@inline`, …) and the `std` unit types, because the document can see those declarations too. Your own items follow them, in source order. Pipe through `tail` when you want only the data."
 
   p "`parse` forces the document, so it is also the blunt way to make every lazy field run. An evaluation error that a field would raise, it raises here. [How a document evaluates](lang_evaluation) covers what forcing means and what `--profile` measures."
 
@@ -296,7 +296,7 @@ TEXT
 
   p "**`set` follows imports.** When `<path>` resolves through an import, `set` edits the file that actually _declares_ the field, which need not be the file you named. That is usually what you want and occasionally a surprise. The message names the file it wrote."
 
-  p "**`set` does not validate.** It re-parses its own output before writing, so it cannot leave a broken file behind, and it writes atomically. It does not run the schema. A `set` that violates a `@min`, or writes a `utf8` where a `u32` is declared, is written anyway. Follow a scripted `set` with a `wcl check`:"
+  p "**`set` does not validate.** It re-parses its own output before writing atomically, so it cannot leave a broken file behind. It does not run the schema. A `set` that violates a `@min`, or writes a `utf8` where a `u32` is declared, is written anyway. Follow a scripted `set` with a `wcl check`:"
 
   code text {
     source = <<'TEXT'
@@ -538,7 +538,7 @@ TEXT
 
   p "Template resolution has its own order: **built-in name, then user template, then disk path**. A built-in name therefore shadows a user template of the same name. Give yours a distinct name, or pass a path."
 
-  p "A template is itself a WCL document. It declares `property` blocks for the questions and `file` / `folder` blocks for what to generate. [Namespaces and imports](lang_namespaces) covers the `import <scaffold.wcl>` a template opts in with."
+  p "A template is itself a WCL document. It opts in with `import <scaffold.wcl>`, then declares `property` blocks for the questions and `file` / `folder` blocks for what to generate. The angle brackets name an embedded library, not a file on disk — [Namespaces and imports](lang_namespaces) covers that import form."
 
   callout "Two rules that catch every template author" {
     class = ["warning"]

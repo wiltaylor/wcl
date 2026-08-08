@@ -135,8 +135,8 @@ $ wcl get inventory.wcl services.web.port
 ```
 
 The output is the **WCL display form**, not JSON: a string keeps its quotes and a number keeps
-its type suffix. Only what the document model exposes is addressable — a `let` item is not
-(it is not document data) and a table row is not (it has no name or label).
+its type suffix. Only what the document model exposes is addressable. A `let` item is not, since
+it is not document data, and a table row is not, since it has no name and no label.
 
 A path that resolves to nothing exits 3 and suggests a near name:
 
@@ -201,9 +201,9 @@ Two behaviours to know before scripting it:
 - **`set` follows imports.** When `<path>` resolves through an import, `set` edits the file
   that *declares* the field, which need not be the file you named. The message says which.
 - **`set` does not validate.** It re-parses its own output before writing atomically, so it
-  cannot leave a broken file behind — but it does not run the schema. A `set` that violates a
-  `@min`, or writes a `utf8` where a `u32` is declared, is written anyway. Follow a scripted
-  `set` with `wcl check`.
+  cannot leave a broken file behind. It does not run the schema. A `set` that violates a `@min`,
+  or writes a `utf8` where a `u32` is declared, is written anyway. Follow a scripted `set` with
+  `wcl check`.
 
 A path that names nothing exits 3 and changes no file.
 
@@ -326,9 +326,9 @@ default or renames a kind, ask what your *data* became:
 $ wcl diff v0.4.0:main.wcl main.wcl
 ```
 
-Both sides evaluate against their own imports, so the answer folds in a new default that now
-fills a field you never wrote, a computed value that moved because a builtin changed, a block
-that gathers somewhere else now. An empty diff after a library bump is a real result.
+Both sides evaluate against their own imports. The answer therefore folds in a new default that
+now fills a field you never wrote, a computed value that moved because a builtin changed, and a
+block that gathers somewhere else now. An empty diff after a library bump is a real result.
 
 The working order is three commands: bump the import; run `wcl check` and fix what no longer
 validates; run `wcl diff <old-rev>:main.wcl main.wcl` to see what moved silently. The third
@@ -379,9 +379,9 @@ property with no default, under `--defaults`, is an error).
 A built-in name shadows a user template of the same name.
 
 A template is a WCL document declaring `property` blocks for the questions and `file` /
-`folder` blocks for what to generate. Two rules catch every template author: a generated
-file's content must use the **interpolating** heredoc `$<<TAG` (a plain `<<TAG` is literal, so
-`${answer("name")}` lands verbatim), and a `property` instance sets fields with `=`
+`folder` blocks for what to generate. Two rules catch every template author. First, a generated
+file's content must use the **interpolating** heredoc `$<<TAG` — a plain `<<TAG` is literal, so
+`${answer("name")}` lands verbatim. Second, a `property` instance sets its fields with `=`
 (`prompt = "Project name"`), because it is a block instance and not a `type` declaration.
 
 ## `wcl repl`

@@ -5,28 +5,28 @@ PDF, and `wcl wdoc markdown` a folder of `.md` files. `wcl wdoc serve` is the fi
 with a watcher and a browser attached, not a fourth thing.
 
 This file covers each target: what it writes, what it can carry and what it cannot. It then
-covers the mechanism that keeps the three honest — one closed content vocabulary every backend
-must match exhaustively — and the two dev-loop devices built on it, `wcl wdoc serve` and the
-`markdown_source` block.
+covers the mechanism that keeps the three honest: one closed content vocabulary every backend
+must match exhaustively. Two dev-loop devices are built on that mechanism, and this file covers
+them too — `wcl wdoc serve` and the `markdown_source` block.
 
 ## One document, three renderers
 
 The three targets are not three exporters bolted onto an HTML generator. Each reads the same
-evaluated document and the same **content vocabulary**, and each decides for itself what a
+evaluated document and the same **content vocabulary**. Each then decides for itself what a
 heading, a code listing or a callout looks like.
 
-A block reaches a backend by one of two routes. Most blocks **lower**: a WCL function on the
-block's type returns a node of the content vocabulary — a `Heading`, a `Paragraph`, a `Code`,
-a `Callout` — and the three renderers each read that node. A minority are **native**: wdoc
-renders them in Rust, because their output is not expressible in WCL.
+A block reaches a backend by one of two routes. Most blocks **lower**. A WCL function on the
+block's type returns a node of the content vocabulary: a `Heading`, a `Paragraph`, a `Code`, a
+`Callout`. Each of the three renderers reads that node. A minority are **native**: wdoc renders
+them in Rust, because their output is not expressible in WCL.
 
-So a block that lowers reaches all three targets by construction, and the only blocks that can
-be missing from a target are the natives that say so.
+So a block that lowers reaches all three targets by construction. The only blocks that can be
+missing from a target are the natives that say so.
 
 **A new content node is a compile error in three places.** The content vocabulary is a closed
 union with no generic container and no raw-markup escape hatch. Every backend matches it
 exhaustively — no catch-all arm in the HTML walker, the PDF walker or the Markdown walker. A
-variant added to the union does not silently render as nothing in two of three outputs; it
+variant added to the union does not silently render as nothing in two of three outputs. It
 fails to compile until all three say what to do with it.
 
 ## `wcl wdoc build` — the website
@@ -100,8 +100,8 @@ $ curl -s -X POST http://127.0.0.1:8199/__wdoc_rebuild
 {"ok":true,"summary":"2 pages (intro, ref)"}
 ```
 
-The HTTP form **waits** for the build and reports what it did, so an editor hook or your own
-file-watcher can trigger a rebuild and know whether it succeeded. The browser reloads on its
+The HTTP form **waits** for the build and reports what it did. An editor hook, or a file-watcher
+of your own, can therefore trigger a rebuild and know whether it succeeded. The browser reloads on its
 own: each page long-polls `/__wdoc_reload` and reloads when the build generation changes. The
 generation moves on a failed build too, so a browser parked on the error page picks up the fix.
 
@@ -113,9 +113,9 @@ A rebuild drains **every** pending change at once and hands the whole set to the
 builder. There is no scoping below that: it is the changed set, or a full build.
 
 The incremental builder maps each changed file onto the top-level blocks that came from it.
-When every changed file contributed only `page` blocks, it re-renders those pages in place and
-leaves the shared site-wide artifacts — icon sprite, search index, the CSS embedded in each
-page — untouched:
+Say every changed file contributed only `page` blocks. It then re-renders those pages in place
+and leaves the shared site-wide artifacts untouched — icon sprite, search index, the CSS
+embedded in each page:
 
 ```console
 rebuilt: 2 pages (intro, ref)
@@ -128,10 +128,10 @@ rebuilt: 2 pages (full)
 ```
 
 The fallback is deliberately eager, because the failure mode of being clever here is a stale
-page that looks right. A change to an imported library, to the page set, to the CSS, to an
-asset declaration, to a repeater, or one that pulls in an icon the sprite does not have yet,
-all force a full build. So does a change to a file holding a `site` block — which is why
-editing your entry document usually rebuilds everything.
+page that looks right. Six kinds of change force a full build: an imported library, the page
+set, the CSS, an asset declaration, a repeater, and one that pulls in an icon the sprite does
+not have yet. So does a change to a file holding a `site` block, which is why editing your
+entry document usually rebuilds everything.
 
 **Scoping is by file, not by block.** Two pages in one `pages.wcl` are one unit: edit either
 and both re-render. The saving is in skipping the *other* fifty pages and the aggregate
@@ -154,15 +154,15 @@ source file stem names it. `--page-size letter` switches from A4.
 
 Prose, headings, lists, tables, code listings, callouts, footnotes, chapter headers, images
 and maths all paginate. Diagrams, sequence and state diagrams, terminals and wireframes are
-painted from the same shape vocabulary the other targets draw, so a diagram in a PDF is the
-same drawing at the same viewBox — not a screenshot and not a fallback.
+painted from the same shape vocabulary the other targets draw. A diagram in a PDF is therefore
+the same drawing at the same viewBox. It is not a screenshot and it is not a fallback.
 
 What a PDF cannot do is anything interactive, or anything that lives beside the document:
 
 - **Video** shows its poster image, with a link only when the source is an online URL. A link
   to a local path in a distributed PDF is worse than no link.
-- **`file`** is not covered at all. There is no output folder beside a PDF to ship a copy
-  into, so a `file` on a page you build to PDF is refused until you waive it with
+- **`file`** is not covered at all. There is no output folder beside a PDF to ship a copy into.
+  A `file` on a page you build to PDF is therefore refused, until you waive it with
   `@except(backends = [:pdf])`.
 - **Search, the theme toggle, diagram pan-and-zoom, terminal replay and the deck player** are
   HTML devices. They are simply absent.
@@ -256,9 +256,7 @@ Prose with **bold** and `code`.
 - two
 ```
 
-Set `id` to the previewed page's name. It is the filename stem for any diagram or terminal
-SVGs the body's Markdown writes, so the `![](…)` references line up with what a real
-`wcl wdoc markdown` run would produce.
+Set `id` to the previewed page's name. It is the filename stem for any diagram or terminal SVGs the body's Markdown writes. The `![](…)` references then line up with what a real `wcl wdoc markdown` run would produce.
 
 The block is native on `:html` and only `:html`, because it taps the Markdown emitter from
 inside the HTML build. Using it on another target is refused rather than rendering nothing.

@@ -2,8 +2,8 @@
 
 One document renders to three outputs: a website, a PDF and a folder of Markdown. It can also
 declare several sites, and lay each one out with a different template. A block that belongs in
-one of those and not in another says so with a **decorator** — `@only` to include it,
-`@except` to exclude it — rather than with a duplicate document.
+one of those and not in another says so with a **decorator**, rather than with a duplicate
+document. `@only` includes it; `@except` excludes it.
 
 This file covers both decorators, their three axes, the rule that joins the axes, and the one
 place where visibility is not a preference but a requirement: waiving a native block on a
@@ -25,7 +25,7 @@ video "assets/tour.mp4" { }
 | Axis | Values | The current value is |
 | --- | --- | --- |
 | `sites` | the label on a `site` block | the name of the site being rendered |
-| `templates` | `:webpage`, `:book`, `:presentation` | the site's `default_template` |
+| `templates` | any template name — see below | the site's `default_template` symbol |
 | `backends` | `:html`, `:pdf`, `:markdown` | the output target this build produces |
 
 Three backends, not four. `wcl wdoc serve` is an HTML build, so it matches `:html`.
@@ -110,7 +110,7 @@ NOT-MD-NOT-PDF
 today, because there are exactly three targets. They do not *say* the same thing. Write
 `@only` when the block is **for** that target, and `@except` when the block is **wrong on**
 that one — a live search box, a pan-and-zoom control, an embedded player. The `@except` form
-keeps working when the block starts rendering somewhere new; the `@only` form silently keeps
+keeps working when the block starts rendering somewhere new. The `@only` form silently keeps
 hiding it.
 
 ## The sites axis
@@ -140,9 +140,13 @@ scopes **one block inside a page** that several sites share. The styling blocks 
 
 ## The templates axis
 
-`templates` scopes a block to the kind of layout it renders into — `:webpage`, `:book` or
-`:presentation`. Use it for content that only makes sense in one shape: a "press Space for the
-next slide" note in a deck, a "use the sidebar" note in a book.
+`templates` scopes a block to the layout it renders into. Use it for content that only makes
+sense in one shape: a "press Space for the next slide" note in a deck, a "use the sidebar" note
+in a book.
+
+The value is a **template name**, not a fixed vocabulary. Four templates ship — `:webpage`,
+`:book`, `:presentation` and `:website` — and a `template` block of your own is named here the
+same way.
 
 **The axis reads the site, not the page.** The current template kind is the site's
 `default_template`. A `page` that overrides its own layout with `template = :book` inside a
@@ -180,7 +184,7 @@ wcl::eval::user_error
 ```
 
 It refuses rather than rendering nothing, and that is the design: a block that silently
-vanished from one of your outputs is a bug you find months later, from a reader. The message
+vanished from one of your three outputs is a bug you find months later, from a reader. The message
 names the fix — add the waiver to that instance:
 
 ```wcl
@@ -214,10 +218,10 @@ A block is checked against two backends, because two are involved: the target th
 producing, and the renderer actually running. Those are not always the same — a `card` in a
 diagram draws its body as HTML in whichever target embeds the SVG.
 
-So a `file` inside a card must not reach a PDF just because the card body renders as HTML, and
-`markdown_source` — which taps the Markdown emitter from inside the HTML build — is a
-rendering question rather than an output one. On an ordinary page the two are the same backend
-and this is one check. When they differ, the error says so.
+So a `file` inside a card must not reach a PDF just because the card body renders as HTML. And
+`markdown_source`, which taps the Markdown emitter from inside the HTML build, is a rendering
+question rather than an output one. On an ordinary page the two are the same backend and this
+is one check. When they differ, the error says so.
 
 ## Where a decorator goes
 
@@ -231,11 +235,22 @@ video "assets/tour.mp4" { poster = "assets/tour.jpg" }
 They apply to **one instance** and take its whole subtree with it. Hide a `callout` and its
 body goes; hide a `diagram` and every shape inside it goes.
 
-There is no way to hide a field, and no way to hide a page — a page belongs to sites through
-its `sites` field, and a page you do not want built is a page you do not declare.
+There is no way to hide a field, and no way to hide a page. A page belongs to sites through its
+`sites` field, and a page you do not want built is a page you do not declare.
 
-One decorator of each kind per block. Keep the axes in one decorator, where the AND rule reads
-them together.
+One decorator of each kind per block, and that is a rule rather than a convention. A second
+`@except` on one instance is a schema violation:
+
+```console
+$ wcl wdoc build main.wcl --out _site
+wcl::eval::schema_violation
+
+  × decorator '@except' may appear at most once on one node
+
+1 schema violation
+```
+
+So put every axis in the one decorator, which is also where the AND rule reads them together.
 
 ## See also
 

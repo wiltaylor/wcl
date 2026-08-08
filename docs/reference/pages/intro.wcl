@@ -140,7 +140,7 @@ wcl 0.33.2-alpha
 TEXT
   }
 
-  p "One binary is the whole toolchain. `wcl` is the parser, the checker, the evaluator, the formatter, the differ, the project scaffolder, the language server your editor talks to, the browser editor, and the `wdoc` site builder. [The CLI](lang_cli) documents every subcommand."
+  p "One binary is the whole toolchain. `wcl` is the parser, the checker, the evaluator, the formatter, the differ, the project scaffolder, the language server your editor talks to, and the `wdoc` site builder. [The CLI](lang_cli) documents every subcommand."
 
   h2 "Your first document"
 
@@ -282,7 +282,7 @@ TEXT
 
   p "Two things there are worth a second look. Your own type declarations come back **normalized** — `@inline(0)` on its own line, `url:      utf8` with its padding gone — because `parse` prints the tree, not your keystrokes; `wcl fmt` is the same normalization written back to the file. And the declarations you never wrote are the built-in decorators, units and symbol sets every document gets for free, which is where `@block`, `@children` and `512MiB` come from."
 
-  p "Three commands, three questions. `wcl check` asks _is this document valid_. `wcl eval` asks _what is this one value_. `wcl parse` asks _what did the whole file become_. [The CLI](lang_cli) covers the rest — `set`, `fmt`, `diff`, `init`, `repl`, `lsp`, `editor`."
+  p "Three commands, three questions. `wcl check` asks _is this document valid_. `wcl eval` asks _what is this one value_. `wcl parse` asks _what did the whole file become_. [The CLI](lang_cli) covers the rest — `set`, `fmt`, `diff`, `init`, `repl`, `lsp`."
 
   h2 "Making the schema stricter"
 

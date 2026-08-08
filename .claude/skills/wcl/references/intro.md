@@ -130,8 +130,9 @@ $ wcl set config.wcl servers.web.host '"example.com"'
 updated servers.web.host in config.wcl
 ```
 
-The edit goes through the same validation as `wcl check`. WCL rolls back a write that violates
-the schema. Comments and blank-line groupings in the file survive the edit.
+`wcl set` re-parses its own output before writing atomically, so it cannot leave a broken file
+behind. It does **not** run the schema: an edit that violates a constraint is written anyway, so
+follow a scripted `set` with `wcl check`. Comments and blank-line groupings survive the edit.
 
 Two neighbours of `set`:
 

@@ -13,7 +13,7 @@ page wdoc_visibility {
 
   h1 "Visibility"
 
-  p "One document renders to three outputs: a website, a PDF and a folder of Markdown. It can also declare several sites, and lay each one out with a different template. A block that belongs in one of those and not in another says so with a **decorator** — `@only` to include it, `@except` to exclude it — rather than with a duplicate document."
+  p "One document renders to three outputs: a website, a PDF and a folder of Markdown. It can also declare several sites, and lay each one out with a different template. A block that belongs in one of those and not in another says so with a **decorator**, rather than with a duplicate document. `@only` includes it; `@except` excludes it."
 
   p "This chapter covers both decorators, their three axes, the rule that joins the axes, and the one place where visibility is not a preference but a requirement: waiving a native block on a target that cannot render it."
 
@@ -35,7 +35,7 @@ WCL
     rows:
       | "Axis"        | "Values"                                 | "The current value is" |
       | "`sites`"     | "the label on a `site` block"            | "the name of the site being rendered" |
-      | "`templates`" | "`:webpage`, `:book`, `:presentation`"   | "the site's `default_template`" |
+      | "`templates`" | "any template name — see below"          | "the site's `default_template` symbol" |
       | "`backends`"  | "`:html`, `:pdf`, `:markdown`"           | "the output target this build produces" |
   }
 
@@ -163,7 +163,9 @@ WCL
 
   h2 "The templates axis"
 
-  p "`templates` scopes a block to the kind of layout it is rendering into — `:webpage`, `:book` or `:presentation`. Use it for content that only makes sense in one shape: a \"press Space for the next slide\" note in a deck, a \"use the sidebar\" note in a book."
+  p "`templates` scopes a block to the layout it renders into. Use it for content that only makes sense in one shape: a \"press Space for the next slide\" note in a deck, a \"use the sidebar\" note in a book."
+
+  p "The value is a **template name**, not a fixed vocabulary. Four templates ship — `:webpage`, `:book`, `:presentation` and `:website` — and a `template` block of your own is named here the same way. [Templates and layouts](wdoc_templates) covers writing one."
 
   callout "The axis reads the site, not the page" {
     class = ["warning"]
@@ -198,7 +200,7 @@ wcl::eval::user_error
 TEXT
   }
 
-  p "It refuses rather than rendering nothing, and that is the whole design. A block that silently vanished from one of your four outputs is a bug you find months later, from a reader."
+  p "It refuses rather than rendering nothing, and that is the whole design. A block that silently vanished from one of your three outputs is a bug you find months later, from a reader."
 
   p "The message names the fix. Add the waiver to that instance:"
 
@@ -235,7 +237,7 @@ TEXT
 
   p "A block is checked against two backends, because two are involved. One is the target the build is producing. The other is the renderer actually running, and those are not always the same: a `card` in a diagram draws its body as HTML in whichever target embeds the SVG."
 
-  p "So a `file` inside a card must not reach a PDF just because the card body happens to render as HTML, and `markdown_source` — which taps the Markdown emitter from inside the HTML build — is a rendering question rather than an output one. In the ordinary case, on an ordinary page, the two are the same backend and this is one check that never surprises you. When they differ, the error says so."
+  p "So a `file` inside a card must not reach a PDF just because the card body happens to render as HTML. And `markdown_source`, which taps the Markdown emitter from inside the HTML build, is a rendering question rather than an output one. On an ordinary page the two are the same backend, and this is one check that never surprises you. When they differ, the error says so."
 
   h2 "Where a decorator goes"
 
@@ -248,9 +250,22 @@ video "assets/tour.mp4" { poster = "assets/tour.jpg" }
 WCL
   }
 
-  p "They apply to **one instance**, and they take its whole subtree with it. Hide a `callout` and its body goes; hide a `diagram` and every shape inside it goes. There is no way to hide a field, and no way to hide a page — a page belongs to sites through its `sites` field, and a page you do not want built is a page you do not declare."
+  p "They apply to **one instance**, and they take its whole subtree with it. Hide a `callout` and its body goes; hide a `diagram` and every shape inside it goes. There is no way to hide a field, and no way to hide a page. A page belongs to sites through its `sites` field, and a page you do not want built is a page you do not declare."
 
-  p "One decorator of each kind per block. Write `@except` twice on one instance and the second is not a second veto with its own axes; keep the axes in one decorator, where the AND rule can read them together."
+  p "One decorator of each kind per block, and that is a rule rather than a convention. A second `@except` on one instance is a schema violation:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build main.wcl --out _site
+wcl::eval::schema_violation
+
+  × decorator '@except' may appear at most once on one node
+
+1 schema violation
+TEXT
+  }
+
+  p "So put every axis in the one decorator, which is also where the AND rule can read them together."
 
   h2 "Where to go next"
 
