@@ -23,7 +23,7 @@ page lang_builtins {
 
   list {
     li "**Arity is fixed.** Every builtin but one takes an exact number of arguments. Supplying the wrong count is an error at the call site, not a partially applied function — there is no currying in WCL."
-    li "**Arguments are positional.** WCL has no keyword arguments and no defaults. A builtin that wants named options takes a record instead, which is why `included_sites({ folder: \"…\", entry: \"…\" })` reads the way it does."
+    li "**Arguments are positional.** WCL has no keyword arguments and no defaults. A builtin that wants named options takes a record instead, so the option names are written at the call site."
     li "**Arguments are values.** Each one is evaluated before the call, left to right. A function argument — the `fn(x: i64) -> i64 { … }` you hand to `map` — is a value like any other; see [Functions](lang_functions)."
     li "**A failure aborts the field.** A builtin that cannot answer reports an error rather than returning a sentinel, and that error propagates out through whichever field forced it. `try body catch e => fallback` recovers one; see [Control flow](lang_control_flow)."
   }
@@ -2852,34 +2852,9 @@ SRC
 
   h2 "Builtins the host adds"
 
-  p "The three the `wcl` CLI registers on wdoc's behalf. They are not part of the language, they are not in `wcl_lang`, and a host embedding WCL without wdoc will not have them — but `builtin_names()` reports them under the CLI, so they are catalogued here rather than left unexplained."
+  p "The two the `wcl` CLI registers on wdoc's behalf. They are not part of the language, they are not in `wcl_lang`, and a host embedding WCL without wdoc will not have them — but `builtin_names()` reports them under the CLI, so they are catalogued here rather than left unexplained."
 
-  p "Nothing stops you adding your own. A host registers a Rust closure against a name and it becomes callable from every document that host opens; `included_sites` closes over the document's directory that way. See the `wcl_lang` crate docs for `Environment::add_builtin` and `from_fn`."
-
-  h3 "included_sites"
-
-  code text {
-    source = <<'SRC'
-fn(options: record) -> list
-SRC
-  }
-
-  p "Discover wdoc sub-sites under a folder for navigation (mirrors the `include` block). Argument is an options record: `{ folder, pattern|entry, site? }`."
-
-  table {
-    rows:
-      | "Parameter" | "Type" | "Meaning" |
-      | "`options`" | "`record`" | "`{ folder: utf8, pattern: utf8 | entry: utf8, site: utf8? }` — the same options as the matching `include` block." |
-      | "**Returns**" | "`list`" | "One `{ name, href, title, summary }` record per discovered sub-site." |
-  }
-
-  code wcl {
-    source = <<'SRC'
-included_sites({ folder: "wskills", entry: "wdoc/book/main.wcl" })   # → one record per sub-site found
-SRC
-  }
-
-  p "wdoc's, not the language's. It runs the same folder scan the `include` block does and answers one `{ name, href, title, summary }` record per sub-site, so a navigation repeater can list them. WCL has no keyword arguments, so the options arrive as a record — note `:` where the block writes `=`."
+  p "Nothing stops you adding your own. A host registers a Rust closure against a name and it becomes callable from every document that host opens. See the `wcl_lang` crate docs for `Environment::add_builtin` and `from_fn`."
 
   h3 "page_metadata"
 

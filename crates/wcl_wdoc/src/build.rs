@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -67,7 +67,6 @@ pub fn schema_registry() -> Registry {
     r.register("wdoc/icons.wcl", include_str!("../lib/icons.wcl"));
     r.register("wdoc/image.wcl", include_str!("../lib/image.wcl"));
     r.register("wdoc/file.wcl", include_str!("../lib/file.wcl"));
-    r.register("wdoc/include.wcl", include_str!("../lib/include.wcl"));
     r.register("wdoc/video.wcl", include_str!("../lib/video.wcl"));
     r.register("wdoc/tilemap.wcl", include_str!("../lib/tilemap.wcl"));
     r.register("wdoc/dopesheet.wcl", include_str!("../lib/dopesheet.wcl"));
@@ -104,17 +103,8 @@ pub fn schema_registry() -> Registry {
 
 /// The [`Environment`] every wdoc backend uses to open a document: the base
 /// environment, the wdoc [`Expander`](wcl_lang::Expander) for `@contextual`
-/// block kinds, plus the `included_sites(options)` builtin. The builtin scans
-/// a folder for sub-site entry points (see [`crate::include`]) and returns
-/// `{ name, href, title, summary }` records a nav `wdoc_repeater` consumes;
-/// it closes over `base_dir` so the scanned folder resolves relative to the
-/// document, exactly like the `include` block it mirrors.
-///
-/// The single argument is an options record mirroring the `include` block's
-/// fields, e.g. `included_sites({ folder: "…", entry: "main.wcl", site: "book" })`
-/// — WCL has no keyword arguments, and a record keeps the call self-describing
-/// and aligned with the block. (Record fields use `:`; block fields use `=`.)
-pub fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
+/// block kinds, and the template builtins (`page_metadata`, `__wdoc_slot`).
+pub fn wdoc_environment() -> Environment {
     let mut env = Environment::new();
     // Without this every `@children` projection over a repeater /
     // component instance is a hard error — which is exactly the point:
@@ -172,55 +162,6 @@ pub fn wdoc_environment(base_dir: Option<&Path>) -> Environment {
             ))
         }),
     );
-    let base = base_dir.map(Path::to_path_buf);
-    env.add_builtin(
-        "included_sites",
-        from_fn(move |opts: Value| -> Result<Value, String> {
-            // A malformed options record is a caller bug → eval error. A
-            // valid-but-unscannable folder (e.g. not created yet) degrades to
-            // an empty list; the build step is the authority on the set.
-            let spec = include_spec_from_value(&opts)?;
-            let sites = match crate::include::resolve_included(base.as_deref(), &spec) {
-                Ok(sites) => sites,
-                Err(_) => return Ok(Value::list(Vec::new())),
-            };
-            Ok(Value::list(
-                sites
-                    .iter()
-                    .map(|s| {
-                        let (title, summary) =
-                            crate::include::read_entry_meta(&s.src_path, spec.site.as_deref());
-                        let mut fields = BTreeMap::new();
-                        fields.insert("name".to_string(), Value::Utf8(s.name.clone()));
-                        fields.insert("href".to_string(), Value::Utf8(s.href.clone()));
-                        fields.insert(
-                            "title".to_string(),
-                            Value::Utf8(title.unwrap_or_else(|| s.name.clone())),
-                        );
-                        fields.insert(
-                            "summary".to_string(),
-                            summary.map(Value::Utf8).unwrap_or(Value::None),
-                        );
-                        Value::record(Vec::new(), fields)
-                    })
-                    .collect(),
-            ))
-        })
-        .doc(
-            "Discover wdoc sub-sites under a folder for navigation (mirrors the `include` \
-             block). Argument is an options record: `{ folder, pattern|entry, site? }`.",
-        )
-        .param(
-            "options",
-            "record",
-            "`{ folder: utf8, pattern: utf8 | entry: utf8, site: utf8? }` — the same \
-             options as the matching `include` block.",
-        )
-        .returns(
-            "list",
-            "One `{ name, href, title, summary }` record per discovered sub-site.",
-        ),
-    );
     env
 }
 
@@ -241,74 +182,9 @@ pub fn open_doc_for_edit(file: &Path) -> Result<Document, wcl_lang::ParseError> 
         &user_src,
         &name,
         base_dir.clone(),
-        &wdoc_environment(base_dir.as_deref()),
+        &wdoc_environment(),
         loader,
     )
-}
-
-/// The included sub-site that owns `page_file` — its entry document, on-disk
-/// source root, and output subdirectory — or `None` when the page belongs to
-/// the root document. Lets the dev server's `/__wdoc_rebuild` rebuild *only*
-/// the sub-site a page lives in instead of the whole
-/// top-level site.
-pub struct PageSubSite {
-    /// The sub-site entry `.wcl` to (re)build.
-    pub entry: PathBuf,
-    /// The sub-site's source directory; its pages' files live under it.
-    pub src_root: PathBuf,
-    /// Output subdirectory under the build root (`<prefix>/<name>`).
-    pub out_subdir: PathBuf,
-    /// The site selector for the sub-build (the include's `site` field).
-    pub site: Option<String>,
-}
-
-pub fn subsite_for_page(root_file: &Path, page_file: &Path) -> Option<PageSubSite> {
-    let doc = open_doc_for_edit(root_file).ok()?;
-    let base = root_file.parent();
-    let s = crate::include::entry_for_page(&doc, base, page_file)?;
-    Some(PageSubSite {
-        entry: s.src_path,
-        src_root: s.src_root,
-        out_subdir: s.out_subdir,
-        site: s.site,
-    })
-}
-
-/// Read an `included_sites(...)` options record into an [`IncludeSpec`].
-/// Errors (eval errors — caller bugs) when the argument is not a record, has
-/// no `folder`, or sets neither / both of `pattern` and `entry`.
-fn include_spec_from_value(v: &Value) -> Result<crate::include::IncludeSpec, String> {
-    let Value::Record { fields, .. } = v else {
-        return Err("included_sites expects a record argument, e.g. \
-             included_sites({ folder: \"projects\", pattern: \"main.wcl\" })"
-            .to_string());
-    };
-    let get = |k: &str| -> Option<String> {
-        match fields.get(k) {
-            Some(Value::Utf8(s) | Value::Ascii(s)) => Some(s.clone()),
-            _ => None,
-        }
-    };
-    let folder = get("folder")
-        .ok_or_else(|| "included_sites: the options record needs a `folder` field".to_string())?;
-    let spec = crate::include::IncludeSpec {
-        folder,
-        pattern: get("pattern"),
-        entry: get("entry"),
-        site: get("site"),
-        prefix: get("prefix"),
-    };
-    match (&spec.pattern, &spec.entry) {
-        (Some(_), Some(_)) => {
-            Err("included_sites: set exactly one of `pattern` or `entry`, not both".to_string())
-        }
-        (None, None) => Err(
-            "included_sites: set one of `pattern` (recursive filename glob) or `entry` \
-                 (a path inside each immediate subdirectory)"
-                .to_string(),
-        ),
-        _ => Ok(spec),
-    }
 }
 
 pub enum BuildError {
@@ -338,9 +214,6 @@ pub enum BuildError {
     /// (the layout is too tightly packed). Carries a message naming the
     /// offending edge and a hint at how to fix it.
     EdgeRouting(String),
-    /// An `include` chain referenced one of its own ancestors, or nested
-    /// deeper than [`MAX_INCLUDE_DEPTH`]. Carries a describing message.
-    IncludeCycle(String),
 }
 
 impl BuildError {
@@ -365,7 +238,6 @@ impl BuildError {
             Self::BadTemplate(name) => eprintln!("unknown template \"{name}\""),
             Self::Tileset(msg) => eprintln!("{msg}"),
             Self::EdgeRouting(msg) => eprintln!("{msg}"),
-            Self::IncludeCycle(msg) => eprintln!("{msg}"),
         }
     }
 
@@ -395,7 +267,6 @@ impl BuildError {
             Self::BadTemplate(name) => format!("unknown template \"{name}\""),
             Self::Tileset(msg) => msg.clone(),
             Self::EdgeRouting(msg) => msg.clone(),
-            Self::IncludeCycle(msg) => msg.clone(),
         }
     }
 
@@ -436,7 +307,6 @@ const RUST_DISPATCHED_KINDS: &[&str] = &[
     // Structural / infra kinds every backend treats specially.
     "page",
     "site",
-    "include",
     "partial",
     "collect",
     "notes",
@@ -630,8 +500,7 @@ pub fn build_with_options(
     site_filter: Option<&str>,
     opts: &BuildOptions,
 ) -> Result<(usize, Option<wcl_lang::Profile>), BuildError> {
-    let mut seen = HashSet::new();
-    let (outcome, profile) = build_guarded(file, out_dir, site_filter, opts, None, &mut seen, 0)?;
+    let (outcome, profile) = build_inner(file, out_dir, site_filter, opts, None)?;
     Ok((outcome.pages(), profile))
 }
 
@@ -665,16 +534,7 @@ pub fn build_incremental(
     opts: &BuildOptions,
     changed_paths: &[PathBuf],
 ) -> Result<RebuildOutcome, BuildError> {
-    let mut seen = HashSet::new();
-    let (outcome, _) = build_guarded(
-        file,
-        out_dir,
-        site_filter,
-        opts,
-        Some(changed_paths),
-        &mut seen,
-        0,
-    )?;
+    let (outcome, _) = build_inner(file, out_dir, site_filter, opts, Some(changed_paths))?;
     Ok(match outcome {
         BuildOutcome::Full(pages) => RebuildOutcome::Full { pages },
         BuildOutcome::Targeted(pages) => RebuildOutcome::Targeted { pages },
@@ -698,34 +558,12 @@ impl BuildOutcome {
     }
 }
 
-/// [`build_with_options`] wrapped in the `include` cycle / depth guard.
-/// `seen` is the chain of documents currently being built (an ancestor
-/// stack, pushed on entry and popped on exit) so a document that includes
-/// its own ancestor is rejected, while the same document built in two
-/// independent branches is still allowed.
-fn build_guarded(
-    file: &Path,
-    out_dir: &Path,
-    site_filter: Option<&str>,
-    opts: &BuildOptions,
-    changed: Option<&[PathBuf]>,
-    seen: &mut HashSet<PathBuf>,
-    depth: usize,
-) -> Result<(BuildOutcome, Option<wcl_lang::Profile>), BuildError> {
-    let canon = crate::include::guard_enter(file, seen, depth)?;
-    let result = build_inner(file, out_dir, site_filter, opts, changed, seen, depth);
-    seen.remove(&canon);
-    result
-}
-
 fn build_inner(
     file: &Path,
     out_dir: &Path,
     site_filter: Option<&str>,
     opts: &BuildOptions,
     changed: Option<&[PathBuf]>,
-    seen: &mut HashSet<PathBuf>,
-    depth: usize,
 ) -> Result<(BuildOutcome, Option<wcl_lang::Profile>), BuildError> {
     let user_src = fs::read_to_string(file)
         .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
@@ -743,7 +581,7 @@ fn build_inner(
         &user_src,
         &name,
         base_dir.clone(),
-        &wdoc_environment(base_dir.as_deref()),
+        &wdoc_environment(),
         loader,
     )
     .map_err(|e| BuildError::Parse(Report::new(e)))?;
@@ -980,26 +818,7 @@ fn build_inner(
     if let Some(msg) = crate::render::take_route_error() {
         return Err(BuildError::EdgeRouting(msg));
     }
-    let mut count = result?;
-    // Included sub-sites: build each discovered document independently into
-    // its own subdirectory of the output (see `crate::include`). Run only
-    // after the parent renders cleanly, so a parent failure surfaces first.
-    // The directories occupied by non-root sites are reserved so an include
-    // can't clobber a sibling site's output.
-    let reserved_dirs: BTreeSet<String> = specs
-        .iter()
-        .filter_map(|s| s.name.clone())
-        .filter(|n| Some(n) != root_site.as_ref())
-        .collect();
-    count += build_includes(
-        &doc,
-        base_dir.as_deref(),
-        out_dir,
-        &reserved_dirs,
-        opts,
-        seen,
-        depth,
-    )?;
+    let count = result?;
     // `profile()` is `None` unless `opts.profile` enabled collection.
     Ok((BuildOutcome::Full(count), doc.profile()))
 }
@@ -1063,43 +882,6 @@ fn affected_pages(doc: &Document, file: &Path, changed: &[PathBuf]) -> Option<Ha
         return None;
     }
     Some(targets)
-}
-
-/// Build the sub-sites declared by every `include` block into `out_dir`,
-/// returning the total pages written. Each match is built independently —
-/// as if `wcl wdoc build` had been run on it — into
-/// `<out_dir>/<folder-basename>/<name>/`, narrowed to the include's `site`
-/// selector when set. The whole set is resolved and its output layout
-/// validated (by [`crate::include::collect_includes`]) before anything builds.
-fn build_includes(
-    doc: &Document,
-    base_dir: Option<&Path>,
-    out_dir: &Path,
-    reserved_dirs: &BTreeSet<String>,
-    opts: &BuildOptions,
-    seen: &mut HashSet<PathBuf>,
-    depth: usize,
-) -> Result<usize, BuildError> {
-    let all = crate::include::collect_includes(doc, base_dir, reserved_dirs)?;
-    let mut count = 0;
-    for s in &all {
-        progress(format_args!(
-            "include {} -> {}",
-            s.name,
-            s.out_subdir.display()
-        ));
-        let (outcome, _) = build_guarded(
-            &s.src_path,
-            &out_dir.join(&s.out_subdir),
-            s.site.as_deref(),
-            opts,
-            None,
-            seen,
-            depth + 1,
-        )?;
-        count += outcome.pages();
-    }
-    Ok(count)
 }
 
 /// Drain the non-fatal render warnings collected during the most recent

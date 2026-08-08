@@ -144,7 +144,7 @@ pub fn pdf(
         &user_src,
         &name,
         base_dir.clone(),
-        &crate::build::wdoc_environment(base_dir.as_deref()),
+        &crate::build::wdoc_environment(),
         loader,
     )
     .map_err(|e| PdfError::Parse(Report::new(e)))?;
