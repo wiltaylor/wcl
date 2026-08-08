@@ -55,3 +55,33 @@ fn wcl_wdoc_build_renders_fundamental_blocks() {
         "{overview}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Relocatable output, through the CLI.
+//
+// `crates/wcl_wdoc/tests/build.rs` runs this same walk over this same fixture
+// book through the library. This is the flag path — `wcl wdoc build --out
+// <nested>`, the invocation `just docs-build` and the deploy workflow use.
+// ---------------------------------------------------------------------------
+
+#[path = "../../wcl_wdoc/tests/support/relocatable.rs"]
+mod relocatable;
+
+#[test]
+fn wcl_wdoc_build_into_a_nested_out_dir_is_relocatable() {
+    let out = TempDir::new().expect("mkdir tempdir");
+    // Nested, and nothing tells the build where it sits — exactly how
+    // `docs-build` renders the reference book into `docs/_site/reference`.
+    let nested = out.path().join("site").join("reference");
+    wcl()
+        .arg("wdoc")
+        .arg("build")
+        .arg(examples_dir().join("wdoc_relocatable").join("main.wcl"))
+        .arg("--out")
+        .arg(&nested)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("wrote 3 pages"));
+
+    relocatable::assert_relocatable(&nested, 3, 8);
+}

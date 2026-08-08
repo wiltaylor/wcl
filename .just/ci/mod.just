@@ -22,4 +22,4 @@ main:
 
 # Everything a change must pass before it can merge: fmt, lint, tests, doc builds
 [group('ci')]
-check: fmt-check workspace-lint workspace-test docs-build
+check: fmt-check workspace-lint workspace-test docs-build docs-relative-urls
