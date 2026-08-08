@@ -12326,6 +12326,47 @@ fn the_walk_rejects_a_tree_it_found_nothing_in() {
 }
 
 #[test]
+#[should_panic(expected = "root-absolute URL")]
+fn the_walk_rejects_a_root_absolute_font_url() {
+    // The one #276 was about, and the reason the walk grew its CSS half: a
+    // dangling `@font-face` hides in a `<style>` body, where no attribute scan
+    // will ever look.
+    let out = TempDir::new().expect("mkdir out");
+    std::fs::write(
+        out.path().join("p.html"),
+        "<style>@font-face { src: url('/_wdoc/X.woff2') format('woff2'); }</style>",
+    )
+    .expect("write page");
+    relocatable::assert_relocatable(out.path(), 1, 0);
+}
+
+#[test]
+#[should_panic(expected = "does not exist")]
+fn the_walk_rejects_a_font_url_with_no_file_behind_it() {
+    let out = TempDir::new().expect("mkdir out");
+    std::fs::write(
+        out.path().join("p.html"),
+        "<style>@font-face { src: url('_wdoc/Gone.woff2') format('woff2'); }</style>",
+    )
+    .expect("write page");
+    relocatable::assert_relocatable(out.path(), 1, 0);
+}
+
+#[test]
+fn the_walk_ignores_css_a_page_merely_prints() {
+    // A code listing showing a `@font-face` is prose about a URL, not one the
+    // browser will fetch. It is outside every `<style>` body, and its quotes
+    // are escaped — resolving it would fail on a page that is perfectly fine.
+    let out = TempDir::new().expect("mkdir out");
+    std::fs::write(
+        out.path().join("p.html"),
+        "<pre><code>@font-face { src: url(&#39;/nowhere/X.woff2&#39;); }</code></pre>",
+    )
+    .expect("write page");
+    relocatable::assert_relocatable(out.path(), 1, 0);
+}
+
+#[test]
 fn the_walk_passes_urls_that_leave_the_tree() {
     // A fragment, another host, and a protocol-relative URL: none of them has
     // an on-disk target, and none of them is anchored at *this* tree's root.
@@ -12341,31 +12382,19 @@ fn the_walk_passes_urls_that_leave_the_tree() {
 
 // ── Bundled font URLs ──────────────────────────────────────────────────
 //
-// The relocatable walk above covers `href` / `src` attributes. A page's
-// inlined stylesheet also names assets, in `@font-face` `src: url(…)`
-// values, and the bundled faces are written conditionally — the book
-// typography only for a themed site, the terminal faces only when a page
-// uses a terminal. These tests check the other half of that: the CSS names
-// only what the build wrote.
+// The relocatable walk above already resolves every stylesheet `url(…)` a
+// built tree carries. What it cannot see is which faces the build *should*
+// have written: the bundled ones are conditional — the book typography only
+// for a themed site, the terminal faces only when a page uses a terminal.
+// These tests pin each of those conditions on a site built for it.
 
 /// Every `_wdoc/…` asset a page's `<style>` blocks reference, in source
-/// order. Literal, like the relocatable walk, and for the same reason.
+/// order. The shared stylesheet scan, narrowed to the bundled assets.
 fn style_asset_refs(html: &str) -> Vec<String> {
-    let mut refs = Vec::new();
-    for style in html.split("<style").skip(1) {
-        let Some(body) = style.split_once('>').map(|(_, rest)| rest) else {
-            continue;
-        };
-        let body = body.split("</style>").next().unwrap_or(body);
-        for tail in body.split("_wdoc/").skip(1) {
-            refs.push(
-                tail.chars()
-                    .take_while(|c| !matches!(c, '\'' | '"' | ')' | ' '))
-                    .collect(),
-            );
-        }
-    }
-    refs
+    relocatable::style_urls(html)
+        .iter()
+        .filter_map(|url| url.strip_prefix("_wdoc/").map(str::to_owned))
+        .collect()
 }
 
 /// Assert every `_wdoc/…` asset the page's CSS names was actually written,

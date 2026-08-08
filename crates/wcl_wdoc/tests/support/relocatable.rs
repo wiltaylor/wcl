@@ -14,13 +14,15 @@
 //! builds every top-level file under `tests/` as its own test binary, but not
 //! the files below one.
 //!
-//! **Scope.** `href` and `src` only. The stylesheet each page inlines also
-//! emits `url(…)` font references. Those resolve now — #276 stopped the
-//! renderer emitting an `@font-face` rule for a bundled family the site does
-//! not ship — so widening this walk to `url(…)` has become possible; it is
-//! tracked as #279 rather than done here. Until then the `@font-face` URLs
-//! are covered by their own tests in `wcl_wdoc/tests/build.rs`, which check
-//! that every `_wdoc/…` a page's CSS names was written.
+//! **Scope.** `href` and `src` attributes, plus the `url(…)` values in the
+//! stylesheet each page inlines — mostly `@font-face` `src:` descriptors.
+//! Those resolve since #276 stopped the renderer emitting an `@font-face`
+//! rule for a bundled family the site does not ship, so #279 widened the walk
+//! to them: a font URL is a URL, and it breaks the tree the same way.
+//!
+//! The CSS half is scoped to `<style>` bodies. A page may also *show* CSS in a
+//! code listing, where the quotes come out as `&#39;` — that is prose about a
+//! URL, not one the browser will fetch, and the walk must not resolve it.
 
 use std::path::Path;
 
@@ -37,6 +39,29 @@ fn html_urls(html: &str) -> Vec<String> {
             rest = &rest[start + attr.len()..];
             let Some(end) = rest.find('"') else { break };
             urls.push(rest[..end].replace("&amp;", "&"));
+            rest = &rest[end + 1..];
+        }
+    }
+    urls
+}
+
+/// Every `url(…)` target in the page's inlined stylesheets.
+///
+/// `<style>` bodies only, so a code listing that happens to show CSS stays out
+/// of it. Public because `wcl_wdoc/tests/build.rs` reads the same values to
+/// check the conditionally-written `_wdoc/…` faces, and one scanner cannot
+/// drift from itself.
+pub fn style_urls(html: &str) -> Vec<String> {
+    let mut urls = Vec::new();
+    for style in html.split("<style").skip(1) {
+        let Some(body) = style.split_once('>').map(|(_, rest)| rest) else {
+            continue;
+        };
+        let mut rest = body.split("</style>").next().unwrap_or(body);
+        while let Some(start) = rest.find("url(") {
+            rest = &rest[start + "url(".len()..];
+            let Some(end) = rest.find(')') else { break };
+            urls.push(rest[..end].trim().trim_matches(['\'', '"']).to_string());
             rest = &rest[end + 1..];
         }
     }
@@ -92,8 +117,9 @@ pub fn html_pages(root: &Path) -> Vec<(std::path::PathBuf, String)> {
 }
 
 /// Assert the build tree under `root` is relocatable: no `href`/`src` in any
-/// `.html` under it is root-absolute, and every one naming a local file
-/// resolves to a file that exists.
+/// `.html` under it, and no `url(…)` in any stylesheet it inlines, is
+/// root-absolute, and every one naming a local file resolves to a file that
+/// exists.
 ///
 /// `min_pages` / `min_urls` are the floor the caller expects to have walked. A
 /// walk that found nothing would pass silently, which is the one way this
@@ -104,7 +130,7 @@ pub fn assert_relocatable(root: &Path, min_pages: usize, min_urls: usize) {
     for (path, html) in html_pages(root) {
         let page_dir = path.parent().expect("page has a parent");
         walked_pages += 1;
-        for url in html_urls(&html) {
+        for url in html_urls(&html).into_iter().chain(style_urls(&html)) {
             match classify(&url) {
                 UrlKind::RootAbsolute => panic!(
                     "{}: root-absolute URL {url:?} — the tree stops working \
