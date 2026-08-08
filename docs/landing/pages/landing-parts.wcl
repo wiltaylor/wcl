@@ -99,6 +99,10 @@ class "lp-codehead" {
   sites = [:wcl]
   nest "svg.wdoc-icon" { css = "width: 0.95rem; height: 0.95rem;" }
 }
+// The filename in the code-panel header. Deliberately unstyled — it takes
+// the header bar's own type — and declared so the class lint reads it as a
+// hook rather than a typo.
+class "lp-codename" { sites = [:wcl] }
 class "lp-codetag" { sites = [:wcl]  css = "margin-left: auto; padding: 0.1rem 0.5rem; border: 1px solid var(--wdoc-border, rgba(127,127,127,0.35)); border-radius: 4px; font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase;" }
 class "lp-code" { sites = [:wcl]  css = "margin: 0; padding: 1.1rem 1.25rem; overflow-x: auto; line-height: 1.65; font-size: 0.85rem;" }
 class "lp-code" {

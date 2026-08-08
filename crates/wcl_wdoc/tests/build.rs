@@ -12540,3 +12540,219 @@ fn the_relocatable_fixture_book_ships_no_dangling_font_urls() {
 /// The book typography faces every themed site carries. A floor under the
 /// scan above: were it to stop finding `<style>` refs, it would pass silently.
 const BOOK_FONT_FACE_COUNT: usize = 13;
+// ── The class lint (crates/wcl_wdoc/src/css_lint.rs) ──────────────────
+//
+// A build diffs the class names its pages carry against the class names
+// its rules select, both directions, at warning level.
+
+/// Build one named site, failing the test on any build error.
+fn build_one_site(file: &Path, out: &Path, site: &str) {
+    if build(file, out, Some(site)).is_err() {
+        panic!("building site {site} failed");
+    }
+}
+
+/// Build every site of `src` and return the class-lint warnings it left.
+fn class_lint_warnings(src: &str) -> Vec<String> {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("lint.wcl");
+    write_fixture(&file, src);
+    let out = TempDir::new().expect("mkdir out");
+    let _ = wcl_wdoc::take_render_warnings();
+    build_ok(&file, out.path());
+    wcl_wdoc::take_render_warnings()
+        .into_iter()
+        .filter(|w| w.starts_with("class \""))
+        .collect()
+}
+
+#[test]
+fn class_lint_reports_a_typo_in_both_directions() {
+    // The rule says `accented`, the markup says `acented`: the name in the
+    // markup is styled by nothing, and the rule styles nothing.
+    let warnings = class_lint_warnings(
+        r#"
+class "callout-accented" { css = "color: red;" }
+page index {
+  callout "Heads up" { class = ["callout-acented"]  body = "Mind the gap." }
+}
+"#,
+    );
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    assert!(
+        warnings[0].contains("\"callout-acented\"") && warnings[0].contains("no CSS rule selects"),
+        "{warnings:?}"
+    );
+    assert!(
+        warnings[1].contains("\"callout-accented\"")
+            && warnings[1].contains("no rendered page carries"),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn class_lint_accepts_an_empty_class_block_as_a_deliberate_hook() {
+    // The same markup, with the name declared and left unstyled on purpose.
+    let warnings = class_lint_warnings(
+        r#"
+class "callout-hook" {}
+page index {
+  callout "Heads up" { class = ["callout-hook"]  body = "Mind the gap." }
+}
+"#,
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn class_lint_exempts_generator_emitted_vocabularies() {
+    // Syntax highlighting mints one class per grammar scope and one per
+    // language — an open-ended vocabulary no stylesheet can declare.
+    let warnings = class_lint_warnings(
+        r#"
+page index {
+  code rust { source = "fn main() { let x = 1; }" }
+}
+"#,
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn class_lint_reads_the_union_of_a_documents_sites() {
+    // One rule, used only on the second site's page. Judged per build it
+    // would read as dead while the first site rendered; judged over the
+    // union of the document's sites it is used.
+    let src = r#"
+class "guide-note" { css = "color: red;" }
+site home { root = true  default_template = :webpage }
+site docs { default_template = :webpage }
+page index { sites = [:home]  text { span "home" {} } }
+page guide {
+  sites = [:docs]
+  callout "Note" { class = ["guide-note"]  body = "used here only" }
+}
+"#;
+    assert!(class_lint_warnings(src).is_empty(), "{src}");
+
+    // A single-site build is partial output, so it does not lint at all.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("one-site.wcl");
+    write_fixture(&file, src);
+    let out = TempDir::new().expect("mkdir out");
+    let _ = wcl_wdoc::take_render_warnings();
+    build_one_site(&file, out.path(), "home");
+    let warnings: Vec<String> = wcl_wdoc::take_render_warnings()
+        .into_iter()
+        .filter(|w| w.starts_with("class \""))
+        .collect();
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn class_lint_leaves_an_unused_library_rule_alone() {
+    // The stdlib styles the whole wdoc vocabulary; a document uses a
+    // fraction of it. The rules it never exercises belong to other
+    // documents, so a bare page must lint clean.
+    let warnings = class_lint_warnings("page index { text { span \"hello\" {} } }");
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn class_lint_counts_a_class_a_renderer_bakes_as_used() {
+    // A wireframe resolves a class's paint fields and bakes them into its
+    // SVG, so the class never reaches markup. It is still used.
+    let warnings = class_lint_warnings(
+        r##"
+class wf_danger { fill = "#c0392b"  stroke = "#922b21" }
+page index {
+  diagram {
+    width = 200  height = 90
+    wf_window "Delete" {
+      wf_row { wf_button "Delete" { class = ["wf_danger"] } }
+    }
+  }
+}
+"##,
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn class_lint_declares_the_generated_site_chooser() {
+    // A multi-site document with no `root` site gets a generated chooser
+    // index at the output root. It is rendered output like any page, so its
+    // one class is declared in the stdlib rather than reported forever.
+    let warnings = class_lint_warnings(
+        r#"
+site one { default_template = :webpage }
+site two { default_template = :webpage }
+page a { sites = [:one]  text { span "a" {} } }
+page b { sites = [:two]  text { span "b" {} } }
+"#,
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn an_imported_class_rule_wins_over_the_theme() {
+    // Origin is where a block was declared, not which file the build read
+    // it from: the author's own imported file is not the library, so its
+    // rules are emitted after the theme and win the cascade.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_fixture(
+        tmp.path().join("rules.wcl"),
+        "class wdoc-series-1 { fill = \"#ff00ff\"  stroke = \"#ff00ff\" }\n",
+    );
+    let src = tmp.path().join("main.wcl");
+    write_fixture(
+        &src,
+        "import \"./rules.wcl\"\nsite s { default_template = :book  title = \"T\"  theme = :nord }\n\
+         page index { text { span \"x\" {} } }\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let theme = html
+        .find(".wdoc-series-1 { fill:var(--wdoc-blue)")
+        .expect("theme rule");
+    let authored = html
+        .rfind(".wdoc-series-1 { fill:#ff00ff")
+        .expect("imported rule");
+    assert!(
+        authored > theme,
+        "an imported class rule must be emitted after the theme:\n{html}"
+    );
+}
+
+#[test]
+fn a_line_comment_in_a_css_declaration_is_rejected() {
+    // `//` is not CSS: a browser discards the rest of the rule.
+    assert!(matches!(
+        build_err("class \"x\" { css = \"color: red; // muted\" }\npage index {}"),
+        BuildError::Schema(_)
+    ));
+    // A mode override carries its own declaration body.
+    assert!(matches!(
+        build_err(
+            "class \"x\" { css = \"color: red;\"  dark { css = \"color: blue; // muted\" } }\npage index {}"
+        ),
+        BuildError::Schema(_)
+    ));
+    // As does a nested rule, and one inside a named `style` bundle.
+    assert!(matches!(
+        build_err(
+            "style \"s\" { class \"x\" { nest \"&:hover\" { css = \"// gone\" } } }\npage index {}"
+        ),
+        BuildError::Schema(_)
+    ));
+    // A `//` inside a URL is a scheme separator, not a comment.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("url.wcl");
+    write_fixture(
+        &file,
+        "class \"x\" { css = \"background: url(https://example.com/a.png);\" }\npage index {}",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&file, out.path());
+}

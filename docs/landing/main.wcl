@@ -14,12 +14,6 @@
 // `table` / `h1`..`h6` / …) is in scope here and in every imported page.
 import <wdoc.wcl>
 
-// Reused in hero prose: paints with the active theme's accent hue so it
-// stays readable on dark and light.
-class accent {
-  css = "color:var(--wdoc-accent);font-weight:bold;"
-}
-
 // The `website` template (sticky header + regions), its content authored
 // from the landing components in pages/landing-parts.wcl. Nord theme,
 // cyan accent. Subject is the language itself — wdoc (the tool rendering

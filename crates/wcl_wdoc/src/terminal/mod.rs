@@ -261,9 +261,13 @@ fn class_color(doc: &Document, classes: &[String], field: &str) -> Option<String
         if let Some(b) = doc
             .blocks()
             .find(|b| b.kind() == "class" && label_string(b).as_deref() == Some(name))
-            && let Some(v) = field_utf8(&b, field)
         {
-            return Some(v);
+            // The palette is baked into the terminal's SVG cells, so the
+            // class itself may never reach markup; tell the class lint.
+            crate::css_lint::record_structural_use(name);
+            if let Some(v) = field_utf8(&b, field) {
+                return Some(v);
+            }
         }
     }
     None

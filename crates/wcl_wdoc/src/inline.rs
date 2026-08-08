@@ -60,7 +60,7 @@ pub(crate) struct InlinePatterns {
     compiled: Vec<CompiledPattern>,
     /// Named structured styles, rendered once per site rather than resolving
     /// and re-rendering their blocks for every page template invocation.
-    styles: BTreeMap<String, String>,
+    styles: BTreeMap<String, crate::render::RenderedCss>,
     /// Names of every `page` in the current site, used by `render_link`
     /// to recognise bare `[text](page_name)` references and rewrite them
     /// to `page_name.html`.
@@ -229,7 +229,7 @@ impl InlinePatterns {
 
     /// CSS for a named structured style referenced by an `Html::Style`.
     pub(crate) fn style(&self, name: &str) -> Option<&str> {
-        self.styles.get(name).map(String::as_str)
+        self.styles.get(name).map(|style| style.text.as_str())
     }
 
     /// Set the current site's name and template kind for block-visibility

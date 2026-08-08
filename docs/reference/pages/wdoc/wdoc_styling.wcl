@@ -664,6 +664,47 @@ WCL
 
   p "The list names sites; a rule with no `sites` field, or an empty one, belongs to every site. This is per-rule scoping, unlike a `page`, which a multi-site document requires to declare its membership. It is also the only way one document can carry two visual identities — since a theme is selected per site, and each site's stylesheet is built independently, a rule tuned to one palette can be kept off the other. [Visibility](wdoc_visibility) covers the parallel `sites` axis on content."
 
+  h2 "What the build checks"
+
+  p "Two things about your CSS the build looks at. One is an error, because it is never right; the other is a warning, because it cannot always tell."
+
+  h3 "A line comment is an error"
+
+  p "`//` is not CSS. A browser reading it throws away the rest of the declaration, so one stray line comment silently deletes the rules after it. wdoc rejects a `css` value containing one, the same way it rejects a schema violation. The comment form CSS has is `/* … */`."
+
+  code wcl {
+    source = <<'WCL'
+class card { css = "color:red; // muted" }        // rejected
+class card { css = "color:red; /* muted */" }     // fine
+
+// A `//` inside a quoted string or a url() is a URL, and passes.
+base "body" { css = "background:url(https://example.com/bg.png);" }
+WCL
+  }
+
+  h3 "The class lint"
+
+  p "After a build has rendered, wdoc reads the class names its pages actually carry, compares them with the class names its rules select, and warns about each direction:"
+
+  list {
+    li "A name **in the markup that no rule selects** — a misspelled class name, or a hook nothing styles."
+    li "A rule **this document authors that no page carries** — a misspelled selector, or a rule left behind."
+  }
+
+  p "It reads the rendered output rather than your source because a class name reaches markup three ways: a `class` field, a raw HTML string inside a template, and the renderer's own markup. Only the finished page sees all three — and it sees a computed name, such as `format(\"level-{}\", h.level)`, already resolved to `level-2`."
+
+  p "Two things it deliberately does not judge. **The bundled rules**: wdoc's stylesheet ships the whole built-in vocabulary and your document uses a slice of it, so an unused library rule is another document's rule, not dead code. **Generator vocabularies**: syntax highlighting mints one class per grammar scope (`tok-…`) and one per language (`language-…`), an open-ended set no stylesheet could ever declare."
+
+  p "The remaining case is a class you emit **on purpose** and style nowhere — a hook for a script, or a name you want a reader to be able to restyle. Nothing in the markup tells that apart from a typo, so you say it in the source: **an empty `class` block declares the name and emits no CSS.**"
+
+  code wcl {
+    source = <<'WCL'
+class ws-main {}
+WCL
+  }
+
+  p "The lint runs over **every site of the document at once**, because a rule scoped to one site would otherwise read as dead while another site rendered. Two builds therefore skip it: `wcl wdoc build --site one` and the dev server's targeted page rebuild both produce partial output, and a partial build cannot judge either direction. A class a wireframe or terminal resolves counts as used even though it never reaches an element, since those renderers bake the colour into their SVG."
+
   h2 "Where to go next"
 
   list {

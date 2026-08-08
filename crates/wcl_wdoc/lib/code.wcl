@@ -48,6 +48,9 @@ class "code-dots" {
   nest "span" { css = "width: 9px; height: 9px; border-radius: 999px;" }
 }
 class "code-lang" { css = "margin-left: auto; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.68rem;" }
+// The filename text inside the card header. Deliberately unstyled — it
+// inherits the header bar — and declared so it reads as a hook.
+class "code-name" {}
 class "code-card" {
   nest "pre.code-block" { css = "margin: 0; border: none; border-radius: 0; padding-left: 3.3rem; counter-reset: code-line;" }
 }

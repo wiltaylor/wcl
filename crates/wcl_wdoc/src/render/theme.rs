@@ -12,11 +12,12 @@
 //! (chart palette, syntax tokens) while user `class` blocks still win. Rust
 //! only generates selectors whose declarations come from palette/site data.
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use wcl_lang::{Block, Document};
 
-use super::{field_symbol, field_utf8, label_string, render_styles};
+use super::{RenderedCss, field_symbol, field_utf8, label_string, render_styles};
 
 const DEFAULT_THEME: &str = "forge";
 
@@ -240,7 +241,10 @@ pub(crate) fn resolve_roles(doc: &Document, theme: &str, accent: &str, mode: &st
 /// `site` block (bare documents stay unthemed) or no `theme` block can be
 /// resolved. A `site` without an explicit `theme` defaults to `forge`; an
 /// unknown name also falls back to `forge`.
-pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> Option<String> {
+pub(crate) fn site_theme_css(
+    doc: &Document,
+    site_block: Option<&Block<'_>>,
+) -> Option<RenderedCss> {
     let block = site_block?;
 
     // The `theme` symbol names a `theme` block; default to `forge`.
@@ -271,12 +275,20 @@ pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> 
     }
 
     let styles = render_styles(doc);
+    // The two subtree palettes below are written here rather than in WCL
+    // (their declarations come from palette data), so this module declares
+    // their class names for the lint itself.
+    let mut classes = BTreeSet::from([
+        "wdoc-theme-dark".to_string(),
+        "wdoc-theme-light".to_string(),
+    ]);
     let mut out = String::new();
     // Default font stacks (themed sites only — keeps a site-less doc bare).
     // A theme's `font_*` fields override these via `theme_font_vars` below.
     if let Some(defaults) = styles.get("wdoc-theme-font-defaults") {
-        out.push_str(defaults);
+        out.push_str(&defaults.text);
         out.push('\n');
+        classes.extend(defaults.classes.iter().cloned());
     }
     writeln!(out, ":root{{{dv}}}").expect("write to String");
     writeln!(out, "@media (prefers-color-scheme: light){{:root{{{lv}}}}}")
@@ -296,7 +308,8 @@ pub(crate) fn site_theme_css(doc: &Document, site_block: Option<&Block<'_>>) -> 
     // site data. Every static authored rule lives in WCL below it.
     writeln!(out, ":root{{--wdoc-accent:{accent_expr};}}").expect("write to String");
     if let Some(apply) = styles.get("wdoc-theme-apply") {
-        out.push_str(apply);
+        out.push_str(&apply.text);
+        classes.extend(apply.classes.iter().cloned());
     }
-    Some(out)
+    Some(RenderedCss { text: out, classes })
 }

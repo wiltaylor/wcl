@@ -51,3 +51,6 @@ class "wdoc-math" {
   nest "svg" { css = "max-width: 100%;" }
 }
 class "wdoc-math-error" { css = "font-family: monospace; color: #bf616a;" }
+// The inline (baseline-aligned) equation wrapper. Deliberately unstyled:
+// an inline equation flows with its sentence.
+class "wdoc-math-inline" {}

@@ -711,6 +711,9 @@ style "book_css" {
   class "book-pagenav" {
     nest ".book-nav-next" { css = "grid-column: 2; text-align: right;" }
   }
+  // The previous-page link takes column 1 by default, so it carries no
+  // rule — the class is the hook a book restyles it through.
+  class "book-nav-prev" {}
   class "book-sidebar-footer" { css = "position: sticky; bottom: 0; margin: auto -1rem -1rem; padding: 0.6rem 1rem; background: var(--wdoc-bg-alt); border-top: 1px solid var(--wdoc-border); display: flex; flex-direction: column; gap: 0.4rem;" }
   class "book-footer-btn" { css = "display: flex; align-items: center; justify-content: center; padding: 0.45rem 0.6rem; text-decoration: none; color: inherit; border: 1px solid var(--wdoc-border); border-radius: 6px; opacity: 0.85;" }
   class "book-footer-btn" {
@@ -729,6 +732,10 @@ style "book_css" {
   class "book-onpage-link" {
     nest "&.level-3" { css = "padding-left: 1.5rem; font-size: 0.78rem;" }
   }
+  // `level-2` is the rail's default indent (the link's own padding), so
+  // only `level-3` adds one. Declared because the level class is
+  // interpolated (`format("level-{}", h.level)`) and reaches the markup.
+  class "level-2" {}
   class "heading-marker" { css = "display: block; font-size: 0.78rem; margin-bottom: 0.2rem;" }
   media "(max-width: 82rem)" {
     class "book-rail" { css = "display: none;" }

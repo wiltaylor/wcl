@@ -106,6 +106,9 @@ style "website_css" {
     }
   }
   class "ws-aside" { css = "font-size: 0.95rem;" }
+  // The main column. The grid on `.ws-layout` places it, so it needs no
+  // rule of its own; the class is the hook a site styles it through.
+  class "ws-main" {}
   class "ws-footer" { css = "padding: 2rem clamp(1rem, 5vw, 3rem); text-align: center; opacity: 0.7; border-top: 1px solid var(--wdoc-border, rgba(127,127,127,0.3));" }
 }
 

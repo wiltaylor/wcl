@@ -19,7 +19,26 @@ use syntect::util::LinesWithEndings;
 
 const WCL_SYNTAX: &str = include_str!("../assets/wcl.sublime-syntax");
 
-const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed { prefix: "tok-" };
+/// Prefix of the token classes syntect mints — one per grammar scope, so
+/// the vocabulary is as open-ended as the grammars themselves. Named here
+/// because [`crate::css_lint`] exempts the family, and the exemption must
+/// not drift from the generator.
+pub(crate) const TOKEN_CLASS_PREFIX: &str = "tok-";
+
+/// Prefix of the class naming a code block's language (`language-rust`).
+/// Minted from the authored language name, so it is likewise open-ended;
+/// see [`TOKEN_CLASS_PREFIX`].
+pub(crate) const LANGUAGE_CLASS_PREFIX: &str = "language-";
+
+/// The class naming a code block's language (`language-rust`). `language`
+/// arrives already HTML-escaped where a caller escapes it.
+pub(crate) fn language_class(language: &str) -> String {
+    format!("{LANGUAGE_CLASS_PREFIX}{language}")
+}
+
+const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed {
+    prefix: TOKEN_CLASS_PREFIX,
+};
 
 fn syntax_set() -> &'static SyntaxSet {
     static SET: OnceLock<SyntaxSet> = OnceLock::new();

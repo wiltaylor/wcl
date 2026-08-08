@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -8,6 +8,7 @@ use wcl_lang::{
     from_fn,
 };
 
+use crate::css_lint::ClassScan;
 use crate::inline::InlinePatterns;
 use crate::render::{
     CollectionTemplateInput, DeckSectionNode, FooterButtonNode, MAX_LOWER_DEPTH, MenuNode, TocNode,
@@ -343,8 +344,10 @@ pub(crate) fn reserved_kind_errors(doc: &Document) -> Vec<Report> {
 
 /// Every schema-level contract a document must satisfy before any backend
 /// renders it: the wdoc stdlib is in scope, no root-authored re-declaration of
-/// a Rust-dispatched kind ([`reserved_kind_errors`]), and a coherent rendering
-/// declaration on every block type ([`crate::native::native_errors`]).
+/// a Rust-dispatched kind ([`reserved_kind_errors`]), a coherent rendering
+/// declaration on every block type ([`crate::native::native_errors`]), and no
+/// `//` line comment inside a CSS declaration body
+/// ([`crate::render::comment_errors`]).
 ///
 /// The three entry points (HTML / Markdown / PDF) call this one
 /// function right after `schema_errors`, so a fourth cannot pick up half the
@@ -359,6 +362,7 @@ pub(crate) fn contract_errors(doc: &Document) -> Vec<Report> {
     }
     let mut out = reserved_kind_errors(doc);
     out.extend(crate::native::native_errors(doc));
+    out.extend(crate::render::comment_errors(doc));
     out
 }
 
@@ -665,6 +669,9 @@ fn build_inner(
     if let Some(targets) = targets {
         let _ = crate::render::take_route_error();
         let _ = crate::render::take_render_warnings();
+        // A targeted re-render rewrites some pages of one site; the class
+        // lint needs every page of every site, so this scan is discarded.
+        let scan = ClassScan::default();
         let (result, eval_err) =
             crate::render::scoped_eval_errors(|| -> Result<Option<Vec<String>>, BuildError> {
                 let mut rendered = Vec::new();
@@ -695,6 +702,7 @@ fn build_inner(
                         &home_href,
                         &home_title,
                         Some(&site_targets),
+                        &scan,
                     )?;
                     if built.need_full {
                         // A targeted render reached shared state (a new icon, or
@@ -735,6 +743,8 @@ fn build_inner(
     // build for the caller to drain via [`take_render_warnings`].
     let _ = crate::render::take_route_error();
     let _ = crate::render::take_render_warnings();
+    let _ = crate::css_lint::take_structural_uses();
+    let scan = ClassScan::default();
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
         let mut count = 0;
         for spec in &build_set {
@@ -758,6 +768,7 @@ fn build_inner(
                 &home_href,
                 &home_title,
                 None,
+                &scan,
             )?
             .count;
             // Landing page: a page marked `start` is copied to this site's
@@ -784,11 +795,8 @@ fn build_inner(
             // so only the global/unscoped CSS). Each site's bundled assets
             // live under its own subdirectory, so the chooser's own `_wdoc/`
             // carries no fonts and its CSS must name none.
-            write_chooser_index(
-                out_dir,
-                &site_css(&doc, None, None, BundledFonts::default()),
-                &build_set,
-            )?;
+            let chooser_css = site_css(&doc, None, None, BundledFonts::default());
+            write_chooser_index(out_dir, &chooser_css.text, &build_set, &scan)?;
         }
 
         Ok(count)
@@ -803,6 +811,15 @@ fn build_inner(
         return Err(BuildError::EdgeRouting(msg));
     }
     let count = result?;
+    // The class lint reads the pages this build just wrote against the
+    // stylesheet it just generated. Only a build of *every* site can judge
+    // either direction (see `css_lint`), so `--site` renders without it.
+    if site_filter.is_none() {
+        scan.record_uses(crate::css_lint::take_structural_uses());
+        for finding in scan.findings() {
+            crate::render::record_render_warning(finding);
+        }
+    }
     // `profile()` is `None` unless `opts.profile` enabled collection.
     Ok((BuildOutcome::Full(count), doc.profile()))
 }
@@ -1041,6 +1058,26 @@ fn block_in_site(block: &Block<'_>, site_name: Option<&str>) -> bool {
 struct CssBuckets {
     lib_rules: Vec<String>,
     user_rules: Vec<String>,
+    /// Every class name any rule selects, whichever bucket it landed in.
+    declared: BTreeSet<String>,
+    /// Class names a user rule that emits CSS selects — the only ones the
+    /// class lint can call unused (see [`crate::css_lint`]).
+    authored: BTreeSet<String>,
+}
+
+/// One site's finished stylesheet plus the class vocabulary it selects.
+struct SiteCss {
+    text: String,
+    declared: BTreeSet<String>,
+    authored: BTreeSet<String>,
+}
+
+/// Whether a block came from the embedded stdlib rather than from the
+/// author. A system import resolves under [`SYSTEM_IMPORT_ROOT`], which no
+/// real path can start with — so this is true of library files only, and
+/// stays false for the author's own `import "./pages/…"` files.
+fn is_library_source(origin: Option<&Path>) -> bool {
+    origin.is_some_and(|path| path.starts_with(wcl_lang::SYSTEM_IMPORT_ROOT))
 }
 
 /// Which families of bundled font files a site's output tree carries. The
@@ -1124,12 +1161,30 @@ fn collect_css_block(b: &Block<'_>, is_lib: bool, fonts: BundledFonts, css: &mut
                 return;
             }
             if let Some(rule) = render_css_block(b) {
-                if is_lib {
-                    &mut css.lib_rules
-                } else {
-                    &mut css.user_rules
+                css.declared.extend(rule.classes.iter().cloned());
+                // An empty `class "name" {}` declares its name and emits
+                // nothing — the way an author says a hook is deliberate.
+                if !rule.text.is_empty() {
+                    if is_lib {
+                        css.lib_rules.push(rule.text);
+                    } else {
+                        css.authored.extend(rule.classes);
+                        css.user_rules.push(rule.text);
+                    }
                 }
-                .push(rule);
+            }
+        }
+        // A named `style` emits nothing here — a template splices it into
+        // its own page (`Html::Style`). Its rules are still rules, so its
+        // class vocabulary counts for the lint. Rendered through the same
+        // function the template's own splice uses, so the two readings of a
+        // bundle cannot diverge. A bundle no template splices reads as dead
+        // code, which is what it is.
+        "style" => {
+            let rules = crate::render::render_style(b);
+            css.declared.extend(rules.classes.iter().cloned());
+            if !is_lib && !rules.text.is_empty() {
+                css.authored.extend(rules.classes);
             }
         }
         _ if b.binding_scope_depth() > MAX_LOWER_DEPTH => {}
@@ -1158,31 +1213,46 @@ fn site_css(
     site_name: Option<&str>,
     site_block: Option<&Block<'_>>,
     fonts: BundledFonts,
-) -> String {
+) -> SiteCss {
     let mut css = CssBuckets::default();
     for (origin, b) in doc.blocks_with_source() {
         if !block_in_site(&b, site_name) {
             continue;
         }
-        // `origin.is_some()` marks a library (embedded-stdlib) block; user
-        // source has no origin. Carried through generator expansion so a
-        // user `wdoc_repeater` that emits `class` blocks still lands in the
-        // user bucket (and thus wins over library defaults).
-        collect_css_block(&b, origin.is_some(), fonts, &mut css);
+        // Library (embedded-stdlib) vs authored origin, carried through
+        // generator expansion so a user `wdoc_repeater` that emits `class`
+        // blocks still lands in the user bucket (and thus wins over library
+        // defaults).
+        collect_css_block(&b, is_library_source(origin), fonts, &mut css);
     }
     let CssBuckets {
         lib_rules,
         user_rules,
+        mut declared,
+        authored,
     } = css;
     // The colour theme sits between the library rules (whose defaults it
     // overrides) and the user rules (which still win).
     let theme_css = site_theme_css(doc, site_block);
-    lib_rules
+    if let Some(theme) = &theme_css {
+        declared.extend(theme.classes.iter().cloned());
+    }
+    let text = lib_rules
         .into_iter()
-        .chain(theme_css.into_iter().filter(|s| !s.is_empty()))
+        .chain(
+            theme_css
+                .into_iter()
+                .map(|theme| theme.text)
+                .filter(|s| !s.is_empty()),
+        )
         .chain(user_rules)
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    SiteCss {
+        text,
+        declared,
+        authored,
+    }
 }
 
 /// The output dir, URL prefix, and home back-link for one site within the
@@ -1248,6 +1318,7 @@ fn build_site(
     home_href: &str,
     home_title: &str,
     target: Option<&HashSet<String>>,
+    scan: &ClassScan,
 ) -> Result<SiteBuild, BuildError> {
     // A targeted incremental render reuses the prior full build's aggregate
     // site-wide assets (player scripts, default favicon, copied `assets/`
@@ -1275,6 +1346,10 @@ fn build_site(
     // The page <style>: bundled theme + structured rules, scoped
     // to this site (global blocks plus those whose `sites` list names it).
     let css = site_css(doc, spec.name.as_deref(), spec.block.as_ref(), fonts);
+    // This site's contribution to the class lint. Every site contributes,
+    // because a rule scoped to one site would read as dead in the others.
+    scan.record_rules(&css.declared, &css.authored);
+
     let uses_pan_zoom = spec.pages.iter().any(crate::render::uses_pan_zoom);
     let uses_map = spec.pages.iter().any(crate::render::uses_map);
     // A map drives the same viewBox camera as a pan/zoom diagram, so it
@@ -1486,7 +1561,8 @@ fn build_site(
         base_dir,
         spec,
         out_dir,
-        css: &css,
+        css: &css.text,
+        scan,
         favicon: &favicon,
         head_extra: &head_extra,
         inline_patterns: &inline_patterns,
@@ -2228,6 +2304,8 @@ struct PageRenderCtx<'a> {
     spec: &'a SiteSpec<'a>,
     out_dir: &'a Path,
     css: &'a str,
+    /// Where every page this context writes records its class uses.
+    scan: &'a ClassScan,
     favicon: &'a str,
     // Extra `<head>` HTML from the site's `stylesheets` / `scripts` /
     // `fonts` fields, spliced into every page before `</head>`.
@@ -2308,9 +2386,7 @@ fn build_collection_page(
     }
     let head = format!("{}{}", ctx.head_extra, rendered.head);
     let html = render_page(&title, ctx.css, &rendered.body, Some(ctx.favicon), &head);
-    let out_path = ctx.out_dir.join("index.html");
-    fs::write(&out_path, html)
-        .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
+    write_html_page(&ctx.out_dir.join("index.html"), &html, ctx.scan)?;
     Ok(1)
 }
 
@@ -2481,9 +2557,11 @@ fn build_normal_page(
         &head,
     );
 
-    let out_path = ctx.out_dir.join(format!("{page_name}.html"));
-    fs::write(&out_path, html)
-        .map_err(|e| BuildError::Io(e, format!("write {}", out_path.display())))?;
+    write_html_page(
+        &ctx.out_dir.join(format!("{page_name}.html")),
+        &html,
+        ctx.scan,
+    )?;
     if !ctx.search {
         return Ok(None);
     }
@@ -2602,6 +2680,16 @@ fn ensure_site_index(out_dir: &Path, spec: &SiteSpec<'_>) -> Result<(), BuildErr
     Ok(())
 }
 
+/// Write one rendered page, recording the classes its markup carries.
+///
+/// Every HTML file a build produces goes through here, so the class lint
+/// sees exactly what shipped — the one place the "scan the output" half of
+/// [`crate::css_lint`] is fed.
+fn write_html_page(path: &Path, html: &str, scan: &ClassScan) -> Result<(), BuildError> {
+    scan.record_markup(html);
+    fs::write(path, html).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))
+}
+
 /// Write the top-level chooser `index.html` for a multi-site build: a
 /// list linking to each site's subdirectory, labelled by its title (or
 /// name). Reuses the page shell so it inherits the global stylesheet.
@@ -2609,6 +2697,7 @@ fn write_chooser_index(
     out_dir: &Path,
     css: &str,
     sites: &[&SiteSpec<'_>],
+    scan: &ClassScan,
 ) -> Result<(), BuildError> {
     let mut items = String::new();
     for s in sites {
@@ -2629,9 +2718,7 @@ fn write_chooser_index(
     write_default_favicon(out_dir)?;
     let favicon = format!("{}/favicon.svg", crate::terminal::ASSET_DIR);
     let html = render_page("index", css, &body, Some(&favicon), "");
-    let path = out_dir.join("index.html");
-    fs::write(&path, html).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
-    Ok(())
+    write_html_page(&out_dir.join("index.html"), &html, scan)
 }
 
 /// Build the verbatim `<head>` HTML for a site's `stylesheets` / `fonts`
