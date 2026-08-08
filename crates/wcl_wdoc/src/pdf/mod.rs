@@ -234,6 +234,7 @@ pub fn pdf(
         .blocks()
         .filter(|b| b.kind() == "class")
         .filter_map(|b| crate::render::render_class(&b))
+        .map(|rule| rule.text)
         .collect();
     // Diagram card boxes match the themed web `.wdoc-card` (bg-alt fill,
     // border stroke). PDF is always-light, so resolve the site theme's light

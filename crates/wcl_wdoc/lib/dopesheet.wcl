@@ -81,6 +81,9 @@ class "wdoc-dopesheet" {
   nest "&.smooth image" { css = "image-rendering: auto;" }
 }
 class "dope-btn" { css = "fill: currentColor; opacity: 0.7; cursor: pointer;" }
+// The frame window the player retargets each tick. Its geometry is
+// computed, so it carries no rule — the class is the hook.
+class "dope-frame" {}
 class "dope-btn" {
   nest "&:hover" { css = "opacity: 1;" }
 }

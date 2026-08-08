@@ -251,12 +251,60 @@ class hero { sites = [:marketing]  css = "font-size:3rem;" }
 An omitted or empty list means **every** site. This is the opposite of `page.sites`, which a
 multi-site document requires.
 
+## What the build checks
+
+### A line comment is an error
+
+`//` is not CSS. A browser throws away the rest of the declaration, so one stray line comment
+silently deletes the rules after it. A `css` value containing one is rejected at build time,
+like a schema violation. Use `/* … */`. A `//` inside a quoted string or a `url(…)` is a URL
+and passes.
+
+```wcl
+class card { css = "color:red; // muted" }        // rejected
+class card { css = "color:red; /* muted */" }     // fine
+```
+
+### The class lint
+
+After rendering, wdoc compares the class names its pages carry with the class names its rules
+select, both directions, and **warns** (it never fails the build):
+
+- A name in the markup that no rule selects — a misspelled class name, or a hook nothing styles.
+- A rule this document authors that no page carries — a misspelled selector, or a leftover rule.
+
+It reads the rendered output, not your source, because a class reaches markup three ways: a
+`class` field, a raw HTML string in a template, and the renderer's own markup. The finished page
+sees all three, and sees a computed name (`format("level-{}", h.level)`) already resolved.
+
+Two exemptions, both structural:
+
+- **The bundled rules.** wdoc's stylesheet ships the whole built-in vocabulary; an unused
+  library rule is another document's rule, not dead code. Only rules the document itself
+  authors are judged unused.
+- **Generator vocabularies.** Syntax highlighting mints one class per grammar scope (`tok-…`)
+  and one per language (`language-…`) — open-ended sets no stylesheet can declare.
+
+For a class you emit on purpose and style nowhere (a hook for a script, or a name a reader may
+restyle), say so: **an empty `class` block declares the name and emits no CSS.**
+
+```wcl
+class ws-main {}
+```
+
+The lint runs over **every site of the document at once**, so a rule scoped to one site does not
+read as dead while another site renders. `wcl wdoc build --site one` and the dev server's
+targeted page rebuild produce partial output and skip it. A class a wireframe or terminal
+resolves counts as used, even though those renderers bake the colour into their SVG instead of
+carrying the class into an element.
+
 ## Gotchas
 
 - A `class` field is a **list**: `class = ["accent"]`, not `class = "accent"`.
-- The `css` field is opaque text. wdoc does not parse it, so a typo there fails silently in the
-  browser rather than at build time. Keep the selector in WCL blocks. Put only the declarations
-  in `css`, so a mistake can affect at most its own rule.
+- The `css` field is opaque text. wdoc does not parse it, so a typo inside a declaration fails
+  silently in the browser rather than at build time (a `//` line comment is the one exception —
+  see above). Keep the selector in WCL blocks. Put only the declarations in `css`, so a mistake
+  can affect at most its own rule.
 - A `theme` recolours what wdoc emits. It does not restyle raw HTML you inject with `raw(...)`.
   Paint that from `var(--wdoc-*)` yourself.
 - Setting `accent` on the `site` overrides the theme's own accent role. Omit it to keep the

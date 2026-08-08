@@ -1,12 +1,67 @@
 //! Lowering for wdoc's typed CSS structure: class-rooted rules (including
 //! nesting), base selectors, font faces, media queries, and keyframes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
+use std::path::Path;
 
+use miette::Report;
 use wcl_lang::{Block, Document};
 
 use super::*;
+
+/// One rendered chunk of CSS: the text a page embeds, plus every class name
+/// its selectors target. The two travel together because the class lint
+/// ([`crate::css_lint`]) needs the names this crate *generated* — reading
+/// them back out of the finished stylesheet would mean parsing CSS, and a
+/// declaration body is opaque text that may hold a `.` of its own.
+///
+/// `text` is empty for a rule that emits nothing: an empty `class "name" {}`
+/// still declares its name, which is how an author says a hook is deliberate.
+#[derive(Default)]
+pub(crate) struct RenderedCss {
+    pub(crate) text: String,
+    pub(crate) classes: BTreeSet<String>,
+}
+
+impl RenderedCss {
+    fn of(text: String, classes: BTreeSet<String>) -> Self {
+        RenderedCss { text, classes }
+    }
+
+    /// Fold another chunk in, joining the texts with a newline.
+    fn absorb(&mut self, other: RenderedCss) {
+        if !other.text.is_empty() {
+            push_rule_separator(&mut self.text);
+            self.text.push_str(&other.text);
+        }
+        self.classes.extend(other.classes);
+    }
+}
+
+/// The class names a selector targets. Quoted text is skipped, so the `.`
+/// inside `[data-x=".foo"]` or `content: "…"` is not a class; everything
+/// else — descendant, compound, and functional-pseudo-class positions —
+/// counts, because a rule that mentions a name depends on that name.
+pub(crate) fn selector_classes(selector: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let mut scan = SelectorScan::default();
+    for (index, ch) in selector.char_indices() {
+        // A name's own characters are inert to the scan, so reading them
+        // twice (once here, once as the next chars) changes nothing.
+        if !scan.observe(ch) || ch != '.' {
+            continue;
+        }
+        let tail = &selector[index + 1..];
+        let end = tail
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+            .unwrap_or(tail.len());
+        if end > 0 {
+            out.insert(tail[..end].to_string());
+        }
+    }
+    out
+}
 
 /// Emit a CSS rule body for a `@block("class")` instance.
 /// Returns `None` if the block doesn't have an inline name.
@@ -49,8 +104,9 @@ pub(crate) fn class_props(block: &Block<'_>) -> String {
 /// blocks add per-mode overrides. `dark` is the default mode; `light`
 /// applies under `prefers-color-scheme: light`; an explicit
 /// `:root[data-theme=…]` (set by the theme toggle) overrides both.
-pub(crate) fn render_class(block: &Block<'_>) -> Option<String> {
+pub(crate) fn render_class(block: &Block<'_>) -> Option<RenderedCss> {
     let name = label_string(block)?;
+    let mut classes = BTreeSet::from([name.clone()]);
     let base = class_props(block);
     let dark = block.block("dark").map(|b| class_props(&b));
     let light = block.block("light").map(|b| class_props(&b));
@@ -106,11 +162,14 @@ pub(crate) fn render_class(block: &Block<'_>) -> Option<String> {
     for nest in block.blocks().filter(|child| child.kind() == "nest") {
         let fragment = label_string(&nest)?;
         let selector = nested_selectors(&format!(".{name}"), &fragment);
+        classes.extend(selector_classes(&selector));
         let css = field_utf8(&nest, "css")?;
         push_rule_separator(&mut out);
         write!(out, "{selector} {{ {css} }}").expect("write to String");
     }
-    (!out.is_empty()).then_some(out)
+    // An empty `class "name" {}` emits nothing and still declares its name:
+    // that is how an author says an unstyled hook is deliberate.
+    Some(RenderedCss::of(out, classes))
 }
 
 fn push_rule_separator(out: &mut String) {
@@ -228,10 +287,13 @@ impl SelectorScan {
 }
 
 /// Emit a selector and opaque declaration body for a `base` block.
-pub(crate) fn render_base(block: &Block<'_>) -> Option<String> {
+pub(crate) fn render_base(block: &Block<'_>) -> Option<RenderedCss> {
     let selector = label_string(block)?;
     let css = field_utf8(block, "css")?;
-    Some(format!("{selector} {{ {css} }}"))
+    Some(RenderedCss::of(
+        format!("{selector} {{ {css} }}"),
+        selector_classes(&selector),
+    ))
 }
 
 /// Emit a typed `@font-face` block.
@@ -259,35 +321,45 @@ pub(crate) fn render_font_face(block: &Block<'_>) -> Option<String> {
 }
 
 /// Emit a media query containing class-rooted rules.
-pub(crate) fn render_media(block: &Block<'_>) -> Option<String> {
+pub(crate) fn render_media(block: &Block<'_>) -> Option<RenderedCss> {
     let query = label_string(block)?;
-    let rules = block
-        .blocks()
-        .filter_map(|child| render_css_block(&child))
-        .collect::<Vec<_>>()
-        .join("\n");
-    Some(format!("@media {query} {{ {rules} }}"))
+    let mut inner = RenderedCss::default();
+    for child in block.blocks() {
+        if let Some(rule) = render_css_block(&child) {
+            inner.absorb(rule);
+        }
+    }
+    Some(RenderedCss::of(
+        format!("@media {query} {{ {} }}", inner.text),
+        inner.classes,
+    ))
 }
 
 /// Emit a named keyframes rule whose frame selectors are `base` children.
-pub(crate) fn render_keyframes(block: &Block<'_>) -> Option<String> {
+/// Frame selectors are `from` / `to` / percentages, so they carry no class
+/// names — but they render through the same path, so any that did would be
+/// collected.
+pub(crate) fn render_keyframes(block: &Block<'_>) -> Option<RenderedCss> {
     let name = label_string(block)?;
-    let frames = block
-        .blocks()
-        .filter(|child| child.kind() == "base")
-        .filter_map(|child| render_base(&child))
-        .collect::<Vec<_>>()
-        .join("\n");
-    Some(format!("@keyframes {name} {{ {frames} }}"))
+    let mut inner = RenderedCss::default();
+    for child in block.blocks().filter(|child| child.kind() == "base") {
+        if let Some(frame) = render_base(&child) {
+            inner.absorb(frame);
+        }
+    }
+    Some(RenderedCss::of(
+        format!("@keyframes {name} {{ {} }}", inner.text),
+        inner.classes,
+    ))
 }
 
 /// Render one structured CSS block. Containers call this after they have
 /// already decided placement and site visibility.
-pub(crate) fn render_css_block(block: &Block<'_>) -> Option<String> {
+pub(crate) fn render_css_block(block: &Block<'_>) -> Option<RenderedCss> {
     match block.kind() {
         "class" => render_class(block),
         "base" => render_base(block),
-        "font_face" => render_font_face(block),
+        "font_face" => render_font_face(block).map(|text| RenderedCss::of(text, BTreeSet::new())),
         "media" => render_media(block),
         "keyframes" => render_keyframes(block),
         _ => None,
@@ -295,19 +367,127 @@ pub(crate) fn render_css_block(block: &Block<'_>) -> Option<String> {
 }
 
 /// Render every named style once for reuse across a site's page loop.
-pub(crate) fn render_styles(doc: &Document) -> BTreeMap<String, String> {
+pub(crate) fn render_styles(doc: &Document) -> BTreeMap<String, RenderedCss> {
     doc.blocks()
         .filter(|block| block.kind() == "style")
-        .filter_map(|style| {
-            let name = label_string(&style)?;
-            let css = style
-                .blocks()
-                .filter_map(|block| render_css_block(&block))
-                .collect::<Vec<_>>()
-                .join("\n");
-            Some((name, css))
-        })
+        .filter_map(|style| Some((label_string(&style)?, render_style(&style))))
         .collect()
+}
+
+/// Render one named `style` bundle. The build reads the same function for
+/// the bundle's class vocabulary, so the two cannot walk it differently.
+pub(crate) fn render_style(style: &Block<'_>) -> RenderedCss {
+    let mut out = RenderedCss::default();
+    for block in style.blocks() {
+        if let Some(rule) = render_css_block(&block) {
+            out.absorb(rule);
+        }
+    }
+    out
+}
+
+/// Reject a `//` line comment inside a declaration body.
+///
+/// `//` is not CSS. A browser parses the rest of the declaration as garbage
+/// and drops it, which is the failure the old CSS heredocs were shouted
+/// about: one stray `//` silently swallowed everything after it. Per-rule
+/// declaration strings shrank the blast radius to a single rule; rejecting
+/// the comment closes it. `//` inside a quoted string or an unquoted
+/// `url(…)` is a URL, not a comment, and passes.
+pub(crate) fn comment_errors(doc: &Document) -> Vec<Report> {
+    let mut out = Vec::new();
+    for (origin, block) in doc.blocks_with_source() {
+        check_comments(&block, origin, &mut out);
+    }
+    out
+}
+
+/// Walk one top-level block's CSS subtree. Only the container kinds are
+/// descended into, so this never wanders off into page content. It reads
+/// the blocks a document declares: a `css` a generator computes is a
+/// string built at eval time, not a declaration body someone typed.
+fn check_comments(block: &Block<'_>, origin: Option<&Path>, out: &mut Vec<Report>) {
+    if matches!(block.kind(), "class" | "base" | "nest" | "dark" | "light")
+        && let Some(css) = field_utf8(block, "css")
+        && has_line_comment(&css)
+    {
+        let what = label_string(block).unwrap_or_else(|| block.kind().to_string());
+        let file = origin.map_or_else(
+            || "this document".to_string(),
+            |path| path.display().to_string(),
+        );
+        out.push(miette::miette!(
+            code = "wdoc::css_line_comment",
+            "{} \"{what}\" in {file}: the `css` declaration contains a `//` line comment \
+             — CSS has no line comments, so a browser discards the rest of the rule; use \
+             `/* … */` or delete it",
+            block.kind(),
+        ));
+    }
+    if matches!(
+        block.kind(),
+        "style" | "media" | "keyframes" | "class" | "font_face"
+    ) {
+        for child in block.blocks() {
+            check_comments(&child, origin, out);
+        }
+    }
+}
+
+/// Whether `css` holds a `//` outside a quoted string and outside an
+/// unquoted `url(…)`.
+fn has_line_comment(css: &str) -> bool {
+    let bytes = css.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' | b'\'' => {
+                i = skip_quoted(bytes, i);
+                continue;
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'/') => return true,
+            _ => {}
+        }
+        // Byte-wise, because a declaration body is arbitrary UTF-8 and a
+        // slice by index would land mid-character.
+        if bytes[i..]
+            .get(..4)
+            .is_some_and(|head| head.eq_ignore_ascii_case(b"url("))
+        {
+            i = skip_url(bytes, i + 4);
+            continue;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Index just past the string starting at `open`, honouring backslash
+/// escapes. An unterminated string ends the scan.
+fn skip_quoted(bytes: &[u8], open: usize) -> usize {
+    let quote = bytes[open];
+    let mut i = open + 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            b if b == quote => return i + 1,
+            _ => i += 1,
+        }
+    }
+    bytes.len()
+}
+
+/// Index just past the `url(…)` whose contents start at `start`.
+fn skip_url(bytes: &[u8], start: usize) -> usize {
+    let mut i = start;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' | b'\'' => i = skip_quoted(bytes, i),
+            b')' => return i + 1,
+            _ => i += 1,
+        }
+    }
+    bytes.len()
 }
 
 pub(crate) fn push_css(out: &mut String, prop: &str, value: Option<&str>) {
@@ -319,5 +499,48 @@ pub(crate) fn push_css(out: &mut String, prop: &str, value: Option<&str>) {
 fn push_spaced_css(out: &mut String, prop: &str, value: Option<&str>) {
     if let Some(value) = value {
         write!(out, " {prop}: {value};").expect("write to String");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{has_line_comment, selector_classes};
+
+    fn classes(selector: &str) -> Vec<String> {
+        selector_classes(selector).into_iter().collect()
+    }
+
+    #[test]
+    fn selector_classes_reads_every_position_a_name_appears_in() {
+        assert_eq!(classes(".card .title"), ["card", "title"]);
+        assert_eq!(classes(".card:is(.wide, .tall)"), ["card", "tall", "wide"]);
+        assert_eq!(classes("a.link::before"), ["link"]);
+    }
+
+    #[test]
+    fn selector_classes_skips_quoted_text_and_bare_dots() {
+        // The `.` inside a quoted attribute value is not a class, and a `.`
+        // that starts no name (a decimal, a stray) yields nothing.
+        assert_eq!(classes("[data-x=\".ghost\"].real"), ["real"]);
+        assert!(classes("li::marker").is_empty());
+    }
+
+    #[test]
+    fn a_line_comment_is_found_only_outside_strings_and_urls() {
+        assert!(has_line_comment("color: red; // muted"));
+        assert!(has_line_comment("// the whole body"));
+        // Both URL forms carry a scheme separator, not a comment.
+        assert!(!has_line_comment(
+            "background: url(https://a.example/b.png);"
+        ));
+        assert!(!has_line_comment(
+            "background: url('https://a.example/b.png');"
+        ));
+        assert!(!has_line_comment("content: \"https://a.example\";"));
+        // An escaped quote keeps the string open past the `//` inside it.
+        assert!(!has_line_comment(r#"content: "a\"//b";"#));
+        // An unterminated string ends the scan rather than looping.
+        assert!(!has_line_comment("content: \"unclosed // "));
+        assert!(!has_line_comment("border-radius: 4px;"));
     }
 }

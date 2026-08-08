@@ -109,7 +109,8 @@ pub(crate) fn render_html(
         out.push_str("<p class=\"wdoc-demo-label\">Example</p>");
         write!(
             out,
-            "<pre class=\"code-block\"><code class=\"language-wcl\">{body}</code></pre>"
+            "<pre class=\"code-block\"><code class=\"{}\">{body}</code></pre>",
+            highlight::language_class("wcl"),
         )
         .expect("write to String");
     }

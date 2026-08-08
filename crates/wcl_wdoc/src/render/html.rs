@@ -1369,7 +1369,10 @@ fn render_markdown_source(
         // whole build — the block is a documentation aid, not load-bearing.
         Err(_) => escape_html("markdown_source: failed to render body to Markdown"),
     };
-    format!("<pre class=\"code-block\"><code class=\"language-markdown\">{body}</code></pre>")
+    format!(
+        "<pre class=\"code-block\"><code class=\"{}\">{body}</code></pre>",
+        crate::highlight::language_class("markdown"),
+    )
 }
 
 /// Render an `Html::Highlighted { source, language }` to the

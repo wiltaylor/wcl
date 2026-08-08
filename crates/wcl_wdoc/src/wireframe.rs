@@ -1426,9 +1426,13 @@ fn class_field(doc: &Document, classes: &[String], field: &str) -> Option<String
         if let Some(b) = doc
             .blocks()
             .find(|b| b.kind() == "class" && label_string(b).as_deref() == Some(name))
-            && let Some(v) = field_utf8(&b, field)
         {
-            return Some(v);
+            // A wireframe bakes the colour rather than carrying the class
+            // into its SVG, so the class lint hears it from here.
+            crate::css_lint::record_structural_use(name);
+            if let Some(v) = field_utf8(&b, field) {
+                return Some(v);
+            }
         }
     }
     None
@@ -1446,6 +1450,7 @@ fn class_css_property(doc: &Document, classes: &[String], property: &str) -> Opt
         else {
             continue;
         };
+        crate::css_lint::record_structural_use(class_name);
         let Some(css) = field_utf8(&class, "css") else {
             continue;
         };

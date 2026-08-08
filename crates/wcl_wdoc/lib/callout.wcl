@@ -70,6 +70,10 @@ type Callout extends ContentBlock {
 class "callout" { css = "--callout-accent: #888; margin: 1rem 0; padding: 0.6rem 0.9rem; border-left: 4px solid var(--callout-accent); border-radius: 4px; background: rgba(127,127,127,0.08);" }
 class "callout-heading" { css = "display: flex; align-items: center; gap: 0.45rem; font-weight: 600; color: var(--callout-accent);" }
 class "callout-title" { css = "margin: 0;" }
+// The icon slot the renderer stamps beside the heading. Deliberately
+// unstyled: the icon paints from `--callout-accent` on the heading, and
+// the class is the hook a document restyles it through.
+class "callout-icon" {}
 class "callout-heading" {
   nest "svg.wdoc-icon" { css = "width: 1.15em; height: 1.15em;" }
 }

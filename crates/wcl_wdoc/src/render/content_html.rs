@@ -138,8 +138,8 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
             append_attr(&mut out, "id", id.as_deref());
             write!(
                 out,
-                "><code class=\"language-{}\">{}</code></pre></figure>",
-                escape_html(&language),
+                "><code class=\"{}\">{}</code></pre></figure>",
+                crate::highlight::language_class(&escape_html(&language)),
                 crate::highlight::highlight_html(source, &language, true),
             )
             .expect("write to String");

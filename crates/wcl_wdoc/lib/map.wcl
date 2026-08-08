@@ -126,6 +126,8 @@ class "wdoc-map" {
   nest "&.pixelated image" { css = "image-rendering: pixelated;" }
 }
 class "wdoc-map-pin" { css = "cursor: pointer;" }
+// One zoom layer's image group, shown and hidden by the map player.
+class "wdoc-map-layer" {}
 class "wdoc-map-card" { css = "position: absolute; box-sizing: border-box; max-width: 17rem; z-index: 5;\n  padding: 0.55rem 0.7rem; border-radius: 6px; font-size: 0.9rem; line-height: 1.4;\n  border: 1px solid #444; background: #262b33; color: #e6e6e6;\n  box-shadow: 0 4px 18px rgba(0,0,0,0.35);" }
 class "wdoc-map-card" {
   nest "&[hidden]" { css = "display: none;" }

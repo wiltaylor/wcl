@@ -64,6 +64,11 @@ type Style {
 // emitted by the renderer's page shell.
 class "wdoc-body" { css = "margin: 0; min-height: 100vh;" }
 
+// The generated site-chooser index a multi-site build writes when no site
+// claims the root. A plain list, deliberately unstyled; the class is the
+// hook a document restyles it through.
+class "wdoc-site-index" {}
+
 // Renderable-block interfaces describe OUTPUT, not placement:
 // `ContentBlock` lowers to the target-neutral page-content IR and
 // `SvgBlock` lowers to the SVG IR (`TermPrimitive`, beside the terminal
