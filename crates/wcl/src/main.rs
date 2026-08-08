@@ -8,7 +8,6 @@ use wcl_lang::{
 
 mod diff;
 mod dump;
-mod edit;
 mod gitspec;
 mod scaffold;
 mod serve;

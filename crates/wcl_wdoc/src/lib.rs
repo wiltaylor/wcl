@@ -41,18 +41,7 @@ mod wireframe;
 
 pub use build::{
     BuildError, BuildOptions, RebuildOutcome, build, build_incremental, build_with_options,
-    open_doc_for_edit, schema_registry, take_render_warnings, wdoc_environment,
+    schema_registry, take_render_warnings, wdoc_environment,
 };
-pub use force::layout_graph;
 pub use markdown::markdown;
 pub use pdf::{PageSize, PdfError, pdf};
-pub use visibility::{DeclaredVisibility, declared_visibility};
-
-/// Highlight `source` as HTML `<span class="tok-…">` runs using the same
-/// syntect grammar + classed output the rendered code blocks use — so an
-/// in-browser editor gets identical token classes to the site's own `code`
-/// blocks, styled by the theme CSS already on every page. Unknown languages
-/// fall back to plain text.
-pub fn highlight_code(source: &str, language: &str) -> String {
-    highlight::highlight_html(source, language, false)
-}
