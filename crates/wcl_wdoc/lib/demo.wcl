@@ -20,7 +20,7 @@
 // Like `card` / `markdown_source`, a demo is `@native`: printing
 // children as source and
 // re-rendering them into themed wrappers isn't expressible in WCL. In
-// the Markdown / skill backend it degrades to the source code block plus
+// the Markdown backend it degrades to the source code block plus
 // one static (un-themed) render of the children.
 
 namespace wdoc

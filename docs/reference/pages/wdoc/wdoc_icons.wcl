@@ -9,7 +9,7 @@ page wdoc_icons {
 
   h1 "Icons"
 
-  p "Two complete icon packs — **Lucide** (1711 glyphs) and **Bootstrap Icons** (2078) — are compiled into the `wcl` binary. Nothing is downloaded, nothing is read from disk at build time, and you declare nothing to use them. This chapter covers the three places an icon may go, the `iconset` block that renames a pack and styles it, the rules that turn a name into a glyph, the shared sprite the build emits, and what each of the four output targets does with an icon. It ends with both packs in full, every glyph drawn beside its name."
+  p "Two complete icon packs — **Lucide** (1711 glyphs) and **Bootstrap Icons** (2078) — are compiled into the `wcl` binary. Nothing is downloaded, nothing is read from disk at build time, and you declare nothing to use them. This chapter covers the three places an icon may go, the `iconset` block that renames a pack and styles it, the rules that turn a name into a glyph, the shared sprite the build emits, and what each of the three output targets does with an icon. It ends with both packs in full, every glyph drawn beside its name."
 
   p "Every file and command below was run before it was written down. Type them and compare."
 
@@ -423,9 +423,9 @@ TEXT
 
   p "There is exactly one icon registry per build. The renderer threads it through as `patterns.icons()`, and every surface that can name an icon asks the same object: the inline pattern engine, the diagram shape renderer, the badge renderer, a callout's default glyph, a `sidebar_footer` button's `icon`, and the `icon(name, class)` constructor available to your own blocks. One consequence matters in practice — the sprite is complete because everything records its usage in the same place, so a glyph that only a callout asked for is still in the file."
 
-  h2 "Icons across the four output targets"
+  h2 "Icons across the three output targets"
 
-  p "Icons are one of the features where the four targets genuinely differ, so it is worth seeing all four at once. [Output targets](wdoc_outputs) covers the targets themselves."
+  p "Icons are one of the features where the three targets genuinely differ, so it is worth seeing all three at once. [Output targets](wdoc_outputs) covers the targets themselves."
 
   table {
     rows:
@@ -433,7 +433,6 @@ TEXT
       | "HTML"       | "`<svg class=\"wdoc-icon\"><use …/></svg>`, sized `1em`" | "`<use>` inside the page's SVG"                       | "Written to `_wdoc/icons.svg`" |
       | "PDF"        | "The pack glyph embedded directly, one em tall, painted in the page's foreground colour" | "The `<symbol>`s are spliced into the embedded SVG's `<defs>` and the sprite href rewritten to a local `#id`" | "None — there is no file to fetch" |
       | "Markdown"   | "Degrades to the literal `:name:` text"            | "Survives: the diagram is exported as an `.svg` file that references the sprite" | "Written to `_wdoc/icons.svg`" |
-      | "Skill"      | "As Markdown — it shares the emitter"              | "As Markdown"                                               | "As Markdown" |
   }
 
   p "Two of those rows deserve a sentence each. In **PDF** there is no sprite file to fetch, so the glyph must travel inside the document. An inline icon is embedded as the raw pack glyph, so an iconset's `size` and `color` do not reach it: it is one em tall, and it is the page's text colour. In **Markdown** the inline pattern has nowhere to go, because GitHub-flavoured Markdown has no inline SVG. The token you wrote comes back out as text. Diagrams are unaffected either way, because a diagram was always going to be an image."
@@ -1452,7 +1451,7 @@ WCL
     li "[Themes and styling](wdoc_styling) — the `class` system an iconset's `class` and `color` hang off, and how `currentColor` reaches an icon."
     li "[Callouts, footnotes and chapter headers](wdoc_callouts) — the block whose default glyphs a renamed `lucide` set moves."
     li "[The diagram canvas](wdoc_diagrams) — placement, anchors and layout for the `icon` block and every shape that wears a badge."
-    li "[Output targets](wdoc_outputs) — HTML, PDF, Markdown and skill folders, and what else differs between them."
+    li "[Output targets](wdoc_outputs) — HTML, PDF and Markdown, and what else differs between them."
     li "[Writing your own blocks](wdoc_extending) — lowering to `Html`, where the `icon(name, class)` constructor lives."
   }
 }

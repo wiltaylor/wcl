@@ -357,7 +357,7 @@ TEXT
 
   h2 "The other half: wdoc"
 
-  p "**wdoc** is a document generator written in WCL. You declare pages and sites as blocks, and `wcl wdoc` renders them to a static website, a Markdown tree, a PDF or an AI-skill folder. The book you are reading is a wdoc site, and its source is one `main.wcl` declaring the site and its table of contents, plus one `.wcl` file per chapter."
+  p "**wdoc** is a document generator written in WCL. You declare pages and sites as blocks, and `wcl wdoc` renders them to a static website, a Markdown tree or a PDF. The book you are reading is a wdoc site, and its source is one `main.wcl` declaring the site and its table of contents, plus one `.wcl` file per chapter."
 
   p "The relationship between the two halves is simpler than it sounds: **wdoc is a schema**. `import <wdoc.wcl>` pulls in a library of type declarations shipped inside the binary, and every block it gives you — `site`, `page`, `h1`, `p`, `code`, `table`, `callout` — is an ordinary `@block` type of the kind you just wrote by hand. Save this as `main.wcl` in an empty folder:"
 

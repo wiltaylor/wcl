@@ -38,22 +38,6 @@ pub(crate) fn emit_page(
     base_dir: Option<&Path>,
     out_dir: &Path,
 ) -> Result<String, BuildError> {
-    emit_page_with_front_matter(doc, page, page_name, patterns, base_dir, out_dir, None)
-}
-
-/// Like [`emit_page`], but with `front_matter` overriding the page's own
-/// `@schemaless frontmatter` block when `Some` (already `---`-fenced). The
-/// skill target uses this to write SKILL.md's generated front matter; `None`
-/// falls back to the page's own front matter.
-pub(crate) fn emit_page_with_front_matter(
-    doc: &Document,
-    page: &Block<'_>,
-    page_name: &str,
-    patterns: &InlinePatterns,
-    base_dir: Option<&Path>,
-    out_dir: &Path,
-    front_matter: Option<String>,
-) -> Result<String, BuildError> {
     let mut em = Emitter {
         doc,
         patterns,
@@ -63,11 +47,7 @@ pub(crate) fn emit_page_with_front_matter(
         svg_seq: 0,
     };
     let mut parts: Vec<String> = Vec::new();
-    let fm = match front_matter {
-        Some(fm) => Some(fm),
-        None => super::yaml::front_matter(page)?,
-    };
-    if let Some(fm) = fm {
+    if let Some(fm) = super::yaml::front_matter(page)? {
         // Joined below with a blank line before the first content block.
         parts.push(fm.trim_end().to_string());
     }
@@ -83,8 +63,8 @@ pub(crate) fn emit_page_with_front_matter(
 /// reusing the same [`Emitter`] as full-page emission. Any nested
 /// diagram / terminal SVGs are written under `<out_dir>/_wdoc/`, prefixed
 /// with `page_name`. Used by the HTML `markdown_source` block, which embeds a
-/// skill page's generated Markdown verbatim in a `code` block so it can be
-/// previewed (and review-commented) inside the book.
+/// page's generated Markdown verbatim in a `code` block so it can be previewed
+/// (and review-commented) inside the book.
 pub(crate) fn body_to_markdown(
     doc: &Document,
     blocks: &[Block<'_>],
@@ -140,8 +120,7 @@ impl Emitter<'_> {
         }
         // A native block this backend doesn't implement is a build error, not
         // a silent nothing — waived per instance with
-        // `@except(backends = [:markdown])` (or `[:skill]`). The emitter
-        // drives both targets, so it asks which one it is running as.
+        // `@except(backends = [:markdown])`.
         if crate::native::refuse_uncovered(block, patterns, patterns.backend()) {
             return Ok(());
         }
@@ -358,12 +337,8 @@ impl Emitter<'_> {
         let path = dir.join(&file);
         fs::write(&path, ensure_svg_namespace(svg))
             .map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
-        // The SVG lands in `<root>/_wdoc/`; a skill reference page (one level
-        // deep) references it through `../`.
-        Ok(format!(
-            "{}{ASSET_DIR}/{file}",
-            self.patterns.asset_prefix()
-        ))
+        // The SVG lands in `<root>/_wdoc/`, referenced root-relatively.
+        Ok(format!("{ASSET_DIR}/{file}"))
     }
 
     /// Alt text for a generated SVG: the block's `title`, else its `id`, else
@@ -451,18 +426,7 @@ impl Emitter<'_> {
         let source = label_string(block)?;
         let entry = self.patterns.images().register(&source);
         let alt = field_utf8(block, "alt").unwrap_or_default();
-        Some(image_ref(&alt, &self.asset_href(&entry.url)))
-    }
-
-    /// Prefix a root-relative asset URL with the current page's `../` depth
-    /// (skill reference pages). External URLs pass through unchanged.
-    pub(super) fn asset_href(&self, url: &str) -> String {
-        let prefix = self.patterns.asset_prefix();
-        if prefix.is_empty() || crate::image::is_external(url) {
-            url.to_string()
-        } else {
-            format!("{prefix}{url}")
-        }
+        Some(image_ref(&alt, &entry.url))
     }
 
     /// A `file` block: register the source (copied into its `dir` after the
@@ -473,11 +437,7 @@ impl Emitter<'_> {
         let dir = field_utf8(block, "dir").unwrap_or_default();
         let entry = self.patterns.files().register(&source, &dir);
         let text = field_utf8(block, "as")?;
-        Some(format!(
-            "[{}]({})",
-            escape_link_text(&text),
-            self.asset_href(&entry.url)
-        ))
+        Some(format!("[{}]({})", escape_link_text(&text), entry.url))
     }
 }
 

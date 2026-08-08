@@ -1,33 +1,19 @@
 // ── markdown_source ────────────────────────────────────────────────
 //
-// Lowers its body to a Markdown string — the same output the Markdown / skill
-// backend produces — and shows it in a syntax-highlighted `code` block. Used
-// to preview a skill page's generated Markdown inside the book (so it can be
-// read and review-commented). `@native`, because the Markdown emitter isn't
+// Lowers its body to a Markdown string — the same output the Markdown backend
+// produces — and shows it in a syntax-highlighted `code` block. Used to
+// preview a page's generated Markdown inside the book, so it can be read
+// beside the rendered page. `@native`, because the Markdown emitter isn't
 // reachable from a WCL `lower` — and native on `:html` alone: the block taps
 // the emitter from inside the HTML build, so it is a book-only device. Using
 // it on another target is refused rather than silently rendering nothing.
-//
-// `start_page` + `pages` opt the body into the skill-folder link layout, so a
-// skill page's Markdown (links into `references/…`) reproduces faithfully even
-// though it is rendered inside the book build:
-//   • `start_page` names the skill's start page (links to it become `SKILL.md`),
-//   • `pages` is the skill site's full page-name set (link validation/rewrite),
-//   • `reference` marks the previewed page as a `references/` page, so its
-//     internal links get a `../` prefix (default true).
 
 namespace wdoc
 
 @block("markdown_source")
 @native(backends = [:html])
 type MarkdownSource extends ContentBlock {
-  @doc("Skill start-page name. Set it (with `pages`) to render the body under the skill folder link layout; unset renders book-relative links.")
-  start_page: utf8?
-  @doc("The previewed page is a `references/` page (one level deep) — its internal links get a `../` prefix.")
-  @default(true) reference: bool
-  @doc("The skill site's full page-name set, used to validate/rewrite internal links while the skill layout is active.")
-  @default([]) pages: list<utf8>
-  @doc("Asset-filename stem for any diagram/terminal SVGs the body's Markdown writes — set it to the previewed page's name so the `![](…)` refs match the real skill output. Defaults to `markdown_source`.")
+  @doc("Asset-filename stem for any diagram/terminal SVGs the body's Markdown writes — set it to the previewed page's name so the `![](…)` refs match the real Markdown output. Defaults to `markdown_source`.")
   id: utf8?
   @children(ContentBlock) children: list<ContentBlock>
 }

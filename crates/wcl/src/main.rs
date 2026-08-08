@@ -282,25 +282,6 @@ enum WskillCommand {
         /// wskills. Defaults to the current directory.
         entry: Option<PathBuf>,
     },
-    /// Render every declared AI-skill artifact and install its skill folders
-    /// and agents into a repository's `.claude/` directory. With `--check`,
-    /// write nothing and fail on drift, collisions, or stale generated files.
-    ///
-    /// Examples:
-    ///   wcl wskill install . --repo ../consumer
-    ///   wcl wskill install docs/wskills --repo . --check
-    Install {
-        /// A wskill folder, an entry `.wcl`, or a directory containing
-        /// wskills. Defaults to the current directory.
-        entry: Option<PathBuf>,
-        /// Repository root that owns `.claude/`. Defaults to the current
-        /// directory.
-        #[arg(long, default_value = ".")]
-        repo: PathBuf,
-        /// Check generated output against the repository without writing.
-        #[arg(long)]
-        check: bool,
-    },
     /// Print the wskill's model — units, index trees, `related` and pin
     /// edges, per-unit block lists, and where each is written — as JSON on
     /// stdout. No build: the same model the curator audits.
@@ -512,22 +493,6 @@ enum WdocCommand {
         #[arg(long)]
         site: Option<String>,
     },
-    /// Render `<file>` to an agent / Claude **skill folder** under `<out>`:
-    /// the start page becomes `SKILL.md` (its front matter from the site's
-    /// `skill { }` block), every other page goes under `references/`, and
-    /// `file` blocks ship into their `dir` (`scripts/`, `assets/`, …). A site
-    /// opts in with `default_template = :ai_skill`.
-    Skill {
-        /// Path to a WCL source file declaring a `:ai_skill` site.
-        file: PathBuf,
-        /// Output directory (the skill folder). Created if missing.
-        #[arg(long)]
-        out: PathBuf,
-        /// Build only this named `site`. When omitted, every skill site is
-        /// built (multiple sites render into `<out>/<name>/` subfolders).
-        #[arg(long)]
-        site: Option<String>,
-    },
     /// Render each `site` in `<file>` to `<out>/<name>.pdf` (a pure-Rust
     /// PDF, no browser or external tools). Prose, headings and more
     /// paginate onto A4 (default) or US-Letter pages.
@@ -733,10 +698,6 @@ fn main() -> ExitCode {
                 let entry = entry.unwrap_or_else(|| PathBuf::from("."));
                 wskill::run_check(&entry)
             }
-            WskillCommand::Install { entry, repo, check } => {
-                let entry = entry.unwrap_or_else(|| PathBuf::from("."));
-                wskill::run_install(&entry, &repo, check)
-            }
             WskillCommand::Graph { entry, rev } => {
                 let entry = entry.unwrap_or_else(|| PathBuf::from("."));
                 wskill::run_graph(&entry, rev.as_deref())
@@ -885,9 +846,9 @@ fn pdf_error_code(err: &wcl_wdoc::PdfError) -> u8 {
     }
 }
 
-/// Report the outcome of a wdoc page-render pipeline (`build` / `markdown`
-/// / `skill`): print the page count on success, or render the error and map
-/// it to an exit code on failure.
+/// Report the outcome of a wdoc page-render pipeline (`build` / `markdown`):
+/// print the page count on success, or render the error and map it to an exit
+/// code on failure.
 fn report_pages(result: Result<usize, wcl_wdoc::BuildError>) -> u8 {
     match result {
         Ok(n) => {
@@ -949,13 +910,6 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
         }
         WdocCommand::Markdown { file, out, site } => {
             let result = wcl_wdoc::markdown(&file, &out, site.as_deref());
-            if result.is_ok() {
-                print_render_warnings();
-            }
-            report_pages(result)
-        }
-        WdocCommand::Skill { file, out, site } => {
-            let result = wcl_wdoc::skill(&file, &out, site.as_deref());
             if result.is_ok() {
                 print_render_warnings();
             }

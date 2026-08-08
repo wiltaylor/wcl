@@ -272,7 +272,6 @@ WCL
       | "HTML"     | "Typesets it: a `<div class=\"wdoc-math\">` around a self-contained `<svg>`, `id` applied." |
       | "PDF"      | "Typesets the same SVG and places it as a block. The `id` is dropped — there is nothing to link to." |
       | "Markdown" | "Emits the LaTeX between `$$` fences, untypeset. Inline math keeps its own `$…$` or `$$…$$`." |
-      | "Skill"    | "As Markdown — the skill folder shares the Markdown walker." |
   }
 
   p "Inline math travels the same road one level down. `$…$` and `$$…$$` produce an `InlineSpan::Math`, HTML and PDF hand it to the same typesetter that serves the block, and Markdown writes the delimiters back out. One LaTeX-to-SVG leaf serves both forms and both typesetting targets."
@@ -283,7 +282,7 @@ WCL
     li "[Text and formatting](wdoc_formatting) — the inline pattern system `$…$` belongs to, and the rest of it."
     li "[Code](wdoc_code) — the other block that carries a fixed payload for each backend to render its own way."
     li "[Themes and styling](wdoc_styling) — declaring the `class` an equation reaches for."
-    li "[Output targets](wdoc_outputs) — what HTML, PDF, Markdown and the skill folder each do with a page."
+    li "[Output targets](wdoc_outputs) — what HTML, PDF and Markdown each do with a page."
     li "[Writing your own blocks](wdoc_extending) — `lower`, `@native`, and why `math` is the first and not the second."
   }
 }

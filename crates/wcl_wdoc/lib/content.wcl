@@ -2,7 +2,7 @@
 //
 // `Content` is the target-neutral document vocabulary: one variant per
 // document concept, no generic container, and no escape into markup.
-// It is the layer every backend (HTML, PDF, Markdown, skill) is meant
+// It is the layer every backend (HTML, PDF, Markdown) is meant
 // to consume, in place of each one reverse-engineering semantics out of
 // `Html` — a heading whose level rides in a CSS class, a
 // callout re-implemented three times, a walker that ends in `_ => {}`.

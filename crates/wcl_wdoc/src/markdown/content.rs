@@ -1,10 +1,8 @@
 //! The Markdown backend's reading of the semantic content IR.
 //!
 //! One arm per [`Content`] variant, matched **exhaustively** — the sibling
-//! of [`crate::render::content_html`] and [`crate::pdf::content`]. The
-//! skill target is this backend too (a skill folder is Markdown pages plus
-//! a manifest), so these arms are what a skill renders as well: the
-//! "four backends" of the content IR are three walkers, one of them shared.
+//! of [`crate::render::content_html`] and [`crate::pdf::content`]. Three
+//! walkers read the content IR, and this is one of them.
 //!
 //! Where the HTML reading emits markup and the PDF one emits flow nodes,
 //! this one emits complete Markdown blocks — the caller joins them with
@@ -115,10 +113,7 @@ impl Emitter<'_> {
                 ..
             } => {
                 let entry = self.patterns.images().register(source);
-                out.push(image_ref(
-                    alt.as_deref().unwrap_or_default(),
-                    &self.asset_href(&entry.url),
-                ));
+                out.push(image_ref(alt.as_deref().unwrap_or_default(), &entry.url));
                 if let Some(caption) = caption {
                     self.push_para(caption, out);
                 }
@@ -133,7 +128,7 @@ impl Emitter<'_> {
                 // a link, a local one is copied out and linked.
                 let url = match crate::video::online_url(source) {
                     Some(url) => url,
-                    None => self.asset_href(&self.patterns.videos().register(source, "video")),
+                    None => self.patterns.videos().register(source, "video"),
                 };
                 let label = title
                     .clone()
@@ -146,11 +141,7 @@ impl Emitter<'_> {
                 // silently, exactly as the `file` block does.
                 let entry = self.patterns.files().register(path, "");
                 if let Some(label) = label {
-                    out.push(format!(
-                        "[{}]({})",
-                        escape_link_text(label),
-                        self.asset_href(&entry.url)
-                    ));
+                    out.push(format!("[{}]({})", escape_link_text(label), entry.url));
                 }
             }
             // The Markdown target keeps math textual rather than

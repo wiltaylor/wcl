@@ -504,7 +504,7 @@ WCL
 
   callout "Native is a coverage claim, not an exemption" {
     class = ["note"]
-    body  = "`@native` names the targets that implement the kind, and it is cross-checked both ways against the Rust dispatch table: a target claimed but not implemented, or implemented but not claimed, fails the build. `list` and `table` both claim all four — HTML, PDF, Markdown and skill — so neither has to be waived out of any build. See [Output targets](wdoc_outputs)."
+    body  = "`@native` names the targets that implement the kind, and it is cross-checked both ways against the Rust dispatch table: a target claimed but not implemented, or implemented but not claimed, fails the build. `list` and `table` both claim all three — HTML, PDF and Markdown — so neither has to be waived out of any build. See [Output targets](wdoc_outputs)."
   }
 
   h2 "Where to go next"
@@ -513,7 +513,7 @@ WCL
     li "[Text and formatting](wdoc_formatting) — the inline patterns that run inside every `li` and every string cell."
     li "[Themes and styling](wdoc_styling) — `class`, `base`, `nest`, and the cascade the alignment recipe leans on."
     li "[Data views](wdoc_data_views) — components, repeaters and the slots that feed a computed table's `rows`."
-    li "[Output targets](wdoc_outputs) — what HTML, PDF, Markdown and skill builds each do with the same page."
+    li "[Output targets](wdoc_outputs) — what HTML, PDF and Markdown builds each do with the same page."
     li "[Writing your own blocks](wdoc_extending) — `lower`, the `Content` union, and `@native`."
     li "[Documents, fields and blocks](lang_documents#tables) — the pipe-row syntax as a language feature, and the other twelve item forms."
   }

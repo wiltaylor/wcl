@@ -78,7 +78,7 @@ Degradation, since a static target has no theming and no two panes:
 | Target | What you get |
 | --- | --- |
 | HTML | Title, dual-palette preview, highlighted source. |
-| Markdown / skill | The source as a fenced `wcl` block, then **one** un-themed render of the children. The `title` is dropped. |
+| Markdown | The source as a fenced `wcl` block, then **one** un-themed render of the children. The `title` is dropped. |
 | PDF | **Only** one render of the children, in place. No source listing, no title. |
 
 So in Markdown the order flips — source first, then the render — and in PDF the example

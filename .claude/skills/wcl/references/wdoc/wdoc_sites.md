@@ -41,7 +41,6 @@ These tags are legal at the top level of a wdoc document:
 | `inline_pattern` | a custom prose pattern |
 | `iconset`, `tileset` | asset registries |
 | `wdoc_component`, `wdoc_repeater`, `partial`, `body` | reusable content |
-| `agent` | a Claude Code subagent, written by the skill target only |
 | `include` | other wdoc documents shipped into this output |
 
 A document with **no** `site` block still builds. Each page renders bare: its blocks go
@@ -66,7 +65,7 @@ site docs {
 | --- | --- | --- |
 | label | `identifier?` | The site name. Required once the document declares more than one site. It names the output subdirectory, and it is what `page.sites` references. |
 | `root` | `bool?` | `true` renders this site at `/`; the others go under `/<name>/`. At most one site may set it. |
-| `default_template` | `symbol?` | `:webpage`, `:book`, `:presentation`, `:website`, `:ai_skill`, or the name of your own `template`. |
+| `default_template` | `symbol?` | `:webpage`, `:book`, `:presentation`, `:website`, or the name of your own `template`. |
 | `title` | `utf8?` | Shown in the header or the sidebar, and in the browser tab as `<page title> — <site title>`. |
 | `summary` | `utf8?` | A one-line description. No built-in template renders it. The `included_sites(...)` builtin surfaces it for a landing page. |
 | `icon` | `utf8?` | A favicon path, resolved against the document and copied into `_wdoc/`. An `http(s)://` or `data:` URL passes through. Absent means a default WCL icon ships. |
@@ -80,7 +79,7 @@ site docs {
 | `accent` | `symbol?` | One of `:red :orange :yellow :green :cyan :blue :purple :pink`. |
 | `ui_theme`, `ui_accent`, `ui_mode` | `symbol?` | The theme for `wf_*` wireframe widgets — the look of the mocked application, separate from the document theme. Each one falls back to the document value. |
 
-Child blocks: `toc`, `menu`, `sidebar_footer`, `deck`, `skill`. Each one is optional, and each
+Child blocks: `toc`, `menu`, `sidebar_footer`, `deck`. Each one is optional, and each
 one belongs to a template. Loose content blocks inside a `site` fill a collection template's
 site-level slots.
 
@@ -210,10 +209,9 @@ Each `button` takes a label, a `page` or an `href`, and an optional `icon` (`pac
 the label as the tooltip and the accessible name. A button with no icon shows its label as
 text.
 
-### `deck` and `skill`
+### `deck`
 
-`deck` groups the site's pages into a slide grid for the `presentation` template. `skill`
-carries the front-matter metadata for the `:ai_skill` target.
+`deck` groups the site's pages into a slide grid for the `presentation` template.
 
 ## Search
 
@@ -317,8 +315,8 @@ wdoc_repeater { each = included_sites({ folder: "members", entry: "main.wcl", si
 }
 ```
 
-The HTML build, the dev server and the skill target all embed sub-sites. The Markdown and PDF
-targets define `included_sites` — so a document still parses — but embed nothing.
+The HTML build and the dev server embed sub-sites. The Markdown and PDF targets define
+`included_sites` — so a document still parses — but embed nothing.
 
 ## Gotchas
 
@@ -337,6 +335,5 @@ targets define `included_sites` — so a document still parses — but embed not
 
 - [`wdoc_templates.md`](wdoc_templates.md) — what a template does with `toc`, `menu` and the
   page content, and how to write your own.
-- [`wdoc_outputs.md`](wdoc_outputs.md) — the `build`, `serve`, `pdf`, `markdown` and `skill`
-  targets.
+- [`wdoc_outputs.md`](wdoc_outputs.md) — the `build`, `serve`, `pdf` and `markdown` targets.
 - [`wdoc_styling.md`](wdoc_styling.md) — `theme`, `accent` and the `class` system.

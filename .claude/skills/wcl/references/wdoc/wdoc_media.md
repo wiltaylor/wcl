@@ -90,7 +90,7 @@ Per target:
 | Target | What you get |
 | --- | --- |
 | HTML | The click-to-play facade, then the real player. |
-| Markdown / skill | A link, labelled with `title` (falling back to the URL). A local file is still copied out and linked. |
+| Markdown | A link, labelled with `title` (falling back to the URL). A local file is still copied out and linked. |
 | PDF | The poster still at the block's `width`, plus — for an **online** video only — the URL printed beneath as a link. |
 
 **Author a `poster` for any local-file video.** wdoc never decodes a video, so it cannot
@@ -119,16 +119,16 @@ file "assets/schema.json" { dir = "assets" }   // shipped silently
 | `id`, `class` | | no | Explicit id, and classes on the rendered link. |
 
 Unlike `image`, a `file` **keeps its basename** under `dir`, so the emitted path is stable and
-hand-linkable — `scripts/bootstrap.sh`, not a hashed name. That is what the skill target
-relies on to route files into a skill folder's `scripts/` and `assets/`. The cost is that two
-different sources whose basenames collide within one `dir` are a conflict, not two files.
+hand-linkable — `scripts/bootstrap.sh`, not a hashed name. That is what lets a build write a
+folder a reader or a tool can navigate by convention. The cost is that two different sources
+whose basenames collide within one `dir` are a conflict, not two files.
 
 Two roles from one block: with no `as` the file is copied and nothing renders — reference it
 yourself by its `<dir>/<basename>` path. With `as`, a link renders in its place.
 
 ### `file` refuses to build to PDF
 
-`file` is declared `@native(backends = [:html, :markdown, :skill])`. A PDF is one
+`file` is declared `@native(backends = [:html, :markdown])`. A PDF is one
 self-contained document with no folder beside it to copy into, so a rendered link would point
 at something that was never shipped. A page carrying a `file` block that is built to PDF is
 therefore a **build error** until you state the intent per instance:

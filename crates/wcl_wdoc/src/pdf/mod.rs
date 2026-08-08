@@ -193,19 +193,9 @@ pub fn pdf(
             if chosen.is_empty() {
                 return Err(PdfError::BadDoc(format!("unknown site \"{want}\"")));
             }
-            if chosen.iter().any(|s| crate::build::is_skill_site(s)) {
-                return Err(PdfError::BadDoc(format!(
-                    "site \"{want}\" is a skill (`default_template = :ai_skill`) — \
-                     build it with `wcl wdoc skill`"
-                )));
-            }
             chosen
         }
-        // Skill sites are a separate target — skip them in the PDF build.
-        None => specs
-            .iter()
-            .filter(|s| !crate::build::is_skill_site(s))
-            .collect(),
+        None => specs.iter().collect(),
     };
 
     // The inline-pattern engine (shared across sites — internal page links

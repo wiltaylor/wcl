@@ -542,6 +542,6 @@ WCL
     li "[Icons](wdoc_icons) — the `iconset` registry a map pin resolves its marker through."
     li "[Timelines and dopesheets](wdoc_timelines) — the other block that slices a spritesheet, one frame at a time."
     li "[Themes and styling](wdoc_styling) — the `class` system behind pin, card and map theming."
-    li "[Output targets](wdoc_outputs) — what a native block does on HTML, PDF, Markdown and skill builds."
+    li "[Output targets](wdoc_outputs) — what a native block does on HTML, PDF and Markdown builds."
   }
 }

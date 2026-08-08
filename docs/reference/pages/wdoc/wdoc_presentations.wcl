@@ -368,9 +368,9 @@ WCL
     body  = "`theme` and `accent` work — the deck reads the same `--wdoc-*` variables as every other template, so a themed deck is one field. `theme_toggle = true` and `search = true` do not: neither the toggle button nor the search widget is part of the presentation layout, so the first renders nothing and the second ships an empty index. See [Themes and styling](wdoc_styling)."
   }
 
-  h2 "One deck, four targets"
+  h2 "One deck, three targets"
 
-  p "A deck is a browser artifact. Nothing about it survives into a target with no keyboard, and the four targets do not fail the same way. Have this comparison in front of you before you send a deck anywhere but a browser. Every row below came from running that target against `talk.wcl` from the top of this chapter."
+  p "A deck is a browser artifact. Nothing about it survives into a target with no keyboard, and the three targets do not fail the same way. Have this comparison in front of you before you send a deck anywhere but a browser. Every row below came from running that target against `talk.wcl` from the top of this chapter."
 
   table {
     rows:
@@ -378,7 +378,6 @@ WCL
       | "`wdoc build`"        | "One `index.html` plus the player"       | "The deck's"    | "Hidden until stepped" | "In the `s` overlay" | "Never rendered" |
       | "`wdoc pdf`"          | "One PDF per site: a title page, then one page per slide" | "**Source order**" | "Always visible"  | "**Printed in the body**" | "Printed" |
       | "`wdoc markdown`"     | "One `.md` per slide"                    | "One file each" | "Always visible"  | "**Written into the body**" | "Written" |
-      | "`wdoc skill`"        | "Nothing"                                | "—"             | "—"               | "—"                      | "—" |
   }
 
   p "Run the Markdown target on `talk.wcl` and the shape of the disagreement is immediate:"
@@ -410,10 +409,8 @@ TEXT
 
   callout "A deck is not a handout" {
     class = ["warning"]
-    body  = "`wcl wdoc pdf talk.wcl` produces a valid PDF, and it is not the deck you presented: the order is the file's, the reveals are gone, and every speaker note is printed. Nothing warns you. When you need a handout, write it as a `book` site over the same content and build the two separately — [Output targets](wdoc_outputs) covers the four targets and [Visibility](wdoc_visibility) covers keeping a block out of one of them."
+    body  = "`wcl wdoc pdf talk.wcl` produces a valid PDF, and it is not the deck you presented: the order is the file's, the reveals are gone, and every speaker note is printed. Nothing warns you. When you need a handout, write it as a `book` site over the same content and build the two separately — [Output targets](wdoc_outputs) covers the three targets and [Visibility](wdoc_visibility) covers keeping a block out of one of them."
   }
-
-  p "The skill target is the plain case: `wcl wdoc skill` builds only sites with `default_template = :ai_skill`, so a document holding nothing but a deck writes nothing and tells you why — `no :ai_skill site to build`, followed by what to set to get one."
 
   h2 "The presentation template"
 
@@ -500,7 +497,7 @@ TEXT
     li "[Templates and layouts](wdoc_templates) — slots, slot arity, collection templates and the whole of `TemplateCtx`."
     li "[Websites](wdoc_websites) — the `webpage` template, its named slots, and the `menu` that orders a site."
     li "[Themes and styling](wdoc_styling) — `theme`, `accent` and the `--wdoc-*` variables the deck stylesheet consumes."
-    li "[Output targets](wdoc_outputs) — what `build`, `pdf`, `markdown` and `skill` each produce, in full."
+    li "[Output targets](wdoc_outputs) — what `build`, `pdf` and `markdown` each produce, in full."
     li "[Visibility](wdoc_visibility) — `@only` and `@except`, for keeping a block out of one target."
     li "[Data views](wdoc_data_views) — `wdoc_repeater`, and generating slides from data."
   }

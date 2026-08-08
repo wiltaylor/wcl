@@ -73,8 +73,6 @@ HTML
       | "`:presentation`" | "Full-viewport slide deck, keyboard-navigated"       | "`deck`"           | "One `index.html` for the whole site" | "[Presentations](wdoc_presentations)" |
   }
 
-  p "A fifth symbol, `:ai_skill`, is **not** a template. It is a build target: `default_template = :ai_skill` marks the site as a skill folder, and `wcl wdoc skill` — not `wcl wdoc build` — renders it. No `template ai_skill` block exists, and no `render` function runs. See [Output targets](wdoc_outputs)."
-
   p "`:webpage` and `:website` overlap, and the difference is what a page may fill. `webpage` offers one hole: the page's loose content. `website` adds named slots — `banner`, `hero`, `sidebar`, `footer` — plus `<head>` assets, so a page can place content in more than one region of the layout."
 
   h2 "Selecting a template"

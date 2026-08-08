@@ -437,10 +437,10 @@ WCL
 
   list {
     li "the **renderer** actually running, which for a card body is always `:html`;"
-    li "the **output** the build is producing — `:html`, `:pdf`, `:markdown` or `:skill`."
+    li "the **output** the build is producing — `:html`, `:pdf` or `:markdown`."
   }
 
-  p "The `file` block is the case that makes the difference visible. `file` ships an asset into the output folder, and a PDF has no output folder beside it. So `file` is native on `:html`, `:markdown` and `:skill` — never `:pdf`. Drop one into the card in `shapes.wcl` and build to PDF:"
+  p "The `file` block is the case that makes the difference visible. `file` ships an asset into the output folder, and a PDF has no output folder beside it. So `file` is native on `:html` and `:markdown` — never `:pdf`. Drop one into the card in `shapes.wcl` and build to PDF:"
 
   code wcl {
     filename = "shapes.wcl"
@@ -461,7 +461,7 @@ $ wcl wdoc pdf shapes.wcl --out out
 wcl::eval::user_error
 
   × error: `file` has no :pdf implementation (it is native
-  │ on :html, :markdown, :skill); remove the block or waive it here with
+  │ on :html, :markdown); remove the block or waive it here with
   │ `@except(backends = [:pdf])`
     ╭─[shapes.wcl:25:7]
  24 │       p "Body text."

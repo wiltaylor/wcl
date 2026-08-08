@@ -656,7 +656,7 @@ WCL
     li "[Wireframes](wdoc_wireframe) — the other widget family, measured and laid out for you."
     li "[Writing your own blocks](wdoc_extending) — `lower`, `@native` and the exactly-one-of rule across all three block families."
     li "[Themes and styling](wdoc_styling) — `class`, `theme`, and how a palette reaches a block."
-    li "[Output targets](wdoc_outputs) — what HTML, PDF, Markdown and skill builds each do with a native block."
+    li "[Output targets](wdoc_outputs) — what HTML, PDF and Markdown builds each do with a native block."
     li "[Images, videos and file assets](wdoc_media) — when a real screenshot beats a drawn one."
     li "[Functions](lang_functions) — the `fn` literals, parameter narrowing and closures a `lower` is written with."
   }

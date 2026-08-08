@@ -24,10 +24,6 @@ file ".gitignore" {
 # Generated deploy tree — regenerate with `just build`.
 # Delete these lines if you want to commit the rendered site.
 /out/
-
-
-# Skill fan-out staging
-/dist/
 WSK__GITIGNORE
 }
 
@@ -45,7 +41,6 @@ member's book. Use it to publish a whole shelf of wskills as one hostable site.
 collection.wcl        # the collection block (name, summary, intro) + imports
 schema/collection.wcl # collection block type (DO NOT hand-edit)
 wdoc/page/main.wcl    # the landing-page template (auto-discovers members)
-wdoc/skill/main.wcl   # the skill fan-out template
 wskills/<topic>/      # a member wskill (a full self-contained wskill folder)
 out/site/             # generated deploy tree (gitignored)
 ```
@@ -70,17 +65,10 @@ wcl wdoc build wdoc/page/main.wcl --out out/site   # landing + every member book
 `out/site/` is a single static site you can host anywhere: `index.html` is the
 landing page; each member's book sits under `out/site/wskills/<topic>/`.
 
-To render every member's *skill* (SKILL.md + references/) at once:
-
-```bash
-wcl wdoc skill wdoc/skill/main.wcl --out dist/skills   # → dist/skills/wskills/<topic>/
-```
-
 ```bash
 just build               # landing + every member book
-just skills              # fan every member skill out into dist/skills/
 just serve               # build, then serve the landing + every member book
-just clean               # remove out/ and dist/
+just clean               # remove out/
 ```
 
 ## Editing
@@ -124,8 +112,8 @@ file "justfile" {
 # ${answer("collection_name")} collection — build recipes.
 #
 # Members live under wskills/. The landing page's `include` auto-discovers them and
-# builds each book in one command; `wdoc skill` fans every member skill out at once.
-# There is no build script and no member list to maintain.
+# builds each book in one command. There is no build script and no member list to
+# maintain.
 
 [default, private]
 main:
@@ -136,11 +124,6 @@ main:
 build:
 	wcl wdoc build wdoc/page/main.wcl --out out/site
 
-# Fan every member wskill's skill out into dist/skills/wskills/<name>/
-[group('render')]
-skills:
-	wcl wdoc skill wdoc/skill/main.wcl --out dist/skills
-
 # Serve the landing page and every member book under it (build first)
 [group('render')]
 serve: build
@@ -149,7 +132,7 @@ serve: build
 # Remove generated output
 [group('clean')]
 clean:
-	rm -rf out dist
+	rm -rf out
 WSK_JUSTFILE
 }
 
@@ -531,15 +514,4 @@ template registry {
     ])
 }
 WSK_WDOC_PAGE_MAIN_WCL
-}
-
-file "wdoc/skill/main.wcl" {
-  content = <<'WSK_WDOC_SKILL_MAIN_WCL'
-// Collection skill fan-out — renders every member wskill's :skill site at once.
-// Pure include (no site of its own). Build:
-//   wcl wdoc skill wdoc/skill/main.wcl --out dist/skills
-//     → dist/skills/wskills/<name>/  (each a SKILL.md + references/ + assets/)
-import <wdoc.wcl>
-include "../../wskills" { entry = "wdoc/skill/main.wcl" }
-WSK_WDOC_SKILL_MAIN_WCL
 }

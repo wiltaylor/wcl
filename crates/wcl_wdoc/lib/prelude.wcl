@@ -50,7 +50,7 @@ import <chapter_header.wcl>   // rich page header (kicker + h1 + meta)
 import <footnotes.wcl>        // footnote definitions + [^id] references
 import <p.wcl>                // single-span paragraph shorthand
 import <code.wcl>             // syntax-highlighted code block
-import <markdown_source.wcl>  // preview a (skill) page's generated Markdown
+import <markdown_source.wcl>  // preview a page's generated Markdown
 import <terminal.wcl>         // terminal grid + primitives
 import <tui.wcl>              // single-line TUI widgets (progress/button/…)
 import <math.wcl>             // LaTeX equations → SVG (RaTeX)

@@ -2,7 +2,7 @@
 //
 // Build *other* wdoc documents found under a folder and ship each one's
 // rendered output into a subdirectory of this build — exactly as if
-// `wcl wdoc build` (or `wcl wdoc skill`) had been run on each one
+// `wcl wdoc build` had been run on each one
 // separately. The sub-sites are NOT merged into this document (that is what
 // `import` does); each keeps its own pages and `_wdoc/` assets under its own
 // output subdirectory.
@@ -30,8 +30,8 @@
 //         members/cat/wdoc/book/main.wcl → <out>/members/cat/
 //
 // `site` (optional) names which site of a multi-site member to build — it is
-// passed as `--site` to the per-member build, so a member declaring both a
-// `:book` and an `:ai_skill` site can be rendered as just one of them.
+// passed as `--site` to the per-member build, so a member declaring several
+// sites can be rendered as just one of them.
 //
 //       include "members" { entry = "main.wcl"  site = "book" }
 //
@@ -56,10 +56,9 @@
 //
 // Building/copying sub-sites and scanning the filesystem aren't expressible
 // in WCL, so this block is consumed by the build pipeline in Rust (it has no
-// `lower`). The recursive build runs for the HTML build (`wcl wdoc build`),
-// the dev server, and the skill target (`wcl wdoc skill`, honouring `site`);
-// the Markdown / PDF targets define `included_sites` (so documents still
-// parse) but do not embed sub-sites.
+// `lower`). The recursive build runs for the HTML build (`wcl wdoc build`)
+// and the dev server; the Markdown / PDF targets define `included_sites` (so
+// documents still parse) but do not embed sub-sites.
 namespace wdoc
 
 @block("include")

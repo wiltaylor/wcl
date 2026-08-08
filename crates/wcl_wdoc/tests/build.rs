@@ -12035,9 +12035,9 @@ fn include_site_selector_builds_one_site() {
         &root.path().join("members").join("alpha"),
         "main.wcl",
         "site book { title = \"Book\" }\n\
-         site skill { default_template = :ai_skill\n  skill { name = \"a\"  description = \"d\" }\n}\n\
+         site notes { title = \"Notes\" }\n\
          page home { sites = [:book]  h1 \"Book home\" }\n\
-         page sk { sites = [:skill]  start = true  h1 \"Skill\" }",
+         page note { sites = [:notes]  start = true  h1 \"Note\" }",
     );
     let parent = write_in(
         root.path(),
@@ -12052,12 +12052,8 @@ fn include_site_selector_builds_one_site() {
         "book page built"
     );
     assert!(
-        !out.path().join("members/alpha/sk.html").exists(),
-        "skill page not built"
-    );
-    assert!(
-        !out.path().join("members/alpha/SKILL.md").exists(),
-        "skill site not built by HTML"
+        !out.path().join("members/alpha/note.html").exists(),
+        "the unselected site's page is not built"
     );
 }
 
@@ -12308,10 +12304,10 @@ fn incremental_reuses_an_already_present_icon() {
     }
 }
 
-/// `markdown_source` renders its body to a highlighted Markdown code block
-/// and rewrites internal links into the skill-folder layout.
+/// `markdown_source` renders its body to a highlighted Markdown code block,
+/// with internal page links resolved to their Markdown siblings.
 #[test]
-fn markdown_source_previews_skill_markdown() {
+fn markdown_source_previews_generated_markdown() {
     let tmp = TempDir::new().expect("tempdir");
     let out = TempDir::new().expect("out");
     let main = tmp.path().join("main.wcl");
@@ -12319,7 +12315,7 @@ fn markdown_source_previews_skill_markdown() {
         &main,
         "site s { default_template = :webpage  root = true }\n\
          page index { start = true\n  \
-           markdown_source { start_page = \"index\"  reference = true  pages = [\"index\", \"other_ref\"]\n    \
+           markdown_source {\n    \
              h2 \"Sample\"\n    \
              p \"Body with a [link](other_ref).\"\n  \
            }\n\
@@ -12341,10 +12337,10 @@ fn markdown_source_previews_skill_markdown() {
         html.contains("tok-heading") && html.contains(">Sample<"),
         "expected the body rendered as a Markdown heading, got:\n{html}"
     );
-    // Internal links resolve into the skill folder layout (reference page).
+    // Internal page links resolve to their Markdown sibling.
     assert!(
-        html.contains("../references/other_ref.md"),
-        "expected skill-folder link rewrite, got:\n{html}"
+        html.contains("other_ref.md"),
+        "expected the internal link rewritten to Markdown, got:\n{html}"
     );
 }
 

@@ -13,9 +13,8 @@
 //   - inline reference (`as`) → renders a link to the copied file.
 //
 // The copy, path rewrite, and `dir` routing aren't expressible in WCL, so
-// like `image` it is `@native`. The skill target routes files to the
-// skill's `scripts/` / `assets/` folders (by `dir`); the HTML and Markdown
-// targets default `dir` to the `_wdoc/` asset folder.
+// like `image` it is `@native`. `dir` names the output subdirectory; the
+// HTML and Markdown targets default it to the `_wdoc/` asset folder.
 //
 // **Not covered by the PDF target.** A PDF is one self-contained document:
 // there is no output folder beside it to copy the file into, so a rendered
@@ -27,11 +26,11 @@
 namespace wdoc
 
 @block("file")
-@native(backends = [:html, :markdown, :skill])
+@native(backends = [:html, :markdown])
 type FileObj extends ContentBlock {
   @doc("File source (the inline label): a doc-relative path, a URL, or a `data:` URI.")
   @inline(0) source: utf8
-  @doc("Output subdirectory. Skill target: e.g. \"scripts\" / \"assets\". HTML/Markdown: defaults to the `_wdoc/` asset folder.")
+  @doc("Output subdirectory. Defaults to the `_wdoc/` asset folder.")
   dir: utf8?
   @doc("Link text. When set, the block renders a link to the copied file; absent ⇒ the file is shipped silently.")
   as: utf8?
