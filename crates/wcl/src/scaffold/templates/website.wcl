@@ -517,7 +517,7 @@ page index { sites = [:web]  start = true
     lede     = "A starter website — the layout lives in theme.wcl, the components and design rules in components.wcl, and the words live here."
     footnote = "Built with WCL + wdoc."
     lp_cta "Get started" { href = "#start"  primary = true }
-    lp_cta "Learn wdoc"  { href = "https://wcl.dev/wskills/wdoc/" }
+    lp_cta "Learn wdoc"  { href = "https://wcl.dev/reference/" }
   }
 
   lp_features {
@@ -562,7 +562,7 @@ page index { sites = [:web]  start = true
       }
       lp_footcol "wdoc" {
         lp_footlink "wcl.dev"        { href = "https://wcl.dev/" }
-        lp_footlink "wdoc reference" { href = "https://wcl.dev/wskills/wdoc/" }
+        lp_footlink "wdoc reference" { href = "https://wcl.dev/reference/" }
       }
     }
   }

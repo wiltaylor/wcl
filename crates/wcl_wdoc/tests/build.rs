@@ -9015,7 +9015,7 @@ page loose { sites = []  h1 "Loose" {} }
 #[test]
 fn untagged_page_in_a_single_site_document_still_builds() {
     // The rule is scoped to documents declaring more than one site — the
-    // shape every wskill projection and most user documents have.
+    // shape most user documents have.
     let src = r##"
 site docs { default_template = :webpage  title = "Docs" }
 page index { h1 "Home" {} }

@@ -29,8 +29,7 @@
 // `Element`, `Inline`, `Icon` and `Paragraph` are live variants any
 // user `lower` may return, most of the element vocabulary's
 // construction sites are OUTSIDE this stdlib (the docs landing page,
-// the scaffold templates, the wskill projections), and all four are
-// covered by `tests/el.rs`.
+// the scaffold templates), and all four are covered by `tests/el.rs`.
 //
 // `ela` and `eli` take the SAME number of arguments, so arity — the one
 // positional mistake WCL catches — does not separate them: calling one
