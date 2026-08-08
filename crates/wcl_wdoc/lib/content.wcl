@@ -35,7 +35,7 @@
 // `callout` was the first block routed through it (`callout.wcl`); the
 // markup-using blocks followed, and the final payload-shaped page blocks
 // (`math`, `video`, `sequence_diagram`, `state_diagram`) complete the
-// classification below. All four backends read these nodes from this
+// classification below. All three backends read these nodes from this
 // declaration and match the union exhaustively.
 //
 // ── Page-content classification ───────────────────────────────────
@@ -43,7 +43,7 @@
 // The test is mechanical: a block whose lowering can carry a fixed payload
 // becomes a `Content` producer; a block that needs the authored block
 // subtree (or renderer-only state that no IR payload can hold) is `@native`.
-// This is the complete inventory of the 35 stdlib `ContentBlock` types.
+// This is the complete inventory of the 33 stdlib `ContentBlock` types.
 //
 // Content producers (16):
 //
@@ -60,7 +60,7 @@
 //   state_diagram                  child records lower completely to `Drawing.shapes`
 //   video                          fixed source/poster/title/size payload
 //
-// Native blocks (19):
+// Native blocks (17):
 //
 //   block(s)                       test and reason
 //   ─────────────────────────────  ────────────────────────────────────────
@@ -69,7 +69,6 @@
 //   terminal                       needs its terminal-widget subtree and Rust grid
 //   diagram                        needs its arbitrary `SvgBlock` subtree/layout
 //   demo, markdown_source          need child source text and rendered subtrees
-//   edit_field                     needs a child subtree plus editor binding state
 //   wdoc_content, wdoc_repeater,
 //   wdoc_instance                  need component/repeater expansion context
 //   partial, collect, project       need cross-tree lookup, expansion and cycle guards
@@ -77,7 +76,6 @@
 //                                  asset metadata/dual placement cannot declare one lower
 //   table                          pipe rows live in authored block syntax, not its value
 //   file                           shipping is an output side effect and PDF is uncovered
-//   edit_object                    edit mode is renderer state, absent from a payload
 //
 // A native block can still represent a document concept; `@native` says why
 // its *authored value* cannot cross this IR seam. The corresponding union
