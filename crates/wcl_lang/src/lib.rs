@@ -6,9 +6,9 @@
 //!   source string and return a lazy, evaluation-only view. Fields evaluate
 //!   on first access and cache; the document is otherwise immutable.
 //! - **Editing path** — [`parse_for_edit`] returns an owned [`ast::Source`]
-//!   with public fields. Hosts inspect or mutate the AST, then write it back
-//!   to a `.wcl` file (a source printer lands in a later phase). To
-//!   evaluate after editing, reopen the file as a `Document`.
+//!   with public fields. Hosts inspect or mutate the AST. They then print it
+//!   back to a `.wcl` file with [`format::to_source`]. To evaluate after an
+//!   edit, reopen the file as a `Document`.
 //!
 //! There is no AST escape hatch on `Document`; mixing edit + evaluate inside
 //! one process state would silently invalidate the document's cell caches,
@@ -40,11 +40,11 @@ pub use builtins::{
 };
 pub use data::{DataKind, DataRef};
 pub use doc::{
-    Block, ChildFamily, ChildKind, Connection, ConnectionDecl, DeclName, DeclaresKind, Decorator,
-    Document, Field, FieldShape, FileLoader, GatheredKind, InterfaceDecl, NamedArg, Registry,
-    ResolvedType, RowView, SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit, SymbolSetDecl, TableView,
-    TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
-    VariantBodyView, disk_loader, overlay_loader, system_import_key,
+    Block, ChildKind, Connection, ConnectionDecl, DeclName, DeclaresKind, Decorator, Document,
+    Field, FieldShape, FileLoader, InterfaceDecl, NamedArg, Registry, ResolvedType, RowView,
+    SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit, SymbolSetDecl, TableView, TypeDecl, TypeField,
+    UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem, VariantBodyView, disk_loader,
+    overlay_loader, system_import_key,
 };
 pub use environment::{
     BuiltType, DecoratorBuilder, Environment, Expander, TypeBuilder, TypeFieldBuilder,
@@ -59,9 +59,9 @@ pub use symbols::{SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 pub use value::{BuiltinType, FnParam, FnValue, TensorDim, TypeRef, Value, VariantPayload};
 
 /// Parse a WCL source string into an owned [`ast::Source`] for inspection
-/// or mutation. The returned AST has fully `pub` fields; hosts may walk
-/// it, edit it, and (once the source printer ships) write it back to a
-/// `.wcl` file.
+/// or mutation. The returned AST has fully `pub` fields. Hosts walk it,
+/// edit it, and print it back to a `.wcl` file with
+/// [`format::to_source`].
 ///
 /// This is the **edit-path** entry point. It performs *no* evaluation,
 /// schema checks, or import resolution — those happen only when a

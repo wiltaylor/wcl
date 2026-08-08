@@ -8,7 +8,6 @@ mod cells;
 mod effective_fields;
 mod eval;
 mod eval_ops;
-mod gathers;
 mod imports;
 mod interfaces;
 mod loader;
@@ -19,7 +18,6 @@ mod scope;
 mod validate;
 pub(super) mod variant_dispatch;
 mod views;
-pub use gathers::{ChildFamily, GatheredKind};
 pub use imports::{SYSTEM_IMPORT_ROOT, system_import_key};
 pub use loader::{FileLoader, Registry, disk_loader, overlay_loader};
 pub use views::{

@@ -245,37 +245,6 @@ pub(crate) fn assign_force_offsets(
         .collect()
 }
 
-/// Public seam for a unit-graph view: deterministic layout of
-/// `sizes` boxes connected by index-pair `edges`, returning one top-left
-/// `(x, y)` offset per box (bounding box normalized to start at the
-/// origin). Same solver as diagram auto-layout — seeded, quantized, so
-/// identical inputs give identical output.
-pub fn layout_graph(sizes: &[(f64, f64)], edges: &[(usize, usize)]) -> Vec<(f64, f64)> {
-    // The solver keys edges by node id; synthesize index ids.
-    let nodes: Vec<Node> = sizes
-        .iter()
-        .enumerate()
-        .map(|(i, &size)| Node {
-            id: Some(i.to_string()),
-            size,
-        })
-        .collect();
-    let edges: Vec<(String, String)> = edges
-        .iter()
-        .map(|(a, b)| (a.to_string(), b.to_string()))
-        .collect();
-    assign_force_offsets(
-        &nodes,
-        &edges,
-        ForceParams {
-            // Editor graphs are bigger than typical diagrams; keep linked
-            // units close but let clusters breathe.
-            link_distance: 110.0,
-            ..Default::default()
-        },
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
