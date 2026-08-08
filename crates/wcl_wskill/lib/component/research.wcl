@@ -17,17 +17,13 @@ wdoc_component research_body {
   wdoc_slot backlinks
   wdoc_slot layout    { default = "stack" }
   wdoc_body {
-    edit_field { kind = "research" target = $"${unit.id}" field = "topic" plain = true
-      h1 $"${unit.topic}"
-    }
+    h1 $"${unit.topic}"
     p  $"_Researched: ${unit.checked} · status: ${replace($"${unit.status}", ":", "")}${match unit.applies_to { none => "", a => $" · applies to: ${a}" }}_"
     wdoc_repeater { each = match unit.question { none => [], q => [q] }  as = :q  p $"**Question:** ${q}" }
     wdoc_repeater { each = match unit.superseded_by { none => [], s => [s] }  as = :s
       p $"**Superseded by** [${s}](research_${s}) — prefer that finding." }
     h2 "Finding"
-    edit_field { kind = "research" target = $"${unit.id}" field = "summary"
-      p  $"${unit.summary}"
-    }
+    p  $"${unit.summary}"
     wdoc_repeater { each = match unit.body { none => [], _ => [true] }  as = :_b
       project { from = unit.body }
     }

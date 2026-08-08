@@ -18,13 +18,9 @@ wdoc_component process_body {
   wdoc_slot backlinks
   wdoc_slot layout     { default = "stack" }
   wdoc_body {
-    edit_field { kind = "procedure" target = $"${unit.id}" field = "title" plain = true
-      h1 $"${unit.title}"
-    }
+    h1 $"${unit.title}"
     h2 "Purpose"
-    edit_field { kind = "procedure" target = $"${unit.id}" field = "purpose"
-      p  $"${unit.purpose}"
-    }
+    p  $"${unit.purpose}"
     wdoc_repeater { each = match len(unit.preconditions) { 0 => [], _ => [true] }  as = :_p
       h2 "Prerequisites"
       list { items = map(unit.preconditions, fn(pc: utf8) -> Li { { text: pc } }) }

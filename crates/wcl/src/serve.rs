@@ -506,12 +506,12 @@ fn is_source_wcl(p: &Path) -> bool {
 }
 
 /// Sidecar file names: data *about* a document, written beside it. A rebuild
-/// must never be triggered by one — a review comment or a course answer is
-/// read by the client, not by the build.
-const SIDECARS: [&str; 2] = ["comments.wcl", "training.wcl"];
+/// must never be triggered by one — a course answer is read by the client,
+/// not by the build.
+const SIDECARS: [&str; 1] = ["training.wcl"];
 
 /// The document `.wcl` paths an event touched (the granularity
-/// `build_incremental` maps onto pages); `comments.wcl` sidecars are excluded.
+/// `build_incremental` maps onto pages); sidecars are excluded.
 fn wcl_paths(event: &Event) -> Vec<PathBuf> {
     event
         .paths
@@ -710,54 +710,12 @@ fn url_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Parse a JSON request body, or an error message on malformed JSON.
-pub(crate) fn parse_json_body(body: &str) -> Result<serde_json::Value, String> {
-    serde_json::from_str(body).map_err(|e| format!("bad json: {e}"))
-}
-
-/// Canonicalize `file` and confirm it sits inside `root`, so a comment / edit
-/// write can't escape the served source tree. Returns the canonical path to
-/// edit.
-pub(crate) fn sandboxed(root: &Path, file: &Path) -> Option<PathBuf> {
+/// Canonicalize `file` and confirm it sits inside `root`, so a rebuild
+/// request can't escape the served source tree. Returns the canonical path.
+fn sandboxed(root: &Path, file: &Path) -> Option<PathBuf> {
     let root = std::fs::canonicalize(root).ok()?;
     let file = std::fs::canonicalize(file).ok()?;
     file.starts_with(&root).then_some(file)
-}
-
-/// Like [`sandboxed`], but for a target that may not exist yet (a new-file
-/// save): canonicalize the nearest existing ancestor, confirm containment,
-/// then re-append the non-existing remainder — which must be plain path
-/// segments (no `..`, no roots) so the remainder can't climb back out.
-pub(crate) fn sandboxed_create(root: &Path, file: &Path) -> Option<PathBuf> {
-    if let Some(existing) = sandboxed(root, file) {
-        return Some(existing);
-    }
-    let root = std::fs::canonicalize(root).ok()?;
-    let mut ancestor = file.parent()?;
-    let mut remainder = vec![file.file_name()?.to_os_string()];
-    let canon_ancestor = loop {
-        match std::fs::canonicalize(ancestor) {
-            Ok(c) => break c,
-            Err(_) => {
-                remainder.push(ancestor.file_name()?.to_os_string());
-                ancestor = ancestor.parent()?;
-            }
-        }
-    };
-    if !canon_ancestor.starts_with(&root) {
-        return None;
-    }
-    if remainder.iter().any(|seg| {
-        seg.to_str()
-            .is_none_or(|s| s == ".." || s == "." || s.contains('\\') || s.contains('/'))
-    }) {
-        return None;
-    }
-    let mut out = canon_ancestor;
-    for seg in remainder.into_iter().rev() {
-        out.push(seg);
-    }
-    Some(out)
 }
 
 pub(crate) fn json_response(status: StatusCode, value: &serde_json::Value) -> Response {

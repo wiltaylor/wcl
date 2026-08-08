@@ -12,7 +12,7 @@
 //! Built-in patterns ship in `wdoc.wcl` (bold / italic / code /
 //! link); user `.wcl` files can declare more.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write as _;
 
@@ -145,23 +145,6 @@ pub(crate) struct InlinePatterns {
     backend: Backend,
     vis_site: RefCell<Option<String>>,
     vis_template: RefCell<Option<String>>,
-    /// Comment mode (the `wcl editor` preview build): when set, `render_block`
-    /// stamps each block's root tag with `data-wcl-*` anchors for the comment
-    /// client. Rides here so the renderer reaches it without a new param,
-    /// like `ui_theme`; set per build via `set_comment_mode`.
-    comment_mode: Cell<bool>,
-    /// Edit mode (the `wcl editor` preview build): like `comment_mode`, but
-    /// additionally stamps each block with its source `data-wcl-span` and
-    /// `data-wcl-file`, and renders `edit_object` buttons, so the editor can
-    /// map a rendered block back to the source that declares it. Set per
-    /// build via `set_edit_mode`.
-    edit_mode: Cell<bool>,
-    /// All-sites mode (the editor's merged "all views" preview): renders
-    /// every block regardless of its `@only` / `@except` visibility, and —
-    /// combined with `edit_mode` — stamps each block's visibility metadata
-    /// (`data-wcl-except` / `data-wcl-vis`) so the client can draw per-view
-    /// indicators. Set per build via `set_all_sites`.
-    all_sites: Cell<bool>,
 }
 
 struct CompiledPattern {
@@ -265,49 +248,12 @@ impl InlinePatterns {
             backend,
             vis_site: RefCell::new(None),
             vis_template: RefCell::new(None),
-            comment_mode: Cell::new(false),
-            edit_mode: Cell::new(false),
-            all_sites: Cell::new(false),
         }
     }
 
     /// CSS for a named structured style referenced by an `Html::Style`.
     pub(crate) fn style(&self, name: &str) -> Option<&str> {
         self.styles.get(name).map(String::as_str)
-    }
-
-    /// Enable comment-mode markup for this build (the `wcl editor` preview).
-    pub(crate) fn set_comment_mode(&self, on: bool) {
-        self.comment_mode.set(on);
-    }
-
-    /// Enable edit-mode markup for this build (the `wcl editor` preview).
-    pub(crate) fn set_edit_mode(&self, on: bool) {
-        self.edit_mode.set(on);
-    }
-
-    /// Whether `render_block` should stamp the editor's `data-wcl-span` /
-    /// `data-wcl-file` anchors.
-    pub(crate) fn edit_mode(&self) -> bool {
-        self.edit_mode.get()
-    }
-
-    /// Whether block-anchoring markup (`data-wcl-block` / page wrapper) is on:
-    /// true under either comment or edit mode (the `wcl editor` preview).
-    pub(crate) fn anchor_mode(&self) -> bool {
-        self.comment_mode.get() || self.edit_mode.get()
-    }
-
-    /// Enable the merged all-views render for this build (the `wcl editor`
-    /// content modal's Merged tab).
-    pub(crate) fn set_all_sites(&self, on: bool) {
-        self.all_sites.set(on);
-    }
-
-    /// Whether `block_visible` is bypassed and edit-mode anchors carry the
-    /// per-block visibility stamps.
-    pub(crate) fn all_sites(&self) -> bool {
-        self.all_sites.get()
     }
 
     /// Set the current site's name and template kind for block-visibility

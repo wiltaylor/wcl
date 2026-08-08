@@ -245,7 +245,7 @@ pub(crate) fn assign_force_offsets(
         .collect()
 }
 
-/// Public seam for the `wcl editor`'s unit graph: deterministic layout of
+/// Public seam for a unit-graph view: deterministic layout of
 /// `sizes` boxes connected by index-pair `edges`, returning one top-left
 /// `(x, y)` offset per box (bounding box normalized to start at the
 /// origin). Same solver as diagram auto-layout — seeded, quantized, so

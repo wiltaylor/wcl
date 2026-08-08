@@ -418,7 +418,6 @@ pub(crate) fn render_template<'a>(
     template: &Block<'a>,
     content_blocks: &[Block<'a>],
     slot_blocks: &[(String, Vec<Block<'a>>)],
-    page: Option<&Block<'a>>,
     base_dir: Option<&Path>,
     title: &str,
     page_name: &str,
@@ -507,7 +506,6 @@ pub(crate) fn render_template<'a>(
             })
             .collect(),
     );
-    let mut member_pages = BTreeMap::new();
     let members = if let Some(input) = &collection {
         let repeated: Vec<Block<'a>> = declarations
             .iter()
@@ -519,6 +517,7 @@ pub(crate) fn render_template<'a>(
             .iter()
             .filter_map(|member| {
                 let name = label_string(member)?;
+                let _ = &name;
                 let value = page_handle_value(
                     member,
                     &name,
@@ -528,7 +527,6 @@ pub(crate) fn render_template<'a>(
                     &mut active_projects,
                     &mut page_heading,
                 );
-                member_pages.insert(name, member.clone());
                 Some(value)
             })
             .collect::<Vec<_>>();
@@ -583,14 +581,10 @@ pub(crate) fn render_template<'a>(
     // Template evaluation is now complete. Only from this point onward may
     // a returned handle call into the ordinary renderer.
     let heading_state = std::cell::RefCell::new(HeadingSequence::default());
-    let placed_slots = RefCell::new(std::collections::HashSet::new());
     let emitted_ids = RefCell::new(HashSet::new());
     let duplicate_id = RefCell::new(None);
     let render_blocks =
-        |handles: &[Value], slot: Option<&str>, owner: Option<&str>, fallback: &str| {
-            if let Some(slot) = slot {
-                placed_slots.borrow_mut().insert(slot.to_string());
-            }
+        |handles: &[Value], _slot: Option<&str>, owner: Option<&str>, fallback: &str| {
             let mut body = String::new();
             for handle in handles {
                 let Some(index) = block_handle_index(handle) else {
@@ -620,28 +614,10 @@ pub(crate) fn render_template<'a>(
             if handles.is_empty() {
                 body.push_str(fallback);
             }
-            let body = if is_collection && owner.is_some() {
+            if is_collection && owner.is_some() {
                 body
             } else {
                 process_page_headings(&body, &mut heading_state.borrow_mut())
-            };
-            let owner_page = owner.and_then(|name| member_pages.get(name)).or(page);
-            match (patterns.anchor_mode(), owner_page) {
-                (true, Some(page)) => {
-                    let slot = slot.unwrap_or("content");
-                    if handles.is_empty()
-                        && !fallback.is_empty()
-                        && let Some(declaration) = template
-                            .blocks()
-                            .filter(|block| block.kind() == "slot")
-                            .find(|block| label_string(block).as_deref() == Some(slot))
-                    {
-                        wrap_layout_fallback(&declaration, owner.unwrap_or(page_name), slot, &body)
-                    } else {
-                        wrap_page_content(page, owner.unwrap_or(page_name), slot, &body)
-                    }
-                }
-                _ => body,
             }
         };
     // Partition the template's top-level fundamentals: a `Head` hoists its
@@ -660,23 +636,6 @@ pub(crate) fn render_template<'a>(
                 patterns,
                 Some(&render_blocks),
             )),
-        }
-    }
-    // Edit mode needs every declared hole to exist in the DOM even when it is
-    // empty or the template chose not to place it. The invisible wrapper is
-    // the direct-manipulation target for adding the first block.
-    if patterns.edit_mode()
-        && let Some(page) = page
-    {
-        for declaration in template.blocks().filter(|block| block.kind() == "slot") {
-            let Some(slot) = label_string(&declaration) else {
-                continue;
-            };
-            if !placed_slots.borrow().contains(&slot) {
-                rendered
-                    .body
-                    .push_str(&wrap_page_content(page, page_name, &slot, ""));
-            }
         }
     }
     rendered.body = process_footnotes(&rendered.body);
@@ -938,39 +897,6 @@ fn block_handle_index(value: &Value) -> Option<usize> {
     fields.get("handle")?.as_u64().map(|n| n as usize)
 }
 
-fn wrap_page_content(page: &Block<'_>, page_name: &str, slot: &str, content: &str) -> String {
-    let src = page.named_source();
-    let span = page.span();
-    format!(
-        "<div data-wcl-page-file=\"{}\" data-wcl-page-name=\"{}\" \
-         data-wcl-page-span=\"{}:{}\" data-wcl-slot=\"{}\" style=\"display:contents\">\n{content}</div>\n",
-        escape_html(src.name()),
-        escape_html(page_name),
-        span.start,
-        span.end,
-        escape_html(slot),
-    )
-}
-
-fn wrap_layout_fallback(
-    declaration: &Block<'_>,
-    page_name: &str,
-    slot: &str,
-    content: &str,
-) -> String {
-    let src = declaration.named_source();
-    let span = declaration.span();
-    format!(
-        "<div data-wcl-page-name=\"{}\" data-wcl-slot=\"{}\" \
-         data-wcl-file=\"{}\" data-wcl-span=\"{}:{}\" style=\"display:contents\">\n{content}</div>\n",
-        escape_html(page_name),
-        escape_html(slot),
-        escape_html(src.name()),
-        span.start,
-        span.end,
-    )
-}
-
 pub(crate) fn render_block(
     doc: &Document,
     block: &Block<'_>,
@@ -998,7 +924,7 @@ pub(crate) fn render_block(
     if crate::native::refuse_uncovered(block, patterns, crate::inline::Backend::Html) {
         return Some(String::new());
     }
-    let rendered = match block.kind() {
+    match block.kind() {
         "column" => Some(render_column(doc, block, patterns, base_dir)),
         // A presentation `fragment` wraps its children in a step-reveal
         // box (`<div class="wdoc-fragment">`); the deck player reveals
@@ -1039,21 +965,6 @@ pub(crate) fn render_block(
         // under both palettes (side by side). Special-cased in Rust: it reads
         // the children's source text and re-renders them into themed wrappers.
         "demo" => Some(crate::demo::render_html(doc, block, patterns, base_dir)),
-        // An "edit this object" button. Edit mode is not visible to a WCL
-        // `lower`, so it is emitted here and only in edit mode (the
-        // `wcl editor` preview); outside edit mode (plain build / markdown /
-        // pdf) it renders nothing, so the button never leaks into published
-        // output.
-        "edit_object" => Some(if patterns.edit_mode() {
-            render_edit_object_button(block)
-        } else {
-            String::new()
-        }),
-        // A transparent wrapper binding its children to one field of a data
-        // object (the Design-mode inline-editing seam). The children render
-        // in place in every mode; edit mode additionally stamps the binding
-        // attributes onto the first child's root tag.
-        "edit_field" => Some(render_edit_field(doc, block, patterns, base_dir)),
         // Wireframe widgets (`wf_*`) are diagram shapes now — they render only
         // inside a `diagram` (via `render_shape`), never as a page block.
         // A `wdoc_repeater` renders its body once per element of `each`.
@@ -1086,176 +997,7 @@ pub(crate) fn render_block(
                 Some(lower_html_block(doc, block, kind, patterns))
             }
         }
-    };
-    rendered.map(|html| anchor_block(block, html, patterns))
-}
-
-/// In comment or edit mode (the `wcl editor` preview), stamp a rendered
-/// block's root tag so the client can locate it:
-///
-/// - both modes emit `data-wcl-block` + `data-wcl-kind` — the comment client
-///   keys off these to compute a positional locator;
-/// - edit mode additionally emits `data-wcl-span="start:end"` (byte offsets
-///   into the declaring file) and `data-wcl-file="<path>"` so an editor
-///   client can map the block back to the source that declares it.
-///
-/// A no-op outside both modes, so normal builds emit no extra markup.
-fn anchor_block(block: &Block<'_>, html: String, patterns: &InlinePatterns) -> String {
-    if !patterns.anchor_mode() {
-        return html;
     }
-    let kind = block.kind();
-    // Synthetic wrappers / multi-root expansions have no single root tag to
-    // stamp; their content children are anchored individually when rendered.
-    // `edit_object` is an edit-mode-only injected control, not authored
-    // content — it must not become a selectable / commentable block target.
-    // `edit_field` is a transparent binding wrapper; its children carry
-    // their own anchors plus the field-binding attributes.
-    if matches!(
-        kind,
-        "column"
-            | "fragment"
-            | "wdoc_repeater"
-            | "wdoc_instance"
-            | "wdoc_content"
-            | "edit_object"
-            | "edit_field"
-    ) {
-        return html;
-    }
-    let mut attrs = format!(" data-wcl-block data-wcl-kind=\"{}\"", escape_html(kind));
-    if patterns.edit_mode() {
-        let span = block.span();
-        attrs.push_str(&format!(
-            " data-wcl-span=\"{}:{}\" data-wcl-file=\"{}\"",
-            span.start,
-            span.end,
-            escape_html(block.named_source().name()),
-        ));
-        // The merged all-views preview additionally stamps each block's
-        // visibility so the client can draw + toggle per-view indicators
-        // without mapping spans back to a separate payload.
-        if patterns.all_sites() {
-            let (except_sites, custom) = crate::visibility::classify_visibility(block);
-            if !except_sites.is_empty() {
-                attrs.push_str(&format!(
-                    " data-wcl-except=\"{}\"",
-                    escape_html(&except_sites.join(" "))
-                ));
-            }
-            if custom {
-                attrs.push_str(" data-wcl-vis=\"custom\"");
-            }
-        }
-    }
-    splice_attrs(&html, &attrs)
-}
-
-/// Render an `edit_field` wrapper: the children in place, with the
-/// field-binding data attributes (`data-wcl-field-kind` / `-target` /
-/// `-name` / `-plain`) spliced onto the first child's root tag in edit mode
-/// — the `wcl editor` Design mode keys its inline field sessions off these.
-fn render_edit_field(
-    doc: &Document,
-    block: &Block<'_>,
-    patterns: &InlinePatterns,
-    base_dir: Option<&Path>,
-) -> String {
-    use std::fmt::Write as _;
-    let inner: String = block
-        .blocks()
-        .filter_map(|b| render_block(doc, &b, patterns, base_dir))
-        .collect();
-    if !patterns.edit_mode() {
-        return inner;
-    }
-    let kind = field_utf8(block, "kind").unwrap_or_default();
-    let field = field_utf8(block, "field").unwrap_or_default();
-    if kind.is_empty() || field.is_empty() {
-        return inner;
-    }
-    let mut attrs = format!(
-        " data-wcl-field-kind=\"{}\" data-wcl-field-name=\"{}\"",
-        escape_html(&kind),
-        escape_html(&field),
-    );
-    if let Some(target) = field_utf8(block, "target") {
-        let _ = write!(attrs, " data-wcl-field-target=\"{}\"", escape_html(&target));
-    }
-    if field_bool(block, "plain").unwrap_or(false) {
-        attrs.push_str(" data-wcl-field-plain");
-    }
-    splice_attrs(&inner, &attrs)
-}
-
-/// Render the `edit_object` button (edit mode only). Emits a button the
-/// `wcl editor` preview pane wires up: clicking resolves the `kind` (and,
-/// when given, the specific `target` instance) via `/api/object/locate` and
-/// opens the declaring `.wcl` source at that instance.
-fn render_edit_object_button(block: &Block<'_>) -> String {
-    use std::fmt::Write as _;
-    let kind = field_utf8(block, "kind").unwrap_or_default();
-    if kind.is_empty() {
-        return String::new();
-    }
-    let mut classes = vec!["wcl-edit-object-btn".to_string()];
-    classes.extend(field_utf8_list(block, "class"));
-    let cls = classes
-        .iter()
-        .map(|s| escape_html(s))
-        .collect::<Vec<_>>()
-        .join(" ");
-    let text = field_utf8(block, "label").unwrap_or_else(|| format!("Edit {kind}"));
-    let mut out = format!("<button type=\"button\" class=\"{cls}\"");
-    if let Some(id) = field_id(block, "id") {
-        let _ = write!(out, " id=\"{}\"", escape_html(&id));
-    }
-    let _ = write!(out, " data-wcl-edit-kind=\"{}\"", escape_html(&kind));
-    if let Some(target) = field_utf8(block, "target") {
-        let _ = write!(out, " data-wcl-edit-target=\"{}\"", escape_html(&target));
-    }
-    let _ = write!(out, ">\u{270e} {}</button>", escape_html(&text));
-    out
-}
-
-/// Insert `attrs` into the first opening tag of `html`. Falls back to a
-/// `display:contents` wrapper when there's no leading element tag (rare —
-/// keeps the anchor present without disturbing layout).
-fn splice_attrs(html: &str, attrs: &str) -> String {
-    if let Some(lt) = html.find('<')
-        && html[lt + 1..].starts_with(|c: char| c.is_ascii_alphabetic())
-        && let Some(rel_gt) = find_tag_end(&html[lt..])
-    {
-        // Insert before a self-closing `/` if present, else before `>`.
-        let gt = lt + rel_gt;
-        let at = if html[..gt].ends_with('/') {
-            gt - 1
-        } else {
-            gt
-        };
-        let mut out = String::with_capacity(html.len() + attrs.len());
-        out.push_str(&html[..at]);
-        out.push_str(attrs);
-        out.push_str(&html[at..]);
-        return out;
-    }
-    format!("<span{attrs} style=\"display:contents\">{html}</span>")
-}
-
-/// Byte offset of the `>` that closes the opening tag starting at `s[0]`,
-/// honouring quoted attribute values so a `>` inside an attribute is skipped.
-fn find_tag_end(s: &str) -> Option<usize> {
-    let mut quote: Option<char> = None;
-    for (i, c) in s.char_indices() {
-        match (quote, c) {
-            (Some(q), _) if c == q => quote = None,
-            (Some(_), _) => {}
-            (None, '"') | (None, '\'') => quote = Some(c),
-            (None, '>') => return Some(i),
-            (None, _) => {}
-        }
-    }
-    None
 }
 
 /// Expand a `wdoc_component` instance: bind each declared slot to the
@@ -1443,10 +1185,7 @@ pub(crate) fn render_li(
         out.push_str(&render_list(doc, &b, patterns, base_dir));
     }
     out.push_str("</li>");
-    // Items are rendered directly (not through `render_block`), so anchor
-    // them here — item-level selection/editing in the `wcl editor` Design
-    // mode needs each `<li>`'s source span, not just the outer `list`'s.
-    anchor_block(block, out, patterns)
+    out
 }
 
 /// Render a `@block("table")` instance. Two authoring forms:

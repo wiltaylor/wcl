@@ -32,11 +32,10 @@ use std::collections::HashMap;
 
 use wcl_lang::{Block, Document};
 
-use crate::inline::InlinePatterns;
 use crate::render::{
     RenderCtx, ThemeRoles, escape_html, expand_container_children, field_bool, field_f64,
     field_i64, field_id, field_symbol, field_utf8, field_utf8_list, label_string, resolve_rect_box,
-    resolve_roles, shape_anchor_attrs,
+    resolve_roles,
 };
 
 // ── Geometry (px, ported from the wdoc-wireframe CSS rem values) ─────
@@ -59,12 +58,10 @@ const TRACK_H: f64 = 19.0; // toggle track (1.2rem)
 const WIN_MIN_W: f64 = 256.0; // window min-width (16rem)
 const ICON: f64 = 14.0;
 
-// Layout-container guides (the editor's edit-mode chrome) and the placeholder
-// footprint an EMPTY `wf_row`/`wf_column`/`wf_grid` occupies so it stays
-// visible, selectable and droppable-into instead of collapsing to 0×0.
+// The placeholder footprint an EMPTY `wf_row`/`wf_column`/`wf_grid`
+// occupies so it stays visible instead of collapsing to 0×0.
 const EMPTY_CELL_W: f64 = 72.0; // one placeholder slot
 const EMPTY_CELL_H: f64 = 34.0;
-const GUIDE_FONT: f64 = 10.0; // the container kind tag
 
 // Device frames (browser / phone / tablet). Unlike the other widgets, these
 // have a realistic *fixed* default size so content sizes inside them properly;
@@ -118,7 +115,7 @@ pub(crate) fn render_wireframe_shape(
     let mode = field_symbol(block, "mode").unwrap_or(base.mode);
     let roles = resolve_roles(ctx.doc, &theme, &accent, &mode);
     let (x, y, _, _) = resolve_rect_box(block, parent_w, parent_h);
-    let w = build(Some(ctx.doc), block, Some(ctx.patterns));
+    let w = build(Some(ctx.doc), block);
     let mut body = String::new();
     emit(&w, 0.0, 0.0, &roles, &mut body);
     format!("<g transform=\"translate({x:.2} {y:.2})\">{body}</g>")
@@ -128,7 +125,7 @@ pub(crate) fn render_wireframe_shape(
 /// a widget's size depends only on its text content + structure, not its theme.
 /// Used by the diagram layout solvers (`effective_dims`) and the collect pass.
 pub(crate) fn measured_size(block: &Block<'_>) -> (f64, f64) {
-    let w = build(None, block, None);
+    let w = build(None, block);
     (w.w.max(1.0), w.h.max(1.0))
 }
 
@@ -186,15 +183,6 @@ struct Widget {
     w: f64,
     h: f64,
     disabled: bool,
-    /// Pre-rendered `data-wcl-shape …` anchor attributes for a NESTED child
-    /// widget (edit-mode builds only) — the emission wraps the widget in an
-    /// anchored `<g>` so the editor can select, drag and re-home it. The
-    /// ROOT widget's anchor is stamped by the diagram-child dispatch
-    /// instead, so it stays `None` here.
-    anchor: Option<String>,
-    /// Edit-mode build (the editor's preview): layout containers draw their
-    /// guide chrome — dashed boundary, kind tag, `data-wf-slot` drop zones.
-    edit: bool,
 }
 
 enum Kind {
@@ -301,12 +289,12 @@ struct GLink {
 
 // ── Build (read fields + measure, bottom-up) ─────────────────────────
 
-fn build(doc: Option<&Document>, block: &Block<'_>, patterns: Option<&InlinePatterns>) -> Widget {
+fn build(doc: Option<&Document>, block: &Block<'_>) -> Widget {
     let disabled = field_bool(block, "disabled").unwrap_or(false);
     // Theme feeds emission, not size — the measure-only path passes `None`.
     let theme = doc.map(|d| theme_of(d, block)).unwrap_or_default();
     let kind = block.kind();
-    let mut widget = match kind {
+    match kind {
         "wf_label" => {
             let text = label_string(block).unwrap_or_default();
             sized(
@@ -381,7 +369,7 @@ fn build(doc: Option<&Document>, block: &Block<'_>, patterns: Option<&InlinePatt
         "wf_window" => {
             let title = label_string(block).unwrap_or_default();
             let controls = field_bool(block, "controls").unwrap_or(true);
-            let body = child_widgets(doc, block, patterns);
+            let body = child_widgets(doc, block);
             let (bw, bh) = column_size(&body);
             let ctrl_w = if controls { 56.0 } else { 0.0 };
             let head_w = text_w(&title, TITLE_FONT) + 16.0 + ctrl_w;
@@ -401,7 +389,7 @@ fn build(doc: Option<&Document>, block: &Block<'_>, patterns: Option<&InlinePatt
         }
         "wf_browser" => {
             let url = label_string(block).unwrap_or_default();
-            let body = child_widgets(doc, block, patterns);
+            let body = child_widgets(doc, block);
             let (_, bh) = column_size(&body);
             let (w, h) = browser_size(bh, field_f64(block, "width"), field_f64(block, "height"));
             sized(Kind::Browser { url, body, theme }, w, h, disabled)
@@ -410,7 +398,7 @@ fn build(doc: Option<&Document>, block: &Block<'_>, patterns: Option<&InlinePatt
             let tablet = kind == "wf_tablet";
             let landscape = field_symbol(block, "orientation").as_deref() == Some("landscape");
             let title = label_string(block);
-            let body = child_widgets(doc, block, patterns);
+            let body = child_widgets(doc, block);
             let (_, bh) = column_size(&body);
             let (w, h) = device_size(
                 tablet,
@@ -433,7 +421,7 @@ fn build(doc: Option<&Document>, block: &Block<'_>, patterns: Option<&InlinePatt
         }
         "wf_panel" => {
             let title = field_utf8(block, "title");
-            let body = child_widgets(doc, block, patterns);
+            let body = child_widgets(doc, block);
             let (bw, bh) = column_size(&body);
             let head_h = if title.is_some() { LINE_H + 4.0 } else { 0.0 };
             let head_w = title.as_deref().map_or(0.0, |t| text_w(t, FONT) + 12.0);
@@ -442,13 +430,10 @@ fn build(doc: Option<&Document>, block: &Block<'_>, patterns: Option<&InlinePatt
             sized(Kind::Panel { title, body, theme }, w, h, disabled)
         }
         // An empty layout container keeps a small placeholder footprint (two
-        // slots) instead of collapsing to 0×0, so the editor can see, select
-        // and drop into it. Unconditional — not edit-gated — because the
-        // measure paths (`measured_size`, `effective_dims`, the collect pass)
-        // have no edit-mode signal, and the drawn box must match the measured
-        // one everywhere. A real build just shows the blank space.
+        // slots) instead of collapsing to 0×0, so the drawn box matches the
+        // measured one everywhere. A real build shows the blank space.
         "wf_row" => {
-            let items = child_widgets(doc, block, patterns);
+            let items = child_widgets(doc, block);
             let (w, h) = if items.is_empty() {
                 (2.0 * EMPTY_CELL_W + ROW_GAP, EMPTY_CELL_H)
             } else {
@@ -457,7 +442,7 @@ fn build(doc: Option<&Document>, block: &Block<'_>, patterns: Option<&InlinePatt
             sized(Kind::Row(items), w, h, disabled)
         }
         "wf_column" => {
-            let items = child_widgets(doc, block, patterns);
+            let items = child_widgets(doc, block);
             let (w, h) = if items.is_empty() {
                 (EMPTY_CELL_W, 2.0 * EMPTY_CELL_H + GAP)
             } else {
@@ -469,15 +454,13 @@ fn build(doc: Option<&Document>, block: &Block<'_>, patterns: Option<&InlinePatt
             // Fallback mirrors the schema default (`columns = 2` in
             // wireframe.wcl) — the raw-block walk doesn't see schema defaults.
             let cols = field_i64(block, "columns").unwrap_or(2).max(1) as usize;
-            let items = child_widgets(doc, block, patterns);
+            let items = child_widgets(doc, block);
             let (w, h) = grid_size(&items, cols);
             sized(Kind::Grid { cols, items }, w, h, disabled)
         }
         "wf_node_graph" => build_node_graph(doc, block, disabled),
         _ => sized(Kind::Empty, 0.0, 0.0, false),
-    };
-    widget.edit = patterns.is_some_and(|p| p.edit_mode());
-    widget
+    }
 }
 
 // ── Node graph ───────────────────────────────────────────────────────
@@ -662,8 +645,6 @@ fn sized(kind: Kind, w: f64, h: f64, disabled: bool) -> Widget {
         w,
         h,
         disabled,
-        anchor: None,
-        edit: false,
     }
 }
 
@@ -673,27 +654,11 @@ fn sized(kind: Kind, w: f64, h: f64, disabled: bool) -> Widget {
 /// instance nested in a container is flattened to its generated blocks
 /// (carrying their binding scope), so a screen can compose widgets from data
 /// inside a `wf_*` frame. Non-wireframe results are dropped, as before.
-///
-/// With `patterns` (the render path) each child carries its edit-mode shape
-/// anchor, so nested widgets are selectable/draggable like top-level ones.
-fn child_widgets(
-    doc: Option<&Document>,
-    block: &Block<'_>,
-    patterns: Option<&InlinePatterns>,
-) -> Vec<Widget> {
+fn child_widgets(doc: Option<&Document>, block: &Block<'_>) -> Vec<Widget> {
     expand_container_children(block)
         .into_iter()
         .filter(|b| is_wireframe_kind(b.kind()))
-        .map(|b| {
-            let mut w = build(doc, &b, patterns);
-            if let Some(p) = patterns {
-                let attrs = shape_anchor_attrs(&b, p);
-                if !attrs.is_empty() {
-                    w.anchor = Some(attrs);
-                }
-            }
-            w
-        })
+        .map(|b| build(doc, &b))
         .collect()
 }
 
@@ -756,8 +721,8 @@ fn row_size(items: &[Widget]) -> (f64, f64) {
 }
 
 /// A grid's cell geometry: the uniform column width plus each row's
-/// `(y offset, height)`, shared by sizing, emission and the edit-mode cell
-/// guides so they can't disagree. An empty grid gets the placeholder cells
+/// `(y offset, height)`, shared by sizing and emission so they can't
+/// disagree. An empty grid gets the placeholder cells
 /// (two rows of empty slots — see the `wf_row` build arm's note on why the
 /// placeholder is unconditional).
 fn grid_geometry(items: &[Widget], cols: usize) -> (f64, Vec<(f64, f64)>) {
@@ -793,14 +758,6 @@ fn grid_size(items: &[Widget], cols: usize) -> (f64, f64) {
 /// from the resolved theme `roles`; a widget's own `class` (`theme`) overrides
 /// box fill / text colour / border.
 fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
-    // A nested child's edit-mode anchor: a transform-less group (the content
-    // is drawn at absolute offsets already) carrying the `data-wcl-shape`
-    // attrs, so the editor can hit-test, select and drag it.
-    if let Some(a) = &w.anchor {
-        out.push_str("<g");
-        out.push_str(a);
-        out.push('>');
-    }
     if w.disabled {
         out.push_str("<g opacity=\"0.45\">");
     }
@@ -1186,9 +1143,6 @@ fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
             emit_column(body, x + PANEL_PAD, cy, roles, out);
         }
         Kind::Row(items) => {
-            if w.edit {
-                emit_row_guides(w, items, x, y, roles, out);
-            }
             let mut cx = x;
             for c in items {
                 emit(c, cx, y + (w.h - c.h) / 2.0, roles, out);
@@ -1196,15 +1150,9 @@ fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
             }
         }
         Kind::Column(items) => {
-            if w.edit {
-                emit_column_guides(w, items, x, y, roles, out);
-            }
             emit_column(items, x, y, roles, out);
         }
         Kind::Grid { cols, items } => {
-            if w.edit {
-                emit_grid_guides(w, items, *cols, x, y, roles, out);
-            }
             let (col_w, rows) = grid_geometry(items, *cols);
             for (r, chunk) in items.chunks(*cols).enumerate() {
                 for (i, c) in chunk.iter().enumerate() {
@@ -1215,9 +1163,6 @@ fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
         Kind::NodeGraph { nodes, links } => emit_node_graph(nodes, links, x, y, w, roles, out),
     }
     if w.disabled {
-        out.push_str("</g>");
-    }
-    if w.anchor.is_some() {
         out.push_str("</g>");
     }
 }
@@ -1362,171 +1307,6 @@ fn emit_column(items: &[Widget], x: f64, y: f64, roles: &ThemeRoles, out: &mut S
         emit(c, x, cy, roles, out);
         cy += c.h + GAP;
     }
-}
-
-// ── Edit-mode layout guides ──────────────────────────────────────────
-// Chrome for the otherwise-invisible layout containers (`wf_row` /
-// `wf_column` / `wf_grid`), drawn UNDER the children (which are emitted
-// after, so they stay on top for hit-testing and the editor's drill-down
-// selection). One `<g data-wf-guide="1">` per container holding: a full-box
-// backing rect (`pointer-events="all"` — the whole area click-selects the
-// container and accepts drops, not just its children's pixels), a dashed
-// boundary, a kind tag on empty containers, and `data-wf-slot` zones the
-// editor turns into insert-at-position drops (grid cells; the gaps of a
-// row / column). Only emitted on edit-mode builds — published output is
-// untouched.
-
-/// Open the guide group: backing rect, dashed boundary, and — when `tag` is
-/// non-empty — the kind label tucked into the top-left corner. The caller
-/// closes the `</g>`.
-fn guide_open(w: &Widget, x: f64, y: f64, tag: &str, roles: &ThemeRoles, out: &mut String) {
-    let muted = &roles.fg_muted;
-    out.push_str("<g data-wf-guide=\"1\">");
-    out.push_str(&format!(
-        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{RADIUS}\" \
-         fill=\"none\" pointer-events=\"all\"/>",
-        w.w, w.h
-    ));
-    out.push_str(&format!(
-        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{RADIUS}\" \
-         fill=\"none\" stroke=\"{muted}\" stroke-width=\"1\" stroke-dasharray=\"4 3\" \
-         opacity=\"0.5\" pointer-events=\"none\"/>",
-        w.w, w.h
-    ));
-    if !tag.is_empty() {
-        out.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"{SANS}\" font-size=\"{GUIDE_FONT}\" \
-             fill=\"{muted}\" opacity=\"0.75\" pointer-events=\"none\">{}</text>",
-            x + 4.0,
-            y + GUIDE_FONT + 3.0,
-            escape_html(tag),
-        ));
-    }
-}
-
-/// One `data-wf-slot` drop zone. A visible cell passes `dashed` (grid cells,
-/// empty placeholder slots); a bare insertion strip (row/column gaps) stays
-/// invisible — either way `pointer-events="all"` makes it hit-testable.
-fn guide_slot(out: &mut String, slot: usize, x: f64, y: f64, w: f64, h: f64, dashed: Option<&str>) {
-    let stroke = dashed
-        .map(|c| {
-            format!(" stroke=\"{c}\" stroke-width=\"1\" stroke-dasharray=\"3 3\" opacity=\"0.35\"")
-        })
-        .unwrap_or_default();
-    out.push_str(&format!(
-        "<rect data-wf-slot=\"{slot}\" x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" \
-         height=\"{h:.2}\" fill=\"none\" pointer-events=\"all\"{stroke}/>",
-    ));
-}
-
-fn emit_row_guides(
-    w: &Widget,
-    items: &[Widget],
-    x: f64,
-    y: f64,
-    roles: &ThemeRoles,
-    out: &mut String,
-) {
-    guide_open(
-        w,
-        x,
-        y,
-        if items.is_empty() { "row" } else { "" },
-        roles,
-        out,
-    );
-    if items.is_empty() {
-        guide_slot(out, 0, x, y, EMPTY_CELL_W, w.h, Some(&roles.fg_muted));
-        guide_slot(
-            out,
-            1,
-            x + EMPTY_CELL_W + ROW_GAP,
-            y,
-            EMPTY_CELL_W,
-            w.h,
-            Some(&roles.fg_muted),
-        );
-    } else {
-        // An insertion strip over each inter-child gap: a drop between child
-        // i-1 and i inserts at position i (drops on a child insert after it,
-        // and the trailing space appends via the backing rect).
-        let mut cx = x;
-        for (i, c) in items.iter().enumerate() {
-            if i > 0 {
-                guide_slot(out, i, cx - ROW_GAP, y, ROW_GAP, w.h, None);
-            }
-            cx += c.w + ROW_GAP;
-        }
-    }
-    out.push_str("</g>");
-}
-
-fn emit_column_guides(
-    w: &Widget,
-    items: &[Widget],
-    x: f64,
-    y: f64,
-    roles: &ThemeRoles,
-    out: &mut String,
-) {
-    let tag = if items.is_empty() { "column" } else { "" };
-    guide_open(w, x, y, tag, roles, out);
-    if items.is_empty() {
-        guide_slot(out, 0, x, y, w.w, EMPTY_CELL_H, Some(&roles.fg_muted));
-        guide_slot(
-            out,
-            1,
-            x,
-            y + EMPTY_CELL_H + GAP,
-            w.w,
-            EMPTY_CELL_H,
-            Some(&roles.fg_muted),
-        );
-    } else {
-        let mut cy = y;
-        for (i, c) in items.iter().enumerate() {
-            if i > 0 {
-                guide_slot(out, i, x, cy - GAP, w.w, GAP, None);
-            }
-            cy += c.h + GAP;
-        }
-    }
-    out.push_str("</g>");
-}
-
-fn emit_grid_guides(
-    w: &Widget,
-    items: &[Widget],
-    cols: usize,
-    x: f64,
-    y: f64,
-    roles: &ThemeRoles,
-    out: &mut String,
-) {
-    let tag = if items.is_empty() {
-        format!("grid ·{cols}")
-    } else {
-        String::new()
-    };
-    guide_open(w, x, y, &tag, roles, out);
-    // Every cell of every row — including the trailing empties of a partial
-    // last row (their slots run past the child count, so a drop there simply
-    // appends) and the placeholder cells of an empty grid.
-    let (col_w, rows) = grid_geometry(items, cols);
-    for (r, (row_y, row_h)) in rows.iter().enumerate() {
-        for c in 0..cols {
-            guide_slot(
-                out,
-                r * cols + c,
-                x + c as f64 * (col_w + GAP),
-                y + row_y,
-                col_w,
-                *row_h,
-                Some(&roles.fg_muted),
-            );
-        }
-    }
-    out.push_str("</g>");
 }
 
 /// Titlebar dots + close `✕`, right-aligned at `right_x`.

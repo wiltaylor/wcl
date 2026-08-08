@@ -6,8 +6,8 @@
 //! WCL `lower` function, or `@native` (see `lib/core.wcl`). Before this
 //! module existed, 57 stdlib types declared a `lower` returning `[]` while
 //! the Rust dispatch intercepted them entirely — dead code that existed
-//! only to satisfy the interface, and the thing the editor's schema
-//! introspection read. [`native_errors`] refuses that shape now: a block
+//! only to satisfy the interface, and the thing schema introspection read.
+//! [`native_errors`] refuses that shape now: a block
 //! that declares both, or neither, fails the build.
 //!
 //! Three facts live here, and nowhere else:
@@ -84,12 +84,6 @@ const NATIVE_DISPATCH: &[NativeKind] = &[
     every("project"),
     // Transparent / layout wrappers with a per-backend arm.
     every("fragment"),
-    every("edit_field"),
-    // An editor affordance: it renders a button only in the `wcl editor`
-    // preview's edit mode, and deliberately nothing anywhere else. Every
-    // backend states that in its own dispatch, so the block is covered
-    // everywhere and never has to be waived out of a published build.
-    every("edit_object"),
     every("table"),
     every("list"),
     every("image"),

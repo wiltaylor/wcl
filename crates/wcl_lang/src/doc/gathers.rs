@@ -3,12 +3,12 @@
 //! schema declares.
 //!
 //! These are facts about a WCL document regardless of who is looking, so
-//! they live here rather than in any one consumer — `wcl wdoc`, the
-//! language server and the editor all ask the same question and must get
-//! the same answer. The *interpretations* built on top (that a scalar
-//! `identifier` field named after another kind means containment, that a
-//! kind carrying a source and a destination is an edge) are conventions of
-//! the tool doing the looking, and stay there.
+//! they live here rather than in any one consumer — `wcl wdoc` and the
+//! language server ask the same question and must get the same answer. The
+//! *interpretations* built on top (that a scalar `identifier` field named
+//! after another kind means containment, that a kind carrying a source and a
+//! destination is an edge) are conventions of the tool doing the looking, and
+//! stay there.
 
 use super::views::BuiltinDecorator;
 use super::{Document, ResolvedType, TypeDecl, TypeField};

@@ -10,8 +10,7 @@
 
 # ── External tooling guards ───────────────────────────────────────────────
 # So a missing tool reports as a missing tool rather than as a confusing
-# build error. pnpm/node are deliberately absent: crates/wcl's build.rs
-# already reports their absence itself (and offers WCL_EDITOR_UI_SKIP=1).
+# build error.
 
 [private]
 require-cargo:
