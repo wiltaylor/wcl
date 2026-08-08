@@ -429,7 +429,7 @@ TEXT
 
   p "Two rows of that table deserve a sentence each. The reference row is the one asymmetry in the whole chapter: definitions cross to Markdown as real GFM labels, and references do not cross at all. The inline engine that would have to rewrite them runs before the page's definitions are known, and it cannot tell `[^drain]` in prose from `[^0-9]` in a regex without them — the same fact that makes the HTML rewrite a separate, definition-driven pass. And the footnote row shows what the marker being an id really buys: the reader sees `1` in the browser, `[^drain]` in Markdown and `drain.` in print, from one declaration, because the number was never the thing being carried."
 
-  p "The `:skill` target shares the Markdown reading, so a skill folder gets the Markdown column. [Output targets](wdoc_outputs) covers all four."
+  p "[Output targets](wdoc_outputs) covers what each of the three targets does with a page."
 
   h2 "Where to go next"
 

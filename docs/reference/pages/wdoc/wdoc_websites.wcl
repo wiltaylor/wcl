@@ -543,6 +543,6 @@ TEXT
     li "[Themes and styling](wdoc_styling) — `theme`, `accent`, and the structured `class` / `style` blocks the comparison table names."
     li "[Presentations](wdoc_presentations) — repeated slots (`content*`) and the collection templates they turn on."
     li "[Data views](wdoc_data_views) — `wdoc_component`, its own `slot` declarations, and repeaters."
-    li "[Output targets](wdoc_outputs) — what a website build shares with the Markdown, PDF and skill targets, and what it keeps to itself."
+    li "[Output targets](wdoc_outputs) — what a website build shares with the Markdown and PDF targets, and what it keeps to itself."
   }
 }

@@ -43,11 +43,6 @@ type Site {
   // its own subdirectory (a single site renders flat at the output
   // root). Absent ⇒ pages render bare. See `Page.sites` for membership.
   @children("site")           sites:       list<SiteConfig>
-  // Claude Code agent definitions — document-level peers of `site`,
-  // written by the `:ai_skill` target to `agents/<name>.md` at the output
-  // root (beside the skill folder(s)); ignored by every other target. See
-  // `AgentConfig` in templates.wcl.
-  @children("agent")          agents:      list<AgentConfig>
   // Other wdoc documents found under a folder, each built independently
   // and shipped into a subdirectory of this output (not merged into this
   // document — see `include.wcl`). HTML build / dev server only.
@@ -127,7 +122,7 @@ interface SvgBlock {
 // dispatch registry knows.
 //
 //   `backends` — the output targets whose Rust dispatch handles this
-//                kind (`:html` / `:pdf` / `:markdown` / `:skill`).
+//                kind (`:html` / `:pdf` / `:markdown`).
 //                Omitted ⇒ every target. The declaration is cross-checked
 //                against the registry in both directions, so a target
 //                claimed but not implemented — or implemented but not
@@ -140,7 +135,7 @@ interface SvgBlock {
 // says *don't want to*, and the build refuses until they agree.
 //
 //   @block("terminal") @native         type Terminal extends ContentBlock { … }
-//   @block("file") @native(backends = [:html, :markdown, :skill])
+//   @block("file") @native(backends = [:html, :markdown])
 //                                      type FileObj  extends ContentBlock { … }
 @decorator("native")
 type NativeBlock {

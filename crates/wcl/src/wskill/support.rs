@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use miette::Diagnostic;
 use thiserror::Error;
 
-use super::{WSKILL_FINDINGS, WSKILL_TOOL_FAILURE};
+use super::WSKILL_TOOL_FAILURE;
 
 #[derive(Debug, Error, Diagnostic)]
 pub(super) enum CommandError {
@@ -21,15 +21,6 @@ pub(super) enum CommandError {
     #[error("{0}")]
     #[diagnostic(code(wskill::build))]
     Build(String),
-    #[error("{0}")]
-    #[diagnostic(code(wskill::collision))]
-    Collision(String),
-    #[error("{0}")]
-    #[diagnostic(code(wskill::drift))]
-    Drift(String),
-    #[error("{0}")]
-    #[diagnostic(code(wskill::stale))]
-    Stale(String),
 }
 
 impl CommandError {
@@ -39,46 +30,21 @@ impl CommandError {
             source,
         }
     }
-
-    fn exit_code(&self) -> u8 {
-        match self {
-            Self::Collision(_) | Self::Drift(_) | Self::Stale(_) => WSKILL_FINDINGS,
-            Self::Io { .. } | Self::Invalid(_) | Self::Build(_) => WSKILL_TOOL_FAILURE,
-        }
-    }
 }
 
+/// Every `CommandError` is a tool failure — an unreadable input, an
+/// unreadable model, or a projection that would not build.
 pub(super) fn report(error: CommandError) -> u8 {
-    let code = error.exit_code();
     eprintln!("{:?}", miette::Report::new(error));
-    code
+    WSKILL_TOOL_FAILURE
 }
 
-pub(super) fn report_all(errors: Vec<CommandError>) -> u8 {
-    let code = errors
-        .iter()
-        .map(CommandError::exit_code)
-        .max()
-        .unwrap_or(super::WSKILL_OK);
-    for error in errors {
-        eprintln!("{:?}", miette::Report::new(error));
-    }
-    code
-}
-
-pub(super) struct Collection {
-    pub(super) roots: Vec<PathBuf>,
-    pub(super) complete_set: bool,
-}
-
-/// Find one wskill or a deterministic collection of them. Collection
-/// discovery is filesystem-shaped rather than tied to `docs/wskills/`.
-pub(super) fn discover(entry: &Path) -> Result<Collection, CommandError> {
+/// Find one wskill or a deterministic collection of them, as their root
+/// folders. Discovery is filesystem-shaped rather than tied to
+/// `docs/wskills/`.
+pub(super) fn discover(entry: &Path) -> Result<Vec<PathBuf>, CommandError> {
     if let Some(root) = direct_wskill_root(entry) {
-        return Ok(Collection {
-            roots: vec![root],
-            complete_set: false,
-        });
+        return Ok(vec![root]);
     }
     if !entry.is_dir() {
         return Err(CommandError::Invalid(format!(
@@ -113,10 +79,7 @@ pub(super) fn discover(entry: &Path) -> Result<Collection, CommandError> {
             entry.display()
         )))
     } else {
-        Ok(Collection {
-            roots,
-            complete_set: true,
-        })
+        Ok(roots)
     }
 }
 
@@ -142,8 +105,9 @@ pub(super) fn open_graph(root: &Path) -> Result<wcl_wskill::Graph, CommandError>
     wcl_wskill::Graph::open(root).map_err(|e| CommandError::Invalid(e.to_string()))
 }
 
-/// Resolve and render one parsed-model view. This is the shared artifact
-/// seam for `check` and `install`, so entry validation cannot drift.
+/// Resolve and render one parsed-model view: the entry must exist as a file
+/// before the build is attempted, so a bad `artifact` reads as a bad
+/// artifact rather than as a build failure.
 pub(super) fn render_view(
     graph: &wcl_wskill::Graph,
     view: &wcl_wskill::View,
@@ -158,19 +122,16 @@ pub(super) fn render_view(
             entry.display()
         )));
     }
-    let result = if view.kind == "ai_skill" {
-        wcl_wdoc::skill(&entry, out, None)
-    } else {
-        wcl_wdoc::build(&entry, out, None)
-    };
-    result.map(|_| ()).map_err(|error| {
-        CommandError::Build(format!(
-            "artifact `{}` ({}) failed to build:\n{}",
-            view.id,
-            view.entry,
-            error.render_plain()
-        ))
-    })
+    wcl_wdoc::build(&entry, out, None)
+        .map(|_| ())
+        .map_err(|error| {
+            CommandError::Build(format!(
+                "artifact `{}` ({}) failed to build:\n{}",
+                view.id,
+                view.entry,
+                error.render_plain()
+            ))
+        })
 }
 
 pub(super) fn scratch(context: &str) -> Result<tempfile::TempDir, CommandError> {

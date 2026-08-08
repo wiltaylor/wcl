@@ -2,8 +2,8 @@
 //!
 //! The model itself lives in [`wcl_wskill`], and so do the lint rule engine,
 //! the range audit and the op vocabulary. This CLI face also validates and
-//! installs model-declared projections, so an agent (or a script, or a human)
-//! can read, check, install and structurally edit a wskill without a browser
+//! builds model-declared projections, so an agent (or a script, or a human)
+//! can read, check and structurally edit a wskill without a browser
 //! editor running.
 //!
 //! `op` is the write host: the library turns an op into file changes, and
@@ -43,11 +43,9 @@ const WSKILL_FINDINGS: u8 = 1;
 const WSKILL_TOOL_FAILURE: u8 = 2;
 
 mod check;
-mod install;
 mod support;
 
 pub(crate) use check::run as run_check;
-pub(crate) use install::run as run_install;
 
 /// How much of a commit sha an audit header shows. Long enough to paste back
 /// into `git`, short enough that the two ends of a range fit on the line
@@ -278,12 +276,7 @@ fn build_projections(root: &Path) -> Result<(), String> {
     for artifact in registry.artifacts {
         let entry = root_dir.join(&artifact.entry);
         let out = output.path().join(&artifact.id);
-        let result = if artifact.kind == "ai_skill" {
-            wcl_wdoc::skill(&entry, &out, None)
-        } else {
-            wcl_wdoc::build(&entry, &out, None)
-        };
-        if let Err(e) = result {
+        if let Err(e) = wcl_wdoc::build(&entry, &out, None) {
             return Err(format!(
                 "projection `{}` failed to build from {}: {}",
                 artifact.kind,

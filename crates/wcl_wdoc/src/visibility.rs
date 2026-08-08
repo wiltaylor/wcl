@@ -8,8 +8,7 @@
 //! - `sites` — the site name (the `@inline(0) name` on the `site` block)
 //! - `templates` — the site's template kind (`:webpage` / `:book` /
 //!   `:presentation`)
-//! - `backends` — the output target (`:html` / `:pdf` / `:markdown` /
-//!   `:skill`; a skill build reports `:skill`, not `:markdown`)
+//! - `backends` — the output target (`:html` / `:pdf` / `:markdown`)
 //!
 //! Semantics: within an axis the listed values are OR'd; the specified axes
 //! are AND'd. A block renders iff `(@only absent OR @only matches)` **and**

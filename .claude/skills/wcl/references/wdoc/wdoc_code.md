@@ -69,7 +69,6 @@ draws its own chrome from that fixed payload:
 | HTML | A `<figure class="code-card">`: three window dots, the filename, the uppercased language tag, then a `<pre class="code-block">` with a CSS-counter line-number gutter. |
 | Markdown | The filename as a `` `code` `` line above, then a plain fenced block tagged with the language. No card. |
 | PDF | The filename as a code-styled caption line, then the listing drawn as natively coloured runs. |
-| Skill | The Markdown reading — a fence under the filename. |
 
 Two consequences worth holding on to:
 

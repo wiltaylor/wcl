@@ -81,8 +81,8 @@ Four things to note:
 
 ## The semantic content IR
 
-`Content` is the target-neutral document vocabulary. Every backend — HTML, PDF, Markdown and
-the skill target — matches it exhaustively, so a node you emit renders on all four.
+`Content` is the target-neutral document vocabulary. Every backend — HTML, PDF and Markdown —
+matches it exhaustively, so a node you emit renders on all three.
 
 Three properties govern it:
 
@@ -208,9 +208,9 @@ type 'X' declares `@native`, but wdoc implements no dispatch for "x" —
 only wdoc's own blocks can be native; a user block is rendered by its `lower`
 ```
 
-The decorator takes an optional backend list — `@native(backends = [:html, :markdown, :skill])`
-— naming the targets whose Rust dispatch handles the kind. Bare `@native` means all four
-(`:html`, `:pdf`, `:markdown`, `:skill`). The declaration is cross-checked against wdoc's
+The decorator takes an optional backend list — `@native(backends = [:html, :markdown])`
+— naming the targets whose Rust dispatch handles the kind. Bare `@native` means all three
+(`:html`, `:pdf`, `:markdown`). The declaration is cross-checked against wdoc's
 dispatch registry **both ways**: a target claimed but not implemented, or implemented but not
 claimed, fails the build.
 

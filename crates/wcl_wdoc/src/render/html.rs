@@ -1344,14 +1344,9 @@ pub(crate) fn render_inline_fundamental(
 }
 
 /// Render a `markdown_source` block: lower its body to a Markdown string (via
-/// the Markdown backend's emitter, so the output matches `wcl wdoc markdown` /
-/// `skill`) and present it in a highlighted `code` block, mirroring the WCL
-/// `code` lower's `<pre class="code-block"><code class="language-markdown">…`.
-///
-/// When `start_page` is set, the body is lowered under the skill-folder link
-/// layout (`reference` ⇒ a `references/…` page with `../` prefixes), with
-/// internal links validated against `pages` (the skill site's page names) — so
-/// a skill page's Markdown reproduces faithfully even inside the book build.
+/// the Markdown backend's emitter, so the output matches `wcl wdoc markdown`)
+/// and present it in a highlighted `code` block, mirroring the WCL `code`
+/// lower's `<pre class="code-block"><code class="language-markdown">…`.
 fn render_markdown_source(
     doc: &Document,
     block: &Block<'_>,
@@ -1360,20 +1355,13 @@ fn render_markdown_source(
 ) -> String {
     let children: Vec<Block<'_>> = block.blocks().collect();
     let out_dir = patterns.output_dir();
-    let pages: std::collections::HashSet<String> =
-        field_utf8_list(block, "pages").into_iter().collect();
-    let reference = field_bool(block, "reference").unwrap_or(true);
-    // Stem for any SVGs the body's Markdown writes — the previewed page's
-    // name, so `![](_wdoc/…)` refs match the real skill output.
+    // Stem for any SVGs the body's Markdown writes — set it to the previewed
+    // page's name so `![](_wdoc/…)` refs match the real Markdown output.
     let stem = field_utf8(block, "id").unwrap_or_else(|| "markdown_source".to_string());
 
-    let emit = || {
-        crate::markdown::emit::body_to_markdown(doc, &children, &stem, patterns, base_dir, &out_dir)
-    };
-    let md = match field_utf8(block, "start_page") {
-        Some(start) => patterns.with_skill_layout(start, reference, pages, emit),
-        None => emit(),
-    };
+    let md = crate::markdown::emit::body_to_markdown(
+        doc, &children, &stem, patterns, base_dir, &out_dir,
+    );
     let body = match md {
         Ok(s) => highlight::highlight_html(s.trim_end(), "markdown", false),
         // Surface a lowering failure in the preview rather than failing the

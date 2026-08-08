@@ -72,10 +72,6 @@ pub fn schema_registry() -> Registry {
         "wskill/component/type_index.wcl",
         include_str!("../lib/component/type_index.wcl"),
     );
-    r.register(
-        "wskill/component/skill_md.wcl",
-        include_str!("../lib/component/skill_md.wcl"),
-    );
 
     // The book's standalone pages, one part each.
     r.register(
@@ -156,7 +152,6 @@ mod tests {
             "wskill/training.wcl",
             "wskill/book.wcl",
             "wskill/component/common.wcl",
-            "wskill/component/skill_md.wcl",
             "wskill/pages/overview.wcl",
         ] {
             assert!(r.get(key).is_some(), "missing registry key {key}");

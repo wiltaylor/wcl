@@ -5,7 +5,7 @@
 //! output and referenced by relative URL. Unlike images, the file keeps
 //! its **basename** under a target subdirectory (`dir`), so the emitted
 //! path is stable and hand-linkable (`scripts/build.sh`) rather than
-//! hashed — the skill target relies on this for `scripts/` / `assets/`.
+//! hashed, so `scripts/` / `assets/` keep the names the author wrote.
 //! The [`FileRegistry`] is populated lazily on reference (during
 //! rendering); every entry it holds was referenced, so
 //! [`FileRegistry::copy_used`] copies them all. An external source

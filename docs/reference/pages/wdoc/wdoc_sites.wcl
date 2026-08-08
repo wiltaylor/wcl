@@ -10,7 +10,7 @@ page wdoc_sites {
 
   h1 "Documents, pages and sites"
 
-  p "wdoc renders a WCL document into something a reader opens — a website, a folder of Markdown, a PDF, an agent skill. This chapter is about the HTML build, because that is the one whose structure the other targets follow. The document itself is not a special file format. It is the same tree of fields and blocks that [Documents, fields and blocks](lang_documents) describes, read by the same parser and checked by the same schema engine. One import is what makes it a wdoc document."
+  p "wdoc renders a WCL document into something a reader opens — a website, a folder of Markdown, a PDF. This chapter is about the HTML build, because that is the one whose structure the other targets follow. The document itself is not a special file format. It is the same tree of fields and blocks that [Documents, fields and blocks](lang_documents) describes, read by the same parser and checked by the same schema engine. One import is what makes it a wdoc document."
 
   p "This chapter covers that import, the two blocks that decide the shape of the output — `page` and `site` — the navigation blocks a site holds, and the directory a build writes. It is the map of the whole wdoc half of this book: every later chapter fills in what goes _inside_ a page."
 
@@ -246,7 +246,7 @@ WCL
       | "Field"              | "What it does"                                                        | "Covered in" |
       | "the label"          | "The site name. Optional for one site; required for two or more."     | "[One document, several sites](#one-document-several-sites)" |
       | "`root`"             | "Render this site at the output root instead of a subdirectory."      | "[One document, several sites](#one-document-several-sites)" |
-      | "`default_template`" | "`:book`, `:webpage`, `:presentation`, `:ai_skill`, or your own."     | "[Templates and layouts](wdoc_templates)" |
+      | "`default_template`" | "`:book`, `:webpage`, `:presentation`, or your own."                  | "[Templates and layouts](wdoc_templates)" |
       | "`title`"            | "The site title, shown in the chrome and in every page's `<title>`."  | "This chapter" |
       | "`theme` / `accent` / `theme_toggle`" | "Colour scheme, accent hue, light/dark toggle."      | "[Themes and styling](wdoc_styling)" |
       | "`search`"           | "Client-side full-text search over this site's pages."                | "[Templates and layouts](wdoc_templates)" |
@@ -254,7 +254,7 @@ WCL
       | "`assets`"           | "Folders copied verbatim into the site's output."                     | "[The assets folder](#the-assets-folder)" |
       | "`stylesheets` / `scripts` / `fonts`" | "Extra `<head>` links, emitted verbatim."           | "[Websites](wdoc_websites)" |
       | "`toc` / `menu`"     | "The navigation tree."                                                | "[Navigation](#navigation)" |
-      | "`sidebar_footer` / `deck` / `skill`" | "Pinned buttons, a slide grid, skill metadata."     | "[Templates and layouts](wdoc_templates), [Presentations](wdoc_presentations), [Output targets](wdoc_outputs)" |
+      | "`sidebar_footer` / `deck`" | "Pinned buttons and a slide grid."                            | "[Templates and layouts](wdoc_templates), [Presentations](wdoc_presentations)" |
   }
 
   p "That is the shape of the block, not the whole of it. A `summary` line describes the site to a parent document that lists it, and a `ui_theme` / `ui_accent` / `ui_mode` trio themes the mocked application inside a wireframe separately from the document around it — see [Wireframes](wdoc_wireframe)."
@@ -551,7 +551,7 @@ TEXT
     li "[Templates and layouts](wdoc_templates) — the `:book` / `:webpage` / `:presentation` built-ins, what a template is handed, and writing your own."
     li "[Websites](wdoc_websites) — the website template, its named slots and its `<head>` assets."
     li "[Themes and styling](wdoc_styling) — `theme`, `accent`, and the `class` system behind them."
-    li "[Output targets](wdoc_outputs) — one document, four targets: HTML, Markdown, PDF and skill folders."
+    li "[Output targets](wdoc_outputs) — one document, three targets: HTML, Markdown and PDF."
     li "[Text and formatting](wdoc_formatting) — the inline patterns behind `[a link](page)`, emphasis and inline code."
     li "[Visibility](wdoc_visibility) — keeping a block out of one site, or one target."
     li "[The CLI](lang_cli) — `wdoc build`, `serve`, `markdown`, `pdf` and the rest in full."

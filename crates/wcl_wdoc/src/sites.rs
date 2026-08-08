@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::build::{collect_pages, is_skill_site_block, open_doc_for_edit, site_name};
+use crate::build::{collect_pages, open_doc_for_edit, site_name};
 use crate::include::{IncludeSpec, resolve_included};
 use crate::render::{field_bool, field_utf8, label_string};
 
@@ -21,9 +21,6 @@ pub struct EntrySiteInfo {
     pub title: Option<String>,
     /// Whether the site is marked `root = true`.
     pub root: bool,
-    /// Whether it is a skill site (`default_template = :ai_skill`) — not
-    /// buildable by the HTML target.
-    pub skill: bool,
 }
 
 /// One `include`-block member: a child sub-site entry document.
@@ -55,7 +52,6 @@ pub fn entry_site_info(
             site: site_name(&b),
             title: field_utf8(&b, "title"),
             root: field_bool(&b, "root").unwrap_or(false),
-            skill: is_skill_site_block(&b),
         })
         .collect();
     if sites.is_empty() {
@@ -65,7 +61,6 @@ pub fn entry_site_info(
                 site: None,
                 title: None,
                 root: false,
-                skill: false,
             });
         }
     }
@@ -111,7 +106,7 @@ mod tests {
         let root = td.path();
         write(
             &root.join("main.wcl"),
-            "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\nsite deck {\n  default_template = :ai_skill\n}\n\npage index {\n  title = \"Hi\"\n  sites = [:docs]\n\n  h1 \"Hi\"\n}\n\ninclude \"members\" {\n  entry = \"main.wcl\"\n}\n",
+            "import <wdoc.wcl>\n\nsite docs {\n  title = \"The Docs\"\n  root = true\n}\n\nsite deck {\n  title = \"The Deck\"\n}\n\npage index {\n  title = \"Hi\"\n  sites = [:docs]\n\n  h1 \"Hi\"\n}\n\ninclude \"members\" {\n  entry = \"main.wcl\"\n}\n",
         );
         write(
             &root.join("members/alpha/main.wcl"),
@@ -124,10 +119,9 @@ mod tests {
         assert_eq!(docs.site.as_deref(), Some("docs"));
         assert_eq!(docs.title.as_deref(), Some("The Docs"));
         assert!(docs.root);
-        assert!(!docs.skill);
         let deck = &sites[1];
         assert_eq!(deck.site.as_deref(), Some("deck"));
-        assert!(deck.skill);
+        assert!(!deck.root);
 
         assert_eq!(includes.len(), 1);
         assert_eq!(includes[0].name, "alpha");

@@ -309,7 +309,7 @@ TEXT
 
   p "**The wdoc build script generates the Rust enum from the WCL declaration.** It parses `lib/content.wcl` and walks every type reachable from `union Content`. From that walk it emits the enum, its supporting records and symbol sets, and the `Value` conversions. There is no second copy to drift. Reachability is also the closedness check. Some field types cannot cross a backend boundary — a function, a reference, a tensor, a type the stdlib does not declare. One of those fails the build here, rather than becoming a hole the renderers ignore."
 
-  p "**Every backend matches the union exhaustively.** Three walkers read it: HTML, PDF, and Markdown, which the skill target shares. Not one of them has a catch-all arm. Add a variant to the union and you get a compile error in three places, rather than silence in four outputs. That is the mechanism, not a convention someone remembers to follow."
+  p "**Every backend matches the union exhaustively.** Three walkers read it: HTML, PDF and Markdown. Not one of them has a catch-all arm. Add a variant to the union and you get a compile error in three places, rather than silence in three outputs. That is the mechanism, not a convention someone remembers to follow."
 
   callout "What the closed union costs you" {
     class = ["note"]
@@ -447,7 +447,7 @@ TEXT
 @block("terminal") @native
 type Terminal extends ContentBlock { … }
 
-@block("file") @native(backends = [:html, :markdown, :skill])
+@block("file") @native(backends = [:html, :markdown])
 type FileObj extends ContentBlock { … }
 WCL
   }
@@ -464,7 +464,7 @@ WCL
 TEXT
   }
 
-  p "`backends` names the output targets whose Rust dispatch handles the kind: `:html`, `:pdf`, `:markdown`, `:skill`. Omitting it means every target, which is the common case — 51 of the 53 registered kinds cover all four. The declaration is **cross-checked against the registry in both directions**, and both directions are errors:"
+  p "`backends` names the output targets whose Rust dispatch handles the kind: `:html`, `:pdf`, `:markdown`. Omitting it means every target, which is the common case — 51 of the 53 registered kinds cover all three. The declaration is **cross-checked against the registry in both directions**, and both directions are errors:"
 
   list {
     li "A target claimed but not implemented would render nothing at all."
@@ -505,7 +505,7 @@ page overview {
   h1 "Overview"
   p "Body."
 
-  @except(backends = [:markdown, :pdf, :skill])
+  @except(backends = [:markdown, :pdf])
   markdown_source { }
 }
 WCL
@@ -633,7 +633,7 @@ TEXT
   table {
     rows:
       | "Mechanism"                    | "You write"                       | "Reaches"                          | "Checked as"                | "Reach for it when" |
-      | "`lower` → `Content`"          | "A WCL function"                  | "HTML, PDF, Markdown, skill"       | "Your `@block` type"        | "The block means something a document concept already names" |
+      | "`lower` → `Content`"          | "A WCL function"                  | "HTML, PDF, Markdown"              | "Your `@block` type"        | "The block means something a document concept already names" |
       | "`lower` → `Svg`"              | "A WCL function"                  | "Every target that embeds the SVG" | "Your `@block` type"        | "The block is a picture — a diagram shape" |
       | "`lower` → `Html`"             | "A WCL function"                  | "HTML fully; others degrade"       | "Your `@block` type"        | "The output genuinely is HTML chrome" |
       | "`wdoc_component`"             | "Markup with named slots"         | "Whatever its body's blocks reach" | "A schema derived from the slots" | "The block is an arrangement of blocks that exist" |

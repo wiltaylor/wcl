@@ -203,14 +203,13 @@ WCL
 
   h2 "What each output target shows"
 
-  p "A `demo` is `@native` on all four targets, and every one of them implements it — there is no target you have to hide a demo from with `@except`. What they show is not the same. The panes need CSS custom properties, which only HTML has. The caption and the highlighted listing are HTML chrome, and each static target decided separately how much of the rest to keep."
+  p "A `demo` is `@native` on all three targets, and every one of them implements it — there is no target you have to hide a demo from with `@except`. What they show is not the same. The panes need CSS custom properties, which only HTML has. The caption and the highlighted listing are HTML chrome, and each static target decided separately how much of the rest to keep."
 
   table {
     rows:
       | "Target"       | "Caption" | "Preview"                        | "Example listing" |
       | "HTML"         | "Yes"     | "Both palettes, side by side"    | "Yes — highlighted, below the preview" |
       | "Markdown"     | "No"      | "One render, unthemed"           | "Yes — a `wcl` fence, above the render" |
-      | "Skill"        | "No"      | "One render, unthemed"           | "Yes — as Markdown" |
       | "PDF"          | "No"      | "One render, in place"           | "**No** — the source is dropped" |
   }
 
@@ -261,7 +260,7 @@ MD
   list {
     li "[Themes and styling](wdoc_styling) — the `--wdoc-*` custom properties, the light and dark palettes, and the toggle the demo's panes ignore."
     li "[Code](wdoc_code) — the `code` block the example listing is highlighted like."
-    li "[Output targets](wdoc_outputs) — what HTML, Markdown, skill folders and PDF can each carry."
+    li "[Output targets](wdoc_outputs) — what HTML, Markdown and PDF can each carry."
     li "[Visibility](wdoc_visibility) — `@only` and `@except`, for hiding a demo from a target or a site."
     li "[Writing your own blocks](wdoc_extending) — declaring a block of your own, which is the thing you will most want a demo for."
   }

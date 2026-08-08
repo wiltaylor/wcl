@@ -353,7 +353,7 @@ fn main() {}
 TEXT
   }
 
-  p "Highlighting is not wdoc's job here. The tag rides out on the fence and whatever renders the Markdown — a repository host, a static site, an AI skill folder — colours it with its own grammars. That is also why a tag no syntect grammar answers to is still worth writing: `code shell { … }` is plain text in the built site and a highlighted shell block on a repository host."
+  p "Highlighting is not wdoc's job here. The tag rides out on the fence and whatever renders the Markdown — a repository host, a static site — colours it with its own grammars. That is also why a tag no syntect grammar answers to is still worth writing: `code shell { … }` is plain text in the built site and a highlighted shell block on a repository host."
 
   h3 "The PDF listing"
 

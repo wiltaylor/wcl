@@ -241,7 +241,7 @@ type SiteConfig {
   // most one site may set it; more than one is a build error.
   @doc("When `true`, this site renders at `/` (others go under `/<site>/`).")
   root:             bool?
-  @doc("`:webpage` (header + top nav), `:book` (sidebar + TOC), `:presentation` (slide deck), or `:ai_skill` (skill folder, Markdown-only — build with `wcl wdoc skill`).")
+  @doc("`:webpage` (header + top nav), `:book` (sidebar + TOC), or `:presentation` (slide deck).")
   default_template: symbol?
   @doc("Site title shown in the header / sidebar.")
   title:            utf8?
@@ -322,59 +322,11 @@ type SiteConfig {
   // See `presentation.wcl`.
   @doc("Slide grid for the `presentation` template.")
   @child("deck") deck: Deck?
-  // Skill metadata for the `:ai_skill` target (`wcl wdoc skill`). Supplies
-  // the required `name` / `description` (and optional `license`) that the
-  // backend writes as SKILL.md's YAML front matter. Ignored by every other
-  // target. See `SkillConfig`.
-  @doc("Skill metadata for the `:ai_skill` target — populates SKILL.md's front matter.")
-  @child("skill") skill: SkillConfig?
   // A collection template's non-repeated slots are filled here. Named fills
   // are interpreted against the selected template at build time; ordinary
   // WdocBlocks implicitly fill a non-repeated reserved `content` slot.
   @doc("Site-level content for non-repeated slots on a collection template.")
   @children(WdocBlock) children: list<WdocBlock>
-}
-
-// Skill metadata for the `:ai_skill` target (`wcl wdoc skill`). The
-// backend builds SKILL.md's `---`-fenced YAML front matter from these
-// fields. The site's `start` page becomes SKILL.md; every other page is
-// written under `references/`. Arbitrary extra front-matter keys can
-// still be authored via a `@schemaless frontmatter` block on the start
-// page — they are merged with these. Hyphenated skill-spec keys (e.g.
-// `allowed-tools`, `disable-model-invocation`) are written as
-// string-literal keys: `@schemaless frontmatter { "allowed-tools" = [...] }`.
-@block("skill")
-type SkillConfig {
-  @doc("Skill name (SKILL.md front-matter `name`). A short lowercase slug.")
-  name: utf8
-  @doc("Skill description (SKILL.md front-matter `description`).")
-  description: utf8
-  @doc("Optional license string for the front matter.")
-  license: utf8?
-}
-
-// A Claude Code agent (subagent) definition for the `:ai_skill` target
-// (`wcl wdoc skill`). Authored at the DOCUMENT level, a peer of `site` —
-// agents belong to the document, not to one skill; the backend writes
-// each to `agents/<name>.md` at the output root, beside the skill
-// folder(s) — YAML front matter from these fields (`tools` joined
-// comma-separated, the agent-file convention), the `body` child rendered
-// as the agent's system prompt in Markdown. Ignored by every other
-// target. The agent file is the standing role constitution; the
-// dispatching orchestrator's prompt carries the per-task payload, so
-// make the body self-contained.
-@block("agent")
-type AgentConfig {
-  @doc("Agent name — becomes the file `agents/<name>.md`; a kebab-case slug.")
-  @inline(0) name: utf8
-  @doc("Delegation trigger — when an orchestrator should dispatch this agent.")
-  description: utf8
-  @doc("Tool allowlist (front-matter `tools:`, comma-joined). Empty = the line is omitted (unrestricted).")
-  @default([]) tools: list<utf8>
-  @doc("Front-matter `model:` — e.g. \"sonnet\", \"opus\", \"haiku\", \"inherit\". Absent = omitted.")
-  model: utf8?
-  @doc("The agent's system prompt, rendered to Markdown.")
-  @child("body") body: WdocAddressableBody?
 }
 
 // A named template. `render` lays out a page body from the context.

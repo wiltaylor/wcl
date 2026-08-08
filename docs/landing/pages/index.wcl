@@ -20,7 +20,7 @@ page index { sites = [:wcl]  title = "Why WCL?"  start = true
 
   lp_hero "One language for every shape of data." {
     badge    = "Typed configuration & schema language"
-    lede     = "WCL lets you express structured data the way it actually is — records, unions, interfaces, and decorators — gather it into a document model that validates itself, then project that single model into config, HTML, Markdown, books, and Claude skills."
+    lede     = "WCL lets you express structured data the way it actually is — records, unions, interfaces, and decorators — gather it into a document model that validates itself, then project that single model into config, HTML, Markdown and books."
     footnote = "Open source · built in the open by Wil Taylor"
     lp_cta "Get started"  { href = "./reference/"  primary = true }
     lp_cta "View source"  { href = "https://github.com/wiltaylor/wcl" }
@@ -77,7 +77,7 @@ page index { sites = [:wcl]  title = "Why WCL?"  start = true
     }
     lp_feature "One format, multiple uses" {
       icon = "lucide.share-2"
-      body = "The same WCL format is equally at home as typed application configuration and as the source for documentation — pages, sites, books, and Claude skills rendered with wdoc."
+      body = "The same WCL format is equally at home as typed application configuration and as the source for documentation — pages, sites and books rendered with wdoc."
     }
     lp_feature "Data–presentation separation" {
       icon = "lucide.component"

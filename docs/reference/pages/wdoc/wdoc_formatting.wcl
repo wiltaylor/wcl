@@ -434,7 +434,7 @@ WCL
     li "[Lists and tables](wdoc_tables) — `list` / `li` and `table`, both of which run every cell through the inline engine."
     li "[Themes and styling](wdoc_styling) — the `class` block behind `bold`, `italic`, `code` and `heading-N`."
     li "[Icons](wdoc_icons) and [Math](wdoc_math) — the two built-in patterns this chapter only named."
-    li "[Output targets](wdoc_outputs) — what the HTML, Markdown, PDF and skill backends each make of the blocks above."
+    li "[Output targets](wdoc_outputs) — what the HTML, Markdown and PDF backends each make of the blocks above."
     li "[Writing your own blocks](wdoc_extending) — when a pattern is not enough and you want a block of your own."
   }
 }

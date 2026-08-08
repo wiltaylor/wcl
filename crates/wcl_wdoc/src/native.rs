@@ -40,12 +40,12 @@ use wcl_lang::{Block, DeclName, Document, EvalError, TypeDecl, Value};
 use crate::inline::{Backend, InlinePatterns};
 use crate::render::record_lower_error;
 
-use Backend::{Html, Markdown, Pdf, Skill};
+use Backend::{Html, Markdown, Pdf};
 
 /// Every output target. A `@native` with no `backends` argument means
 /// this — the common case, since most native blocks (every diagram shape,
 /// every structural wrapper) render through one shared implementation.
-const EVERY_BACKEND: &[Backend] = &[Html, Pdf, Markdown, Skill];
+const EVERY_BACKEND: &[Backend] = &[Html, Pdf, Markdown];
 
 /// One natively-rendered block kind and the backends that implement it.
 struct NativeKind {
@@ -64,8 +64,7 @@ const fn every(kind: &'static str) -> NativeKind {
 ///
 /// Content entries correspond to an arm in `render/html.rs`
 /// (`render_block`), `pdf/collect.rs` (`collect_block`) and
-/// `markdown/emit.rs` (`Emitter::block`) — the Markdown emitter also drives
-/// the skill target, so those two agree by construction. Diagram entries
+/// `markdown/emit.rs` (`Emitter::block`). Diagram entries
 /// correspond to an arm in `render/svg/shapes.rs` (`render_shape`), which
 /// every backend reaches: HTML and Markdown embed the rendered SVG, and the
 /// PDF backend paints it. Terminal primitives are read by the terminal
@@ -111,7 +110,7 @@ const NATIVE_DISPATCH: &[NativeKind] = &[
     // PDF target does not cover `file`. See `lib/file.wcl`.
     NativeKind {
         kind: "file",
-        backends: &[Html, Markdown, Skill],
+        backends: &[Html, Markdown],
     },
     // ── Diagram shapes (render/svg/shapes.rs) ──────────────────────
     // Every one of these is `every(...)`, and that is load-bearing:
@@ -278,7 +277,7 @@ fn error_at(decl: &TypeDecl<'_>, msg: String) -> Report {
 /// Errors for every block type whose rendering contract is broken:
 /// declaring both a `lower` and `@native` or neither, claiming a target no
 /// backend implements, or leaving a Rust-implemented kind undeclared.
-/// Shared by the HTML / PDF / Markdown / skill entry points, which run it
+/// Shared by the HTML / PDF / Markdown entry points, which run it
 /// right after `schema_errors`.
 pub(crate) fn native_errors(doc: &Document) -> Vec<Report> {
     let mut out = Vec::new();
@@ -616,7 +615,7 @@ mod tests {
     #[test]
     fn a_coverage_mismatch_is_reported_in_both_directions() {
         // A `wdoc`-namespace declaration of a registered kind claiming the
-        // one backend that doesn't implement it, and omitting the three that
+        // one backend that doesn't implement it, and omitting the two that
         // do: the check reports each side separately, because they are
         // different mistakes (a target that will render nothing, and a
         // target that renders something nobody declared).
@@ -630,8 +629,7 @@ mod tests {
             "{errs:#?}"
         );
         assert!(
-            errs.iter()
-                .any(|e| e.contains("omits :html, :markdown, :skill")),
+            errs.iter().any(|e| e.contains("omits :html, :markdown")),
             "{errs:#?}"
         );
     }

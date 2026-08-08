@@ -15,10 +15,7 @@
 
 mod content;
 pub(crate) mod emit;
-mod skill;
 mod yaml;
-
-pub use skill::{GENERATED_AGENT_MARKER, skill};
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
@@ -28,8 +25,8 @@ use miette::{NamedSource, Report};
 use wcl_lang::{Block, Document, disk_loader};
 
 use crate::build::{
-    BuildError, SiteSpec, collect_pages, collect_site_specs, is_skill_site, page_name,
-    root_site_name, schema_registry, site_start_page,
+    BuildError, SiteSpec, collect_pages, collect_site_specs, page_name, root_site_name,
+    schema_registry, site_start_page,
 };
 use crate::icons::IconRegistry;
 use crate::image::ImageRegistry;
@@ -102,16 +99,9 @@ pub fn markdown(
             if chosen.is_empty() {
                 return Err(BuildError::BadPage(format!("unknown site \"{want}\"")));
             }
-            if chosen.iter().any(|s| is_skill_site(s)) {
-                return Err(BuildError::BadPage(format!(
-                    "site \"{want}\" is a skill (`default_template = :ai_skill`) — \
-                     build it with `wcl wdoc skill`"
-                )));
-            }
             chosen
         }
-        // Skill sites are a separate target — skip them in the Markdown build.
-        None => specs.iter().filter(|s| !is_skill_site(s)).collect(),
+        None => specs.iter().collect(),
     };
 
     // Cross-site link context (every declared site → its page-name set and

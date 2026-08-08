@@ -92,37 +92,6 @@ fn nested_component_content_renders_in_markdown() {
 }
 
 #[test]
-fn skill_site_is_skipped_and_rejected_when_named() {
-    // A `:ai_skill` site alongside a plain markdown site: the markdown target
-    // skips the skill site, and naming it with `--site` is an error.
-    let body = "site web { default_template = :webpage }\n\
-         site sk { default_template = :ai_skill\n  \
-         skill { name = \"sk\"  description = \"D.\" }\n}\n\
-         page home { sites = [:sk]  start = true\n  h1 \"Skill\"\n}\n\
-         page doc { sites = [:web]\n  h1 \"Doc\"\n}\n";
-    let tmp = TempDir::new().expect("mkdir tempdir");
-    let src = tmp.path().join("doc.wcl");
-    write_fixture(&src, body);
-
-    // Build all → only the non-skill page `doc` is written; the skill
-    // site's `home` page is not.
-    let out = tmp.path().join("out");
-    md_ok(&src, &out, None);
-    assert!(out.join("doc.md").is_file(), "non-skill page written");
-    assert!(!out.join("home.md").exists(), "skill page skipped");
-
-    // Naming the skill site explicitly is rejected with guidance.
-    let out2 = tmp.path().join("out2");
-    match markdown(&src, &out2, Some("sk")) {
-        Err(BuildError::BadPage(m)) => {
-            assert!(m.contains("wcl wdoc skill"), "points at skill: {m}")
-        }
-        Err(_) => panic!("expected BadPage"),
-        Ok(_) => panic!("naming a skill site must error"),
-    }
-}
-
-#[test]
 fn headings_and_prose_render_as_markdown() {
     let (_t, out) = build(
         "page p {\n  h1 \"Title\"\n  h2 \"Sub\"\n  p \"Body with **bold**, _it_ and `code`.\"\n}\n",
@@ -727,34 +696,6 @@ fn column_children_stack_in_place() {
     let left = md.find("left side").expect("left child rendered");
     let right = md.find("right side").expect("right child rendered");
     assert!(left < right, "children keep source order:\n{md}");
-}
-
-#[test]
-fn a_covered_block_renders_on_the_skill_target_under_its_own_symbol() {
-    // The skill build reports itself as `:skill`, not `:markdown` — so a
-    // block excepted from Markdown still reaches a skill folder.
-    let tmp = TempDir::new().expect("mkdir tempdir");
-    let src = tmp.path().join("doc.wcl");
-    write_fixture(
-        &src,
-        "site s { default_template = :ai_skill  root = true\n  skill { description = \"A demo skill.\" }\n}\n\
-         page overview { sites = [:s]  start = true\n  h1 \"Overview\"\n  \
-         @except(backends = [:markdown]) p \"markdown-excepted\"\n  \
-         @except(backends = [:skill]) p \"skill-excepted\"\n}\n",
-    );
-    let out = tmp.path().join("out");
-    if let Err(e) = wcl_wdoc::skill(&src, &out, None) {
-        panic!("skill build failed: {}", e.render_plain());
-    }
-    let md = std::fs::read_to_string(out.join("SKILL.md")).expect("read SKILL.md");
-    assert!(
-        md.contains("markdown-excepted"),
-        "an `:markdown` exception must not hide a block from the skill target:\n{md}"
-    );
-    assert!(
-        !md.contains("skill-excepted"),
-        "a `:skill` exception hides the block:\n{md}"
-    );
 }
 
 // ── The semantic content IR ───────────────────────────────────────
