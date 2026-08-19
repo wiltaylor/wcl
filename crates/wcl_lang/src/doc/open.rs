@@ -145,7 +145,7 @@ impl Document {
         env: &Environment,
     ) -> Result<Self, ParseError> {
         let mut doc = Self::open_at(source, name, None, env)?;
-        doc.profile = Some(crate::profile::ProfileState::new_root());
+        doc.profile = Some(crate::diagnostics::ProfileState::new_root());
         Ok(doc)
     }
 
@@ -154,13 +154,13 @@ impl Document {
     /// For hosts (e.g. `wcl wdoc build` under `WCL_PROFILE`) whose constructor has
     /// no `*_profiled` twin.
     pub fn enable_profiling(&mut self) {
-        self.profile = Some(crate::profile::ProfileState::new_root());
+        self.profile = Some(crate::diagnostics::ProfileState::new_root());
     }
 
     /// [`from_file`](Self::from_file) with profiling enabled.
     pub fn from_file_profiled(path: &Path) -> Result<Self, ParseError> {
         let mut doc = Self::from_file(path)?;
-        doc.profile = Some(crate::profile::ProfileState::new_root());
+        doc.profile = Some(crate::diagnostics::ProfileState::new_root());
         Ok(doc)
     }
 
@@ -173,7 +173,7 @@ impl Document {
     /// Snapshot of the profile tree, when profiling is enabled.
     /// Returns `None` if the document was not opened through one of
     /// the `*_profiled` constructors.
-    pub fn profile(&self) -> Option<crate::profile::Profile> {
+    pub fn profile(&self) -> Option<crate::diagnostics::Profile> {
         self.profile
             .as_ref()
             .map(|m| m.lock().unwrap_or_else(|p| p.into_inner()).snapshot())
@@ -184,9 +184,9 @@ impl Document {
     /// the return value to `let _guard = …;`.
     pub(crate) fn profile_enter(
         &self,
-        key: crate::profile::ProfileKey,
-    ) -> crate::profile::ProfileGuard<'_> {
-        crate::profile::ProfileGuard::enter(self.profile.as_ref(), key)
+        key: crate::diagnostics::ProfileKey,
+    ) -> crate::diagnostics::ProfileGuard<'_> {
+        crate::diagnostics::ProfileGuard::enter(self.profile.as_ref(), key)
     }
 
     /// The identifier index built incrementally during parsing.

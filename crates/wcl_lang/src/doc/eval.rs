@@ -165,9 +165,11 @@ struct EvalCaller<'a, 'c> {
 
 impl<'a> crate::functions::Caller for EvalCaller<'a, '_> {
     fn call_fn(&mut self, f: &FnValue, args: &[Value]) -> Result<Value, String> {
-        let _profile_guard = self.doc.profile_enter(crate::profile::ProfileKey::UserFn {
-            name: String::new(),
-        });
+        let _profile_guard = self
+            .doc
+            .profile_enter(crate::diagnostics::ProfileKey::UserFn {
+                name: String::new(),
+            });
         match self.doc.invoke_fn_value(f, args, self.ctx, self.span) {
             Ok(v) => Ok(v),
             Err(e) => {
@@ -664,8 +666,8 @@ impl Document {
             }
             if let Some(fv) = lookup_function(self, ctx, name) {
                 let evald = self.eval_args(args, ctx)?;
-                let _profile_guard =
-                    self.profile_enter(crate::profile::ProfileKey::UserFn { name: name.clone() });
+                let _profile_guard = self
+                    .profile_enter(crate::diagnostics::ProfileKey::UserFn { name: name.clone() });
                 return self
                     .invoke_fn_value(&fv, &evald, ctx, span)
                     .map_err(|e| call_err_at(e, name.clone(), span));
@@ -677,7 +679,7 @@ impl Document {
             return Err(EvalError::non_callable(span));
         };
         let evald = self.eval_args(args, ctx)?;
-        let _profile_guard = self.profile_enter(crate::profile::ProfileKey::UserFn {
+        let _profile_guard = self.profile_enter(crate::diagnostics::ProfileKey::UserFn {
             name: String::new(),
         });
         self.invoke_fn_value(&fv, &evald, ctx, span)
@@ -707,7 +709,7 @@ impl Document {
             ));
         }
         let evald = self.eval_args(args, ctx)?;
-        let _profile_guard = self.profile_enter(crate::profile::ProfileKey::Builtin {
+        let _profile_guard = self.profile_enter(crate::diagnostics::ProfileKey::Builtin {
             name: name.to_string(),
         });
         // Special-case `error(msg)` / `panic(msg)`: raise a structured

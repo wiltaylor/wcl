@@ -104,7 +104,7 @@ pub struct Document {
     /// Optional profile collector. Populated only when the document is
     /// opened through one of the `*_profiled` constructors; otherwise
     /// every profile hook is a no-op `Option::is_some` check.
-    profile: Option<std::sync::Mutex<crate::profile::ProfileState>>,
+    profile: Option<std::sync::Mutex<crate::diagnostics::ProfileState>>,
     /// Lazily-built cache of every declared FQN (see [`ref_registry`]).
     /// Sound to compute once: its inputs — the root AST,
     /// `synthetic_types`, and the eager imports' symbol indexes — are

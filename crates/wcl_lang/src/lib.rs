@@ -16,6 +16,9 @@
 
 pub mod ast;
 mod data;
+/// What the language reports about a run rather than computes from one:
+/// the opt-in evaluation profiler.
+mod diagnostics;
 /// The document model: opening, evaluating and querying a file.
 mod doc;
 pub mod edit;
@@ -28,7 +31,6 @@ mod lexer;
 mod numeric;
 /// The recursive-descent parser: tokens in, syntax tree out.
 mod parser;
-mod profile;
 /// The name index built during parsing.
 mod symbols;
 /// Runtime values produced by evaluation. The types that *describe*
@@ -37,6 +39,7 @@ mod value;
 
 pub use ast::{BuiltinType, Span, TensorDim, TypeRef};
 pub use data::{DataKind, DataRef};
+pub use diagnostics::{Profile, ProfileKey, ProfileNode};
 pub use doc::{
     Block, ChildKind, Connection, ConnectionDecl, DeclName, DeclaresKind, Decorator, Document,
     Field, FieldShape, FileLoader, InterfaceDecl, NamedArg, Registry, ResolvedType, RowView,
@@ -55,7 +58,6 @@ pub use lexer::{
     LexError, Lexer, NumberLit, StringEncoding, StringLit, StringPart, Token, TokenKind,
     is_identifier,
 };
-pub use profile::{Profile, ProfileKey, ProfileNode};
 pub use symbols::{SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 pub use value::{FnParam, FnValue, Value, VariantPayload};
 

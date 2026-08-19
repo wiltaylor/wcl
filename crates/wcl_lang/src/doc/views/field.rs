@@ -340,9 +340,11 @@ impl<'a> Field<'a> {
         if let Some(cached) = cell.value.get() {
             return cached.as_ref();
         }
-        let _profile_guard = self.doc.profile_enter(crate::profile::ProfileKey::Field {
-            path: self.ast.name.clone(),
-        });
+        let _profile_guard = self
+            .doc
+            .profile_enter(crate::diagnostics::ProfileKey::Field {
+                path: self.ast.name.clone(),
+            });
         // Strict membership check (skipped when the field is
         // `@schemaless`). The field must be named by either the
         // enclosing block's schema or, for top-level fields, the
