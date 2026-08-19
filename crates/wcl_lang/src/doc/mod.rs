@@ -25,9 +25,10 @@ pub use imports::{SYSTEM_IMPORT_ROOT, system_import_key};
 pub use loader::{FileLoader, Registry, disk_loader, overlay_loader};
 pub use types::{FieldShape, ResolvedType};
 pub use views::{
-    Block, ChildKind, Connection, ConnectionDecl, DeclName, DeclaresKind, Decorator, Field,
-    InterfaceDecl, NamedArg, RowView, SymbolEntry, SymbolSetDecl, TableView, TypeDecl, TypeField,
-    UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem, VariantBodyView,
+    Block, ChildKind, Connection, ConnectionDecl, DataKind, DataRef, DeclName, DeclaresKind,
+    Decorator, Field, InterfaceDecl, NamedArg, RowView, SymbolEntry, SymbolSetDecl, TableView,
+    TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
+    VariantBodyView,
 };
 pub(crate) use views::{BuiltinDecorator, LetView, UnionChildKind};
 
@@ -361,7 +362,7 @@ impl Document {
     /// surface: top-level Field, then Block-by-kind, then TypeDecl,
     /// UnionDecl, SymbolSetDecl. Subsequent segments delegate to
     /// [`DataRef::child`].
-    pub fn get(&self, path: &str) -> Option<crate::data::DataRef<'_>> {
+    pub fn get(&self, path: &str) -> Option<DataRef<'_>> {
         let segs: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
         self.resolve_segments_in(&segs, &self.file_ns)
     }
@@ -379,7 +380,7 @@ impl Document {
         &self,
         segs: &[&str],
         context_ns: &[String],
-    ) -> Option<crate::data::DataRef<'_>> {
+    ) -> Option<DataRef<'_>> {
         if segs.is_empty() {
             return None;
         }
@@ -448,8 +449,8 @@ impl Document {
     /// built for top-level tables — see `cells.rs`), computed-children
     /// splices for the *string* `@children`/`@child` forms (only the union
     /// form folds in a literal-field splice), and interface-typed children.
-    fn resolve_root_children(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
-        use crate::data::DataRef;
+    fn resolve_root_children(&self, name: &str) -> Option<DataRef<'_>> {
+        use DataRef;
         let schemas = self.doc_schemas_for_ns(&self.file_ns);
         if schemas.is_empty() {
             return None;
@@ -544,7 +545,7 @@ impl Document {
 
     /// Resolve a bare name against the document root — the last step
     /// of identifier lookup, after enclosing scopes have been tried.
-    pub(crate) fn resolve_root(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
+    pub(crate) fn resolve_root(&self, name: &str) -> Option<DataRef<'_>> {
         self.resolve_root_in(name, &self.file_ns)
     }
 
@@ -555,12 +556,8 @@ impl Document {
     /// namespace first, then aliases / wildcards / absolute). Root-level
     /// projections, fields and blocks are root-document concerns and
     /// ignore `context_ns`.
-    pub(crate) fn resolve_root_in(
-        &self,
-        name: &str,
-        context_ns: &[String],
-    ) -> Option<crate::data::DataRef<'_>> {
-        use crate::data::DataRef;
+    pub(crate) fn resolve_root_in(&self, name: &str, context_ns: &[String]) -> Option<DataRef<'_>> {
+        use DataRef;
         // Document-schema-driven projections at the root: a field on
         // the `@document` type marked with `@connections(...)` is
         // synthesised from sibling Connection statements rather than
@@ -1664,8 +1661,8 @@ fn match_block_id_field(doc: &Document, b: &ast::Block, name: &str) -> Option<Va
 
 /// Turn a resolved `DataRef` into a `Value`: a leaf yields its value,
 /// and anything else becomes a [`Value::DataPath`] handle.
-fn materialise_dataref(dr: crate::data::DataRef<'_>, span: Span) -> Result<Value, EvalError> {
-    use crate::data::DataKind;
+fn materialise_dataref(dr: DataRef<'_>, span: Span) -> Result<Value, EvalError> {
+    use DataKind;
     match dr.inner() {
         DataKind::Field(f) => f.value().cloned().map_err(|e| e.clone()),
         other => Err(EvalError::not_a_leaf(describe_datakind(other), span)),
@@ -1678,12 +1675,12 @@ fn materialise_dataref(dr: crate::data::DataRef<'_>, span: Span) -> Result<Value
 /// identifier / member chain so reflective builtins can keep walking
 /// the document tree from inside WCL code.
 fn materialise_dataref_or_path(
-    dr: crate::data::DataRef<'_>,
+    dr: DataRef<'_>,
     segments: Vec<String>,
     _span: Span,
 ) -> Result<Value, EvalError> {
-    use crate::data::DataKind;
     use crate::doc::views::DeclName;
+    use DataKind;
     match dr.inner() {
         DataKind::Field(f) => f.value().cloned().map_err(|e| e.clone()),
         DataKind::VariantValue(v) => Ok(v.clone()),
@@ -1720,7 +1717,7 @@ fn materialise_dataref_or_path(
 /// `materialise_dataref_or_path` behaviour (a `Value::DataPath` handle) so
 /// reflective builtins can keep walking the source.
 fn materialise_dataref_value(
-    dr: crate::data::DataRef<'_>,
+    dr: DataRef<'_>,
     segments: Vec<String>,
     span: Span,
 ) -> Result<Value, EvalError> {
@@ -1755,8 +1752,8 @@ fn expr_to_path_segments(expr: &ast::Expr) -> Option<Vec<String>> {
 
 /// Name a `DataKind` as diagnostics spell it (`block`, `type_field`,
 /// …).
-fn describe_datakind(k: &crate::data::DataKind<'_>) -> &'static str {
-    use crate::data::DataKind;
+fn describe_datakind(k: &DataKind<'_>) -> &'static str {
+    use DataKind;
     match k {
         DataKind::Document(_) => "document",
         DataKind::Field(_) => "field",

@@ -15,6 +15,7 @@ use super::types::value_matches_declared;
 use super::{
     Block, Document, expr_to_path_segments, materialise_dataref, materialise_dataref_value, span_of,
 };
+use super::{DataKind, DataRef};
 
 /// Hard cap on nested user-`fn` invocations during a single evaluation.
 /// Prevents accidental recursion in a `Value::Function` body from blowing
@@ -180,7 +181,7 @@ impl<'a> crate::functions::Caller for EvalCaller<'a, '_> {
         }
     }
 
-    fn resolve<'r>(&'r self, path: &[String]) -> Option<crate::data::DataRef<'r>> {
+    fn resolve<'r>(&'r self, path: &[String]) -> Option<DataRef<'r>> {
         // Resolve relative to the namespace of the evaluation site (the
         // file the innermost enclosing block lexically lives in), so a
         // reflective builtin called inside an imported/namespaced file
@@ -198,8 +199,7 @@ impl<'a> crate::functions::Caller for EvalCaller<'a, '_> {
         self.doc.resolve_segments_in(&segs, ctx_ns)
     }
 
-    fn decls_in_namespace<'r>(&'r self, ns: &[String]) -> Vec<crate::data::DataRef<'r>> {
-        use crate::data::DataRef;
+    fn decls_in_namespace<'r>(&'r self, ns: &[String]) -> Vec<DataRef<'r>> {
         use crate::doc::DeclName;
         let mut out: Vec<DataRef<'r>> = Vec::new();
         out.extend(
@@ -229,11 +229,11 @@ impl<'a> crate::functions::Caller for EvalCaller<'a, '_> {
         out
     }
 
-    fn decorator_schemas_for_kind<'r>(&'r self, kind: &str) -> Vec<crate::data::DataRef<'r>> {
+    fn decorator_schemas_for_kind<'r>(&'r self, kind: &str) -> Vec<DataRef<'r>> {
         self.doc
             .decorator_schemas_for_block_kind(kind)
             .into_iter()
-            .map(crate::data::DataRef::from_type)
+            .map(DataRef::from_type)
             .collect()
     }
 
@@ -1126,7 +1126,7 @@ impl Document {
         &'a self,
         expr: &ast::Expr,
         ctx: &EvalCtx<'a>,
-    ) -> Result<crate::data::DataRef<'a>, EvalError> {
+    ) -> Result<DataRef<'a>, EvalError> {
         use ast::Expr as E;
         match expr {
             E::Identifier(name, _) => {
@@ -1147,7 +1147,7 @@ impl Document {
                             EvalError::unresolved_reference(segments.join("."), span_of(expr))
                         });
                     }
-                    return Ok(crate::data::DataRef::from_variant_value(v.clone()));
+                    return Ok(DataRef::from_variant_value(v.clone()));
                 }
                 // Outer `?` turns a missing name into "unresolved
                 // reference"; the inner `Result` (a let's eval/cycle
@@ -1240,10 +1240,10 @@ impl Document {
         &'a self,
         scope: &Scope<'a>,
         name: &str,
-    ) -> Option<Result<crate::data::DataRef<'a>, EvalError>> {
+    ) -> Option<Result<DataRef<'a>, EvalError>> {
         enum Skipped<'a> {
             Let(crate::doc::views::LetView<'a>),
-            Field(crate::data::DataRef<'a>),
+            Field(DataRef<'a>),
         }
         let mut skipped: Option<Skipped<'a>> = None;
         for i in (0..scope.frames().len()).rev() {
@@ -1253,7 +1253,7 @@ impl Document {
             if let Some(bindings) = &scope.frames()[i].bindings
                 && let Some((_, v)) = bindings.iter().find(|(n, _)| n == name)
             {
-                return Some(Ok(crate::data::DataRef::from_variant_value(v.clone())));
+                return Some(Ok(DataRef::from_variant_value(v.clone())));
             }
             let block = self.frame_as_block(scope, i);
             // Skip the frame's per-item scans outright when its
@@ -1267,13 +1267,13 @@ impl Document {
                 if letv.mid_evaluation() {
                     skipped.get_or_insert(Skipped::Let(letv));
                 } else {
-                    return Some(letv.value().map(crate::data::DataRef::from_variant_value));
+                    return Some(letv.value().map(DataRef::from_variant_value));
                 }
             }
-            if let Some(child) = crate::data::DataRef::from_block(block).child(name) {
+            if let Some(child) = DataRef::from_block(block).child(name) {
                 let mid = matches!(
                     child.inner(),
-                    crate::data::DataKind::Field(f) if f.mid_evaluation()
+                    DataKind::Field(f) if f.mid_evaluation()
                 );
                 if mid {
                     skipped.get_or_insert(Skipped::Field(child));
@@ -1286,7 +1286,7 @@ impl Document {
             if letv.mid_evaluation() {
                 skipped.get_or_insert(Skipped::Let(letv));
             } else {
-                return Some(letv.value().map(crate::data::DataRef::from_variant_value));
+                return Some(letv.value().map(DataRef::from_variant_value));
             }
         }
         // Root fallthrough resolves declarations relative to the
@@ -1302,32 +1302,26 @@ impl Document {
             return Some(Ok(dr));
         }
         match skipped {
-            Some(Skipped::Let(letv)) => {
-                Some(letv.value().map(crate::data::DataRef::from_variant_value))
-            }
+            Some(Skipped::Let(letv)) => Some(letv.value().map(DataRef::from_variant_value)),
             Some(Skipped::Field(dr)) => Some(Ok(dr)),
             None => None,
         }
     }
 
     /// What `self` resolves to in this scope.
-    fn self_dataref<'a>(&'a self, scope: &Scope<'a>) -> crate::data::DataRef<'a> {
+    fn self_dataref<'a>(&'a self, scope: &Scope<'a>) -> DataRef<'a> {
         match scope.frames().len().checked_sub(1) {
-            Some(last_idx) => {
-                crate::data::DataRef::from_block(self.frame_as_block(scope, last_idx))
-            }
-            None => crate::data::DataRef::from_document(self),
+            Some(last_idx) => DataRef::from_block(self.frame_as_block(scope, last_idx)),
+            None => DataRef::from_document(self),
         }
     }
 
     /// What `parent` resolves to, or `None` at the top level.
-    fn parent_dataref<'a>(&'a self, scope: &Scope<'a>) -> Option<crate::data::DataRef<'a>> {
+    fn parent_dataref<'a>(&'a self, scope: &Scope<'a>) -> Option<DataRef<'a>> {
         match scope.frames().len() {
             0 => None,
-            1 => Some(crate::data::DataRef::from_document(self)),
-            n => Some(crate::data::DataRef::from_block(
-                self.frame_as_block(scope, n - 2),
-            )),
+            1 => Some(DataRef::from_document(self)),
+            n => Some(DataRef::from_block(self.frame_as_block(scope, n - 2))),
         }
     }
 }

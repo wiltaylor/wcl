@@ -5,6 +5,7 @@
 //! Document container itself.
 
 mod block;
+mod data;
 mod decl;
 mod decorator;
 mod field;
@@ -13,6 +14,7 @@ mod field;
 // view, but they are one flat vocabulary to every consumer — re-exported
 // here so `doc::views::TypeDecl` keeps meaning what it always did.
 pub use block::{Block, Connection, RowView, TableView};
+pub use data::{DataKind, DataRef};
 pub(crate) use decl::UnionChildKind;
 pub use decl::{
     ChildKind, ConnectionDecl, DeclaresKind, InterfaceDecl, SymbolEntry, SymbolSetDecl, TypeDecl,
@@ -265,7 +267,7 @@ fn reify_block_at(b: &Block<'_>, base: &[String]) -> Result<Value, EvalError> {
     b.to_record_value_at(base)
 }
 
-/// Materialise a [`DataRef`](crate::data::DataRef) into an owned [`Value`]
+/// Materialise a [`DataRef`](DataRef) into an owned [`Value`]
 /// for expression consumption: leaf fields / pre-evaluated variant values
 /// pass through, a single block reifies to a record, and a block list /
 /// table / variant list reifies to a `Value::List`. Returns `None` for
@@ -277,10 +279,10 @@ fn reify_block_at(b: &Block<'_>, base: &[String]) -> Result<Value, EvalError> {
 /// threaded so `@by_ref` slots can emit resolvable references. For a block
 /// list, each element's address extends `base` with that element's label.
 pub(crate) fn dataref_to_value_at<'a>(
-    dr: &crate::data::DataRef<'a>,
+    dr: &DataRef<'a>,
     base: &[String],
 ) -> Option<Result<Value, EvalError>> {
-    use crate::data::DataKind;
+    use DataKind;
     match dr.inner() {
         DataKind::Field(f) => Some(f.value().cloned().map_err(|e| e.clone())),
         DataKind::Error(e) => Some(Err(e.clone())),

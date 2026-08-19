@@ -608,7 +608,7 @@ impl<'a> Block<'a> {
     ///
     /// Returns `None` if the block has no schema, or if the name
     /// doesn't match any schema field or literal item.
-    pub fn typed_field(&self, name: &str) -> Option<crate::data::DataRef<'a>> {
+    pub fn typed_field(&self, name: &str) -> Option<DataRef<'a>> {
         let schema = self.schema()?;
         let f = schema.field(name)?;
 
@@ -617,7 +617,7 @@ impl<'a> Block<'a> {
         // (kind, name) — see `typed_proj_memo`.
         if let Some(conn_schema) = f.connection_schema() {
             if let Some(hit) = self.typed_proj_memo_get(name) {
-                return Some(crate::data::DataRef::from_variant_value(hit));
+                return Some(DataRef::from_variant_value(hit));
             }
             let scope = self.child_scope();
             // Connection statements live in the block's own items and in
@@ -628,19 +628,17 @@ impl<'a> Block<'a> {
             }
             let projected = Value::List(std::sync::Arc::new(values));
             self.typed_proj_memo_insert(name, projected.clone());
-            return Some(crate::data::DataRef::from_variant_value(projected));
+            return Some(DataRef::from_variant_value(projected));
         }
 
         // Union-typed @children: dispatch every nested block / table
         // row to a Value::Variant via structural-shape matching.
         if let Some(crate::doc::ChildKind::Union(union)) = f.children_kind_or_union() {
             if let Some(Value::List(items)) = self.typed_proj_memo_get(name) {
-                return Some(crate::data::DataRef::from_variant_value_list(
-                    items.to_vec(),
-                ));
+                return Some(DataRef::from_variant_value_list(items.to_vec()));
             }
             let dr = self.dispatch_union_children(name, union);
-            if let crate::data::DataKind::VariantValueList(items) = dr.inner() {
+            if let DataKind::VariantValueList(items) = dr.inner() {
                 self.typed_proj_memo_insert(name, Value::List(std::sync::Arc::new(items.clone())));
             }
             return Some(dr);
@@ -648,10 +646,10 @@ impl<'a> Block<'a> {
         // Union-typed @child: dispatch the single matching nested block.
         if let Some(crate::doc::ChildKind::Union(union)) = f.child_kind_or_union() {
             if let Some(hit) = self.typed_proj_memo_get(name) {
-                return Some(crate::data::DataRef::from_variant_value(hit));
+                return Some(DataRef::from_variant_value(hit));
             }
             let dr = self.dispatch_union_child(union);
-            if let crate::data::DataKind::VariantValue(v) = dr.inner() {
+            if let DataKind::VariantValue(v) = dr.inner() {
                 self.typed_proj_memo_insert(name, v.clone());
             }
             return Some(dr);
@@ -663,18 +661,18 @@ impl<'a> Block<'a> {
             // rows under the matching field name.
             let blocks = match self.children_projection(name, kind) {
                 Ok(blocks) => blocks,
-                Err(e) => return Some(crate::data::DataRef::from_error(e)),
+                Err(e) => return Some(DataRef::from_error(e)),
             };
             let is_table = self.doc.table_schema_in(&[], kind, self.file_ns).is_some();
             return Some(if is_table {
-                crate::data::DataRef::from_table(blocks)
+                DataRef::from_table(blocks)
             } else {
-                crate::data::DataRef::from_block_list(blocks)
+                DataRef::from_block_list(blocks)
             });
         }
         if let Some(kind) = f.child_block_kind() {
             let block = self.blocks().find(|b| b.kind() == kind)?;
-            return Some(crate::data::DataRef::from_block(block));
+            return Some(DataRef::from_block(block));
         }
         if let Some(slot) = f.inline_slot() {
             // Inline labels become a synthetic field — we don't have a `Field`
@@ -688,11 +686,9 @@ impl<'a> Block<'a> {
                 .map(|ls| (slot as usize) < ls.len())
                 .unwrap_or(false);
             if !has_label && let Some(field) = self.field(name) {
-                return Some(crate::data::DataRef::from_field(field));
+                return Some(DataRef::from_field(field));
             }
-            return Some(crate::data::DataRef::new(crate::data::DataKind::TypeField(
-                f,
-            )));
+            return Some(DataRef::new(DataKind::TypeField(f)));
         }
         // Plain schema field → look it up in literal block items. An
         // unset optional (or `@default`-carrying) field projects its
@@ -700,10 +696,10 @@ impl<'a> Block<'a> {
         // than failing with an unresolved-reference error — `??` and
         // `match` over `block.optional_field` then behave as authored.
         if let Some(field) = self.field(name) {
-            return Some(crate::data::DataRef::from_field(field));
+            return Some(DataRef::from_field(field));
         }
         if f.optional() || f.default_value().is_some() {
-            return Some(crate::data::DataRef::from_variant_value(
+            return Some(DataRef::from_variant_value(
                 f.default_value().unwrap_or(Value::None),
             ));
         }
@@ -804,11 +800,7 @@ impl<'a> Block<'a> {
     /// list of `Value::Variant`. Failures from individual blocks or
     /// rows are silently skipped here; the schema check pipeline
     /// emits them via `Document::schema_errors()`.
-    fn dispatch_union_children(
-        &self,
-        field_name: &str,
-        union: UnionDecl<'a>,
-    ) -> crate::data::DataRef<'a> {
+    fn dispatch_union_children(&self, field_name: &str, union: UnionDecl<'a>) -> DataRef<'a> {
         let mut out: Vec<Value> = Vec::new();
         for (kind, blk) in self.union_children_blocks(field_name) {
             let v = match kind {
@@ -833,7 +825,7 @@ impl<'a> Block<'a> {
                 }
             }
         }
-        crate::data::DataRef::from_variant_value_list(out)
+        DataRef::from_variant_value_list(out)
     }
 
     /// Iterate the nested-block + synth-row sources for a union-typed
@@ -912,7 +904,7 @@ impl<'a> Block<'a> {
 
     /// Dispatch a single nested block to a variant for a
     /// `@child(SomeUnion)` field.
-    fn dispatch_union_child(&self, union: UnionDecl<'a>) -> crate::data::DataRef<'a> {
+    fn dispatch_union_child(&self, union: UnionDecl<'a>) -> DataRef<'a> {
         let (items_cells, _) = match &self.cells.kind {
             ItemCellKind::Block {
                 items, synth_rows, ..
@@ -931,7 +923,7 @@ impl<'a> Block<'a> {
                     scope: child_scope.clone(),
                 };
                 if let Ok(v) = variant_dispatch::block_to_variant(self.doc, &blk, union) {
-                    return crate::data::DataRef::from_variant_value(v);
+                    return DataRef::from_variant_value(v);
                 }
             }
         }
@@ -949,12 +941,12 @@ impl<'a> Block<'a> {
                         scope: child_scope.clone(),
                     };
                     if let Ok(v) = variant_dispatch::block_to_variant(self.doc, &blk, union) {
-                        return crate::data::DataRef::from_variant_value(v);
+                        return DataRef::from_variant_value(v);
                     }
                 }
             }
         }
-        crate::data::DataRef::from_variant_value(Value::None)
+        DataRef::from_variant_value(Value::None)
     }
 
     /// Build the list of `Block`s for one `@children(kind)` field —
@@ -1182,9 +1174,7 @@ impl<'a> Block<'a> {
 
     /// Iterate schema-projected fields in declared order. Empty for
     /// un-schema'd blocks.
-    pub fn typed_fields(
-        &self,
-    ) -> Box<dyn Iterator<Item = (&'a str, crate::data::DataRef<'a>)> + 'a> {
+    pub fn typed_fields(&self) -> Box<dyn Iterator<Item = (&'a str, DataRef<'a>)> + 'a> {
         let Some(schema) = self.schema() else {
             return Box::new(std::iter::empty());
         };

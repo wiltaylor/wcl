@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use crate::data::DataRef;
+use crate::doc::DataRef;
 use crate::value::{FnValue, Value};
 
 /// Convert a [`Value`] into a concrete Rust type for use as a built-in

@@ -13,12 +13,7 @@
 //! same `FieldCell` caching that `Field::value` uses today, so repeated
 //! reads of the same leaf are O(1).
 
-use crate::doc::{
-    Block, Document, Field, InterfaceDecl, SymbolEntry, SymbolSetDecl, TypeDecl, TypeField,
-    UnionDecl, UnionVariant,
-};
-use crate::error::EvalError;
-use crate::value::Value;
+use super::*;
 
 /// Whether a block label equals `name`, accepting either a string or
 /// an identifier label.

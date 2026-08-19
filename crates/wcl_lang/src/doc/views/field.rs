@@ -569,7 +569,7 @@ impl<'a> Field<'a> {
     ///   target the same way `Document::get` would.
     /// - `Some(Err(e))` — the field is `&T` but the target can't be
     ///   resolved through the field's scope chain.
-    pub fn reference(&self) -> Option<Result<crate::data::DataRef<'a>, EvalError>> {
+    pub fn reference(&self) -> Option<Result<DataRef<'a>, EvalError>> {
         let declared = self.declared_type_ref()?;
         let TypeRef::Reference(inner) = declared else {
             return None;

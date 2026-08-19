@@ -15,7 +15,6 @@
 //! so the API forces the host to pick one mode per parse.
 
 pub mod ast;
-mod data;
 /// What the language reports about a run rather than computes from one:
 /// the opt-in evaluation profiler.
 mod diagnostics;
@@ -38,14 +37,13 @@ mod symbols;
 mod value;
 
 pub use ast::{BuiltinType, Span, TensorDim, TypeRef};
-pub use data::{DataKind, DataRef};
 pub use diagnostics::{Profile, ProfileKey, ProfileNode};
 pub use doc::{
-    Block, ChildKind, Connection, ConnectionDecl, DeclName, DeclaresKind, Decorator, Document,
-    Field, FieldShape, FileLoader, InterfaceDecl, NamedArg, Registry, ResolvedType, RowView,
-    SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit, SymbolSetDecl, TableView, TypeDecl, TypeField,
-    UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem, VariantBodyView, disk_loader,
-    overlay_loader, system_import_key,
+    Block, ChildKind, Connection, ConnectionDecl, DataKind, DataRef, DeclName, DeclaresKind,
+    Decorator, Document, Field, FieldShape, FileLoader, InterfaceDecl, NamedArg, Registry,
+    ResolvedType, RowView, SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit, SymbolSetDecl, TableView,
+    TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
+    VariantBodyView, disk_loader, overlay_loader, system_import_key,
 };
 pub use environment::{
     BuiltType, DecoratorBuilder, Environment, Expander, TypeBuilder, TypeFieldBuilder,

@@ -7,7 +7,7 @@
 
 use crate::ast::Span;
 use crate::ast::TypeRef;
-use crate::data::{DataKind, DataRef};
+use crate::doc::{DataKind, DataRef};
 use crate::error::EvalError;
 
 use crate::doc::{DeclName, Document, InterfaceDecl, ResolvedType, TypeDecl};
