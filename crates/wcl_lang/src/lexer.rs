@@ -1,79 +1,149 @@
+//! The lexer: source bytes in, [`Token`]s out.
+//!
+//! Beyond the usual tokenization, it does two things worth knowing. It
+//! resolves numeric type suffixes (`8080u32`) into typed [`NumberLit`]s
+//! at lex time, so the parser never re-reads a literal's text. And it
+//! collects comments and blank lines as [`Trivia`] attached to the token
+//! that follows them, which is how `wcl fmt` round-trips a file without
+//! losing what the author wrote between items.
+
 use crate::ast::{Span, Trivia};
 
 mod numbers;
 mod strings;
 
 #[derive(Debug, Clone, PartialEq)]
+/// One lexical token's payload.
 pub enum TokenKind {
+    /// A bare identifier or keyword-like name.
     Ident(String),
+    /// `true` or `false`.
     Bool(bool),
+    /// A numeric literal, already resolved to its suffixed type.
     Number(NumberLit),
     /// A numeric literal carrying a **literal unit** suffix (`5MiB`, `3km`):
     /// the magnitude plus the unit name, resolved against the declared type
     /// at evaluation time. Boxed so `TokenKind` (and thus `Token`, which
     /// parse-recursion frames hold) stays small.
     NumberWithUnit(Box<(NumberLit, String)>),
+    /// A string literal in any of the supported encodings.
     Str(StringLit),
+    /// A symbol literal, written `:name`.
     Symbol(String),
+    /// The `none` keyword.
     None,
+    /// The `if` keyword.
     If,
+    /// The `else` keyword.
     Else,
+    /// The `match` keyword.
     Match,
+    /// `=`
     Eq,
+    /// `==`
     EqEq,
+    /// `=>`
     FatArrow,
+    /// `!=`
     BangEq,
+    /// `!`
     Bang,
+    /// `:`
     Colon,
+    /// `::`, the namespace qualifier.
     ColonColon,
+    /// `?`, marking an optional declaration.
     Question,
     /// `??` — the none-coalescing operator.
     QuestionQuestion,
+    /// `&`, forming a reference type.
     Amp,
+    /// `&&`
     AmpAmp,
+    /// `|`, the table row delimiter.
     Pipe,
+    /// `||`
     PipePipe,
+    /// `.`
     Dot,
+    /// `..`, the rest pattern.
     DotDot,
+    /// `,`
     Comma,
+    /// `;`
     Semi,
+    /// `<`
     Lt,
+    /// `<=`
     LtEq,
+    /// `>`
     Gt,
+    /// `>=`
     GtEq,
+    /// `[`
     LBracket,
+    /// `]`
     RBracket,
+    /// `{`
     LBrace,
+    /// `}`
     RBrace,
+    /// `@`, introducing a decorator.
     At,
+    /// `(`
     LParen,
+    /// `)`
     RParen,
+    /// `+`
     Plus,
+    /// `-`
     Dash,
+    /// `->`, used by connections and return types.
     Arrow,
+    /// `*`, marking a repeated slot.
     Star,
+    /// `/`
     Slash,
+    /// `%`
     Percent,
+    /// End of input.
     Eof,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A numeric literal, resolved to the type its suffix names. An
+/// unsuffixed integer lexes as [`NumberLit::I64`] and an unsuffixed
+/// float as [`NumberLit::F64`].
 pub enum NumberLit {
+    /// Signed 8-bit.
     I8(i8),
+    /// Signed 16-bit.
     I16(i16),
+    /// Signed 32-bit.
     I32(i32),
+    /// Signed 64-bit — the unsuffixed integer default.
     I64(i64),
+    /// Signed 128-bit.
     I128(i128),
+    /// Pointer-sized signed.
     Isize(isize),
 
+    /// Unsigned 8-bit.
     U8(u8),
+    /// Unsigned 16-bit.
     U16(u16),
+    /// Unsigned 32-bit.
     U32(u32),
+    /// Unsigned 64-bit.
     U64(u64),
+    /// Unsigned 128-bit.
     U128(u128),
+    /// Pointer-sized unsigned.
     Usize(usize),
 
+    /// 32-bit float.
     F32(f32),
+    /// 64-bit float — the unsuffixed float default.
     F64(f64),
 }
 
@@ -86,43 +156,66 @@ impl NumberLit {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A string literal, carried in its declared encoding.
 pub enum StringLit {
+    /// A UTF-8 literal.
     Utf8(String),
+    /// An `ascii"…"` literal.
     Ascii(String),
+    /// A `utf16"…"` literal, as code units.
     Utf16(Vec<u16>),
+    /// A `utf32"…"` literal, as scalar values.
     Utf32(Vec<char>),
     /// Opt-in interpolated literal (`$"…"`, `$ascii"…"`, `$<<TAG`, …).
     /// The body is split into already-escape-decoded literal chunks
     /// and raw source slices for `${expr}` slots that the parser later
     /// sub-parses into expressions.
     Interpolated {
+        /// Encoding the concatenated result is re-encoded to.
         encoding: StringEncoding,
+        /// Literal chunks interleaved with `${…}` slots.
         parts: Vec<StringPart>,
+        /// Source span of the whole literal.
         span: Span,
     },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The encoding a string literal declares.
 pub enum StringEncoding {
+    /// UTF-8, the default.
     Utf8,
+    /// ASCII — the lexer rejects non-ASCII bytes in the body.
     Ascii,
+    /// UTF-16.
     Utf16,
+    /// UTF-32.
     Utf32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// One segment of an interpolated string literal.
 pub enum StringPart {
     /// Already-decoded body bytes between (or around) slots.
     Literal(String),
     /// Raw source text inside a `${...}` slot, plus the slot's full
     /// span (covering the `${` and `}`). The parser sub-parses this
     /// into an `Expr` at parse time.
-    Expr { text: String, span: Span },
+    Expr {
+        /// Raw source text between the braces.
+        text: String,
+        /// Span covering the whole slot, `${` and `}` included.
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// One token: its payload, where it came from, and the trivia that
+/// preceded it.
 pub struct Token {
+    /// What kind of token this is, and its payload.
     pub kind: TokenKind,
+    /// Source span of the token text.
     pub span: Span,
     /// Comments + blank-line breaks that appeared in the source
     /// immediately before this token. The parser pulls these onto the
@@ -163,13 +256,23 @@ impl Token {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A lexing failure — an unterminated literal, a bad escape, a numeric
+/// literal that does not fit its declared type.
 pub struct LexError {
+    /// Human-readable description of the failure.
     pub message: String,
+    /// Source span of the offending text.
     pub span: Span,
 }
 
+/// Streaming lexer over a source string. Pull tokens with
+/// [`Lexer::next_token`] until it yields [`TokenKind::Eof`].
 pub struct Lexer<'a> {
+    /// The source, as bytes — every token boundary in WCL is ASCII, so
+    /// the scanner works bytewise and only decodes UTF-8 inside literals
+    /// and identifiers.
     src: &'a [u8],
+    /// Byte offset of the next unconsumed byte.
     pos: usize,
     /// Set once the lexer has emitted any non-Eof token. Used by
     /// `collect_trivia` to decide whether a comment can be a *trailing*
@@ -184,6 +287,7 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    /// Start lexing `src` from the beginning.
     pub fn new(src: &'a str) -> Self {
         Self {
             src: src.as_bytes(),
@@ -193,6 +297,8 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Consume and return the next token, with any preceding trivia
+    /// attached. Yields [`TokenKind::Eof`] at end of input, repeatedly.
     pub fn next_token(&mut self) -> Result<Token, LexError> {
         let (leading_trivia, preceded_by_newline, same_line_comment) = self.collect_trivia();
         let start = self.pos;
@@ -220,6 +326,8 @@ impl<'a> Lexer<'a> {
         Ok(tok)
     }
 
+    /// Lex one token given the first byte `c`, once trivia has already
+    /// been collected. The dispatch table at the heart of the lexer.
     fn lex_after_trivia(&mut self, start: usize, c: u8) -> Result<Token, LexError> {
         match c {
             b'=' => match self.peek_at(1) {
@@ -339,25 +447,31 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// The next byte without consuming it.
     fn peek(&self) -> Option<u8> {
         self.src.get(self.pos).copied()
     }
 
+    /// The byte `offset` positions ahead, without consuming anything.
     fn peek_at(&self, offset: usize) -> Option<u8> {
         self.src.get(self.pos + offset).copied()
     }
 
+    /// Consume and return the next byte.
     fn bump(&mut self) -> Option<u8> {
         let c = self.peek()?;
         self.pos += 1;
         Some(c)
     }
 
+    /// Emit a one-byte token, consuming that byte.
     fn single(&mut self, start: usize, kind: TokenKind) -> Token {
         self.pos += 1;
         Token::new(kind, Span::new(start, self.pos))
     }
 
+    /// Emit `two` when the next byte is `follow`, else `one` — the
+    /// maximal-munch rule behind pairs like `=` / `==`.
     fn two_or_one(&mut self, start: usize, follow: u8, two: TokenKind, one: TokenKind) -> Token {
         if self.peek_at(1) == Some(follow) {
             self.pos += 2;
@@ -501,6 +615,8 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Lex an identifier, a keyword, or a typed string literal whose
+    /// encoding prefix looks like one (`ascii"…"`).
     fn lex_ident_or_typed(&mut self, start: usize) -> Result<Token, LexError> {
         while matches!(self.peek(), Some(c) if is_ident_cont(c)) {
             self.pos += 1;
@@ -539,8 +655,12 @@ impl<'a> Lexer<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// A parsed string-literal prefix: which encoding it names, and whether
+/// it opts into `${…}` interpolation.
 struct StringPrefix {
+    /// The encoding the prefix names.
     encoding: StringEncoding,
+    /// `true` when the prefix carried a leading `$`.
     interpolated: bool,
     /// Raw body: no escape processing and no `${…}` interpolation. Only
     /// the `<<'TAG'` heredoc opener sets this; the body is taken
@@ -549,6 +669,7 @@ struct StringPrefix {
 }
 
 impl StringPrefix {
+    /// A non-interpolating prefix in the given encoding.
     fn plain(encoding: StringEncoding) -> Self {
         Self {
             encoding,
@@ -557,6 +678,7 @@ impl StringPrefix {
         }
     }
 
+    /// An interpolating (`$`-marked) prefix in the given encoding.
     fn interp(encoding: StringEncoding) -> Self {
         Self {
             encoding,
@@ -574,6 +696,8 @@ impl StringPrefix {
         }
     }
 
+    /// Map an encoding keyword (`ascii`, `utf16`, …) to its encoding,
+    /// or `None` when the text names no encoding.
     fn encoding_from_text(text: &str) -> Option<StringEncoding> {
         match text {
             "utf8" => Some(StringEncoding::Utf8),
@@ -585,10 +709,12 @@ impl StringPrefix {
     }
 }
 
+/// Whether `c` may begin an identifier.
 fn is_ident_start(c: u8) -> bool {
     c.is_ascii_alphabetic() || c == b'_'
 }
 
+/// Whether `c` may continue an identifier.
 fn is_ident_cont(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
 }

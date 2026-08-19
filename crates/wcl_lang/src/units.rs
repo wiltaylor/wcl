@@ -15,6 +15,7 @@ use crate::builtins::{BuiltinFn, Caller, FromValue, from_fn};
 use crate::environment::Environment;
 use crate::value::Value;
 
+/// Register the unit-conversion builtins.
 pub(crate) fn register(env: &mut Environment) {
     env.add_builtin(
         "format_unit",

@@ -80,6 +80,7 @@ pub(super) fn infer_type_from_expr(expr: &Expr) -> Option<TypeRef> {
 }
 
 impl<'a> Parser<'a> {
+    /// Parse the run of decorators preceding an item.
     pub(super) fn parse_decorators(&mut self) -> Result<Vec<Decorator>, ParseError> {
         let mut decorators = Vec::new();
         while matches!(self.peek()?.kind, TokenKind::At) {
@@ -88,6 +89,7 @@ impl<'a> Parser<'a> {
         Ok(decorators)
     }
 
+    /// Parse one `@name(args…)` decorator.
     fn parse_decorator(&mut self) -> Result<Decorator, ParseError> {
         let at = self.bump()?; // '@'
         let start = at.span.start;
@@ -164,6 +166,7 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parse a `namespace` declaration.
     pub(super) fn parse_namespace_decl(&mut self) -> Result<Item, ParseError> {
         let kw = self.bump()?; // 'namespace'
         let start = kw.span.start;
@@ -176,6 +179,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Parse a table item: a field name followed by pipe-delimited rows.
     pub(super) fn parse_table_item(&mut self) -> Result<Item, ParseError> {
         // Already peeked: IDENT followed by Colon. Consume both.
         let (field_name, name_span) = self.bump_ident("expected table field name")?;
@@ -199,6 +203,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Parse one `| a | b |` row.
     fn parse_table_row(&mut self) -> Result<crate::ast::Row, ParseError> {
         // Row grammar: `| (expr |)* (expr)?`
         //
@@ -232,6 +237,7 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parse an `import`, quoted or angle-bracketed.
     pub(super) fn parse_import_decl(&mut self) -> Result<Item, ParseError> {
         let kw = self.bump()?; // 'import'
         let start = kw.span.start;
@@ -305,6 +311,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Parse a `use` declaration in either form.
     pub(super) fn parse_use_decl(&mut self) -> Result<Item, ParseError> {
         let kw = self.bump()?; // 'use'
         let start = kw.span.start;
@@ -382,6 +389,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Parse one name of a brace-list `use`.
     fn parse_use_item(&mut self) -> Result<UseItem, ParseError> {
         let name_tok = self.bump()?;
         let item_start = name_tok.span.start;
@@ -425,6 +433,7 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parse a `type` declaration, or its alias form.
     pub(super) fn parse_type_decl(
         &mut self,
         decorators: Vec<Decorator>,
@@ -478,6 +487,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Parse an `interface` declaration.
     pub(super) fn parse_interface_decl(
         &mut self,
         decorators: Vec<Decorator>,
@@ -648,6 +658,7 @@ impl<'a> Parser<'a> {
         Ok(parents)
     }
 
+    /// Parse one field of a type, interface or record variant.
     fn parse_type_field(&mut self) -> Result<TypeField, ParseError> {
         // Capture comments above this field before decorators consume
         // the first token. Trailing comment is filled in by the caller.
@@ -732,6 +743,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse a `union` declaration.
     pub(super) fn parse_union_decl(
         &mut self,
         decorators: Vec<Decorator>,
@@ -758,6 +770,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Parse one union variant.
     fn parse_variant_decl(&mut self) -> Result<UnionVariant, ParseError> {
         // Capture comments above this variant before decorators consume
         // the first token. Trailing comment is filled in by the caller.
@@ -783,6 +796,8 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parse a variant payload — record, type reference, interface
+    /// reference, or nothing.
     fn parse_variant_body(&mut self) -> Result<(VariantBody, usize), ParseError> {
         let head = self.peek()?;
         match head.kind {
@@ -852,6 +867,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse a `symbol_set` declaration.
     pub(super) fn parse_symbol_set_decl(
         &mut self,
         decorators: Vec<Decorator>,
@@ -1024,6 +1040,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Parse a `name = expr` field.
     pub(super) fn parse_field(
         &mut self,
         name: String,
@@ -1101,6 +1118,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Parse a block instance: kind, labels and body.
     pub(super) fn parse_block(
         &mut self,
         kind: String,

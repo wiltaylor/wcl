@@ -18,20 +18,25 @@ pub mod ast;
 mod builtins;
 mod collections;
 mod data;
+/// The document model: opening, evaluating and querying a file.
 mod doc;
 pub mod edit;
 mod environment;
+/// Parse and evaluation error types, and their diagnostics.
 mod error;
 pub mod format;
 mod lexer;
 mod math;
 mod numeric;
+/// The recursive-descent parser: tokens in, syntax tree out.
 mod parser;
 mod paths;
 mod profile;
 mod reflect;
+/// The name index built during parsing.
 mod symbols;
 mod units;
+/// Runtime values and the type references that describe them.
 mod value;
 
 pub use ast::Span;

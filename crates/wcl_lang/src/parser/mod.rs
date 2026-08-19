@@ -18,7 +18,10 @@ use crate::ast::{BinOp, Field, SymbolSetDecl, TypeDecl, UnaryOp, UnionDecl, UseF
 #[cfg(test)]
 use crate::value::TypeRef;
 
+/// Recursive-descent parser over a token stream, building both the
+/// syntax tree and the symbol index in one pass.
 pub struct Parser<'a> {
+    /// Source name, reported in diagnostics.
     file: String,
     /// Pre-built `NamedSource` used for every diagnostic. Cloning a
     /// `NamedSource` is cheap (its body is shared), so this is reused
@@ -29,11 +32,17 @@ pub struct Parser<'a> {
     /// the raw path out of an `import <...>` between the `<` and `>`
     /// token spans (the bracketed path is not a single token).
     src: &'a str,
+    /// The token source.
     lexer: Lexer<'a>,
+    /// One token of lookahead.
     peeked: Option<Token>,
+    /// A second token of lookahead, for the few two-token decisions.
     peeked2: Option<Token>,
+    /// Namespace declared so far, prefixed to declared names.
     file_ns: Vec<String>,
+    /// Symbol index built as declarations are parsed.
     index: SymbolIndex,
+    /// Current nesting depth, bounded to stop runaway recursion.
     block_depth: u32,
     /// Whether the item loop is currently inside the body of a block
     /// carrying a lexical `@schemaless` decorator. While set, a field
@@ -82,10 +91,12 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// Leave one level of nesting, undoing `enter_recursion`.
     pub(super) fn leave_recursion(&mut self) {
         self.recursion_depth -= 1;
     }
 
+    /// Start parsing `src`. `file` names it in diagnostics.
     pub fn new(src: &'a str, file: impl Into<String>) -> Self {
         let file = file.into();
         let named_src = std::sync::Arc::new(NamedSource::new(file.clone(), src.to_string()));
@@ -146,6 +157,8 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// Parse a whole file, returning its items and the symbol index
+    /// built alongside them.
     pub fn parse_source(&mut self) -> Result<(Source, SymbolIndex), ParseError> {
         let mut items = Vec::new();
         while !matches!(self.peek()?.kind, TokenKind::Eof) {
@@ -346,11 +359,13 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// Index a declaration, turning a name collision into a parse error.
     fn try_insert(&mut self, rec: SymbolRecord) -> Result<(), ParseError> {
         let msg = format!("duplicate declaration '{}'", rec.fqn);
         self.try_insert_with_msg(rec, msg)
     }
 
+    /// Index a declaration, using `msg` to word the collision error.
     fn try_insert_with_msg(&mut self, rec: SymbolRecord, msg: String) -> Result<(), ParseError> {
         match self.index.insert(rec) {
             Ok(()) => Ok(()),
@@ -372,6 +387,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Prefix a declared name with the current file namespace.
     fn join_fqn(&self, name: &[String]) -> String {
         if self.file_ns.is_empty() {
             name.join(".")
@@ -382,6 +398,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse one item, dispatching on the leading token.
     fn parse_item(&mut self) -> Result<Item, ParseError> {
         // Harvest leading trivia (comments + blank lines) from the
         // first token of this item, before parse_decorators consumes
@@ -655,6 +672,7 @@ impl<'a> Parser<'a> {
         Ok((segments, Span::new(start, end)))
     }
 
+    /// Consume the next token, requiring it to be `kind`.
     pub(super) fn expect(&mut self, kind: TokenKind, msg: &str) -> Result<Token, ParseError> {
         let tok = self.bump()?;
         if std::mem::discriminant(&tok.kind) == std::mem::discriminant(&kind) {
@@ -682,6 +700,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// The next token, without consuming it.
     pub(super) fn peek(&mut self) -> Result<&Token, ParseError> {
         if self.peeked.is_none() {
             self.peeked = Some(self.next_lex()?);
@@ -689,6 +708,7 @@ impl<'a> Parser<'a> {
         Ok(self.peeked.as_ref().expect("just set"))
     }
 
+    /// The token after next, without consuming either.
     pub(super) fn peek2(&mut self) -> Result<&Token, ParseError> {
         self.peek()?;
         if self.peeked2.is_none() {
@@ -697,6 +717,7 @@ impl<'a> Parser<'a> {
         Ok(self.peeked2.as_ref().expect("just set"))
     }
 
+    /// Consume and return the next token.
     pub(super) fn bump(&mut self) -> Result<Token, ParseError> {
         if let Some(t) = self.peeked.take() {
             self.peeked = self.peeked2.take();
@@ -706,10 +727,12 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Pull one token from the lexer, converting a lex error.
     fn next_lex(&mut self) -> Result<Token, ParseError> {
         self.lexer.next_token().map_err(|e| self.lex_to_parse(e))
     }
 
+    /// Wrap a lexer error as a parse error against this source.
     fn lex_to_parse(&self, e: LexError) -> ParseError {
         let label = e.message.clone();
         self.err(e.message, e.span, label)
@@ -804,6 +827,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Build a parse error pointing at the given span.
     pub(super) fn err(
         &self,
         message: impl Into<String>,
@@ -843,6 +867,7 @@ fn is_expr_start(t: &TokenKind) -> bool {
     )
 }
 
+/// Name a token as diagnostics spell it.
 pub(super) fn describe(t: &TokenKind) -> String {
     match t {
         TokenKind::Ident(s) => format!("identifier '{s}'"),

@@ -19,6 +19,8 @@ use crate::value::Value;
 use super::cells::ItemCellKind;
 use super::{Block, BuiltinDecorator, DeclName, Document, TypeField};
 
+/// Report a decorator argument whose value does not fit the slot its
+/// schema declares.
 fn decorator_slot_value_error(
     doc: &Document,
     decorator: &super::Decorator<'_>,
@@ -273,12 +275,18 @@ pub(super) fn constraint_violation(
 }
 
 #[derive(Clone, Copy)]
+/// A constraint decorator the language enforces itself.
 enum RegisteredConstraint {
+    /// `@min(n)` — a numeric floor, or a length floor for collections.
     Min,
+    /// `@max(n)` — a numeric ceiling, or a length ceiling.
     Max,
+    /// `@non_empty` — rejects empty strings and collections.
     NonEmpty,
 }
 
+/// Recognise a decorator as one of the built-in constraints, or
+/// `None` when it is an ordinary host decorator.
 fn registered_constraint(
     doc: &Document,
     decorator: &ast::Decorator,
@@ -386,6 +394,8 @@ pub(super) fn duplicate_id_violations<'a>(
     );
 }
 
+/// Report sibling blocks of one kind that share an identity label,
+/// which would make every reference to that id ambiguous.
 pub(super) fn duplicate_id_errors<'a>(
     siblings: impl Iterator<Item = Block<'a>>,
 ) -> Vec<(EvalError, Block<'a>)> {
@@ -422,6 +432,8 @@ pub(super) fn duplicate_id_errors<'a>(
     errors
 }
 
+/// Whether these decorators include `@schemaless`, waiving membership
+/// checking.
 pub(super) fn has_schemaless(decorators: &[ast::Decorator]) -> bool {
     decorators
         .iter()
@@ -588,6 +600,8 @@ fn decl_type_fqn(
 /// [`validate_connection_stmts`].
 type ResolvedOperand = Option<crate::doc::ConnOperand>;
 
+/// Whether a `@dynamic` connection declaration accepts these operand
+/// types, which it does more permissively than a static one.
 fn dynamic_connection_admits(
     doc: &crate::doc::Document,
     lhs: &ResolvedOperand,
@@ -660,6 +674,8 @@ fn validate_own_fields(block: &Block<'_>, schema: &crate::doc::TypeDecl<'_>) -> 
     errs
 }
 
+/// Validate one block against its schema: field membership, required
+/// fields, child cardinality and constraint decorators.
 pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     use crate::error::SchemaViolationKind as Kind;
     let mut errs = Vec::new();

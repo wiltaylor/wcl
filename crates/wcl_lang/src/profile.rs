@@ -17,10 +17,12 @@ use std::time::{Duration, Instant};
 /// A snapshot of a document's profile data.
 #[derive(Debug, Clone)]
 pub struct Profile {
+    /// The root of the recorded call tree.
     pub root: ProfileNode,
 }
 
 impl Profile {
+    /// The root of the recorded call tree.
     pub fn root(&self) -> &ProfileNode {
         &self.root
     }
@@ -31,15 +33,22 @@ impl Profile {
 /// history.
 #[derive(Debug, Clone)]
 pub struct ProfileNode {
+    /// What this node measures.
     pub key: ProfileKey,
+    /// How many times it was entered.
     pub count: u64,
+    /// Total time spent inside it.
     pub total: Duration,
+    /// Fastest single entry.
     pub min: Duration,
+    /// Slowest single entry.
     pub max: Duration,
+    /// Nodes entered from within this one, keyed for stable output order.
     pub children: BTreeMap<ProfileKey, ProfileNode>,
 }
 
 impl ProfileNode {
+    /// An empty node for `key`, with no samples yet.
     fn new(key: ProfileKey) -> Self {
         Self {
             key,
@@ -60,6 +69,7 @@ impl ProfileNode {
         }
     }
 
+    /// Fold one timing sample into this node's count, total and extremes.
     fn record(&mut self, elapsed: Duration) {
         self.count += 1;
         self.total += elapsed;
@@ -76,27 +86,48 @@ impl ProfileNode {
 /// child-map key, so equal-keyed sibling calls aggregate into one node.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ProfileKey {
+    /// The synthetic root of the tree.
     Root,
-    Field { path: String },
-    UserFn { name: String },
-    Builtin { name: String },
+    /// Forcing one document field, named by its dotted path.
+    Field {
+        /// Dotted path of the field being forced.
+        path: String,
+    },
+    /// Calling a function the document declares.
+    UserFn {
+        /// Name of the function being called.
+        name: String,
+    },
+    /// Calling a builtin.
+    Builtin {
+        /// Name of the builtin being called.
+        name: String,
+    },
 }
 
 // ─── Collector (crate-private) ───────────────────────────────────────
 
 #[derive(Debug)]
+/// The profiler's mutable state: the tree built so far, plus the
+/// stack of frames currently being timed.
 pub(crate) struct ProfileState {
+    /// The accumulated call tree.
     root: ProfileNode,
+    /// Frames entered but not yet exited, outermost first.
     stack: Vec<StackFrame>,
 }
 
 #[derive(Debug)]
+/// One in-progress timing: what is being measured, and since when.
 struct StackFrame {
+    /// What this frame measures.
     key: ProfileKey,
+    /// When the frame was entered.
     start: Instant,
 }
 
 impl ProfileState {
+    /// A fresh profiler state, wrapped for shared mutation.
     pub(crate) fn new_root() -> Mutex<Self> {
         Mutex::new(Self {
             root: ProfileNode::new(ProfileKey::Root),
@@ -104,6 +135,7 @@ impl ProfileState {
         })
     }
 
+    /// Push a frame and start timing it.
     pub(crate) fn enter(&mut self, key: ProfileKey) {
         self.stack.push(StackFrame {
             key,
@@ -111,6 +143,7 @@ impl ProfileState {
         });
     }
 
+    /// Pop the innermost frame and fold its elapsed time into the tree.
     pub(crate) fn exit(&mut self) {
         let Some(frame) = self.stack.pop() else {
             return;
@@ -132,6 +165,7 @@ impl ProfileState {
         child.record(elapsed);
     }
 
+    /// Copy out the tree accumulated so far, leaving the state intact.
     pub(crate) fn snapshot(&self) -> Profile {
         Profile {
             root: self.root.clone(),
@@ -143,10 +177,13 @@ impl ProfileState {
 /// document is not profiling, `state` is `None` and the guard is a
 /// no-op.
 pub(crate) struct ProfileGuard<'a> {
+    /// The profiler to report to, or `None` when profiling is off — in
+    /// which case the guard does nothing.
     state: Option<&'a Mutex<ProfileState>>,
 }
 
 impl<'a> ProfileGuard<'a> {
+    /// Start timing `key`, if `state` is present. Timing stops on drop.
     pub(crate) fn enter(state: Option<&'a Mutex<ProfileState>>, key: ProfileKey) -> Self {
         if let Some(s) = state {
             // A poisoned profile mutex would mean a previous evaluator

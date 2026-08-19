@@ -17,6 +17,7 @@ use super::{Parser, describe};
 type RecordPatBody = (Vec<(String, Pattern)>, bool, usize);
 
 impl<'a> Parser<'a> {
+    /// Parse one pattern, guarding recursion depth.
     pub(super) fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
         self.enter_recursion()?;
         let result = self.parse_pattern_inner();
@@ -26,6 +27,7 @@ impl<'a> Parser<'a> {
         result
     }
 
+    /// Parse one pattern, without the depth guard.
     fn parse_pattern_inner(&mut self) -> Result<Pattern, ParseError> {
         let tok = self.peek()?;
         match &tok.kind {
@@ -226,6 +228,7 @@ impl<'a> Parser<'a> {
     }
 }
 
+/// The source span of any pattern, whatever its form.
 pub(super) fn pattern_span(p: &Pattern) -> Span {
     match p {
         Pattern::Wildcard(s)

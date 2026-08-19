@@ -10,32 +10,54 @@
 /// the [`TypeRef`] / declaration shape instead.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    /// A boolean.
     Bool(bool),
 
+    /// Signed 8-bit integer.
     I8(i8),
+    /// Signed 16-bit integer.
     I16(i16),
+    /// Signed 32-bit integer.
     I32(i32),
+    /// Signed 64-bit integer.
     I64(i64),
+    /// Signed 128-bit integer.
     I128(i128),
+    /// Pointer-sized signed integer.
     Isize(isize),
 
+    /// Unsigned 8-bit integer.
     U8(u8),
+    /// Unsigned 16-bit integer.
     U16(u16),
+    /// Unsigned 32-bit integer.
     U32(u32),
+    /// Unsigned 64-bit integer.
     U64(u64),
+    /// Unsigned 128-bit integer.
     U128(u128),
+    /// Pointer-sized unsigned integer.
     Usize(usize),
 
+    /// 32-bit float.
     F32(f32),
+    /// 64-bit float.
     F64(f64),
 
+    /// A UTF-8 string.
     Utf8(String),
+    /// An ASCII string.
     Ascii(String),
+    /// A UTF-16 string, as code units.
     Utf16(Vec<u16>),
+    /// A UTF-32 string, as scalar values.
     Utf32(Vec<char>),
 
+    /// An identifier value — a name used as data, as block ids are.
     Identifier(String),
+    /// A symbol, drawn from some `symbol_set`.
     Symbol(String),
+    /// The absent value.
     None,
 
     /// Function values carry an opaque AST body. They serialize as
@@ -50,14 +72,23 @@ pub enum Value {
     /// (PERF-wdoc-let-memoisation.md). Use [`Value::list`] to build
     /// one and [`std::sync::Arc::unwrap_or_clone`] to mutate.
     List(std::sync::Arc<Vec<Value>>),
+    /// A dense multi-dimensional array. Storage is shared like
+    /// [`Value::List`]'s, for the same reason.
     Tensor {
+        /// Extent along each dimension, outermost first.
         shape: Vec<u64>,
+        /// Elements in row-major order.
         data: std::sync::Arc<Vec<Value>>,
     },
+    /// One variant of a union, tagged with the union that declares it so
+    /// two structurally identical variants of different unions stay
+    /// distinguishable.
     Variant {
         /// FQN of the declaring union, e.g. `["company", "Shape"]`.
         union: Vec<String>,
+        /// The variant's name within that union.
         variant: String,
+        /// The variant's payload.
         payload: VariantPayload,
     },
     /// Anonymous-shape record value produced by built-in deconstruction
@@ -66,7 +97,10 @@ pub enum Value {
     /// record so consumers can dispatch by type; `fields` holds the
     /// named slots in deterministic order.
     Record {
+        /// FQN of the declaration that produced this record.
         ty: Vec<String>,
+        /// The named slots, ordered by key so iteration is
+        /// deterministic.
         fields: std::sync::Arc<std::collections::BTreeMap<String, Value>>,
     },
     /// First-class handle into the document tree that survived
@@ -77,7 +111,10 @@ pub enum Value {
     /// `segments` is the dotted FQN that re-resolves the same target
     /// from document root via `Caller::resolve`.
     DataPath {
+        /// The underlying `DataKind` tag, for diagnostics.
         kind: String,
+        /// Dotted FQN that re-resolves the same target from the
+        /// document root.
         segments: Vec<String>,
     },
     /// Transient value for a literal unit (`5MiB`) that has been
@@ -88,7 +125,9 @@ pub enum Value {
     /// reaches any other sink (serialization, arithmetic) is a
     /// "unit literal without a type" error.
     PendingUnit {
+        /// The raw number, before the unit factor is applied.
         magnitude: Box<Value>,
+        /// The unit suffix as written.
         unit: String,
     },
 }
@@ -206,8 +245,12 @@ pub enum VariantPayload {
 /// with it).
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnValue {
+    /// Declared parameters, in order.
     params: Vec<FnParam>,
+    /// The declared return type.
     return_ty: TypeRef,
+    /// The function body. Shared rather than owned so cloning an
+    /// `FnValue` per call does not deep-clone the AST.
     pub(crate) body: std::sync::Arc<crate::ast::Expr>,
     /// Snapshot of the evaluator's local bindings at the moment this
     /// function literal was constructed. On invocation, captured pairs
@@ -222,6 +265,7 @@ pub struct FnValue {
 }
 
 impl FnValue {
+    /// Build a function value with no captured bindings.
     pub(crate) fn new(
         params: Vec<FnParam>,
         return_ty: TypeRef,
@@ -235,15 +279,18 @@ impl FnValue {
         }
     }
 
+    /// Attach the evaluator locals this literal closed over.
     pub(crate) fn with_captures(mut self, captured: Vec<(String, Value)>) -> Self {
         self.captured = captured;
         self
     }
 
+    /// The declared parameters, in order.
     pub fn params(&self) -> &[FnParam] {
         &self.params
     }
 
+    /// The declared return type.
     pub fn return_ty(&self) -> &TypeRef {
         &self.return_ty
     }
@@ -279,21 +326,27 @@ impl FnValue {
     }
 }
 
+/// One declared parameter of an [`FnValue`].
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FnParam {
+    /// The parameter name, bound in the body.
     name: String,
+    /// The declared type.
     ty: TypeRef,
 }
 
 impl FnParam {
+    /// Build a parameter from its name and declared type.
     pub(crate) fn new(name: String, ty: TypeRef) -> Self {
         Self { name, ty }
     }
 
+    /// The parameter name.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The declared type.
     pub fn ty(&self) -> &TypeRef {
         &self.ty
     }
@@ -388,6 +441,8 @@ impl Value {
         )
     }
 
+    /// The value's type as WCL spells it — the wording every
+    /// diagnostic uses when it has to name a type.
     pub fn type_name(&self) -> &'static str {
         match self {
             Value::Bool(_) => "bool",
@@ -424,36 +479,60 @@ impl Value {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// A primitive type the language provides, as opposed to one a document
+/// declares.
 pub enum BuiltinType {
+    /// `bool`.
     Bool,
 
+    /// `i8`.
     I8,
+    /// `i16`.
     I16,
+    /// `i32`.
     I32,
+    /// `i64`.
     I64,
+    /// `i128`.
     I128,
+    /// `isize`.
     Isize,
 
+    /// `u8`.
     U8,
+    /// `u16`.
     U16,
+    /// `u32`.
     U32,
+    /// `u64`.
     U64,
+    /// `u128`.
     U128,
+    /// `usize`.
     Usize,
 
+    /// `f32`.
     F32,
+    /// `f64`.
     F64,
 
+    /// `utf8`.
     Utf8,
+    /// `ascii`.
     Ascii,
+    /// `utf16`.
     Utf16,
+    /// `utf32`.
     Utf32,
 
+    /// `symbol`.
     Symbol,
+    /// `identifier` — a name used as data.
     Identifier,
 }
 
 impl BuiltinType {
+    /// Parse a builtin type name, or `None` when it names none.
     pub fn from_name(s: &str) -> Option<Self> {
         Some(match s {
             "bool" => Self::Bool,
@@ -481,6 +560,8 @@ impl BuiltinType {
         })
     }
 
+    /// The type name as WCL spells it. Inverse of
+    /// [`BuiltinType::from_name`].
     pub fn name(self) -> &'static str {
         match self {
             Self::Bool => "bool",
@@ -531,7 +612,10 @@ impl BuiltinType {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+/// A type as *written* in a declaration, before it is resolved against
+/// the document. The syntactic counterpart of `ResolvedType`.
 pub enum TypeRef {
+    /// A primitive type.
     Builtin(BuiltinType),
     /// A reference to a declared type by path, optionally carrying type
     /// arguments (`content<SvgBlock>`).
@@ -542,18 +626,28 @@ pub enum TypeRef {
     /// them — a named type resolves by `path` alone, exactly as it did
     /// before arguments existed. Full generics are a separate effort.
     Named {
+        /// Dotted path naming the declaration.
         path: Vec<String>,
+        /// Type arguments, preserved as syntax only — see above.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         args: Vec<TypeRef>,
     },
+    /// `&T` — a reference to a block of the wrapped type, by id.
     Reference(Box<TypeRef>),
+    /// `list<T>`.
     List(Box<TypeRef>),
+    /// `tensor<T, [dims]>`.
     Tensor {
+        /// The element type.
         element: Box<TypeRef>,
+        /// The declared extents, outermost first.
         dims: Vec<TensorDim>,
     },
+    /// `fn(params) -> return_ty`.
     Function {
+        /// Parameter types, in order.
         params: Vec<TypeRef>,
+        /// The return type.
         return_ty: Box<TypeRef>,
     },
 }
@@ -623,8 +717,12 @@ impl TypeRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// One dimension of a declared tensor type.
 pub enum TensorDim {
+    /// A literal extent.
     Fixed(u64),
+    /// A named extent, checked for consistency rather than for a
+    /// specific size.
     Symbolic(String),
 }
 
@@ -787,6 +885,8 @@ impl std::fmt::Display for Value {
     }
 }
 
+/// Render a float so it re-parses as a float: an integral value
+/// still prints a `.0`, which bare `Display` would drop.
 fn format_float_lit(n: f64) -> String {
     let s = format!("{n}");
     if s.contains('.') || s.contains('e') || s.contains('E') || !n.is_finite() {

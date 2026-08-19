@@ -1,3 +1,5 @@
+//! Integration tests: which decorators a document accepts.
+
 use wcl_lang::{Document, EvalError, SchemaViolationKind};
 
 struct AcceptanceCase {

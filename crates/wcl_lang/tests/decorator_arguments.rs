@@ -1,3 +1,5 @@
+//! Integration tests: decorator argument checking.
+
 use wcl_lang::{
     Document, Environment, EvalError, Registry, SchemaViolationKind, Span, Value, ast, disk_loader,
     parse_for_edit,

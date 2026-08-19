@@ -24,17 +24,25 @@ use crate::value::TypeRef;
 use super::span_to_miette;
 
 #[derive(Debug, PartialEq, Eq)]
+/// What a source's `namespace` and `use` declarations resolved to.
 pub(crate) struct Resolved {
+    /// Namespace the source declares.
     pub(crate) file_ns: Vec<String>,
+    /// Aliases binding one item name to a full path.
     pub(crate) item_aliases: HashMap<String, Vec<String>>,
+    /// Aliases binding a namespace prefix to a full path.
     pub(crate) ns_aliases: HashMap<String, Vec<String>>,
+    /// Namespaces pulled in wholesale.
     pub(crate) wildcards: Vec<Vec<String>>,
 }
 
+/// Whether a declared name equals a target path, segment by segment.
 pub(crate) fn decl_fqn_matches(decl: &[String], target: &[&str]) -> bool {
     decl.len() == target.len() && decl.iter().zip(target.iter()).all(|(a, b)| a == b)
 }
 
+/// Resolve a written path to its fully-qualified form, following the
+/// source's aliases and wildcards.
 pub(crate) fn resolve_path(
     path: &[String],
     file_ns: &[String],
@@ -78,6 +86,8 @@ pub(crate) fn resolve_path(
     None
 }
 
+/// Build the `ParseError` for a validation failure found while
+/// opening a document.
 pub(crate) fn open_error(
     source: &str,
     file: &str,
@@ -93,6 +103,9 @@ pub(crate) fn open_error(
     )
 }
 
+/// Run the parse-time validation pass: namespace and `use`
+/// resolution, plus the type-reference checks that do not need
+/// evaluation.
 pub(crate) fn validate_document(
     ast: &ast::Source,
     symbols: &SymbolIndex,
@@ -673,16 +686,26 @@ fn extends_field_types_compatible(a: &TypeRef, b: &TypeRef) -> bool {
 /// the deep validators so they can resolve paths against the document's
 /// alias/wildcard tables without 11-arg signatures.
 struct CheckContext<'a> {
+    /// Every type name the document declares.
     declared: &'a HashSet<Vec<String>>,
+    /// Every interface name the document declares.
     interfaces: &'a HashSet<Vec<String>>,
+    /// Namespace of the source being checked.
     file_ns: &'a [String],
+    /// Item aliases in scope.
     item_aliases: &'a HashMap<String, Vec<String>>,
+    /// Namespace aliases in scope.
     ns_aliases: &'a HashMap<String, Vec<String>>,
+    /// Wildcard namespaces in scope.
     wildcards: &'a [Vec<String>],
+    /// Source text, for rendering diagnostics.
     source: &'a str,
+    /// Source name, for rendering diagnostics.
     file: &'a str,
 }
 
+/// Check that every name a type reference mentions resolves to
+/// something the document declares.
 fn check_type_ref(
     t: &TypeRef,
     ty_span: Span,

@@ -631,6 +631,8 @@ fn call_pred(
     }
 }
 
+/// Borrow `v` as a list, or fail with a message naming `who` — the
+/// argument check every list builtin starts with.
 fn expect_list<'a>(who: &str, v: &'a Value) -> Result<&'a [Value], String> {
     match v {
         Value::List(items) => Ok(items),
@@ -641,6 +643,8 @@ fn expect_list<'a>(who: &str, v: &'a Value) -> Result<&'a [Value], String> {
     }
 }
 
+/// `any(xs, f)` — true when `f` holds for at least one element.
+/// Short-circuits on the first match.
 fn any_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let f = expect_function("any", "second argument", &args[1])?.clone();
     for elem in expect_list("any", &args[0])? {
@@ -651,6 +655,8 @@ fn any_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     Ok(Value::Bool(false))
 }
 
+/// `all(xs, f)` — true when `f` holds for every element. Vacuously
+/// true for an empty list, and short-circuits on the first failure.
 fn all_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let f = expect_function("all", "second argument", &args[1])?.clone();
     for elem in expect_list("all", &args[0])? {
@@ -661,6 +667,7 @@ fn all_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     Ok(Value::Bool(true))
 }
 
+/// `find(xs, f)` — the first element satisfying `f`, else `none`.
 fn find_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let f = expect_function("find", "second argument", &args[1])?.clone();
     for elem in expect_list("find", &args[0])? {
@@ -674,10 +681,13 @@ fn find_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
 /// A sort/compare key produced by a `key` function: all-numeric or
 /// all-string, mirroring `sort`'s rules.
 enum SortKey {
+    /// Numeric keys, compared numerically.
     Num(f64),
+    /// String keys, compared lexicographically.
     Str(String),
 }
 
+/// Reduce a value to something orderable, or fail naming `who`.
 fn sort_key(who: &str, v: Value) -> Result<SortKey, String> {
     if v.is_numeric() {
         return Ok(SortKey::Num(v.as_f64().unwrap_or(f64::NAN)));
@@ -691,6 +701,8 @@ fn sort_key(who: &str, v: Value) -> Result<SortKey, String> {
     }
 }
 
+/// Order two keys. Mixing numeric and string keys is an error rather
+/// than an arbitrary ordering.
 fn compare_keys(a: &SortKey, b: &SortKey) -> Result<std::cmp::Ordering, String> {
     match (a, b) {
         (SortKey::Num(x), SortKey::Num(y)) => {
@@ -701,6 +713,8 @@ fn compare_keys(a: &SortKey, b: &SortKey) -> Result<std::cmp::Ordering, String> 
     }
 }
 
+/// Apply the key function to every element once, pairing each element
+/// with its key — so a sort calls the key function n times, not n log n.
 fn keyed_elements(
     who: &str,
     caller: &mut dyn Caller,
@@ -715,6 +729,7 @@ fn keyed_elements(
     Ok(keyed)
 }
 
+/// `sort_by(xs, f)` — sort by the key `f` returns. The sort is stable.
 fn sort_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let mut keyed = keyed_elements("sort_by", caller, args)?;
     let mut err = None;
@@ -731,6 +746,8 @@ fn sort_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String>
     }
 }
 
+/// Shared implementation of `min_by` and `max_by`, differing only in
+/// which ordering wins.
 fn extreme_by(
     who: &str,
     caller: &mut dyn Caller,
@@ -754,14 +771,20 @@ fn extreme_by(
     Ok(best.map(|(_, v)| v).unwrap_or(Value::None))
 }
 
+/// `min_by(xs, f)` — the element with the smallest key, or `none` for
+/// an empty list.
 fn min_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     extreme_by("min_by", caller, args, std::cmp::Ordering::Less)
 }
 
+/// `max_by(xs, f)` — the element with the largest key, or `none` for
+/// an empty list.
 fn max_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     extreme_by("max_by", caller, args, std::cmp::Ordering::Greater)
 }
 
+/// `group_by(xs, f)` — bucket elements by the key `f` returns,
+/// preserving each bucket's original order.
 fn group_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let f = expect_function("group_by", "second argument", &args[1])?.clone();
     // First-seen key order, with whole-Value key equality (so symbol /
@@ -791,6 +814,8 @@ fn group_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String
     ))
 }
 
+/// `slice(xs, start, end)` over a list or string. Indices are clamped
+/// rather than erroring, and negative indices count from the end.
 fn slice_pure(xs: Value, start: i64, end: i64) -> Result<Value, String> {
     let clamp = |len: usize| {
         let s = start.clamp(0, len as i64) as usize;
@@ -814,6 +839,8 @@ fn slice_pure(xs: Value, start: i64, end: i64) -> Result<Value, String> {
     }
 }
 
+/// Shared implementation of `pad_start` and `pad_end`: repeat `pad`
+/// until `s` reaches `width`, on whichever side `at_start` selects.
 fn pad_string(s: String, width: i64, pad: &str, at_start: bool) -> Result<String, String> {
     if pad.is_empty() {
         return Err("pad_start/pad_end: pad pattern must not be empty".to_string());
@@ -847,6 +874,7 @@ fn record_fields<'a>(who: &str, v: &'a Value) -> Result<&'a BTreeMap<String, Val
     }
 }
 
+/// `map_values(record, f)` — apply `f` to each value, keeping keys.
 fn map_values_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let f = expect_function("map_values", "second argument", &args[1])?.clone();
     let (ty, fields) = match &args[0] {
@@ -872,6 +900,7 @@ fn map_values_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, Stri
     })
 }
 
+/// `contains(xs, needle)` by value equality.
 fn list_contains_pure(xs: Value, needle: Value) -> bool {
     match &xs {
         Value::List(items) => items.iter().any(|v| v == &needle),
@@ -880,6 +909,7 @@ fn list_contains_pure(xs: Value, needle: Value) -> bool {
     }
 }
 
+/// `sort(xs)` using each element's own natural order.
 fn sort_pure(xs: Vec<Value>) -> Result<Value, String> {
     // Numeric lists sort numerically; string lists sort lexicographically.
     // Mixed-type lists and unsupported types fail loudly rather than
@@ -957,6 +987,8 @@ fn sort_connected_pure(items_v: Value, edges_v: Value) -> Result<Value, String> 
     )))
 }
 
+/// Order one level of a tree so that connected siblings sit together,
+/// following `edges`. The workhorse of the connection-aware sort.
 fn sort_connected_level(items: Vec<Value>, edges: &[Value]) -> Vec<Value> {
     if items.is_empty() {
         return items;
@@ -1044,6 +1076,7 @@ fn greedy_bfs_order(n: usize, adj: &HashMap<usize, HashSet<usize>>) -> Vec<usize
     order
 }
 
+/// Apply the connection-aware sort to every level beneath `item`.
 fn recurse_sort_children(item: Value, edges: &[Value]) -> Value {
     match item {
         Value::Record { ty, fields } => {
@@ -1074,6 +1107,8 @@ fn recurse_sort_children(item: Value, edges: &[Value]) -> Value {
     }
 }
 
+/// Every id in `item`'s subtree, itself included — used to decide
+/// which subtree an edge endpoint falls in.
 fn collect_descendant_ids(item: &Value) -> HashSet<String> {
     let mut out = HashSet::new();
     if let Some(id) = item_id(item) {
@@ -1087,11 +1122,13 @@ fn collect_descendant_ids(item: &Value) -> HashSet<String> {
     out
 }
 
+/// The `id` field of a tree item, if it has one.
 fn item_id(v: &Value) -> Option<String> {
     let map = item_fields(v)?;
     extract_id_string(map.get("id")?)
 }
 
+/// The `children` list of a tree item, if it has one.
 fn item_children(v: &Value) -> Option<&[Value]> {
     let map = item_fields(v)?;
     match map.get("children")? {
@@ -1100,6 +1137,7 @@ fn item_children(v: &Value) -> Option<&[Value]> {
     }
 }
 
+/// Borrow a value's record fields, or `None` if it is not a record.
 fn item_fields(v: &Value) -> Option<&BTreeMap<String, Value>> {
     match v {
         Value::Record { fields, .. } => Some(fields),
@@ -1111,6 +1149,7 @@ fn item_fields(v: &Value) -> Option<&BTreeMap<String, Value>> {
     }
 }
 
+/// The `(source, destination)` ids of an edge record.
 fn edge_endpoint_pair(v: &Value) -> Option<(String, String)> {
     let fields = item_fields(v)?;
     let src = extract_id_string(fields.get("source")?)?;
@@ -1118,6 +1157,8 @@ fn edge_endpoint_pair(v: &Value) -> Option<(String, String)> {
     Some((src, dst))
 }
 
+/// Read a value as an id string, accepting either a string or an
+/// identifier.
 fn extract_id_string(v: &Value) -> Option<String> {
     match v {
         Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
@@ -1125,6 +1166,8 @@ fn extract_id_string(v: &Value) -> Option<String> {
     }
 }
 
+/// Index of the subtree containing `target`, or `None` when no
+/// subtree does.
 fn find_subtree(descendants: &[HashSet<String>], target: &str) -> Option<usize> {
     descendants.iter().position(|s| s.contains(target))
 }
@@ -1150,6 +1193,7 @@ fn expect_function<'a>(
     }
 }
 
+/// `map(xs, f)` — apply `f` to every element.
 fn map_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let f = expect_function("map", "second argument", &args[1])?.clone();
     match &args[0] {
@@ -1178,6 +1222,7 @@ fn map_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     }
 }
 
+/// `filter(xs, f)` — keep the elements for which `f` holds.
 fn filter_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let items = match &args[0] {
         Value::List(items) => items,
@@ -1211,6 +1256,7 @@ fn filter_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> 
     Ok(Value::List(std::sync::Arc::new(out)))
 }
 
+/// `fold(xs, init, f)` — left fold over the list.
 fn fold_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let items = match &args[0] {
         Value::List(items) => items.clone(),
@@ -1232,6 +1278,7 @@ fn fold_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
 
 // ── Pure ─────────────────────────────────────────────────────────────
 
+/// `len(v)` for a list, string, record or tensor.
 fn len_pure(v: Value) -> Result<i64, String> {
     match v {
         Value::List(items) => Ok(items.len() as i64),
@@ -1244,6 +1291,7 @@ fn len_pure(v: Value) -> Result<i64, String> {
     }
 }
 
+/// `range(start, end)` — the half-open integer range.
 fn range_pure(start: i64, end: i64) -> Result<Vec<i64>, String> {
     if end < start {
         return Err(format!(
@@ -1253,6 +1301,7 @@ fn range_pure(start: i64, end: i64) -> Result<Vec<i64>, String> {
     Ok((start..end).collect())
 }
 
+/// `head(xs)` — the first element, or `none` for an empty list.
 fn head_pure(v: Value) -> Result<Value, String> {
     match v {
         Value::List(items) => Ok(items.first().cloned().unwrap_or(Value::None)),
@@ -1264,6 +1313,7 @@ fn head_pure(v: Value) -> Result<Value, String> {
     }
 }
 
+/// `tail(xs)` — every element but the first; empty for an empty list.
 fn tail_pure(v: Value) -> Result<Vec<Value>, String> {
     match v {
         Value::List(items) => Ok(items.get(1..).map(<[Value]>::to_vec).unwrap_or_default()),
@@ -1376,6 +1426,8 @@ fn validate_tensor_shape(
     Ok((dims, product))
 }
 
+/// `tensor(data, shape)` — build a tensor, checking that the element
+/// count matches the shape's product.
 fn tensor_pure(data: Value, shape: Value) -> Result<Value, String> {
     let data = match data {
         Value::List(items) => items,
@@ -1405,6 +1457,7 @@ fn tensor_pure(data: Value, shape: Value) -> Result<Value, String> {
     Ok(Value::Tensor { shape: dims, data })
 }
 
+/// `tensor_data(t)` — the elements in row-major order.
 fn tensor_data_pure(v: Value) -> Result<Vec<Value>, String> {
     match v {
         Value::Tensor { data, .. } => Ok(std::sync::Arc::unwrap_or_clone(data)),
@@ -1415,6 +1468,7 @@ fn tensor_data_pure(v: Value) -> Result<Vec<Value>, String> {
     }
 }
 
+/// `tensor_shape(t)` — the extent of each dimension.
 fn tensor_shape_pure(v: Value) -> Result<Vec<i64>, String> {
     match v {
         Value::Tensor { shape, .. } => Ok(shape.into_iter().map(|d| d as i64).collect()),
@@ -1425,6 +1479,8 @@ fn tensor_shape_pure(v: Value) -> Result<Vec<i64>, String> {
     }
 }
 
+/// `tensor_reshape(t, shape)` — reinterpret the same elements under a
+/// new shape of the same total size.
 fn tensor_reshape_pure(t: Value, new_shape: Value) -> Result<Value, String> {
     let (data, _old_shape) = match t {
         Value::Tensor { shape, data } => (data, shape),
@@ -1454,6 +1510,7 @@ fn tensor_reshape_pure(t: Value, new_shape: Value) -> Result<Value, String> {
     Ok(Value::Tensor { shape: dims, data })
 }
 
+/// `flatten(xs)` — concatenate one level of nested lists.
 fn flatten_pure(v: Value) -> Result<Vec<Value>, String> {
     let items = match v {
         Value::List(items) => items,
@@ -1479,6 +1536,8 @@ fn flatten_pure(v: Value) -> Result<Vec<Value>, String> {
     Ok(out)
 }
 
+/// `zip(a, b)` — pair elements positionally, stopping at the shorter
+/// list.
 fn zip_pure(a: Value, b: Value) -> Result<Vec<Value>, String> {
     let av = match a {
         Value::List(xs) => xs,

@@ -1,3 +1,5 @@
+//! Integration tests: `@decorator` declarations and their validation.
+
 use wcl_lang::{Document, Environment, EvalError, Registry, SchemaViolationKind, disk_loader};
 
 fn undeclared_decorator_errors(source: &str) -> Vec<EvalError> {

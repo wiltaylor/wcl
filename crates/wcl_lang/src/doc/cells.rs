@@ -25,12 +25,19 @@ use crate::symbols::SymbolIndex;
 use crate::value::Value;
 
 #[derive(Debug)]
+/// Memo for one field's value, plus the flag that turns infinite
+/// recursion into an `EvalError::Cycle` instead of a stack overflow.
 pub(crate) struct FieldCell {
+    /// The evaluated result, written once on first force. Errors are
+    /// cached too, so a failing field reports identically on every read.
     pub(crate) value: OnceLock<Result<Value, EvalError>>,
+    /// Set while this field is being forced. A re-entrant force sees it
+    /// set and reports a cycle.
     pub(crate) evaluating: AtomicBool,
 }
 
 impl FieldCell {
+    /// An empty, unforced cell.
     pub(crate) fn new() -> Self {
         Self {
             value: OnceLock::new(),
@@ -42,25 +49,36 @@ impl FieldCell {
 /// Per-decorator cache for evaluated positional and named arguments.
 #[derive(Debug, Default)]
 pub(crate) struct DecoratorCell {
+    /// Positional arguments, evaluated together on first read.
     pub(crate) positional: OnceLock<Result<Vec<Value>, EvalError>>,
+    /// Named arguments, evaluated together on first read.
     pub(crate) named: OnceLock<HashMap<String, Result<Value, EvalError>>>,
 }
 
 #[derive(Debug)]
+/// The evaluation caches for one AST item: its decorators, plus
+/// whatever else its particular kind needs.
 pub(crate) struct ItemCells {
+    /// One cell per decorator, index-aligned with the item's decorators.
     pub(crate) decorators: Vec<DecoratorCell>,
+    /// Caches specific to this item's kind.
     pub(crate) kind: ItemCellKind,
 }
 
 #[derive(Debug)]
+/// The per-kind half of [`ItemCells`], mirroring [`ast::Item`].
 pub(crate) enum ItemCellKind {
+    /// A `name = expr` field.
     Field(FieldCell),
     /// `let name = expr` item. Reuses `FieldCell` for the memoised
     /// value + cycle-detection flag; evaluated on first name
     /// resolution, never as document output.
     Let(FieldCell),
+    /// A block instance, whose body has cells of its own.
     Block {
+        /// The block's evaluated labels.
         labels: OnceLock<Result<Vec<Value>, EvalError>>,
+        /// Cells for the body items, index-aligned with them.
         items: Vec<ItemCells>,
         /// Lazy schema-content validation cache. Populated on first call
         /// to `Block::schema_errors()`.
@@ -111,26 +129,36 @@ pub(crate) enum ItemCellKind {
         /// per-item scans when the resolving name is absent.
         bindable_names: std::sync::RwLock<HashMap<String, std::sync::Arc<HashSet<String>>>>,
     },
+    /// A `type` declaration.
     TypeDecl {
         /// One inner Vec per `ast::TypeDecl.fields[i]`, holding cells for
         /// that field's decorators.
         field_decorators: Vec<Vec<DecoratorCell>>,
     },
+    /// An `interface` declaration.
     InterfaceDecl {
         /// One inner Vec per `ast::InterfaceDecl.fields[i]`, holding cells
         /// for that field's decorators.
         field_decorators: Vec<Vec<DecoratorCell>>,
     },
+    /// A `union` declaration.
     UnionDecl {
+        /// One inner Vec per variant, holding cells for that variant's
+        /// own decorators.
         variant_decorators: Vec<Vec<DecoratorCell>>,
         /// `[variant_idx][field_idx]` decorator cells for record-variant
         /// fields. Empty inner vecs for non-record variants.
         variant_field_decorators: Vec<Vec<Vec<DecoratorCell>>>,
     },
+    /// A `symbol_set` declaration.
     SymbolSetDecl {
+        /// One inner Vec per symbol, holding cells for that symbol's
+        /// decorators.
         symbol_decorators: Vec<Vec<DecoratorCell>>,
     },
+    /// A `namespace` declaration — nothing to cache.
     NamespaceDecl,
+    /// A `use` declaration — nothing to cache.
     UseDecl,
     /// Stub variant for `Item::Table` AST entries. The actual cells
     /// for the rows (synthesised `Block`s) live in the enclosing
@@ -152,14 +180,20 @@ pub(crate) enum ItemCellKind {
         /// document had no base directory (e.g. `Document::open`),
         /// which surfaces as an `ImportFailed` on first access.
         base_dir: Option<PathBuf>,
+        /// The loaded file, populated on first access.
         loaded: OnceLock<Result<LoadedImport, EvalError>>,
     },
+    /// A `connection` declaration — nothing to cache.
     ConnectionDecl,
+    /// A connection statement — nothing to cache.
     Connection,
 }
 
 #[derive(Debug)]
+/// The root of an evaluation-cache tree: cells for one source's
+/// top-level items.
 pub(crate) struct BlockCells {
+    /// Cells index-aligned with the source's items.
     pub(crate) items: Vec<ItemCells>,
 }
 
@@ -169,8 +203,11 @@ pub(crate) struct BlockCells {
 /// type's `@children` decoration at view time.
 #[derive(Debug)]
 pub(crate) struct SynthRow {
+    /// Parent field the table header bound this row to.
     pub(crate) field_name: String,
+    /// The synthesised block for this row.
     pub(crate) block: ast::Block,
+    /// Evaluation caches for that block.
     pub(crate) cells: ItemCells,
 }
 
@@ -183,9 +220,13 @@ pub(crate) struct SynthRow {
 /// short-circuit to them — the placeholder AST exprs are never evaluated.
 #[derive(Debug)]
 pub(crate) struct SynthChild {
+    /// Parent field the table header bound this row to.
     pub(crate) field_name: String,
+    /// Block kind, filled in from the parent's `@children` at view time.
     pub(crate) kind: String,
+    /// The synthesised block itself.
     pub(crate) block: ast::Block,
+    /// Evaluation caches for that block.
     pub(crate) cells: ItemCells,
 }
 
@@ -194,7 +235,10 @@ pub(crate) struct SynthChild {
 /// block's evaluation cells, so each expansion evaluates independently.
 #[derive(Debug)]
 pub(crate) struct Expansion {
+    /// Names bound for this expansion — declarer parameters, or a loop
+    /// variable.
     pub(crate) bindings: std::sync::Arc<Vec<(String, Value)>>,
+    /// A fresh cell tree, so each expansion evaluates independently.
     pub(crate) cells: ItemCells,
 }
 
@@ -203,26 +247,34 @@ pub(crate) struct Expansion {
 /// (in-block) imports stay lazy inside `items`/`cells`.
 #[derive(Debug)]
 pub(crate) struct LoadedImport {
+    /// Resolved path of the imported file.
     pub(crate) path: PathBuf,
     /// Raw source text of the imported file, retained so diagnostics
     /// raised against this file's spans can render their snippet against
     /// the correct source (a cross-file eval error otherwise renders
     /// against the root document's text — wrong offsets / `OutOfBounds`).
     pub(crate) source: String,
+    /// Namespace the imported file declares.
     pub(crate) file_ns: Vec<String>,
+    /// The imported file's top-level items.
     pub(crate) items: Vec<ast::Item>,
+    /// Evaluation caches, index-aligned with `items`.
     pub(crate) cells: Vec<ItemCells>,
     /// Symbols indexed within this loaded file. Paths refer to the
     /// `items`/`cells` arrays in this same struct.
     pub(crate) symbols: SymbolIndex,
+    /// Top-level imports of the imported file, flattened in.
     pub(crate) eager_imports: Vec<LoadedImport>,
 }
 
+/// One empty cell per decorator, index-aligned with `decs`.
 pub(crate) fn make_decorator_cells(decs: &[ast::Decorator]) -> Vec<DecoratorCell> {
     (0..decs.len()).map(|_| DecoratorCell::default()).collect()
 }
 
 impl BlockCells {
+    /// Build a cache tree mirroring `items`. `base_dir` is where relative
+    /// imports inside them will resolve from.
     pub(crate) fn build(items: &[ast::Item], base_dir: Option<&Path>) -> Self {
         let cells = items
             .iter()
@@ -245,6 +297,7 @@ impl ItemCells {
         )
     }
 
+    /// Build the caches one item needs, recursing into block bodies.
     pub(crate) fn build(item: &ast::Item, base_dir: Option<&Path>) -> Self {
         match item {
             ast::Item::Field(f) => Self {

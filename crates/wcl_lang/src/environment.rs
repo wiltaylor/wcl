@@ -30,6 +30,8 @@ use crate::value::{BuiltinType, TypeRef, Value};
 /// cache. A kind this expander does not generate from returns an empty
 /// list.
 pub trait Expander: Send + Sync {
+    /// Produce the children of a `@contextual` block. An empty vector
+    /// means the block expands to nothing.
     fn expand<'a>(&self, block: &Block<'a>) -> Vec<Block<'a>>;
 }
 
@@ -41,9 +43,13 @@ pub trait Expander: Send + Sync {
 /// [`Environment::empty`] for a strictly empty one.
 #[derive(Clone, Default)]
 pub struct Environment {
+    /// Type declarations the host supplies, on top of the language's own.
     types: Vec<ast::TypeDecl>,
+    /// Symbol sets the host supplies.
     symbol_sets: Vec<ast::SymbolSetDecl>,
+    /// Host functions callable from document expressions, by name.
     builtins: HashMap<String, BuiltinFn>,
+    /// Expander for `@contextual` blocks, if the host registered one.
     expander: Option<Arc<dyn Expander>>,
 }
 
@@ -108,18 +114,22 @@ impl Environment {
         self
     }
 
+    /// The registered `@contextual` expander, if any.
     pub(crate) fn expander(&self) -> Option<&dyn Expander> {
         self.expander.as_deref()
     }
 
+    /// The host-supplied type declarations.
     pub(crate) fn types(&self) -> &[ast::TypeDecl] {
         &self.types
     }
 
+    /// The host-supplied symbol sets.
     pub(crate) fn symbol_sets(&self) -> &[ast::SymbolSetDecl] {
         &self.symbol_sets
     }
 
+    /// The host builtin registered under `name`, if any.
     pub(crate) fn builtin(&self, name: &str) -> Option<&BuiltinFn> {
         self.builtins.get(name)
     }
@@ -155,6 +165,9 @@ fn stdlib_unit_types() -> Vec<ast::TypeDecl> {
     UNITS.clone()
 }
 
+/// Every decorator schema the language declares for itself — the
+/// `@block`, `@children`, `@unit` and friends a document can use
+/// without declaring them.
 fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
     vec![
         block_schema(),
@@ -254,6 +267,7 @@ fn builtin_decorator_schemas() -> Vec<ast::TypeDecl> {
     ]
 }
 
+/// Schema for `@schemaless`.
 fn schemaless_decorator_schema() -> ast::TypeDecl {
     let mut reason = synthetic_field("reason", TypeRef::Builtin(BuiltinType::Utf8), true);
     reason
@@ -278,6 +292,7 @@ fn schemaless_decorator_schema() -> ast::TypeDecl {
     }
 }
 
+/// Schema for `@block`.
 fn block_schema() -> ast::TypeDecl {
     let mut name = synthetic_field("name", TypeRef::Builtin(BuiltinType::Identifier), false);
     name.decorators
@@ -311,6 +326,7 @@ fn block_schema() -> ast::TypeDecl {
     }
 }
 
+/// Schema for `@children`.
 fn children_schema() -> ast::TypeDecl {
     let mut kind = synthetic_field("kind", TypeRef::Builtin(BuiltinType::Identifier), false);
     kind.decorators
@@ -335,6 +351,8 @@ fn children_schema() -> ast::TypeDecl {
     }
 }
 
+/// Schema for `@decorator` — the declaration that lets a document
+/// declare decorators of its own.
 fn decorator_schema() -> ast::TypeDecl {
     let mut name = synthetic_field("name", TypeRef::Builtin(BuiltinType::Utf8), false);
     name.decorators
@@ -357,6 +375,7 @@ fn decorator_schema() -> ast::TypeDecl {
     }
 }
 
+/// Schema for `@default`.
 fn default_schema() -> ast::TypeDecl {
     let mut schema = synth_decorator_schema(
         "Default",
@@ -373,6 +392,7 @@ fn default_schema() -> ast::TypeDecl {
     schema
 }
 
+/// Schema for `@applies_to`.
 fn applies_to_schema() -> ast::TypeDecl {
     ast::TypeDecl {
         name: vec!["AppliesTo".to_string()],
@@ -403,6 +423,7 @@ fn applies_to_schema() -> ast::TypeDecl {
     }
 }
 
+/// Schema for `@unit`.
 fn unit_schema() -> ast::TypeDecl {
     let mut declaration =
         synthetic_decorator("decorator", vec![ast::Expr::Utf8("unit".to_string())]);
@@ -433,6 +454,8 @@ fn unit_schema() -> ast::TypeDecl {
     }
 }
 
+/// The `DecoratorPosition` symbol set that `@applies_to` draws its
+/// values from.
 fn decorator_position_set() -> ast::SymbolSetDecl {
     const POSITIONS: [&str; 11] = [
         "field",
@@ -467,6 +490,7 @@ fn decorator_position_set() -> ast::SymbolSetDecl {
     }
 }
 
+/// Build the schema for a decorator that takes no arguments at all.
 fn synth_marker_decorator_schema(type_name: &str, decorator_name: &str) -> ast::TypeDecl {
     ast::TypeDecl {
         name: vec![type_name.to_string()],
@@ -508,6 +532,7 @@ fn declares_kind_schema() -> ast::TypeDecl {
     }
 }
 
+/// Build the schema for a decorator taking one required argument.
 fn synth_decorator_schema(
     type_name: &str,
     decorator_name: &str,
@@ -534,6 +559,7 @@ fn synth_decorator_schema(
     }
 }
 
+/// Build the schema for a decorator taking one optional argument.
 fn synth_optional_decorator_schema(
     type_name: &str,
     decorator_name: &str,
@@ -548,17 +574,22 @@ fn synth_optional_decorator_schema(
 /// Output of [`TypeBuilder::build`] — a finished synthetic type declaration
 /// ready to register with an [`Environment`].
 pub struct BuiltType {
+    /// The finished declaration.
     pub(crate) inner: ast::TypeDecl,
 }
 
 /// Builder for synthetic type declarations.
 pub struct TypeBuilder {
+    /// Dotted name of the type being built.
     name: Vec<String>,
+    /// Fields accumulated so far.
     fields: Vec<ast::TypeField>,
+    /// Decorators accumulated so far.
     decorators: Vec<ast::Decorator>,
 }
 
 impl TypeBuilder {
+    /// Start building a type declaration with the given dotted name.
     pub fn new<I, S>(name: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -571,16 +602,19 @@ impl TypeBuilder {
         }
     }
 
+    /// Attach a decorator to the type being built.
     pub fn decorator(mut self, d: DecoratorBuilder) -> Self {
         self.decorators.push(d.build());
         self
     }
 
+    /// Append a field to the type being built.
     pub fn field(mut self, f: TypeFieldBuilder) -> Self {
         self.fields.push(f.build());
         self
     }
 
+    /// Finish the type declaration.
     pub fn build(self) -> BuiltType {
         BuiltType {
             inner: ast::TypeDecl {
@@ -600,13 +634,18 @@ impl TypeBuilder {
 
 /// Builder for synthetic type fields.
 pub struct TypeFieldBuilder {
+    /// Field name.
     name: String,
+    /// Declared type.
     ty: TypeRef,
+    /// Whether the field is optional.
     optional: bool,
+    /// Decorators accumulated so far.
     decorators: Vec<ast::Decorator>,
 }
 
 impl TypeFieldBuilder {
+    /// Start a required field of the given name and type.
     pub fn new(name: impl Into<String>, ty: TypeRef) -> Self {
         Self {
             name: name.into(),
@@ -616,16 +655,19 @@ impl TypeFieldBuilder {
         }
     }
 
+    /// Mark the field optional (or not).
     pub fn optional(mut self, optional: bool) -> Self {
         self.optional = optional;
         self
     }
 
+    /// Attach a decorator to the field being built.
     pub fn decorator(mut self, d: DecoratorBuilder) -> Self {
         self.decorators.push(d.build());
         self
     }
 
+    /// Finish the field declaration.
     pub(crate) fn build(self) -> ast::TypeField {
         ast::TypeField {
             name: self.name,
@@ -643,12 +685,16 @@ impl TypeFieldBuilder {
 
 /// Builder for synthetic decorators.
 pub struct DecoratorBuilder {
+    /// Dotted decorator name.
     name: Vec<String>,
+    /// Positional arguments accumulated so far.
     positional: Vec<ast::Expr>,
+    /// Named arguments accumulated so far.
     named: Vec<ast::NamedArg>,
 }
 
 impl DecoratorBuilder {
+    /// Start building a decorator with the given dotted name.
     pub fn new<I, S>(name: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -661,11 +707,13 @@ impl DecoratorBuilder {
         }
     }
 
+    /// Append a positional argument.
     pub fn positional(mut self, value: Value) -> Self {
         self.positional.push(value_to_expr(value));
         self
     }
 
+    /// Set a named argument.
     pub fn named(mut self, name: impl Into<String>, value: Value) -> Self {
         self.named.push(ast::NamedArg {
             name: name.into(),
@@ -677,6 +725,7 @@ impl DecoratorBuilder {
         self
     }
 
+    /// Finish the decorator.
     pub(crate) fn build(self) -> ast::Decorator {
         let positional_spans = vec![synthetic_span(); self.positional.len()];
         ast::Decorator {
@@ -690,6 +739,8 @@ impl DecoratorBuilder {
     }
 }
 
+/// Lift an already-evaluated value back into the literal expression
+/// that produces it, so synthesised declarations can carry values.
 fn value_to_expr(v: Value) -> ast::Expr {
     match v {
         Value::Bool(b) => ast::Expr::Bool(b),

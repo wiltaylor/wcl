@@ -103,6 +103,8 @@ pub(super) fn match_pattern(pat: &Pattern, val: &Value) -> Option<Vec<(String, V
     }
 }
 
+/// Whether a pattern's union path matches a fully-qualified union
+/// name. Compared from the right, so an unqualified pattern matches.
 fn path_matches(pat_path: &[String], union_fqn: &[String]) -> bool {
     if pat_path.len() > union_fqn.len() {
         return false;
@@ -111,6 +113,8 @@ fn path_matches(pat_path: &[String], union_fqn: &[String]) -> bool {
     union_fqn[offset..] == *pat_path
 }
 
+/// Match a variant pattern's payload against the value's, binding any
+/// names the sub-patterns introduce.
 fn match_variant_payload(
     args: &VariantPatArgs,
     payload: &VariantPayload,
@@ -139,6 +143,7 @@ fn match_variant_payload(
     }
 }
 
+/// Lift a numeric literal into the `Value` variant of the same type.
 pub(crate) fn number_lit_to_value(lit: &NumberLit) -> Value {
     match lit {
         NumberLit::I8(n) => Value::I8(*n),

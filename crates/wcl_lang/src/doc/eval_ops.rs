@@ -14,6 +14,7 @@ use crate::numeric::{
 };
 use crate::value::Value;
 
+/// Render a member chain back to source form, for diagnostics.
 pub(super) fn format_member_path(expr: &ast::Expr) -> String {
     use ast::Expr as E;
     fn walk(e: &ast::Expr, out: &mut String) {
@@ -34,6 +35,7 @@ pub(super) fn format_member_path(expr: &ast::Expr) -> String {
     s
 }
 
+/// Name an expression's form, as diagnostics spell it.
 pub(super) fn describe_expr(expr: &ast::Expr) -> &'static str {
     use ast::Expr as E;
     match expr {
@@ -66,6 +68,7 @@ pub(super) fn describe_expr(expr: &ast::Expr) -> &'static str {
     }
 }
 
+/// Read a value as a `bool`, or report a type mismatch naming `op`.
 pub(super) fn as_bool(v: &Value, op: ast::BinOp, span: Span) -> Result<bool, EvalError> {
     match v {
         Value::Bool(b) => Ok(*b),
@@ -78,6 +81,7 @@ pub(super) fn as_bool(v: &Value, op: ast::BinOp, span: Span) -> Result<bool, Eva
     }
 }
 
+/// The operator's source spelling, for diagnostics.
 pub(super) fn op_name(op: ast::BinOp) -> &'static str {
     match op {
         ast::BinOp::Add => "+",
@@ -97,6 +101,7 @@ pub(super) fn op_name(op: ast::BinOp) -> &'static str {
     }
 }
 
+/// Apply a prefix operator.
 pub(super) fn apply_unary(op: ast::UnaryOp, v: Value, span: Span) -> Result<Value, EvalError> {
     match op {
         ast::UnaryOp::Neg => {
@@ -217,6 +222,8 @@ fn promote_pair(l: &Value, r: &Value) -> Option<(Value, Value)> {
     Some((Value::I128(l.as_i128()?), Value::I128(r.as_i128()?)))
 }
 
+/// Apply a binary operator, promoting numeric operands to a common
+/// type first.
 pub(super) fn apply_binary(
     op: ast::BinOp,
     l: Value,
@@ -261,6 +268,8 @@ pub(super) fn apply_binary(
     }
 }
 
+/// Structural equality across values, comparing numbers by magnitude
+/// rather than by variant.
 pub(super) fn values_eq(l: &Value, r: &Value) -> bool {
     // Fast path: same-typed structural equality.
     if l == r {
@@ -273,6 +282,7 @@ pub(super) fn values_eq(l: &Value, r: &Value) -> bool {
     false
 }
 
+/// Order two numeric values, or `None` when either is not numeric.
 fn numeric_cmp(l: &Value, r: &Value) -> Option<std::cmp::Ordering> {
     use std::cmp::Ordering;
     macro_rules! arm {
@@ -299,6 +309,8 @@ fn numeric_cmp(l: &Value, r: &Value) -> Option<std::cmp::Ordering> {
     None
 }
 
+/// Shared implementation of the ordering operators: compare, then let
+/// `pick` turn the ordering into the operator's answer.
 fn compare<F>(l: &Value, r: &Value, span: Span, pick: F) -> Result<Value, EvalError>
 where
     F: Fn(std::cmp::Ordering) -> bool,

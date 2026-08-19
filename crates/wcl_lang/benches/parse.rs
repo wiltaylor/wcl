@@ -1,6 +1,9 @@
+//! Benchmarks: parse throughput against synthetic documents.
+
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
+/// Generate a document source with `n` repeated blocks.
 fn fixture(n: usize) -> String {
     let mut s = String::with_capacity(n * 128);
     for i in 0..n {
@@ -12,6 +15,7 @@ fn fixture(n: usize) -> String {
     s
 }
 
+/// Measure parse throughput across several document sizes.
 fn bench_parse(c: &mut Criterion) {
     let src = fixture(100);
     c.bench_function("parse_100_blocks", |b| {

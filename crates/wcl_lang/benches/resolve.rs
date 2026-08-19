@@ -42,6 +42,7 @@ fn root(types: usize, blocks: usize) -> String {
     s
 }
 
+/// Build and open a synthetic document of the requested size.
 fn open(types: usize, blocks: usize) -> wcl_lang::Document {
     let mut reg = wcl_lang::Registry::new();
     reg.register("schema.wcl", schema(types));
@@ -70,6 +71,7 @@ fn force(doc: &wcl_lang::Document) -> usize {
     touched
 }
 
+/// Measure name resolution across several document sizes.
 fn bench_resolve(c: &mut Criterion) {
     // Two sizes, 4x apart on both axes: superlinear resolution shows up
     // as a much-worse-than-16x ratio between them.

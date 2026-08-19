@@ -65,25 +65,43 @@ const MAX_EXPANSION_DEPTH: usize = 32;
 /// go through this enum.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum BuiltinDecorator {
+    /// `@block("kind")` — the type backing a block kind.
     Block,
+    /// `@table("kind")` — the type backing a table's rows.
     Table,
+    /// `@document` — the type validating the file's top level.
     Document,
+    /// `@decorator("name")` — declares a decorator's own shape.
     Decorator,
+    /// `@schemaless` — waive membership checking for this type.
     Schemaless,
+    /// `@contextual` — placement is decided by the surrounding context.
     Contextual,
+    /// `@block_slot` — host-neutral marker for a nested slot type.
     BlockSlot,
+    /// `@declares_kind` — the type introduces a block kind of its own.
     DeclaresKind,
+    /// `@inline(n)` — the field is filled from the block's nth label.
     Inline,
+    /// `@default(value)` — value used when the field is absent.
     Default,
+    /// `@child("kind")` — the field gathers one child block.
     Child,
+    /// `@children("kind")` — the field gathers every child of a kind.
     Children,
+    /// `@connections(schema)` — the field decomposes connection
+    /// statements.
     Connections,
+    /// `@dynamic` — the field's type is decided at evaluation.
     Dynamic,
+    /// `@ref("kind")` — the field holds a reference to a block by id.
     Ref,
+    /// `@by_ref` — the field is compared and stored by reference.
     ByRef,
 }
 
 impl BuiltinDecorator {
+    /// The decorator's canonical source name, without the leading `@`.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             BuiltinDecorator::Block => "block",
@@ -130,22 +148,42 @@ fn find_builtin_dec<'a, 'b>(
     decs.iter().find(|d| d.full_name() == name)
 }
 
+/// What one type name points at, resolved a single link at a time.
+///
+/// This answers "what is this name?", not "what shape does this field
+/// have" — a transparent alias resolves to [`ResolvedType::Named`]
+/// carrying the alias declaration, not to its target. Use
+/// [`FieldShape`] when you want the alias peeled.
 #[derive(Debug)]
 pub enum ResolvedType<'a> {
+    /// A builtin scalar (`utf8`, `u32`, `bool`, …).
     Builtin(BuiltinType),
+    /// A declared `type` — possibly an alias; see the note above.
     Named(TypeDecl<'a>),
+    /// A declared `interface`.
     Interface(InterfaceDecl<'a>),
+    /// A declared `union`.
     Union(UnionDecl<'a>),
+    /// A declared `symbol_set`.
     SymbolSet(SymbolSetDecl<'a>),
+    /// A declared `connection`.
     Connection(ConnectionDecl<'a>),
+    /// `&T` — a reference to the wrapped type.
     Reference(Box<ResolvedType<'a>>),
+    /// `list<T>` — the wrapped type is the element.
     List(Box<ResolvedType<'a>>),
+    /// `tensor<T, [dims]>`.
     Tensor {
+        /// The element type.
         element: Box<ResolvedType<'a>>,
+        /// The declared dimensions.
         dims: &'a [TensorDim],
     },
+    /// A function type.
     Function {
+        /// Parameter types, in order.
         params: Vec<ResolvedType<'a>>,
+        /// The return type.
         return_ty: Box<ResolvedType<'a>>,
     },
 }
@@ -307,10 +345,17 @@ pub trait DeclName<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// A `union` declaration, with its variants and decorators resolved
+/// against the document.
 pub struct UnionDecl<'a> {
+    /// The AST node this view borrows.
     pub(super) ast: &'a ast::UnionDecl,
+    /// Namespace of the file that declared this item, prefixed to
+    /// its own name to form the fully-qualified name.
     pub(super) file_ns: &'a [String],
+    /// Lazily-evaluated caches for this item's decorators and fields.
     pub(super) cells: &'a ItemCells,
+    /// The document these views read through.
     pub(super) doc: &'a Document,
 }
 
@@ -324,6 +369,7 @@ impl<'a> DeclName<'a> for UnionDecl<'a> {
 }
 
 impl<'a> UnionDecl<'a> {
+    /// Decorator caches for this union's variants, one entry per variant.
     fn variant_decorator_cells(&self) -> &'a [Vec<DecoratorCell>] {
         let ItemCellKind::UnionDecl {
             variant_decorators, ..
@@ -334,6 +380,7 @@ impl<'a> UnionDecl<'a> {
         variant_decorators
     }
 
+    /// Decorator caches for each variant's fields, indexed variant-then-field.
     fn variant_field_cells(&self) -> &'a [Vec<Vec<DecoratorCell>>] {
         let ItemCellKind::UnionDecl {
             variant_field_decorators,
@@ -345,6 +392,7 @@ impl<'a> UnionDecl<'a> {
         variant_field_decorators
     }
 
+    /// Decorators attached to this item, in source order.
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
         iter_decorators(
             &self.ast.decorators,
@@ -360,6 +408,7 @@ impl<'a> UnionDecl<'a> {
         doc_comment_from_trivia(&self.ast.leading_trivia)
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -369,6 +418,8 @@ impl<'a> UnionDecl<'a> {
         crate::format::to_source_item(&ast::Item::UnionDecl(self.ast.clone()))
     }
 
+    /// The variants declared directly on this union, in source order.
+    /// Variants inherited via `extends` are not included.
     pub fn variants(&self) -> impl Iterator<Item = UnionVariant<'a>> + 'a {
         let doc = self.doc;
         let variant_cells = self.variant_decorator_cells();
@@ -387,6 +438,7 @@ impl<'a> UnionDecl<'a> {
             })
     }
 
+    /// The directly-declared variant with this name, if any.
     pub fn variant(&self, name: &str) -> Option<UnionVariant<'a>> {
         let variant_cells = self.variant_decorator_cells();
         let field_cells = self.variant_field_cells();
@@ -406,10 +458,15 @@ impl<'a> UnionDecl<'a> {
 }
 
 #[derive(Clone, Copy)]
+/// One variant of a [`UnionDecl`].
 pub struct UnionVariant<'a> {
+    /// The AST node this view borrows.
     ast: &'a ast::UnionVariant,
+    /// Lazily-evaluated caches for this item's decorators.
     decorator_cells: &'a [DecoratorCell],
+    /// Lazily-evaluated decorator caches, one per declared field.
     field_decorator_cells: &'a [Vec<DecoratorCell>],
+    /// The document these views read through.
     doc: &'a Document,
     /// Namespace of the union that declares this variant — propagated to
     /// the variant's record fields for namespace-relative resolution.
@@ -417,6 +474,7 @@ pub struct UnionVariant<'a> {
 }
 
 impl<'a> UnionVariant<'a> {
+    /// Decorators attached to this item, in source order.
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
         iter_decorators(
             &self.ast.decorators,
@@ -432,10 +490,12 @@ impl<'a> UnionVariant<'a> {
         doc_comment_from_trivia(&self.ast.leading_trivia)
     }
 
+    /// The declared name.
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -445,6 +505,7 @@ impl<'a> UnionVariant<'a> {
         crate::format::to_source_union_variant(self.ast)
     }
 
+    /// The variant's payload shape.
     pub fn body(&self) -> VariantBodyView<'a> {
         match &self.ast.body {
             ast::VariantBody::Record { .. } => VariantBodyView::Record,
@@ -454,6 +515,8 @@ impl<'a> UnionVariant<'a> {
         }
     }
 
+    /// Fields of this variant's record payload, in source order. Empty
+    /// for a unit or positional variant.
     pub fn fields(&self) -> Box<dyn Iterator<Item = TypeField<'a>> + 'a> {
         let doc = self.doc;
         let field_cells = self.field_decorator_cells;
@@ -471,6 +534,7 @@ impl<'a> UnionVariant<'a> {
         }
     }
 
+    /// The directly-declared field with this name, if any.
     pub fn field(&self, name: &str) -> Option<TypeField<'a>> {
         match &self.ast.body {
             ast::VariantBody::Record { fields, .. } => fields
@@ -493,7 +557,9 @@ impl<'a> UnionVariant<'a> {
 /// `Item::Table`. Decides which dispatcher we hand the block off to.
 #[derive(Clone, Copy)]
 pub(crate) enum UnionChildKind {
+    /// A block written as a nested block in the source.
     Nested,
+    /// A block synthesised from one row of an `Item::Table`.
     TableRow,
 }
 
@@ -514,6 +580,8 @@ pub enum ChildKind<'a> {
 }
 
 impl<'a> ChildKind<'a> {
+    /// The literal block kind, when the decorator named one; `None` for
+    /// the union and interface forms.
     pub fn as_kind(&self) -> Option<&str> {
         match self {
             ChildKind::Kind(s) => Some(s.as_str()),
@@ -521,6 +589,7 @@ impl<'a> ChildKind<'a> {
         }
     }
 
+    /// The union this matches against, when the decorator named one.
     pub fn as_union(&self) -> Option<&UnionDecl<'a>> {
         match self {
             ChildKind::Union(u) => Some(u),
@@ -528,6 +597,7 @@ impl<'a> ChildKind<'a> {
         }
     }
 
+    /// The interface this matches against, when the decorator named one.
     pub fn as_interface(&self) -> Option<&InterfaceDecl<'a>> {
         match self {
             ChildKind::Interface(i) => Some(i),
@@ -536,6 +606,9 @@ impl<'a> ChildKind<'a> {
     }
 }
 
+/// Resolve one positional `@child` / `@children` argument to the kind,
+/// union or interface it names. `None` when the argument is absent or
+/// names nothing the document declares.
 fn resolve_child_kind_arg<'a>(
     doc: &'a Document,
     file_ns: &[String],
@@ -678,26 +751,40 @@ fn synth_child_from_value(
     })
 }
 
+/// The payload shape of a union variant, as the document layer sees it.
+/// The view counterpart of [`ast::VariantBody`].
 pub enum VariantBodyView<'a> {
+    /// Named fields declared inline on the variant. Read them with
+    /// [`UnionVariant::fields`].
     Record,
+    /// A single unnamed payload of the given type.
     TypeRef(&'a TypeRef),
     /// Variant body of the form `&InterfaceName`: payload is any value
     /// implementing the interface. The slice borrows the path segments
     /// declared in source.
     InterfaceRef(&'a [String]),
+    /// No payload.
     Unit,
 }
 
 #[derive(Debug)]
+/// A `@name(args…)` annotation, with its arguments evaluated lazily
+/// and cached.
 pub struct Decorator<'a> {
+    /// The AST node this view borrows.
     ast: &'a ast::Decorator,
+    /// Lazily-evaluated cache for this decorator's arguments.
     cell: &'a DecoratorCell,
+    /// The document these views read through.
     doc: &'a Document,
     /// Namespace of the source that carries this decorator. Bare names
     /// resolve relative to their use site, not the root document.
     file_ns: &'a [String],
 }
 
+/// Pair each decorator AST node with its evaluation cache, yielding a
+/// [`Decorator`] view per entry. The two slices are index-aligned by
+/// construction.
 fn iter_decorators<'a>(
     ast: &'a [ast::Decorator],
     cells: &'a [DecoratorCell],
@@ -713,6 +800,8 @@ fn iter_decorators<'a>(
 }
 
 impl<'a> Decorator<'a> {
+    /// Assemble a decorator view from its AST node, evaluation cache and
+    /// resolution context.
     pub(super) fn from_parts(
         ast: &'a ast::Decorator,
         cell: &'a DecoratorCell,
@@ -727,6 +816,7 @@ impl<'a> Decorator<'a> {
         }
     }
 
+    /// The declared name.
     pub fn name(&self) -> &'a str {
         self.ast
             .name
@@ -734,10 +824,12 @@ impl<'a> Decorator<'a> {
             .expect("decorator name has at least one segment")
     }
 
+    /// The declared name, split on `.`.
     pub fn name_segments(&self) -> &'a [String] {
         &self.ast.name
     }
 
+    /// The dotted name as a single string.
     pub fn full_name(&self) -> String {
         self.ast.name.join(".")
     }
@@ -750,6 +842,7 @@ impl<'a> Decorator<'a> {
         self.ast.name.len() == 1 && self.ast.name[0] == dec.as_str()
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -788,6 +881,7 @@ impl<'a> Decorator<'a> {
         }
     }
 
+    /// The decorator's named `key = value` arguments, in source order.
     pub fn named(&self) -> impl Iterator<Item = NamedArg<'a>> + 'a {
         let parent_ast = self.ast;
         let cell = self.cell;
@@ -800,6 +894,10 @@ impl<'a> Decorator<'a> {
         })
     }
 
+    /// Evaluate the named argument `name`, or `None` when the decorator
+    /// does not carry one. The result is cached across calls, so a
+    /// failing argument reports the same error every time rather than
+    /// being re-evaluated.
     pub fn named_arg(&self, name: &str) -> Option<Result<Value, EvalError>> {
         let map = self.cell.named.get_or_init(|| {
             self.ast
@@ -925,16 +1023,21 @@ impl<'a> Decorator<'a> {
     }
 }
 
+/// One `key = value` argument of a [`Decorator`].
 pub struct NamedArg<'a> {
+    /// The AST node this view borrows.
     ast: &'a ast::NamedArg,
     /// The parent decorator's full AST, used to seed the shared named-arg
     /// cache on first access from any sibling.
     parent_ast: &'a ast::Decorator,
+    /// Cache of the decorator this argument belongs to.
     parent: &'a DecoratorCell,
+    /// The document these views read through.
     doc: &'a Document,
 }
 
 impl<'a> NamedArg<'a> {
+    /// The declared name.
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
@@ -955,6 +1058,7 @@ impl<'a> NamedArg<'a> {
         }
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -963,14 +1067,17 @@ impl<'a> NamedArg<'a> {
 /// Public view of an `lhs -> rhs [:sym]` connection statement.
 #[derive(Debug, Clone, Copy)]
 pub struct Connection<'a> {
+    /// The AST node this view borrows.
     pub(super) ast: &'a ast::ConnectionStmt,
 }
 
 impl<'a> Connection<'a> {
+    /// Id of the block on the left of the statement.
     pub fn source(&self) -> &'a str {
         &self.ast.lhs
     }
 
+    /// Id of the block on the right of the statement.
     pub fn destination(&self) -> &'a str {
         &self.ast.rhs
     }
@@ -981,15 +1088,22 @@ impl<'a> Connection<'a> {
         self.ast.kind.as_deref()
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
 }
 
 #[derive(Debug, Clone, Copy)]
+/// A `connection` declaration — what a connection statement may link,
+/// and under which kinds.
 pub struct ConnectionDecl<'a> {
+    /// The AST node this view borrows.
     pub(super) ast: &'a ast::ConnectionDecl,
+    /// Namespace of the file that declared this item, prefixed to
+    /// its own name to form the fully-qualified name.
     pub(super) file_ns: &'a [String],
+    /// The document these views read through.
     pub(super) doc: &'a Document,
 }
 
@@ -1003,14 +1117,17 @@ impl<'a> DeclName<'a> for ConnectionDecl<'a> {
 }
 
 impl<'a> ConnectionDecl<'a> {
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
 
+    /// The type permitted on the left of a connection statement.
     pub fn source_type(&self) -> &'a TypeRef {
         &self.ast.source
     }
 
+    /// The type permitted on the right of a connection statement.
     pub fn destination_type(&self) -> &'a TypeRef {
         &self.ast.destination
     }
@@ -1052,10 +1169,17 @@ impl<'a> ConnectionDecl<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// A `symbol_set` declaration — the closed vocabulary a field of that
+/// type may take.
 pub struct SymbolSetDecl<'a> {
+    /// The AST node this view borrows.
     pub(super) ast: &'a ast::SymbolSetDecl,
+    /// Namespace of the file that declared this item, prefixed to
+    /// its own name to form the fully-qualified name.
     pub(super) file_ns: &'a [String],
+    /// Lazily-evaluated caches for this item's decorators and fields.
     pub(super) cells: &'a ItemCells,
+    /// The document these views read through.
     pub(super) doc: &'a Document,
 }
 
@@ -1069,6 +1193,7 @@ impl<'a> DeclName<'a> for SymbolSetDecl<'a> {
 }
 
 impl<'a> SymbolSetDecl<'a> {
+    /// Decorator caches for this symbol set's entries, one per symbol.
     fn symbol_decorator_cells(&self) -> &'a [Vec<DecoratorCell>] {
         let ItemCellKind::SymbolSetDecl { symbol_decorators } = &self.cells.kind else {
             unreachable!("SymbolSetDecl view wraps a SymbolSetDecl cell")
@@ -1076,6 +1201,7 @@ impl<'a> SymbolSetDecl<'a> {
         symbol_decorators
     }
 
+    /// Decorators attached to this item, in source order.
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
         iter_decorators(
             &self.ast.decorators,
@@ -1091,6 +1217,7 @@ impl<'a> SymbolSetDecl<'a> {
         doc_comment_from_trivia(&self.ast.leading_trivia)
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -1100,6 +1227,7 @@ impl<'a> SymbolSetDecl<'a> {
         crate::format::to_source_item(&ast::Item::SymbolSetDecl(self.ast.clone()))
     }
 
+    /// The symbols this set permits, in source order.
     pub fn symbols(&self) -> impl Iterator<Item = SymbolEntry<'a>> + 'a {
         let doc = self.doc;
         let cells = self.symbol_decorator_cells();
@@ -1116,20 +1244,28 @@ impl<'a> SymbolSetDecl<'a> {
             })
     }
 
+    /// Whether this set permits the named symbol.
     pub fn has(&self, name: &str) -> bool {
         self.ast.symbols.iter().any(|s| s.name == name)
     }
 }
 
 #[derive(Clone, Copy)]
+/// One symbol of a [`SymbolSetDecl`].
 pub struct SymbolEntry<'a> {
+    /// The AST node this view borrows.
     ast: &'a ast::SymbolEntry,
+    /// Lazily-evaluated caches for this item's decorators.
     decorator_cells: &'a [DecoratorCell],
+    /// The document these views read through.
     doc: &'a Document,
+    /// Namespace of the file that declared this item, prefixed to its
+    /// own name to form the fully-qualified name.
     file_ns: &'a [String],
 }
 
 impl<'a> SymbolEntry<'a> {
+    /// Decorators attached to this item, in source order.
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
         iter_decorators(
             &self.ast.decorators,
@@ -1139,10 +1275,12 @@ impl<'a> SymbolEntry<'a> {
         )
     }
 
+    /// The declared name.
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -1154,10 +1292,17 @@ impl<'a> SymbolEntry<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// A `type` declaration, with its fields, decorators and `extends`
+/// chain resolved against the document.
 pub struct TypeDecl<'a> {
+    /// The AST node this view borrows.
     pub(super) ast: &'a ast::TypeDecl,
+    /// Namespace of the file that declared this item, prefixed to
+    /// its own name to form the fully-qualified name.
     pub(super) file_ns: &'a [String],
+    /// Lazily-evaluated caches for this item's decorators and fields.
     pub(super) cells: &'a ItemCells,
+    /// The document these views read through.
     pub(super) doc: &'a Document,
     /// `true` when this declaration comes from an imported source
     /// (a disk or system/registry import) rather than the root
@@ -1206,6 +1351,7 @@ impl<'a> DeclName<'a> for TypeDecl<'a> {
 }
 
 impl<'a> TypeDecl<'a> {
+    /// Decorator caches for this declaration's fields, one entry per field.
     fn field_decorator_cells(&self) -> &'a [Vec<DecoratorCell>] {
         let ItemCellKind::TypeDecl { field_decorators } = &self.cells.kind else {
             unreachable!("TypeDecl view wraps a TypeDecl cell")
@@ -1213,6 +1359,7 @@ impl<'a> TypeDecl<'a> {
         field_decorators
     }
 
+    /// Decorators attached to this item, in source order.
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
         iter_decorators(
             &self.ast.decorators,
@@ -1356,6 +1503,7 @@ impl<'a> TypeDecl<'a> {
         self.is_derived
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -1440,6 +1588,8 @@ impl<'a> TypeDecl<'a> {
         out
     }
 
+    /// Fields declared directly on this declaration, in source order.
+    /// Inherited fields are not included — see `effective_fields`.
     pub fn fields(&self) -> impl Iterator<Item = TypeField<'a>> + 'a {
         let doc = self.doc;
         let cells = self.field_decorator_cells();
@@ -1456,6 +1606,7 @@ impl<'a> TypeDecl<'a> {
             })
     }
 
+    /// The directly-declared field with this name, if any.
     pub fn field(&self, name: &str) -> Option<TypeField<'a>> {
         let cells = self.field_decorator_cells();
         self.ast
@@ -1521,10 +1672,17 @@ impl<'a> TypeDecl<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// An `interface` declaration. Unlike a [`TypeDecl`] it is never
+/// instantiated: it states what a conforming type must provide.
 pub struct InterfaceDecl<'a> {
+    /// The AST node this view borrows.
     pub(super) ast: &'a ast::InterfaceDecl,
+    /// Namespace of the file that declared this item, prefixed to
+    /// its own name to form the fully-qualified name.
     pub(super) file_ns: &'a [String],
+    /// Lazily-evaluated caches for this item's decorators and fields.
     pub(super) cells: &'a ItemCells,
+    /// The document these views read through.
     pub(super) doc: &'a Document,
 }
 
@@ -1538,6 +1696,7 @@ impl<'a> DeclName<'a> for InterfaceDecl<'a> {
 }
 
 impl<'a> InterfaceDecl<'a> {
+    /// Decorator caches for this declaration's fields, one entry per field.
     fn field_decorator_cells(&self) -> &'a [Vec<DecoratorCell>] {
         let ItemCellKind::InterfaceDecl { field_decorators } = &self.cells.kind else {
             unreachable!("InterfaceDecl view wraps an InterfaceDecl cell")
@@ -1545,6 +1704,7 @@ impl<'a> InterfaceDecl<'a> {
         field_decorators
     }
 
+    /// Decorators attached to this item, in source order.
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
         iter_decorators(
             &self.ast.decorators,
@@ -1560,6 +1720,7 @@ impl<'a> InterfaceDecl<'a> {
         doc_comment_from_trivia(&self.ast.leading_trivia)
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -1569,6 +1730,8 @@ impl<'a> InterfaceDecl<'a> {
         crate::format::to_source_item(&ast::Item::InterfaceDecl(self.ast.clone()))
     }
 
+    /// Fields declared directly on this declaration, in source order.
+    /// Inherited fields are not included — see `effective_fields`.
     pub fn fields(&self) -> impl Iterator<Item = TypeField<'a>> + 'a {
         let doc = self.doc;
         let cells = self.field_decorator_cells();
@@ -1585,6 +1748,7 @@ impl<'a> InterfaceDecl<'a> {
             })
     }
 
+    /// The directly-declared field with this name, if any.
     pub fn field(&self, name: &str) -> Option<TypeField<'a>> {
         let cells = self.field_decorator_cells();
         self.ast
@@ -1605,6 +1769,9 @@ impl<'a> InterfaceDecl<'a> {
         &self.ast.extends
     }
 
+    /// Every field this interface requires, including those inherited
+    /// through its `extends` chain. Contrast `fields`, which lists only
+    /// what is declared directly here.
     pub fn effective_fields(&self) -> Vec<TypeField<'a>> {
         build_effective_fields(self.doc, &self.ast.extends, self.file_ns, self.fields())
     }
@@ -1614,6 +1781,8 @@ impl<'a> InterfaceDecl<'a> {
         build_merged_decorators(self.doc, &self.ast.extends, self.file_ns, self.fields())
     }
 
+    /// The named field, searching this interface and then its `extends`
+    /// chain. The inherited counterpart of `field`.
     pub fn effective_field(&self, name: &str) -> Option<TypeField<'a>> {
         lookup_effective_field(
             self.doc,
@@ -1625,19 +1794,24 @@ impl<'a> InterfaceDecl<'a> {
     }
 }
 
+/// A `use` declaration, bringing names into the file's scope.
 pub struct UseDeclView<'a> {
+    /// The AST node this view borrows.
     pub(in crate::doc) ast: &'a ast::UseDecl,
 }
 
 impl<'a> UseDeclView<'a> {
+    /// The dotted path this declaration imports from.
     pub fn path(&self) -> &'a [String] {
         &self.ast.path
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
 
+    /// Which names the declaration brings into scope.
     pub fn form(&self) -> UseFormView<'a> {
         match &self.ast.form {
             ast::UseForm::Bare(alias) => UseFormView::Bare(alias.as_deref()),
@@ -1654,33 +1828,48 @@ impl<'a> UseDeclView<'a> {
     }
 }
 
+/// What a [`UseDeclView`] brings into scope.
 pub enum UseFormView<'a> {
+    /// `use a.b.c`, or `use a.b.c as d` — the path's last segment,
+    /// optionally renamed.
     Bare(Option<&'a str>),
+    /// `use a.b.{x, y as z}` — read the entries with
+    /// [`UseDeclView::items`].
     List,
 }
 
+/// One name in a brace-list [`UseFormView::List`].
 pub struct UseItem<'a> {
+    /// The AST node this view borrows.
     ast: &'a ast::UseItem,
 }
 
 impl<'a> UseItem<'a> {
+    /// The declared name.
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
 
+    /// The local spelling, when the entry was written `name as alias`.
     pub fn alias(&self) -> Option<&'a str> {
         self.ast.alias.as_deref()
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
 }
 
 #[derive(Clone, Copy)]
+/// One field of a [`TypeDecl`], [`InterfaceDecl`] or record variant,
+/// with its type and decorators resolvable against the document.
 pub struct TypeField<'a> {
+    /// The AST node this view borrows.
     pub(super) ast: &'a ast::TypeField,
+    /// Lazily-evaluated caches for this item's decorators.
     pub(super) decorator_cells: &'a [DecoratorCell],
+    /// The document these views read through.
     pub(super) doc: &'a Document,
     /// Namespace of the declaration (type / interface / union variant)
     /// that owns this field. Type references in the field's decorators
@@ -1690,6 +1879,7 @@ pub struct TypeField<'a> {
 }
 
 impl<'a> TypeField<'a> {
+    /// Decorators attached to this item, in source order.
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
         iter_decorators(
             &self.ast.decorators,
@@ -1857,10 +2047,12 @@ impl<'a> TypeField<'a> {
         )
     }
 
+    /// The declared name.
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -1870,10 +2062,13 @@ impl<'a> TypeField<'a> {
         crate::format::to_source_type_field(self.ast)
     }
 
+    /// Whether the field was declared with a trailing `?`.
     pub fn optional(&self) -> bool {
         self.ast.optional
     }
 
+    /// The field's declared type, unresolved. Use `resolved_type` to
+    /// follow the name, or `shape` to also peel aliases.
     pub fn type_ref(&self) -> &'a TypeRef {
         &self.ast.ty
     }
@@ -1902,15 +2097,27 @@ impl<'a> TypeField<'a> {
 }
 
 #[derive(Clone)]
+/// A `name = expr` field of the document, whose value is evaluated on
+/// first read and cached thereafter.
 pub struct Field<'a> {
+    /// The AST node this view borrows.
     pub(super) ast: &'a ast::Field,
+    /// Lazily-evaluated caches for this item's decorators and fields.
     pub(super) cells: &'a ItemCells,
+    /// The document these views read through.
     pub(super) doc: &'a Document,
+    /// Namespace of the file that declared this item, prefixed to
+    /// its own name to form the fully-qualified name.
     pub(super) file_ns: &'a [String],
+    /// Scope the field's expression is evaluated in — the declaring
+    /// block's child scope, or the root scope for a top-level field.
     pub(super) scope: Scope<'a>,
 }
 
 impl<'a> Field<'a> {
+    /// The evaluation cache backing this field. Panics if the view was
+    /// built over a non-field cell, which the constructors make
+    /// unreachable.
     pub(in crate::doc) fn field_cell(&self) -> &'a FieldCell {
         let ItemCellKind::Field(c) = &self.cells.kind else {
             unreachable!("Field view wraps a Field cell")
@@ -1926,6 +2133,7 @@ impl<'a> Field<'a> {
         cell.value.get().is_none() && cell.evaluating.load(Ordering::Acquire)
     }
 
+    /// Decorators attached to this item, in source order.
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
         iter_decorators(
             &self.ast.decorators,
@@ -1935,10 +2143,12 @@ impl<'a> Field<'a> {
         )
     }
 
+    /// The declared name.
     pub fn name(&self) -> &'a str {
         &self.ast.name
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -1972,6 +2182,11 @@ impl<'a> Field<'a> {
         self.doc.find_field_source_path(target)
     }
 
+    /// The field's evaluated value.
+    ///
+    /// Forces the expression on first call and caches the outcome, so a
+    /// field that fails to evaluate reports the same error on every
+    /// later read rather than being retried.
     pub fn value(&self) -> Result<&'a Value, &'a EvalError> {
         let cell = self.field_cell();
         if let Some(cached) = cell.value.get() {
@@ -2260,8 +2475,11 @@ impl<'a> Field<'a> {
 /// happens lazily on first name resolution.
 #[derive(Clone)]
 pub(crate) struct LetView<'a> {
+    /// The AST node this view borrows.
     pub(super) ast: &'a ast::LetItem,
+    /// Evaluation cache for the bound expression.
     pub(super) cell: &'a FieldCell,
+    /// The document these views read through.
     pub(super) doc: &'a Document,
     /// Scope the let's value expression is evaluated in — the
     /// declaring block's child scope (or `Scope::root()` for a
@@ -2310,8 +2528,11 @@ impl<'a> LetView<'a> {
 /// `TypeDecl`. Otherwise `None`.
 #[derive(Clone)]
 pub struct Block<'a> {
+    /// The AST node this view borrows.
     pub(super) ast: &'a ast::Block,
+    /// Lazily-evaluated caches for this item's decorators and fields.
     pub(super) cells: &'a ItemCells,
+    /// The document these views read through.
     pub(super) doc: &'a Document,
     /// Namespace declared by the file this block instance lexically
     /// lives in — the root document or the import that carries it.
@@ -2330,6 +2551,9 @@ pub struct Block<'a> {
 }
 
 impl<'a> Block<'a> {
+    /// The block's label cache and per-item cells. Panics if the view was
+    /// built over a non-block cell, which the constructors make
+    /// unreachable.
     fn block_inner(&self) -> (&'a OnceLock<Result<Vec<Value>, EvalError>>, &'a [ItemCells]) {
         let ItemCellKind::Block { labels, items, .. } = &self.cells.kind else {
             unreachable!("Block view wraps a Block cell")
@@ -2337,6 +2561,7 @@ impl<'a> Block<'a> {
         (labels, items)
     }
 
+    /// Decorators attached to this item, in source order.
     pub fn decorators(&self) -> impl Iterator<Item = Decorator<'a>> + 'a {
         iter_decorators(
             &self.ast.decorators,
@@ -2346,6 +2571,7 @@ impl<'a> Block<'a> {
         )
     }
 
+    /// The block's kind, unqualified.
     pub fn kind(&self) -> &'a str {
         self.kind_override.unwrap_or(&self.ast.kind)
     }
@@ -2471,6 +2697,9 @@ impl<'a> Block<'a> {
         contains
     }
 
+    /// The scope this block's own items evaluate in: the surrounding
+    /// scope with a frame for this block pushed on, so `self` and the
+    /// block's `let` bindings resolve.
     pub(crate) fn child_scope(&self) -> Scope<'a> {
         self.scope.push(ScopeFrame {
             ast: self.ast,
@@ -2573,6 +2802,9 @@ impl<'a> Block<'a> {
         self.expand_bodies_inner(body, binding_sets, Some(slots))
     }
 
+    /// Shared implementation behind the `expand_bodies` entry points.
+    /// `content` carries the caller's slot fills when expanding a block
+    /// that declares slots, and is `None` otherwise.
     fn expand_bodies_inner(
         &self,
         body: &Block<'a>,
@@ -2648,6 +2880,7 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -2707,6 +2940,7 @@ impl<'a> Block<'a> {
         all
     }
 
+    /// The field with this name, if this body declares one.
     pub fn field(&self, name: &str) -> Option<Field<'a>> {
         let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
@@ -2724,6 +2958,7 @@ impl<'a> Block<'a> {
         None
     }
 
+    /// The first block of this kind in the body, if any.
     pub fn block(&self, kind: &str) -> Option<Block<'a>> {
         let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
@@ -2755,6 +2990,7 @@ impl<'a> Block<'a> {
         None
     }
 
+    /// The bare fields declared in this body, in source order.
     pub fn fields(&self) -> impl Iterator<Item = Field<'a>> + 'a {
         let doc = self.doc;
         let scope = self.child_scope();
@@ -2763,6 +2999,7 @@ impl<'a> Block<'a> {
             .flat_map(move |src| iter_fields(src.items, src.cells, doc, src.file_ns, scope.clone()))
     }
 
+    /// The blocks declared in this body, in source order.
     pub fn blocks(&self) -> impl Iterator<Item = Block<'a>> + 'a {
         let doc = self.doc;
         let scope = self.child_scope();
@@ -3380,6 +3617,8 @@ impl<'a> Block<'a> {
             .as_slice()
     }
 
+    /// Build the synthetic child blocks this block's schema implies —
+    /// the uncached half of `computed_children`.
     fn build_computed_children(&self) -> Vec<crate::doc::cells::SynthChild> {
         let mut out = Vec::new();
         let Some(schema) = self.schema() else {
@@ -3456,7 +3695,9 @@ impl<'a> Block<'a> {
 /// by one or more `| ... |` rows) within a parent block.
 #[derive(Clone, Copy)]
 pub struct TableView<'a> {
+    /// The AST node this view borrows.
     pub(super) ast: &'a ast::TableItem,
+    /// The document these views read through.
     pub(super) doc: &'a Document,
 }
 
@@ -3472,6 +3713,7 @@ impl<'a> TableView<'a> {
         self.ast.rows.iter().map(move |r| RowView { ast: r, doc })
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }
@@ -3480,7 +3722,9 @@ impl<'a> TableView<'a> {
 /// Source-level view of a single `| ... |` row inside a [`TableView`].
 #[derive(Clone, Copy)]
 pub struct RowView<'a> {
+    /// The AST node this view borrows.
     ast: &'a ast::Row,
+    /// The document these views read through.
     doc: &'a Document,
 }
 
@@ -3496,6 +3740,7 @@ impl<'a> RowView<'a> {
             .collect()
     }
 
+    /// Source span of this node in the file that declares it.
     pub fn span(&self) -> Span {
         self.ast.span
     }

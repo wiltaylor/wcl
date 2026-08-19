@@ -139,11 +139,15 @@ pub(crate) use numeric_as_path_segment;
 pub(crate) use numeric_as_u64;
 
 #[derive(Debug, Clone, PartialEq)]
+/// A numeric literal that could not be parsed or does not fit its
+/// declared type.
 pub struct NumericParseError {
+    /// Human-readable description of the failure.
     pub message: String,
 }
 
 impl NumericParseError {
+    /// Build an error with the given message.
     fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -155,13 +159,16 @@ impl NumericParseError {
 /// decide a concrete type.
 #[derive(Debug)]
 pub struct ParsedNumber<'a> {
+    /// Whether the literal carried a leading `-`.
     pub neg: bool,
+    /// Radix the digits were written in.
     pub base: u32,
     /// Digits with `_` separators stripped, plus the optional fractional
     /// part for floats (e.g. "12.5").
     pub body: &'a str,
     /// Optional `eN` / `e+N` / `e-N` exponent, digits only with sign.
     pub exponent: Option<&'a str>,
+    /// Whether a fraction or exponent was present.
     pub is_float: bool,
     /// Suffix text after the body (e.g. `"u8"`, `"f32"`, or empty).
     pub suffix: &'a str,
@@ -177,7 +184,9 @@ pub struct ParsedNumber<'a> {
 /// with no validation here.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FinalizedNumber {
+    /// The parsed literal, in its final type.
     pub lit: NumberLit,
+    /// The unit suffix, when the literal carried one.
     pub unit: Option<String>,
 }
 
@@ -192,6 +201,8 @@ pub fn finalize(parsed: ParsedNumber<'_>) -> Result<FinalizedNumber, NumericPars
     }
 }
 
+/// Resolve a float literal to its declared width, or the `f64`
+/// default.
 fn finalize_float(p: &ParsedNumber) -> Result<FinalizedNumber, NumericParseError> {
     if p.base != 10 {
         return Err(NumericParseError::new(
@@ -235,6 +246,8 @@ fn finalize_float(p: &ParsedNumber) -> Result<FinalizedNumber, NumericParseError
     Ok(FinalizedNumber { lit, unit: None })
 }
 
+/// Resolve an integer literal to its declared width, or the `i64`
+/// default, rejecting magnitudes that do not fit.
 fn finalize_int(p: &ParsedNumber) -> Result<FinalizedNumber, NumericParseError> {
     // Parse magnitude as u128. The body has `_` already stripped.
     let mag = u128_from_str_radix(p.body, p.base)
@@ -283,6 +296,8 @@ fn finalize_int(p: &ParsedNumber) -> Result<FinalizedNumber, NumericParseError> 
     Ok(FinalizedNumber { lit, unit: None })
 }
 
+/// Narrow a magnitude into a signed type, honouring the sign and the
+/// type's asymmetric range.
 fn signed<T>(
     neg: bool,
     mag: u128,
@@ -315,6 +330,8 @@ fn signed<T>(
     }
 }
 
+/// Narrow a magnitude into `i128`, where the generic path cannot
+/// represent the range.
 fn signed_128(neg: bool, mag: u128) -> Result<i128, NumericParseError> {
     if neg {
         // |i128::MIN| == 2^127; that's representable in u128.
@@ -338,6 +355,7 @@ fn signed_128(neg: bool, mag: u128) -> Result<i128, NumericParseError> {
     }
 }
 
+/// Check a magnitude against an unsigned type's ceiling.
 fn unsigned(mag: u128, ty: &str, max: u128) -> Result<u128, NumericParseError> {
     if mag > max {
         return Err(NumericParseError::new(format!(
@@ -347,6 +365,8 @@ fn unsigned(mag: u128, ty: &str, max: u128) -> Result<u128, NumericParseError> {
     Ok(mag)
 }
 
+/// Parse digits in the given radix, reporting overflow rather than
+/// wrapping.
 fn u128_from_str_radix(s: &str, radix: u32) -> Result<u128, String> {
     if s.is_empty() {
         return Err("expected at least one digit".into());
@@ -366,10 +386,12 @@ fn u128_from_str_radix(s: &str, radix: u32) -> Result<u128, String> {
     Ok(out)
 }
 
+/// Whether a suffix names an unsigned integer type.
 fn is_unsigned_suffix(s: &str) -> bool {
     matches!(s, "u8" | "u16" | "u32" | "u64" | "u128" | "usize")
 }
 
+/// Whether a suffix names any integer type.
 fn is_int_suffix(s: &str) -> bool {
     matches!(
         s,

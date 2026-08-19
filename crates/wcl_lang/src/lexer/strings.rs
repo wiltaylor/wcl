@@ -9,6 +9,8 @@ use super::{
 };
 
 impl<'a> Lexer<'a> {
+    /// Lex a string literal in any encoding, interpolating or not,
+    /// quoted or heredoc.
     pub(super) fn lex_string(
         &mut self,
         start: usize,
@@ -505,6 +507,8 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Re-encode a decoded string body into the literal's declared
+    /// encoding, rejecting characters the encoding cannot represent.
     fn materialise_string(
         &self,
         encoding: StringEncoding,

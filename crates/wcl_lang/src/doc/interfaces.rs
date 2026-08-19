@@ -32,10 +32,13 @@ pub(super) fn dataref_concrete_type<'a>(
     }
 }
 
+/// Whether two views name the same declaration, compared by address.
 pub(super) fn same_type_decl(a: &TypeDecl<'_>, b: &TypeDecl<'_>) -> bool {
     std::ptr::eq(a.ast, b.ast)
 }
 
+/// Check that a type structurally provides everything an interface
+/// requires, reporting the first field that is missing or mistyped.
 pub(super) fn check_interface_conformance(
     doc: &Document,
     iface: &InterfaceDecl<'_>,
@@ -95,6 +98,8 @@ fn iface_field_type_compatible(iface: &ResolvedType<'_>, tg: &ResolvedType<'_>) 
     resolved_types_equal(iface, tg)
 }
 
+/// Structural equality over resolved types, used by conformance
+/// checking to compare a required field against the provided one.
 pub(super) fn resolved_types_equal(a: &ResolvedType<'_>, b: &ResolvedType<'_>) -> bool {
     match (a, b) {
         (ResolvedType::Builtin(x), ResolvedType::Builtin(y)) => x == y,

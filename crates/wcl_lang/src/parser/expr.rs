@@ -112,6 +112,8 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
+    /// Pratt-parse an expression, stopping at any operator binding looser
+    /// than `min_bp`. Guards recursion depth.
     fn parse_expr_bp(&mut self, min_bp: u8) -> Result<(Expr, Span), ParseError> {
         self.enter_recursion()?;
         let result = self.parse_expr_bp_inner(min_bp);
@@ -121,6 +123,7 @@ impl<'a> Parser<'a> {
         result
     }
 
+    /// The body of the Pratt loop, without the depth guard.
     fn parse_expr_bp_inner(&mut self, min_bp: u8) -> Result<(Expr, Span), ParseError> {
         let (mut lhs, mut span) = self.parse_prefix()?;
         loop {
@@ -239,6 +242,7 @@ impl<'a> Parser<'a> {
         Ok((lhs, span))
     }
 
+    /// Parse a prefix operator and its operand, else an atom.
     fn parse_prefix(&mut self) -> Result<(Expr, Span), ParseError> {
         let kind = self.peek()?.kind.clone();
         match kind {
@@ -272,6 +276,8 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse a primary expression: a literal, a name, or a bracketed
+    /// form.
     fn parse_atom(&mut self) -> Result<(Expr, Span), ParseError> {
         // `fn (` triggers a function literal.
         if let TokenKind::Ident(s) = &self.peek()?.kind
@@ -317,6 +323,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse `if` / `if let`, with or without an `else`.
     fn parse_if_expr(&mut self) -> Result<(Expr, Span), ParseError> {
         let if_tok = self.bump()?; // 'if'
         let start = if_tok.span.start;
@@ -380,6 +387,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse a `match` expression and its arms.
     fn parse_match_expr(&mut self) -> Result<(Expr, Span), ParseError> {
         let m_tok = self.bump()?; // 'match'
         let start = m_tok.span.start;
@@ -457,6 +465,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// Parse one arm: its patterns, optional guard and body.
     fn parse_match_arm(&mut self) -> Result<MatchArm, ParseError> {
         // Comments above this arm, before its first pattern.
         let leading_trivia = self.peek_leading_trivia()?;
@@ -503,6 +512,7 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parse a `[a, b, c]` list literal.
     fn parse_list_literal(&mut self) -> Result<(Expr, Span), ParseError> {
         let lb = self.bump()?; // '['
         let mut elements = Vec::new();
@@ -567,6 +577,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// Parse a parenthesised expression.
     fn parse_paren_expr(&mut self) -> Result<(Expr, Span), ParseError> {
         let lparen = self.bump()?; // '('
         let (inner, _) = self.parse_expr()?;
@@ -604,6 +615,7 @@ impl<'a> Parser<'a> {
         self.parse_block_body(lbrace.span.start)
     }
 
+    /// Parse a `{ let …; tail }` block expression.
     pub(super) fn parse_block_expr(&mut self) -> Result<(Expr, Span), ParseError> {
         let lbrace = self.bump()?; // '{'
         self.parse_block_body(lbrace.span.start)
@@ -647,6 +659,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// Parse one `let name = expr;` inside a block expression.
     fn parse_let_binding(&mut self) -> Result<LetBinding, ParseError> {
         // Comments above this binding, before `let`.
         let leading_trivia = self.peek_leading_trivia()?;
@@ -772,6 +785,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// Parse a call's argument list, given the already-parsed callee.
     fn parse_call_tail(
         &mut self,
         callee: Expr,
@@ -829,6 +843,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// Parse one `name: Type` parameter.
     fn parse_fn_parameter(&mut self) -> Result<Parameter, ParseError> {
         // Comments above this parameter print on their own line in the
         // multi-line form. Trailing comment is filled in by the caller.
@@ -913,6 +928,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// Parse a `fn(params) -> T body` literal.
     fn parse_function_literal(&mut self) -> Result<(Expr, Span), ParseError> {
         let fn_tok = self.bump()?; // 'fn'
         self.parse_function_tail(fn_tok.span.start)
@@ -986,6 +1002,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// Parse a `fn(T, U) -> V` type.
     pub(super) fn parse_function_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
         let fn_tok = self.bump()?; // 'fn'
         let start = fn_tok.span.start;
@@ -1041,6 +1058,7 @@ fn flatten_path_expr(expr: &Expr) -> Option<Vec<String>> {
     }
 }
 
+/// Lift a lexed numeric literal into the matching expression variant.
 fn number_to_expr(n: NumberLit) -> Expr {
     match n {
         NumberLit::I8(v) => Expr::I8(v),

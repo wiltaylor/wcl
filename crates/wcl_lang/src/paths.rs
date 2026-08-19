@@ -69,6 +69,8 @@ fn segments(path: &str) -> Vec<&str> {
         .collect()
 }
 
+/// Whether `child` sits at or beneath `parent`, comparing whole
+/// segments so `/ab` does not contain `/abc`.
 fn path_contains(parent: &str, child: &str) -> bool {
     let p = segments(parent);
     let c = segments(child);
@@ -80,7 +82,9 @@ fn path_contains(parent: &str, child: &str) -> bool {
 /// One item of a `[...]` character class.
 #[derive(Debug, Clone, PartialEq)]
 enum ClassItem {
+    /// A single literal character.
     Ch(char),
+    /// An inclusive character range.
     Range(char, char),
 }
 
@@ -89,10 +93,13 @@ enum ClassItem {
 enum Tok {
     /// `?` — any one character.
     Any,
+    /// A literal character.
     Lit(char),
     /// `[...]` — a (possibly negated) character class.
     Class {
+        /// Whether the class was negated with a leading `!`.
         neg: bool,
+        /// The characters and ranges the class lists.
         items: Vec<ClassItem>,
     },
 }
@@ -100,7 +107,9 @@ enum Tok {
 /// One element of a pattern segment: a `*` wildcard or a one-character token.
 #[derive(Debug, Clone, PartialEq)]
 enum PatTok {
+    /// A `**` segment, matching any number of segments.
     Star,
+    /// A single-character matcher.
     Tok(Tok),
 }
 
@@ -109,6 +118,7 @@ enum PatTok {
 enum Seg {
     /// A bare `**` segment: zero or more whole path segments.
     Globstar,
+    /// A segment matched token by token.
     Pat(Vec<PatTok>),
 }
 
@@ -123,6 +133,7 @@ fn parse_glob(pattern: &str) -> Vec<Seg> {
     segs
 }
 
+/// Compile one glob segment into its matcher form.
 fn parse_segment(seg: &str) -> Seg {
     if seg == "**" {
         return Seg::Globstar;
@@ -195,12 +206,15 @@ fn parse_class(chars: &[char], open: usize) -> Option<(Tok, usize)> {
 
 // ─── Matching a concrete path ────────────────────────────────────────
 
+/// Whether `path` matches the glob `pattern`.
 fn glob_match(pattern: &str, path: &str) -> bool {
     let pat = parse_glob(pattern);
     let segs: Vec<Vec<char>> = segments(path).iter().map(|s| s.chars().collect()).collect();
     segs_match(&pat, &segs)
 }
 
+/// Match compiled segments against a split path, backtracking over
+/// `**`.
 fn segs_match(pat: &[Seg], path: &[Vec<char>]) -> bool {
     match pat.split_first() {
         None => path.is_empty(),
@@ -214,6 +228,8 @@ fn segs_match(pat: &[Seg], path: &[Vec<char>]) -> bool {
     }
 }
 
+/// Match one compiled segment against one path segment, backtracking
+/// over `*`.
 fn seg_match(pat: &[PatTok], text: &[char]) -> bool {
     match pat.split_first() {
         None => text.is_empty(),
@@ -225,6 +241,7 @@ fn seg_match(pat: &[PatTok], text: &[char]) -> bool {
     }
 }
 
+/// Whether one token matches one character.
 fn tok_matches(t: &Tok, c: char) -> bool {
     match t {
         Tok::Any => true,
@@ -241,10 +258,13 @@ fn tok_matches(t: &Tok, c: char) -> bool {
 
 // ─── Pattern-vs-pattern overlap ──────────────────────────────────────
 
+/// Whether two globs could both match some path — the check behind
+/// rejecting ambiguous rules.
 fn glob_overlaps(a: &str, b: &str) -> bool {
     segs_intersect(&parse_glob(a), &parse_glob(b))
 }
 
+/// Whether two compiled segment lists have a common match.
 fn segs_intersect(a: &[Seg], b: &[Seg]) -> bool {
     match (a.split_first(), b.split_first()) {
         (None, None) => true,
@@ -341,6 +361,7 @@ fn toks_intersect(a: &Tok, b: &Tok) -> bool {
     }
 }
 
+/// Whether two character-class items share any character.
 fn class_items_overlap(a: &ClassItem, b: &ClassItem) -> bool {
     let (alo, ahi) = match a {
         ClassItem::Ch(c) => (*c, *c),

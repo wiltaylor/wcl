@@ -44,14 +44,33 @@ use schema_check::{has_annotation_exemption, has_schemaless};
 use scope::Scope;
 use validate::{decl_fqn_matches, resolve_path, validate_document};
 
+/// An opened document: a parsed source, its imports, and the caches that
+/// make repeated reads cheap.
+///
+/// A `Document` is immutable once opened. Field values are evaluated on
+/// first read and memoised, so forcing the same field twice costs one
+/// evaluation, and a field that fails reports the same error every time.
+/// Everything a consumer reads — fields, blocks, type and union
+/// declarations — comes back as a borrowed view, not a copy.
 pub struct Document {
+    /// The root source text and its name, for rendering diagnostics.
     src: NamedSource<String>,
+    /// The parsed root source.
     ast: ast::Source,
+    /// Evaluation caches, shaped to mirror `ast.items`.
     cells: BlockCells,
+    /// Namespace declared by the root source, prefixed to the names it
+    /// declares.
     file_ns: Vec<String>,
+    /// `use` aliases that bind one item name to a full path.
     item_aliases: HashMap<String, Vec<String>>,
+    /// `use` aliases that bind a namespace prefix to a full path.
     ns_aliases: HashMap<String, Vec<String>>,
+    /// Namespaces pulled in wholesale, searched when a bare name
+    /// resolves against neither alias map.
     wildcards: Vec<Vec<String>>,
+    /// Type declarations supplied by the environment rather than by the
+    /// source — schemas a host registers.
     synthetic_types: Vec<ast::TypeDecl>,
     /// Parallel cells for `synthetic_types` so view types can reuse the
     /// same caching paths without special-casing.
@@ -61,7 +80,10 @@ pub struct Document {
     synthetic_symbol_sets: Vec<ast::SymbolSetDecl>,
     /// Parallel evaluation cells for `synthetic_symbol_sets`.
     synthetic_symbol_set_cells: Vec<ItemCells>,
+    /// Name-to-declaration index across the root source and its eager
+    /// imports.
     symbols: SymbolIndex,
+    /// Builtins and synthetic declarations the host supplied.
     env: Environment,
     /// Top-level imports expanded eagerly at `open_with` time. Their
     /// items participate in the unified `symbols` index and in
@@ -177,6 +199,7 @@ struct DeclaredKind {
     /// The derived `@block` type, plus its evaluation cells (a type
     /// declaration is viewed through both).
     ast: ast::TypeDecl,
+    /// Evaluation caches for `ast`.
     cells: ItemCells,
 }
 
@@ -184,7 +207,14 @@ struct DeclaredKind {
 /// either `all_sources()[source].items[item]` or an index into the
 /// document's `synthetic_types`.
 enum DeclLoc {
-    Source { source: usize, item: usize },
+    /// An item of one of the document's sources.
+    Source {
+        /// Index into `all_sources()`.
+        source: usize,
+        /// Index into that source's items.
+        item: usize,
+    },
+    /// An index into the document's `synthetic_types`.
     Synthetic(usize),
 }
 
@@ -214,10 +244,15 @@ impl std::fmt::Debug for Document {
 /// importer's own source or an eagerly-loaded import.
 #[derive(Clone, Copy)]
 struct SourceView<'a> {
+    /// Name index for this source.
     symbols: &'a SymbolIndex,
+    /// The source's top-level items.
     items: &'a [ast::Item],
+    /// Evaluation caches, index-aligned with `items`.
     cells: &'a [ItemCells],
+    /// The raw text, for rendering diagnostics against this source.
     source: &'a str,
+    /// Namespace this source declares.
     file_ns: &'a [String],
     /// Resolved path on disk. `None` for the root document (the host
     /// typically supplies that path itself, e.g. via the LSP request
@@ -225,6 +260,8 @@ struct SourceView<'a> {
     path: Option<&'a Path>,
 }
 
+/// Schema errors paired with the source each should be rendered
+/// against — `None` when the error carries no file provenance.
 type CollectedSchemaErrors = Vec<(EvalError, Option<NamedSource<String>>)>;
 
 /// The set of `@document` schemas governing one namespace, root-authored
@@ -232,6 +269,7 @@ type CollectedSchemaErrors = Vec<(EvalError, Option<NamedSource<String>>)>;
 /// field/block is legal if any member declares/allows it. Built by
 /// [`Document::doc_schemas_for_ns`].
 pub(crate) struct DocSchemas<'a> {
+    /// The governing schemas, root-authored first.
     schemas: Vec<TypeDecl<'a>>,
 }
 
@@ -299,6 +337,7 @@ impl<'a> DocSchemas<'a> {
 /// go-to-definition without reaching into `SymbolIndex` directly.
 #[derive(Debug, Clone, Copy)]
 pub struct SymbolHit<'a> {
+    /// The indexed declaration.
     pub record: &'a SymbolRecord,
     /// File path of the source this symbol was declared in. `None`
     /// when the symbol comes from the root document.
@@ -372,10 +411,14 @@ macro_rules! decl_iter_cells {
 }
 
 impl Document {
+    /// Parse `source` into a document, using an empty environment.
+    /// `name` is the filename diagnostics report.
     pub fn open(source: &str, name: &str) -> Result<Self, ParseError> {
         Self::open_with(source, name, &Environment::new())
     }
 
+    /// Like [`Document::open`], with a host-supplied environment
+    /// providing extra builtins and schemas.
     pub fn open_with(source: &str, name: &str, env: &Environment) -> Result<Self, ParseError> {
         Self::open_at(source, name, None, env)
     }
@@ -496,7 +539,7 @@ impl Document {
 
     /// Switch on profiling for an already-opened document; subsequent
     /// evaluation records timings visible via [`profile`](Self::profile).
-    /// For hosts (e.g. `wcl wdoc build --profile`) whose constructor has
+    /// For hosts (e.g. `wcl wdoc build` under `WCL_PROFILE`) whose constructor has
     /// no `*_profiled` twin.
     pub fn enable_profiling(&mut self) {
         self.profile = Some(crate::profile::ProfileState::new_root());
@@ -597,6 +640,8 @@ impl Document {
         NamedSource::new(self.src.name(), self.src.inner().clone())
     }
 
+    /// The `NamedSource` a diagnostic against this source should
+    /// render with.
     fn named_source_for_view(&self, source: SourceView<'_>) -> NamedSource<String> {
         match source.path {
             Some(path) => NamedSource::new(path.display().to_string(), source.source.to_string()),
@@ -629,6 +674,8 @@ impl Document {
         self.root_named_source()
     }
 
+    /// Locate the source declaring `target` and build its
+    /// `NamedSource`, so a union diagnostic points at the right file.
     fn named_source_for_union(&self, target: *const ast::UnionDecl) -> NamedSource<String> {
         if union_in_items(&self.ast.items, target) {
             return self.root_named_source();
@@ -641,6 +688,8 @@ impl Document {
         self.root_named_source()
     }
 
+    /// Locate the source declaring `target` and build its
+    /// `NamedSource`, so a type diagnostic points at the right file.
     fn named_source_for_type(&self, target: *const ast::TypeDecl) -> NamedSource<String> {
         if type_in_items(&self.ast.items, target) {
             return self.root_named_source();
@@ -653,6 +702,8 @@ impl Document {
         self.root_named_source()
     }
 
+    /// The root source followed by every eagerly-loaded import, as a
+    /// uniform list so lookups need not special-case the root.
     fn all_sources(&self) -> Vec<SourceView<'_>> {
         let mut out = vec![SourceView {
             symbols: &self.symbols,
@@ -914,6 +965,8 @@ impl Document {
         None
     }
 
+    /// Resolve a bare name against the document root — the last step
+    /// of identifier lookup, after enclosing scopes have been tried.
     pub(crate) fn resolve_root(&self, name: &str) -> Option<crate::data::DataRef<'_>> {
         self.resolve_root_in(name, &self.file_ns)
     }
@@ -1186,6 +1239,8 @@ impl Document {
         out
     }
 
+    /// Project one connection statement into the record shape its
+    /// `@connections` schema declares.
     fn build_connection_record(
         &self,
         stmt: &ast::ConnectionStmt,
@@ -1263,6 +1318,8 @@ impl Document {
         }
     }
 
+    /// Read and parse the file at `path`. Relative imports inside it
+    /// resolve against its own directory.
     pub fn from_file(path: &Path) -> Result<Self, ParseError> {
         Self::from_file_with_loader(path, &Environment::new(), loader::disk_loader())
     }
@@ -1288,6 +1345,7 @@ impl Document {
         Self::open_at_with_loader(&source, &path.display().to_string(), base_dir, env, loader)
     }
 
+    /// The root source text and name, as diagnostics render it.
     pub fn source(&self) -> &NamedSource<String> {
         &self.src
     }
@@ -1299,6 +1357,8 @@ impl Document {
         &self.env
     }
 
+    /// The top-level field with this name, searching the root source
+    /// and its eager imports.
     pub fn field(&self, name: &str) -> Option<Field<'_>> {
         // Try the importer's file_ns first; fall back to the bare name
         // (which lets `doc.field("port")` find an imported field whose
@@ -1334,6 +1394,7 @@ impl Document {
         None
     }
 
+    /// The first top-level block of this kind.
     pub fn block(&self, kind: &str) -> Option<Block<'_>> {
         for src in self.all_sources() {
             let paths = src.symbols.blocks_with_kind(kind);
@@ -1390,6 +1451,7 @@ impl Document {
         })
     }
 
+    /// Every top-level field, in source order, imports included.
     pub fn fields(&self) -> impl Iterator<Item = Field<'_>> + '_ {
         let doc = self;
         self.all_sources()
@@ -1397,6 +1459,7 @@ impl Document {
             .flat_map(move |src| iter_fields(src.items, src.cells, doc, src.file_ns, Scope::root()))
     }
 
+    /// Every top-level block, in source order, imports included.
     pub fn blocks(&self) -> impl Iterator<Item = Block<'_>> + '_ {
         let doc = self;
         self.all_sources()
@@ -1424,6 +1487,7 @@ impl Document {
         &self.file_ns
     }
 
+    /// The `use` declarations the root source writes.
     pub fn uses(&self) -> impl Iterator<Item = UseDeclView<'_>> {
         self.ast.items.iter().filter_map(|item| match item {
             ast::Item::UseDecl(u) => Some(UseDeclView { ast: u }),
@@ -1444,6 +1508,8 @@ impl Document {
         self.resolve_alias_in(ty, &self.file_ns)
     }
 
+    /// Resolve a path through the `use` aliases visible in the given
+    /// namespace, returning the fully-qualified form.
     pub(crate) fn resolve_alias_in(
         &self,
         ty: &crate::value::TypeRef,
@@ -1508,6 +1574,8 @@ impl Document {
         self.alias_chain_in(ty, &self.file_ns)
     }
 
+    /// Follow a chain of `use` aliases to its end, bounded so a cyclic
+    /// alias cannot hang the walk.
     pub(crate) fn alias_chain_in(
         &self,
         ty: &crate::value::TypeRef,
@@ -1565,6 +1633,7 @@ impl Document {
         None
     }
 
+    /// The `type` declaration with this fully-qualified name.
     pub fn type_decl(&self, fqn: &str) -> Option<TypeDecl<'_>> {
         find_decl!(self, fqn, TypeDecl, cells, is_imported, is_derived);
         // Synthetic types live in the root namespace (no file ns prefix)
@@ -1584,6 +1653,7 @@ impl Document {
             })
     }
 
+    /// Every `type` declaration in scope, synthetic ones included.
     pub fn type_decls(&self) -> impl Iterator<Item = TypeDecl<'_>> + '_ {
         let doc = self;
         let mine_and_imports = self.all_sources().into_iter().flat_map(move |src| {
@@ -1643,6 +1713,7 @@ impl Document {
         None
     }
 
+    /// Every `interface` declaration in scope.
     pub fn interfaces(&self) -> impl Iterator<Item = InterfaceDecl<'_>> + '_ {
         decl_iter_cells!(self, InterfaceDecl)
     }
@@ -1675,11 +1746,13 @@ impl Document {
         fqn
     }
 
+    /// The `union` declaration with this fully-qualified name.
     pub fn union_decl(&self, fqn: &str) -> Option<UnionDecl<'_>> {
         find_decl!(self, fqn, UnionDecl, cells);
         None
     }
 
+    /// Every `union` declaration in scope.
     pub fn union_decls(&self) -> impl Iterator<Item = UnionDecl<'_>> + '_ {
         decl_iter_cells!(self, UnionDecl)
     }
@@ -1701,6 +1774,7 @@ impl Document {
         })
     }
 
+    /// Every `connection` declaration in scope.
     pub fn connection_decls(&self) -> impl Iterator<Item = ConnectionDecl<'_>> + '_ {
         let doc = self;
         self.all_sources().into_iter().flat_map(move |src| {
@@ -1715,6 +1789,7 @@ impl Document {
         })
     }
 
+    /// The `symbol_set` with this fully-qualified name.
     pub fn symbol_set(&self, fqn: &str) -> Option<SymbolSetDecl<'_>> {
         find_decl!(self, fqn, SymbolSetDecl, cells);
         let target: Vec<&str> = fqn.split('.').collect();
@@ -1730,6 +1805,7 @@ impl Document {
             })
     }
 
+    /// Every `symbol_set` in scope, synthetic ones included.
     pub fn symbol_sets(&self) -> impl Iterator<Item = SymbolSetDecl<'_>> + '_ {
         let doc = self;
         let authored = decl_iter_cells!(self, SymbolSetDecl);
@@ -1802,6 +1878,7 @@ impl Document {
         }
     }
 
+    /// Prefix a declared name with the root source's namespace.
     fn compose_fqn(&self, name: &[String]) -> Vec<String> {
         let mut v = self.file_ns.clone();
         v.extend(name.iter().cloned());
@@ -1816,6 +1893,8 @@ impl Document {
         self.ref_registry.get_or_init(|| self.build_ref_registry())
     }
 
+    /// Collect every type FQN that some `&T` field references, so the
+    /// reference-acceptance check can be answered by lookup.
     fn build_ref_registry(&self) -> HashSet<Vec<String>> {
         let mut registry: HashSet<Vec<String>> = self
             .ast
@@ -2452,6 +2531,8 @@ impl Document {
         self.collect_schema_errors()
     }
 
+    /// Run the full schema validation pass, pairing each violation
+    /// with the source it should be rendered against.
     fn collect_schema_errors(&self) -> CollectedSchemaErrors {
         use crate::error::SchemaViolationKind as Kind;
         use std::collections::BTreeMap;
@@ -2925,6 +3006,8 @@ impl Document {
         }
     }
 
+    /// Check every decorator on a list of items against its
+    /// `@decorator` declaration — name, applicability and cardinality.
     fn validate_decorators_in_items(
         &self,
         items: &[ast::Item],
@@ -3142,6 +3225,8 @@ impl Document {
         }
     }
 
+    /// Run decorator validation over an eagerly-loaded import, so a
+    /// violation in an imported file is reported against that file.
     fn validate_decorators_in_loaded_import(
         &self,
         loaded: &LoadedImport,
@@ -3160,6 +3245,8 @@ impl Document {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// Gather the decorators attached to one syntax node, grouped by
+    /// name, so cardinality can be checked per group.
     fn collect_decorator_group(
         &self,
         decorators: &[ast::Decorator],
@@ -3192,6 +3279,8 @@ impl Document {
         }
     }
 
+    /// Check one name-group of decorators: that the name is declared,
+    /// applies in this position, and is repeatable if repeated.
     fn validate_decorator_group(
         &self,
         decorators: &[ast::Decorator],
@@ -3504,6 +3593,8 @@ fn decorator_name_span(decorator: &Decorator<'_>) -> Span {
     decorator_name_span_from_parts(decorator.span(), decorator.name_segments())
 }
 
+/// Narrow a decorator's full span to just its dotted name, so a
+/// name-level diagnostic does not underline the arguments too.
 fn decorator_name_span_from_parts(span: Span, name: &[String]) -> Span {
     let start = span.start + 1;
     let len = name.iter().map(String::len).sum::<usize>() + name.len().saturating_sub(1);
@@ -3696,6 +3787,7 @@ thread_local! {
 struct ConnOperandGuard(bool);
 
 impl ConnOperandGuard {
+    /// Set the flag, remembering the previous value for `Drop`.
     fn enter() -> Self {
         let prev = RESOLVING_CONN_OPERAND.with(|f| f.replace(true));
         Self(prev)
@@ -3713,6 +3805,7 @@ impl Drop for ConnOperandGuard {
 struct BuildingConnIndexGuard(bool);
 
 impl BuildingConnIndexGuard {
+    /// Set the flag, remembering the previous value for `Drop`.
     fn enter() -> Self {
         let prev = BUILDING_CONN_INDEX.with(|f| f.replace(true));
         Self(prev)
@@ -3725,6 +3818,8 @@ impl Drop for BuildingConnIndexGuard {
     }
 }
 
+/// Match `name` against a block's first label, which is how a block
+/// with an `@inline(0)` identifier field is addressed.
 fn match_block_first_label(doc: &Document, b: &ast::Block, name: &str) -> Option<Value> {
     let first = b.labels.first()?;
     // A block label is an opaque identity name, not a reference: `eval_literal`
@@ -3740,6 +3835,8 @@ fn match_block_first_label(doc: &Document, b: &ast::Block, name: &str) -> Option
     if matches { Some(v) } else { None }
 }
 
+/// Match `name` against a block's declared id field, for blocks whose
+/// id is written as an ordinary field rather than a label.
 fn match_block_id_field(doc: &Document, b: &ast::Block, name: &str) -> Option<Value> {
     for it in &b.items {
         let ast::Item::Field(f) = it else { continue };
@@ -3758,6 +3855,8 @@ fn match_block_id_field(doc: &Document, b: &ast::Block, name: &str) -> Option<Va
     None
 }
 
+/// Turn a resolved `DataRef` into a `Value`: a leaf yields its value,
+/// and anything else becomes a [`Value::DataPath`] handle.
 fn materialise_dataref(dr: crate::data::DataRef<'_>, span: Span) -> Result<Value, EvalError> {
     use crate::data::DataKind;
     match dr.inner() {
@@ -3847,6 +3946,8 @@ fn expr_to_path_segments(expr: &ast::Expr) -> Option<Vec<String>> {
     }
 }
 
+/// Name a `DataKind` as diagnostics spell it (`block`, `type_field`,
+/// …).
 fn describe_datakind(k: &crate::data::DataKind<'_>) -> &'static str {
     use crate::data::DataKind;
     match k {
@@ -4000,6 +4101,8 @@ fn derive_kind_schema(
 /// document tree — top-level or nested. Drives the `@ref("kind")`
 /// dangling-reference check.
 impl Document {
+    /// Whether any block of `kind` declares this id — the lookup
+    /// behind reference resolution.
     pub(crate) fn has_block_with_id(&self, kind: &str, id: &str) -> bool {
         fn id_matches(b: &Block<'_>, id: &str) -> bool {
             if block_first_label(b).as_deref() == Some(id) {
@@ -4032,6 +4135,11 @@ pub(crate) fn value_matches_declared(value: &Value, ty: &TypeRef, optional: bool
     (optional && matches!(value, Value::None)) || value_matches_type_ref(value, ty)
 }
 
+/// Conservative check that `value` could inhabit `ty`.
+///
+/// Deliberately one-sided: it returns `true` when it cannot decide, so
+/// the schema check never rejects a value it merely failed to
+/// understand.
 pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
     use crate::value::BuiltinType as B;
     match (value, ty) {
@@ -4279,6 +4387,8 @@ fn variant_bodies_collide(a: &ast::VariantBody, b: &ast::VariantBody) -> bool {
     }
 }
 
+/// Whether a pattern's (possibly unqualified) union path matches a
+/// fully-qualified union name, comparing from the right.
 fn path_matches_suffix(pat_path: &[String], union_fqn: &[String]) -> bool {
     if pat_path.len() > union_fqn.len() {
         return false;
@@ -4287,6 +4397,7 @@ fn path_matches_suffix(pat_path: &[String], union_fqn: &[String]) -> bool {
     union_fqn[offset..] == *pat_path
 }
 
+/// The source span of any expression, whatever its variant.
 fn span_of(expr: &ast::Expr) -> Span {
     use ast::Expr as E;
     match expr {
@@ -4332,6 +4443,7 @@ fn span_of(expr: &ast::Expr) -> Span {
     }
 }
 
+/// Convert a byte-range span into the `miette` equivalent.
 pub(crate) fn span_to_miette(span: Span) -> SourceSpan {
     SourceSpan::new(span.start.into(), span.len().max(1))
 }
@@ -4359,12 +4471,15 @@ fn block_in_items(items: &[ast::Item], target: *const ast::Block) -> bool {
     false
 }
 
+/// Whether `target` is one of these items, compared by address —
+/// the identity test behind provenance lookup.
 fn union_in_items(items: &[ast::Item], target: *const ast::UnionDecl) -> bool {
     items
         .iter()
         .any(|item| matches!(item, ast::Item::UnionDecl(union) if std::ptr::eq(union, target)))
 }
 
+/// Whether `target` is one of these items, compared by address.
 fn type_in_items(items: &[ast::Item], target: *const ast::TypeDecl) -> bool {
     items
         .iter()
@@ -4394,6 +4509,8 @@ fn named_source_in_import(
     None
 }
 
+/// Find the lazily-loaded import declaring this block and build its
+/// `NamedSource`.
 fn named_source_for_block_in_lazy(
     items: &[ast::Item],
     cells: &[ItemCells],
@@ -4420,6 +4537,7 @@ fn named_source_for_block_in_lazy(
     None
 }
 
+/// Find the import declaring this union and build its `NamedSource`.
 fn named_source_for_union_in_import(
     imp: &cells::LoadedImport,
     target: *const ast::UnionDecl,
@@ -4438,6 +4556,7 @@ fn named_source_for_union_in_import(
     None
 }
 
+/// Find the import declaring this type and build its `NamedSource`.
 fn named_source_for_type_in_import(
     import: &cells::LoadedImport,
     target: *const ast::TypeDecl,
@@ -4456,6 +4575,8 @@ fn named_source_for_type_in_import(
     None
 }
 
+/// Whether `target` is one of these items or nested inside one,
+/// compared by address.
 fn field_in_items(items: &[ast::Item], target: *const ast::Field, cells: &[ItemCells]) -> bool {
     for (i, item) in items.iter().enumerate() {
         match item {

@@ -140,10 +140,16 @@ pub fn to_source_symbol_entry(entry: &SymbolEntry) -> String {
     p.buf.trim_end().to_string()
 }
 
+/// The source printer: an output buffer plus the indentation
+/// state that emitting a nested item needs.
 struct Printer {
+    /// Accumulated output.
     buf: String,
+    /// Current indentation level, in units of `indent_str`.
     depth: u16,
+    /// Formatting options this run was built with.
     cfg: FormatConfig,
+    /// One level of indentation, precomputed from `cfg`.
     indent_str: String,
     /// `true` only while printing a value position a heredoc may
     /// legally occupy: the direct value of a field/let with no trailing
@@ -164,6 +170,7 @@ struct Printer {
 }
 
 impl Printer {
+    /// Start an empty printer with the given options.
     fn new(cfg: FormatConfig) -> Self {
         let indent_str = " ".repeat(cfg.indent);
         Self {
@@ -182,20 +189,24 @@ impl Printer {
         self.slot_depth > 0
     }
 
+    /// Append a string verbatim.
     fn push(&mut self, s: &str) {
         self.buf.push_str(s);
     }
 
+    /// Append a single character.
     fn push_ch(&mut self, c: char) {
         self.buf.push(c);
     }
 
+    /// Append indentation for the current depth.
     fn write_indent(&mut self) {
         for _ in 0..self.depth {
             self.buf.push_str(&self.indent_str);
         }
     }
 
+    /// End the current line.
     fn newline(&mut self) {
         self.buf.push('\n');
     }
@@ -244,6 +255,7 @@ impl Printer {
 
     // ---------- source / items ----------
 
+    /// Print a whole file: every item, then the trailing trivia.
     fn print_source(&mut self, s: &Source) {
         for item in &s.items {
             self.print_item(item);
@@ -251,6 +263,7 @@ impl Printer {
         self.print_leading_trivia(&s.trailing_trivia);
     }
 
+    /// Print one top-level item, dispatching on its variant.
     fn print_item(&mut self, item: &Item) {
         match item {
             Item::Field(f) => self.print_field(f),
@@ -269,6 +282,7 @@ impl Printer {
         }
     }
 
+    /// Print a `name = expr` field.
     fn print_field(&mut self, f: &Field) {
         self.print_leading_trivia(&f.leading_trivia);
         self.write_indent();
@@ -283,6 +297,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print a `let` item, or the `fn` sugar when it was written that way.
     fn print_let_item(&mut self, l: &crate::ast::LetItem) {
         self.print_leading_trivia(&l.leading_trivia);
         // The `fn name(…)` item form round-trips as written: decorators
@@ -310,6 +325,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print a block instance: kind, labels, then its body.
     fn print_block(&mut self, b: &Block) {
         self.print_leading_trivia(&b.leading_trivia);
         self.write_indent();
@@ -437,6 +453,7 @@ impl Printer {
         (wrapped.lines().count() >= 2 && heredoc_round_trips(&wrapped)).then_some(wrapped)
     }
 
+    /// Print a `type` declaration, or its alias form.
     fn print_type_decl(&mut self, t: &TypeDecl) {
         self.print_leading_trivia(&t.leading_trivia);
         self.print_decorators_block(&t.decorators);
@@ -466,6 +483,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print an `interface` declaration.
     fn print_interface_decl(&mut self, t: &InterfaceDecl) {
         self.print_leading_trivia(&t.leading_trivia);
         self.print_decorators_block(&t.decorators);
@@ -487,6 +505,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print a `union` declaration.
     fn print_union_decl(&mut self, u: &UnionDecl) {
         self.print_leading_trivia(&u.leading_trivia);
         self.print_decorators_block(&u.decorators);
@@ -508,6 +527,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print one union variant and its payload.
     fn print_union_variant(&mut self, v: &UnionVariant) {
         self.print_leading_trivia(&v.leading_trivia);
         self.print_decorators_block(&v.decorators);
@@ -545,6 +565,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print a `symbol_set` declaration.
     fn print_symbol_set_decl(&mut self, s: &SymbolSetDecl) {
         self.print_leading_trivia(&s.leading_trivia);
         self.print_decorators_block(&s.decorators);
@@ -565,6 +586,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print one symbol of a symbol set.
     fn print_symbol_entry(&mut self, s: &SymbolEntry) {
         self.print_leading_trivia(&s.leading_trivia);
         self.print_decorators_block(&s.decorators);
@@ -574,6 +596,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print a `namespace` declaration.
     fn print_namespace_decl(&mut self, n: &NamespaceDecl) {
         self.print_leading_trivia(&n.leading_trivia);
         self.write_indent();
@@ -583,6 +606,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print a `use` declaration, in whichever form it was written.
     fn print_use_decl(&mut self, u: &UseDecl) {
         self.print_leading_trivia(&u.leading_trivia);
         self.write_indent();
@@ -609,6 +633,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print one name of a brace-list `use`.
     fn print_use_item(&mut self, u: &UseItem) {
         self.push(&u.name);
         if let Some(alias) = &u.alias {
@@ -617,6 +642,7 @@ impl Printer {
         }
     }
 
+    /// Print an `import`, quoted or angle-bracketed as declared.
     fn print_import_decl(&mut self, i: &ImportDecl) {
         self.print_leading_trivia(&i.leading_trivia);
         self.write_indent();
@@ -634,6 +660,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print a table: its field name, then its rows.
     fn print_table_item(&mut self, t: &TableItem) {
         self.print_leading_trivia(&t.leading_trivia);
         self.write_indent();
@@ -659,6 +686,7 @@ impl Printer {
         self.depth -= 1;
     }
 
+    /// Print one pipe-delimited table row.
     fn print_row(&mut self, r: &Row) {
         self.write_indent();
         for v in &r.values {
@@ -669,6 +697,7 @@ impl Printer {
         self.push("|");
     }
 
+    /// Print a `connection` declaration.
     fn print_connection_decl(&mut self, c: &ConnectionDecl) {
         self.print_leading_trivia(&c.leading_trivia);
         self.print_decorators_block(&c.decorators);
@@ -685,6 +714,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print a connection statement.
     fn print_connection_stmt(&mut self, c: &ConnectionStmt) {
         self.print_leading_trivia(&c.leading_trivia);
         self.write_indent();
@@ -699,6 +729,7 @@ impl Printer {
         self.newline();
     }
 
+    /// Print an `extends` clause, omitting it when the list is empty.
     fn print_extends(&mut self, extends: &[Vec<String>]) {
         if extends.is_empty() {
             return;
@@ -712,6 +743,7 @@ impl Printer {
         }
     }
 
+    /// Print one field of a type, interface or record variant.
     fn print_type_field(&mut self, f: &TypeField) {
         self.print_leading_trivia(&f.leading_trivia);
         self.write_indent();
@@ -754,6 +786,7 @@ impl Printer {
         }
     }
 
+    /// Print a decorator with its positional and named arguments.
     fn print_decorator(&mut self, d: &Decorator) {
         self.push("@");
         self.push(&join_path(&d.name));
@@ -780,6 +813,7 @@ impl Printer {
         self.push(")");
     }
 
+    /// Print a `name = value` pair.
     fn print_named_arg(&mut self, n: &NamedArg) {
         self.push(&n.name);
         self.push(" = ");
@@ -1129,6 +1163,8 @@ impl Printer {
         }
     }
 
+    /// Print a float so it re-parses as one — an integral value
+    /// still gets a `.0`.
     fn print_float(&mut self, v: f64) {
         // Infinity has no literal form — an overflowing literal
         // (`1.5E555`) saturates to it, and Debug's `inf` re-lexes as an
@@ -1156,10 +1192,13 @@ impl Printer {
         }
     }
 
+    /// Print a string literal, choosing a heredoc when that reads better.
     fn print_string_lit(&mut self, body: &str, encoding: StringEncoding) {
         self.print_string_lit_in(body, encoding, false);
     }
 
+    /// Print a string literal with an explicit say over whether the
+    /// heredoc form is allowed — nested positions forbid it.
     fn print_string_lit_in(&mut self, body: &str, encoding: StringEncoding, allow_heredoc: bool) {
         // Heredoc form only where it is *legal* (`allow_heredoc`: a
         // statement-level value followed by a bare newline), *value-
@@ -1184,6 +1223,7 @@ impl Printer {
         }
     }
 
+    /// Print an interpolated literal, re-emitting each `${…}` slot.
     fn print_interpolated(
         &mut self,
         encoding: StringEncoding,
@@ -1276,6 +1316,7 @@ impl Printer {
         }
     }
 
+    /// Print a heredoc body under the given tag prefix.
     fn print_heredoc(&mut self, body: &str, prefix: &str, _interpolated: bool) {
         // Indent each body line at depth + 1 so parse-time indent
         // stripping recovers the original content. The trailing newline
@@ -1406,6 +1447,7 @@ impl Printer {
         }
     }
 
+    /// Print a block expression: its bindings, then its tail.
     fn print_block_expr(&mut self, lets: &[LetBinding], tail: &Expr, trailing_trivia: &[Trivia]) {
         let has_comment = trivia_has_comment(trailing_trivia)
             || lets
@@ -1458,6 +1500,7 @@ impl Printer {
         self.push("}");
     }
 
+    /// Print a `match` expression and its arms.
     fn print_match_expr(&mut self, scrut: &Expr, arms: &[MatchArm], trailing_trivia: &[Trivia]) {
         // Inside an interpolation slot the arms print comma-separated on
         // one line (trivia dropped — single-line source can't carry line
@@ -1522,6 +1565,7 @@ impl Printer {
         self.push("}");
     }
 
+    /// Print a variant constructor and its payload.
     fn print_variant_expr(&mut self, type_path: &[String], variant: &str, args: &VariantArgs) {
         if !type_path.is_empty() {
             self.push(&join_path(type_path));
@@ -1548,6 +1592,7 @@ impl Printer {
         }
     }
 
+    /// Print a function literal.
     fn print_function_literal(&mut self, f: &FunctionLit) {
         self.push("fn");
         self.print_function_signature_and_body(f);
@@ -1591,6 +1636,7 @@ impl Printer {
         self.print_expr(&f.body, 0);
     }
 
+    /// Print one declared parameter.
     fn print_parameter(&mut self, p: &Parameter) {
         self.push(&p.name);
         self.push(": ");
@@ -1599,6 +1645,7 @@ impl Printer {
 
     // ---------- patterns ----------
 
+    /// Print a pattern, in any of its forms.
     fn print_pattern(&mut self, p: &Pattern) {
         match p {
             Pattern::Wildcard(_) => self.push("_"),
@@ -1666,6 +1713,7 @@ impl Printer {
 
     // ---------- type refs ----------
 
+    /// Print a type as written.
     fn print_type_ref(&mut self, t: &TypeRef) {
         match t {
             TypeRef::Builtin(b) => self.push(builtin_name(*b)),
@@ -1723,6 +1771,7 @@ impl Printer {
     }
 }
 
+/// The source spelling of a builtin type.
 fn builtin_name(b: BuiltinType) -> &'static str {
     b.name()
 }
@@ -1733,6 +1782,7 @@ fn trivia_has_comment(trivia: &[Trivia]) -> bool {
     trivia.iter().any(|t| matches!(t, Trivia::LineComment(_)))
 }
 
+/// Join dotted path segments back into source form.
 fn join_path(parts: &[String]) -> String {
     // Mirrors the `Expr::Member` printing rules: a variant type path can
     // carry numeric member segments, and gluing them re-lexes wrongly —

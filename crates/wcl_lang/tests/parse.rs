@@ -1,3 +1,5 @@
+//! Integration tests for the parser over the `examples/` corpus.
+
 use std::path::PathBuf;
 
 use wcl_lang::{

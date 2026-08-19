@@ -9,6 +9,7 @@ use crate::value::{BuiltinType, TensorDim, TypeRef};
 use super::{Parser, describe};
 
 impl<'a> Parser<'a> {
+    /// Parse a type reference, guarding recursion depth.
     pub(super) fn parse_type_ref(&mut self) -> Result<(TypeRef, Span), ParseError> {
         self.enter_recursion()?;
         let result = self.parse_type_ref_inner();
@@ -18,6 +19,7 @@ impl<'a> Parser<'a> {
         result
     }
 
+    /// Parse a type reference, without the depth guard.
     fn parse_type_ref_inner(&mut self) -> Result<(TypeRef, Span), ParseError> {
         let head = self.peek()?;
         if matches!(head.kind, TokenKind::Amp) {
@@ -30,6 +32,8 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse a primary type: a builtin, a named type, or a bracketed
+    /// form.
     fn parse_type_atom(&mut self) -> Result<(TypeRef, Span), ParseError> {
         // Contextual keywords introduced by an ident followed by a specific
         // opener: `list<...>`, `tensor<..., [...]>`, `fn(...) -> T`.
@@ -134,6 +138,7 @@ impl<'a> Parser<'a> {
         Ok((body, Span::new(start, gt.span.end)))
     }
 
+    /// Parse `list<T>`.
     fn parse_list_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
         self.parse_angle_bracketed("list", |p| {
             let (inner, _) = p.parse_type_ref()?;
@@ -141,6 +146,7 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parse `tensor<T, [dims]>`.
     fn parse_tensor_type(&mut self) -> Result<(TypeRef, Span), ParseError> {
         self.parse_angle_bracketed("tensor", |p| {
             let (element, _) = p.parse_type_ref()?;
@@ -184,6 +190,7 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parse one tensor dimension, literal or symbolic.
     fn parse_tensor_dim(&mut self) -> Result<TensorDim, ParseError> {
         let tok = self.bump()?;
         let span = tok.span;

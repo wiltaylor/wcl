@@ -23,11 +23,13 @@ use crate::value::{FnValue, Value};
 /// [`BuiltinTypeMismatch`](crate::EvalError::BuiltinTypeMismatch)
 /// at the call site.
 pub trait FromValue: Sized {
+    /// Convert a WCL value into this Rust type, or explain why not.
     fn from_value(v: &Value) -> Result<Self, String>;
 }
 
 /// Convert a Rust value back into a [`Value`] for return from a built-in.
 pub trait IntoValue {
+    /// Convert this Rust type into a WCL value.
     fn into_value(self) -> Value;
 }
 
@@ -35,6 +37,8 @@ pub trait IntoValue {
 /// `-> R where R: IntoValue` and `-> Result<R, String>` returns work
 /// through the same registration path.
 pub trait IntoValueResult {
+    /// Convert into a WCL value, allowing the conversion to fail — the
+    /// return path for builtins that are themselves fallible.
     fn into_value_result(self) -> Result<Value, String>;
 }
 
@@ -134,8 +138,11 @@ pub trait Caller {
 /// help string.
 #[derive(Debug, Clone)]
 pub struct BuiltinParam {
+    /// Parameter name, as documentation renders it.
     pub name: String,
+    /// Parameter type, as WCL spells it.
     pub ty: String,
+    /// One-line description.
     pub doc: String,
 }
 
@@ -143,10 +150,15 @@ pub struct BuiltinParam {
 /// (`fn_signature`). `signature` is the resolved printable form.
 #[derive(Debug, Clone)]
 pub struct BuiltinSignature {
+    /// One-line description.
     pub doc: String,
+    /// Parameters, in order.
     pub params: Vec<BuiltinParam>,
+    /// Return type, as WCL spells it.
     pub return_type: String,
+    /// What the return value means.
     pub return_doc: String,
+    /// The full signature, pre-rendered for display.
     pub signature: String,
 }
 
@@ -155,7 +167,10 @@ pub struct BuiltinSignature {
 /// via [`Caller`].
 #[derive(Clone)]
 pub(crate) enum BuiltinKind {
+    /// A builtin over values alone.
     Pure(BuiltinBody),
+    /// A builtin that takes a function argument, so it needs a `Caller`
+    /// to invoke it.
     Hof(BuiltinHofBody),
 }
 
@@ -166,7 +181,9 @@ pub(crate) enum BuiltinKind {
 /// completion and hover popups.
 #[derive(Clone)]
 pub struct BuiltinFn {
+    /// How many arguments the builtin expects.
     pub(crate) arity: usize,
+    /// The implementation, and whether it needs a `Caller`.
     pub(crate) kind: BuiltinKind,
     /// Explicit printable signature override. When `None`, [`signature`] is
     /// derived from the structured `params` + `returns`. Kept for the rare
@@ -184,6 +201,7 @@ pub struct BuiltinFn {
 }
 
 impl BuiltinFn {
+    /// How many arguments this builtin expects.
     pub fn arity(&self) -> usize {
         self.arity
     }
@@ -292,6 +310,8 @@ impl std::fmt::Debug for BuiltinFn {
 /// Marker trait wired up per-arity by the `impl_into_builtin!` macro
 /// below. Hosts don't implement this directly — they call [`from_fn`].
 pub trait IntoBuiltin<Args> {
+    /// Wrap a Rust function as a builtin, deriving its arity and
+    /// argument conversions from its signature.
     fn into_builtin(self) -> BuiltinFn;
 }
 
@@ -309,6 +329,8 @@ where
 
 // ─── FromValue impls ─────────────────────────────────────────────────
 
+/// Implement [`FromValue`] for a scalar Rust type by matching the
+/// corresponding `Value` variant.
 macro_rules! from_value_scalar {
     ($t:ty, $variant:ident) => {
         impl FromValue for $t {
@@ -349,7 +371,9 @@ impl FromValue for Value {
 /// as the underlying value.
 #[derive(Debug, Clone)]
 pub struct DataPath {
+    /// The underlying `DataKind` tag.
     pub kind: String,
+    /// Dotted path that re-resolves the target from the document root.
     pub segments: Vec<String>,
 }
 
@@ -395,6 +419,8 @@ where
 
 // ─── IntoValue impls ─────────────────────────────────────────────────
 
+/// Implement [`IntoValue`] for a scalar Rust type by wrapping it in
+/// the corresponding `Value` variant.
 macro_rules! into_value_scalar {
     ($t:ty, $variant:ident) => {
         impl IntoValue for $t {
@@ -455,6 +481,8 @@ where
 
 // ─── IntoBuiltin impls (per arity, 0..=8) ────────────────────────────
 
+/// Implement [`IntoBuiltin`] for functions of one particular arity.
+/// Invoked once per supported argument count.
 macro_rules! impl_into_builtin {
     ($($name:ident: $T:ident),*) => {
         impl<Func, R, $($T,)*> IntoBuiltin<($($T,)*)> for Func

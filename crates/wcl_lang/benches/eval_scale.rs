@@ -66,6 +66,7 @@ fn root(types: usize, blocks: usize, conns: usize) -> String {
     s
 }
 
+/// Build and open a synthetic document of the requested size.
 fn open(types: usize, blocks: usize, conns: usize) -> wcl_lang::Document {
     let mut reg = wcl_lang::Registry::new();
     reg.register("schema.wcl", schema(types));
@@ -96,6 +97,7 @@ fn force(doc: &wcl_lang::Document) -> usize {
     touched
 }
 
+/// Measure full-document evaluation across several document sizes.
 fn bench_eval_scale(c: &mut Criterion) {
     // Two sizes, 2x apart on every axis: per-call O(document) resolution
     // shows up as a much-worse-than-4x ratio between them.

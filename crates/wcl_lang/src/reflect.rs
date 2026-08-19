@@ -12,6 +12,8 @@ use crate::doc::{ChildKind, DeclName, Decorator, TypeField};
 use crate::environment::Environment;
 use crate::value::{FnValue, Value};
 
+/// Register the reflection builtins — the functions that let a
+/// document read its own declarations.
 pub(crate) fn register(env: &mut Environment) {
     env.add_builtin(
         "decorator_names",
@@ -297,6 +299,7 @@ fn collect_decorators<'a>(dr: &DataRef<'a>) -> Option<Vec<Decorator<'a>>> {
     }
 }
 
+/// Resolve a dotted path argument to the declaration it names.
 fn resolve_path<'r>(
     caller: &'r dyn Caller,
     builtin: &str,
@@ -310,6 +313,8 @@ fn resolve_path<'r>(
     })
 }
 
+/// `decorator_names(target)` — the names of the decorators attached
+/// to a declaration.
 fn decorator_names_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let path = DataPath::from_value(&args[0])?;
     let dr = resolve_path(caller, "decorator_names", &path)?;
@@ -323,6 +328,8 @@ fn decorator_names_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value,
     Ok(Value::List(std::sync::Arc::new(names)))
 }
 
+/// `decorator_arg(target, decorator, arg)` — one argument of one
+/// decorator on a declaration.
 fn decorator_arg_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let path = DataPath::from_value(&args[0])?;
     let dec_name = String::from_value(&args[1])?;

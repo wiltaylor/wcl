@@ -12,6 +12,7 @@ use super::cells::{ItemCellKind, ItemCells};
 use super::scope::Scope;
 use super::{Block, Document, Field, LetView, TableView};
 
+/// Find a top-level field by name across every source slice.
 pub(super) fn find_field<'a>(
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
@@ -35,6 +36,7 @@ pub(super) fn find_field<'a>(
         })
 }
 
+/// Find the first block of a kind across every source slice.
 pub(super) fn find_block<'a>(
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
@@ -83,6 +85,7 @@ pub(super) fn find_let<'a>(
         })
 }
 
+/// Iterate every field across the given source slices.
 pub(super) fn iter_fields<'a>(
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
@@ -105,6 +108,7 @@ pub(super) fn iter_fields<'a>(
         })
 }
 
+/// Iterate every block across the given source slices.
 pub(super) fn iter_blocks<'a>(
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
@@ -128,6 +132,7 @@ pub(super) fn iter_blocks<'a>(
         })
 }
 
+/// Iterate every table item across the given source slices.
 pub(super) fn iter_tables<'a>(
     items: &'a [ast::Item],
     doc: &'a Document,

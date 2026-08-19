@@ -21,6 +21,8 @@ use super::{
 /// the Rust stack; surfaces as [`EvalError::CallDepthExceeded`].
 const MAX_CALL_DEPTH: usize = 256;
 
+/// Per-evaluation mutable state: the local bindings in scope and the
+/// recursion depth, threaded through expression evaluation.
 pub(crate) struct EvalCtx<'a> {
     /// Stack of name → value bindings introduced by `Block` let-bindings.
     /// Searched right-to-left so the most recent binding shadows older ones.
@@ -33,6 +35,7 @@ pub(crate) struct EvalCtx<'a> {
 }
 
 impl<'a> EvalCtx<'a> {
+    /// Start an evaluation context in the given scope, with no locals.
     pub(super) fn new(scope: Scope<'a>) -> Self {
         Self {
             locals: Vec::new(),
@@ -41,6 +44,7 @@ impl<'a> EvalCtx<'a> {
         }
     }
 
+    /// Find a local binding, innermost first.
     fn lookup(&self, name: &str) -> Option<&Value> {
         self.locals
             .iter()
@@ -65,7 +69,9 @@ impl<'a> EvalCtx<'a> {
 /// directly; pass `&mut *frame` where an `&mut EvalCtx<'a>` is
 /// expected.
 pub(crate) struct LocalsFrame<'c, 'a> {
+    /// The context whose locals this guard will truncate.
     ctx: &'c mut EvalCtx<'a>,
+    /// Locals length to restore on drop.
     base: usize,
 }
 
@@ -145,8 +151,11 @@ fn call_err_at(err: EvalError, name: String, span: Span) -> EvalError {
 /// document and the live `EvalCtx`, so the call observes (and reuses)
 /// the surrounding evaluation's locals/scope/call_depth.
 struct EvalCaller<'a, 'c> {
+    /// Document the call resolves names against.
     doc: &'a Document,
+    /// The context whose locals this guard will truncate.
     ctx: &'c mut EvalCtx<'a>,
+    /// Span the call reports errors against.
     span: Span,
     /// If a user-function invocation surfaces an `EvalError`, we stash
     /// it here and return a string from `call_fn` so the builtin can
@@ -373,6 +382,8 @@ impl Document {
         })
     }
 
+    /// Evaluate one expression in the given context — the core of the
+    /// evaluator, dispatching on the expression's form.
     fn eval_in<'a>(&'a self, expr: &ast::Expr, ctx: &mut EvalCtx<'a>) -> Result<Value, EvalError> {
         use ast::Expr as E;
         if let Some(v) = Self::eval_value_literal(expr) {
@@ -1023,6 +1034,8 @@ impl Document {
         self.union_decl(&bare).map(|p| p.ast)
     }
 
+    /// Compose a union's own variants with those it inherits, bounded so a
+    /// cyclic `extends` chain cannot hang the walk.
     fn collect_effective_variants<'a>(
         &'a self,
         u: &'a ast::UnionDecl,
@@ -1305,6 +1318,7 @@ impl Document {
         }
     }
 
+    /// What `self` resolves to in this scope.
     fn self_dataref<'a>(&'a self, scope: &Scope<'a>) -> crate::data::DataRef<'a> {
         match scope.frames().len().checked_sub(1) {
             Some(last_idx) => {
@@ -1314,6 +1328,7 @@ impl Document {
         }
     }
 
+    /// What `parent` resolves to, or `None` at the top level.
     fn parent_dataref<'a>(&'a self, scope: &Scope<'a>) -> Option<crate::data::DataRef<'a>> {
         match scope.frames().len() {
             0 => None,

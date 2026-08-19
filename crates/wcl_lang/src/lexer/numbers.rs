@@ -7,6 +7,9 @@ use crate::numeric::{self, ParsedNumber};
 use super::{LexError, Lexer, Token, TokenKind};
 
 impl<'a> Lexer<'a> {
+    /// Lex a numeric literal: an optional base prefix, digits with
+    /// optional underscores, an optional fraction and exponent, and an
+    /// optional type or unit suffix.
     pub(super) fn lex_number(&mut self, start: usize) -> Result<Token, LexError> {
         let neg = if self.peek() == Some(b'-') {
             self.pos += 1;
@@ -187,11 +190,16 @@ impl<'a> Lexer<'a> {
     }
 }
 
+/// What a run of digits contained, so the caller can reject
+/// malformed literals.
 struct DigitScan {
+    /// Whether any digit was seen at all.
     had_digit: bool,
+    /// Whether the run ended on `_`, which is not allowed.
     trailing_underscore: bool,
 }
 
+/// Whether `c` is a digit in the given base.
 fn is_digit_in_base(c: u8, base: u32) -> bool {
     (c as char).is_digit(base)
 }

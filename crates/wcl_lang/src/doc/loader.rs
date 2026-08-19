@@ -77,6 +77,8 @@ pub fn overlay_loader(overlay: HashMap<PathBuf, String>) -> FileLoader {
 /// ```
 #[derive(Default, Clone)]
 pub struct Registry {
+    /// Registered sources by import path. `Cow` so a host can register
+    /// embedded `&'static str` schemas without copying them.
     files: HashMap<String, Cow<'static, str>>,
 }
 

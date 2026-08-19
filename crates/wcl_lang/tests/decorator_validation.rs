@@ -1,3 +1,5 @@
+//! Integration tests: decorator name, cardinality and schema validation.
+
 use wcl_lang::{Document, Environment, EvalError, Registry, SchemaViolationKind, disk_loader};
 
 #[test]

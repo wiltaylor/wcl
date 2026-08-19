@@ -14,11 +14,14 @@ use super::{DeclName, Decorator, Document, InterfaceDecl, TypeDecl, TypeField};
 /// `effective_field`, `extends`); this wrapper keeps the rest of this
 /// module out of the type-vs-interface match.
 enum ParentDecl<'a> {
+    /// A `type` declaration.
     Type(TypeDecl<'a>),
+    /// An `interface` declaration.
     Interface(InterfaceDecl<'a>),
 }
 
 impl<'a> ParentDecl<'a> {
+    /// Fields declared directly on this declaration.
     fn effective_fields(&self) -> Vec<TypeField<'a>> {
         match self {
             ParentDecl::Type(d) => d.effective_fields(),
@@ -26,6 +29,7 @@ impl<'a> ParentDecl<'a> {
         }
     }
 
+    /// One directly-declared field, by name.
     fn effective_field(&self, name: &str) -> Option<TypeField<'a>> {
         match self {
             ParentDecl::Type(d) => d.effective_field(name),
@@ -33,6 +37,7 @@ impl<'a> ParentDecl<'a> {
         }
     }
 
+    /// The declaration's `extends` list.
     fn extends(&self) -> &'a [Vec<String>] {
         match self {
             ParentDecl::Type(d) => &d.ast.extends,
@@ -49,6 +54,7 @@ impl<'a> ParentDecl<'a> {
         }
     }
 
+    /// Fully-qualified name, for cycle detection.
     fn full_name(&self) -> String {
         match self {
             ParentDecl::Type(d) => d.full_name(),
@@ -175,6 +181,8 @@ fn collect_effective_fields<'a>(
     }
 }
 
+/// Add a field to the accumulating map, letting a more-derived
+/// declaration override an inherited field of the same name.
 fn insert_or_override<'a>(
     out: &mut Vec<TypeField<'a>>,
     seen: &mut HashSet<String>,
@@ -190,6 +198,8 @@ fn insert_or_override<'a>(
     }
 }
 
+/// Look one field up through an `extends` chain without building the
+/// whole effective list.
 fn effective_field_via<'a>(
     doc: &'a Document,
     parent_path: &[String],
@@ -199,6 +209,8 @@ fn effective_field_via<'a>(
     lookup_parent(doc, parent_path, file_ns).and_then(|d| d.effective_field(name))
 }
 
+/// Whether `other_fqn` appears anywhere in this declaration's
+/// transitive `extends` chain.
 pub(super) fn is_descendant_of_walk(
     doc: &Document,
     extends_paths: &[Vec<String>],

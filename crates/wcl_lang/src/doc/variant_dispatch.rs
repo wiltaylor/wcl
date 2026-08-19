@@ -112,8 +112,12 @@ pub(super) fn decorator_to_variant<'a>(
 }
 
 #[derive(Clone, Copy)]
+/// Spans of a decorator's arguments, so a dispatch failure can point
+/// at the argument responsible rather than the whole decorator.
 struct DecoratorArgumentSpans<'a> {
+    /// Spans of the positional arguments, in order.
     positional: &'a [ast::Span],
+    /// Spans of the named arguments, by name.
     named: &'a BTreeMap<String, ast::Span>,
 }
 
@@ -216,6 +220,9 @@ fn type_may_coerce(doc: &Document, ty: &crate::value::TypeRef) -> bool {
     }
 }
 
+/// Coerce a value towards a declared type: resolve a pending unit,
+/// shape-infer a bare record into a union variant, and recurse into
+/// list elements.
 pub(crate) fn coerce_value_to_type(
     doc: &Document,
     value: Value,
@@ -470,6 +477,8 @@ pub(crate) fn match_record_variant_by_shape<'a>(
     Ok(m)
 }
 
+/// Choose the single variant a value structurally matches, reporting
+/// an error when none or several do.
 fn pick_unique_match<'a>(
     union_decl: UnionDecl<'a>,
     full_matches: Vec<(&'a ast::UnionVariant, BTreeMap<String, Value>)>,
@@ -539,6 +548,8 @@ fn pick_unique_match<'a>(
     ))
 }
 
+/// Whether a record's field names are exactly a variant's, ignoring
+/// optional fields the record omits.
 fn names_equal(decl_fields: &[ast::TypeField], map: &BTreeMap<String, Value>) -> bool {
     if decl_fields.len() != map.len() {
         return false;
@@ -546,6 +557,8 @@ fn names_equal(decl_fields: &[ast::TypeField], map: &BTreeMap<String, Value>) ->
     decl_fields.iter().all(|f| map.contains_key(&f.name))
 }
 
+/// Whether every field of a record fits the type the variant declares
+/// for it.
 fn all_field_types_match(decl_fields: &[ast::TypeField], map: &BTreeMap<String, Value>) -> bool {
     decl_fields.iter().all(|f| {
         map.get(&f.name)

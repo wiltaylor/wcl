@@ -20,6 +20,8 @@ use crate::doc::{
 use crate::error::EvalError;
 use crate::value::Value;
 
+/// Whether a block label equals `name`, accepting either a string or
+/// an identifier label.
 fn label_matches(v: &Value, name: &str) -> bool {
     // Address a block by the same segment its label reifies to — strings,
     // symbols, and integers all (see `Value::as_path_segment`) — so a numeric
@@ -33,16 +35,21 @@ fn label_matches(v: &Value, name: &str) -> bool {
 /// [`DataRef::from_field`] etc.
 #[derive(Clone)]
 pub struct DataRef<'a> {
+    /// What this reference points at.
     inner: DataKind<'a>,
 }
 
 #[derive(Clone)]
+/// What a [`DataRef`] points at. Navigation and materialisation both
+/// dispatch on this.
 pub enum DataKind<'a> {
     /// The document itself — produced by `self` at the top-level and
     /// by scope fallback. `child(name)` delegates to the same
     /// resolution that `Document::get` uses.
     Document(&'a Document),
+    /// A `name = expr` field — the one addressable leaf.
     Field(Field<'a>),
+    /// A single block instance.
     Block(Block<'a>),
     /// A list of `Block`s — produced by schema fields decorated with
     /// `@children("kind")`. Not name-addressable; iterate via
@@ -60,14 +67,20 @@ pub enum DataKind<'a> {
     /// structural dispatch over multiple nested blocks or table rows.
     /// Materialised as a flat `Value::List` of variants on `.value()`.
     VariantValueList(Vec<Value>),
+    /// A `type` declaration, reached by reflection.
     Type(TypeDecl<'a>),
     /// An `interface` declaration. Like `Type` for reflection (fields,
     /// decorators), but distinct so callers can tell them apart.
     Interface(InterfaceDecl<'a>),
+    /// One field of a type declaration.
     TypeField(TypeField<'a>),
+    /// A `union` declaration.
     Union(UnionDecl<'a>),
+    /// One variant of a union declaration.
     Variant(UnionVariant<'a>),
+    /// A `symbol_set` declaration.
     Symbols(SymbolSetDecl<'a>),
+    /// One symbol of a symbol set.
     Symbol(SymbolEntry<'a>),
     /// A reference that could not be produced. Navigation into it and
     /// materialisation of it both surface the error, so a projection
@@ -128,40 +141,53 @@ impl<'a> DataKind<'a> {
 }
 
 impl<'a> DataRef<'a> {
+    /// Wrap a resolved target as a reference.
     pub(crate) fn new(inner: DataKind<'a>) -> Self {
         Self { inner }
     }
 
+    /// Wrap a field.
     pub fn from_field(f: Field<'a>) -> Self {
         Self::new(DataKind::Field(f))
     }
+    /// Wrap a block.
     pub fn from_block(b: Block<'a>) -> Self {
         Self::new(DataKind::Block(b))
     }
+    /// Wrap a `type` declaration.
     pub fn from_type(t: TypeDecl<'a>) -> Self {
         Self::new(DataKind::Type(t))
     }
+    /// Wrap an `interface` declaration.
     pub fn from_interface(i: InterfaceDecl<'a>) -> Self {
         Self::new(DataKind::Interface(i))
     }
+    /// Wrap a `union` declaration.
     pub fn from_union(u: UnionDecl<'a>) -> Self {
         Self::new(DataKind::Union(u))
     }
+    /// Wrap a `symbol_set` declaration.
     pub fn from_symbol_set(s: SymbolSetDecl<'a>) -> Self {
         Self::new(DataKind::Symbols(s))
     }
+    /// Wrap a gathered list of blocks, as `@children` produces.
     pub fn from_block_list(blocks: Vec<Block<'a>>) -> Self {
         Self::new(DataKind::BlockList(blocks))
     }
+    /// Wrap a gathered list of blocks as table rows, exposing the
+    /// row/column accessors.
     pub fn from_table(blocks: Vec<Block<'a>>) -> Self {
         Self::new(DataKind::Table(blocks))
     }
+    /// Wrap the document root.
     pub fn from_document(d: &'a Document) -> Self {
         Self::new(DataKind::Document(d))
     }
+    /// Wrap an already-materialised variant value.
     pub fn from_variant_value(v: Value) -> Self {
         Self::new(DataKind::VariantValue(v))
     }
+    /// Wrap a list of materialised variant values.
     pub fn from_variant_value_list(vs: Vec<Value>) -> Self {
         Self::new(DataKind::VariantValueList(vs))
     }
@@ -172,6 +198,7 @@ impl<'a> DataRef<'a> {
         Self::new(DataKind::Error(e))
     }
 
+    /// The target's kind as diagnostics spell it (`block`, `type_field`, …).
     pub fn kind(&self) -> &'static str {
         self.inner.kind_name()
     }
@@ -246,6 +273,8 @@ impl<'a> DataRef<'a> {
         Ok(out)
     }
 
+    /// Whether a list-shaped target is empty; `None` for targets that are
+    /// not lists.
     pub fn is_empty(&self) -> Option<bool> {
         self.len().map(|n| n == 0)
     }
@@ -393,6 +422,7 @@ impl<'a> DataRef<'a> {
         }
     }
 
+    /// What this reference points at.
     pub fn inner(&self) -> &DataKind<'a> {
         &self.inner
     }
@@ -405,36 +435,43 @@ impl<'a> DataRef<'a> {
             _ => None,
         }
     }
+    /// The target as a single block, or `None` if it is anything else.
     pub fn as_block(&self) -> Option<Block<'a>> {
         match &self.inner {
             DataKind::Block(b) => Some(b.clone()),
             _ => None,
         }
     }
+    /// The target as a list of blocks — matches both the gathered-children
+    /// and table-row shapes.
     pub fn as_block_list(&self) -> Option<&[Block<'a>]> {
         match &self.inner {
             DataKind::BlockList(v) => Some(v.as_slice()),
             _ => None,
         }
     }
+    /// The target as a `type` declaration, or `None`.
     pub fn as_type(&self) -> Option<TypeDecl<'a>> {
         match &self.inner {
             DataKind::Type(t) => Some(*t),
             _ => None,
         }
     }
+    /// The target as an `interface` declaration, or `None`.
     pub fn as_interface(&self) -> Option<InterfaceDecl<'a>> {
         match &self.inner {
             DataKind::Interface(i) => Some(*i),
             _ => None,
         }
     }
+    /// The target as a `union` declaration, or `None`.
     pub fn as_union(&self) -> Option<UnionDecl<'a>> {
         match &self.inner {
             DataKind::Union(u) => Some(*u),
             _ => None,
         }
     }
+    /// The target as a `symbol_set` declaration, or `None`.
     pub fn as_symbol_set(&self) -> Option<SymbolSetDecl<'a>> {
         match &self.inner {
             DataKind::Symbols(s) => Some(*s),

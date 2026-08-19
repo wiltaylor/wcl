@@ -27,8 +27,13 @@ use super::cells::{ItemCellKind, ItemCells, LoadedImport};
 use super::loader::FileLoader;
 use super::validate::open_error;
 
+/// One source of items to search: its items paired with their cells.
+/// Lets a lookup treat the root, an eager import and a lazy import
+/// identically.
 pub(super) struct BlockSlice<'a> {
+    /// The items.
     pub(super) items: &'a [ast::Item],
+    /// Their evaluation caches, index-aligned.
     pub(super) cells: &'a [ItemCells],
     /// Namespace of the file the slice's items come from, so block
     /// instances spliced in by an import keep resolving bare kinds in
@@ -43,7 +48,9 @@ pub(super) struct BlockSlice<'a> {
 /// `import <wdoc.wcl>` or a diamond loads the module just once).
 #[derive(Default)]
 pub(super) struct ImportState {
+    /// Files currently being loaded — the import-cycle guard.
     loading: HashSet<PathBuf>,
+    /// Files already loaded, so a diamond import loads once.
     seen: HashSet<PathBuf>,
 }
 
@@ -59,6 +66,8 @@ impl ImportState {
     }
 }
 
+/// Append a slice for every lazily-loaded import already resolved in
+/// these cells.
 pub(super) fn push_loaded_imports<'a>(cells: &'a [ItemCells], out: &mut Vec<BlockSlice<'a>>) {
     for cell in cells {
         if let ItemCellKind::Import { loaded, .. } = &cell.kind
@@ -74,6 +83,8 @@ pub(super) fn push_loaded_imports<'a>(cells: &'a [ItemCells], out: &mut Vec<Bloc
     }
 }
 
+/// Append a slice for each eager import, recursing into its own
+/// eager imports.
 pub(super) fn push_eager_imports<'a>(imps: &'a [LoadedImport], out: &mut Vec<BlockSlice<'a>>) {
     for imp in imps {
         out.push(BlockSlice {
@@ -111,6 +122,8 @@ pub(super) fn collect_import_namespaces(imps: &[LoadedImport], out: &mut Vec<Vec
     }
 }
 
+/// Resolve and parse an import on first access, caching the result in
+/// its cell so later reads are free.
 pub(super) fn load_import_lazily(
     path_str: &str,
     base_dir: Option<&Path>,

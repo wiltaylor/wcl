@@ -1,3 +1,5 @@
+//! Integration tests: `@applies_to` enforcement per syntactic position.
+
 use wcl_lang::{
     BuiltinType, Document, Environment, EvalError, Registry, TypeRef, Value, disk_loader,
 };
