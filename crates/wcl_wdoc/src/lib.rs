@@ -21,14 +21,15 @@
 //! all, split by where the kind is legal: `blocks::diagram` for the ones
 //! only a `diagram` accepts, `blocks` itself for the ones that reach
 //! ordinary page content. Each is consumed by whichever backends can show
-//! its kind.
+//! its kind, and each brings its own supporting machinery with it —
+//! `blocks::diagram::layout` (the placement solvers and edge router),
+//! `blocks::diagram::text` (the metrics that size a shape to its label),
+//! `blocks::highlight` (syntect, behind the `code` block).
 //!
-//! The rest is machinery the above share: `content` (the semantic IR every
-//! backend walks), `inline` (the prose pattern engine), `text` (glyph
-//! measurement), `highlight` (syntect), `native` (which kinds are rendered
-//! in Rust, and by which backends), `routing` plus `force` / `layered` /
-//! `radial` (diagram edge routing and layout), `visibility`, `css_lint`,
-//! `page_metadata` and `git`.
+//! What is left at the root is what belongs to no single kind: `content`
+//! (the semantic IR every backend walks), `inline` (the prose pattern
+//! engine), `native` (which kinds are rendered in Rust, and by which
+//! backends), `visibility`, `css_lint`, `page_metadata` and `git`.
 //!
 //! [`build`](mod@build) drives the HTML backend end to end and holds the entry points
 //! the CLI calls.
@@ -38,21 +39,15 @@ mod blocks;
 pub mod build;
 pub mod content;
 mod css_lint;
-mod force;
 pub mod git;
-mod highlight;
 mod html;
 mod inline;
-mod layered;
 mod markdown;
 mod native;
 mod page_metadata;
 pub mod pdf;
-mod radial;
 mod render;
-mod routing;
 mod svg;
-mod text;
 mod visibility;
 
 pub use build::{

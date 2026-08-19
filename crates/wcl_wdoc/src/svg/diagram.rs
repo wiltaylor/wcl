@@ -9,10 +9,10 @@ use std::path::Path;
 
 use wcl_lang::{Block, Document, Value};
 
-use crate::force::{self, ForceParams};
+use crate::blocks::diagram::layout::force::{self, ForceParams};
+use crate::blocks::diagram::layout::layered::{self, Direction};
+use crate::blocks::diagram::layout::radial::{self, RadialParams};
 use crate::inline::InlinePatterns;
-use crate::layered::{self, Direction};
-use crate::radial::{self, RadialParams};
 
 use super::*;
 
@@ -492,7 +492,8 @@ fn evict_boundary_outsiders(
             // The box render_one_boundary will draw: padding all round plus
             // the label band on the labelled edge.
             let pad = field_f64(b, "padding").unwrap_or(12.0).max(0.0);
-            let label_pad = (LABEL_INSET + crate::text::DEFAULT_FONT_SIZE + 4.0).max(pad);
+            let label_pad =
+                (LABEL_INSET + crate::blocks::diagram::text::DEFAULT_FONT_SIZE + 4.0).max(pad);
             let has_label = label_string(b).filter(|s| !s.is_empty()).is_some();
             let label_on_bottom = matches!(
                 field_symbol(b, "label_pos").unwrap_or_default().as_str(),
@@ -747,7 +748,7 @@ fn render_one_boundary(
     let pad = field_f64(block, "padding").unwrap_or(12.0).max(0.0);
     // The labelled edge reserves headroom for the title band (inset + one
     // text line + a small gap) so member shapes never cover the label.
-    let label_pad = (LABEL_INSET + crate::text::DEFAULT_FONT_SIZE + 4.0).max(pad);
+    let label_pad = (LABEL_INSET + crate::blocks::diagram::text::DEFAULT_FONT_SIZE + 4.0).max(pad);
     let pos = field_symbol(block, "label_pos").unwrap_or_default();
     let label_on_bottom = matches!(pos.as_str(), "bottom_left" | "bottom" | "bottom_right");
     let (pad_top, pad_bottom) = match (&label, label_on_bottom) {
@@ -821,7 +822,7 @@ fn boundary_label(block: &Block<'_>, text: &str, bbox: (f64, f64, f64, f64)) -> 
     format!(
         "<text{class} x=\"{lx}\" y=\"{ly}\" font-size=\"{fs}\" \
          text-anchor=\"{anchor}\" dominant-baseline=\"{baseline}\">{t}</text>",
-        fs = crate::text::DEFAULT_FONT_SIZE,
+        fs = crate::blocks::diagram::text::DEFAULT_FONT_SIZE,
         t = escape_html(text),
     )
 }

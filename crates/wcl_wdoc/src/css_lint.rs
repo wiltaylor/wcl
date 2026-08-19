@@ -53,8 +53,8 @@ use std::collections::BTreeSet;
 /// cannot drift from its generator. Adding a generator that mints class
 /// names from open-ended data means adding its prefix here.
 const GENERATED: &[&str] = &[
-    crate::highlight::TOKEN_CLASS_PREFIX,
-    crate::highlight::LANGUAGE_CLASS_PREFIX,
+    crate::blocks::highlight::TOKEN_CLASS_PREFIX,
+    crate::blocks::highlight::LANGUAGE_CLASS_PREFIX,
 ];
 
 /// Whether `name` belongs to a generator's family.

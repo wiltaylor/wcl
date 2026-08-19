@@ -8,8 +8,8 @@ use std::path::Path;
 
 use wcl_lang::{Block, DeclName, Document, Value};
 
+use crate::blocks::highlight;
 use crate::blocks::icons::IconRegistry;
-use crate::highlight;
 use crate::inline::InlinePatterns;
 use crate::render::*;
 use crate::svg::*;
@@ -1411,7 +1411,7 @@ fn render_markdown_source(
     };
     format!(
         "<pre class=\"code-block\"><code class=\"{}\">{body}</code></pre>",
-        crate::highlight::language_class("markdown"),
+        crate::blocks::highlight::language_class("markdown"),
     )
 }
 

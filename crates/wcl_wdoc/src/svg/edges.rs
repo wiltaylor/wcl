@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use wcl_lang::{Block, Value};
 
-use crate::routing::{self, EdgePath, Obstacle, Side};
+use crate::blocks::diagram::layout::routing::{self, EdgePath, Obstacle, Side};
 
 use super::*;
 
@@ -133,8 +133,8 @@ pub(crate) fn render_edges(
 pub(crate) fn edge_label_extent(label: &str) -> (f64, f64) {
     const FONT: f64 = 11.0;
     (
-        label.chars().count() as f64 * FONT * crate::text::CHAR_RATIO,
-        FONT * crate::text::LINE_HEIGHT,
+        label.chars().count() as f64 * FONT * crate::blocks::diagram::text::CHAR_RATIO,
+        FONT * crate::blocks::diagram::text::LINE_HEIGHT,
     )
 }
 

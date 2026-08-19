@@ -19,7 +19,7 @@ use std::path::Path;
 
 use wcl_lang::{Block, Document};
 
-use crate::highlight;
+use crate::blocks::highlight;
 use crate::html::render_block;
 use crate::inline::InlinePatterns;
 use crate::render::{append_attr, escape_html, field_bool, field_id, field_utf8};

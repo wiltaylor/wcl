@@ -23,6 +23,7 @@
 pub(crate) mod demo;
 pub(crate) mod diagram;
 pub(crate) mod file;
+pub(crate) mod highlight;
 pub(crate) mod icons;
 pub(crate) mod image;
 pub(crate) mod math;

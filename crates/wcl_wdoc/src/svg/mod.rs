@@ -1,12 +1,18 @@
-//! SVG diagram rendering: layout (grid / layered), edge routing, shape
-//! geometry, the fundamental shape emitters, and pan/zoom.
+//! SVG diagram rendering: the layout pass, edge routing, shape geometry,
+//! the element emitters, and pan/zoom.
 //!
 //! Split into focused submodules behind this re-exporting `mod`:
-//! [`diagram`] (the top-level render + layout planning), [`edges`] (edge
-//! gathering, anchor selection, and elbow routing), [`shapes`] (per-kind
-//! shape dispatch, position collection, and icon badges), and
-//! [`primitives`] (geometry resolution + the fundamental SVG emitters).
-//! The shared geometry types + bundled-asset consts live here.
+//! [`diagram`] (the top-level render + layout planning, including the
+//! `container` / `boundary` walk), [`edges`] (edge gathering, anchor
+//! selection, and elbow routing), [`shapes`] (per-kind dispatch, position
+//! collection, and icon badges), [`lower`] (the SVG fundamental
+//! dispatch), and [`primitives`] (geometry resolution + the `emit_*`
+//! element writers). The shared geometry types + bundled-asset consts
+//! live here.
+//!
+//! What a shape *is* lives in [`crate::blocks::diagram`] — this module
+//! places and draws blocks it does not declare, and calls the solvers in
+//! [`crate::blocks::diagram::layout`] to decide where each one goes.
 //!
 //! A backend in its own right, alongside [`crate::html`] and
 //! [`crate::pdf`] — both of which embed what it draws — and built on the
@@ -18,12 +24,12 @@ use std::path::Path;
 
 use wcl_lang::{Block, Document};
 
+use crate::blocks::diagram::layout::routing::Side;
 use crate::blocks::diagram::tileset::TilesetRegistry;
 use crate::blocks::icons::IconRegistry;
 use crate::blocks::image::ImageRegistry;
 use crate::inline::InlinePatterns;
 use crate::render::*;
-use crate::routing::Side;
 
 mod diagram;
 mod edges;

@@ -106,7 +106,7 @@ pub(crate) fn collect_content(
                 });
             }
             out.push(BlockNode::Code {
-                lines: crate::highlight::highlight_spans(
+                lines: crate::blocks::highlight::highlight_spans(
                     source,
                     language.as_deref().unwrap_or_default(),
                 )

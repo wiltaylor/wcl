@@ -7,10 +7,11 @@ use wcl_lang::Block;
 
 use crate::blocks::diagram::dopesheet;
 use crate::blocks::diagram::map;
+use crate::blocks::diagram::shapes::*;
+use crate::blocks::diagram::text;
 use crate::blocks::diagram::tileset;
 use crate::blocks::icons::{IconRegistry, ShapeOverride};
 use crate::blocks::image;
-use crate::text;
 
 use super::*;
 

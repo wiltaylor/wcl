@@ -8,10 +8,9 @@
 
 use wcl_lang::{Block, Document, Value, VariantPayload};
 
+use crate::blocks::diagram::shapes::*;
 use crate::inline::InlinePatterns;
 use crate::render::*;
-
-use super::*;
 
 /// Custom diagram-shape lowering. Resolves the block's `lower`
 /// function, calls it with a record built from the block's fields,

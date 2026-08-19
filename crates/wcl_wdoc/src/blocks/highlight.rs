@@ -18,7 +18,7 @@ use syntect::parsing::{SyntaxDefinition, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
 /// WCL's own syntax definition, bundled because syntect ships none.
-const WCL_SYNTAX: &str = include_str!("../assets/wcl.sublime-syntax");
+const WCL_SYNTAX: &str = include_str!("../../assets/wcl.sublime-syntax");
 
 /// Prefix of the token classes syntect mints — one per grammar scope, so
 /// the vocabulary is as open-ended as the grammars themselves. Named here

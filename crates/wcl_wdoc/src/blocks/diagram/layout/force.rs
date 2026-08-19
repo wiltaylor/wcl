@@ -23,7 +23,7 @@
 
 use std::collections::HashMap;
 
-use crate::layered::Node;
+use crate::blocks::diagram::layout::layered::Node;
 
 /// Tunable knobs for the force simulation, surfaced on `diagram` /
 /// `container` as optional WCL fields. Defaults are picked to give a

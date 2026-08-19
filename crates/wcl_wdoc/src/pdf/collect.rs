@@ -266,7 +266,7 @@ fn walk_block_variant(
         "highlighted" => {
             let source = map_utf8(map, "source").unwrap_or_default();
             let language = map_utf8(map, "language").unwrap_or_default();
-            let lines = crate::highlight::highlight_spans(&source, &language)
+            let lines = crate::blocks::highlight::highlight_spans(&source, &language)
                 .into_iter()
                 .map(|spans| {
                     spans

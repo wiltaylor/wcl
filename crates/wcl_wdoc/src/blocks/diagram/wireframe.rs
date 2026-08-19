@@ -586,8 +586,8 @@ fn build(doc: Option<&Document>, block: &Block<'_>) -> Widget {
 /// auto-layout offset — and size the widget to the node bounding box.
 fn build_node_graph(doc: Option<&Document>, block: &Block<'_>, disabled: bool) -> Widget {
     let dir = field_symbol(block, "direction")
-        .and_then(|s| crate::layered::Direction::from_symbol(&s))
-        .unwrap_or(crate::layered::Direction::LeftToRight);
+        .and_then(|s| crate::blocks::diagram::layout::layered::Direction::from_symbol(&s))
+        .unwrap_or(crate::blocks::diagram::layout::layered::Direction::LeftToRight);
 
     // Collect nodes (measured) and the link references, in source order.
     let mut nodes: Vec<GNode> = Vec::new();
@@ -653,10 +653,10 @@ fn build_node_graph(doc: Option<&Document>, block: &Block<'_>, disabled: bool) -
 
     // Auto-layout from the link graph (node index doubles as the layout id, so
     // a node needs no user `id` to be positioned), then pin explicit x/y.
-    let lnodes: Vec<crate::layered::Node> = nodes
+    let lnodes: Vec<crate::blocks::diagram::layout::layered::Node> = nodes
         .iter()
         .enumerate()
-        .map(|(i, n)| crate::layered::Node {
+        .map(|(i, n)| crate::blocks::diagram::layout::layered::Node {
             id: Some(i.to_string()),
             size: (n.w, n.h),
         })
@@ -665,7 +665,7 @@ fn build_node_graph(doc: Option<&Document>, block: &Block<'_>, disabled: bool) -
         .iter()
         .map(|l| (l.src.to_string(), l.dst.to_string()))
         .collect();
-    let offsets = crate::layered::assign_layered_offsets(
+    let offsets = crate::blocks::diagram::layout::layered::assign_layered_offsets(
         &lnodes,
         &ledges,
         dir,
@@ -1301,9 +1301,9 @@ fn emit_node_graph(
     out: &mut String,
 ) {
     // Node boxes as routing obstacles in absolute (emitted) coordinates.
-    let obstacles: Vec<crate::routing::Obstacle> = nodes
+    let obstacles: Vec<crate::blocks::diagram::layout::routing::Obstacle> = nodes
         .iter()
-        .map(|n| crate::routing::Obstacle {
+        .map(|n| crate::blocks::diagram::layout::routing::Obstacle {
             x: ox + n.x,
             y: oy + n.y,
             w: n.w,
@@ -1317,17 +1317,17 @@ fn emit_node_graph(
         let src = (ox + sx, oy + sy);
         let dst = (ox + dx, oy + dy);
         // Route around every node except the two this link connects.
-        let obs: Vec<crate::routing::Obstacle> = obstacles
+        let obs: Vec<crate::blocks::diagram::layout::routing::Obstacle> = obstacles
             .iter()
             .enumerate()
             .filter(|(i, _)| *i != l.src && *i != l.dst)
             .map(|(_, o)| *o)
             .collect();
-        let pts = crate::routing::route_elbow(
+        let pts = crate::blocks::diagram::layout::routing::route_elbow(
             src,
-            crate::routing::Side::East,
+            crate::blocks::diagram::layout::routing::Side::East,
             dst,
-            crate::routing::Side::West,
+            crate::blocks::diagram::layout::routing::Side::West,
             &obs,
             &[],
             viewport,

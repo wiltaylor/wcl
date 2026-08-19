@@ -139,8 +139,8 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
             write!(
                 out,
                 "><code class=\"{}\">{}</code></pre></figure>",
-                crate::highlight::language_class(&escape_html(&language)),
-                crate::highlight::highlight_html(source, &language, true),
+                crate::blocks::highlight::language_class(&escape_html(&language)),
+                crate::blocks::highlight::highlight_html(source, &language, true),
             )
             .expect("write to String");
             out

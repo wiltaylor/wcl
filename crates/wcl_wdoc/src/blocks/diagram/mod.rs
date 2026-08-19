@@ -14,14 +14,17 @@
 //! child subtree the lowering record never sees; [`wireframe`] bakes
 //! resolved theme colours into a self-contained panel.
 //!
-//! The layout algorithms that *place* these (`force`, `layered`,
-//! `radial`, `routing`) are not blocks and live at the crate root, where
-//! [`crate::svg::diagram`] drives them.
+//! [`shapes`] holds the fundamentals (`rect`, `circle`, `line`, `label`,
+//! `polygon`), [`text`] the metrics that size a shape to its label, and
+//! [`layout`] the solvers that decide where each block ends up.
 
 pub(crate) mod card;
 pub(crate) mod dopesheet;
+pub(crate) mod layout;
 pub(crate) mod map;
 pub(crate) mod node_table;
+pub(crate) mod shapes;
+pub(crate) mod text;
 pub(crate) mod tileset;
 pub(crate) mod timeline;
 pub(crate) mod tree;

@@ -24,7 +24,7 @@
 use std::collections::HashMap;
 use std::f64::consts::{PI, TAU};
 
-use crate::layered::Node;
+use crate::blocks::diagram::layout::layered::Node;
 
 /// Tunable knobs for the radial layout, surfaced on `diagram` /
 /// `container` as optional WCL fields. Defaults give a readable ring for

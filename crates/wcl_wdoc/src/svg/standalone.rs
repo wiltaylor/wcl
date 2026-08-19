@@ -7,9 +7,9 @@ use std::fmt::Write as _;
 
 use wcl_lang::{Document, Value, VariantPayload};
 
+use crate::blocks::diagram::text;
 use crate::content::Svg;
 use crate::inline::InlinePatterns;
-use crate::text;
 
 use super::*;
 
