@@ -12,9 +12,8 @@ use super::eval_ops::{apply_binary, apply_unary, as_bool, describe_expr, format_
 use super::match_pat;
 use super::scope::Scope;
 use super::types::value_matches_declared;
-use super::{
-    Block, Document, expr_to_path_segments, materialise_dataref, materialise_dataref_value, span_of,
-};
+use super::views::{materialise_dataref, materialise_dataref_value};
+use super::{Block, Document, expr_to_path_segments, span_of};
 use super::{DataKind, DataRef};
 
 /// Hard cap on nested user-`fn` invocations during a single evaluation.

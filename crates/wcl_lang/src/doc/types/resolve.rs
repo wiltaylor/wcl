@@ -16,11 +16,12 @@ use std::collections::HashSet;
 use crate::ast::{self, TypeRef};
 use crate::symbols::SymbolKind;
 
+use crate::doc::Document;
+use crate::doc::decorators::first_positional_utf8;
 use crate::doc::validate::{decl_fqn_matches, resolve_path};
 use crate::doc::views::{
     BuiltinDecorator, ConnectionDecl, InterfaceDecl, SymbolSetDecl, TypeDecl, UnionDecl,
 };
-use crate::doc::{Document, first_positional_utf8};
 
 use super::ResolvedType;
 

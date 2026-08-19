@@ -11,12 +11,12 @@ use std::collections::HashMap;
 use crate::ast;
 use crate::value::Value;
 
+use super::Document;
 use super::cells::{ItemCellKind, ItemCells};
 use super::imports::load_import_lazily;
 use super::scope::Scope;
 use super::types::check_interface_conformance;
 use super::views::{ConnectionDecl, DeclName, TypeDecl, UnionDecl};
-use super::{Document, match_block_first_label, match_block_id_field};
 
 impl Document {
     /// Resolve a connection-statement operand (a bare identifier) by
@@ -477,4 +477,41 @@ impl Drop for BuildingConnIndexGuard {
     fn drop(&mut self) {
         BUILDING_CONN_INDEX.with(|f| f.set(self.0));
     }
+}
+
+/// Match `name` against a block's first label, which is how a block
+/// with an `@inline(0)` identifier field is addressed.
+fn match_block_first_label(doc: &Document, b: &ast::Block, name: &str) -> Option<Value> {
+    let first = b.labels.first()?;
+    // A block label is an opaque identity name, not a reference: `eval_literal`
+    // short-circuits a bare identifier to `Value::Identifier(s)` in O(1) instead
+    // of resolving it across the whole document scope (which made building the
+    // root operand index quadratic over a large doc). Non-identifier labels
+    // (string literals, interpolations) still evaluate at root, as before.
+    let v = doc.eval_literal(first).ok()?;
+    let matches = match &v {
+        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s == name,
+        _ => false,
+    };
+    if matches { Some(v) } else { None }
+}
+
+/// Match `name` against a block's declared id field, for blocks whose
+/// id is written as an ordinary field rather than a label.
+fn match_block_id_field(doc: &Document, b: &ast::Block, name: &str) -> Option<Value> {
+    for it in &b.items {
+        let ast::Item::Field(f) = it else { continue };
+        if f.name != "id" {
+            continue;
+        }
+        let v = doc.eval_literal(&f.expr).ok()?;
+        let matches = match &v {
+            Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s == name,
+            _ => false,
+        };
+        if matches {
+            return Some(v);
+        }
+    }
+    None
 }

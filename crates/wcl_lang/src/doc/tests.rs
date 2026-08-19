@@ -1,4 +1,5 @@
 use super::*;
+use crate::ast::TypeRef;
 use crate::diagnostics::{ArithmeticFault, ParseError};
 
 fn open(src: &str) -> Document {
@@ -5860,4 +5861,41 @@ fn a_kind_nothing_declares_is_still_unregistered() {
         errs.iter().any(|e| format!("{e}").contains("metric_cards")),
         "an undeclared kind is still a violation: {errs:?}"
     );
+}
+
+fn laxify_for_tests(src: &str) -> String {
+    // Parse the source once with an empty environment to identify
+    // the offsets of top-level `Item::Field` and `Item::Block`
+    // name tokens, then insert `@schemaless ` before each. The
+    // resulting source parses identically but exempts every
+    // top-level value from strict-validation.
+    let Ok(d) = Document::open_with(src, "tmp-laxify", &Environment::empty()) else {
+        return src.to_string();
+    };
+    // Only laxify top-level fields. Tests that use un-schema'd
+    // top-level blocks are expected to write `@schemaless` (or a
+    // real `@block` declaration) explicitly — there are far fewer
+    // of them, and most snippets that use blocks already declare
+    // matching `@block` schemas inline.
+    let mut insertions: Vec<usize> = Vec::new();
+    for item in &d.ast.items {
+        if let ast::Item::Field(f) = item
+            && !has_schemaless(&f.decorators)
+        {
+            insertions.push(f.span.start);
+        }
+    }
+    if insertions.is_empty() {
+        return src.to_string();
+    }
+    insertions.sort_unstable();
+    let mut out = String::with_capacity(src.len() + insertions.len() * 12);
+    let mut cursor = 0;
+    for pos in insertions {
+        out.push_str(&src[cursor..pos]);
+        out.push_str("@schemaless ");
+        cursor = pos;
+    }
+    out.push_str(&src[cursor..]);
+    out
 }

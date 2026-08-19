@@ -555,3 +555,98 @@ impl<'a> DataRef<'a> {
         }
     }
 }
+
+/// Turn a resolved `DataRef` into a `Value`: a leaf yields its value,
+/// and anything else becomes a [`Value::DataPath`] handle.
+pub(in crate::doc) fn materialise_dataref(dr: DataRef<'_>, span: Span) -> Result<Value, EvalError> {
+    use DataKind;
+    match dr.inner() {
+        DataKind::Field(f) => f.value().cloned().map_err(|e| e.clone()),
+        other => Err(EvalError::not_a_leaf(describe_datakind(other), span)),
+    }
+}
+
+/// Like [`materialise_dataref`] but, for non-leaf targets, returns a
+/// `Value::DataPath` carrying the source-level segments instead of
+/// erroring with `NotALeaf`. Used at every site that resolves an
+/// identifier / member chain so reflective builtins can keep walking
+/// the document tree from inside WCL code.
+pub(in crate::doc) fn materialise_dataref_or_path(
+    dr: DataRef<'_>,
+    segments: Vec<String>,
+    _span: Span,
+) -> Result<Value, EvalError> {
+    use crate::doc::views::DeclName;
+    use DataKind;
+    match dr.inner() {
+        DataKind::Field(f) => f.value().cloned().map_err(|e| e.clone()),
+        DataKind::VariantValue(v) => Ok(v.clone()),
+        DataKind::VariantValueList(vs) => Ok(Value::List(std::sync::Arc::new(vs.clone()))),
+        other => {
+            // A handle to a *declaration* carries the declaration's FQN
+            // segments, not the source-written ones, so the path stays
+            // resolvable when the value crosses into another namespace
+            // (e.g. a `type = LibModel` slot binding consumed inside the
+            // stdlib's `namespace wdoc` component bodies). Child kinds
+            // (type fields, variants, symbols) keep the source segments;
+            // they resolve through the namespace-aware lookup instead.
+            let segments = match other {
+                DataKind::Type(t) => t.fqn_segments(),
+                DataKind::Interface(i) => i.fqn_segments(),
+                DataKind::Union(u) => u.fqn_segments(),
+                DataKind::Symbols(s) => s.fqn_segments(),
+                _ => segments,
+            };
+            Ok(Value::DataPath {
+                kind: describe_datakind(other).to_string(),
+                segments,
+            })
+        }
+    }
+}
+
+/// Like [`materialise_dataref_or_path`] but additionally reifies a
+/// `@children`/`@child`/`@table` projection (block / block list / table)
+/// into ordinary record / list values, so a bare reference to such a slot
+/// is consumable by builtins (`len`, `map`, …), arithmetic, and
+/// a repetition block's `each`. Used by the bare-identifier / member-access
+/// evaluation path. The `&T`-reference deref path keeps the plain
+/// `materialise_dataref_or_path` behaviour (a `Value::DataPath` handle) so
+/// reflective builtins can keep walking the source.
+pub(in crate::doc) fn materialise_dataref_value(
+    dr: DataRef<'_>,
+    segments: Vec<String>,
+    span: Span,
+) -> Result<Value, EvalError> {
+    // Thread the source-written path as the reification base, so a `@by_ref`
+    // child slot (e.g. a wdoc `body`) reachable through this value reifies to
+    // a root-resolvable `Value::DataPath` reference rather than inlined
+    // content.
+    if let Some(v) = super::dataref_to_value_at(&dr, &segments) {
+        return v;
+    }
+    materialise_dataref_or_path(dr, segments, span)
+}
+
+/// Name a `DataKind` as diagnostics spell it (`block`, `type_field`,
+/// …).
+fn describe_datakind(k: &DataKind<'_>) -> &'static str {
+    use DataKind;
+    match k {
+        DataKind::Document(_) => "document",
+        DataKind::Field(_) => "field",
+        DataKind::Block(_) => "block",
+        DataKind::BlockList(_) => "block list",
+        DataKind::Table(_) => "table",
+        DataKind::Type(_) => "type",
+        DataKind::Interface(_) => "interface",
+        DataKind::TypeField(_) => "type field",
+        DataKind::Union(_) => "union",
+        DataKind::Variant(_) => "variant",
+        DataKind::Symbols(_) => "symbol set",
+        DataKind::Symbol(_) => "symbol",
+        DataKind::VariantValue(_) => "variant value",
+        DataKind::VariantValueList(_) => "variant value list",
+        DataKind::Error(_) => "error",
+    }
+}

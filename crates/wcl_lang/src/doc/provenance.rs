@@ -12,10 +12,11 @@ use std::path::Path;
 use miette::NamedSource;
 
 use crate::ast;
+use crate::symbols::SymbolIndex;
 use crate::symbols::SymbolRecord;
 
 use super::cells::{self, ItemCellKind, ItemCells, LoadedImport};
-use super::{Document, SourceView, SymbolHit};
+use super::{Document, SymbolHit};
 
 impl Document {
     /// Borrow the importer's items + cells + symbols followed by every
@@ -479,4 +480,24 @@ fn find_lazy_in_blocks<'a>(
         }
     }
     None
+}
+
+/// A homogeneous view over one source of top-level items — either the
+/// importer's own source or an eagerly-loaded import.
+#[derive(Clone, Copy)]
+pub(super) struct SourceView<'a> {
+    /// Name index for this source.
+    pub(super) symbols: &'a SymbolIndex,
+    /// The source's top-level items.
+    pub(super) items: &'a [ast::Item],
+    /// Evaluation caches, index-aligned with `items`.
+    pub(super) cells: &'a [ItemCells],
+    /// The raw text, for rendering diagnostics against this source.
+    pub(super) source: &'a str,
+    /// Namespace this source declares.
+    pub(super) file_ns: &'a [String],
+    /// Resolved path on disk. `None` for the root document (the host
+    /// typically supplies that path itself, e.g. via the LSP request
+    /// URI); `Some` for every eagerly-loaded import.
+    pub(super) path: Option<&'a Path>,
 }

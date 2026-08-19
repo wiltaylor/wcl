@@ -455,3 +455,13 @@ fn decorator_name_span_from_parts(span: Span, name: &[String]) -> Span {
     let len = name.iter().map(String::len).sum::<usize>() + name.len().saturating_sub(1);
     Span::new(start, start + len)
 }
+
+/// The first positional argument when it evaluates to a UTF-8 string.
+/// Schema discovery uses this common shape for declarations such as
+/// `@block("kind")` and `@decorator("name")`.
+pub(super) fn first_positional_utf8(decorator: &Decorator<'_>) -> Option<String> {
+    match decorator.positional().ok()?.into_iter().next()? {
+        Value::Utf8(value) => Some(value),
+        _ => None,
+    }
+}

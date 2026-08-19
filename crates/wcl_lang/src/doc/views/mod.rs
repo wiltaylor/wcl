@@ -15,6 +15,9 @@ mod field;
 // here so `doc::views::TypeDecl` keeps meaning what it always did.
 pub use block::{Block, Connection, RowView, TableView};
 pub use data::{DataKind, DataRef};
+pub(in crate::doc) use data::{
+    materialise_dataref, materialise_dataref_or_path, materialise_dataref_value,
+};
 pub(crate) use decl::UnionChildKind;
 pub use decl::{
     ChildKind, ConnectionDecl, DeclaresKind, InterfaceDecl, SymbolEntry, SymbolSetDecl, TypeDecl,
@@ -47,7 +50,7 @@ use super::types::{
     is_descendant_of_walk, lookup_effective_field, same_type_decl,
 };
 use super::{Document, find_block, find_field, find_let, has_schemaless};
-use super::{expr_to_path_segments, materialise_dataref_or_path, span_to_miette};
+use super::{expr_to_path_segments, span_to_miette};
 
 /// Join the contiguous run of line comments immediately above a
 /// declaration (its `leading_trivia`) into a single doc-comment string.
