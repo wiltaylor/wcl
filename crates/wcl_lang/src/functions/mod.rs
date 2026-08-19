@@ -4,25 +4,30 @@
 //! Rust function becomes something a WCL `Call` expression can invoke,
 //! and how values cross that boundary in each direction. Everything
 //! else is a *family* of builtins registered through it, one module per
-//! family: [`list`], [`string`], [`record`], [`tensor`] and
-//! [`diagnostics`].
+//! family: [`list`], [`string`], [`record`], [`tensor`],
+//! [`diagnostics`], [`math`], [`paths`], [`reflect`] and [`units`].
 //!
 //! Each family owns its own `register` and the implementations behind
 //! it, so adding a builtin means touching one file. [`register`] here
 //! is only the fan-out, and is called from
 //! [`Environment::new`](crate::Environment::new).
 //!
-//! The other builtin families live outside this module because they are
-//! bound to a subsystem rather than to a value shape: `math`, `units`,
-//! `paths` and `reflect` each register from their own module.
+//! [`reflect`] is the one family that reaches outside the value model:
+//! its builtins read the document's own declarations through a
+//! [`DataRef`](crate::DataRef), so it depends on the document layer in
+//! a way the others do not.
 
 pub mod builtin;
 mod convert;
 mod diagnostics;
 mod list;
+mod math;
+mod paths;
 mod record;
+mod reflect;
 mod string;
 mod tensor;
+mod units;
 
 pub use builtin::{
     BuiltinFn, BuiltinSignature, Caller, FromValue, IntoBuiltin, IntoValue, IntoValueResult,
@@ -45,6 +50,10 @@ pub(crate) fn register(env: &mut Environment) {
     record::register(env);
     tensor::register(env);
     diagnostics::register(env);
+    math::register(env);
+    paths::register(env);
+    reflect::register(env);
+    units::register(env);
 }
 
 /// Borrow a `&FnValue` from `value`, producing a uniform diagnostic

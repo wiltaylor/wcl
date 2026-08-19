@@ -73,10 +73,6 @@ impl Environment {
         env.symbol_sets.push(decorator_position_set());
         env.types.extend(stdlib_unit_types());
         crate::functions::register(&mut env);
-        crate::math::register(&mut env);
-        crate::paths::register(&mut env);
-        crate::reflect::register(&mut env);
-        crate::units::register(&mut env);
         env
     }
 
