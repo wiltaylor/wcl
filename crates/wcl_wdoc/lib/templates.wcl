@@ -70,7 +70,7 @@ type FooterButton {
 // One authored in-page heading for the book's "on this page" rail. Derived
 // on demand by `page_metadata(c)` from h2 / h3 handles: `level` is 2 or 3,
 // `id` the (synthesised) anchor target, `title` the heading text, `number`
-// the `§` section number (e.g. `"4.1"`).
+// the section number (e.g. `"4.1"`) for a template that wants to print it.
 type OnPageHeading {
   level:  i64
   id:     utf8
@@ -736,7 +736,6 @@ style "book_css" {
   // only `level-3` adds one. Declared because the level class is
   // interpolated (`format("level-{}", h.level)`) and reaches the markup.
   class "level-2" {}
-  class "heading-marker" { css = "display: block; font-size: 0.78rem; margin-bottom: 0.2rem;" }
   media "(max-width: 82rem)" {
     class "book-rail" { css = "display: none;" }
     class "book-content" { css = "margin-right: 0;" }

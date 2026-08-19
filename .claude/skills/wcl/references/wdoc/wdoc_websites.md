@@ -58,7 +58,7 @@ That renders:
 ```html
 <header class="nav"><a class="brand" href="index.html">Acme</a></header>
 <section class="hero"><h1 class="heading-1" id="build-something-great">Build something great</h1>
-</section><main class="content"><h2 class="heading-2" id="about"><span class="heading-marker">§ 1</span>About</h2>
+</section><main class="content"><h2 class="heading-2" id="about">About</h2>
 <p>Everything outside a named fill lands in the reserved content slot.</p>
 </main><footer class="foot"><p>© Built with WCL + wdoc.</p></footer>
 ```

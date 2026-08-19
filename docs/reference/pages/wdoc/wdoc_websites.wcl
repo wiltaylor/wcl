@@ -117,7 +117,7 @@ TEXT
   <p>The shell is HTML and CSS. The words are wdoc.</p>
 </section>
 <main class="prose">
-  <h2 class="heading-2" id="what-lands-where"><span class="heading-marker">§ 1</span>What lands where</h2>
+  <h2 class="heading-2" id="what-lands-where">What lands where</h2>
   <p>Everything outside a named fill lands in the reserved <span class="code">content</span> slot.</p>
 </main>
 <footer class="foot">&copy; Acme</footer>
@@ -132,7 +132,7 @@ HTML
     source = <<'HTML'
 <header class="bar"><a href="index.html">Acme</a></header>
 <main class="prose">
-  <h2 class="heading-2" id="pricing"><span class="heading-marker">§ 1</span>Pricing</h2>
+  <h2 class="heading-2" id="pricing">Pricing</h2>
   <p>No hero here, so no empty <span class="code">&lt;section&gt;</span> either.</p>
 </main>
 <footer class="foot"><p>Prices exclude tax.</p></footer>

@@ -25,7 +25,6 @@ style "wdoc-theme-apply" {
   class "code-card" {
     nest ".code-line::before" { css = "color:var(--wdoc-fg-subtle);" }
   }
-  class "heading-marker" { css = "color:var(--wdoc-accent);font-family:var(--wdoc-font-mono);" }
   class "chapter-kicker" { css = "color:var(--wdoc-accent);font-family:var(--wdoc-font-mono);" }
   class "chapter-meta" { css = "color:var(--wdoc-fg-muted);border-top:1px solid var(--wdoc-border);" }
   class "chapter-subtitle" { css = "color:var(--wdoc-fg-muted);" }

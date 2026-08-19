@@ -5173,9 +5173,8 @@ page index {
         "heading ids remain unique across placements:\n{html}"
     );
     assert!(
-        html.contains("heading-marker\">§ 1</span>")
-            && html.contains("heading-marker\">§ 2</span>"),
-        "section numbering remains page-wide across placements:\n{html}"
+        !html.contains("<span class=\"heading-marker\""),
+        "a heading renders bare — the finishing pass stamps ids, not markers:\n{html}"
     );
     assert!(
         html.contains("<sup class=\"footnote-ref\" id=\"fnref-note\">")
@@ -5441,7 +5440,9 @@ page index {
     );
     // The loose blocks form the default content <main>.
     assert!(
-        html.contains("<main class=\"ws-main\"><h2 class=\"heading-2\" id=\"body-heading\"><span class=\"heading-marker\">§ 1</span>Body heading"),
+        html.contains(
+            "<main class=\"ws-main\"><h2 class=\"heading-2\" id=\"body-heading\">Body heading"
+        ),
         "loose blocks should be the default content:\n{html}"
     );
     // Named slot content must not be duplicated into the default content <main>.
@@ -6546,9 +6547,7 @@ page syntax {
         "{html}"
     );
     assert!(
-        html.contains(
-            "<h2 class=\"heading-2\" id=\"fields\"><span class=\"heading-marker\">§ 1</span>Fields</h2>"
-        ),
+        html.contains("<h2 class=\"heading-2\" id=\"fields\">Fields</h2>"),
         "{html}"
     );
 }
@@ -9985,7 +9984,6 @@ page topic  { h2 "Topic" {} }
     assert!(index.contains("Hello"), "{index}");
     assert!(index.contains("Agenda"), "{index}");
     assert!(index.contains("Topic"), "{index}");
-    assert!(!index.contains("<span class=\"heading-marker\""), "{index}");
     // The keyboard-nav player is written and linked exactly once.
     assert!(out.path().join("_wdoc").join("presentation.js").exists());
     assert_eq!(index.matches("_wdoc/presentation.js").count(), 1, "{index}");

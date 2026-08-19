@@ -1,8 +1,11 @@
 //! Page-wide HTML finishing that must span separate typed placements.
 //!
 //! Heading navigation metadata is derived from authored handles by the
-//! `page_metadata` builtin. This pass only stamps the matching anchor ids and
-//! section markers into emitted HTML, while sharing numbering across runs.
+//! `page_metadata` builtin. This pass only stamps the matching anchor ids into
+//! emitted HTML. Nothing visible is injected into a heading: the section
+//! numbering that `HeadingSequence::number` computes exists for the metadata
+//! side alone, where it selects which levels reach a template's outline and
+//! fills `OnPageHeading.number` for a template that chooses to render it.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -112,14 +115,10 @@ pub(crate) fn process_page_headings(content: &str, state: &mut HeadingSequence) 
         let inner = &cap[5];
         let title = plain_text(inner);
         let id = state.id(&title, cap.get(4).map(|existing| existing.as_str()));
-        let marker = state
-            .number(level)
-            .map(|number| format!("<span class=\"heading-marker\">§ {number}</span>"))
-            .unwrap_or_default();
 
         write!(
             out,
-            "<h{level} class=\"heading-{level}{extra}\" id=\"{id}\">{marker}{inner}</h{level}>"
+            "<h{level} class=\"heading-{level}{extra}\" id=\"{id}\">{inner}</h{level}>"
         )
         .expect("write to String");
     }

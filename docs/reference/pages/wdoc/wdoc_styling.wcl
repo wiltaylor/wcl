@@ -642,7 +642,7 @@ CSS
       | "Timelines" | "`wdoc-timeline-divider`, `-marker`, `-connector`, `-label`, `-phase-label`" | "See [Timelines and dopesheets](wdoc_timelines)" |
       | "Callouts" | "`callout` plus `note`, `info`, `tip`, `warning`, `error`, `success`" | "A callout's `class` field" |
       | "Code cards" | "`code-card`, `code-filename`, `code-lang`, `code-dots`, `code-block`" | "See [Code](wdoc_code)" |
-      | "Page chrome" | "`wdoc-body`, `wdoc-table`, `wdoc-card`, `wdoc-map-card`, `wdoc-preview`, `wdoc-badge`, `wdoc-footnotes`, `footnote-ref`, `heading-marker`, `chapter-kicker`, `chapter-meta`, `chapter-subtitle`" | "Templates and the content renderer" |
+      | "Page chrome" | "`wdoc-body`, `wdoc-table`, `wdoc-card`, `wdoc-map-card`, `wdoc-preview`, `wdoc-badge`, `wdoc-footnotes`, `footnote-ref`, `chapter-kicker`, `chapter-meta`, `chapter-subtitle`" | "Templates and the content renderer" |
       | "Template navigation" | "`site-header`, `book-chapter`, `book-section`, `book-onpage-link`, `current`" | "The book and webpage sidebars" |
   }
 

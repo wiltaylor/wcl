@@ -26,21 +26,22 @@ The renderer emits a real `<hN>` and derives a `heading-N` class from the level:
 
 ```html
 <h1 class="heading-1" id="top">Title</h1>
-<h2 class="heading-2" id="section"><span class="heading-marker">§ 1</span>Section</h2>
+<h2 class="heading-2" id="section">Section</h2>
 ```
-
-(`§ 1` is the section marker a templated page adds; see below.)
 
 Three things follow:
 
 - On a **templated** page, wdoc **synthesises** an `id` you do not supply. It slugifies the
-  heading text, so `"Hello There"` gives `id="hello-there"`. It also numbers h2 and h3 headings
-  with a `§` marker. A page that renders bare gets neither: no `default_template`, and no page
-  `template`. Set `id` when you need a target that survives a wording change.
+  heading text, so `"Hello There"` gives `id="hello-there"`; a repeat of the same text gets
+  `-2`, then `-3`. A page that renders bare gets none: no `default_template`, and no page
+  `template`. Set `id` when you need a target that survives a wording change. Nothing visible
+  is injected into a heading — it renders exactly the text you wrote.
 - The `heading-N` class is a style hook. Restyle a level by declaring
   `class heading-2 { css = "…" }`.
 - The `book` template lists the page's own h2 and h3 headings in the right-hand "on this page"
-  rail. It derives that from the authored headings; no field controls it.
+  rail. It derives that from the authored headings; no field controls it. The same pass numbers
+  h2 and h3 (`1`, `1.1`, `2`), but that number reaches only the outline entry a template
+  receives — the stdlib templates do not print it.
 
 ## Paragraphs
 

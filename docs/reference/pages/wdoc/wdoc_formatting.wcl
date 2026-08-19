@@ -89,11 +89,11 @@ TEXT
 <p>The <span class="bold">columns</span> release. <span class="code">column</span> lays a page
 out side by side, and the inline engine grew a <span class="code">boundary</span> gate. Both
 landed in <a class="link" href="https://github.com/wiltaylor/wcl/issues/177">issue 177</a>.</p>
-<h2 class="heading-2" id="highlights"><span class="heading-marker">§ 1</span>Highlights</h2>
+<h2 class="heading-2" id="highlights">Highlights</h2>
 <div style="display:grid;grid-template-columns:50% 50%;"><p>Two blocks, one paragraph — three
 spans.</p><p>The second slot. Whatever you write here sits <span class="italic">beside</span>
 the paragraph on its left.</p></div>
-<h2 class="heading-2" id="upgrading"><span class="heading-marker">§ 2</span>Upgrading</h2>
+<h2 class="heading-2" id="upgrading">Upgrading</h2>
 <p>Nothing to do. The <span class="code">widths</span> list is the only new required field, and
 only a <span class="code">column</span> asks for it. See
 <a class="link" href="release_04.html#highlights">the highlights</a>.
@@ -101,7 +101,7 @@ only a <span class="code">column</span> asks for it. See
 HTML
   }
 
-  p "Six facts are already visible in that output, and the rest of the chapter is those six in depth. A heading became a real `<h2>` with an id nobody typed and a `§ 1` marker nobody asked for. `**columns**` became a `<span class=\"bold\">`. The three `span` children became **one** paragraph with no wrapper of their own. The `column` became a CSS grid. The bare `#177` went through a pattern this document declared. And `[the highlights](release_04#highlights)` resolved to a real file name, because `release_04` is a page in this site."
+  p "Six facts are already visible in that output, and the rest of the chapter is those six in depth. A heading became a real `<h2>` with an id nobody typed. `**columns**` became a `<span class=\"bold\">`. The three `span` children became **one** paragraph with no wrapper of their own. The `column` became a CSS grid. The bare `#177` went through a pattern this document declared. And `[the highlights](release_04#highlights)` resolved to a real file name, because `release_04` is a page in this site."
 
   h2 "Headings"
 
@@ -150,15 +150,17 @@ WCL
     body  = "A link whose target names no page in the site fails the build — `wcl wdoc build` prints `link to unknown page 'nowhere'` and exits non-zero. That check stops at the `#`. `[x](wdoc_code#no-such-heading)` builds green and lands the reader at the top of the right page. When you link to an anchor, open the target chapter and read the heading you are pointing at."
   }
 
-  h3 "Section numbers and the page outline"
+  h3 "Anchor ids and the page outline"
 
-  p "The `§ 1` in the built HTML is not in the source. A page-wide finishing pass walks the emitted headings in reading order, stamps each with its id, and prefixes `h2` and `h3` with a `<span class=\"heading-marker\">`. `h2` counts `1`, `2`, `3`; `h3` counts `1.1`, `1.2` inside the current `h2`, and resets on the next one."
+  p "The `id` on that `<h2>` is not in the source. A page-wide finishing pass walks the emitted headings in reading order and stamps each with its id, slugged from the heading text and suffixed `-2`, `-3` when the same text repeats on a page. It injects nothing visible: a heading renders exactly the text you wrote."
+
+  p "The same walk numbers `h2` and `h3` — `h2` counts `1`, `2`, `3`; `h3` counts `1.1`, `1.2` inside the current `h2`, and resets on the next one — but that number reaches only the page-metadata side, where it decides which levels enter the outline and fills `number` on each entry. No template in the stdlib prints it. See [Templates](wdoc_templates)."
 
   p "**Only `h2` and `h3` are numbered, and only they appear in the book template's \"on this page\" outline.** That is not a styling accident: `h1` is the page's own title and the sidebar already names it, and `h4` through `h6` are detail below the granularity a reader navigates by. They still render, still get anchors, and still take links — they are simply not part of the outline. Structure a chapter with `h2` and `h3`; reach for `h4` when you genuinely need a fourth level, knowing it will not show up in the nav."
 
-  callout "Anchors and numbers are an HTML finish" {
+  callout "Anchors are an HTML finish" {
     class = ["note"]
-    body  = "The Markdown backend writes `## Highlights` — no id, no `§`, because Markdown has neither. The PDF backend renders a heading as **one styled run**, which has a sharper consequence: inline markers inside a heading are not interpreted there, so `h2 \"Fixing **fast**\"` prints its asterisks in the PDF while rendering bold in HTML. Keep markers out of headings in a document you also ship as PDF. See [Output targets](wdoc_outputs)."
+    body  = "The Markdown backend writes `## Highlights` — no id, because Markdown has none. The PDF backend renders a heading as **one styled run**, which has a sharper consequence: inline markers inside a heading are not interpreted there, so `h2 \"Fixing **fast**\"` prints its asterisks in the PDF while rendering bold in HTML. Keep markers out of headings in a document you also ship as PDF. See [Output targets](wdoc_outputs)."
   }
 
   h2 "Paragraphs"

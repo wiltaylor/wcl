@@ -51,7 +51,7 @@ TEXT
 HTML
   }
 
-  p "Now add `default_template = :book` to the `site` block and rebuild. A fixed sidebar, a reading column, an \"on this page\" rail and a pagination footer now wrap the same two blocks. The `<h1>` also grows `id=\"hi\"`, and that detail is the mechanism in miniature: **the template path stamps the anchor ids and the `§` section markers**, not the block. A bare page has neither."
+  p "Now add `default_template = :book` to the `site` block and rebuild. A fixed sidebar, a reading column, an \"on this page\" rail and a pagination footer now wrap the same two blocks. The `<h1>` also grows `id=\"hi\"`, and that detail is the mechanism in miniature: **the template path stamps the anchor ids**, not the block. A bare page has neither."
 
   p "So a template is not decoration. It is the thing that decides what a page's blocks become and what surrounds them."
 
@@ -289,11 +289,11 @@ TEXT
 </nav>
 <main>
   <h1 class="heading-1" id="run">Run</h1>
-  <h2 class="heading-2" id="first-run"><span class="heading-marker">§ 1</span>First run</h2>
+  <h2 class="heading-2" id="first-run">First run</h2>
   <p>Go.</p>
-  <h3 class="heading-3" id="flags"><span class="heading-marker">§ 1.1</span>Flags</h3>
+  <h3 class="heading-3" id="flags">Flags</h3>
   <p>Many.</p>
-  <h2 class="heading-2" id="daemon-mode"><span class="heading-marker">§ 2</span>Daemon mode</h2>
+  <h2 class="heading-2" id="daemon-mode">Daemon mode</h2>
   <p>Also.</p>
 </main>
 <nav class="pager">
@@ -305,21 +305,21 @@ HTML
 
   p "The pager skipped the grouping chapter \"Part one\". It linked `install` and `reference` instead: the two entries either side of `run` in the flattened order, across a section boundary."
 
-  h3 "Headings, ids and § numbers"
+  h3 "Headings, ids and section numbers"
 
   p "Look at the `href`s the outline emitted and the `id`s the headings carry. They match, and nothing in the template arranged that."
 
-  p "Two passes produced them. `page_metadata` read the authored handles to build the rail. A page-wide pass over the rendered HTML then stamped the `id` and the `§` marker. Both walk the **same** numbering sequence, so they agree by construction rather than by luck. Three rules follow:"
+  p "Two passes produced them. `page_metadata` read the authored handles to build the rail. A page-wide pass over the rendered HTML then stamped the `id`. Both walk the **same** sequence, so they agree by construction rather than by luck. Three rules follow:"
 
   list {
     li "**An id is slugified from the heading text.** It is lowercased, and each run of non-alphanumerics becomes one `-`. A second heading with the same text gets `-2`, then `-3`. A heading that writes its own `id` keeps it."
-    li "**Only h2 and h3 carry a number.** An h1, h4, h5 or h6 gets its `id` stamped and nothing more — no `§` marker, no rail entry."
+    li "**Only h2 and h3 carry a number.** An h1, h4, h5 or h6 gets its `id` stamped and nothing more, and no rail entry. The number itself is never written into the heading — it reaches the template as `number` on the outline entry, and the template above is what chose to print it."
     li "**The sequence counts once per page, not once per slot.** It follows the order the template *places* slots, not the order the page *wrote* them. Place `content` and then a `sidebar`, and the sidebar's headings number after every content heading."
   }
 
   callout "`headings` is the content slot only" {
     class = ["warning"]
-    body  = "The numbering spans every slot. `m.headings` does not. The builtin reads `c.content` and nothing else, so a heading the page wrote into a named slot never reaches the list. It still gets its `§` number and its anchor in the HTML. Take the `sidebar` of rule three: its heading numbers after the content headings, and the rail still shows only the content ones. Build your own list from `slot_blocks(c, :name)` when a named slot has to appear in a rail."
+    body  = "The numbering spans every slot. `m.headings` does not. The builtin reads `c.content` and nothing else, so a heading the page wrote into a named slot never reaches the list. It still gets its number and its anchor. Take the `sidebar` of rule three: its heading numbers after the content headings, and the rail still shows only the content ones. Build your own list from `slot_blocks(c, :name)` when a named slot has to appear in a rail."
   }
 
   callout "Bind the record; do not chain off the call" {
