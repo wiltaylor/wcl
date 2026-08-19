@@ -43,6 +43,7 @@ pub(crate) fn collect_page(
     out
 }
 
+/// Walk one block into PDF IR nodes, recursing into its children.
 fn collect_block(
     doc: &Document,
     block: &Block<'_>,
@@ -481,6 +482,7 @@ fn bold_cell(runs: Vec<InlineRun>) -> Vec<InlineRun> {
     runs.into_iter().map(bold_run).collect()
 }
 
+/// Re-style a run as bold, recursing through link wrappers.
 pub(super) fn bold_run(run: InlineRun) -> InlineRun {
     match run {
         InlineRun::Text { text, mut style } => {
@@ -556,6 +558,7 @@ fn collect_li_group(
     }
 }
 
+/// The bullet glyph for an unordered list at this nesting depth.
 pub(super) fn bullet(depth: u8) -> &'static str {
     match depth % 3 {
         0 => "•",

@@ -145,6 +145,7 @@ fn src_color<S: ValueSource>(s: S, name: &str) -> Color {
     }
 }
 
+/// Draw a text run into the widget grid, clipped to its box.
 fn draw_text(
     grid: &mut Grid,
     row: usize,

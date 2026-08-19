@@ -30,7 +30,9 @@ use crate::walk;
 /// which argument the cursor sits in.
 #[derive(Debug, PartialEq)]
 pub(crate) struct CallContext {
+    /// Name of the function being called.
     pub callee: String,
+    /// Zero-based index of the argument the cursor sits in.
     pub active_param: u32,
 }
 
@@ -183,6 +185,8 @@ pub(crate) fn enclosing_call(source: &str, offset: usize) -> Option<CallContext>
     None
 }
 
+/// Advance `i` past the rest of the current line — used to step over
+/// a comment while scanning backwards for the enclosing call.
 fn skip_line(bytes: &[u8], i: &mut usize, end: usize) {
     while *i < end && bytes[*i] != b'\n' {
         *i += 1;
@@ -369,6 +373,8 @@ fn assemble(
     }
 }
 
+/// A signature with no parameter spans, for callees whose parameters
+/// we cannot locate in the label.
 fn plain_signature(label: String, documentation: Option<Documentation>) -> SignatureInformation {
     SignatureInformation {
         label,
@@ -378,10 +384,12 @@ fn plain_signature(label: String, documentation: Option<Documentation>) -> Signa
     }
 }
 
+/// Wrap a doc comment as LSP documentation, or `None` when empty.
 fn doc_text(doc: &str) -> Option<Documentation> {
     (!doc.is_empty()).then(|| Documentation::String(doc.to_string()))
 }
 
+/// Wrap a doc comment as Markdown documentation.
 fn doc_markup(doc: String) -> Documentation {
     Documentation::String(doc)
 }

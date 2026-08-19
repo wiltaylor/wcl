@@ -2,18 +2,23 @@
 //! (16-colour ANSI + default fg/bg), and the hex/colour parsing helpers.
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+/// A colour as a terminal names it.
 pub(super) enum Color {
     /// Use the palette's default fg/bg.
     Default,
     /// 0..=255 indexed colour (0..16 themeable, then cube + greyscale).
     Indexed(u8),
+    /// A direct 24-bit colour.
     Rgb(u8, u8, u8),
 }
 
 /// A resolved 16-colour palette plus default fg/bg.
 pub(super) struct Palette {
+    /// Default foreground.
     pub(super) fg: (u8, u8, u8),
+    /// Default background.
     pub(super) bg: (u8, u8, u8),
+    /// The 16 themeable ANSI colours, in index order.
     ansi: [(u8, u8, u8); 16],
 }
 
@@ -92,6 +97,8 @@ impl Palette {
         }
     }
 
+    /// Resolve a colour to RGB. `None` for [`Color::Default`], which the
+    /// emitter renders as `currentColor` so CSS can theme it.
     pub(super) fn rgb_of(&self, c: Color) -> Option<(u8, u8, u8)> {
         match c {
             Color::Default => None,
@@ -101,6 +108,7 @@ impl Palette {
     }
 }
 
+/// Format an RGB triple as `#rrggbb`.
 pub(super) fn hex(c: (u8, u8, u8)) -> String {
     format!("#{:02x}{:02x}{:02x}", c.0, c.1, c.2)
 }
@@ -115,6 +123,7 @@ pub(super) fn ink(c: Option<(u8, u8, u8)>) -> String {
     }
 }
 
+/// Blend two colours, `t` running 0 (all `a`) to 1 (all `b`).
 pub(super) fn lerp(a: (u8, u8, u8), b: (u8, u8, u8), t: f64) -> (u8, u8, u8) {
     let mix = |x: u8, y: u8| (x as f64 + (y as f64 - x as f64) * t).round() as u8;
     (mix(a.0, b.0), mix(a.1, b.1), mix(a.2, b.2))

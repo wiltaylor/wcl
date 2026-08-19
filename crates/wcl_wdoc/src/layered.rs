@@ -14,12 +14,16 @@
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Which way a layered graph flows.
 pub(crate) enum Direction {
+    /// Layers stack downwards.
     TopToBottom,
+    /// Layers advance rightwards.
     LeftToRight,
 }
 
 impl Direction {
+    /// Parse an author-written direction symbol.
     pub(crate) fn from_symbol(s: &str) -> Option<Direction> {
         match s {
             "top_to_bottom" => Some(Direction::TopToBottom),
@@ -36,7 +40,9 @@ impl Direction {
 /// missing.
 #[derive(Clone)]
 pub(crate) struct Node {
+    /// Node id, when the block declares one.
     pub id: Option<String>,
+    /// Measured `(width, height)` of the node.
     pub size: (f64, f64),
 }
 

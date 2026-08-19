@@ -40,57 +40,98 @@ use crate::render::{
 
 // ── Geometry (px, ported from the wdoc-wireframe CSS rem values) ─────
 
+/// 0.9rem control text.
 const FONT: f64 = 14.0; // 0.9rem control text
+/// Titlebar / panel heading.
 const TITLE_FONT: f64 = 15.0; // titlebar / panel heading
+/// A text line's box height.
 const LINE_H: f64 = 19.0; // a text line's box height
+/// Window body padding (0.8rem).
 const PAD: f64 = 13.0; // window body padding (0.8rem)
+/// Panel body padding (0.6rem).
 const PANEL_PAD: f64 = 10.0; // panel body padding (0.6rem)
+/// Vertical gap between stacked widgets (0.6rem).
 const GAP: f64 = 10.0; // vertical gap between stacked widgets (0.6rem)
+/// Horizontal gap in a row (0.8rem).
 const ROW_GAP: f64 = 13.0; // horizontal gap in a row (0.8rem)
+/// Button / input / dropdown height.
 const CTRL_H: f64 = 30.0; // button / input / dropdown height
+/// Control horizontal padding.
 const CTRL_PAD_X: f64 = 11.0; // control horizontal padding
+/// Corner radius on rounded rectangles.
 const RADIUS: f64 = 4.0;
+/// Height of a window titlebar.
 const TITLEBAR_H: f64 = 30.0;
+/// Checkbox square (1rem).
 const BOX: f64 = 16.0; // checkbox square (1rem)
+/// Radio circle (1rem).
 const DOT: f64 = 16.0; // radio circle (1rem)
+/// Toggle track (2.2rem).
 const TRACK_W: f64 = 35.0; // toggle track (2.2rem)
+/// Toggle track (1.2rem).
 const TRACK_H: f64 = 19.0; // toggle track (1.2rem)
+/// Window min-width (16rem).
 const WIN_MIN_W: f64 = 256.0; // window min-width (16rem)
+/// Nominal icon size.
 const ICON: f64 = 14.0;
 
 // The placeholder footprint an EMPTY `wf_row`/`wf_column`/`wf_grid`
 // occupies so it stays visible instead of collapsing to 0×0.
+/// One placeholder slot.
 const EMPTY_CELL_W: f64 = 72.0; // one placeholder slot
+/// Height of that placeholder slot.
 const EMPTY_CELL_H: f64 = 34.0;
 
 // Device frames (browser / phone / tablet). Unlike the other widgets, these
 // have a realistic *fixed* default size so content sizes inside them properly;
 // an explicit `width`/`height` pins that axis, and height grows past the
 // default if the content would otherwise overflow.
+/// Phone portrait width.
 const PHONE_W: f64 = 280.0; // phone portrait width
+/// Phone portrait height (landscape swaps the two).
 const PHONE_H: f64 = 580.0; // phone portrait height (landscape swaps the two)
+/// Tablet portrait width.
 const TABLET_W: f64 = 480.0; // tablet portrait width
+/// Tablet portrait height (landscape swaps).
 const TABLET_H: f64 = 640.0; // tablet portrait height (landscape swaps)
+/// Browser frame width.
 const BROWSER_W: f64 = 640.0; // browser frame width
+/// Browser frame height.
 const BROWSER_H: f64 = 440.0; // browser frame height
+/// Frame thickness around the screen.
 const DEVICE_BEZEL: f64 = 12.0; // frame thickness around the screen
+/// Phone/tablet status bar height.
 const STATUS_H: f64 = 26.0; // phone/tablet status bar height
+/// Bottom reserve for the home-indicator pill.
 const HOME_IND_H: f64 = 22.0; // bottom reserve for the home-indicator pill
+/// Browser dots row + address bar.
 const BROWSER_TOOLBAR_H: f64 = 62.0; // browser dots row + address bar
 
 // Node-graph widget (boxes with ports, wired by links).
+/// Node title band.
 const NODE_HEADER_H: f64 = 26.0; // node title band
+/// Height of one input/output port row.
 const NODE_PORT_ROW_H: f64 = 22.0; // height of one input/output port row
+/// Top/bottom padding of the port body.
 const NODE_BODY_PAD_Y: f64 = 8.0; // top/bottom padding of the port body
+/// Node horizontal padding (title + port labels).
 const NODE_PAD_X: f64 = 12.0; // node horizontal padding (title + port labels)
+/// Node minimum width.
 const NODE_MIN_W: f64 = 92.0; // node minimum width
+/// Port marker radius.
 const NODE_PORT_R: f64 = 4.0; // port marker radius
+/// Port label text.
 const PORT_FONT: f64 = 12.0; // port label text
+/// Gap between the input and output label columns.
 const PORT_COL_GAP: f64 = 24.0; // gap between the input and output label columns
+/// Space between auto-layout layers (room for links).
 const GRAPH_LAYER_GAP: f64 = 64.0; // space between auto-layout layers (room for links)
+/// Space between nodes within a layer.
 const GRAPH_NODE_GAP: f64 = 28.0; // space between nodes within a layer
+/// Padding around the whole graph.
 const GRAPH_PAD: f64 = 8.0; // padding around the whole graph
 
+/// Sans-serif font stack used for every label.
 const SANS: &str = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
 // ── Public entry points ─────────────────────────────────────────────
@@ -169,9 +210,14 @@ pub(crate) fn is_wireframe_kind(kind: &str) -> bool {
 // ── Model ───────────────────────────────────────────────────────────
 
 #[derive(Default, Clone)]
+/// Per-widget colour overrides read from the block's `theme` fields.
+/// Each is `None` when the widget inherits the document's palette.
 struct Theme {
+    /// Background fill.
     bg: Option<String>,
+    /// Text / foreground colour.
     fg: Option<String>,
+    /// Border stroke colour.
     border: Option<String>,
 }
 
@@ -179,56 +225,95 @@ struct Theme {
 /// whether it's disabled (dimmed). Children are measured before their parent,
 /// so a container's size is known by the time it's built.
 struct Widget {
+    /// Kind-specific content and children.
     kind: Kind,
+    /// Measured width in px.
     w: f64,
+    /// Measured height in px.
     h: f64,
+    /// Whether the widget renders dimmed.
     disabled: bool,
 }
 
+/// What a widget is, and the content it carries. Sizes live on the
+/// enclosing [`Widget`]; a variant holds only what emission needs.
 enum Kind {
+    /// A run of static text.
     Label {
+        /// The rendered text.
         text: String,
+        /// Colour overrides for this widget.
         theme: Theme,
     },
+    /// A push button with a centred label.
     Button {
+        /// The rendered text.
         text: String,
+        /// Colour overrides for this widget.
         theme: Theme,
     },
+    /// A single-line text field.
     Input {
+        /// The rendered text.
         text: String,
+        /// Whether `text` renders as placeholder rather than entered text.
         placeholder: bool,
+        /// Colour overrides for this widget.
         theme: Theme,
     },
+    /// A closed select control with a chevron.
     Dropdown {
+        /// The rendered text.
         text: String,
+        /// Colour overrides for this widget.
         theme: Theme,
     },
+    /// A labelled checkbox.
     Checkbox {
+        /// Text shown beside the control.
         label: String,
+        /// Whether the control reads as checked / on.
         on: bool,
+        /// Colour overrides for this widget.
         theme: Theme,
     },
+    /// A labelled radio button.
     Radio {
+        /// Text shown beside the control.
         label: String,
+        /// Whether the control reads as checked / on.
         on: bool,
+        /// Colour overrides for this widget.
         theme: Theme,
     },
+    /// A labelled on/off switch.
     Toggle {
+        /// Optional text shown beside the control.
         label: Option<String>,
+        /// Whether the control reads as checked / on.
         on: bool,
+        /// Colour overrides for this widget.
         theme: Theme,
     },
+    /// An application window: a titlebar over a body.
     Window {
+        /// Text in the titlebar.
         title: String,
+        /// Whether to draw the window control buttons.
         controls: bool,
+        /// Children laid out inside.
         body: Vec<Widget>,
+        /// Colour overrides for this widget.
         theme: Theme,
     },
     /// A web-browser frame: a toolbar (traffic-light dots + address bar) over a
     /// content area. The inline label is the address-bar URL.
     Browser {
+        /// Text shown in the address bar.
         url: String,
+        /// Children laid out inside.
         body: Vec<Widget>,
+        /// Colour overrides for this widget.
         theme: Theme,
     },
     /// A phone / tablet frame: a bezel around a screen with a status bar and a
@@ -236,27 +321,42 @@ enum Kind {
     /// (orientation only affects the measured size, not the emitted chrome).
     /// The inline label is an optional status-bar caption.
     Device {
+        /// Larger frame with squarer corners when set.
         tablet: bool,
+        /// Optional heading text.
         title: Option<String>,
+        /// Children laid out inside.
         body: Vec<Widget>,
+        /// Colour overrides for this widget.
         theme: Theme,
     },
+    /// A titled panel — a window without the titlebar chrome.
     Panel {
+        /// Optional heading text.
         title: Option<String>,
+        /// Children laid out inside.
         body: Vec<Widget>,
+        /// Colour overrides for this widget.
         theme: Theme,
     },
+    /// Children laid out left to right.
     Row(Vec<Widget>),
+    /// Children laid out top to bottom.
     Column(Vec<Widget>),
+    /// Children laid out in a fixed number of columns.
     Grid {
+        /// Number of columns.
         cols: usize,
+        /// Children, filled row by row.
         items: Vec<Widget>,
     },
     /// A node-graph editor: boxes with labeled input/output ports, wired by
     /// links. Nodes carry their final laid-out `(x, y)` (auto-layout offset, or
     /// an explicit pin) so emission just draws; links are routed at emit time.
     NodeGraph {
+        /// The graph nodes, already laid out.
         nodes: Vec<GNode>,
+        /// Wires between node ports, routed at emit time.
         links: Vec<GLink>,
     },
     /// An unknown / unsupported child — rendered as nothing (zero size).
@@ -267,28 +367,43 @@ enum Kind {
 /// left edge and output ports down the right edge, placed at its laid-out
 /// `(x, y)` in the graph's local space.
 struct GNode {
+    /// Text in the titlebar.
     title: String,
+    /// Input port labels, top to bottom down the left edge.
     inputs: Vec<String>,
+    /// Output port labels, top to bottom down the right edge.
     outputs: Vec<String>,
+    /// Laid-out x position in the graph's local space.
     x: f64,
+    /// Laid-out y position in the graph's local space.
     y: f64,
+    /// Measured width in px.
     w: f64,
+    /// Measured height in px.
     h: f64,
+    /// Colour overrides for this widget.
     theme: Theme,
 }
 
 /// One link in a [`Kind::NodeGraph`], from a source node's output port to a
 /// destination node's input port (both stored as resolved indices).
 struct GLink {
+    /// Index of the source node.
     src: usize,
+    /// Index into the source node's outputs.
     src_port: usize,
+    /// Index of the destination node.
     dst: usize,
+    /// Index into the destination node's inputs.
     dst_port: usize,
+    /// Optional text shown beside the control.
     label: Option<String>,
 }
 
 // ── Build (read fields + measure, bottom-up) ─────────────────────────
 
+/// Read one wireframe block into a measured widget tree. Children are
+/// built first, so a container knows its size by the time it is built.
 fn build(doc: Option<&Document>, block: &Block<'_>) -> Widget {
     let disabled = field_bool(block, "disabled").unwrap_or(false);
     // Theme feeds emission, not size — the measure-only path passes `None`.
@@ -639,6 +754,7 @@ fn port_point(n: &GNode, idx: usize, is_output: bool) -> (f64, f64) {
     (px, py)
 }
 
+/// Assemble a widget from its kind and its measured size.
 fn sized(kind: Kind, w: f64, h: f64, disabled: bool) -> Widget {
     Widget {
         kind,
@@ -702,6 +818,8 @@ fn device_size(
     )
 }
 
+/// Size of a vertical stack: the widest child, and the summed heights
+/// plus the gaps between them.
 fn column_size(items: &[Widget]) -> (f64, f64) {
     if items.is_empty() {
         return (0.0, 0.0);
@@ -711,6 +829,8 @@ fn column_size(items: &[Widget]) -> (f64, f64) {
     (w, h)
 }
 
+/// Size of a horizontal run: the summed widths plus gaps, and the
+/// tallest child.
 fn row_size(items: &[Widget]) -> (f64, f64) {
     if items.is_empty() {
         return (0.0, 0.0);
@@ -743,6 +863,8 @@ fn grid_geometry(items: &[Widget], cols: usize) -> (f64, Vec<(f64, f64)>) {
     (col_w, rows)
 }
 
+/// Size of a grid: uniform cells sized to the largest child, times
+/// the row and column counts.
 fn grid_size(items: &[Widget], cols: usize) -> (f64, f64) {
     let (col_w, rows) = grid_geometry(items, cols);
     let (last_y, last_h) = *rows.last().expect("grid geometry always has a row");
@@ -1340,6 +1462,8 @@ fn emit_window_controls(out: &mut String, right_x: f64, y: f64, roles: &ThemeRol
 // ── Primitive emitters ───────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
+/// Append an SVG `<rect>`, omitting the stroke attribute entirely when
+/// `stroke` is `"none"`.
 fn rect(out: &mut String, x: f64, y: f64, w: f64, h: f64, rx: f64, fill: &str, stroke: &str) {
     let stroke_attr = if stroke == "none" {
         String::new()
@@ -1351,6 +1475,7 @@ fn rect(out: &mut String, x: f64, y: f64, w: f64, h: f64, rx: f64, fill: &str, s
     ));
 }
 
+/// Append an SVG `<circle>`, with the same stroke handling as [`rect`].
 fn circle(out: &mut String, cx: f64, cy: f64, r: f64, fill: &str, stroke: &str) {
     let stroke_attr = if stroke == "none" {
         String::new()
@@ -1376,6 +1501,8 @@ fn polyline(out: &mut String, points: &[(f64, f64)], stroke: &str, width: f64) {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Append an SVG `<text>` element, escaping the body and applying the
+/// font, fill and anchor the caller asks for.
 fn emit_text(
     out: &mut String,
     x: f64,
@@ -1488,6 +1615,9 @@ fn char_em(c: char) -> f64 {
     }
 }
 
+/// Estimate a string's rendered width. Approximate by design — the
+/// SVG has no font metrics, and layout only needs to be close enough
+/// that labels do not overlap.
 fn text_w(s: &str, font_px: f64) -> f64 {
     s.chars().map(char_em).sum::<f64>() * font_px
 }

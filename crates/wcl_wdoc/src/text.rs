@@ -18,8 +18,11 @@ pub(crate) const V_PAD: f64 = 12.0;
 /// Don't let auto-fit shrink below this for legibility.
 pub(crate) const MIN_FONT_SIZE: f64 = 8.0;
 
+/// A measured block of text: its wrapped lines and the widest one.
 pub(crate) struct TextMetrics {
+    /// The text after wrapping.
     pub lines: Vec<String>,
+    /// Character count of the longest line.
     pub max_chars: usize,
 }
 

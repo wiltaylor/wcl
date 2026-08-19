@@ -105,6 +105,7 @@ pub(crate) fn diagram_children<'a>(block: &Block<'a>) -> Vec<Block<'a>> {
     expand_container_children(block)
 }
 
+/// Flatten a transparent container into the children it contributes.
 fn flatten_container_child<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
     // Stop runaway self-referential expansion (mirrors the HTML guard).
     if child.binding_scope_depth() > MAX_LOWER_DEPTH {
@@ -185,6 +186,7 @@ pub(crate) fn collect_partials<'a>(doc: &'a Document, want: &str) -> Vec<Block<'
     out
 }
 
+/// Collect every `partial` of the named kind beneath `block`.
 fn gather_partials<'a>(block: &Block<'a>, want: &str, out: &mut Vec<Block<'a>>) {
     if block.kind() == "partial" {
         if label_string(block).as_deref() == Some(want) {

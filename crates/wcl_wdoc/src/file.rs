@@ -43,11 +43,16 @@ pub(crate) struct FileEntry {
 /// basename collision within one `dir` (two different sources mapping to
 /// the same output path) is detectable.
 pub(crate) struct FileRegistry {
+    /// Directory relative sources resolve against. `None` when the
+    /// document was opened without one.
     base_dir: Option<PathBuf>,
+    /// Resolved entries by `(source, directory)`, so one asset referenced
+    /// twice is read and copied once.
     entries: RefCell<BTreeMap<(String, String), FileEntry>>,
 }
 
 impl FileRegistry {
+    /// An empty registry resolving relative sources against `base_dir`.
     pub(crate) fn new(base_dir: Option<PathBuf>) -> Self {
         FileRegistry {
             base_dir,
@@ -73,6 +78,7 @@ impl FileRegistry {
         entry
     }
 
+    /// Resolve one asset: locate it, hash it, and decide its output path.
     fn build_entry(&self, source: &str, dir: &str) -> FileEntry {
         if is_external(source) {
             return FileEntry {

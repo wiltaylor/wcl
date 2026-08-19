@@ -32,18 +32,31 @@ const OBJECT_META_BASE: usize = 1 << 24;
 // The bundled body/heading/mono faces (OFL, see assets/fonts/OFL-Noto.txt).
 // Both cosmic-text (via `fontdb::Source::Binary`) and krilla (via `Font::new`)
 // read these exact static slices, which keeps their glyph ids in lockstep.
+/// Embedded font files. Bundling them keeps PDF output byte-identical
+/// across machines, which no system font stack can promise.
 const SERIF_REGULAR: &[u8] = include_bytes!("../../assets/fonts/NotoSerif-Regular.ttf");
+/// Serif bold.
 const SERIF_BOLD: &[u8] = include_bytes!("../../assets/fonts/NotoSerif-Bold.ttf");
+/// Serif italic.
 const SERIF_ITALIC: &[u8] = include_bytes!("../../assets/fonts/NotoSerif-Italic.ttf");
+/// Serif bold italic.
 const SERIF_BOLD_ITALIC: &[u8] = include_bytes!("../../assets/fonts/NotoSerif-BoldItalic.ttf");
+/// Sans regular.
 const SANS_REGULAR: &[u8] = include_bytes!("../../assets/fonts/NotoSans-Regular.ttf");
+/// Sans bold.
 const SANS_BOLD: &[u8] = include_bytes!("../../assets/fonts/NotoSans-Bold.ttf");
+/// Sans italic.
 const SANS_ITALIC: &[u8] = include_bytes!("../../assets/fonts/NotoSans-Italic.ttf");
+/// Sans bold italic.
 const SANS_BOLD_ITALIC: &[u8] = include_bytes!("../../assets/fonts/NotoSans-BoldItalic.ttf");
+/// Mono regular — the only mono weight bundled.
 const MONO_REGULAR: &[u8] = include_bytes!("../../assets/fonts/NotoSansMono-Regular.ttf");
 
+/// Family name the shaper looks the serif faces up by.
 pub(crate) const SERIF_NAME: &str = "Noto Serif";
+/// Family name for the sans faces.
 pub(crate) const SANS_NAME: &str = "Noto Sans";
+/// Family name for the mono face.
 pub(crate) const MONO_NAME: &str = "Noto Sans Mono";
 
 /// All bundled faces, shared with [`super::svg_embed`] so embedded SVG `<text>`
@@ -62,7 +75,9 @@ pub(crate) const FONT_FACES: [&[u8]; 9] = [
 
 /// A single positioned glyph, resolved to a krilla font.
 pub(crate) struct ShapedGlyph {
+    /// The resolved face this glyph is drawn from.
     pub font: Font,
+    /// Glyph index within that face.
     pub glyph_id: u16,
     /// Pen x relative to the paragraph's left edge.
     pub x: f32,
@@ -80,8 +95,11 @@ pub(crate) struct ShapedGlyph {
 /// An inline SVG object (icon / equation) to overlay at a placeholder glyph.
 #[derive(Clone)]
 pub(crate) struct InlineObject {
+    /// The parsed SVG.
     pub tree: Tree,
+    /// Display width in points.
     pub w: f32,
+    /// Display height in points.
     pub h: f32,
 }
 
@@ -93,11 +111,13 @@ pub(crate) struct ShapedLine {
     pub height: f32,
     /// Painted width of the line (advance of its glyphs).
     pub width: f32,
+    /// The line's glyphs, in visual order.
     pub glyphs: Vec<ShapedGlyph>,
 }
 
 /// A shaped, line-broken paragraph.
 pub(crate) struct ShapedParagraph {
+    /// The paragraph's lines after line breaking.
     pub lines: Vec<ShapedLine>,
     /// Resolved hrefs, indexed by [`ShapedGlyph::link`].
     pub hrefs: Vec<String>,
@@ -107,11 +127,15 @@ pub(crate) struct ShapedParagraph {
 
 /// Owns the shaper and the krilla font cache.
 pub(crate) struct FontBook {
+    /// The cosmic-text shaper and its font database.
     fs: FontSystem,
+    /// krilla fonts already built from a database id — building one
+    /// re-parses the face, so the cache is what keeps shaping cheap.
     cache: HashMap<fontdb::ID, Font>,
 }
 
 impl FontBook {
+    /// Build a font book over the embedded faces.
     pub(crate) fn new() -> Self {
         let sources = [
             SERIF_REGULAR,
@@ -164,6 +188,7 @@ impl FontBook {
         })
     }
 
+    /// Shape and line-break one run list into positioned glyphs.
     fn shape(
         &mut self,
         runs: &[InlineRun],
@@ -285,6 +310,7 @@ impl FontBook {
     }
 }
 
+/// Map a text style onto the shaper attributes that select a face.
 fn attrs_for(style: TextStyle) -> Attrs<'static> {
     let family = match style.family {
         FontFamily::Serif => Family::Name(SERIF_NAME),
@@ -308,9 +334,13 @@ fn attrs_for(style: TextStyle) -> Attrs<'static> {
 /// A flattened inline leaf: contiguous text in one style, optionally inside a
 /// link, or a placeholder reserving space for an inline object.
 struct Leaf {
+    /// The leaf text.
     text: String,
+    /// Style this text is set in.
     style: TextStyle,
+    /// Index into the enclosing paragraph's hrefs, if inside a link.
     link: Option<usize>,
+    /// Index into its inline objects, if this is a placeholder.
     obj: Option<usize>,
 }
 
@@ -345,15 +375,23 @@ fn flatten(
     (ctx.leaves, ctx.hrefs, ctx.objects)
 }
 
+/// Accumulator for the walk that flattens a nested run tree into a
+/// flat leaf list, hoisting links and objects into side tables.
 struct FlattenCtx<'a> {
+    /// Flattened leaves, in order.
     leaves: Vec<Leaf>,
+    /// Link targets, referenced by index from a leaf.
     hrefs: Vec<String>,
+    /// Inline objects, referenced by index from a leaf.
     objects: Vec<InlineObject>,
+    /// Embedder used to parse inline SVG, when one is available.
     embedder: Option<&'a SvgEmbedder<'a>>,
+    /// Font size in points, needed to size inline objects.
     size: f32,
 }
 
 impl FlattenCtx<'_> {
+    /// Flatten a run list, carrying the enclosing link down into it.
     fn run(&mut self, runs: &[InlineRun], cur_link: Option<usize>) {
         for run in runs {
             match run {
@@ -373,6 +411,8 @@ impl FlattenCtx<'_> {
         }
     }
 
+    /// Parse an inline SVG and emit a placeholder leaf reserving its
+    /// space in the text flow.
     fn object(&mut self, svg: &str, cur_link: Option<usize>) {
         let Some(embedder) = self.embedder else {
             return;
@@ -401,19 +441,33 @@ impl FlattenCtx<'_> {
     }
 }
 
+/// A glyph as the shaper reports it, before its face is resolved to a
+/// krilla font.
 struct RawGlyph {
+    /// Database id of the face the shaper chose.
     font_id: fontdb::ID,
+    /// Glyph index within that face.
     glyph_id: u16,
+    /// Pen x relative to the line's left edge.
     x: f32,
+    /// Baseline offset for this glyph.
     dy: f32,
+    /// Index into the enclosing paragraph's hrefs, if inside a link.
     link: Option<usize>,
+    /// Index into its inline objects, if this is a placeholder.
     obj: Option<usize>,
+    /// Source text this glyph came from, kept for text extraction.
     cluster: String,
 }
 
+/// One shaped line before font resolution.
 struct RawLine {
+    /// Distance from the line top to its baseline.
     ascent: f32,
+    /// Full line advance.
     height: f32,
+    /// Painted width of the line.
     width: f32,
+    /// The line's glyphs.
     glyphs: Vec<RawGlyph>,
 }

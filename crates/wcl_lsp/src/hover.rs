@@ -8,6 +8,8 @@ use wcl_lang::Document;
 use crate::convert::span_to_range;
 use crate::resolve::{self, LocatedSymbol};
 
+/// Hover content for the cursor position: what the symbol under it
+/// is, plus its doc comment when it has one.
 pub(crate) fn hover(
     source: &str,
     uri: &str,
@@ -61,6 +63,8 @@ fn hover_snippet(
         .map(str::to_string)
 }
 
+/// The declaration's doc comment, read from the trivia attached
+/// above it.
 fn hover_doc_comment(
     local_doc: Option<&Document>,
     root_doc: Option<&Document>,

@@ -87,6 +87,7 @@ fn wrapper_class(map: &BTreeMap<String, Value>, base: &str) -> String {
     classes_attr_from_names(&names)
 }
 
+/// Read a bool entry out of a record.
 fn map_bool(map: &BTreeMap<String, Value>, name: &str) -> Option<bool> {
     match map.get(name)? {
         Value::Bool(b) => Some(*b),
@@ -135,14 +136,21 @@ fn math_svg(latex: &str, display: bool, inline: bool) -> String {
     )
 }
 
+/// A rendered equation: its SVG plus the metrics needed to place it
+/// inline with surrounding text.
 struct MathParts {
     /// SVG element contents (everything between the `<svg>` tags), with
     /// default-black paints rewritten to `currentColor`.
     body: String,
+    /// viewBox width.
     vb_w: f64,
+    /// viewBox height.
     vb_h: f64,
+    /// Advance width in em.
     width_em: f64,
+    /// Height above the baseline, in em.
     height_em: f64,
+    /// Depth below the baseline, in em.
     depth_em: f64,
 }
 

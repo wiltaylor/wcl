@@ -28,6 +28,8 @@ use super::text::{FontBook, ShapedLine};
 
 /// The chrome (header/footer) text style and size.
 pub(crate) const CHROME_SIZE: f32 = 9.0;
+/// Text style for page chrome — running heads and folios — set in
+/// sans to distinguish it from body text.
 pub(crate) const CHROME_STYLE: TextStyle = TextStyle {
     family: FontFamily::Sans,
     bold: false,

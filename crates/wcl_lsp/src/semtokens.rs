@@ -26,13 +26,22 @@ pub(crate) const LEGEND: &[SemanticTokenType] = &[
     SemanticTokenType::ENUM_MEMBER, // 7 (`:symbol` literals)
 ];
 
+/// Token-type indices into the legend declared above. The protocol
+/// sends these as numbers, so they must stay in step with it.
 const T_KEYWORD: u32 = 0;
+/// String literals.
 const T_STRING: u32 = 1;
+/// Numeric literals.
 const T_NUMBER: u32 = 2;
+/// Operators and punctuation.
 const T_OPERATOR: u32 = 3;
+/// Decorator names.
 const T_DECORATOR: u32 = 4;
+/// Type names.
 const T_TYPE: u32 = 5;
+/// Identifiers we cannot classify further.
 const T_VARIABLE: u32 = 6;
+/// Symbol literals.
 const T_ENUM_MEMBER: u32 = 7;
 
 /// Compute the delta-encoded semantic token stream for `source`. On
@@ -122,10 +131,14 @@ fn push_inner_tokens(out: &mut Vec<Raw>, source: &str, start: usize, end: usize)
 
 /// Intermediate single-token record (absolute byte span + token type).
 struct Raw {
+    /// Absolute byte span of the token.
     span: Span,
+    /// Token type, as an index into the legend.
     ty: u32,
 }
 
+/// Append a token, splitting it at newlines first — the protocol
+/// forbids a semantic token from spanning lines.
 fn push_token(out: &mut Vec<Raw>, source: &str, span: Span, ty: u32) {
     // LSP semantic tokens cannot span newlines — split multi-line
     // spans (heredocs, multi-line strings) into one record per line.

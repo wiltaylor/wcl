@@ -12,6 +12,8 @@ use wcl_lang::{Block, Value, VariantPayload};
 /// render path. This is the one seam that lets the `field_*` and `map_*`
 /// reader families share a single body each (the `src_*` fns below).
 pub(crate) trait ValueSource {
+    /// Read the named field, cloning it out. `None` when absent or when
+    /// evaluation failed — a renderer treats both as "not supplied".
     fn lookup(&self, name: &str) -> Option<Value>;
 }
 
@@ -32,6 +34,7 @@ impl ValueSource for &BTreeMap<String, Value> {
 // Each preserves the exact coercion the old `field_*`/`map_*` pair used;
 // the named wrappers further down just pin `S` to a block or a map.
 
+/// Read a `utf8` field.
 fn src_utf8<S: ValueSource>(s: S, name: &str) -> Option<String> {
     match s.lookup(name)? {
         Value::Utf8(x) | Value::Ascii(x) => Some(x),
@@ -39,6 +42,7 @@ fn src_utf8<S: ValueSource>(s: S, name: &str) -> Option<String> {
     }
 }
 
+/// Read an `identifier` field.
 fn src_id<S: ValueSource>(s: S, name: &str) -> Option<String> {
     match s.lookup(name)? {
         Value::Identifier(x) | Value::Utf8(x) | Value::Ascii(x) => Some(x),
@@ -46,6 +50,7 @@ fn src_id<S: ValueSource>(s: S, name: &str) -> Option<String> {
     }
 }
 
+/// Read a `bool` field.
 fn src_bool<S: ValueSource>(s: S, name: &str) -> Option<bool> {
     match s.lookup(name)? {
         Value::Bool(b) => Some(b),
@@ -53,6 +58,7 @@ fn src_bool<S: ValueSource>(s: S, name: &str) -> Option<bool> {
     }
 }
 
+/// Read a symbol field, without its leading colon.
 fn src_symbol<S: ValueSource>(s: S, name: &str) -> Option<String> {
     match s.lookup(name)? {
         Value::Symbol(x) => Some(x),
@@ -60,14 +66,17 @@ fn src_symbol<S: ValueSource>(s: S, name: &str) -> Option<String> {
     }
 }
 
+/// Read any numeric field as `f64`.
 fn src_f64<S: ValueSource>(s: S, name: &str) -> Option<f64> {
     value_as_f64(&s.lookup(name)?)
 }
 
+/// Read any integer field as `i64`.
 fn src_i64<S: ValueSource>(s: S, name: &str) -> Option<i64> {
     value_as_i64(&s.lookup(name)?)
 }
 
+/// Read a `list<utf8>` field; empty when absent.
 fn src_utf8_list<S: ValueSource>(s: S, name: &str) -> Vec<String> {
     match s.lookup(name) {
         Some(Value::List(items)) => items.iter().filter_map(value_as_str).collect(),
@@ -75,6 +84,8 @@ fn src_utf8_list<S: ValueSource>(s: S, name: &str) -> Vec<String> {
     }
 }
 
+/// Build the `class="…"` attribute from a `class` field, or an empty
+/// string when it declares none.
 fn src_class_attr<S: ValueSource>(s: S) -> String {
     classes_attr_from_names(&src_utf8_list(s, "class"))
 }
@@ -87,12 +98,18 @@ fn src_class_attr<S: ValueSource>(s: S) -> String {
 /// doesn't take a given attribute (a `line` has no fill, a `label` no
 /// stroke) simply ignores that field.
 pub(crate) struct ShapePaint {
+    /// Pre-rendered `class="…"` attribute, or empty.
     pub(crate) class: String,
+    /// Fill colour, when the shape takes one.
     pub(crate) fill: Option<String>,
+    /// Stroke colour, when the shape takes one.
     pub(crate) stroke: Option<String>,
+    /// Element id, when the block declares one.
     pub(crate) id: Option<String>,
 }
 
+/// Read the paint attributes every shape shares. A shape that does
+/// not take one simply ignores that field.
 pub(crate) fn shape_paint<S: ValueSource + Copy>(s: S) -> ShapePaint {
     ShapePaint {
         class: src_class_attr(s),
@@ -104,17 +121,23 @@ pub(crate) fn shape_paint<S: ValueSource + Copy>(s: S) -> ShapePaint {
 
 // ── Shared helpers (source-agnostic) ──────────────────────────────
 
+/// Append ` name="value"` when the value is present; a no-op
+/// otherwise, so callers need no conditional.
 pub(crate) fn append_attr(out: &mut String, name: &str, value: Option<&str>) {
     if let Some(v) = value {
         write!(out, " {name}=\"{}\"", escape_html(v)).expect("write to String");
     }
 }
 
+/// The block's first label as a string, whether written as a string
+/// or an identifier.
 pub(crate) fn label_string(block: &Block<'_>) -> Option<String> {
     let labels = block.labels().ok()?;
     value_as_string(labels.into_iter().next()?)
 }
 
+/// Read a value as a string, accepting the string and identifier
+/// forms.
 pub(crate) fn value_as_string(v: Value) -> Option<String> {
     match v {
         Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => Some(s),
@@ -122,6 +145,8 @@ pub(crate) fn value_as_string(v: Value) -> Option<String> {
     }
 }
 
+/// Build a `class="…"` attribute from class names; empty when the
+/// list is.
 pub(crate) fn classes_attr_from_names(names: &[String]) -> String {
     if names.is_empty() {
         return String::new();
@@ -136,6 +161,7 @@ pub(crate) fn classes_attr_from_names(names: &[String]) -> String {
 
 // ── Block-side accessors ──────────────────────────────────────────
 
+/// Build the `class="…"` attribute from a block's `class` field.
 pub(crate) fn class_attr(block: &Block<'_>) -> String {
     src_class_attr(block)
 }
@@ -155,22 +181,27 @@ pub(crate) fn computed_field(block: &Block<'_>, name: &str) -> Option<Value> {
     }
 }
 
+/// Read a `utf8` field off a block.
 pub(crate) fn field_utf8(block: &Block<'_>, name: &str) -> Option<String> {
     src_utf8(block, name)
 }
 
+/// Read an `identifier` field off a block.
 pub(crate) fn field_id(block: &Block<'_>, name: &str) -> Option<String> {
     src_id(block, name)
 }
 
+/// Read a `bool` field off a block.
 pub(crate) fn field_bool(block: &Block<'_>, name: &str) -> Option<bool> {
     src_bool(block, name)
 }
 
+/// Read a symbol field off a block.
 pub(crate) fn field_symbol(block: &Block<'_>, name: &str) -> Option<String> {
     src_symbol(block, name)
 }
 
+/// Read a numeric field off a block as `f64`.
 pub(crate) fn field_f64(block: &Block<'_>, name: &str) -> Option<f64> {
     if let Some(v) = src_f64(block, name) {
         return Some(v);
@@ -183,10 +214,12 @@ pub(crate) fn field_f64(block: &Block<'_>, name: &str) -> Option<f64> {
     value_as_f64(&block.schema()?.field(name)?.default_value()?)
 }
 
+/// Read an integer field off a block as `i64`.
 pub(crate) fn field_i64(block: &Block<'_>, name: &str) -> Option<i64> {
     src_i64(block, name)
 }
 
+/// Read a numeric list field off a block; empty when absent.
 pub(crate) fn field_f64_list(block: &Block<'_>, name: &str) -> Vec<f64> {
     let Some(field) = block.field(name) else {
         return Vec::new();
@@ -200,6 +233,7 @@ pub(crate) fn field_f64_list(block: &Block<'_>, name: &str) -> Vec<f64> {
     items.iter().filter_map(value_as_f64).collect()
 }
 
+/// Read a `list<utf8>` field off a block; empty when absent.
 pub(crate) fn field_utf8_list(block: &Block<'_>, name: &str) -> Vec<String> {
     src_utf8_list(block, name)
 }
@@ -226,28 +260,34 @@ pub(crate) fn field_symbol_list_opt(block: &Block<'_>, name: &str) -> Option<Vec
 
 // ── Map-side accessors (for variant payloads) ─────────────────────
 
+/// Build a `class="…"` attribute from a record's `class` entry.
 pub(crate) fn class_attr_from_map(map: &BTreeMap<String, Value>) -> String {
     src_class_attr(map)
 }
 
+/// Read a `utf8` entry out of a record.
 pub(crate) fn map_utf8(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
     src_utf8(map, name)
 }
 
+/// Read an `identifier` entry out of a record.
 pub(crate) fn map_id(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
     src_id(map, name)
 }
 
+/// Read a numeric entry out of a record as `f64`.
 pub(crate) fn map_f64(map: &BTreeMap<String, Value>, name: &str) -> Option<f64> {
     src_f64(map, name)
 }
 
+/// Read a `list<utf8>` entry out of a record; empty when absent.
 pub(crate) fn map_utf8_list(map: &BTreeMap<String, Value>, name: &str) -> Vec<String> {
     src_utf8_list(map, name)
 }
 
 // ── Value-coercion helpers ────────────────────────────────────────
 
+/// Read any numeric value as `f64`.
 pub(crate) fn value_as_f64(v: &Value) -> Option<f64> {
     match v {
         Value::F64(n) => Some(*n),
@@ -258,6 +298,7 @@ pub(crate) fn value_as_f64(v: &Value) -> Option<f64> {
     }
 }
 
+/// Read any integer value as `i64`.
 pub(crate) fn value_as_i64(v: &Value) -> Option<i64> {
     match v {
         Value::I64(n) => Some(*n),
@@ -268,6 +309,8 @@ pub(crate) fn value_as_i64(v: &Value) -> Option<i64> {
     }
 }
 
+/// Read a value as a string, for the readers that borrow rather than
+/// consume.
 pub(crate) fn value_as_str(v: &Value) -> Option<String> {
     match v {
         Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => {
@@ -335,6 +378,7 @@ pub(crate) fn gather_inline_text(children: &[Value]) -> String {
     s
 }
 
+/// Escape the five characters that would otherwise be read as markup.
 pub(crate) fn escape_html(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {

@@ -15,8 +15,13 @@ use wcl_lang::ast::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// What a decorator is attached to: the syntactic position
+/// `@applies_to` names, plus the block kind when the target is a
+/// block. Drives applicability filtering in completion.
 pub(crate) struct DecoratorTarget {
+    /// The `@applies_to` position name (`field`, `block`, `type`, …).
     pub position: &'static str,
+    /// Kind of the enclosing block, when the target is one.
     pub block_kind: Option<String>,
 }
 
@@ -28,6 +33,8 @@ pub(crate) fn decorator_target_after(items: &[Item], marker: usize) -> Option<De
     target_in_items(items, marker)
 }
 
+/// Find what the decorator at `marker` is attached to, recursing into
+/// block bodies.
 fn target_in_items(items: &[Item], marker: usize) -> Option<DecoratorTarget> {
     for item in items {
         if !contains(item_span(item), marker) {
@@ -56,6 +63,7 @@ fn target_in_items(items: &[Item], marker: usize) -> Option<DecoratorTarget> {
         .map(|(_, target)| target)
 }
 
+/// Find a decorator target among a type or interface's fields.
 fn target_in_type_fields(fields: &[TypeField], marker: usize) -> Option<DecoratorTarget> {
     fields
         .iter()
@@ -64,6 +72,7 @@ fn target_in_type_fields(fields: &[TypeField], marker: usize) -> Option<Decorato
         .map(|_| target("type_field", None))
 }
 
+/// Find a decorator target among a union's variants and their fields.
 fn target_in_union(variants: &[UnionVariant], marker: usize) -> Option<DecoratorTarget> {
     for variant in variants {
         if contains(variant.span, marker) {
@@ -80,6 +89,7 @@ fn target_in_union(variants: &[UnionVariant], marker: usize) -> Option<Decorator
         .map(|_| target("variant", None))
 }
 
+/// The anchor offset and decorator target for one item.
 fn item_target(item: &Item) -> Option<(usize, DecoratorTarget)> {
     let (span, position, block_kind) = match item {
         Item::Field(node) => (node.span, "field", None),
@@ -95,6 +105,7 @@ fn item_target(item: &Item) -> Option<(usize, DecoratorTarget)> {
     Some((target_anchor(span), target(position, block_kind)))
 }
 
+/// Shorthand constructor for a decorator target.
 fn target(position: &'static str, block_kind: Option<String>) -> DecoratorTarget {
     DecoratorTarget {
         position,
@@ -102,10 +113,13 @@ fn target(position: &'static str, block_kind: Option<String>) -> DecoratorTarget
     }
 }
 
+/// The offset a decorator must precede to be considered attached to
+/// the item at `span`.
 fn target_anchor(span: Span) -> usize {
     span.start
 }
 
+/// The source span of any item, whatever its variant.
 fn item_span(item: &Item) -> Span {
     match item {
         Item::Field(node) => node.span,
@@ -125,8 +139,12 @@ fn item_span(item: &Item) -> Span {
 }
 
 #[derive(Default)]
+/// Local bindings visible at one offset: what a completion or hover
+/// request can resolve without consulting the document index.
 pub(crate) struct EnclosingScopes<'a> {
+    /// Parameters of the enclosing function literals.
     pub params: Vec<&'a Parameter>,
+    /// Bindings of the enclosing block expressions.
     pub lets: Vec<&'a LetBinding>,
     /// Names bound by `match` / `if let` patterns whose arm body spans
     /// the offset, as `(name, declaration-span)`. Distinct from `lets`
@@ -134,6 +152,7 @@ pub(crate) struct EnclosingScopes<'a> {
     pub bindings: Vec<(&'a str, Span)>,
 }
 
+/// Collect every local binding in scope at `offset`.
 pub(crate) fn enclosing_scopes_at<'a>(items: &'a [Item], offset: usize) -> EnclosingScopes<'a> {
     let mut out = EnclosingScopes::default();
     for item in items {
@@ -142,6 +161,8 @@ pub(crate) fn enclosing_scopes_at<'a>(items: &'a [Item], offset: usize) -> Enclo
     out
 }
 
+/// Descend into one item, collecting bindings whose scope covers
+/// `offset`.
 fn walk_item<'a>(item: &'a Item, offset: usize, out: &mut EnclosingScopes<'a>) {
     match item {
         Item::Field(f) => walk_field(f, offset, out),
@@ -163,6 +184,7 @@ fn walk_item<'a>(item: &'a Item, offset: usize, out: &mut EnclosingScopes<'a>) {
     }
 }
 
+/// Descend into a field's expression.
 fn walk_field<'a>(f: &'a Field, offset: usize, out: &mut EnclosingScopes<'a>) {
     if !contains(f.span, offset) {
         return;
@@ -170,6 +192,8 @@ fn walk_field<'a>(f: &'a Field, offset: usize, out: &mut EnclosingScopes<'a>) {
     walk_expr(&f.expr, offset, out);
 }
 
+/// Descend into an expression, collecting the parameters, `let`
+/// bindings and pattern bindings whose scope covers `offset`.
 fn walk_expr<'a>(expr: &'a Expr, offset: usize, out: &mut EnclosingScopes<'a>) {
     match expr {
         Expr::Block {
@@ -382,6 +406,7 @@ fn push_pattern_bindings<'a>(pat: &'a Pattern, out: &mut EnclosingScopes<'a>) {
     }
 }
 
+/// Whether a span covers an offset.
 fn contains(span: wcl_lang::ast::Span, offset: usize) -> bool {
     offset >= span.start && offset <= span.end
 }
@@ -392,6 +417,7 @@ fn contains_in_expr(expr: &Expr, offset: usize) -> bool {
     offset >= span.start && offset <= span.end
 }
 
+/// The source span of any expression, whatever its variant.
 fn expr_span(expr: &Expr) -> wcl_lang::ast::Span {
     use wcl_lang::ast::Span;
     match expr {

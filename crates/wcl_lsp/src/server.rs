@@ -72,7 +72,9 @@ fn root_environment() -> Environment {
 /// document path resolved during `initialize`; everything else is
 /// computed on demand from `wcl_lang`.
 pub struct Backend {
+    /// Handle for sending notifications back to the editor.
     client: Client,
+    /// Open buffers by URI, kept current from incremental change events.
     docs: DashMap<Url, Rope>,
     /// Path to the root document, when one was discovered or
     /// configured. All open files are validated against this root
@@ -82,6 +84,8 @@ pub struct Backend {
 }
 
 impl Backend {
+    /// Build a backend with no open documents and no root discovered
+    /// yet.
     pub fn new(client: Client) -> Self {
         Self {
             client,

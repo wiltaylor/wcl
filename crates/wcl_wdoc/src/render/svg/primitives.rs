@@ -14,6 +14,7 @@ use super::*;
 
 // ── Lowering dispatch (block-side renderers) ───────────────────────
 
+/// Render a `rect` shape.
 pub(crate) fn render_rect(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let (x, y, w, h) = resolve_rect_box(block, parent_w, parent_h);
     let p = shape_paint(block);
@@ -29,6 +30,7 @@ pub(crate) fn render_rect(block: &Block<'_>, parent_w: f64, parent_h: f64) -> St
     )
 }
 
+/// Render a `circle` shape.
 pub(crate) fn render_circle(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let (cx, cy, r) = resolve_circle(block, parent_w, parent_h);
     let p = shape_paint(block);
@@ -43,6 +45,7 @@ pub(crate) fn render_circle(block: &Block<'_>, parent_w: f64, parent_h: f64) -> 
     )
 }
 
+/// Render a `line` shape.
 pub(crate) fn render_line(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let x1 = field_f64(block, "x1").unwrap_or(0.0);
     let y1 = field_f64(block, "y1").unwrap_or(0.0);
@@ -61,6 +64,7 @@ pub(crate) fn render_line(block: &Block<'_>, parent_w: f64, parent_h: f64) -> St
     )
 }
 
+/// Render a `label` shape.
 pub(crate) fn render_label(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let raw = label_string(block).unwrap_or_default();
     let own_x = field_f64(block, "x").unwrap_or(0.0);
@@ -84,6 +88,7 @@ pub(crate) fn render_label(block: &Block<'_>, parent_w: f64, parent_h: f64) -> S
     )
 }
 
+/// Render a `polygon` shape.
 pub(crate) fn render_polygon(block: &Block<'_>, parent_w: f64, parent_h: f64) -> String {
     let points = field_utf8(block, "points").unwrap_or_default();
     let (ox, oy) = resolve_point_anchor(block, parent_w, parent_h);
@@ -105,6 +110,7 @@ pub(crate) fn render_polygon(block: &Block<'_>, parent_w: f64, parent_h: f64) ->
 // honored here — lowering functions are expected to emit final
 // coordinates.
 
+/// Render a rect from an already-lowered payload.
 pub(crate) fn render_rect_payload(map: &BTreeMap<String, Value>) -> String {
     let p = shape_paint(map);
     emit_rect_rounded(
@@ -120,6 +126,7 @@ pub(crate) fn render_rect_payload(map: &BTreeMap<String, Value>) -> String {
     )
 }
 
+/// Render a circle from an already-lowered payload.
 pub(crate) fn render_circle_payload(map: &BTreeMap<String, Value>) -> String {
     let p = shape_paint(map);
     emit_circle(
@@ -133,6 +140,7 @@ pub(crate) fn render_circle_payload(map: &BTreeMap<String, Value>) -> String {
     )
 }
 
+/// Render a line from an already-lowered payload.
 pub(crate) fn render_line_payload(map: &BTreeMap<String, Value>) -> String {
     let p = shape_paint(map);
     emit_line_dashed(
@@ -170,6 +178,7 @@ pub(crate) fn render_polyline_payload(map: &BTreeMap<String, Value>) -> String {
     out
 }
 
+/// Render a label from an already-lowered payload.
 pub(crate) fn render_label_payload(map: &BTreeMap<String, Value>) -> String {
     let raw = map_utf8(map, "content").unwrap_or_default();
     let x = map_f64(map, "x").unwrap_or(0.0);
@@ -192,6 +201,7 @@ pub(crate) fn render_label_payload(map: &BTreeMap<String, Value>) -> String {
     )
 }
 
+/// Render a polygon from an already-lowered payload.
 pub(crate) fn render_polygon_payload(map: &BTreeMap<String, Value>) -> String {
     let p = shape_paint(map);
     emit_polygon(
@@ -300,6 +310,7 @@ pub(crate) fn emit_text(
 // resolved primitives here, so the element markup lives in one place.
 
 #[allow(clippy::too_many_arguments)] // cohesive <rect> attributes
+/// Emit an SVG `<rect>` with the given geometry and paint.
 pub(crate) fn emit_rect(
     cls: &str,
     x: f64,
@@ -338,6 +349,7 @@ pub(crate) fn emit_rect_rounded(
     out
 }
 
+/// Emit an SVG `<circle>`.
 pub(crate) fn emit_circle(
     cls: &str,
     cx: f64,
@@ -355,6 +367,7 @@ pub(crate) fn emit_circle(
     out
 }
 
+/// Emit an SVG `<line>`.
 pub(crate) fn emit_line(
     cls: &str,
     x1: f64,
@@ -413,6 +426,8 @@ pub(crate) fn emit_polygon(
 
 // ── Box / anchor geometry resolvers ───────────────────────────────
 
+/// Resolve a rect's box, honouring percentage sizes against the
+/// parent and any declared anchor.
 pub(crate) fn resolve_rect_box(
     block: &Block<'_>,
     parent_w: f64,
@@ -439,6 +454,8 @@ pub(crate) fn resolve_rect_box(
     (x, y, w, h)
 }
 
+/// Resolve a container's box, which sizes to its children when no
+/// explicit size is declared.
 pub(crate) fn resolve_container_box(
     block: &Block<'_>,
     parent_w: f64,
@@ -495,6 +512,7 @@ pub(crate) fn resolve_container_box(
     (x, y, w, h)
 }
 
+/// Shift one axis so the declared anchor lands where it should.
 pub(crate) fn apply_axis_anchor(
     pos: &mut f64,
     size: &mut f64,
@@ -517,6 +535,7 @@ pub(crate) fn apply_axis_anchor(
     }
 }
 
+/// Resolve a circle's centre and radius.
 pub(crate) fn resolve_circle(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64, f64) {
     // An unpositioned circle centers in its parent box, so it sits in
     // the middle of a layout cell (and fills it when its diameter was
@@ -541,6 +560,7 @@ pub(crate) fn resolve_circle(block: &Block<'_>, parent_w: f64, parent_h: f64) ->
     (bx + bw / 2.0, by + bh / 2.0, new_r)
 }
 
+/// Resolve a point-shaped element's position.
 pub(crate) fn resolve_point_anchor(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64) {
     let dx = match (
         field_f64(block, "anchor_left"),
@@ -561,6 +581,7 @@ pub(crate) fn resolve_point_anchor(block: &Block<'_>, parent_w: f64, parent_h: f
     (dx, dy)
 }
 
+/// Resolve a point, applying the anchor on both axes.
 pub(crate) fn resolve_point_anchored(
     block: &Block<'_>,
     parent_w: f64,

@@ -166,28 +166,49 @@ pub fn wdoc_environment() -> Environment {
     env
 }
 
+/// Why a site build failed. Each variant maps to a distinct CLI exit
+/// code, so the failure stays classifiable all the way out.
 pub enum BuildError {
+    /// A filesystem operation failed. The `String` names what was being
+    /// read or written, which the `io::Error` alone does not say.
     Io(std::io::Error, String),
+    /// The entry document, or something it imports, did not parse.
     Parse(Report),
+    /// The document violated its schema. Carries the violation count;
+    /// the diagnostics themselves were already rendered.
     Schema(usize),
     /// A block expression failed to evaluate during rendering (e.g. an
     /// unresolved name in a page block). Carries a pre-built miette report
     /// with the source snippet attached.
     Eval(Report),
+    /// A `page` block is malformed — a missing name, or a body wdoc
+    /// cannot render.
     BadPage(String),
+    /// Two elements on one page claim the same `id`, so a link to it
+    /// would be ambiguous.
     DuplicateId {
+        /// Page the collision occurred on.
         page: String,
+        /// The id claimed twice.
         id: String,
     },
     /// Two pages in the same site resolve to the same route/name (e.g. a
     /// `wdoc_repeater` whose interpolated page labels collide). Carries the
     /// site name (or "default" for an unnamed single site) and the route.
     DuplicatePage {
+        /// Site the collision occurred in, or `default` for an unnamed
+        /// single site.
         site: String,
+        /// The route claimed twice.
         name: String,
     },
+    /// One or more internal links point at a page or anchor that does
+    /// not exist. Carries every broken target, so one build reports them
+    /// all rather than one per run.
     BadLink(Vec<String>),
+    /// A template is malformed, or fills a slot it does not declare.
     BadTemplate(String),
+    /// A tileset could not be loaded or does not match the map using it.
     Tileset(String),
     /// A diagram edge could not be routed around the intervening shapes
     /// (the layout is too tightly packed). Carries a message naming the
@@ -196,6 +217,8 @@ pub enum BuildError {
 }
 
 impl BuildError {
+    /// Render this failure to stderr, with the source snippet attached
+    /// where the variant carries one.
     pub fn report(&self) {
         match self {
             Self::Io(e, ctx) => eprintln!("{ctx}: {e}"),
@@ -462,6 +485,12 @@ fn progress(line: std::fmt::Arguments<'_>) {
     }
 }
 
+/// Render every site in `file` into `out_dir`, returning the page count.
+///
+/// `site_filter` restricts the build to one named site, written flat at
+/// `out_dir`; without it every site renders into its own subdirectory.
+/// The output directory is created if missing and is never wiped — an
+/// existing file wdoc does not write is left alone.
 pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<usize, BuildError> {
     build_with_options(file, out_dir, site_filter, &BuildOptions::default()).map(|(n, _)| n)
 }
@@ -490,11 +519,17 @@ pub fn build_with_options(
 pub enum RebuildOutcome {
     /// A full site rebuild ran — the safe fallback, identical to
     /// [`build_with_options`]. Carries the page count.
-    Full { pages: usize },
+    Full {
+        /// How many pages were rendered.
+        pages: usize,
+    },
     /// Only the listed pages were re-rendered in place; the prior full
     /// build's shared site-wide artifacts (icon sprite, search index, the
     /// CSS embedded per page) were left untouched.
-    Targeted { pages: Vec<String> },
+    Targeted {
+        /// Names of the pages rewritten in place.
+        pages: Vec<String>,
+    },
 }
 
 /// Incremental rebuild for the dev server. Re-parses the document (imports
@@ -526,7 +561,9 @@ pub fn build_incremental(
 /// What a build pass actually did: a full render (page count) or a targeted
 /// incremental re-render (the page names rewritten in place).
 enum BuildOutcome {
+    /// A full render; carries the page count.
     Full(usize),
+    /// An incremental render; carries the page names rewritten in place.
     Targeted(Vec<String>),
 }
 
@@ -540,6 +577,9 @@ impl BuildOutcome {
     }
 }
 
+/// The shared body of every build entry point: parse, validate, resolve
+/// the sites to render, and render them. `targets` selects an incremental
+/// re-render when present.
 fn build_inner(
     file: &Path,
     out_dir: &Path,
@@ -923,8 +963,11 @@ pub(crate) fn root_site_name(specs: &[SiteSpec<'_>]) -> Result<Option<String>, B
 /// block (`None` for the synthetic default), and its member pages in
 /// source order.
 pub(crate) struct SiteSpec<'a> {
+    /// The site's name, or `None` for an unnamed single site.
     pub(crate) name: Option<String>,
+    /// The `site` config block, or `None` for the synthetic default.
     pub(crate) block: Option<Block<'a>>,
+    /// The site's pages, in source order.
     pub(crate) pages: Vec<Block<'a>>,
 }
 
@@ -1056,7 +1099,9 @@ fn block_in_site(block: &Block<'_>, site_name: Option<&str>) -> bool {
 /// theme can be spliced between them.
 #[derive(Default)]
 struct CssBuckets {
+    /// Rules from the embedded stdlib, emitted before the theme.
     lib_rules: Vec<String>,
+    /// Rules the document authored, emitted after the theme so they win.
     user_rules: Vec<String>,
     /// Every class name any rule selects, whichever bucket it landed in.
     declared: BTreeSet<String>,
@@ -1067,8 +1112,12 @@ struct CssBuckets {
 
 /// One site's finished stylesheet plus the class vocabulary it selects.
 struct SiteCss {
+    /// The finished stylesheet.
     text: String,
+    /// Every class name any rule selects.
     declared: BTreeSet<String>,
+    /// Class names selected by user-authored rules — the only ones the
+    /// class lint may call unused.
     authored: BTreeSet<String>,
 }
 
@@ -1208,6 +1257,8 @@ fn collect_css_block(b: &Block<'_>, is_lib: bool, fonts: BundledFonts, css: &mut
     }
 }
 
+/// Assemble one site's stylesheet: stdlib rules, then the colour
+/// theme, then the document's own rules.
 fn site_css(
     doc: &Document,
     site_name: Option<&str>,
@@ -1288,8 +1339,12 @@ fn site_layout(
 /// render had to bail to a full rebuild (`need_full`, e.g. a newly-used
 /// icon the shared sprite lacks, or a presentation deck).
 struct SiteBuild {
+    /// How many pages this site rendered.
     count: usize,
+    /// Names of the pages actually written.
     rendered: Vec<String>,
+    /// Set when the incremental path hit something it cannot do in
+    /// place, so the caller must fall back to a full rebuild.
     need_full: bool,
 }
 
@@ -1701,11 +1756,16 @@ fn build_site(
 }
 
 #[derive(Clone)]
+/// One `slot` a template declares: its name and the declaring block,
+/// kept so a fill can be checked against the slot's declared type.
 struct DeclaredSlot<'a> {
+    /// The slot name, from the block's inline label.
     name: String,
+    /// The `slot` block itself.
     declaration: Block<'a>,
 }
 
+/// Every `slot` a template declares, in source order.
 fn declared_slots<'a>(template: &Block<'a>) -> Vec<DeclaredSlot<'a>> {
     template
         .blocks()
@@ -1716,6 +1776,9 @@ fn declared_slots<'a>(template: &Block<'a>) -> Vec<DeclaredSlot<'a>> {
         .collect()
 }
 
+/// Whether these slots make the template a *collection* template —
+/// a repeated `content` slot, which is what turns one template into
+/// one page per member.
 fn declares_collection(slots: &[DeclaredSlot<'_>]) -> bool {
     slots
         .iter()
@@ -1921,6 +1984,8 @@ fn validate_slot_contracts(doc: &Document, spec: &SiteSpec<'_>) -> Result<(), Bu
     Ok(())
 }
 
+/// Check that a collection site fills only slots its template
+/// declares, and fills every one the template requires.
 fn validate_collection_site_slots(
     spec: &SiteSpec<'_>,
     template_name: &str,
@@ -1995,6 +2060,7 @@ fn validate_collection_site_slots(
     Ok(())
 }
 
+/// Every slot name the site's template declares.
 fn site_declared_slot_names(doc: &Document, spec: &SiteSpec<'_>) -> HashSet<String> {
     let mut templates = HashSet::new();
     if let Some(name) = spec
@@ -2125,6 +2191,8 @@ fn validate_component_slot_contracts(doc: &Document) -> Result<(), BuildError> {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Record one slot fill, rejecting a second fill of a slot that is
+/// not declared repeated.
 fn record_slot_fill<'a>(
     fill: &Block<'a>,
     slot_names: &HashSet<&str>,
@@ -2198,6 +2266,8 @@ fn expand_page_repeaters<'a>(block: Block<'a>, out: &mut Vec<Block<'a>>) {
     }
 }
 
+/// Whether a block satisfies a slot's declared type, following the
+/// `extends` chain and accepting any variant of a declared union.
 fn block_matches_accepted_type(block: &Block<'_>, accepted: &TypeRef) -> bool {
     let TypeRef::Named { path, .. } = accepted else {
         return true; // stay conservative for a type shape wdoc cannot classify
@@ -2260,10 +2330,15 @@ fn sprite_has_icons(out_dir: &Path, used: &[String]) -> bool {
 /// `<script>` tags it needs. Computed once per site in [`build_site`].
 #[derive(Clone, Copy)]
 struct PlayerScripts {
+    /// The terminal replay player.
     terminals: bool,
+    /// Diagram pan-and-zoom.
     pan_zoom: bool,
+    /// The tilemap viewer.
     map: bool,
+    /// The dopesheet timeline player.
     dopesheet: bool,
+    /// Client-side search.
     search: bool,
 }
 
@@ -2299,29 +2374,49 @@ impl PlayerScripts {
 /// — everything [`build_site`] resolves once that the
 /// page-rendering paths read but never mutate.
 struct PageRenderCtx<'a> {
+    /// The evaluated document being rendered.
     doc: &'a Document,
+    /// Directory the entry file sits in, for resolving assets.
     base_dir: Option<&'a Path>,
+    /// The site being rendered.
     spec: &'a SiteSpec<'a>,
+    /// Directory this site writes into.
     out_dir: &'a Path,
+    /// The site's finished stylesheet.
     css: &'a str,
     /// Where every page this context writes records its class uses.
     scan: &'a ClassScan,
+    /// Favicon markup for the page head.
     favicon: &'a str,
     // Extra `<head>` HTML from the site's `stylesheets` / `scripts` /
     // `fonts` fields, spliced into every page before `</head>`.
+    /// Extra markup the site injects into every head.
     head_extra: &'a str,
+    /// Compiled patterns for inline markup.
     inline_patterns: &'a InlinePatterns,
+    /// Template applied to pages that name none.
     default_template: Option<&'a str>,
+    /// The site title, shown in the chrome.
     site_title: Option<&'a str>,
+    /// Whether to render the light/dark toggle.
     theme_toggle: bool,
+    /// The table of contents, as rendered data.
     toc: &'a Value,
+    /// The navigation menu, as rendered data.
     menu: &'a Value,
+    /// The footer, as rendered data.
     footer: &'a Value,
+    /// Section tree for a presentation deck.
     deck_nodes: &'a [DeckSectionNode],
+    /// Every page of the site, as rendered data.
     pages_value: &'a Value,
+    /// Link target for the home affordance.
     home_href: &'a str,
+    /// Label for the home affordance.
     home_title: &'a str,
+    /// Which interactive players this site loads.
     players: PlayerScripts,
+    /// Whether this site ships a search index.
     search: bool,
 }
 
@@ -2390,6 +2485,8 @@ fn build_collection_page(
     Ok(1)
 }
 
+/// Expand a collection template into one set of slot fills per
+/// member of its repeated `content` slot.
 fn collection_site_fills<'a>(
     spec: &'a SiteSpec<'a>,
     template: &Block<'a>,
@@ -2579,12 +2676,16 @@ fn build_normal_page(
 
 /// One page in the `search-index.json` a `search = true` site ships.
 struct SearchEntry {
+    /// The page's route.
     href: String,
+    /// The page's title.
     title: String,
+    /// Flattened page text, the search index body.
     text: String,
 }
 
 impl SearchEntry {
+    /// Serialize this entry into the shape `search-index.json` uses.
     fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "href": self.href,
@@ -2916,6 +3017,8 @@ pub(crate) fn collect_pages(doc: &Document) -> Result<Vec<Block<'_>>, BuildError
     Ok(out)
 }
 
+/// Append every `page` block reachable from `blocks`, descending
+/// through the containers that may hold pages.
 fn collect_pages_into<'a>(blocks: impl Iterator<Item = Block<'a>>, out: &mut Vec<Block<'a>>) {
     for b in blocks {
         match b.kind() {

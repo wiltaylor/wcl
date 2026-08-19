@@ -371,6 +371,7 @@ pub(crate) fn build_metrics(block: &Block<'_>, bbox: (f64, f64, f64, f64)) -> Sh
     }
 }
 
+/// Render one diagram shape, dispatching on its kind.
 pub(crate) fn render_shape(
     block: &Block<'_>,
     parent_w: f64,

@@ -13,18 +13,30 @@ use wcl_lang::{Environment, Value, from_fn};
 use crate::render::HeadingSequence;
 
 #[derive(Default)]
+/// Per-site navigation indexes, built once per build and reused by
+/// every page rather than recomputed.
 struct MetadataCache {
+    /// One index per site, in build order.
     sites: Vec<SiteIndex>,
 }
 
+/// One site's navigation data: its contents tree, the linear reading
+/// order derived from it, and the lookups a page needs to place
+/// itself in both.
 struct SiteIndex {
+    /// The contents tree as document data.
     toc: Arc<Vec<Value>>,
+    /// Pages flattened into reading order.
     reading_order: Arc<Vec<Value>>,
+    /// Page name → its index in `reading_order`, for next/previous links.
     positions: HashMap<String, usize>,
+    /// Page name → its ancestor chain in the contents tree, so a page can
+    /// highlight its own branch.
     active_paths: HashMap<String, Arc<Vec<Value>>>,
 }
 
 impl SiteIndex {
+    /// Build the reading order and lookups from a contents tree.
     fn new(toc: Arc<Vec<Value>>) -> Self {
         let mut reading_order = Vec::new();
         let mut active_paths = HashMap::new();
@@ -80,6 +92,8 @@ pub(crate) fn register(env: &mut Environment) {
     );
 }
 
+/// Assemble the metadata record one page sees: its contents, its
+/// position in the reading order, and its headings.
 fn metadata_value(site: &SiteIndex, page_name: &str, content: &[Value]) -> Value {
     let href = format!("{page_name}.html");
     let current_index = site.positions.get(&href).copied();
@@ -112,6 +126,8 @@ fn metadata_value(site: &SiteIndex, page_name: &str, content: &[Value]) -> Value
     Value::record(vec!["PageMetadata".to_string()], fields)
 }
 
+/// Walk the contents tree, recording each page's reading position and
+/// ancestor path.
 fn index_toc(
     nodes: &[Value],
     ancestors: &mut Vec<Value>,
@@ -132,17 +148,24 @@ fn index_toc(
 }
 
 #[derive(Default)]
+/// Accumulator for a page's heading outline: the numbering state and
+/// the headings collected so far.
 struct HeadingIndex {
+    /// Running section numbers, one counter per level.
     sequence: HeadingSequence,
+    /// Headings collected so far, in document order.
     headings: Vec<Value>,
 }
 
+/// Build a page's heading outline as document data.
 fn headings_value(handles: &[Value]) -> Value {
     let mut index = HeadingIndex::default();
     collect_headings(handles, &mut index);
     Value::list(index.headings)
 }
 
+/// Walk rendered content, appending each heading with its resolved
+/// number.
 fn collect_headings(handles: &[Value], index: &mut HeadingIndex) {
     for handle in handles {
         let Some(fields) = record_fields_opt(handle) else {
@@ -183,6 +206,8 @@ fn collect_headings(handles: &[Value], index: &mut HeadingIndex) {
     }
 }
 
+/// The level a heading block kind stands for, or `None` when the kind
+/// is not a heading.
 fn heading_level(kind: &str) -> Option<i64> {
     match kind {
         "h1" | "chapter_header" => Some(1),
@@ -195,6 +220,7 @@ fn heading_level(kind: &str) -> Option<i64> {
     }
 }
 
+/// Borrow a value's record fields, erroring when it is not a record.
 fn record_fields<'a>(
     value: &'a Value,
     message: &str,
@@ -202,6 +228,7 @@ fn record_fields<'a>(
     record_fields_opt(value).ok_or_else(|| message.to_string())
 }
 
+/// Borrow a value's record fields, or `None` when it is not a record.
 fn record_fields_opt(value: &Value) -> Option<&BTreeMap<String, Value>> {
     match value {
         Value::Record { fields, .. } => Some(fields),
@@ -209,6 +236,7 @@ fn record_fields_opt(value: &Value) -> Option<&BTreeMap<String, Value>> {
     }
 }
 
+/// Read a list entry out of a record.
 fn list_field(fields: &BTreeMap<String, Value>, name: &str) -> Result<Arc<Vec<Value>>, String> {
     match fields.get(name) {
         Some(Value::List(items)) => Ok(items.clone()),
@@ -216,6 +244,7 @@ fn list_field(fields: &BTreeMap<String, Value>, name: &str) -> Result<Arc<Vec<Va
     }
 }
 
+/// Read a string entry out of a record.
 fn string_field<'a>(fields: &'a BTreeMap<String, Value>, name: &str) -> Result<&'a str, String> {
     fields
         .get(name)
@@ -223,6 +252,8 @@ fn string_field<'a>(fields: &'a BTreeMap<String, Value>, name: &str) -> Result<&
         .ok_or_else(|| format!("page_metadata: `{name}` must be utf8"))
 }
 
+/// Borrow a value as a string, accepting the string and identifier
+/// forms.
 fn value_string(value: &Value) -> Option<&str> {
     match value {
         Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s) => Some(s),
@@ -230,10 +261,12 @@ fn value_string(value: &Value) -> Option<&str> {
     }
 }
 
+/// Read a string entry out of a value, when it is a record with one.
 fn record_string<'a>(value: &'a Value, name: &str) -> Option<&'a str> {
     record_fields_opt(value)?.get(name).and_then(value_string)
 }
 
+/// Read a list entry out of a value, when it is a record with one.
 fn record_list<'a>(value: &'a Value, name: &str) -> Option<&'a [Value]> {
     match record_fields_opt(value)?.get(name)? {
         Value::List(items) => Some(items),

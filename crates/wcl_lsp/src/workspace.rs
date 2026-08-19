@@ -134,11 +134,14 @@ fn fuzzy_score(query: &str, fqn: &str) -> Option<u32> {
     }
 }
 
+/// Whether `needle`'s characters appear in `hay` in order — the
+/// fuzzy match behind workspace symbol search.
 fn is_subsequence(needle: &str, hay: &str) -> bool {
     let mut chars = hay.chars();
     needle.chars().all(|n| chars.any(|h| h == n))
 }
 
+/// The last segment of a dotted name.
 fn short_name(fqn: &str) -> &str {
     fqn.rsplit('.').next().unwrap_or(fqn)
 }

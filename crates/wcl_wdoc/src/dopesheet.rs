@@ -23,12 +23,19 @@ use crate::render::{
 
 /// Resolved frame geometry + play range for one dopesheet.
 struct Geom {
+    /// Frames per row in the sprite sheet.
     columns: i64,
+    /// X of the first frame within the sheet.
     offset_x: i64,
+    /// Y of the first frame within the sheet.
     offset_y: i64,
+    /// Horizontal distance between frames.
     stride_x: i64,
+    /// Vertical distance between rows.
     stride_y: i64,
+    /// First frame index of the range.
     from: i64,
+    /// Last frame index of the range, inclusive.
     to: i64,
 }
 

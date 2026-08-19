@@ -34,6 +34,8 @@ pub(crate) fn all_edges(block: &Block<'_>) -> Vec<Value> {
     out
 }
 
+/// The `(source, destination)` id pairs every edge in this block
+/// connects.
 pub(crate) fn edge_id_pairs(block: &Block<'_>) -> Vec<(String, String)> {
     all_edges(block)
         .iter()
@@ -152,11 +154,15 @@ fn kind_label(kind: &str) -> Option<&'static str> {
 /// `edges = [...]` records today — the `->` statement grammar carries
 /// no payload beyond the kind symbol.
 pub(crate) struct EdgeStyle {
+    /// Edge kind, when the statement names one.
     pub(crate) kind: Option<String>,
+    /// Text drawn along the edge.
     pub(crate) label: Option<String>,
+    /// Dash pattern, when the style asks for one.
     pub(crate) dash: Option<String>,
 }
 
+/// Bounding box of a polyline; `None` when it has no points.
 pub(crate) fn polyline_bbox(points: &[(f64, f64)]) -> Option<(f64, f64, f64, f64)> {
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
@@ -205,6 +211,8 @@ pub(crate) fn gather_edges_recursive(block: &Block<'_>, out: &mut Vec<Value>) {
 /// neighbours at both ends). The dest map is therefore keyed by the
 /// arriving edge's source id as well.
 pub(crate) type AnchorMap = HashMap<(String, Side), SidedAnchor>;
+/// Anchor chosen for each `(shape, side, destination)` triple, so
+/// edges sharing an endpoint stay aligned with one another.
 pub(crate) type DestAnchorMap = HashMap<(String, Side, String), SidedAnchor>;
 
 /// Gap between neighbouring arrival slots on a destination side.
@@ -231,6 +239,8 @@ pub(crate) fn facing_side(from: (f64, f64), to: (f64, f64)) -> Side {
 /// that shape's bbox center.
 type Arrival = (String, (f64, f64));
 
+/// Choose one anchor per shape side shared by several edges, so they
+/// fan from a common point rather than crossing.
 pub(crate) fn build_shared_anchors(
     items: &[Value],
     positions: &ShapePositions,
@@ -314,6 +324,7 @@ pub(crate) fn build_shared_anchors(
     (sources, dests)
 }
 
+/// Average of a point set.
 pub(crate) fn centroid_of(points: &[(f64, f64)]) -> (f64, f64) {
     let n = points.len() as f64;
     let sx: f64 = points.iter().map(|p| p.0).sum();
@@ -321,6 +332,7 @@ pub(crate) fn centroid_of(points: &[(f64, f64)]) -> (f64, f64) {
     (sx / n, sy / n)
 }
 
+/// Choose the anchor facing a target point.
 pub(crate) fn pick_anchor_toward(
     anchors: &[SidedAnchor],
     target: (f64, f64),
@@ -335,6 +347,8 @@ pub(crate) fn pick_anchor_toward(
         .copied()
 }
 
+/// Choose the anchor nearest a target point; `None` when the shape
+/// offers none.
 pub(crate) fn pick_closest_to(anchors: &[SidedAnchor], target: (f64, f64)) -> Option<SidedAnchor> {
     pick_anchor_toward(anchors, target)
 }
@@ -348,6 +362,7 @@ pub(crate) fn pick_closest_to(anchors: &[SidedAnchor], target: (f64, f64)) -> Op
 /// direction.
 pub(crate) type SidedAnchor = (Side, f64, f64);
 
+/// Choose the anchor pair minimising the distance between two shapes.
 pub(crate) fn pick_closest_pair(
     src: &[SidedAnchor],
     dst: &[SidedAnchor],
@@ -370,6 +385,7 @@ pub(crate) fn pick_closest_pair(
     best.map(|(_, s, d)| (s, d))
 }
 
+/// Plan one edge: pick its anchors, then route between them.
 pub(crate) fn plan_edge(
     value: &Value,
     positions: &ShapePositions,
@@ -510,6 +526,7 @@ pub(crate) fn plan_edge(
     Some((EdgePath { points }, style))
 }
 
+/// Emit an edge as SVG — a straight line or a routed polyline.
 pub(crate) fn serialize_edge(path: &EdgePath, style: &EdgeStyle, straight: bool) -> String {
     let kind_attr = match style.kind.as_deref() {
         Some(k) => format!(" data-kind=\"{}\"", escape_html(k)),
@@ -595,6 +612,7 @@ pub(crate) fn edge_label_point(points: &[(f64, f64)], label: &str) -> Option<(f6
     Some(points[points.len() - 1])
 }
 
+/// Read an edge endpoint as a shape id.
 pub(crate) fn edge_endpoint_id(v: &Value) -> Option<String> {
     match v {
         Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
@@ -619,6 +637,7 @@ pub(crate) fn round_boundary_point(bbox: &(f64, f64, f64, f64), target: (f64, f6
     (cx + dx / dist * r, cy + dy / dist * r)
 }
 
+/// The midpoint of one side of a bounding box.
 pub(crate) fn anchor_point_for_side(side: Side, bbox: (f64, f64, f64, f64)) -> (f64, f64) {
     let (x, y, w, h) = bbox;
     match side {
@@ -629,6 +648,7 @@ pub(crate) fn anchor_point_for_side(side: Side, bbox: (f64, f64, f64, f64)) -> (
     }
 }
 
+/// Centre of a bounding box.
 pub(crate) fn bbox_center(bbox: &(f64, f64, f64, f64)) -> (f64, f64) {
     (bbox.0 + bbox.2 / 2.0, bbox.1 + bbox.3 / 2.0)
 }

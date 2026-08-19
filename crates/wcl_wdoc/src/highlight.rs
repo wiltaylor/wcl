@@ -17,6 +17,7 @@ use syntect::html::{ClassStyle, ClassedHTMLGenerator};
 use syntect::parsing::{SyntaxDefinition, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
+/// WCL's own syntax definition, bundled because syntect ships none.
 const WCL_SYNTAX: &str = include_str!("../assets/wcl.sublime-syntax");
 
 /// Prefix of the token classes syntect mints — one per grammar scope, so
@@ -36,10 +37,14 @@ pub(crate) fn language_class(language: &str) -> String {
     format!("{LANGUAGE_CLASS_PREFIX}{language}")
 }
 
+/// Prefix every emitted token class, so highlighting styles cannot
+/// collide with a document's own class names.
 const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed {
     prefix: TOKEN_CLASS_PREFIX,
 };
 
+/// The syntax set, built once and reused — loading it is expensive
+/// enough to matter on a book-sized document.
 fn syntax_set() -> &'static SyntaxSet {
     static SET: OnceLock<SyntaxSet> = OnceLock::new();
     SET.get_or_init(|| {

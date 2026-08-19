@@ -14,11 +14,17 @@ use super::ir::{BlockNode, CardSpec, Cell, CodeSpan, ListLine, Row, TextStyle, T
 use super::svg_embed::SvgEmbedder;
 use super::text::{FontBook, InlineObject, ShapedGlyph, ShapedLine};
 
+/// Body text size in points.
 const BODY_SIZE: f32 = 11.0;
+/// Body line advance, as a multiple of the font size.
 const BODY_LINE_HEIGHT: f32 = 1.45;
+/// Heading line advance, tighter than body text.
 const HEADING_LINE_HEIGHT: f32 = 1.25;
+/// Vertical space after a paragraph, in points.
 const SPACE_AFTER_PARAGRAPH: f32 = 8.0;
+/// Vertical space before a heading.
 const SPACE_BEFORE_HEADING: f32 = 12.0;
+/// Vertical space after a heading.
 const SPACE_AFTER_HEADING: f32 = 5.0;
 
 /// Near-black body/heading text colour for this phase (palette theming arrives
@@ -29,62 +35,92 @@ const LINK_COLOR: (u8, u8, u8) = (37, 99, 235);
 
 /// A glyph placed in absolute page coordinates (origin top-left, y down).
 pub(crate) struct PlacedGlyph {
+    /// The face this glyph is drawn from.
     pub font: krilla::text::Font,
+    /// Glyph index within that face.
     pub glyph_id: u16,
+    /// Left edge in absolute page coordinates.
     pub x: f32,
+    /// Top edge in absolute page coordinates.
     pub y: f32,
+    /// Font size in points.
     pub size: f32,
+    /// Fill colour as RGB.
     pub color: (u8, u8, u8),
+    /// Source text this glyph came from, for text extraction.
     pub cluster: String,
 }
 
 /// A clickable hyperlink rectangle in absolute page coordinates.
 pub(crate) struct LinkBox {
+    /// Left edge in absolute page coordinates.
     pub x: f32,
+    /// Top edge in absolute page coordinates.
     pub y: f32,
+    /// Width in page points.
     pub w: f32,
+    /// Height in page points.
     pub h: f32,
+    /// Link target.
     pub href: String,
 }
 
 /// An embedded SVG placed in absolute page coordinates, sized to `(w, h)`.
 pub(crate) struct PlacedSvg {
+    /// The parsed SVG to paint.
     pub tree: Tree,
+    /// Left edge in absolute page coordinates.
     pub x: f32,
+    /// Top edge in absolute page coordinates.
     pub y: f32,
+    /// Width in page points.
     pub w: f32,
+    /// Height in page points.
     pub h: f32,
 }
 
 /// A filled rectangle (a code-block background) in absolute page coordinates.
 pub(crate) struct RectFill {
+    /// Left edge in absolute page coordinates.
     pub x: f32,
+    /// Top edge in absolute page coordinates.
     pub y: f32,
+    /// Width in page points.
     pub w: f32,
+    /// Height in page points.
     pub h: f32,
+    /// Fill colour as RGB.
     pub color: (u8, u8, u8),
 }
 
 /// A raster image placed in absolute page coordinates, sized to `(w, h)`.
 pub(crate) struct PlacedImage {
+    /// The decoded image to paint.
     pub image: krilla::image::Image,
+    /// Left edge in absolute page coordinates.
     pub x: f32,
+    /// Top edge in absolute page coordinates.
     pub y: f32,
+    /// Width in page points.
     pub w: f32,
+    /// Height in page points.
     pub h: f32,
 }
 
 /// A card body laid out in card-local coordinates, to be painted (scaled +
 /// translated, clipped) over its box inside a diagram.
 pub(crate) struct CardOverlay {
+    /// The card's body, laid out in card-local coordinates.
     pub content: LaidOutPage,
     /// Card box top-left in absolute page coordinates.
     pub x: f32,
+    /// Top edge in absolute page coordinates.
     pub y: f32,
     /// Diagram scale (viewBox units → page points).
     pub scale: f32,
     /// Card box size in viewBox units (the clip box, pre-scale).
     pub w: f32,
+    /// Height in page points.
     pub h: f32,
 }
 
@@ -92,20 +128,32 @@ pub(crate) struct CardOverlay {
 /// images and SVGs, then glyphs, then card overlays on top.
 #[derive(Default)]
 pub(crate) struct LaidOutPage {
+    /// Text, painted after backgrounds and images.
     pub glyphs: Vec<PlacedGlyph>,
+    /// Clickable regions.
     pub links: Vec<LinkBox>,
+    /// Embedded vector graphics.
     pub svgs: Vec<PlacedSvg>,
+    /// Background fills, painted first.
     pub rects: Vec<RectFill>,
+    /// Raster images.
     pub images: Vec<PlacedImage>,
+    /// Diagram card bodies, painted last.
     pub card_overlays: Vec<CardOverlay>,
 }
 
+/// Vertical space above and below embedded SVG.
 const SPACE_AROUND_SVG: f32 = 8.0;
+/// Code text size in points.
 const CODE_SIZE: f32 = 9.5;
+/// Code line advance.
 const CODE_LINE_HEIGHT: f32 = 1.5;
+/// Padding inside a code block's background.
 const CODE_PAD: f32 = 9.0;
+/// Code block background, as RGB.
 const CODE_BG: (u8, u8, u8) = (244, 244, 245);
 
+/// Font size for a heading of the given level.
 fn heading_size(level: u8) -> f32 {
     match level {
         1 => 22.0,
@@ -823,10 +871,15 @@ fn place_callout(
     *at_page_top = false;
 }
 
+/// Table text size in points.
 const TABLE_SIZE: f32 = 10.0;
+/// Table line advance.
 const TABLE_LINE_HEIGHT: f32 = 1.3;
+/// Padding inside a table cell.
 const TABLE_PAD: f32 = 5.0;
+/// Table rule colour, as RGB.
 const TABLE_BORDER: (u8, u8, u8) = (205, 205, 210);
+/// Header row background, as RGB.
 const TABLE_HEADER_BG: (u8, u8, u8) = (238, 238, 241);
 
 /// Place a table: equal-width columns, an optional shaded header row, and a
@@ -893,6 +946,7 @@ fn place_table(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Lay out one table row, returning the height it consumed.
 fn draw_table_row(
     cells: &[Cell],
     is_header: bool,
@@ -1146,6 +1200,8 @@ fn place_line(
     page.links.extend(line_links);
 }
 
+/// Close the link box accumulated so far, emitting it if it covers
+/// any glyphs.
 fn flush_link(
     group: Option<(usize, f32, f32)>,
     hrefs: &[String],

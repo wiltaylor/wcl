@@ -26,8 +26,12 @@ use crate::render::{escape_html, field_utf8, field_utf8_list, label_string};
 /// name-sorted `(stem, offset, len)` index into it. Populated by the
 /// generated manifest.
 pub(crate) struct IconPack {
+    /// Pack name, as an author writes it.
     name: &'static str,
+    /// The packed SVG sources, concatenated.
     blob: &'static [u8],
+    /// Name-sorted `(stem, offset, len)` index into `blob`, so a lookup
+    /// is a binary search plus a slice.
     index: &'static [(&'static str, u32, u32)],
 }
 
@@ -37,6 +41,7 @@ include!(concat!(env!("OUT_DIR"), "/icon_manifest.rs"));
 /// referenced by. Relative so it resolves both under the dev server and
 /// on a deployed static host (mirrors the terminal asset convention).
 pub(crate) const SPRITE_HREF: &str = "_wdoc/icons.svg";
+/// Filename of the per-site sprite sheet every used icon lands in.
 pub(crate) const SPRITE_FILE: &str = "icons.svg";
 
 /// Look up an icon's raw SVG source from a bundled pack by name.
@@ -54,10 +59,15 @@ fn pack_lookup(pack: &str, name: &str) -> Option<&'static str> {
 /// over both.
 #[derive(Default, Clone)]
 struct IconStyle {
+    /// Rendered size, as a CSS length.
     size: Option<String>,
+    /// Stroke / text colour.
     color: Option<String>,
+    /// Fill colour.
     fill: Option<String>,
+    /// Background behind the glyph.
     background: Option<String>,
+    /// Extra classes to put on the element.
     classes: Vec<String>,
 }
 
@@ -80,14 +90,23 @@ impl IconStyle {
     }
 }
 
+/// One `icon_set` declaration: which pack it draws from, its default
+/// styling, and any per-icon overrides.
 struct SetConfig {
+    /// The set name authors reference.
     name: String,
+    /// Bundled pack the set draws from.
     pack: String,
+    /// Styling applied to every icon of the set.
     defaults: IconStyle,
+    /// Per-icon overrides, which beat the set defaults.
     per_icon: HashMap<String, IconStyle>,
 }
 
+/// Every icon set a document declares, plus the record of which icons
+/// were actually used — the sprite ships only those.
 pub(crate) struct IconRegistry {
+    /// The declared sets, in source order.
     sets: Vec<SetConfig>,
     /// (pack, name) pairs resolved during rendering. Sorted + deduped so
     /// the emitted sprite is stable and holds each icon once.
@@ -278,6 +297,7 @@ impl IconRegistry {
         }
     }
 
+    /// Note that an icon was used, so the sprite includes it.
     fn record(&self, pack: &str, icon: &str) {
         self.used
             .borrow_mut()
@@ -298,9 +318,13 @@ impl IconRegistry {
 /// Caller-supplied per-placement style for a diagram `icon`.
 #[derive(Default)]
 pub(crate) struct ShapeOverride {
+    /// Stroke / text colour override.
     pub color: Option<String>,
+    /// Fill override.
     pub fill: Option<String>,
+    /// Background override.
     pub background: Option<String>,
+    /// Extra classes for this placement.
     pub classes: Vec<String>,
 }
 
@@ -348,6 +372,7 @@ fn style_attr(style: &IconStyle, include_size: bool) -> String {
     }
 }
 
+/// Build the `class="…"` attribute for an icon element.
 fn class_attr(extra: &[String]) -> String {
     let mut classes = vec!["wdoc-icon".to_string()];
     classes.extend(extra.iter().cloned());
@@ -359,6 +384,8 @@ fn class_attr(extra: &[String]) -> String {
     format!(" class=\"{joined}\"")
 }
 
+/// Markup for an icon used inline in text — a `<use>` into the site
+/// sprite.
 fn inline_markup(pack: &str, icon: &str, style: &IconStyle) -> String {
     format!(
         "<svg{cls}{style}><use href=\"{SPRITE_HREF}#{pack}-{icon}\"/></svg>",
@@ -367,6 +394,8 @@ fn inline_markup(pack: &str, icon: &str, style: &IconStyle) -> String {
     )
 }
 
+/// Markup for an icon placed as a diagram shape, positioned and
+/// sized by `geom`.
 fn shape_markup(pack: &str, icon: &str, geom: (f64, f64, f64, f64), style: &IconStyle) -> String {
     let (x, y, w, h) = geom;
     let use_el = format!(
@@ -383,7 +412,11 @@ fn shape_markup(pack: &str, icon: &str, geom: (f64, f64, f64, f64), style: &Icon
     }
 }
 
+/// Matches a bundled icon's root `<svg>` tag, so its attributes can
+/// be rewritten as the sprite symbol's.
 static ROOT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<svg\b([^>]*)>").unwrap());
+/// Matches one `name="value"` attribute, for rewriting the attributes
+/// of an icon's root tag.
 static ATTR_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"([\w:-]+)\s*=\s*"([^"]*)""#).unwrap());
 

@@ -90,17 +90,23 @@ pub(crate) fn body_to_markdown(
     Ok(md)
 }
 
+/// Renders a document to Markdown, accumulating the sibling SVG
+/// files the output references.
 pub(super) struct Emitter<'a> {
     // `doc` and `patterns` are the two the content walker in `super::content`
     // reads directly; the rest it reaches only through the methods that own
     // them (`write_svg` alone advances `svg_seq`).
+    /// The document being rendered.
     pub(super) doc: &'a Document,
+    /// Inline-markup rules for this site.
     pub(super) patterns: &'a InlinePatterns,
+    /// Directory relative asset sources resolve against.
     base_dir: Option<&'a Path>,
     /// The site output directory; SVG assets go in `<out_dir>/_wdoc/`.
     out_dir: &'a Path,
     /// The page name, used to prefix generated SVG filenames.
     page: &'a str,
+    /// Counter making each emitted SVG filename unique within a page.
     svg_seq: usize,
 }
 
@@ -357,6 +363,7 @@ impl Emitter<'_> {
         lines.join("\n")
     }
 
+    /// Emit one list, indenting nested lists by `depth`.
     fn li_group(&self, parent: &Block<'_>, ordered: bool, depth: usize, lines: &mut Vec<String>) {
         let mut i = 0u32;
         for li in parent.blocks().filter(|b| b.kind() == "li") {
@@ -416,6 +423,7 @@ impl Emitter<'_> {
         render_pipe_table(&header, &rows)
     }
 
+    /// Render one table cell, escaping the pipes that would end it.
     fn cell(&self, v: &Value) -> String {
         escape_cell(&self.inline(&cell_text(v)))
     }
@@ -480,6 +488,8 @@ pub(super) fn fence(lang: &str, source: &str) -> String {
     format!("{ticks}{lang}\n{src}\n{ticks}")
 }
 
+/// The longest backtick run in `s`, so a code span can be fenced with
+/// one more and still contain it.
 fn longest_backtick_run(s: &str) -> usize {
     let mut longest = 0usize;
     let mut run = 0usize;
@@ -517,6 +527,7 @@ pub(super) fn escape_cell(s: &str) -> String {
     s.replace('|', "\\|").replace('\n', " ")
 }
 
+/// Whether an HTML tag is a heading.
 fn is_heading_tag(tag: &str) -> bool {
     matches!(tag, "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
 }

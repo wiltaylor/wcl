@@ -44,13 +44,17 @@ pub(crate) use standalone::*;
 /// must travel.
 #[derive(Clone)]
 pub(crate) struct ShapeMetrics {
+    /// Bounding box as `(x, y, w, h)`.
     pub(crate) bbox: (f64, f64, f64, f64),
+    /// Available anchor points, each with the side it sits on.
     pub(crate) anchors: Vec<(Side, f64, f64)>,
     /// Whether the shape renders as a circle (`circle` / `node`). Round
     /// shapes attach straight edges at their boundary along the
     /// center-to-center line rather than at a cardinal anchor point.
     pub(crate) round: bool,
 }
+/// Shape id → its placed geometry, built during the shape pass and
+/// read by the edge pass.
 pub(crate) type ShapePositions = HashMap<String, ShapeMetrics>;
 
 /// Accumulator passed through the position-collection walk. The
@@ -61,7 +65,9 @@ pub(crate) type ShapePositions = HashMap<String, ShapeMetrics>;
 /// always fills its declared `width` × `height`.
 #[derive(Default)]
 pub(crate) struct Collector {
+    /// Placed geometry, by shape id.
     pub(crate) positions: ShapePositions,
+    /// Every placed box, as obstacles for edge routing.
     pub(crate) bboxes: Vec<(f64, f64, f64, f64)>,
     /// Absolute boxes of *visibly bordered* containers (those with a
     /// `stroke` / `fill` chrome rect). The elbow router penalises routing
@@ -75,13 +81,18 @@ pub(crate) struct Collector {
 /// repeated `doc` / `icons` / `tilesets` trio.
 #[derive(Clone, Copy)]
 pub(crate) struct RenderCtx<'a> {
+    /// The document being rendered.
     pub(crate) doc: &'a Document,
+    /// Icon sets in scope.
     pub(crate) icons: &'a IconRegistry,
+    /// Tilesets in scope.
     pub(crate) tilesets: &'a TilesetRegistry,
+    /// Images in scope.
     pub(crate) images: &'a ImageRegistry,
     /// The full inline-pattern set + source base dir, so a `map`'s pin
     /// cards can render arbitrary wdoc content via `render_block`.
     pub(crate) patterns: &'a InlinePatterns,
+    /// Directory relative asset sources resolve against.
     pub(crate) base_dir: Option<&'a Path>,
     /// Sink for HTML that must sit *outside* the `<svg>` (a `map`'s pin
     /// cards). `render_diagram` drains it into the viewport wrapper.
@@ -93,7 +104,9 @@ pub(crate) struct RenderCtx<'a> {
 /// bbox (a `tilemap`'s sheet, an `image`'s natural dimensions).
 #[derive(Clone, Copy)]
 pub(crate) struct CollectCtx<'a> {
+    /// Tilesets in scope.
     pub(crate) tilesets: &'a TilesetRegistry,
+    /// Images in scope.
     pub(crate) images: &'a ImageRegistry,
 }
 
@@ -130,6 +143,8 @@ pub(crate) const DIAGRAM_CONTROLS: &str = "<div class=\"wdoc-diagram-controls\">
 <button type=\"button\" data-zoom=\"reset\" aria-label=\"Reset view\">\u{27f2}</button>\
 </div>";
 
+/// The arrowhead marker definition, emitted once per diagram and
+/// referenced by every directed edge.
 pub(crate) const ARROW_MARKER: &str = "<defs><marker id=\"wdoc-arrow\" viewBox=\"0 0 10 10\" \
     refX=\"10\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" \
     orient=\"auto-start-reverse\">\

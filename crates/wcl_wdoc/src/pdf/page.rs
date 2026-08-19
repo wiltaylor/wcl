@@ -53,6 +53,7 @@ pub(crate) fn draw_chrome(
     );
 }
 
+/// Paint a horizontal rule as a thin filled rectangle.
 fn draw_rule(surface: &mut Surface, x: f32, y: f32, w: f32, thickness: f32, color: (u8, u8, u8)) {
     fill_rect(surface, x, y, w, thickness, color);
 }

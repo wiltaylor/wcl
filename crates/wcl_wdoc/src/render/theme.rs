@@ -19,6 +19,7 @@ use wcl_lang::{Block, Document};
 
 use super::{RenderedCss, field_symbol, field_utf8, label_string, render_styles};
 
+/// Theme used when a site declares none.
 const DEFAULT_THEME: &str = "forge";
 
 /// The 18 `Palette` roles, paired with the CSS custom-property suffix
@@ -67,6 +68,7 @@ const HUES: &[&str] = &[
     "red", "orange", "yellow", "green", "cyan", "blue", "purple", "pink",
 ];
 
+/// Emit a palette as CSS custom properties.
 fn palette_vars(pal: &Block<'_>, out: &mut String) {
     for (field, var) in ROLES {
         if let Some(c) = field_utf8(pal, field) {
@@ -110,13 +112,21 @@ fn find_theme<'a>(doc: &'a Document, name: &str) -> Option<Block<'a>> {
 /// `theme` + `mode` (`dark`/`light`) so a wireframe is a self-contained
 /// themed panel on any page, mirroring the terminal window.
 pub(crate) struct ThemeRoles {
+    /// Page background.
     pub bg: String,
+    /// Alternate surface background.
     pub bg_alt: String,
+    /// Inset surface background — code blocks and wells.
     pub bg_inset: String,
+    /// Overlay background, for menus and dialogs.
     pub overlay: String,
+    /// Border and rule colour.
     pub border: String,
+    /// Body text colour.
     pub fg: String,
+    /// Secondary text colour.
     pub fg_muted: String,
+    /// Accent colour, for links and highlights.
     pub accent: String,
 }
 
@@ -126,8 +136,11 @@ pub(crate) struct ThemeRoles {
 /// wireframe element.
 #[derive(Clone)]
 pub(crate) struct UiTheme {
+    /// Name of the selected theme.
     pub theme: String,
+    /// Accent colour, for links and highlights.
     pub accent: String,
+    /// Light or dark mode.
     pub mode: String,
 }
 

@@ -54,9 +54,13 @@ pub(crate) fn take_embed_error() -> Option<String> {
 // glyphs that the plain Noto mono lacks. The web terminal ships the woff2 form;
 // usvg/fontdb need raw sfnt. Loaded only into the SVG embed fontdb (native code
 // keeps Noto mono).
+/// Nerd Font faces, bundled so terminal recordings keep their glyphs
+/// in PDF output.
 const NERD_REGULAR: &[u8] =
     include_bytes!("../../assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf");
+/// Nerd Font bold.
 const NERD_BOLD: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf");
+/// Nerd Font italic.
 const NERD_ITALIC: &[u8] =
     include_bytes!("../../assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf");
 /// The Nerd Font's internal family name (shared with the terminal renderer,
@@ -70,15 +74,22 @@ const NERD_FAMILY: &str = crate::terminal::NERD_FONT_FAMILY;
 /// and images (`<image href="_wdoc/…">`) can be inlined at embed time, after
 /// their diagram has recorded its usage.
 pub(crate) struct SvgEmbedder<'a> {
+    /// Font database the SVG parser resolves text against.
     fontdb: Arc<fontdb::Database>,
+    /// Foreground colour substituted for `currentColor`.
     fg: String,
+    /// The site's CSS, applied while parsing.
     style_sheet: Option<String>,
+    /// Icons referenced from embedded SVG.
     icons: &'a IconRegistry,
+    /// Images referenced from embedded SVG.
     images: &'a ImageRegistry,
+    /// Tilesets referenced from embedded SVG.
     tilesets: &'a TilesetRegistry,
     /// Fill / stroke for diagram card boxes (the native replacement for each
     /// dropped `<foreignObject>`), themed from the site's light palette.
     card_fill: String,
+    /// Stroke colour for diagram card outlines.
     card_stroke: String,
 }
 
@@ -332,6 +343,7 @@ fn fix_zero_size(svg: String) -> String {
     format!("{fixed_root}{}", &svg[tag_end..])
 }
 
+/// Read an SVG's `viewBox` as `(min_x, min_y, width, height)`.
 pub(crate) fn parse_viewbox(svg: &str) -> Option<(f32, f32, f32, f32)> {
     let key = "viewBox=\"";
     let start = svg.find(key)? + key.len();
@@ -404,6 +416,7 @@ fn extract_svg(s: &str) -> Option<String> {
     None
 }
 
+/// Byte-substring search starting at `from`.
 fn find_from(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
     hay.get(from..)?
         .windows(needle.len())

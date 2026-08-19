@@ -22,15 +22,24 @@ use crate::walk;
 /// declaration we can point a client at.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum LocatedSymbol {
+    /// A type, interface or union name.
     Type(String),
+    /// A decorator name.
     Decorator(String),
+    /// A block kind, resolved to its declaring type.
     BlockKind(String),
+    /// A variant, qualified by the union that declares it.
     UnionVariant {
+        /// FQN of the declaring union.
         union: String,
+        /// The variant name.
         variant: String,
     },
+    /// A symbol, qualified by the set that declares it.
     SymbolEntry {
+        /// FQN of the declaring symbol set.
         set: String,
+        /// The symbol name.
         entry: String,
     },
     /// Top-level field. `name` is the FQN suitable for `SymbolIndex::lookup`.
@@ -38,7 +47,9 @@ pub(crate) enum LocatedSymbol {
     /// Local binding (function parameter or `let`). The declaration
     /// span is carried inline since `SymbolIndex` doesn't index locals.
     Local {
+        /// The bound name.
         name: String,
+        /// Where the binding is declared.
         decl_span: Span,
     },
 }
@@ -339,6 +350,8 @@ fn candidate_fqns(word: &str, doc: &Document) -> Vec<String> {
     out
 }
 
+/// Map an indexed declaration to the located-symbol shape, or `None`
+/// for kinds the client cannot be pointed at.
 fn classify(rec: &SymbolRecord) -> Option<LocatedSymbol> {
     match &rec.kind {
         SymbolKind::TypeDecl
@@ -364,6 +377,7 @@ fn classify(rec: &SymbolRecord) -> Option<LocatedSymbol> {
     }
 }
 
+/// The last segment of a dotted name.
 fn short_name(fqn: &str) -> &str {
     fqn.rsplit('.').next().unwrap_or(fqn)
 }

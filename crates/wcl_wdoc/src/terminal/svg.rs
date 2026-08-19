@@ -15,10 +15,16 @@ const CELL_W_RATIO: f64 = 0.6;
 pub(super) const BASELINE_RATIO: f64 = 0.78;
 
 // Style bit flags shared by the Rust emitter and the JS player.
+/// Style flags packed into one byte per run, so a run compares and
+/// copies cheaply while emitting.
 const F_BOLD: u8 = 1;
+/// Italic.
 const F_ITALIC: u8 = 1 << 1;
+/// Underline.
 const F_UNDERLINE: u8 = 1 << 2;
+/// Strikethrough.
 const F_STRIKE: u8 = 1 << 3;
+/// Blink.
 const F_BLINK: u8 = 1 << 4;
 
 /// A horizontal run of cells sharing fg / bg / flags. `fg`/`bg` are
@@ -27,10 +33,15 @@ const F_BLINK: u8 = 1 << 4;
 /// it) and bg `None` renders nothing (the terminal `<div>`'s `class`
 /// background shows through).
 pub(super) struct Run {
+    /// Column the run starts at.
     pub(super) col: usize,
+    /// The run text.
     pub(super) text: String,
+    /// Foreground colour; `None` means the terminal default.
     pub(super) fg: Option<(u8, u8, u8)>,
+    /// Background colour; `None` means the terminal default.
     pub(super) bg: Option<(u8, u8, u8)>,
+    /// Packed style flags.
     pub(super) flags: u8,
 }
 
@@ -38,8 +49,11 @@ pub(super) struct Run {
 /// the class system via `currentColor` / the `<div>` background) and
 /// the style flags the emitter / player need.
 struct Paint {
+    /// Resolved foreground; `None` means default.
     fg: Option<(u8, u8, u8)>,
+    /// Resolved background; `None` means default.
     bg: Option<(u8, u8, u8)>,
+    /// Packed style flags.
     flags: u8,
 }
 
@@ -113,20 +127,33 @@ pub(super) fn grid_to_runs(grid: &Grid, pal: &Palette) -> Vec<Vec<Run>> {
         .collect()
 }
 
+/// Pixel geometry of a rendered terminal: cell size, the grid it
+/// holds, and the chrome around it.
 pub(super) struct Geom {
+    /// Terminal width in cells.
     pub(super) cols: usize,
+    /// Terminal height in cells.
     pub(super) rows: usize,
+    /// Cell width in px.
     pub(super) cw: f64,
+    /// Cell height in px.
     pub(super) ch: f64,
+    /// Font size in px.
     pub(super) font_px: f64,
+    /// X of the grid origin, inside the chrome.
     pub(super) left: f64,
+    /// Y of the grid origin, below the chrome.
     pub(super) top: f64,
+    /// Height of the titlebar chrome.
     pub(super) chrome_h: f64,
+    /// Total SVG width.
     pub(super) width: f64,
+    /// Total SVG height.
     pub(super) height: f64,
 }
 
 impl Geom {
+    /// Compute the geometry for a grid of the given size.
     pub(super) fn new(
         cols: usize,
         rows: usize,
@@ -158,6 +185,7 @@ impl Geom {
     }
 }
 
+/// SVG presentation attributes for a run's style flags.
 fn run_attrs(flags: u8) -> String {
     let mut out = String::new();
     if flags & F_BOLD != 0 {
@@ -265,6 +293,7 @@ fn runs_to_svg(rows: &[Vec<Run>], g: &Geom, default_fg: Option<(u8, u8, u8)>) ->
     format!("{bgs}{fgs}")
 }
 
+/// Draw the cursor block, or nothing when the grid hides it.
 fn cursor_svg(grid: &Grid, g: &Geom, sc_fg: Option<(u8, u8, u8)>) -> String {
     // The HTML path styles `.term-cursor` via CSS (`fill: currentColor;
     // opacity: 0.65`); the self-contained PDF path has no CSS, so bake the

@@ -115,6 +115,7 @@ fn expand_to_full_lines(source: &str, range: Range) -> Range {
     }
 }
 
+/// Build one quick-fix action that replaces `range` with `new_text`.
 fn make_action(
     title: String,
     uri: &Url,

@@ -215,6 +215,7 @@ mod read {
         present(map, at.field).ok_or(ContentError::MissingField { at })
     }
 
+    /// Read a value as a string, reporting `at` when it is not one.
     pub(super) fn as_string(value: &Value, at: At) -> Result<String, ContentError> {
         match value {
             Value::Utf8(s) | Value::Ascii(s) => Ok(s.clone()),
@@ -252,6 +253,7 @@ mod read {
         }
     }
 
+    /// Read a value as a bool, reporting `at` when it is not one.
     pub(super) fn as_bool(value: &Value, at: At) -> Result<bool, ContentError> {
         match value {
             Value::Bool(b) => Ok(*b),
@@ -262,6 +264,7 @@ mod read {
         }
     }
 
+    /// Read a value as an `f64`, reporting `at` when it is not numeric.
     pub(super) fn as_f64(value: &Value, at: At) -> Result<f64, ContentError> {
         float(value).ok_or(ContentError::FieldType {
             at,

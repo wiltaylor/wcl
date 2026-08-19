@@ -39,11 +39,16 @@ pub(crate) struct ImageEntry {
 /// Lazily-populated registry of referenced images. Keyed by the raw
 /// `source` string so repeat references share one copied file.
 pub(crate) struct ImageRegistry {
+    /// Directory relative sources resolve against. `None` when the
+    /// document was opened without one.
     base_dir: Option<PathBuf>,
+    /// Resolved entries by source, so one image referenced twice is read
+    /// and copied once.
     entries: RefCell<BTreeMap<String, ImageEntry>>,
 }
 
 impl ImageRegistry {
+    /// An empty registry resolving relative sources against `base_dir`.
     pub(crate) fn new(base_dir: Option<PathBuf>) -> Self {
         ImageRegistry {
             base_dir,
@@ -79,6 +84,8 @@ impl ImageRegistry {
         std::fs::read(entry.src_path.as_ref()?).ok()
     }
 
+    /// Resolve one image: read it, measure it, and decide its output
+    /// path.
     fn build_entry(&self, source: &str) -> ImageEntry {
         if is_external(source) {
             return ImageEntry {

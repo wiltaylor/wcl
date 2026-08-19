@@ -39,8 +39,11 @@ const MAX_DEPTH: usize = 8;
 /// native block on a target it doesn't cover.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Backend {
+    /// The HTML site renderer.
     Html,
+    /// The PDF renderer.
     Pdf,
+    /// The Markdown renderer.
     Markdown,
 }
 
@@ -56,7 +59,11 @@ impl Backend {
     }
 }
 
+/// One site's inline-markup rules, plus the link context needed to
+/// resolve `[text](target)` against that site's pages.
 pub(crate) struct InlinePatterns {
+    /// The patterns, in declaration order — the first match at a
+    /// position wins.
     compiled: Vec<CompiledPattern>,
     /// Named structured styles, rendered once per site rather than resolving
     /// and re-rendering their blocks for every page template invocation.
@@ -69,12 +76,15 @@ pub(crate) struct InlinePatterns {
     /// site) and its output prefix this build (`""` at the root, else
     /// `"<name>/"`), used to resolve `[text](site:page)` cross-site links.
     current_site: Option<String>,
+    /// URL prefix of the current site (`""` at the root, else
+    /// `"<name>/"`).
     current_prefix: String,
     /// Every declared site → its page-name set, and → its URL prefix in
     /// the full layout (`""` for the root site, else `"<name>/"`). A
     /// `site:page` link validates against these and builds a relative
     /// href from `current_prefix` to the target.
     site_pages: BTreeMap<String, HashSet<String>>,
+    /// Every site → its URL prefix, for building cross-site hrefs.
     site_prefix: BTreeMap<String, String>,
     /// Bare hrefs that didn't match a known page during rendering.
     /// Build collects these after the page loop and turns them
@@ -122,15 +132,23 @@ pub(crate) struct InlinePatterns {
     /// `InlinePatterns` (shared, immutably borrowed across sites) still tracks
     /// which site it is currently emitting.
     backend: Backend,
+    /// Site currently being emitted, for the visibility predicate.
+    /// `RefCell` because the PDF renderer shares one `InlinePatterns`
+    /// immutably across sites.
     vis_site: RefCell<Option<String>>,
+    /// Template currently being emitted, for the visibility predicate.
     vis_template: RefCell<Option<String>>,
 }
 
+/// One inline-markup rule: the regex that recognises it and the WCL
+/// function that turns a match into a span value.
 struct CompiledPattern {
+    /// Pattern that recognises the markup.
     regex: Regex,
     /// Skip matches touching a word character on either side (the
     /// `boundary = true` block field) — intraword `_` stays literal.
     boundary: bool,
+    /// Function mapping the captures to a span value.
     to_span: FnValue,
 }
 
@@ -138,9 +156,13 @@ struct CompiledPattern {
 /// [`InlinePatterns::find_next`]: the match byte range, the index of the
 /// winning compiled pattern, and its capture-group strings.
 struct Match {
+    /// Byte offset where the match begins.
     start: usize,
+    /// Byte offset one past its end.
     end: usize,
+    /// Index of the winning pattern.
     pat_idx: usize,
+    /// Capture-group strings, group 1 first.
     caps: Vec<String>,
 }
 
@@ -149,7 +171,10 @@ struct Match {
 /// the depth at which it was found, so each backend can recurse into the
 /// span's text fields at the right level.
 enum InlineToken<'a> {
+    /// A run of text no pattern matched.
     Literal(&'a str),
+    /// A matched span value, with the depth it was found at so a backend
+    /// recurses into its text fields at the right level.
     Span(&'a Value, usize),
 }
 
@@ -334,6 +359,8 @@ impl InlinePatterns {
         self.render_inner(doc, text, 0)
     }
 
+    /// Render inline markup to HTML, bounded by `depth` so a pattern
+    /// that re-emits its own syntax cannot recurse forever.
     fn render_inner(&self, doc: &Document, text: &str, depth: usize) -> String {
         let mut out = String::new();
         self.tokenize(doc, text, depth, |tok| match tok {
@@ -479,6 +506,7 @@ impl InlinePatterns {
         out
     }
 
+    /// Render inline markup to PDF runs, with the same depth bound.
     fn runs_inner(
         &self,
         doc: &Document,
@@ -493,6 +521,7 @@ impl InlinePatterns {
         });
     }
 
+    /// Render one matched span value as PDF runs.
     fn runs_variant(
         &self,
         doc: &Document,
@@ -549,6 +578,7 @@ impl InlinePatterns {
         }
     }
 
+    /// Render one matched span value as HTML, dispatching on its variant.
     fn render_variant(&self, doc: &Document, value: &Value, depth: usize) -> String {
         let Value::Variant {
             variant, payload, ..
@@ -579,6 +609,7 @@ impl InlinePatterns {
             .unwrap_or_else(|| escape_html(&format!(":{name}:")))
     }
 
+    /// Render a plain styled span as HTML.
     fn render_plain(&self, doc: &Document, map: &BTreeMap<String, Value>, depth: usize) -> String {
         let text = map_utf8(map, "text").unwrap_or_default();
         // A code span is verbatim: emit its contents html-escaped without
@@ -596,6 +627,8 @@ impl InlinePatterns {
         out
     }
 
+    /// Render a link span, resolving a bare target against the current
+    /// site's pages and recording it when nothing matches.
     fn render_link(&self, doc: &Document, map: &BTreeMap<String, Value>, depth: usize) -> String {
         let text = map_utf8(map, "text").unwrap_or_default();
         let href = map_utf8(map, "href").unwrap_or_default();
@@ -672,6 +705,7 @@ impl InlinePatterns {
         self.markdown_inner(doc, text, 0)
     }
 
+    /// Render inline markup to Markdown, with the same depth bound.
     fn markdown_inner(&self, doc: &Document, text: &str, depth: usize) -> String {
         let mut out = String::new();
         self.tokenize(doc, text, depth, |tok| match tok {
@@ -681,6 +715,7 @@ impl InlinePatterns {
         out
     }
 
+    /// Render one matched span value as Markdown.
     fn markdown_variant(&self, doc: &Document, value: &Value, depth: usize) -> String {
         let Value::Variant {
             variant, payload, ..
@@ -822,6 +857,8 @@ fn md_code_span(code: &str) -> String {
     format!("{fence}{pad}{code}{pad}{fence}")
 }
 
+/// Whether an href leaves the site — a scheme, a protocol-relative
+/// prefix, or a mail link.
 fn is_external_href(href: &str) -> bool {
     if href.starts_with('#') || href.starts_with('/') {
         return true;
@@ -840,6 +877,7 @@ fn is_external_href(href: &str) -> bool {
     false
 }
 
+/// Read a `utf8` entry out of a span record.
 fn map_utf8(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
     match map.get(name)? {
         Value::Utf8(s) | Value::Ascii(s) => Some(s.clone()),
@@ -847,6 +885,7 @@ fn map_utf8(map: &BTreeMap<String, Value>, name: &str) -> Option<String> {
     }
 }
 
+/// Build the `class="…"` attribute from a span record's classes.
 fn class_attr(map: &BTreeMap<String, Value>) -> String {
     let names = class_list(map);
     if names.is_empty() {

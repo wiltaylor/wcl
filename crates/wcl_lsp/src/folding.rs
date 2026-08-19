@@ -21,6 +21,8 @@ pub(crate) fn compute(source: &str, uri: &str) -> Vec<FoldingRange> {
     out
 }
 
+/// Collect a folding range for every multi-line item, recursing into
+/// block bodies.
 fn walk_items(items: &[Item], source: &str, out: &mut Vec<FoldingRange>) {
     for item in items {
         match item {

@@ -30,6 +30,7 @@ const HEADER_HEIGHT: f64 = 28.0;
 /// Radius of a per-row connection-point marker.
 const PORT_R: f64 = 3.0;
 
+/// A table row's height, from its declared field or the default.
 fn row_height(block: &Block<'_>) -> f64 {
     field_f64(block, "row_height").unwrap_or(ROW_HEIGHT)
 }

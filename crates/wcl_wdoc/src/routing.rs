@@ -18,13 +18,18 @@ use std::collections::{BinaryHeap, HashMap};
 /// Side of a shape's bounding box that an anchor sits on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Side {
+    /// The top edge.
     North,
+    /// The right edge.
     East,
+    /// The bottom edge.
     South,
+    /// The left edge.
     West,
 }
 
 impl Side {
+    /// Parse an author-written anchor symbol (`:north`, …).
     pub(crate) fn from_symbol(s: &str) -> Option<Side> {
         match s {
             "north" => Some(Side::North),
@@ -49,15 +54,25 @@ impl Side {
 /// An obstacle bounding box in SVG coords.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Obstacle {
+    /// Left edge in SVG coordinates.
     pub x: f64,
+    /// Top edge in SVG coordinates.
     pub y: f64,
+    /// Width in SVG units.
     pub w: f64,
+    /// Height in SVG units.
     pub h: f64,
 }
 
+/// Routing grid pitch in SVG units. Coarser means faster search
+/// and blockier routes.
 const CELL: f64 = 10.0;
+/// Clearance kept around each obstacle, in SVG units.
 const PAD: f64 = 4.0;
-const TURN_PENALTY: i32 = 5; // multiplied by 10 with straight-step cost to favor straight runs
+/// Extra cost charged when a route changes direction. Multiplied by
+/// ten against the straight-step cost, which is what makes the search
+/// prefer long straight runs over shorter zigzags.
+const TURN_PENALTY: i32 = 5;
 /// Extra per-cell cost for routing a cell that sits on a *visible*
 /// container border line. A run *along* a border pays this every cell
 /// (so it's strongly avoided), while a perpendicular *crossing* pays it
@@ -158,21 +173,33 @@ fn grid_dims(
 // ── A* search ──────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+/// One cell of the routing grid, in grid coordinates.
 struct Cell {
+    /// Column index.
     x: i32,
+    /// Row index.
     y: i32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+/// A search node: a cell plus the direction it was entered from, so
+/// the turn penalty can be charged when the direction changes.
 struct Node {
+    /// The grid cell.
     cell: Cell,
+    /// Unit direction of travel into this cell.
     dir: (i32, i32),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+/// An entry in the A* open set. `Ord` is reversed so `BinaryHeap`
+/// yields the lowest `f` first.
 struct OpenEntry {
+    /// Estimated total cost: `g` plus the heuristic.
     f: i32,
+    /// Cost accumulated so far.
     g: i32,
+    /// The node this entry stands for.
     node: Node,
 }
 
@@ -189,6 +216,8 @@ impl PartialOrd for OpenEntry {
 }
 
 #[allow(clippy::too_many_arguments)] // internal pathfinder; bundling these obscures more than it helps
+/// Find a low-cost orthogonal route between two points, avoiding the
+/// blocked cells and preferring straight runs.
 fn astar_route(
     src: (f64, f64),
     src_side: Side,
@@ -330,6 +359,8 @@ fn astar_route(
     None
 }
 
+/// Rasterise the obstacles into a blocked-cell bitmap, dilated by
+/// `pad` so routes keep their distance.
 fn build_blocked_grid(obstacles: &[Obstacle], gw: i32, gh: i32, pad: f64) -> Vec<bool> {
     let mut grid = vec![false; (gw * gh) as usize];
     for o in obstacles {
@@ -351,6 +382,7 @@ fn build_blocked_grid(obstacles: &[Obstacle], gw: i32, gh: i32, pad: f64) -> Vec
     grid
 }
 
+/// Mark one cell blocked or clear, ignoring out-of-range cells.
 fn set_blocked(grid: &mut [bool], gw: i32, c: Cell, v: bool) {
     if c.x < 0 || c.y < 0 {
         return;
@@ -361,6 +393,8 @@ fn set_blocked(grid: &mut [bool], gw: i32, c: Cell, v: bool) {
     }
 }
 
+/// Whether a cell is blocked. Out-of-range cells read as blocked, so
+/// the search cannot leave the grid.
 fn is_blocked(grid: &[bool], gw: i32, c: Cell) -> bool {
     grid.get((c.y * gw + c.x) as usize).copied().unwrap_or(true)
 }
@@ -390,6 +424,7 @@ fn on_border(px: f64, py: f64, (x, y, w, h): (f64, f64, f64, f64)) -> bool {
     on_vert || on_horiz
 }
 
+/// Round an SVG point to the nearest grid cell.
 fn snap(p: (f64, f64)) -> Cell {
     Cell {
         x: (p.0 / CELL).round() as i32,
@@ -397,10 +432,13 @@ fn snap(p: (f64, f64)) -> Cell {
     }
 }
 
+/// The A* heuristic: grid distance, which never overestimates for
+/// orthogonal movement.
 fn manhattan(a: Cell, b: Cell) -> i32 {
     (a.x - b.x).abs() + (a.y - b.y).abs()
 }
 
+/// Walk the came-from map back to the start, yielding the path.
 fn reconstruct(
     came_from: &HashMap<Node, Node>,
     end: Node,
@@ -423,6 +461,8 @@ fn reconstruct(
     snap_endpoints(pts, src, src_side, dst, dst_side)
 }
 
+/// Convert a cell path to SVG points, collapsing collinear runs so
+/// the polyline carries only its corners.
 fn cells_to_polyline(cells: &[Cell]) -> Vec<(f64, f64)> {
     if cells.is_empty() {
         return Vec::new();
@@ -525,6 +565,7 @@ fn simplify_collinear(pts: &mut Vec<(f64, f64)>) {
     }
 }
 
+/// Whether a segment is neither horizontal nor vertical.
 fn diagonal(a: (f64, f64), b: (f64, f64)) -> bool {
     (a.0 - b.0).abs() > 1e-6 && (a.1 - b.1).abs() > 1e-6
 }
@@ -560,6 +601,7 @@ fn corner_before(prev: (f64, f64), dst: (f64, f64), dst_side: Side) -> (f64, f64
 /// edges that should be left aligned).
 #[derive(Clone)]
 pub(crate) struct EdgePath {
+    /// The routed polyline, corner to corner.
     pub points: Vec<(f64, f64)>,
 }
 

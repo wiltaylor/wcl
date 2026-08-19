@@ -14,13 +14,21 @@ use std::sync::OnceLock;
 use regex::Regex;
 
 #[derive(Default)]
+/// Running heading state for one page: the slugs already taken, and
+/// the section counters that produce heading numbers.
 pub(crate) struct HeadingSequence {
+    /// Slug → how many times it has been claimed, so a repeat gets a
+    /// suffix rather than a duplicate id.
     used: HashMap<String, u32>,
+    /// Current level-2 section number.
     h2: u32,
+    /// Current level-3 section number.
     h3: u32,
 }
 
 impl HeadingSequence {
+    /// A unique element id for a heading: the author's when they gave
+    /// one, else a slug of the title, suffixed if already taken.
     pub(crate) fn id(&mut self, title: &str, existing: Option<&str>) -> String {
         if let Some(existing) = existing {
             return existing.to_string();
@@ -35,6 +43,8 @@ impl HeadingSequence {
         }
     }
 
+    /// Advance the counters and return the section number for a heading
+    /// at this level.
     pub(crate) fn number(&mut self, level: u8) -> Option<String> {
         match level {
             2 => {
@@ -54,6 +64,7 @@ impl HeadingSequence {
     }
 }
 
+/// Matches an emitted heading tag.
 fn heading_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
@@ -62,6 +73,8 @@ fn heading_re() -> &'static Regex {
     })
 }
 
+/// Strip markup, leaving the text — the search index body and the
+/// fallback page title.
 pub(crate) fn plain_text(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut in_tag = false;
@@ -82,6 +95,7 @@ pub(crate) fn plain_text(html: &str) -> String {
         .to_string()
 }
 
+/// Slugify heading text into an id-safe form.
 pub(crate) fn heading_slug(text: &str) -> String {
     let mut slug = String::with_capacity(text.len());
     let mut prev_dash = false;
@@ -102,6 +116,7 @@ pub(crate) fn heading_slug(text: &str) -> String {
     }
 }
 
+/// Rewrite a page's headings to carry unique ids and section numbers.
 pub(crate) fn process_page_headings(content: &str, state: &mut HeadingSequence) -> String {
     let mut out = String::with_capacity(content.len());
     let mut last = 0;
@@ -126,11 +141,14 @@ pub(crate) fn process_page_headings(content: &str, state: &mut HeadingSequence) 
     out
 }
 
+/// Matches an emitted footnote definition.
 fn footnote_def_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r#"id="fn-([a-zA-Z0-9_-]+)""#).expect("valid footnote regex"))
 }
 
+/// Collect footnote definitions and re-emit them together at the end
+/// of the page, numbered in reference order.
 pub(crate) fn process_footnotes(content: &str) -> String {
     let mut order = Vec::new();
     for cap in footnote_def_re().captures_iter(content) {

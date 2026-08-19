@@ -49,10 +49,13 @@ const EVERY_BACKEND: &[Backend] = &[Html, Pdf, Markdown];
 
 /// One natively-rendered block kind and the backends that implement it.
 struct NativeKind {
+    /// The block kind this entry covers.
     kind: &'static str,
+    /// Backends that can render it.
     backends: &'static [Backend],
 }
 
+/// A native kind every backend covers.
 const fn every(kind: &'static str) -> NativeKind {
     NativeKind {
         kind,
@@ -262,6 +265,7 @@ fn block_kind(decl: &TypeDecl<'_>) -> Option<String> {
     })
 }
 
+/// Build a diagnostic pointing at a native declaration.
 fn error_at(decl: &TypeDecl<'_>, msg: String) -> Report {
     let span = decl.span();
     miette::miette!(
@@ -460,6 +464,8 @@ fn is_wdoc_ns(decl: &TypeDecl<'_>) -> bool {
     decl.file_ns() == ["wdoc".to_string()]
 }
 
+/// Render a backend list as the symbols an author would write, for
+/// use in a diagnostic.
 fn symbols(backends: &[Backend]) -> String {
     backends
         .iter()

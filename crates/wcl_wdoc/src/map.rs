@@ -246,6 +246,7 @@ fn render_pin_card(pin: &Block<'_>, ctx: RenderCtx<'_>) -> Option<String> {
     ))
 }
 
+/// Join class names into one space-separated attribute value.
 fn join_classes(classes: &[String]) -> String {
     classes
         .iter()

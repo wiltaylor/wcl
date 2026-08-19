@@ -42,6 +42,8 @@ const BUILTIN_TYPES: &[&str] = &[
     "f32", "f64", "utf8", "ascii", "utf16", "utf32",
 ];
 
+/// Completion items for the cursor position: decorators after an
+/// `@`, otherwise the type names in scope.
 pub(crate) fn completions(
     source: &str,
     uri: &str,
@@ -83,6 +85,8 @@ pub(crate) fn completions(
     }
 }
 
+/// Completion items for decorator names, filtered to those whose
+/// `@applies_to` admits the syntactic position under the cursor.
 fn decorator_items(
     local_doc: Option<&Document>,
     root_doc: Option<&Document>,
@@ -125,6 +129,8 @@ fn decorator_context(source: &str, uri: &str, offset: usize) -> Option<walk::Dec
     walk::decorator_target_after(&ast.items, trigger)
 }
 
+/// Completion items for every type, union, interface and symbol set
+/// in scope, taken from the open buffer and the root document.
 fn type_items(local_doc: Option<&Document>, root_doc: Option<&Document>) -> Vec<CompletionItem> {
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();

@@ -21,17 +21,25 @@ use crate::render::{
     field_utf8, field_utf8_list, map_utf8,
 };
 
+/// Abbreviated month names used on axis labels.
 const MON: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
 #[derive(Clone, Copy, PartialEq)]
+/// The granularity a timeline axis is stepped in.
 enum Unit {
+    /// Minute granularity.
     Minutes,
+    /// Hour granularity.
     Hours,
+    /// Day granularity.
     Days,
+    /// Week granularity.
     Weeks,
+    /// Month granularity.
     Months,
+    /// Year granularity.
     Years,
 }
 
@@ -346,6 +354,7 @@ fn variant(v: &Value) -> Option<(&str, &BTreeMap<String, Value>)> {
     }
 }
 
+/// Read a symbol entry out of a record, without its leading colon.
 fn map_symbol(m: &BTreeMap<String, Value>, k: &str) -> Option<String> {
     match m.get(k) {
         Some(Value::Symbol(s)) => Some(s.clone()),
@@ -392,6 +401,7 @@ fn parse_stamp(s: &str) -> Option<f64> {
     Some(dt_scalar(&PrimitiveDateTime::new(date, time)))
 }
 
+/// Project a datetime onto the seconds scale the axis is laid out in.
 fn dt_scalar(dt: &PrimitiveDateTime) -> f64 {
     dt.date().to_julian_day() as f64 * 86400.0
         + dt.hour() as f64 * 3600.0
@@ -399,6 +409,7 @@ fn dt_scalar(dt: &PrimitiveDateTime) -> f64 {
         + dt.second() as f64
 }
 
+/// Invert [`dt_scalar`], or `None` when the value is out of range.
 fn scalar_to_dt(s: f64) -> Option<PrimitiveDateTime> {
     let jd = (s / 86400.0).floor();
     let rem = s - jd * 86400.0;
@@ -438,6 +449,8 @@ fn unit_of(block: &Block<'_>, span_secs: f64) -> Unit {
     }
 }
 
+/// Nominal length of one unit in seconds. Approximate for months and
+/// years, which is fine — it is only used to choose a step size.
 fn unit_secs(u: Unit) -> f64 {
     match u {
         Unit::Minutes => 60.0,
@@ -488,6 +501,8 @@ fn ticks(lo: f64, hi: f64, u: Unit, every: i64) -> Vec<(f64, String)> {
     out
 }
 
+/// Round a datetime down to a unit boundary, so ticks land on round
+/// numbers.
 fn floor_to_unit(dt: &PrimitiveDateTime, u: Unit) -> PrimitiveDateTime {
     let (d, t) = (dt.date(), dt.time());
     let mid = |date: Date| PrimitiveDateTime::new(date, Time::MIDNIGHT);
@@ -509,6 +524,7 @@ fn floor_to_unit(dt: &PrimitiveDateTime, u: Unit) -> PrimitiveDateTime {
     }
 }
 
+/// Advance a datetime by `every` units.
 fn step(dt: &PrimitiveDateTime, u: Unit, every: i64) -> PrimitiveDateTime {
     match u {
         Unit::Minutes => *dt + Duration::minutes(every),
@@ -520,6 +536,7 @@ fn step(dt: &PrimitiveDateTime, u: Unit, every: i64) -> PrimitiveDateTime {
     }
 }
 
+/// Add months, clamping the day when the target month is shorter.
 fn add_months(dt: &PrimitiveDateTime, n: i64) -> PrimitiveDateTime {
     let total = dt.year() as i64 * 12 + (u8::from(dt.month()) as i64 - 1) + n;
     let ny = total.div_euclid(12) as i32;
@@ -530,10 +547,12 @@ fn add_months(dt: &PrimitiveDateTime, n: i64) -> PrimitiveDateTime {
     PrimitiveDateTime::new(date, dt.time())
 }
 
+/// Whether a year is a leap year.
 fn is_leap(y: i32) -> bool {
     (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
 }
 
+/// Days in a given month.
 fn days_in(y: i32, m: u8) -> u8 {
     match m {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
@@ -549,6 +568,7 @@ fn days_in(y: i32, m: u8) -> u8 {
     }
 }
 
+/// Format an axis tick at the given granularity.
 fn tick_label(dt: &PrimitiveDateTime, u: Unit) -> String {
     let mon = MON[(u8::from(dt.month()) as usize).saturating_sub(1).min(11)];
     match u {

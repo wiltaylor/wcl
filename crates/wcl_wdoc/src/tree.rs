@@ -41,10 +41,12 @@ const MAX_TREE_DEPTH: usize = 64;
 /// Shared class attribute for every connector guide line.
 const GUIDE_CLS: &str = " class=\"wdoc-tree-guide\"";
 
+/// A tree row's height, from its declared field or the default.
 fn row_height(block: &Block<'_>) -> f64 {
     field_f64(block, "row_height").unwrap_or(ROW_HEIGHT)
 }
 
+/// Horizontal indent applied per nesting level.
 fn indent(block: &Block<'_>) -> f64 {
     field_f64(block, "indent").unwrap_or(INDENT)
 }
@@ -76,6 +78,9 @@ fn flatten<'a>(block: &Block<'a>) -> Vec<(Block<'a>, Vec<bool>)> {
     out
 }
 
+/// Flatten a node tree to rows, carrying for each the "is last child"
+/// flags of its ancestors — which is what lets the emitter draw the
+/// connecting rules.
 fn walk<'a>(nodes: Vec<Block<'a>>, parent: Vec<bool>, out: &mut Vec<(Block<'a>, Vec<bool>)>) {
     if parent.len() >= MAX_TREE_DEPTH {
         return;

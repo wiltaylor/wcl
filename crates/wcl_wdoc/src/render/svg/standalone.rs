@@ -23,9 +23,11 @@ pub(crate) const DEFAULT_SVG_WIDTH: f64 = 640.0;
 pub(crate) struct SvgFrame<'a> {
     /// Absent ⇒ [`DEFAULT_SVG_WIDTH`].
     pub width: Option<f64>,
+    /// Declared height, or `None` to size to content.
     pub height: Option<f64>,
     /// A pre-built ` class="…"` attribute; empty for none.
     pub class_attr: &'a str,
+    /// Element id, when the block declares one.
     pub id: Option<&'a str>,
     /// The accessible name (`role="img"` + `aria-label` + `<title>`).
     pub desc: Option<&'a str>,

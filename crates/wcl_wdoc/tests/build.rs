@@ -1,3 +1,5 @@
+//! Integration tests for the HTML site build.
+
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;

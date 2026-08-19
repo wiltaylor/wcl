@@ -42,19 +42,27 @@ struct TilesetConfig {
     out_file: String,
     /// Absolute / relative path to the source image on disk.
     src_path: PathBuf,
+    /// Tile width in px.
     tile_w: i64,
+    /// Tile height in px.
     tile_h: i64,
     /// Tiles per sheet row, used to turn a flat index into a source
     /// (col, row). Resolved to a positive value at load.
     columns: i64,
+    /// Border between the sheet edge and the first tile.
     margin: i64,
+    /// Gap between adjacent tiles.
     spacing: i64,
     /// Sheet pixel dimensions, needed to size the inner `<image>`.
     img_w: i64,
+    /// Source image height in px, for index-to-row arithmetic.
     img_h: i64,
 }
 
+/// Every tileset a document declares, plus which were used — only
+/// those ship with the site.
 pub(crate) struct TilesetRegistry {
+    /// Declared tilesets, by name.
     sets: HashMap<String, TilesetConfig>,
     /// Names of tilesets referenced by a rendered tilemap. Only these
     /// images are copied into `_wdoc/`.
@@ -166,6 +174,7 @@ impl TilesetRegistry {
         })
     }
 
+    /// Note that a tileset was used.
     fn record(&self, name: &str) {
         self.used.borrow_mut().insert(name.to_string());
     }
@@ -411,6 +420,7 @@ fn read_i64_grid(block: &Block<'_>, name: &str) -> Vec<Vec<i64>> {
         .collect()
 }
 
+/// Read a value as an `i64`.
 fn as_i64(v: &Value) -> Option<i64> {
     match v {
         Value::I64(n) => Some(*n),
@@ -430,6 +440,7 @@ pub(crate) fn image_dims(b: &[u8]) -> Option<(u32, u32)> {
     png_dims(b).or_else(|| gif_dims(b)).or_else(|| jpeg_dims(b))
 }
 
+/// Read a PNG's dimensions from its IHDR chunk.
 fn png_dims(b: &[u8]) -> Option<(u32, u32)> {
     const SIG: &[u8] = b"\x89PNG\r\n\x1a\n";
     if b.len() < 24 || &b[..8] != SIG {
@@ -441,6 +452,7 @@ fn png_dims(b: &[u8]) -> Option<(u32, u32)> {
     Some((w, h))
 }
 
+/// Read a GIF's dimensions from its logical screen descriptor.
 fn gif_dims(b: &[u8]) -> Option<(u32, u32)> {
     if b.len() < 10 || (&b[..6] != b"GIF87a" && &b[..6] != b"GIF89a") {
         return None;
@@ -450,6 +462,7 @@ fn gif_dims(b: &[u8]) -> Option<(u32, u32)> {
     Some((w, h))
 }
 
+/// Read a JPEG's dimensions by scanning to its first frame header.
 fn jpeg_dims(b: &[u8]) -> Option<(u32, u32)> {
     if b.len() < 4 || b[0] != 0xFF || b[1] != 0xD8 {
         return None;

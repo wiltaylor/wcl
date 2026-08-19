@@ -7,6 +7,7 @@
 //! `wcl wdoc build` / `pdf` / `markdown` (and drives its own dev server for
 //! `wcl wdoc serve`).
 
+/// Site building: the HTML backend and the build entry points.
 pub mod build;
 mod card;
 pub mod content;

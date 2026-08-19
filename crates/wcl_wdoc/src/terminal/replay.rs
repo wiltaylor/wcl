@@ -15,6 +15,7 @@ use crate::render::{escape_html, field_bool, field_f64};
 /// are coalesced into one frame so a busy recording stays small.
 const MIN_FRAME_DT: f64 = 1.0 / 30.0;
 
+/// Map the VT emulator's colour type onto this crate's.
 fn avt_color(c: avt::Color) -> Color {
     match c {
         avt::Color::Indexed(i) => Color::Indexed(i),
@@ -68,14 +69,19 @@ pub(super) fn populate_inline(cols: usize, rows: usize, text: &str) -> Grid {
 
 /// One replay frame: its start time (ms) and the screen at that point.
 pub(super) struct Frame {
+    /// When this frame starts, in ms from the recording start.
     pub(super) t_ms: u32,
+    /// The screen at that moment.
     pub(super) grid: Grid,
 }
 
 /// Parsed asciicast: the terminal size plus the replay frames.
 pub(super) struct Cast {
+    /// Terminal width in cells.
     pub(super) cols: usize,
+    /// Terminal height in cells.
     pub(super) rows: usize,
+    /// Coalesced frames, in time order.
     pub(super) frames: Vec<Frame>,
 }
 
@@ -152,6 +158,7 @@ pub(super) fn parse_cast(src: &str, def_cols: usize, def_rows: usize) -> Cast {
     Cast { cols, rows, frames }
 }
 
+/// Serialize one run into the compact array the player expects.
 fn run_to_json(run: &Run) -> serde_json::Value {
     serde_json::json!([
         run.col,
@@ -162,6 +169,7 @@ fn run_to_json(run: &Run) -> serde_json::Value {
     ])
 }
 
+/// Serialize one frame into its player representation.
 fn frame_to_json(frame: &Frame, pal: &Palette) -> serde_json::Value {
     let rows: Vec<serde_json::Value> = grid_to_runs(&frame.grid, pal)
         .iter()
@@ -176,6 +184,8 @@ fn frame_to_json(frame: &Frame, pal: &Palette) -> serde_json::Value {
     serde_json::Value::Object(obj)
 }
 
+/// Serialize the whole recording as the JSON payload embedded beside
+/// the SVG for the player to drive.
 fn frames_json(cast: &Cast, pal: &Palette, g: &Geom, opts: &Opts) -> String {
     let frames: Vec<serde_json::Value> =
         cast.frames.iter().map(|f| frame_to_json(f, pal)).collect();
@@ -195,13 +205,19 @@ fn frames_json(cast: &Cast, pal: &Palette, g: &Geom, opts: &Opts) -> String {
     payload.to_string()
 }
 
+/// Playback options read from the `terminal` block.
 struct Opts {
+    /// Start playing without user interaction.
     autoplay: bool,
+    /// Restart when the recording ends.
     loop_: bool,
+    /// Playback rate multiplier.
     speed: f64,
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Render a recording as a static first frame plus the JSON payload
+/// the player animates.
 pub(super) fn render_replay(
     block: &Block<'_>,
     base_dir: Option<&Path>,

@@ -84,12 +84,19 @@ struct VideoEntry {
 /// Mirrors [`crate::image::ImageRegistry`] but carries no natural
 /// dimensions (a video's size is the browser's concern).
 pub(crate) struct VideoRegistry {
+    /// Directory relative sources resolve against. `None` when the
+    /// document was opened without one.
     base_dir: Option<PathBuf>,
+    /// Resolved entries by source, so one video referenced twice is read
+    /// and copied once.
     entries: RefCell<BTreeMap<String, VideoEntry>>,
+    /// Set once any video is placed, so the player script ships only when
+    /// something needs it.
     used: Cell<bool>,
 }
 
 impl VideoRegistry {
+    /// An empty registry resolving relative sources against `base_dir`.
     pub(crate) fn new(base_dir: Option<PathBuf>) -> Self {
         VideoRegistry {
             base_dir,
@@ -116,6 +123,7 @@ impl VideoRegistry {
         url
     }
 
+    /// Resolve one video and decide its output path under `prefix`.
     fn build_entry(&self, source: &str, prefix: &str) -> VideoEntry {
         if is_external(source) {
             return VideoEntry {
@@ -172,12 +180,19 @@ impl VideoRegistry {
 /// The target-neutral video payload borrowed from a [`crate::content::Content`]
 /// node for the HTML backend's facade renderer.
 pub(crate) struct VideoPayload<'a> {
+    /// The video source, as written.
     pub source: &'a str,
+    /// Poster image shown before playback.
     pub poster: Option<&'a str>,
+    /// Accessible title.
     pub title: Option<&'a str>,
+    /// Display width, or `None` for the intrinsic size.
     pub width: Option<f64>,
+    /// Display height, or `None` for the intrinsic size.
     pub height: Option<f64>,
+    /// Element id, when the block declares one.
     pub id: Option<&'a str>,
+    /// Extra classes for the element.
     pub class: &'a [String],
 }
 

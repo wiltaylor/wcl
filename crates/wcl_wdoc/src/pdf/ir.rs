@@ -21,8 +21,11 @@ pub(crate) enum FontFamily {
 /// The styling of an inline text run.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TextStyle {
+    /// Which font family the run is set in.
     pub family: FontFamily,
+    /// Whether the run is bold.
     pub bold: bool,
+    /// Whether the run is italic.
     pub italic: bool,
 }
 
@@ -61,18 +64,33 @@ impl TextStyle {
 #[derive(Clone, Debug)]
 pub(crate) enum InlineRun {
     /// Styled text.
-    Text { text: String, style: TextStyle },
+    Text {
+        /// The run text.
+        text: String,
+        /// How it is set.
+        style: TextStyle,
+    },
     /// A hyperlink wrapping styled child runs.
-    Link { runs: Vec<InlineRun>, href: String },
+    Link {
+        /// The wrapped child runs.
+        runs: Vec<InlineRun>,
+        /// Link target.
+        href: String,
+    },
     /// An inline SVG object (icon or equation) carried as a standalone SVG
     /// string, embedded and overlaid in the text flow by the layout pass.
-    Object { svg: String },
+    Object {
+        /// The standalone SVG string.
+        svg: String,
+    },
 }
 
 /// A syntax-highlighted token within a code line.
 #[derive(Clone, Debug)]
 pub(crate) struct CodeSpan {
+    /// The token text.
     pub text: String,
+    /// Colour the highlighter assigned, as RGB.
     pub color: (u8, u8, u8),
 }
 
@@ -80,8 +98,11 @@ pub(crate) struct CodeSpan {
 /// and its inline content.
 #[derive(Clone, Debug)]
 pub(crate) struct ListLine {
+    /// Nesting depth, zero at the top level.
     pub depth: u8,
+    /// The rendered bullet or number.
     pub marker: String,
+    /// The line's inline content.
     pub runs: Vec<InlineRun>,
 }
 
@@ -90,9 +111,13 @@ pub(crate) struct ListLine {
 /// resolved `number` text (empty for a grouping heading).
 #[derive(Clone, Debug)]
 pub(crate) struct TocLine {
+    /// Nesting depth, zero at the top level.
     pub depth: u8,
+    /// The chapter title.
     pub title: String,
+    /// Page this entry links to; `None` for a grouping heading.
     pub page: Option<String>,
+    /// Resolved section number; empty for a grouping heading.
     pub number: String,
 }
 
@@ -105,41 +130,74 @@ pub(crate) type Row = Vec<Cell>;
 #[derive(Clone, Debug)]
 pub(crate) enum BlockNode {
     /// A heading, `level` in `1..=6`.
-    Heading { level: u8, runs: Vec<InlineRun> },
+    Heading {
+        /// Heading level, `1..=6`.
+        level: u8,
+        /// The heading text.
+        runs: Vec<InlineRun>,
+    },
     /// A body paragraph.
-    Paragraph { runs: Vec<InlineRun> },
+    Paragraph {
+        /// The paragraph text.
+        runs: Vec<InlineRun>,
+    },
     /// Embedded SVG content (a diagram, chart, timeline, or block equation),
     /// carried as the renderer's SVG string for the embed pass to parse.
-    Svg { svg: String },
+    Svg {
+        /// The SVG source for the embed pass to parse.
+        svg: String,
+    },
     /// A syntax-highlighted code block: one inner `Vec` per source line.
-    Code { lines: Vec<Vec<CodeSpan>> },
+    Code {
+        /// Highlighted tokens, one inner `Vec` per source line.
+        lines: Vec<Vec<CodeSpan>>,
+    },
     /// A bullet or numbered list, flattened to indented marked lines.
-    List { lines: Vec<ListLine> },
+    List {
+        /// The flattened, marked lines.
+        lines: Vec<ListLine>,
+    },
     /// A table: an optional header row plus body rows, each cell a run list.
-    Table { header: Row, rows: Vec<Row> },
+    Table {
+        /// The header row; empty when the table has none.
+        header: Row,
+        /// The body rows.
+        rows: Vec<Row>,
+    },
     /// A printed table-of-contents page: indented chapter titles with leader
     /// dots and right-aligned page numbers. Each entry that names a page is a
     /// clickable jump to it.
-    Toc { entries: Vec<TocLine> },
+    Toc {
+        /// The contents entries, in reading order.
+        entries: Vec<TocLine>,
+    },
     /// A callout (admonition): an accent colour, a bold heading, and body text.
     Callout {
+        /// The callout's accent colour, as RGB.
         accent: (u8, u8, u8),
+        /// The bold heading line.
         heading: Vec<InlineRun>,
+        /// The callout body.
         body: Vec<InlineRun>,
     },
     /// A raster image: the encoded file bytes plus an optional display size.
     Image {
+        /// The encoded image file.
         bytes: Vec<u8>,
+        /// Display width, or `None` to use the intrinsic size.
         disp_w: Option<f32>,
+        /// Display height, or `None` to use the intrinsic size.
         disp_h: Option<f32>,
     },
     /// A diagram whose `card` shapes carry native wdoc bodies. The SVG draws
     /// everything except the card content (cards are empty boxes); each
     /// [`CardSpec`] body is laid out and painted natively over its box.
     Diagram {
+        /// The diagram SVG, with card boxes left empty.
         svg: String,
         /// The diagram SVG's `viewBox` `(min_x, min_y, width, height)`.
         viewbox: (f32, f32, f32, f32),
+        /// Card bodies to paint over their boxes.
         cards: Vec<CardSpec>,
     },
 }
@@ -150,5 +208,6 @@ pub(crate) enum BlockNode {
 pub(crate) struct CardSpec {
     /// `(x, y, width, height)` in viewBox coordinates.
     pub rect: (f32, f32, f32, f32),
+    /// The card's content, as PDF blocks.
     pub body: Vec<BlockNode>,
 }

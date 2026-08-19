@@ -12,6 +12,8 @@ use crate::inline::InlinePatterns;
 
 use super::*;
 
+/// A function that renders one block to markup — the signature every
+/// kind-specific renderer is registered under.
 pub(crate) type BlockRenderer<'a> =
     dyn Fn(&[Value], Option<&str>, Option<&str>, &str) -> String + 'a;
 
@@ -391,6 +393,7 @@ fn lower_recurse(
 // `_parent_w` / `_parent_h` are threaded through so future variant
 // kinds can pick them up; today's fundamentals carry pre-resolved
 // geometry in the payload itself.
+/// Render one lowered content variant as SVG.
 pub(crate) fn render_svg_variant(
     doc: &Document,
     value: &Value,
@@ -478,6 +481,7 @@ pub(crate) fn head_fundamental_html_with_blocks(
     Some(head)
 }
 
+/// Render one lowered content variant as HTML.
 pub(crate) fn render_html_variant(
     doc: &Document,
     value: &Value,
@@ -487,6 +491,8 @@ pub(crate) fn render_html_variant(
     render_html_variant_with_blocks(doc, value, depth, patterns, None)
 }
 
+/// Render a lowered variant whose payload carries child blocks the
+/// caller supplies.
 pub(crate) fn render_html_variant_with_blocks(
     doc: &Document,
     value: &Value,
@@ -590,6 +596,8 @@ pub(crate) fn render_html_variant_with_blocks(
     }
 }
 
+/// The marker string a recursion-bounded renderer emits when it hits
+/// its depth limit.
 pub(crate) fn depth_marker() -> String {
     "<!-- wdoc: lowering depth limit reached -->".into()
 }
@@ -736,6 +744,7 @@ pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str)
     })
 }
 
+/// Wrap a variant payload as a record tagged with its kind.
 pub(crate) fn payload_to_record(map: &BTreeMap<String, Value>, kind: &str) -> Value {
     Value::Record {
         ty: vec![kind_to_typename(kind)],
@@ -763,6 +772,7 @@ pub(crate) fn kind_to_typename(kind: &str) -> String {
     s
 }
 
+/// The block kind a content variant corresponds to.
 pub(crate) fn kind_for_variant(variant: &str) -> String {
     let mut s = String::with_capacity(variant.len());
     for (i, c) in variant.chars().enumerate() {

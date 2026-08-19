@@ -66,8 +66,11 @@ pub(crate) fn find_template<'a>(doc: &'a Document, name: &str) -> Option<Block<'
 /// block's `toc`. `page` is the linked page name (None ⇒ a grouping
 /// heading); `children` are nested entries.
 pub(crate) struct TocNode {
+    /// The entry heading.
     pub title: String,
+    /// Page this entry links to; `None` for a grouping heading.
     pub page: Option<String>,
+    /// Nested entries beneath this one.
     pub children: Vec<TocNode>,
 }
 
@@ -166,6 +169,8 @@ pub(crate) fn toc_to_value(nodes: &[TocNode]) -> Value {
     )
 }
 
+/// Reify a site's pages as document data, so a template can iterate
+/// them.
 pub(crate) fn pages_to_value(pages: &[(String, String, String)]) -> Value {
     Value::list(
         pages
@@ -180,6 +185,8 @@ pub(crate) fn pages_to_value(pages: &[(String, String, String)]) -> Value {
     )
 }
 
+/// Reify a flat page list as a contents structure, for sites that
+/// declare no explicit `toc`.
 pub(crate) fn flat_toc_to_value(pages: &[(String, String, String)]) -> Value {
     Value::list(
         pages
@@ -200,9 +207,13 @@ pub(crate) fn flat_toc_to_value(pages: &[(String, String, String)]) -> Value {
 /// external/raw URL; an item with neither (and no children) is a plain
 /// label. `children` are nested sub-menu items.
 pub(crate) struct MenuNode {
+    /// Text shown for this item.
     pub label: String,
+    /// Page this entry links to; `None` for a grouping heading.
     pub page: Option<String>,
+    /// External or raw URL, for items that are not internal links.
     pub href: Option<String>,
+    /// Nested sub-menu items.
     pub children: Vec<MenuNode>,
 }
 
@@ -299,9 +310,13 @@ pub(crate) fn footer_to_value(nodes: &[FooterButtonNode], patterns: &InlinePatte
 /// an external/raw URL; `icon` is the icon name (`set.name`) to draw
 /// beside the label, resolved to SVG markup at render time.
 pub(crate) struct FooterButtonNode {
+    /// Text shown for this item.
     pub label: String,
+    /// Page this entry links to; `None` for a grouping heading.
     pub page: Option<String>,
+    /// External or raw URL, for items that are not internal links.
     pub href: Option<String>,
+    /// Icon name (`set.name`) drawn beside the label.
     pub icon: Option<String>,
 }
 
@@ -328,7 +343,9 @@ pub(crate) fn read_sidebar_footer(site: &Block<'_>) -> Vec<FooterButtonNode> {
 /// `deck`. `title` is the section heading; `slides` are the page names
 /// it shows, in order.
 pub(crate) struct DeckSectionNode {
+    /// The entry heading.
     pub title: String,
+    /// Page names this section shows, in order.
     pub slides: Vec<String>,
 }
 
@@ -392,9 +409,14 @@ pub(crate) fn read_deck(site: &Block<'_>) -> Vec<DeckSectionNode> {
 /// fundamentals (hoisted out of the body — see [`head_fundamental_html`]).
 #[derive(Default)]
 pub(crate) struct Rendered {
+    /// The rendered page `<body>`.
     pub body: String,
+    /// Markup hoisted out of the body into `<head>`.
     pub head: String,
+    /// The page's first heading, used as its title when it declares none.
     pub page_heading: Option<String>,
+    /// The first `(page, id)` collision found while emitting, if any —
+    /// reported as a build error rather than silently shipped.
     pub duplicate_id: Option<(String, String)>,
 }
 
@@ -402,7 +424,9 @@ pub(crate) struct Rendered {
 /// typed handles during template evaluation; their authored bodies stay lazy
 /// until the returned HTML tree places one of their repeated slots.
 pub(crate) struct CollectionTemplateInput<'a> {
+    /// The member pages, in site order.
     pub pages: &'a [Block<'a>],
+    /// Deck sections, when the site is a presentation.
     pub deck: &'a [DeckSectionNode],
 }
 
@@ -644,6 +668,8 @@ pub(crate) fn render_template<'a>(
     rendered
 }
 
+/// Walk emitted markup for an `id` already claimed on this page,
+/// returning the first duplicate found.
 fn collect_emitted_duplicate_id(block: &Block<'_>, seen: &mut HashSet<String>) -> Option<String> {
     if let Some(id) = field_id(block, "id")
         && !seen.insert(id.clone())
@@ -658,6 +684,8 @@ fn collect_emitted_duplicate_id(block: &Block<'_>, seen: &mut HashSet<String>) -
     None
 }
 
+/// Reify one page as a typed handle a template can place, leaving its
+/// authored body lazy until a slot actually uses it.
 fn page_handle_value<'a>(
     page: &Block<'a>,
     name: &str,
@@ -727,6 +755,7 @@ fn page_handle_value<'a>(
     Value::record(vec!["PageHandle".to_string()], fields)
 }
 
+/// Expand a template into the page blocks it contributes.
 fn expand_template_page_blocks<'a>(block: Block<'a>, out: &mut Vec<Block<'a>>) {
     if block.kind() == "wdoc_repeater" {
         for generated in expand_repeater_children(&block) {
@@ -737,6 +766,7 @@ fn expand_template_page_blocks<'a>(block: Block<'a>, out: &mut Vec<Block<'a>>) {
     }
 }
 
+/// Map deck sections onto the page handles they show, in slide order.
 fn deck_to_page_handles(nodes: &[DeckSectionNode], members: &Value) -> Value {
     let Value::List(member_values) = members else {
         return Value::list(Vec::new());
@@ -888,6 +918,7 @@ fn authored_block_value(block: &Block<'_>) -> Value {
     Value::record(vec![schema.name().to_string()], fields)
 }
 
+/// Recover the member index a page handle stands for.
 fn block_handle_index(value: &Value) -> Option<usize> {
     let Value::Record { ty, fields } = value else {
         return None;
@@ -898,6 +929,8 @@ fn block_handle_index(value: &Value) -> Option<usize> {
     fields.get("handle")?.as_u64().map(|n| n as usize)
 }
 
+/// Render one block to HTML, dispatching on its kind and recursing
+/// into its children.
 pub(crate) fn render_block(
     doc: &Document,
     block: &Block<'_>,
@@ -1088,6 +1121,7 @@ pub(crate) fn render_fragment(
     out
 }
 
+/// Render a column of blocks, concatenating their markup.
 pub(crate) fn render_column(
     doc: &Document,
     block: &Block<'_>,
@@ -1386,6 +1420,8 @@ pub(crate) fn render_highlighted_fundamental(map: &BTreeMap<String, Value>) -> S
     highlight::highlight_html(&source, &language, true)
 }
 
+/// Render a paragraph's inline content, applying the site's
+/// inline-markup patterns.
 pub(crate) fn render_paragraph_payload(
     doc: &Document,
     map: &BTreeMap<String, Value>,

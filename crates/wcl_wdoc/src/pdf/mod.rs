@@ -58,14 +58,20 @@ impl PageSize {
 /// Page geometry derived from a [`PageSize`]: the physical box, the margins,
 /// and the content box prose flows into. All values in PDF points.
 pub(crate) struct Geometry {
+    /// Page width in points.
     pub width: f32,
+    /// Page height in points.
     pub height: f32,
+    /// Left and right margin in points.
     pub margin_x: f32,
+    /// Top margin in points.
     pub margin_top: f32,
+    /// Bottom margin in points.
     pub margin_bottom: f32,
 }
 
 impl Geometry {
+    /// Page geometry for the requested paper size.
     fn new(size: PageSize) -> Self {
         let (width, height) = size.dimensions();
         Self {
@@ -77,15 +83,19 @@ impl Geometry {
         }
     }
 
+    /// X of the content area's left edge.
     pub(crate) fn content_left(&self) -> f32 {
         self.margin_x
     }
+    /// Y of the content area's top edge.
     pub(crate) fn content_top(&self) -> f32 {
         self.margin_top
     }
+    /// Width available for content.
     pub(crate) fn content_width(&self) -> f32 {
         self.width - 2.0 * self.margin_x
     }
+    /// Height available for content.
     pub(crate) fn content_height(&self) -> f32 {
         self.height - self.margin_top - self.margin_bottom
     }
@@ -94,17 +104,24 @@ impl Geometry {
 /// Errors from PDF generation. Mirrors `build::BuildError`'s shape so the CLI
 /// maps them to the same exit codes.
 pub enum PdfError {
+    /// A filesystem operation failed; the `String` names the target.
     Io(std::io::Error, String),
+    /// The entry document did not parse.
     Parse(Report),
+    /// The document violated its schema; carries the violation count.
     Schema(usize),
     /// A block expression failed to evaluate during rendering. Carries a
     /// pre-built miette report with the source snippet attached.
     Eval(Report),
+    /// The document is structurally unsuitable for PDF output.
     BadDoc(String),
+    /// The PDF writer failed while producing output.
     Render(String),
 }
 
 impl PdfError {
+    /// Render this failure to stderr, with the source snippet where the
+    /// variant carries one.
     pub fn report(&self) {
         match self {
             Self::Io(e, ctx) => eprintln!("{ctx}: {e}"),

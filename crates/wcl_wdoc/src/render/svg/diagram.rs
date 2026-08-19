@@ -16,6 +16,7 @@ use crate::radial::{self, RadialParams};
 
 use super::*;
 
+/// Render a diagram block to SVG.
 pub(crate) fn render_diagram(
     doc: &Document,
     block: &Block<'_>,
@@ -39,6 +40,8 @@ pub(crate) fn render_diagram_static(
     render_diagram_inner(doc, block, patterns, base_dir, true)
 }
 
+/// The diagram render body: place shapes, then route the edges
+/// between them.
 fn render_diagram_inner(
     doc: &Document,
     block: &Block<'_>,
@@ -174,6 +177,7 @@ pub(crate) fn render_layout_children(
     }
 }
 
+/// Collect the children a grid lays out, in placement order.
 pub(crate) fn collect_grid_children(
     block: &Block<'_>,
     tx: f64,
@@ -301,6 +305,8 @@ fn flow_nodes_of(children: &[Block<'_>]) -> (Vec<usize>, Vec<layered::Node>) {
     (flow_idx, flow_nodes)
 }
 
+/// Assign shapes to layers and order them within each, for a diagram
+/// using automatic layout.
 pub(crate) fn compute_layered_plan(
     block: &Block<'_>,
     children: &[Block<'_>],
@@ -573,6 +579,7 @@ fn evict_boundary_outsiders(
     }
 }
 
+/// Render children at the positions the layout plan assigned.
 pub(crate) fn render_planned_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> String {
     let children: Vec<Block<'_>> = diagram_children(block);
     let (offsets, widths, heights) = compute_planned_plan(block, &children);
@@ -591,6 +598,7 @@ pub(crate) fn render_planned_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> 
     out
 }
 
+/// Render a container shape and the children nested inside it.
 pub(crate) fn render_container(
     block: &Block<'_>,
     parent_w: f64,
@@ -622,6 +630,8 @@ pub(crate) fn render_container(
     out
 }
 
+/// A container's inner padding, from its declared field or the
+/// default.
 pub(crate) fn container_padding(block: &Block<'_>) -> f64 {
     field_f64(block, "padding").unwrap_or(0.0).max(0.0)
 }
@@ -699,6 +709,7 @@ pub(crate) fn render_boundaries(
     (out, bboxes)
 }
 
+/// Render one boundary box and its label.
 fn render_one_boundary(
     block: &Block<'_>,
     positions: &ShapePositions,
@@ -815,6 +826,7 @@ fn boundary_label(block: &Block<'_>, text: &str, bbox: (f64, f64, f64, f64)) -> 
     )
 }
 
+/// Render a grid's children at their computed cell positions.
 pub(crate) fn render_grid_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> String {
     let cols = field_i64(block, "columns").unwrap_or(1).max(1) as usize;
     let cw = field_f64(block, "cell_width").unwrap_or(0.0);

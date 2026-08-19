@@ -113,6 +113,8 @@ fn scalar(v: &Value) -> Option<String> {
     })
 }
 
+/// Format a float for YAML, keeping an integral value distinguishable
+/// from an integer.
 fn fmt_float(n: f64) -> String {
     if n.is_finite() && n.fract() == 0.0 {
         format!("{}", n as i64)
@@ -136,6 +138,7 @@ fn scalar_string(s: &str) -> String {
     }
 }
 
+/// Quote a scalar when YAML would otherwise reinterpret it.
 fn quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');

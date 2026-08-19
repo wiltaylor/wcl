@@ -24,6 +24,8 @@ pub(crate) fn compute(source: &str, uri: &str) -> Vec<DocumentSymbol> {
         .collect()
 }
 
+/// Convert an indexed declaration into the outline entry a client
+/// shows.
 fn record_to_symbol(source: &str, rec: &SymbolRecord) -> DocumentSymbol {
     let range = span_to_range(source, rec.span);
     let (kind, detail) = classify(&rec.kind);

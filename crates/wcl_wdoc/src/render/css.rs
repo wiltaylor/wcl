@@ -20,11 +20,14 @@ use super::*;
 /// still declares its name, which is how an author says a hook is deliberate.
 #[derive(Default)]
 pub(crate) struct RenderedCss {
+    /// The rendered CSS.
     pub(crate) text: String,
+    /// Class names these rules select.
     pub(crate) classes: BTreeSet<String>,
 }
 
 impl RenderedCss {
+    /// Pair rendered CSS with the classes it selects.
     fn of(text: String, classes: BTreeSet<String>) -> Self {
         RenderedCss { text, classes }
     }
@@ -172,6 +175,7 @@ pub(crate) fn render_class(block: &Block<'_>) -> Option<RenderedCss> {
     Some(RenderedCss::of(out, classes))
 }
 
+/// Append a newline between rules, but not before the first.
 fn push_rule_separator(out: &mut String) {
     if !out.is_empty() {
         out.push('\n');
@@ -227,10 +231,16 @@ fn expand_selector_branch(parent: &str, branch: &str) -> String {
 }
 
 #[derive(Default)]
+/// Nesting state for a left-to-right scan of a selector, so a comma
+/// inside brackets or quotes is not mistaken for a selector break.
 struct SelectorScan {
+    /// Open parenthesis depth.
     parentheses: u32,
+    /// Open square-bracket depth.
     brackets: u32,
+    /// The quote character currently open, if any.
     quote: Option<char>,
+    /// Whether the previous character was a backslash.
     escaped: bool,
 }
 
@@ -277,10 +287,12 @@ impl SelectorScan {
         }
     }
 
+    /// Whether the scan is outside every bracket and quote.
     fn at_top_level(&self) -> bool {
         self.parentheses == 0 && self.brackets == 0
     }
 
+    /// Whether the scan is outside an attribute selector.
     fn outside_attribute(&self) -> bool {
         self.brackets == 0
     }
@@ -490,12 +502,15 @@ fn skip_url(bytes: &[u8], start: usize) -> usize {
     bytes.len()
 }
 
+/// Append `prop: value;` when the value is present; a no-op otherwise.
 pub(crate) fn push_css(out: &mut String, prop: &str, value: Option<&str>) {
     if let Some(v) = value {
         write!(out, "{prop}:{v};").expect("write to String");
     }
 }
 
+/// Like [`push_css`], with a leading space for inline style
+/// attributes.
 fn push_spaced_css(out: &mut String, prop: &str, value: Option<&str>) {
     if let Some(value) = value {
         write!(out, " {prop}: {value};").expect("write to String");

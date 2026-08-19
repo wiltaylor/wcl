@@ -1,3 +1,5 @@
+//! Integration tests for the PDF backend.
+
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;

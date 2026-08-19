@@ -67,6 +67,8 @@ pub(crate) fn compute_syntax_only(
     }
 }
 
+/// Convert a parse failure into LSP diagnostics, including the
+/// secondary label when the error carries one.
 fn parse_error_to_diagnostics(source: &str, err: ParseError) -> Vec<Diagnostic> {
     match err {
         ParseError::Syntax(syntax) => {
@@ -92,6 +94,7 @@ fn parse_error_to_diagnostics(source: &str, err: ParseError) -> Vec<Diagnostic> 
     }
 }
 
+/// Convert one evaluation or schema error into an LSP diagnostic.
 fn eval_error_to_diagnostic(
     source: &str,
     err: &EvalError,
@@ -125,6 +128,8 @@ fn diagnostic_data(err: &EvalError) -> Option<serde_json::Value> {
     }
 }
 
+/// Convert a byte span into the line/character range LSP wants,
+/// counting UTF-16 code units as the protocol requires.
 fn source_span_to_range(source: &str, span: miette::SourceSpan) -> Range {
     let start = span.offset();
     let end = start + span.len();
@@ -164,6 +169,8 @@ fn eval_error_span(err: &EvalError) -> miette::SourceSpan {
     }
 }
 
+/// The stable `wcl::…` code for an error, so a client can filter or
+/// map diagnostics without matching on message text.
 fn diagnostic_code(err: &EvalError) -> &'static str {
     match err {
         EvalError::Cycle { .. } => "wcl::eval::cycle",
