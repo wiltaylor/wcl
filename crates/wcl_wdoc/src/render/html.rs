@@ -1345,7 +1345,7 @@ pub(crate) fn render_inline_fundamental(
 }
 
 /// Render a `markdown_source` block: lower its body to a Markdown string (via
-/// the Markdown backend's emitter, so the output matches `wcl wdoc markdown`)
+/// the Markdown backend's emitter, so the output matches `wcl wdoc build --type markdown`)
 /// and present it in a highlighted `code` block, mirroring the WCL `code`
 /// lower's `<pre class="code-block"><code class="language-markdown">…`.
 fn render_markdown_source(

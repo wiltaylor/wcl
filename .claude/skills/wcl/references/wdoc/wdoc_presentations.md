@@ -126,8 +126,8 @@ the slot at all. Keep deck pages on a deck site.
 | --- | --- |
 | `wcl wdoc build` | One `index.html` holding the whole deck, plus `_wdoc/presentation.js`. |
 | `wcl wdoc serve` | The same build behind the watching dev server. |
-| `wcl wdoc markdown` | One `.md` **per page**. The deck grid disappears; a `fragment`'s children and a `notes` block's children render in place. |
-| `wcl wdoc pdf` | One flowed document. A `fragment`'s children render in place. |
+| `wcl wdoc build --type markdown` | One `.md` **per page**. The deck grid disappears; a `fragment`'s children and a `notes` block's children render in place. |
+| `wcl wdoc build --type pdf` | One flowed document. A `fragment`'s children render in place. |
 
 The Markdown output of the `topic` page above:
 

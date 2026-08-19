@@ -159,40 +159,36 @@ fn init_define_overrides_default() {
         .success();
 }
 
+/// `--answers` was removed; `-D` is the only non-interactive answer source.
 #[test]
-fn init_reads_json_answer_file() {
-    let tmp = TempDir::new().expect("mkdir tempdir");
-    let answers = tmp.path().join("answers.json");
-    std::fs::write(&answers, r#"{"name":"from-json"}"#).expect("write answers");
-    let dest = tmp.path().join("proj");
-    wcl()
-        .args(["init", "minimal"])
-        .arg(&dest)
-        .arg("--answers")
-        .arg(&answers)
-        .arg("--defaults")
-        .assert()
-        .success();
-    let main = std::fs::read_to_string(dest.join("main.wcl")).expect("main.wcl written");
-    assert!(main.starts_with("// from-json"), "got: {main}");
-}
-
-#[test]
-fn init_reads_wcl_answer_file() {
+fn init_rejects_removed_answers_flag() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let answers = tmp.path().join("answers.wcl");
     std::fs::write(&answers, "name = \"from-wcl\"\n").expect("write answers");
-    let dest = tmp.path().join("proj");
     wcl()
         .args(["init", "minimal"])
-        .arg(&dest)
+        .arg(tmp.path().join("proj"))
         .arg("--answers")
         .arg(&answers)
         .arg("--defaults")
         .assert()
+        .failure()
+        .stderr(predicate::str::contains("--answers"));
+}
+
+/// The replacement for an answer file: repeated `-D key=value`.
+#[test]
+fn init_reads_defines_without_prompting() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let dest = tmp.path().join("proj");
+    wcl()
+        .args(["init", "minimal"])
+        .arg(&dest)
+        .args(["-D", "name=from-define", "--defaults"])
+        .assert()
         .success();
     let main = std::fs::read_to_string(dest.join("main.wcl")).expect("main.wcl written");
-    assert!(main.starts_with("// from-wcl"), "got: {main}");
+    assert!(main.starts_with("// from-define"), "got: {main}");
 }
 
 #[test]

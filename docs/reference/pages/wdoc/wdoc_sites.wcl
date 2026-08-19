@@ -206,7 +206,7 @@ WCL
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc markdown release_notes.wcl --out _md
+$ wcl wdoc build release_notes.wcl --out _md --type markdown
 wrote 1 page
 $ cat _md/release_notes.md
 ---

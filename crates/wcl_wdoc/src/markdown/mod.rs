@@ -1,4 +1,4 @@
-//! Markdown backend for wdoc (`wcl wdoc markdown`).
+//! Markdown backend for wdoc (`wcl wdoc build --type markdown`).
 //!
 //! A third consumer of the shared lowering pipeline (alongside HTML and
 //! PDF): renders each `page` to a `.md` file and each diagram / terminal /

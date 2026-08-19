@@ -198,14 +198,14 @@ total = a + b
 WCL
   }
 
-  p "`total` reads `a` and `b`; both read `base`; `base` calls `expensive`. Ask for `total` with `--profile` and the CLI prints the call tree it actually walked, as JSON on stderr. Piped through `jq` to keep only the name and the count:"
+  p "`total` reads `a` and `b`; both read `base`; `base` calls `expensive`. Ask for `total` with `WCL_PROFILE=1` in the environment and the CLI prints the call tree it actually walked, as JSON on stderr. Piped through `jq` to keep only the name and the count:"
 
   code text {
     source = <<'TEXT'
 $ wcl get once.wcl total
 43u32
 
-$ wcl get once.wcl total --profile 2>&1 >/dev/null \
+$ WCL_PROFILE=1 wcl get once.wcl total 2>&1 >/dev/null \
     | jq -r 'def show($d): "  " * $d
              + (.key.path // .key.name // .key.kind)
              + " x" + (.count|tostring), (.children[] | show($d+1)); show(0)'

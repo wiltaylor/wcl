@@ -87,3 +87,102 @@ fn wcl_wdoc_build_into_a_nested_out_dir_is_relocatable() {
     // a floor each side of the walk, so neither half can rot into a no-op.
     relocatable::assert_relocatable(&nested, 3, 8, 13);
 }
+
+// ---------------------------------------------------------------------------
+// `wcl wdoc build --type` — the consolidated renderer selector that replaced
+// the separate `wdoc markdown` and `wdoc pdf` subcommands.
+// ---------------------------------------------------------------------------
+
+/// A small single-site fixture; the showcase document is heavy enough that
+/// rendering it three times would dominate the suite's runtime.
+fn relocatable_main() -> PathBuf {
+    examples_dir().join("wdoc_relocatable").join("main.wcl")
+}
+
+#[test]
+fn build_type_markdown_writes_md_files() {
+    let out = TempDir::new().expect("mkdir tempdir");
+    wcl()
+        .args(["wdoc", "build"])
+        .arg(relocatable_main())
+        .arg("--out")
+        .arg(out.path())
+        .args(["--type", "markdown"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("wrote 3 pages"));
+    let mds: Vec<_> = std::fs::read_dir(out.path())
+        .expect("read out dir")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+        .collect();
+    assert!(!mds.is_empty(), "expected .md output in {:?}", out.path());
+}
+
+/// `md` is kept as a value alias, so the old `wdoc md` muscle memory still
+/// lands somewhere sensible.
+#[test]
+fn build_type_accepts_md_alias() {
+    let out = TempDir::new().expect("mkdir tempdir");
+    wcl()
+        .args(["wdoc", "build"])
+        .arg(relocatable_main())
+        .arg("--out")
+        .arg(out.path())
+        .args(["--type", "md"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("wrote 3 pages"));
+}
+
+#[test]
+fn build_type_pdf_writes_a_pdf_and_counts_sites() {
+    let out = TempDir::new().expect("mkdir tempdir");
+    wcl()
+        .args(["wdoc", "build"])
+        .arg(relocatable_main())
+        .arg("--out")
+        .arg(out.path())
+        .args(["--type", "pdf", "--page-size", "letter"])
+        .assert()
+        .success()
+        // pdf counts sites (one file each), not pages — the same fixture
+        // renders 3 pages as markdown but 2 PDFs, which is exactly why the
+        // success message stayed per-type rather than being unified.
+        .stdout(predicate::str::contains("wrote 2 pdfs"));
+    let pdfs: Vec<_> = std::fs::read_dir(out.path())
+        .expect("read out dir")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "pdf"))
+        .collect();
+    assert_eq!(pdfs.len(), 2, "expected two .pdf files in {:?}", out.path());
+}
+
+/// `--page-size` is pdf-only, and passing it elsewhere is an error rather
+/// than a silently ignored flag.
+#[test]
+fn page_size_outside_pdf_is_an_error() {
+    let out = TempDir::new().expect("mkdir tempdir");
+    wcl()
+        .args(["wdoc", "build"])
+        .arg(relocatable_main())
+        .arg("--out")
+        .arg(out.path())
+        .args(["--type", "html", "--page-size", "a4"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--page-size"));
+}
+
+/// The three-command split is gone: `pdf` and `markdown` are no longer
+/// subcommands of `wdoc`.
+#[test]
+fn removed_wdoc_subcommands_are_rejected() {
+    for removed in ["pdf", "markdown", "md"] {
+        wcl()
+            .args(["wdoc", removed])
+            .arg(relocatable_main())
+            .assert()
+            .failure();
+    }
+}

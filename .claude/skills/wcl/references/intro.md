@@ -192,8 +192,8 @@ wrote 1 page
 The build writes `index.html`, `intro.html` and a `_wdoc/` asset folder into `_site/`.
 
 `wcl wdoc serve site.wcl` runs the same build behind a local dev server that watches for
-changes. Other targets render the same document elsewhere. Use `wcl wdoc markdown` for a folder
-of `.md` files, and `wcl wdoc pdf` for a paginated PDF.
+changes. Other targets render the same document elsewhere. Use `wcl wdoc build --type markdown` for a folder
+of `.md` files, and `wcl wdoc build --type pdf` for a paginated PDF.
 
 Note what did **not** happen. There is no template language, no front matter and no second
 syntax. A page is a block. Its heading is a block. The same schema machinery that checked

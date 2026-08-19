@@ -386,7 +386,7 @@ WCL
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc markdown main.wcl --out _md
+$ wcl wdoc build main.wcl --out _md --type markdown
 wrote 2 pages
 
 $ find _md -type f | sort
@@ -407,7 +407,7 @@ TEXT
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc pdf main.wcl --out handbook.pdf
+$ wcl wdoc build main.wcl --out handbook.pdf --type pdf
 wcl::eval::user_error
 
   × error: `file` has no :pdf implementation (it is native
@@ -529,7 +529,7 @@ TEXT
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc markdown main.wcl --out _md
+$ wcl wdoc build main.wcl --out _md --type markdown
 wrote 1 page
 
 $ find _md -type f
@@ -555,12 +555,12 @@ TEXT
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc pdf main.wcl --out handbook.pdf
+$ wcl wdoc build main.wcl --out handbook.pdf --type pdf
 wcl::eval::user_error
 
   × error: `file` has no :pdf implementation …
 
-$ wcl wdoc pdf main.wcl --out handbook.pdf     # with @except(backends = [:pdf])
+$ wcl wdoc build main.wcl --out handbook.pdf     # with @except(backends = [:pdf]) --type pdf
 wrote 1 pdf
 TEXT
   }

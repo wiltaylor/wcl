@@ -60,9 +60,9 @@ $ wcl check listing.wcl
 OK
 $ wcl wdoc build listing.wcl --out _site
 wrote 1 page
-$ wcl wdoc markdown listing.wcl --out _md
+$ wcl wdoc build listing.wcl --out _md --type markdown
 wrote 1 page
-$ wcl wdoc pdf listing.wcl --out manual.pdf
+$ wcl wdoc build listing.wcl --out manual.pdf --type pdf
 wrote 1 pdf
 TEXT
   }

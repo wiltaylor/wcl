@@ -1,8 +1,9 @@
 # Output targets
 
-One document, three outputs. `wcl wdoc build` renders a website, `wcl wdoc pdf` a paginated
-PDF, and `wcl wdoc markdown` a folder of `.md` files. `wcl wdoc serve` is the first of those
-with a watcher and a browser attached, not a fourth thing.
+One document, three outputs, one command. `wcl wdoc build --type html` renders a website,
+`--type pdf` a paginated PDF, and `--type markdown` a folder of `.md` files (`md` is an alias).
+`html` is the default, so a bare `wcl wdoc build` is the website. `wcl wdoc serve` is that
+first target with a watcher and a browser attached, not a fourth thing.
 
 This file covers each target: what it writes, what it can carry and what it cannot. It then
 covers the mechanism that keeps the three honest: one closed content vocabulary every backend
@@ -29,7 +30,7 @@ exhaustively — no catch-all arm in the HTML walker, the PDF walker or the Mark
 variant added to the union does not silently render as nothing in two of three outputs. It
 fails to compile until all three say what to do with it.
 
-## `wcl wdoc build` — the website
+## `--type html` — the website
 
 ```console
 $ wcl wdoc build main.wcl --out _site
@@ -137,20 +138,23 @@ entry document usually rebuilds everything.
 and both re-render. The saving is in skipping the *other* fifty pages and the aggregate
 writes; the parse happens either way, because imports force it.
 
-## `wcl wdoc pdf` — print
+## `--type pdf` — print
 
-`pdf` renders each site to one paginated PDF. Pure Rust: no browser, no headless Chrome, no
-external binary.
+`--type pdf` renders each site to one paginated PDF. Pure Rust: no browser, no headless Chrome,
+no external binary.
 
 ```console
-$ wcl wdoc pdf main.wcl --out _pdf
+$ wcl wdoc build main.wcl --out _pdf --type pdf
 wrote 1 pdf
 $ ls _pdf
 handbook.pdf
 ```
 
 The file is named after the **site**, not after the source document. With no `site` block, the
-source file stem names it. `--page-size letter` switches from A4.
+source file stem names it. `--page-size letter` switches from A4; that flag applies to this
+type only, and passing it with `--type html` or `--type markdown` is an error rather than
+being ignored. Note the count: `pdf` reports **sites**, not pages, so a three-page two-site
+document says `wrote 2 pdfs`.
 
 Prose, headings, lists, tables, code listings, callouts, footnotes, chapter headers, images
 and maths all paginate. Diagrams, sequence and state diagrams, terminals and wireframes are
@@ -167,13 +171,13 @@ What a PDF cannot do is anything interactive, or anything that lives beside the 
 - **Search, the theme toggle, diagram pan-and-zoom, terminal replay and the deck player** are
   HTML devices. They are simply absent.
 
-## `wcl wdoc markdown` — text
+## `--type markdown` — text
 
-`markdown` writes one `.md` per page, plus the standalone `.svg` files that Markdown
-references. `wcl wdoc md` is an alias.
+`--type markdown` writes one `.md` per page, plus the standalone `.svg` files that Markdown
+references. `--type md` is an alias.
 
 ```console
-$ wcl wdoc markdown main.wcl --out _md
+$ wcl wdoc build main.wcl --out _md --type markdown
 wrote 1 page
 $ find _md -type f
 _md/index.md
@@ -256,16 +260,16 @@ Prose with **bold** and `code`.
 - two
 ```
 
-Set `id` to the previewed page's name. It is the filename stem for any diagram or terminal SVGs the body's Markdown writes. The `![](…)` references then line up with what a real `wcl wdoc markdown` run would produce.
+Set `id` to the previewed page's name. It is the filename stem for any diagram or terminal SVGs the body's Markdown writes. The `![](…)` references then line up with what a real `wcl wdoc build --type markdown` run would produce.
 
 The block is native on `:html` and only `:html`, because it taps the Markdown emitter from
 inside the HTML build. Using it on another target is refused rather than rendering nothing.
 
 ## Choosing a target
 
-| Target | Reach for it when | Give up |
+| `--type` | Reach for it when | Give up |
 | --- | --- | --- |
-| `build` | People will read it in a browser | nothing — this is the full-fidelity target |
+| `html` | People will read it in a browser | nothing — this is the full-fidelity target, and the default |
 | `pdf` | It has to print, or travel as one file | interactivity, `file` assets, playable video |
 | `markdown` | A model, a diff or a code host will read it | layout, theming, search; keeps the meaning |
 
@@ -275,7 +279,7 @@ visibility axis is for: the paragraph that only makes sense in a browser carries
 
 ## See also
 
-- [`../language/lang_cli.md`](../language/lang_cli.md) — every flag of `build`, `serve`, `pdf` and `markdown`, and the exit codes.
+- [`../language/lang_cli.md`](../language/lang_cli.md) — every flag of `build` and `serve`, and the exit codes.
 - [`wdoc_visibility.md`](wdoc_visibility.md) — `@only` / `@except`, and waiving a native block on a target that cannot render it.
 - [`wdoc_sites.md`](wdoc_sites.md) — the output tree, multi-site routing, the start page and search.
 - [`wdoc_extending.md`](wdoc_extending.md) — lowering versus `@native`, and how a block declares the targets it covers.

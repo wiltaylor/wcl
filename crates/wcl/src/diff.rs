@@ -9,16 +9,11 @@
 //! granularity (`fields.due_date`), recursing into lists by index
 //! (`tags[2]`).
 //!
-//! The diff renders two ways. The default is a re-parseable **WCL tree**
-//! (one `added` / `removed` / `modified` block per entity, carrying the
-//! actual old/new values); `--format json` emits the historical flat array
-//! of change objects, each now also carrying `old` / `new` / `value`:
-//! ```json
-//! [
-//!   {"op":"modified","entity":"domain_entity:task","field":"fields.due_date","kind":"added","new":"2026"},
-//!   {"op":"added","entity":"spec:impl_due_dates","value":{"id":"impl_due_dates"}}
-//! ]
-//! ```
+//! The diff renders one way: a re-parseable **WCL tree** — one `added` /
+//! `removed` / `modified` block per entity, carrying the actual old/new
+//! values. Because the output is itself a WCL document, a consumer that
+//! wants structured data can pipe it back through `wcl parse` rather than
+//! needing a second serialization format here.
 //!
 //! ## Intentionally deferred
 //! - Tensors are diffed as opaque leaves (a single `changed`); only lists
@@ -28,8 +23,9 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::{Value as Json, json};
-use wcl_lang::{Block, Document, Value};
+use wcl_lang::{Block, Document, ParseError, Value};
+
+use crate::{EXIT_IO, EXIT_OK, EXIT_PARSE, gitspec, open_document};
 
 /// Entity-level operation.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -296,64 +292,7 @@ fn index(path: &str, i: usize) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// JSON rendering (the historical `--format json` shape)
-// ---------------------------------------------------------------------------
-
-/// Render the changes as the flat JSON array. Each `Modified` entity expands
-/// to one object per edited field (`{op,entity,field,kind,old?,new?}`); an
-/// `Added` / `Removed` entity is one object carrying the whole `value`.
-pub(crate) fn changes_to_json(changes: &[Change]) -> Json {
-    let mut arr = Vec::new();
-    for c in changes {
-        match c.op {
-            ChangeOp::Added | ChangeOp::Removed => {
-                let mut obj = serde_json::Map::new();
-                obj.insert("op".to_string(), json!(c.op.as_str()));
-                obj.insert("entity".to_string(), json!(c.entity));
-                if let Some(v) = &c.entity_value {
-                    obj.insert(
-                        "value".to_string(),
-                        serde_json::to_value(v).unwrap_or(Json::Null),
-                    );
-                }
-                arr.push(Json::Object(obj));
-            }
-            ChangeOp::Modified => {
-                for f in &c.fields {
-                    let mut obj = serde_json::Map::new();
-                    obj.insert("op".to_string(), json!("modified"));
-                    obj.insert("entity".to_string(), json!(c.entity));
-                    obj.insert(
-                        "field".to_string(),
-                        json!(if f.path.is_empty() {
-                            "<value>"
-                        } else {
-                            &f.path
-                        }),
-                    );
-                    obj.insert("kind".to_string(), json!(f.kind.as_str()));
-                    if let Some(o) = &f.old {
-                        obj.insert(
-                            "old".to_string(),
-                            serde_json::to_value(o).unwrap_or(Json::Null),
-                        );
-                    }
-                    if let Some(n) = &f.new {
-                        obj.insert(
-                            "new".to_string(),
-                            serde_json::to_value(n).unwrap_or(Json::Null),
-                        );
-                    }
-                    arr.push(Json::Object(obj));
-                }
-            }
-        }
-    }
-    Json::Array(arr)
-}
-
-// ---------------------------------------------------------------------------
-// WCL rendering (the default output)
+// WCL rendering (the only output)
 // ---------------------------------------------------------------------------
 
 /// Render the changes as a re-parseable WCL document. Entity keys and field
@@ -484,6 +423,79 @@ fn quote_wcl(s: &str) -> String {
     }
     out.push('"');
     out
+}
+
+// ---------------------------------------------------------------------------
+// Command driver
+// ---------------------------------------------------------------------------
+
+/// Why opening one side of the diff failed. The two arms map to different
+/// exit codes, so the failure has to stay distinguishable up to [`run`].
+enum OpenErr {
+    /// The document was found but did not parse / evaluate.
+    Parse(ParseError),
+    /// The document could not be read at all — a missing path, or a git
+    /// revision that could not be materialized.
+    Io(String),
+}
+
+impl OpenErr {
+    /// Render the failure to stderr and yield the exit code it maps to.
+    fn report(self) -> u8 {
+        match self {
+            OpenErr::Parse(e) => {
+                eprintln!("{:?}", miette::Report::new(e));
+                EXIT_PARSE
+            }
+            OpenErr::Io(msg) => {
+                eprintln!("{msg}");
+                EXIT_IO
+            }
+        }
+    }
+}
+
+/// Open one diff side. A plain path opens directly; a `<rev>:<path>` spec is
+/// materialized from git into a temp dir first. The returned `TempDir` (if
+/// any) must outlive use of the `Document`, so the caller holds it.
+fn open_spec(arg: &str) -> Result<(Document, Option<tempfile::TempDir>), OpenErr> {
+    match gitspec::parse_spec(arg) {
+        gitspec::Spec::Working(path) => {
+            let doc = open_document(&path).map_err(OpenErr::Parse)?;
+            Ok((doc, None))
+        }
+        gitspec::Spec::Git { rev, path } => {
+            let (root, rel) = gitspec::repo_rel(&path).map_err(OpenErr::Io)?;
+            let tmp = gitspec::materialize_rev(&rev, &root).map_err(OpenErr::Io)?;
+            let entry = tmp.path().join(&rel);
+            if !entry.exists() {
+                return Err(OpenErr::Io(format!(
+                    "path '{rel}' not found in revision '{rev}'"
+                )));
+            }
+            let doc = open_document(&entry).map_err(OpenErr::Parse)?;
+            Ok((doc, Some(tmp)))
+        }
+    }
+}
+
+/// Entry point for the `diff` subcommand. Opens both sides (each a path or a
+/// `<rev>:<path>` git spec), computes the WCL-aware entity/field diff, and
+/// prints it as a WCL tree. A parse/eval/git failure on either side renders
+/// the diagnostic and yields a non-zero exit code.
+pub(crate) fn run(old: &str, new: &str) -> u8 {
+    // `_old`/`_new` hold the temp dirs alive until the diff is computed.
+    let (old_doc, _old) = match open_spec(old) {
+        Ok(x) => x,
+        Err(e) => return e.report(),
+    };
+    let (new_doc, _new) = match open_spec(new) {
+        Ok(x) => x,
+        Err(e) => return e.report(),
+    };
+    let changes = diff_documents(&old_doc, &new_doc);
+    print!("{}", render_wcl(&changes, old, new));
+    EXIT_OK
 }
 
 #[cfg(test)]

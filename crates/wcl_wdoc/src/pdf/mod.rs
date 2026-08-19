@@ -1,4 +1,4 @@
-//! Pure-Rust PDF backend for wdoc (`wcl wdoc pdf`).
+//! Pure-Rust PDF backend for wdoc (`wcl wdoc build --type pdf`).
 //!
 //! Reuses the existing fundamentals lowering to build a small, paint-agnostic
 //! [`ir`] block model, lays it out and paginates it ([`layout`]), and paints it

@@ -1,9 +1,10 @@
 # The CLI
 
-`wcl` is one binary with thirteen commands. Nine read or rewrite a document — `parse`, `check`,
-`eval` (aliased `get`), `set`, `fmt`, `diff`, `init`, `repl` and `lsp`. Four sit under
-`wcl wdoc` and render a document to a website, a dev server, a PDF or a folder of Markdown.
-This file covers all of them: what each one takes, every flag it accepts, and what it prints.
+`wcl` is one binary with eleven commands. Nine read or rewrite a document — `parse`, `check`,
+`eval` (aliased `get`), `set`, `fmt`, `diff`, `init`, `repl` and `lsp`. Two sit under
+`wcl wdoc`: `build` renders a document to a website, a PDF or a folder of Markdown depending on
+`--type`, and `serve` runs a dev server. This file covers all of them: what each one takes,
+every flag it accepts, and what it prints.
 
 ## One binary, one document model
 
@@ -37,13 +38,12 @@ Diagnostics go to **stderr**, results to **stdout**.
 ## `wcl parse`
 
 ```console
-$ wcl parse <file> [--profile]
+$ wcl parse <file>
 ```
 
 | Argument | Meaning |
 | --- | --- |
 | `<file>` | Path to a WCL source file. |
-| `--profile` | Record a call-tree profile of the forcing and print it as JSON on stderr after the dump. |
 
 Parses, forces every field, and prints the evaluated document tree — what the document
 *became*, not what you typed.
@@ -113,8 +113,8 @@ stdin, so `cat generated.wcl | wcl check -` validates a document never written t
 `get` is an alias for `eval`. Same command.
 
 ```console
-$ wcl get  <file> <path> [--json] [--profile]
-$ wcl eval <file> <path> [--json] [--profile]
+$ wcl get  <file> <path> [--json]
+$ wcl eval <file> <path> [--json]
 ```
 
 | Argument | Meaning |
@@ -122,7 +122,6 @@ $ wcl eval <file> <path> [--json] [--profile]
 | `<file>` | Path to a WCL source file. |
 | `<path>` | Dotted path, resolved from the document root. |
 | `--json` | Print the value as JSON instead of the WCL display form. A function value becomes `null`. |
-| `--profile` | Record a call-tree profile of this evaluation and print it as JSON on stderr. |
 
 A path walks the tree `wcl parse` prints: a field, a gather field, a block label, a nested
 block, a field on it.
@@ -166,7 +165,12 @@ JSON drops the `u32` suffix and the unit on a value like `512MiB` (already the n
 536870912 by then). Read the WCL form when the type matters; the JSON when the number does.
 
 Three commands answer three questions: `check` — *is this valid?*; `parse` — *what is in it?*;
-`get` — *what is this one value?* `--profile` on `parse` or `get` answers *why is it slow?*
+`get` — *what is this one value?*
+
+Setting `WCL_PROFILE=1` in the environment answers a fourth — *why is it slow?* — by printing
+the evaluation call tree as JSON on stderr. It is a debug switch for `wcl` itself rather than a
+command-line flag, so it does not appear in `--help`; `1`/`true` turn it on, `0`/`false`/unset
+turn it off, and any other value is an error.
 
 ## `wcl set`
 
@@ -260,14 +264,13 @@ schema, so a gate that runs only `fmt` proves nothing about the data.
 ## `wcl diff`
 
 ```console
-$ wcl diff <old> <new> [--format wcl|json]
+$ wcl diff <old> <new>
 ```
 
 | Argument | Meaning |
 | --- | --- |
 | `<old>` | The base document — a path, or a `<rev>:<path>` git specifier. |
 | `<new>` | The new document — a path, or a `<rev>:<path>` git specifier. |
-| `--format` | `wcl` (default) prints a re-parseable WCL tree; `json` prints the flat change array. |
 
 Not `diff(1)`. It compares the **evaluated** documents with imports resolved, so it reports
 changes in the data rather than in the text. Each top-level block is an entity keyed
@@ -286,22 +289,11 @@ modified "service:web" {
 }
 ```
 
-The default output is itself valid WCL — a change set is a document. `--format json` gives the
-same information flat:
-
-```console
-$ wcl diff inventory.wcl inv2.wcl --format json
-[
-  {
-    "entity": "service:web",
-    "field": "port",
-    "kind": "changed",
-    "new": 9090,
-    "old": 8080,
-    "op": "modified"
-  }
-]
-```
+The output is itself WCL — a change set is a document, and `wcl parse` reads it back. There is
+no second output format: a consumer that wants the diff structurally parses WCL, which it
+already must do to have had two documents to compare. Note that a change set carries no schema
+of its own, so `wcl check` on one reports `modified` as an undeclared block kind; supply a
+schema for `modified` / `removed` / `added` / `field` if you want it validated.
 
 A formatting-only edit produces **no diff at all**. Neither does a comment edit, a reordering,
 or a rewrite that moves a field into an import.
@@ -313,7 +305,7 @@ old document's **imports resolve from that same revision**, not from your workin
 
 ```console
 $ wcl diff HEAD~1:config.wcl config.wcl
-$ wcl diff main:a.wcl feature:a.wcl --format json
+$ wcl diff main:a.wcl feature:a.wcl
 $ wcl diff v1.2.0:schema/main.wcl schema/main.wcl
 ```
 
@@ -337,7 +329,7 @@ step is the one people skip.
 ## `wcl init`
 
 ```console
-$ wcl init <template> [dest] [-D key=value]... [--answers f] [--defaults] [--force]
+$ wcl init <template> [dest] [-D key=value]... [--defaults] [--force]
 $ wcl init --list
 ```
 
@@ -346,7 +338,6 @@ $ wcl init --list
 | `<template>` | A built-in name, a user template name, or a path to a template `.wcl` file (or a folder holding `template.wcl`). Optional with `--list`. |
 | `[dest]` | Destination directory. Defaults to the answered `name` property, then the template name. |
 | `-D key=value` | Answer one property inline. Repeatable. Highest precedence. |
-| `--answers <f>` | Answer file, `.wcl` or `.json`. |
 | `--defaults` | Never prompt: use each property's default, and fail on one that has none. |
 | `--force` | Write into the destination even if it exists and is not empty. |
 | `--list` | List the templates and exit. |
@@ -371,9 +362,9 @@ Created ./handbook from template 'book'
   wdoc/main.wcl
 ```
 
-**Where an answer comes from**, first match wins: `-D key=value`; then `--answers <file>`;
-then the interactive prompt (skipped under `--defaults`); then the property's `default` (and a
-property with no default, under `--defaults`, is an error).
+**Where an answer comes from**, first match wins: `-D key=value`; then the interactive prompt
+(skipped under `--defaults`); then the property's `default` (and a property with no default,
+under `--defaults`, is an error). For non-interactive use, repeat `-D` once per property.
 
 **Template resolution** has its own order: built-in name, then user template, then disk path.
 A built-in name shadows a user template of the same name.
@@ -441,19 +432,54 @@ tokens and schema-violation code actions. An open buffer shadows the copy on dis
 ## `wcl wdoc build`
 
 ```console
-$ wcl wdoc build <file> --out <dir> [--site NAME] [--profile]
+$ wcl wdoc build <file> --out <dir> [--type html|markdown|pdf] [--site NAME] [--page-size a4|letter]
 ```
 
-| Argument | Meaning |
-| --- | --- |
-| `<file>` | The entry document. |
-| `--out <dir>` | Output directory. Created if missing. **Required.** |
-| `--site <name>` | Build only this site, flat at `<out>`. Omitted, every site renders into `<out>/<name>/`. |
-| `--profile` | Print the evaluation profile as JSON on stderr. |
+| Argument | Default | Meaning |
+| --- | --- | --- |
+| `<file>` | — | The entry document. |
+| `--out <dir>` | — | Output directory. Created if missing. **Required.** |
+| `--type` | `html` | Which renderer to run: `html`, `markdown` (alias `md`) or `pdf`. |
+| `--site <name>` | every site | Build only this site, flat at `<out>`. See below — the "omitted" behaviour depends on `--type`. |
+| `--page-size` | `a4` | `a4` or `letter`. **`--type pdf` only** — passing it with any other type is an error. |
+
+One command, three renderers over the same evaluated document.
 
 ```console
 $ wcl wdoc build main.wcl --out _site
 wrote 2 pages
+$ wcl wdoc build main.wcl --out _md --type markdown
+wrote 2 pages
+$ wcl wdoc build main.wcl --out _pdf --type pdf
+wrote 1 pdf
+```
+
+Two things differ per type rather than being unified, because the renderers genuinely differ.
+
+**What the count means.** `html` and `markdown` count **pages**; `pdf` counts **sites**, since
+it writes one file per site. The same document can legitimately report `wrote 3 pages` and
+`wrote 2 pdfs`.
+
+**What `--site` does when omitted.** For `html` and `markdown`, every site renders into its own
+`<out>/<name>/` subdirectory (html also writes a chooser index at the root). For `pdf`, the
+output is named after the **site**, and with no `site` block the source file's stem names the
+PDF. A single-site document is unaffected either way.
+
+Per type, briefly:
+
+- **`html`** — one `.html` per page plus shared assets. The default, and what `serve` serves.
+- **`markdown`** — one `.md` per page, plus the standalone `.svg` files the Markdown references
+  for diagrams, terminals and wireframes. Aimed at AI / text consumers: zoomable diagrams
+  render as plain SVG, equations stay LaTeX, videos are skipped.
+- **`pdf`** — one paginated `.pdf` per site, rendered in pure Rust with no browser or external
+  tool.
+
+```console
+$ wcl wdoc build main.wcl --out _md --type markdown
+$ find _md -type f
+_md/index.md
+_md/one.md
+_md/_wdoc/one-diagram-1.svg
 ```
 
 ## `wcl wdoc serve`
@@ -479,57 +505,9 @@ auto-rebuild is off — press Enter here to rebuild after edits
 The watcher **accumulates** changes and rebuilds only when asked — Enter in the console, or
 `POST /__wdoc_rebuild`.
 
-## `wcl wdoc pdf`
-
-```console
-$ wcl wdoc pdf <file> --out <dir> [--site NAME] [--page-size a4|letter]
-```
-
-| Argument | Default | Meaning |
-| --- | --- | --- |
-| `<file>` | — | The entry document. |
-| `--out <dir>` | — | Output directory. Created if missing. **Required.** |
-| `--site <name>` | every site | Render only this site. With no `site` block, the source file stem names the PDF. |
-| `--page-size` | `a4` | `a4` or `letter`. |
-
-```console
-$ wcl wdoc pdf main.wcl --out _pdf
-wrote 1 pdf
-$ ls _pdf
-handbook.pdf
-```
-
-The output is named after the **site**, not after the source file.
-
-## `wcl wdoc markdown`
-
-`wcl wdoc md` is an alias.
-
-```console
-$ wcl wdoc markdown <file> --out <dir> [--site NAME]
-```
-
-| Argument | Meaning |
-| --- | --- |
-| `<file>` | The entry document. |
-| `--out <dir>` | Output directory. Created if missing. **Required.** |
-| `--site <name>` | Render only this site, flat at `<out>`. Omitted, each site gets its own `<out>/<name>/`. |
-
-```console
-$ wcl wdoc markdown main.wcl --out _md
-wrote 1 page
-$ find _md -type f
-_md/index.md
-_md/one.md
-_md/_wdoc/one-diagram-1.svg
-```
-
-One `.md` per page, plus the standalone `.svg` files the Markdown references for diagrams,
-terminals and wireframes.
-
 ## See also
 
 - [`lang_documents.md`](lang_documents.md) — the tree `parse`, `get` and `set` walk.
 - [`lang_evaluation.md`](lang_evaluation.md) — the evaluate-and-edit split, and the error model behind the exit codes.
 - [`lang_builtins.md`](lang_builtins.md) — every function a `repl` expression or a `set` value can call.
-- [`../wdoc/wdoc_outputs.md`](../wdoc/wdoc_outputs.md) — the four `wcl wdoc` commands in depth.
+- [`../wdoc/wdoc_outputs.md`](../wdoc/wdoc_outputs.md) — the three `wcl wdoc build` output types in depth.

@@ -14,7 +14,7 @@ page wdoc_outputs {
 
   h1 "Output targets"
 
-  p "One document, three outputs. `wcl wdoc build` renders a website, `wcl wdoc pdf` a paginated PDF, and `wcl wdoc markdown` a folder of `.md` files. `wcl wdoc serve` is the first of those with a watcher and a browser attached, not a fourth thing."
+  p "One document, three outputs, one command. `wcl wdoc build --type html` renders a website, `--type pdf` a paginated PDF, and `--type markdown` a folder of `.md` files (`md` is an alias). `html` is the default, so a bare `wcl wdoc build` is the website. `wcl wdoc serve` is that first target with a watcher and a browser attached, not a fourth thing."
 
   p "This chapter covers each target: what it writes, what it can carry, and what it cannot. It then covers the mechanism that keeps the three honest: one closed content vocabulary that every backend must match exhaustively. Two dev-loop devices are built on that mechanism, and this chapter covers them too — `wcl wdoc serve` and the `markdown_source` block."
 
@@ -33,7 +33,7 @@ page wdoc_outputs {
     body  = "The content vocabulary is a closed union with no generic container and no raw-markup escape hatch. Every backend matches it **exhaustively** — no catch-all arm in the HTML walker, the PDF walker or the Markdown walker. So a variant added to the union does not silently render as nothing in two of three outputs. It fails to compile until all three say what to do with it. That is the mechanism, not a convention someone remembers to follow."
   }
 
-  h2 "wcl wdoc build — the website"
+  h2 "--type html — the website"
 
   p "`build` renders every page to HTML and writes the shared assets beside them."
 
@@ -128,20 +128,20 @@ TEXT
     body  = "Two pages in one `pages.wcl` are one unit: edit either and both re-render. That is not a limitation worth working around by splitting files. The saving is in skipping the *other* fifty pages and the aggregate writes, and the parse happens either way because imports force it."
   }
 
-  h2 "wcl wdoc pdf — print"
+  h2 "--type pdf — print"
 
-  p "`pdf` renders each site to one paginated PDF. It is pure Rust: no browser, no headless Chrome, no external binary."
+  p "`--type pdf` renders each site to one paginated PDF. It is pure Rust: no browser, no headless Chrome, no external binary."
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc pdf main.wcl --out _pdf
+$ wcl wdoc build main.wcl --out _pdf --type pdf
 wrote 1 pdf
 $ ls _pdf
 handbook.pdf
 TEXT
   }
 
-  p "The file is named after the **site**, not after the source document. With no `site` block at all, the source file stem names it. `--page-size letter` switches from A4."
+  p "The file is named after the **site**, not after the source document. With no `site` block at all, the source file stem names it. `--page-size letter` switches from A4; that flag applies to this type only, and passing it with `--type html` or `--type markdown` is an error rather than being quietly ignored. Note the count, too: `pdf` reports **sites**, not pages, so a three-page two-site document says `wrote 2 pdfs`."
 
   p "Prose, headings, lists, tables, code listings, callouts, footnotes, chapter headers, images and maths all paginate. Diagrams, sequence and state diagrams, terminals and wireframes are painted from the same shape vocabulary the other targets draw. A diagram in a PDF is therefore the same drawing at the same viewBox. It is not a screenshot and it is not a fallback."
 
@@ -153,13 +153,13 @@ TEXT
     li "**Search, the theme toggle, diagram pan-and-zoom, terminal replay and the deck player** are HTML devices. They are simply absent."
   }
 
-  h2 "wcl wdoc markdown — text"
+  h2 "--type markdown — text"
 
-  p "`markdown` writes one `.md` per page, plus the standalone `.svg` files that Markdown references. `wcl wdoc md` is an alias."
+  p "`--type markdown` writes one `.md` per page, plus the standalone `.svg` files that Markdown references. `--type md` is an alias."
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc markdown main.wcl --out _md
+$ wcl wdoc build main.wcl --out _md --type markdown
 wrote 1 page
 $ find _md -type f
 _md/index.md
@@ -251,7 +251,7 @@ Prose with **bold** and `code`.
 MD
   }
 
-  p "Set `id` to the previewed page's name. It is the filename stem for any diagram or terminal SVGs the body's Markdown writes. The `![](…)` references then line up with what a real `wcl wdoc markdown` run would produce."
+  p "Set `id` to the previewed page's name. It is the filename stem for any diagram or terminal SVGs the body's Markdown writes. The `![](…)` references then line up with what a real `wcl wdoc build --type markdown` run would produce."
 
   p "The block is native on `:html` and only `:html`, because it taps the Markdown emitter from inside the HTML build. Using it on another target is refused rather than rendering nothing — see [Visibility](wdoc_visibility) for the waiver."
 
@@ -261,8 +261,8 @@ MD
 
   table {
     rows:
-      | "Target"     | "Reach for it when" | "Give up" |
-      | "`build`"    | "People will read it in a browser" | "nothing — this is the full-fidelity target" |
+      | "`--type`"   | "Reach for it when" | "Give up" |
+      | "`html`"     | "People will read it in a browser" | "nothing — this is the full-fidelity target, and the default" |
       | "`pdf`"      | "It has to print, or travel as one file" | "interactivity, `file` assets, playable video" |
       | "`markdown`" | "A model, a diff or a code host will read it" | "layout, theming, search; keeps the meaning" |
   }
@@ -272,7 +272,7 @@ MD
   h2 "Where to go next"
 
   list {
-    li "[The CLI](lang_cli) — every flag of `build`, `serve`, `pdf` and `markdown`, and the exit codes they return."
+    li "[The CLI](lang_cli) — every flag of `build` and `serve`, and the exit codes they return."
     li "[Visibility](wdoc_visibility) — `@only` and `@except`, and waiving a native block on a target that cannot render it."
     li "[Documents, pages and sites](wdoc_sites) — the output tree, multi-site routing, the start page and search."
     li "[Writing your own blocks](wdoc_extending) — lowering versus `@native`, and how a block declares the targets it covers."

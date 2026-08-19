@@ -384,7 +384,7 @@ WCL
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc markdown talk.wcl --out md
+$ wcl wdoc build talk.wcl --out md --type markdown
 wrote 3 pages
 $ ls -1 md
 agenda.md
@@ -409,7 +409,7 @@ TEXT
 
   callout "A deck is not a handout" {
     class = ["warning"]
-    body  = "`wcl wdoc pdf talk.wcl` produces a valid PDF, and it is not the deck you presented: the order is the file's, the reveals are gone, and every speaker note is printed. Nothing warns you. When you need a handout, write it as a `book` site over the same content and build the two separately — [Output targets](wdoc_outputs) covers the three targets and [Visibility](wdoc_visibility) covers keeping a block out of one of them."
+    body  = "`wcl wdoc build talk.wcl --type pdf` produces a valid PDF, and it is not the deck you presented: the order is the file's, the reveals are gone, and every speaker note is printed. Nothing warns you. When you need a handout, write it as a `book` site over the same content and build the two separately — [Output targets](wdoc_outputs) covers the three targets and [Visibility](wdoc_visibility) covers keeping a block out of one of them."
   }
 
   h2 "The presentation template"

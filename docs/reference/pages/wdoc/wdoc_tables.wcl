@@ -1,7 +1,7 @@
 // Chapter 25 — Lists and tables.
 //
 // Written against #180. Every snippet was built with `wcl wdoc build` and
-// `wcl wdoc markdown` before it was written down; the rendered output shown
+// `wcl wdoc build --type markdown` before it was written down; the rendered output shown
 // is the real output, not a sketch.
 //
 // The `wdoc-ch25-right` class is declared at the top level (a `class` block
@@ -74,7 +74,7 @@ WCL
     source = <<'TEXT'
 $ wcl wdoc build release.wcl --out _site
 wrote 1 page
-$ wcl wdoc markdown release.wcl --out _md
+$ wcl wdoc build release.wcl --out _md --type markdown
 wrote 1 page
 TEXT
   }

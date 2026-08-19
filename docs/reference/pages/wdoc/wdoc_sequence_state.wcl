@@ -437,7 +437,7 @@ $ grep -o '<svg[^>]*>' _site/flow.html
      xmlns="http://www.w3.org/2000/svg"
      width="700" height="383" viewBox="38.825 -7 671.175 367">
 
-$ wcl wdoc markdown signup.wcl --out _md
+$ wcl wdoc build signup.wcl --out _md --type markdown
 wrote 1 page
 $ cat _md/flow.md
 # Signing up

@@ -457,7 +457,7 @@ WCL
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc pdf shapes.wcl --out out
+$ wcl wdoc build shapes.wcl --out out --type pdf
 wcl::eval::user_error
 
   × error: `file` has no :pdf implementation (it is native

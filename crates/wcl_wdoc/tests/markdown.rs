@@ -1,4 +1,4 @@
-//! Integration tests for the Markdown target (`wcl wdoc markdown`).
+//! Integration tests for the Markdown target (`wcl wdoc build --type markdown`).
 
 use std::path::Path;
 

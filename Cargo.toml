@@ -33,12 +33,23 @@ serde_json = "1"
 insta = "1"
 proptest = "1"
 
+# Documentation coverage is enabled workspace-wide but NOT yet gating: the
+# backlog when it was switched on was ~2550 undocumented items (wcl_lang 1409,
+# wcl_wdoc 842, wcl 99, wcl_lsp 66). `just workspace-lint` runs clippy with
+# `-D warnings`, so these two lints are explicitly `-A`'d there to keep the
+# rest of the lint gate meaningful while the backlog is worked through.
+# A plain local `cargo clippy` still surfaces them as warnings.
+#
+# When the backlog reaches zero, delete the two `-A` flags from
+# `.just/shared.just` and these lints start gating on their own.
 [workspace.lints.rust]
 unsafe_code = "forbid"
+missing_docs = "warn"
 
 [workspace.lints.clippy]
 todo = "warn"
 dbg_macro = "warn"
+missing_docs_in_private_items = "warn"
 
 [profile.release]
 lto = true

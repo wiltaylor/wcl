@@ -9,8 +9,8 @@
 //! Generation runs in two passes over the evaluated document. Pass 1
 //! reads the `property` declarations (lazy evaluation never forces the
 //! file bodies). We then resolve an answer for each property — `-D
-//! key=value` on the CLI, an `--answers` file (`.wcl` or `.json`), an
-//! interactive prompt, or the property's `default`, in that precedence.
+//! key=value` on the CLI, an interactive prompt, or the property's
+//! `default`, in that precedence.
 //! Pass 2 re-opens the document with an `answer("name")` builtin bound to
 //! the collected answers, so a file's `content` (typically a heredoc with
 //! `${answer("name")}`) renders with the user's input substituted, and
@@ -22,10 +22,7 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use wcl_lang::{
-    Block, Document, Environment, EvalError, ParseError, Value, ast, disk_loader, from_fn,
-    parse_for_edit,
-};
+use wcl_lang::{Block, Document, Environment, EvalError, ParseError, Value, disk_loader, from_fn};
 
 use crate::{EXIT_EVAL, EXIT_IO, EXIT_OK, EXIT_PARSE, EXIT_SCHEMA};
 
@@ -48,7 +45,6 @@ const MANIFEST: &str = "template.wcl";
 pub(crate) fn run_init(
     template: Option<String>,
     dest: Option<PathBuf>,
-    answers: Option<PathBuf>,
     defines: Vec<String>,
     defaults: bool,
     force: bool,
@@ -62,19 +58,14 @@ pub(crate) fn run_init(
         eprintln!("error: specify a template name (or `wcl init --list` to see the built-ins)");
         return EXIT_IO;
     };
-    match run(
-        &template,
-        dest,
-        answers.as_deref(),
-        &defines,
-        defaults,
-        force,
-    ) {
+    match run(&template, dest, &defines, defaults, force) {
         Ok(()) => EXIT_OK,
         Err(e) => e.report(),
     }
 }
 
+/// Print the built-in templates, any user templates found under
+/// [`templates_dir`], and a usage line — the body of `wcl init --list`.
 fn list_templates() {
     println!("Built-in templates:");
     for (name, _) in BUILTIN_TEMPLATES {
@@ -195,10 +186,11 @@ struct TemplateSrc {
     ident: String,
 }
 
+/// Scaffold `template` into `dest`. The body of `wcl init`, minus the
+/// `--list` shortcut and the exit-code mapping that [`run_init`] handles.
 fn run(
     template: &str,
     dest: Option<PathBuf>,
-    answers_file: Option<&Path>,
     defines: &[String],
     defaults: bool,
     force: bool,
@@ -209,18 +201,12 @@ fn run(
     let discover = open_template(&tpl, empty_env())?;
     let props = read_properties(&discover)?;
 
-    // Resolve answers (CLI > answer file > prompt/default).
+    // Resolve answers (CLI > prompt/default).
     let cli = parse_defines(defines)?;
-    let file_answers = match answers_file {
-        Some(p) => read_answer_file(p)?,
-        None => BTreeMap::new(),
-    };
     let interactive = !defaults && crate::atty_stdin();
     let mut answers = BTreeMap::new();
     for p in &props {
         let value = if let Some(v) = cli.get(&p.name) {
-            v.clone()
-        } else if let Some(v) = file_answers.get(&p.name) {
             v.clone()
         } else if interactive {
             prompt_user(p)?
@@ -228,8 +214,8 @@ fn run(
             d.clone()
         } else {
             return Err(InitError::Io(format!(
-                "no answer for required property '{name}' (no default; supply `-D {name}=…`, \
-                 an `--answers` file, or run interactively)",
+                "no answer for required property '{name}' (no default; supply `-D {name}=…` \
+                 or run interactively)",
                 name = p.name
             )));
         };
@@ -478,59 +464,9 @@ fn parse_defines(defines: &[String]) -> Result<BTreeMap<String, String>, InitErr
     Ok(map)
 }
 
-/// Read an answer file: a `.json` object, or a `.wcl` document whose
-/// top-level fields are the answers.
-fn read_answer_file(path: &Path) -> Result<BTreeMap<String, String>, InitError> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| InitError::Io(format!("read answer file {}: {e}", path.display())))?;
-    let is_json = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("json"));
-    let mut map = BTreeMap::new();
-    if is_json {
-        let value: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|e| InitError::Io(format!("parse {}: {e}", path.display())))?;
-        let obj = value.as_object().ok_or_else(|| {
-            InitError::Io(format!(
-                "{}: answer file must be a JSON object",
-                path.display()
-            ))
-        })?;
-        for (k, v) in obj {
-            if let Some(s) = json_scalar(v) {
-                map.insert(k.clone(), s);
-            }
-        }
-    } else {
-        // Evaluate each top-level `key = expr` directly off the AST: a bare
-        // answer file has no `@document` schema, so `Document::fields()` /
-        // `Field::value()` would fail the strict membership check. A scratch
-        // document supplies the evaluation context (literals need nothing).
-        let parsed = parse_for_edit(&text, path.display().to_string()).map_err(InitError::Parse)?;
-        let scratch = Document::open("", "<answers>").map_err(InitError::Parse)?;
-        for item in &parsed.items {
-            if let ast::Item::Field(f) = item
-                && let Ok(v) = scratch.eval_expr(&f.expr)
-                && let Some(s) = value_string(&v)
-            {
-                map.insert(f.name.clone(), s);
-            }
-        }
-    }
-    Ok(map)
-}
-
-/// Stringify a JSON scalar; objects/arrays/null are skipped.
-fn json_scalar(v: &serde_json::Value) -> Option<String> {
-    match v {
-        serde_json::Value::String(s) => Some(s.clone()),
-        serde_json::Value::Number(n) => Some(n.to_string()),
-        serde_json::Value::Bool(b) => Some(b.to_string()),
-        _ => None,
-    }
-}
-
+/// Ask the user for one property's answer: the label (its `prompt`, else
+/// its name) and any `default` are written to stderr — keeping stdout clean
+/// — and the reply is read from stdin. An empty reply takes the default.
 fn prompt_user(p: &Prop) -> Result<String, InitError> {
     use std::io::Write as _;
     let label = p.prompt.clone().unwrap_or_else(|| p.name.clone());

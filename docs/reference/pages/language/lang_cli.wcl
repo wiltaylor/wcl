@@ -13,7 +13,7 @@ page lang_cli {
 
   h1 "The CLI"
 
-  p "`wcl` is one binary with thirteen commands. Nine read or rewrite a document — `parse`, `check`, `eval` (aliased `get`), `set`, `fmt`, `diff`, `init`, `repl` and `lsp`. Four sit under `wcl wdoc` and render a document to a website, a dev server, a PDF or a folder of Markdown. This chapter covers all of them: what each one takes, every flag it accepts, and what it prints."
+  p "`wcl` is one binary with eleven commands. Nine read or rewrite a document — `parse`, `check`, `eval` (aliased `get`), `set`, `fmt`, `diff`, `init`, `repl` and `lsp`. Two sit under `wcl wdoc`: `build` renders a document to a website, a PDF or a folder of Markdown depending on `--type`, and `serve` runs a dev server. This chapter covers all of them: what each one takes, every flag it accepts, and what it prints."
 
   p "It also covers the two things every command shares. Each returns the same exit code for the same kind of failure, and each opens a document exactly the way the next one does."
 
@@ -67,7 +67,7 @@ TEXT
 
   code text {
     source = <<'TEXT'
-$ wcl parse <file> [--profile]
+$ wcl parse <file>
 TEXT
   }
 
@@ -75,7 +75,6 @@ TEXT
     rows:
       | "Argument"    | "Meaning" |
       | "`<file>`"    | "Path to a WCL source file." |
-      | "`--profile`" | "Record a call-tree profile of the forcing and print it as JSON on stderr after the dump." |
   }
 
   p "Use it to see what a document _became_ rather than what you typed. Take the inventory from [Documents, fields and blocks](lang_documents):"
@@ -98,7 +97,7 @@ TEXT
 
   p "The `...` stands for real output. `parse` prints **everything in scope**. That includes the language's own decorator declarations (`@block`, `@children`, `@inline`, …) and the `std` unit types, because the document can see those declarations too. Your own items follow them, in source order. Pipe through `tail` when you want only the data."
 
-  p "`parse` forces the document, so it is also the blunt way to make every lazy field run. An evaluation error that a field would raise, it raises here. [How a document evaluates](lang_evaluation) covers what forcing means and what `--profile` measures."
+  p "`parse` forces the document, so it is also the blunt way to make every lazy field run. An evaluation error that a field would raise, it raises here. [How a document evaluates](lang_evaluation) covers what forcing means and what the profiler measures."
 
   h2 "wcl check"
 
@@ -175,8 +174,8 @@ TEXT
 
   code text {
     source = <<'TEXT'
-$ wcl get  <file> <path> [--json] [--profile]
-$ wcl eval <file> <path> [--json] [--profile]
+$ wcl get  <file> <path> [--json]
+$ wcl eval <file> <path> [--json]
 TEXT
   }
 
@@ -186,7 +185,6 @@ TEXT
       | "`<file>`"    | "Path to a WCL source file." |
       | "`<path>`"    | "Dotted path, resolved from the document root." |
       | "`--json`"    | "Print the value as JSON instead of the WCL display form. A function value cannot be serialized and becomes `null`." |
-      | "`--profile`" | "Record a call-tree profile of this evaluation and print it as JSON on stderr." |
   }
 
   h3 "Reading a path"
@@ -251,7 +249,7 @@ TEXT
 
   callout "Inspecting a document you did not write" {
     class = ["tip"]
-    body  = "Three commands answer three different questions. `wcl check` asks _is this file valid?_ `wcl parse` asks _what is in it?_ `wcl get` asks _what is this one value?_ Start with `parse` piped through a pager to find the path you want, then use `get` for the value. `--profile` on either one answers a fourth question — _why is it slow?_ — by printing the evaluation call tree."
+    body  = "Three commands answer three different questions. `wcl check` asks _is this file valid?_ `wcl parse` asks _what is in it?_ `wcl get` asks _what is this one value?_ Start with `parse` piped through a pager to find the path you want, then use `get` for the value. Setting `WCL_PROFILE=1` in the environment answers a fourth question — _why is it slow?_ — by printing the evaluation call tree as JSON on stderr. It is a debug switch for `wcl` itself rather than a flag, so it stays out of `--help`; `1`/`true` turn it on, `0`/`false`/unset turn it off, and any other value is an error."
   }
 
   h2 "wcl set"
@@ -387,7 +385,7 @@ TEXT
 
   code text {
     source = <<'TEXT'
-$ wcl diff <old> <new> [--format wcl|json]
+$ wcl diff <old> <new>
 TEXT
   }
 
@@ -396,7 +394,6 @@ TEXT
       | "Argument"   | "Meaning" |
       | "`<old>`"    | "The base document — a path, or a `<rev>:<path>` git specifier." |
       | "`<new>`"    | "The new document — a path, or a `<rev>:<path>` git specifier." |
-      | "`--format`" | "`wcl` (default) prints a re-parseable WCL tree; `json` prints the flat change array." |
   }
 
   p "This is not `diff(1)`. It compares the **evaluated** documents, with imports resolved, so it reports changes in the data rather than in the text. Each top-level block is an entity keyed `kind:label`, and a nested field edit is reported by path, recursing into lists by index."
@@ -416,23 +413,7 @@ modified "service:web" {
 TEXT
   }
 
-  p "The output is itself valid WCL, which is the point of the default format: a change set is a document, so anything that reads WCL reads a diff. `--format json` gives the same information as a flat array for a script:"
-
-  code text {
-    source = <<'TEXT'
-$ wcl diff inventory.wcl inv2.wcl --format json
-[
-  {
-    "entity": "service:web",
-    "field": "port",
-    "kind": "changed",
-    "new": 9090,
-    "old": 8080,
-    "op": "modified"
-  }
-]
-TEXT
-  }
+  p "The output is itself WCL, which is the whole point: a change set is a document, so anything that reads WCL reads a diff and `wcl parse` reads it back. There is no second output format, because a consumer that wants the diff structurally already parses WCL — that is how it came to have two documents to compare. One caveat: a change set carries no schema of its own, so `wcl check` on one reports `modified` as an undeclared block kind. Declare `modified` / `removed` / `added` / `field` yourself if you want it validated."
 
   p "A formatting-only edit produces **no diff at all**, because the values did not change. Neither does a comment edit, a reordering, or a rewrite that moves a field into an import. That property is what makes this command useful in review."
 
@@ -443,7 +424,7 @@ TEXT
   code text {
     source = <<'TEXT'
 $ wcl diff HEAD~1:config.wcl config.wcl
-$ wcl diff main:a.wcl feature:a.wcl --format json
+$ wcl diff main:a.wcl feature:a.wcl
 $ wcl diff v1.2.0:schema/main.wcl schema/main.wcl
 TEXT
   }
@@ -468,7 +449,7 @@ TEXT
 
   code text {
     source = <<'TEXT'
-$ wcl init <template> [dest] [-D key=value]... [--answers f] [--defaults] [--force]
+$ wcl init <template> [dest] [-D key=value]... [--defaults] [--force]
 $ wcl init --list
 TEXT
   }
@@ -479,7 +460,6 @@ TEXT
       | "`<template>`"    | "A built-in name, a user template name, or a path to a template `.wcl` file (or a folder holding `template.wcl`). Optional with `--list`." |
       | "`[dest]`"        | "Destination directory. Defaults to the answered `name` property, then to the template name." |
       | "`-D key=value`"  | "Answer one property inline. Repeatable. Highest precedence." |
-      | "`--answers <f>`" | "Answer file, `.wcl` or `.json`." |
       | "`--defaults`"    | "Never prompt: use each property's default, and fail on a property that has none." |
       | "`--force`"       | "Write into the destination even if it exists and is not empty." |
       | "`--list`"        | "List the templates and exit." |
@@ -517,21 +497,20 @@ Created ./handbook from template 'book'
 TEXT
   }
 
-  p "Without `--defaults` and without a `-D`, `init` prompts for each property the template declares and shows its default. An answer file supplies the same values from disk:"
+  p "Without `--defaults` and without a `-D`, `init` prompts for each property the template declares and shows its default. For a non-interactive run, repeat `-D` once per property:"
 
   code text {
     source = <<'TEXT'
-$ wcl init ./my-template.wcl ./out --answers answers.json
+$ wcl init ./my-template.wcl ./out -D name=out -D author="A. Dev" --defaults
 TEXT
   }
 
   h3 "Where an answer comes from"
 
-  p "Four sources, in this precedence order. The first one that has an answer wins:"
+  p "Three sources, in this precedence order. The first one that has an answer wins:"
 
   list {
     li "**`-D key=value`** on the command line."
-    li "**`--answers <file>`** — a `.wcl` or `.json` file of `key = value` pairs."
     li "**The interactive prompt** — skipped entirely under `--defaults`."
     li "**The property's `default`** — and a property with no default, under `--defaults`, is an error."
   }
@@ -620,31 +599,54 @@ TEXT
 
   h2 "wcl wdoc build"
 
-  p "Renders every `page` in a document to HTML."
+  p "Renders every `page` in a document. `--type` picks the renderer: a website, a folder of Markdown, or a PDF."
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc build <file> --out <dir> [--site NAME] [--profile]
+$ wcl wdoc build <file> --out <dir> [--type html|markdown|pdf] [--site NAME] [--page-size a4|letter]
 TEXT
   }
 
   table {
     rows:
-      | "Argument"        | "Meaning" |
-      | "`<file>`"        | "The entry document." |
-      | "`--out <dir>`"   | "Output directory. Created if missing. **Required.**" |
-      | "`--site <name>`" | "Build only this site, flat at `<out>`. Omitted, every site renders into `<out>/<name>/`." |
-      | "`--profile`"     | "Print the evaluation profile as JSON on stderr." |
+      | "Argument"        | "Default"    | "Meaning" |
+      | "`<file>`"        | "—"          | "The entry document." |
+      | "`--out <dir>`"   | "—"          | "Output directory. Created if missing. **Required.**" |
+      | "`--type`"        | "`html`"     | "Which renderer to run: `html`, `markdown` (alias `md`) or `pdf`." |
+      | "`--site <name>`" | "every site" | "Build only this site, flat at `<out>`. What omitting it does depends on `--type` — see below." |
+      | "`--page-size`"   | "`a4`"       | "`a4` or `letter`. **`--type pdf` only**; passing it with another type is an error." |
   }
 
   code text {
     source = <<'TEXT'
 $ wcl wdoc build main.wcl --out _site
 wrote 2 pages
+$ wcl wdoc build main.wcl --out _md --type markdown
+wrote 2 pages
+$ wcl wdoc build main.wcl --out _pdf --type pdf
+wrote 1 pdf
 TEXT
   }
 
-  p "[Output targets](wdoc_outputs) covers what lands in `<out>`, what `--site` does to the layout, and the rule that `build` never wipes the directory it writes into."
+  p "Two things stay per-type rather than being unified, because the renderers genuinely differ. **The count** means pages for `html` and `markdown`, but sites for `pdf`, which writes one file per site — so the same document can report `wrote 3 pages` and `wrote 2 pdfs`. **Omitting `--site`** renders every site into its own `<out>/<name>/` subdirectory for `html` and `markdown` (html also writes a chooser index), while `pdf` names the output after the site and falls back to the source file's stem when the document declares no `site` block. A single-site document is unaffected either way."
+
+  list {
+    li "**`html`** — one `.html` per page plus shared assets. The default, and what `serve` serves."
+    li "**`markdown`** — one `.md` per page, plus the standalone `.svg` files the Markdown references for diagrams, terminals and wireframes. Aimed at AI and text consumers: zoomable diagrams render as plain SVG, equations stay LaTeX, videos are skipped."
+    li "**`pdf`** — one paginated `.pdf` per site. Pure Rust: no browser, no external tools."
+  }
+
+  code text {
+    source = <<'TEXT'
+$ wcl wdoc build main.wcl --out _md --type markdown
+$ find _md -type f
+_md/index.md
+_md/one.md
+_md/_wdoc/one-diagram-1.svg
+TEXT
+  }
+
+  p "[Output targets](wdoc_outputs) covers what lands in `<out>` for each type, what `--site` does to the layout, what a PDF can and cannot carry, and the rule that `build` never wipes the directory it writes into."
 
   h2 "wcl wdoc serve"
 
@@ -676,68 +678,6 @@ TEXT
 
   p "The last line is the surprising part, and it is deliberate: the watcher **accumulates** changes and rebuilds only when you ask. [Output targets](wdoc_outputs) covers the loop, the two triggers, and what an incremental rebuild really re-renders."
 
-  h2 "wcl wdoc pdf"
-
-  p "Renders each site to a PDF. Pure Rust — no browser, no external tools."
-
-  code text {
-    source = <<'TEXT'
-$ wcl wdoc pdf <file> --out <dir> [--site NAME] [--page-size a4|letter]
-TEXT
-  }
-
-  table {
-    rows:
-      | "Argument"        | "Default"    | "Meaning" |
-      | "`<file>`"        | "—"          | "The entry document." |
-      | "`--out <dir>`"   | "—"          | "Output directory. Created if missing. **Required.**" |
-      | "`--site <name>`" | "every site" | "Render only this site. With no `site` block, the source file stem names the PDF." |
-      | "`--page-size`"   | "`a4`"       | "`a4` or `letter`." |
-  }
-
-  code text {
-    source = <<'TEXT'
-$ wcl wdoc pdf main.wcl --out _pdf
-wrote 1 pdf
-$ ls _pdf
-handbook.pdf
-TEXT
-  }
-
-  p "The output is named after the **site**, not after the source file. [Output targets](wdoc_outputs) covers what a PDF can and cannot carry."
-
-  h2 "wcl wdoc markdown"
-
-  p "Renders every page to a folder of Markdown files. `wcl wdoc md` is an alias."
-
-  code text {
-    source = <<'TEXT'
-$ wcl wdoc markdown <file> --out <dir> [--site NAME]
-$ wcl wdoc md       <file> --out <dir> [--site NAME]
-TEXT
-  }
-
-  table {
-    rows:
-      | "Argument"        | "Meaning" |
-      | "`<file>`"        | "The entry document." |
-      | "`--out <dir>`"   | "Output directory. Created if missing. **Required.**" |
-      | "`--site <name>`" | "Render only this site, flat at `<out>`. Omitted, each site gets its own `<out>/<name>/`." |
-  }
-
-  code text {
-    source = <<'TEXT'
-$ wcl wdoc markdown main.wcl --out _md
-wrote 1 page
-$ find _md -type f
-_md/index.md
-_md/one.md
-_md/_wdoc/one-diagram-1.svg
-TEXT
-  }
-
-  p "One `.md` per page, plus the standalone `.svg` files the Markdown references for diagrams, terminals and wireframes. [Output targets](wdoc_outputs) covers the conversions."
-
   h2 "Where to go next"
 
   list {
@@ -745,7 +685,7 @@ TEXT
     li "[How a document evaluates](lang_evaluation) — the evaluate-and-edit split behind `get` and `set`, and the error model behind the exit codes."
     li "[Namespaces and imports](lang_namespaces) — how the imports every command follows resolve."
     li "[Builtins](lang_builtins) — every function an expression in a `repl` session or a `set` value can call."
-    li "[Output targets](wdoc_outputs) — the four `wcl wdoc` commands in depth."
+    li "[Output targets](wdoc_outputs) — the three `wcl wdoc build` output types in depth."
     li "[Documents, pages and sites](wdoc_sites) — what a document must declare before `wcl wdoc build` has anything to render."
   }
 }

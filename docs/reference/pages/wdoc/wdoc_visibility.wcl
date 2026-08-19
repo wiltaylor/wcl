@@ -108,7 +108,7 @@ WCL
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc markdown main.wcl --out _md
+$ wcl wdoc build main.wcl --out _md --type markdown
 wrote 1 page
 $ cat _md/notes.md
 # Notes
@@ -184,7 +184,7 @@ WCL
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc pdf main.wcl --out _pdf
+$ wcl wdoc build main.wcl --out _pdf --type pdf
 wcl::eval::user_error
 
   × error: `file` has no :pdf implementation (it is native
@@ -217,9 +217,9 @@ WCL
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc pdf main.wcl --out _pdf
+$ wcl wdoc build main.wcl --out _pdf --type pdf
 wrote 1 pdf
-$ wcl wdoc markdown main.wcl --out _md
+$ wcl wdoc build main.wcl --out _md --type markdown
 wrote 1 page
 $ cat _md/dl.md
 # Downloads

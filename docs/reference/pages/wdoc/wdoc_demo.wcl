@@ -213,7 +213,7 @@ WCL
       | "PDF"          | "No"      | "One render, in place"           | "**No** — the source is dropped" |
   }
 
-  p "The Markdown degradation keeps the comparison a demo exists to make, in the one order Markdown can carry it. `wcl wdoc markdown demo.wcl --out md` on the file from the top of this chapter writes:"
+  p "The Markdown degradation keeps the comparison a demo exists to make, in the one order Markdown can carry it. `wcl wdoc build demo.wcl --out md --type markdown` on the file from the top of this chapter writes:"
 
   code markdown {
     filename = "md/p1.md"

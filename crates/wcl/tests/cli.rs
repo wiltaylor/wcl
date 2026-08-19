@@ -909,35 +909,45 @@ fn diff_reports_added_removed_and_modified_entities() {
     )
     .unwrap();
 
-    let out = wcl()
+    let out = wcl().arg("diff").arg(&old).arg(&new).assert().success();
+    let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
+
+    // task: status draft -> active (modified), carrying old/new values;
+    // user removed; impl_due_dates added.
+    assert!(
+        stdout.contains("modified \"domain_entity:task\""),
+        "missing modified entity:\n{stdout}"
+    );
+    assert!(stdout.contains("field \"status\""), "{stdout}");
+    assert!(stdout.contains("kind = :changed"), "{stdout}");
+    assert!(stdout.contains("old = \"draft\""), "{stdout}");
+    assert!(stdout.contains("new = \"active\""), "{stdout}");
+    assert!(
+        stdout.contains("removed \"domain_entity:user\""),
+        "{stdout}"
+    );
+    assert!(stdout.contains("added \"spec:impl_due_dates\""), "{stdout}");
+    // The unchanged spec:auth entity is not reported.
+    assert!(!stdout.contains("\"spec:auth\""), "{stdout}");
+}
+
+/// `--format` was removed along with the JSON renderer; the WCL tree is the
+/// only output.
+#[test]
+fn diff_rejects_removed_format_flag() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let old = tmp.path().join("old.wcl");
+    let new = tmp.path().join("new.wcl");
+    std::fs::write(&old, DIFF_SCHEMA).unwrap();
+    std::fs::write(&new, DIFF_SCHEMA).unwrap();
+    wcl()
         .arg("diff")
         .arg(&old)
         .arg(&new)
         .args(["--format", "json"])
         .assert()
-        .success();
-    let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON array");
-    let arr = json.as_array().expect("array");
-
-    // task: status draft -> active (modified), carrying old/new values;
-    // user removed; impl_due_dates added.
-    assert!(arr.iter().any(|c| c["op"] == "modified"
-        && c["entity"] == "domain_entity:task"
-        && c["field"] == "status"
-        && c["kind"] == "changed"
-        && c["old"] == "draft"
-        && c["new"] == "active"));
-    assert!(
-        arr.iter()
-            .any(|c| c["op"] == "removed" && c["entity"] == "domain_entity:user")
-    );
-    assert!(
-        arr.iter()
-            .any(|c| c["op"] == "added" && c["entity"] == "spec:impl_due_dates")
-    );
-    // The unchanged spec:auth entity is not reported.
-    assert!(!arr.iter().any(|c| c["entity"] == "spec:auth"));
+        .failure()
+        .stderr(predicate::str::contains("--format"));
 }
 
 #[test]
@@ -1001,15 +1011,6 @@ fn diff_ignores_formatting_only_changes() {
     )
     .unwrap();
 
-    wcl()
-        .arg("diff")
-        .arg(&old)
-        .arg(&new)
-        .args(["--format", "json"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("[]"));
-    // The default WCL tree reports no changes too.
     wcl()
         .arg("diff")
         .arg(&old)
@@ -1286,4 +1287,75 @@ fn check_reports_a_missing_required_component_slot() {
             "block 'metric_card' is missing required field 'label'",
         ))
         .stderr(predicate::str::contains("status").not());
+}
+
+// ---------------------------------------------------------------------------
+// `WCL_PROFILE` — the call-tree profiler, moved off `--profile` and onto an
+// environment variable because it exists to debug `wcl` itself.
+// ---------------------------------------------------------------------------
+
+/// The flag it replaced is gone from every subcommand that carried it.
+#[test]
+fn profile_flag_is_rejected() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("a.wcl");
+    std::fs::write(&file, "x = 1\n").unwrap();
+    for args in [vec!["parse"], vec!["eval"]] {
+        let mut cmd = wcl();
+        cmd.args(&args).arg(&file);
+        if args[0] == "eval" {
+            cmd.arg("x");
+        }
+        cmd.arg("--profile")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("--profile"));
+    }
+}
+
+#[test]
+fn profile_env_emits_a_profile_on_stderr() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("a.wcl");
+    std::fs::write(&file, "x = 1\n").unwrap();
+    wcl()
+        .env("WCL_PROFILE", "1")
+        .arg("parse")
+        .arg(&file)
+        .assert()
+        .success()
+        // The profile is JSON on stderr; stdout stays the document dump.
+        .stderr(predicate::str::contains("{"));
+}
+
+#[test]
+fn profile_env_off_emits_nothing_extra() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("a.wcl");
+    std::fs::write(&file, "x = 1\n").unwrap();
+    for value in ["0", "false", ""] {
+        wcl()
+            .env("WCL_PROFILE", value)
+            .arg("parse")
+            .arg(&file)
+            .assert()
+            .success()
+            .stderr(predicate::str::is_empty());
+    }
+}
+
+/// A typo'd value is an error, not a silent no-op — otherwise a broken
+/// profiler and a misspelled variable look identical.
+#[test]
+fn profile_env_rejects_an_unrecognized_value() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("a.wcl");
+    std::fs::write(&file, "x = 1\n").unwrap();
+    wcl()
+        .env("WCL_PROFILE", "on")
+        .arg("parse")
+        .arg(&file)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("WCL_PROFILE"));
 }

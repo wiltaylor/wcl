@@ -441,7 +441,7 @@ TEXT
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc markdown icons.wcl --out md
+$ wcl wdoc build icons.wcl --out md --type markdown
 wrote 1 page
 $ cat md/lab.md
 # Icon lab

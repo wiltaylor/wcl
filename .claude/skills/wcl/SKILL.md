@@ -14,8 +14,8 @@ path out of it.
 
 **wdoc** is a document generator. Its vocabulary is ordinary WCL blocks. A document writes
 `import <wdoc.wcl>` and gains `site`, `page`, `h1`, `code`, `table`, `diagram` and the rest.
-`wcl wdoc build` renders it to a static website. `wcl wdoc markdown` renders it to a folder of
-`.md` files, and `wcl wdoc pdf` to a paginated PDF. wdoc is not a second language — it is a
+`wcl wdoc build` renders it to a static website. `wcl wdoc build --type markdown` renders it to a folder of
+`.md` files, and `wcl wdoc build --type pdf` to a paginated PDF. wdoc is not a second language — it is a
 schema written in WCL, and `wdoc` is a subcommand of the `wcl` CLI.
 
 ## How to use this skill

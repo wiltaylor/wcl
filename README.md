@@ -29,7 +29,6 @@ to create; WCL ships a few built-ins.
 wcl init --list                      # list built-in templates
 wcl init minimal ./my-project        # prompts for each property
 wcl init minimal ./app -D name=app --defaults   # non-interactive
-wcl init minimal ./app --answers answers.json   # answers from a file (.wcl or .json)
 ```
 
 Built-in templates: `minimal` (a single commented `main.wcl`), plus three

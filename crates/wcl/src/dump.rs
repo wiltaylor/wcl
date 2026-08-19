@@ -1,4 +1,4 @@
-//! The `wcl parse` document-tree dump and `--profile` JSON rendering.
+//! The `wcl parse` document-tree dump and `WCL_PROFILE` JSON rendering.
 //!
 //! Split out of `main.rs` so the CLI entry point stays thin. All text
 //! goes through [`Out`], which centralises the two-space indentation and

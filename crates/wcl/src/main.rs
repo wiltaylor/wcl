@@ -12,29 +12,73 @@ mod gitspec;
 mod scaffold;
 mod serve;
 
-const EXIT_OK: u8 = 0;
-const EXIT_PARSE: u8 = 1;
-const EXIT_SCHEMA: u8 = 2;
-const EXIT_EVAL: u8 = 3;
-const EXIT_IO: u8 = 4;
+/// Success.
+pub(crate) const EXIT_OK: u8 = 0;
+/// The input did not parse.
+pub(crate) const EXIT_PARSE: u8 = 1;
+/// The input parsed but violated its schema.
+pub(crate) const EXIT_SCHEMA: u8 = 2;
+/// Evaluation failed (a bad path, a failing expression, a render error).
+pub(crate) const EXIT_EVAL: u8 = 3;
+/// An I/O or environment failure unrelated to the document's contents.
+pub(crate) const EXIT_IO: u8 = 4;
 
+/// Environment variable that turns on the call-tree profiler. Deliberately
+/// not a CLI flag: profiling exists to debug `wcl` itself, so it stays out
+/// of `--help` where it would only distract users of the tool.
+const PROFILE_ENV: &str = "WCL_PROFILE";
+
+/// The document loader used by every subcommand: the on-disk loader with
+/// wdoc's embedded schemas layered over it, so `import <wdoc.wcl>` resolves
+/// without a file on disk.
 fn cli_loader() -> wcl_lang::FileLoader {
     wcl_wdoc::schema_registry().loader(wcl_lang::disk_loader())
 }
+
+/// The evaluation environment used by every subcommand — wdoc's builtins on
+/// top of the language's own.
 fn cli_environment() -> Environment {
     wcl_wdoc::wdoc_environment()
 }
 
-fn open_document(file: &Path, profile: bool) -> Result<Document, ParseError> {
+/// Whether the call-tree profiler is on, read from [`PROFILE_ENV`].
+///
+/// `1` / `true` (case-insensitive) enable it; unset, empty, `0` and `false`
+/// disable it. Any other value is an error rather than a silent no-op — a
+/// typo'd `WCL_PROFILE=on` that quietly produced no profile would be
+/// indistinguishable from the profiler being broken.
+fn profiling_enabled() -> Result<bool, String> {
+    let Some(raw) = std::env::var_os(PROFILE_ENV) else {
+        return Ok(false);
+    };
+    let value = raw.to_string_lossy();
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" | "0" | "false" => Ok(false),
+        "1" | "true" => Ok(true),
+        other => Err(format!(
+            "invalid {PROFILE_ENV}={other:?}: expected one of 1, true, 0, false (or unset)"
+        )),
+    }
+}
+
+/// Open a document for a subcommand, enabling the profiler when
+/// [`PROFILE_ENV`] asks for it. The switch is read here rather than threaded
+/// through every caller because it is a global debug toggle, not a
+/// per-command option. A malformed value cannot reach this point: [`main`]
+/// validates it once up front and exits, so `unwrap_or` is not swallowing a
+/// diagnostic anyone would otherwise see.
+fn open_document(file: &Path) -> Result<Document, ParseError> {
     let mut doc = Document::from_file_with_loader(file, &cli_environment(), cli_loader())?;
-    if profile {
+    if profiling_enabled().unwrap_or(false) {
         doc.enable_profiling();
     }
     Ok(doc)
 }
 
-fn emit_profile(doc: &Document, profile: bool) {
-    if profile && let Some(p) = doc.profile() {
+/// Print the recorded call-tree profile as JSON on stderr, if profiling was
+/// on and the document collected one. Stderr keeps stdout clean for piping.
+fn emit_profile(doc: &Document) {
+    if let Some(p) = doc.profile() {
         let json = dump::profile_to_json(&p);
         let rendered = serde_json::to_string_pretty(&json)
             .expect("serde_json::Value always serializes (string-keyed objects)");
@@ -42,23 +86,23 @@ fn emit_profile(doc: &Document, profile: bool) {
     }
 }
 
+/// Top-level command-line interface: `wcl <subcommand> …`.
 #[derive(Parser)]
 #[command(name = "wcl", version = env!("WCL_VERSION"), about = "WCL command-line interface")]
 struct Cli {
+    /// The subcommand to run. Required — `wcl` alone prints help.
     #[command(subcommand)]
     command: Command,
 }
 
+/// Every `wcl` subcommand. Doc comments on each variant and field become
+/// the `--help` text, so they are written for users of the tool.
 #[derive(Subcommand)]
 enum Command {
     /// Parse a WCL file and print the resulting document tree (forces evaluation).
     Parse {
         /// Path to a WCL source file.
         file: PathBuf,
-        /// Record a call-tree profile of the document forcing and print
-        /// it as JSON to stderr after the dump.
-        #[arg(long)]
-        profile: bool,
     },
     /// Parse a WCL file and report whether it is syntactically valid.
     Check {
@@ -84,10 +128,6 @@ enum Command {
         file: PathBuf,
         /// Dotted path to resolve from the document root.
         path: String,
-        /// Record a call-tree profile of the evaluation and print it
-        /// as JSON to stderr after the value is printed.
-        #[arg(long)]
-        profile: bool,
         /// Emit the resolved value as JSON instead of the WCL display
         /// form. Function values can't be serialized and are
         /// represented as `null`.
@@ -172,14 +212,13 @@ enum Command {
     /// template declares `property` questions plus the `file` / `folder`
     /// blocks to generate.
     ///
-    /// Property answers come from `-D key=value`, an `--answers` file
-    /// (`.wcl` or `.json`), an interactive prompt, or the property's
-    /// default — in that order of precedence.
+    /// Property answers come from `-D key=value`, an interactive prompt,
+    /// or the property's default — in that order of precedence.
     ///
     /// Examples:
     ///   wcl init minimal ./my-project
     ///   wcl init minimal ./app -D name=app --defaults
-    ///   wcl init ./my-template.wcl ./out --answers answers.json
+    ///   wcl init ./my-template.wcl ./out -D name=out --defaults
     ///   wcl init --list
     Init {
         /// Built-in template name or path to a template `.wcl` file.
@@ -188,9 +227,6 @@ enum Command {
         /// Destination directory. Defaults to the answered `name`
         /// property, falling back to the template name.
         dest: Option<PathBuf>,
-        /// Answer file (`.wcl` or `.json`) supplying property answers.
-        #[arg(long)]
-        answers: Option<PathBuf>,
         /// Supply a property answer inline (repeatable). Highest
         /// precedence. Example: `-D name=acme`.
         #[arg(short = 'D', value_name = "KEY=VALUE")]
@@ -218,8 +254,8 @@ enum Command {
     /// Operates on the *evaluated* document views (imports resolved), so a
     /// formatting-only edit produces no diff. Each top-level block is an
     /// entity keyed `kind:label`; nested field edits are reported by path,
-    /// recursing into lists by index. Output is a re-parseable WCL tree by
-    /// default (`--format json` for the flat change array).
+    /// recursing into lists by index. The output is itself a re-parseable
+    /// WCL document — pipe it through `wcl parse` for a structured view.
     ///
     /// Either side may be a `<rev>:<path>` git specifier, whose imports
     /// resolve from that same revision.
@@ -227,27 +263,35 @@ enum Command {
     /// Examples:
     ///   wcl diff old.wcl new.wcl
     ///   wcl diff HEAD~1:config.wcl config.wcl
-    ///   wcl diff main:a.wcl feature:a.wcl --format json
+    ///   wcl diff main:a.wcl feature:a.wcl
     Diff {
         /// Old (base) document — a path or `<rev>:<path>` git specifier.
         old: String,
         /// New document — a path or `<rev>:<path>` git specifier.
         new: String,
-        /// Output format: `wcl` (default) or `json`.
-        #[arg(long, value_enum, default_value_t = DiffFormat::Wcl)]
-        format: DiffFormat,
     },
 }
 
-#[derive(Clone, Copy, clap::ValueEnum)]
-enum DiffFormat {
-    Wcl,
-    Json,
+/// Which renderer `wcl wdoc build` drives. The variants differ in what they
+/// write to `<out>`, not in how the document is evaluated.
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum BuildType {
+    /// A static website — one `.html` per page plus shared assets.
+    Html,
+    /// A folder of `.md` files, one per page, with diagrams as sibling
+    /// `.svg` files. Aimed at AI / text consumers.
+    #[value(alias = "md")]
+    Markdown,
+    /// One paginated `.pdf` per site, rendered in pure Rust.
+    Pdf,
 }
 
+/// Paper size for `--type pdf`.
 #[derive(Clone, Copy, clap::ValueEnum)]
 enum PdfPageSize {
+    /// ISO A4 — 210×297mm.
     A4,
+    /// US Letter — 8.5×11in.
     Letter,
 }
 
@@ -260,62 +304,44 @@ impl From<PdfPageSize> for wcl_wdoc::PageSize {
     }
 }
 
+/// The `wcl wdoc <subcommand>` group: render a document, or serve it.
 #[derive(Subcommand)]
 enum WdocCommand {
-    /// Render every `page` block in `<file>` to `<out>/<name>.html`.
+    /// Render every `page` block in `<file>` into `<out>`. `--type` picks
+    /// the output format — see its possible values below; `markdown`
+    /// accepts `md` as an alias.
+    ///
+    /// Note the counts differ: `html` and `markdown` report pages, while
+    /// `pdf` reports sites (it writes one file per site).
+    ///
+    /// Examples:
+    ///   wcl wdoc build main.wcl --out _site
+    ///   wcl wdoc build main.wcl --out _md --type markdown
+    ///   wcl wdoc build main.wcl --out _pdf --type pdf --page-size letter
     Build {
         /// Path to a WCL source file declaring one or more `page` blocks.
         file: PathBuf,
         /// Output directory. Created if missing.
         #[arg(long)]
         out: PathBuf,
-        /// Build only this named `site` (flat at `<out>`). When omitted,
-        /// every site renders into its own `<out>/<name>/` subdirectory
-        /// with a chooser index (a single-site document is unaffected).
+        /// Output format to render.
+        #[arg(long = "type", value_enum, default_value_t = BuildType::Html)]
+        build_type: BuildType,
+        /// Build only this named `site`, written flat at `<out>`.
+        ///
+        /// When omitted the behaviour depends on `--type`: `html` and
+        /// `markdown` render every site into its own `<out>/<name>/`
+        /// subdirectory (html also writes a chooser index), while `pdf`
+        /// names the output after the source file's stem. A single-site
+        /// document is unaffected either way.
         #[arg(long)]
         site: Option<String>,
-        /// Record a call-tree profile of the document evaluation driving
-        /// the build and print it as JSON to stderr (like `wcl parse
-        /// --profile`).
-        #[arg(long)]
-        profile: bool,
+        /// Page size. Applies to `--type pdf` only; passing it with any
+        /// other type is an error. Defaults to A4.
+        #[arg(long, value_enum, help_heading = "PDF options")]
+        page_size: Option<PdfPageSize>,
     },
-    /// Render every `page` block in `<file>` to a folder of Markdown files
-    /// under `<out>` (one `.md` per page), with diagrams / terminals /
-    /// wireframes written as standalone `.svg` files the Markdown
-    /// references. Aimed at AI / text consumers: zoomable diagrams render
-    /// as plain SVG, equations stay as LaTeX, and videos are skipped.
-    #[command(alias = "md")]
-    Markdown {
-        /// Path to a WCL source file declaring one or more `page` blocks.
-        file: PathBuf,
-        /// Output directory. Created if missing.
-        #[arg(long)]
-        out: PathBuf,
-        /// Build only this named `site` (flat at `<out>`). When omitted,
-        /// every site renders into its own `<out>/<name>/` subdirectory
-        /// (a single-site document is unaffected).
-        #[arg(long)]
-        site: Option<String>,
-    },
-    /// Render each `site` in `<file>` to `<out>/<name>.pdf` (a pure-Rust
-    /// PDF, no browser or external tools). Prose, headings and more
-    /// paginate onto A4 (default) or US-Letter pages.
-    Pdf {
-        /// Path to a WCL source file declaring one or more `page` blocks.
-        file: PathBuf,
-        /// Output directory. Created if missing.
-        #[arg(long)]
-        out: PathBuf,
-        /// Render only this named `site`. When omitted, the source file
-        /// stem names the output PDF.
-        #[arg(long)]
-        site: Option<String>,
-        /// Page size.
-        #[arg(long, value_enum, default_value_t = PdfPageSize::A4)]
-        page_size: PdfPageSize,
-    },
-    /// Run a local dev server. Watches the source for `.wcl` changes but
+    /// Run a local dev server, always serving HTML. Watches the source for `.wcl` changes but
     /// does not rebuild automatically — press Enter in the console (or
     /// `POST /__wdoc_rebuild`) to rebuild, then the browser reloads.
     Serve {
@@ -338,11 +364,17 @@ enum WdocCommand {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    // Validate the profiling switch once, before any work: `open_document`
+    // reads it on every call and must be able to treat it as well-formed.
+    if let Err(msg) = profiling_enabled() {
+        eprintln!("error: {msg}");
+        return ExitCode::from(EXIT_IO);
+    }
     let code = match cli.command {
-        Command::Parse { file, profile } => match open_document(&file, profile) {
+        Command::Parse { file } => match open_document(&file) {
             Ok(doc) => {
                 print!("{}", dump::document(&doc));
-                emit_profile(&doc, profile);
+                emit_profile(&doc);
                 EXIT_OK
             }
             Err(err) => {
@@ -390,12 +422,7 @@ fn main() -> ExitCode {
             eprintln!("{msg}");
             EXIT_IO
         }),
-        Command::Eval {
-            file,
-            path,
-            profile,
-            json,
-        } => match open_document(&file, profile) {
+        Command::Eval { file, path, json } => match open_document(&file) {
             Ok(doc) => {
                 let exit = match doc.get(&path) {
                     Some(dr) => match dr.value() {
@@ -426,7 +453,7 @@ fn main() -> ExitCode {
                         EXIT_EVAL
                     }
                 };
-                emit_profile(&doc, profile);
+                emit_profile(&doc);
                 exit
             }
             Err(err) => {
@@ -437,97 +464,19 @@ fn main() -> ExitCode {
         Command::Init {
             template,
             dest,
-            answers,
             define,
             defaults,
             force,
             list,
-        } => scaffold::run_init(template, dest, answers, define, defaults, force, list),
+        } => scaffold::run_init(template, dest, define, defaults, force, list),
         Command::Wdoc { cmd } => run_wdoc(cmd),
-        Command::Diff { old, new, format } => run_diff(&old, &new, format),
+        Command::Diff { old, new } => diff::run(&old, &new),
     };
     ExitCode::from(code)
 }
 
-enum OpenErr {
-    Parse(ParseError),
-    Io(String),
-}
-
-impl OpenErr {
-    fn report(self) -> u8 {
-        match self {
-            OpenErr::Parse(e) => {
-                eprintln!("{:?}", miette::Report::new(e));
-                EXIT_PARSE
-            }
-            OpenErr::Io(msg) => {
-                eprintln!("{msg}");
-                EXIT_IO
-            }
-        }
-    }
-}
-
-/// Open one diff side. A plain path opens directly; a `<rev>:<path>` spec is
-/// materialized from git into a temp dir first. The returned `TempDir` (if
-/// any) must outlive use of the `Document`, so the caller holds it.
-fn open_spec(arg: &str) -> Result<(Document, Option<tempfile::TempDir>), OpenErr> {
-    match gitspec::parse_spec(arg) {
-        gitspec::Spec::Working(path) => {
-            let doc = open_document(&path, false).map_err(OpenErr::Parse)?;
-            Ok((doc, None))
-        }
-        gitspec::Spec::Git { rev, path } => {
-            let (root, rel) = gitspec::repo_rel(&path).map_err(OpenErr::Io)?;
-            let tmp = gitspec::materialize_rev(&rev, &root).map_err(OpenErr::Io)?;
-            let entry = tmp.path().join(&rel);
-            if !entry.exists() {
-                return Err(OpenErr::Io(format!(
-                    "path '{rel}' not found in revision '{rev}'"
-                )));
-            }
-            let doc = open_document(&entry, false).map_err(OpenErr::Parse)?;
-            Ok((doc, Some(tmp)))
-        }
-    }
-}
-
-/// Open both sides (each a path or `<rev>:<path>` git spec), compute the
-/// WCL-aware entity/field diff, and print it as a WCL tree (default) or a
-/// JSON array. A parse/eval/git failure on either side renders the
-/// diagnostic and exits non-zero.
-fn run_diff(old: &str, new: &str, format: DiffFormat) -> u8 {
-    // `_old`/`_new` hold the temp dirs alive until the diff is computed.
-    let (old_doc, _old) = match open_spec(old) {
-        Ok(x) => x,
-        Err(e) => return e.report(),
-    };
-    let (new_doc, _new) = match open_spec(new) {
-        Ok(x) => x,
-        Err(e) => return e.report(),
-    };
-    let changes = diff::diff_documents(&old_doc, &new_doc);
-    match format {
-        DiffFormat::Wcl => {
-            print!("{}", diff::render_wcl(&changes, old, new));
-            EXIT_OK
-        }
-        DiffFormat::Json => match serde_json::to_string_pretty(&diff::changes_to_json(&changes)) {
-            Ok(s) => {
-                println!("{s}");
-                EXIT_OK
-            }
-            Err(e) => {
-                eprintln!("json serialization failed: {e}");
-                EXIT_EVAL
-            }
-        },
-    }
-}
-
-/// Map a wdoc `BuildError` to a CLI exit code. Shared by the `build` and
-/// `markdown` subcommands (both render through the same pipeline).
+/// Map a wdoc `BuildError` to a CLI exit code. Shared by the `html` and
+/// `markdown` build types (both render through the same pipeline).
 fn build_error_code(err: &wcl_wdoc::BuildError) -> u8 {
     match err {
         wcl_wdoc::BuildError::Io(..) => EXIT_IO,
@@ -545,7 +494,7 @@ fn build_error_code(err: &wcl_wdoc::BuildError) -> u8 {
 }
 
 /// Map a wdoc `PdfError` to a CLI exit code. Companion to
-/// [`build_error_code`] for the `pdf` subcommand's distinct error type.
+/// [`build_error_code`] for the `--type pdf` path's distinct error type.
 fn pdf_error_code(err: &wcl_wdoc::PdfError) -> u8 {
     match err {
         wcl_wdoc::PdfError::Io(..) => EXIT_IO,
@@ -557,9 +506,9 @@ fn pdf_error_code(err: &wcl_wdoc::PdfError) -> u8 {
     }
 }
 
-/// Report the outcome of a wdoc page-render pipeline (`build` / `markdown`):
-/// print the page count on success, or render the error and map it to an exit
-/// code on failure.
+/// Report the outcome of a wdoc page-render pipeline (`--type html` /
+/// `--type markdown`): print the page count on success, or render the error
+/// and map it to an exit code on failure.
 fn report_pages(result: Result<usize, wcl_wdoc::BuildError>) -> u8 {
     match result {
         Ok(n) => {
@@ -595,16 +544,29 @@ fn print_render_warnings() {
     }
 }
 
-fn run_wdoc(cmd: WdocCommand) -> u8 {
-    match cmd {
-        WdocCommand::Build {
-            file,
-            out,
-            site,
-            profile,
-        } => {
-            let opts = wcl_wdoc::BuildOptions { profile };
-            let result = wcl_wdoc::build_with_options(&file, &out, site.as_deref(), &opts);
+/// Render `file` into `out` using the renderer `build_type` selects.
+///
+/// The three renderers report different units — html and markdown count
+/// *pages*, pdf counts *sites* (one file each) — so the success message is
+/// per-type rather than unified, and pdf carries its own error type.
+///
+/// Profiling ([`PROFILE_ENV`]) reaches the html path only: `wcl_wdoc` has no
+/// profile hook in its markdown or pdf pipelines. Rather than error on a
+/// variable a user may have exported session-wide, the other two types
+/// ignore it.
+fn run_build(
+    file: &Path,
+    out: &Path,
+    build_type: BuildType,
+    site: Option<&str>,
+    page_size: Option<PdfPageSize>,
+) -> u8 {
+    match build_type {
+        BuildType::Html => {
+            let opts = wcl_wdoc::BuildOptions {
+                profile: profiling_enabled().unwrap_or(false),
+            };
+            let result = wcl_wdoc::build_with_options(file, out, site, &opts);
             if result.is_ok() {
                 print_render_warnings();
             }
@@ -619,30 +581,51 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             });
             report_pages(result)
         }
-        WdocCommand::Markdown { file, out, site } => {
-            let result = wcl_wdoc::markdown(&file, &out, site.as_deref());
+        BuildType::Markdown => {
+            let result = wcl_wdoc::markdown(file, out, site);
             if result.is_ok() {
                 print_render_warnings();
             }
             report_pages(result)
         }
-        WdocCommand::Pdf {
+        BuildType::Pdf => {
+            let page_size = page_size.unwrap_or(PdfPageSize::A4);
+            match wcl_wdoc::pdf(file, out, site, page_size.into()) {
+                Ok(n) => {
+                    print_render_warnings();
+                    println!("wrote {n} pdf{}", if n == 1 { "" } else { "s" });
+                    EXIT_OK
+                }
+                Err(err) => {
+                    let code = pdf_error_code(&err);
+                    err.report();
+                    code
+                }
+            }
+        }
+    }
+}
+
+/// Dispatch a `wcl wdoc` subcommand.
+fn run_wdoc(cmd: WdocCommand) -> u8 {
+    match cmd {
+        WdocCommand::Build {
             file,
             out,
+            build_type,
             site,
             page_size,
-        } => match wcl_wdoc::pdf(&file, &out, site.as_deref(), page_size.into()) {
-            Ok(n) => {
-                print_render_warnings();
-                println!("wrote {n} pdf{}", if n == 1 { "" } else { "s" });
-                EXIT_OK
+        } => {
+            // `--page-size` is modelled as an `Option` purely so a value the
+            // user actually typed is distinguishable from a default; that is
+            // what makes this check possible without reaching into clap's
+            // `ArgMatches`.
+            if page_size.is_some() && build_type != BuildType::Pdf {
+                eprintln!("error: --page-size applies to `--type pdf` only");
+                return EXIT_IO;
             }
-            Err(err) => {
-                let code = pdf_error_code(&err);
-                err.report();
-                code
-            }
-        },
+            run_build(&file, &out, build_type, site.as_deref(), page_size)
+        }
         WdocCommand::Serve {
             file,
             addr,
@@ -681,7 +664,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
 fn run_repl(file: Option<&Path>) -> u8 {
     use std::io::{BufRead, Write};
     let doc = match file {
-        Some(p) => match open_document(p, false) {
+        Some(p) => match open_document(p) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("{:?}", miette::Report::new(e));
@@ -877,7 +860,7 @@ fn run_check(file: &Path, json: bool) -> u8 {
             cli_loader(),
         )
     } else {
-        open_document(file, false)
+        open_document(file)
     };
     match doc {
         Ok(doc) => {
@@ -1022,7 +1005,7 @@ fn verify_reparses(src: &str) -> Result<(), String> {
 ///   slot.expr = parse_expr(value)
 ///   write_atomic(home, format::to_source(ast))
 fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
-    let doc = match open_document(file, false) {
+    let doc = match open_document(file) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("{:?}", miette::Report::new(e));

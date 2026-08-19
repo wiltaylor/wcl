@@ -1,7 +1,7 @@
 // Chapter 41 — Writing your own blocks.
 //
 // Written against #196. Every snippet below was built with `wcl wdoc
-// build` / `wcl wdoc markdown` before it was written down; the outputs
+// build` / `wcl wdoc build --type markdown` before it was written down; the outputs
 // quoted are the real ones, not paraphrases.
 page wdoc_extending {
   title = "Writing your own blocks"
@@ -106,7 +106,7 @@ TEXT
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc markdown api.wcl --out _md
+$ wcl wdoc build api.wcl --out _md --type markdown
 wrote 1 page
 
 $ cat _md/api.md
@@ -481,7 +481,7 @@ TEXT
 
   code text {
     source = <<'TEXT'
-$ wcl wdoc markdown preview.wcl --out _md
+$ wcl wdoc build preview.wcl --out _md --type markdown
 wcl::eval::user_error
 
   × error: `markdown_source` has no :markdown implementation (it is native

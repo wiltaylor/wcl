@@ -88,7 +88,7 @@ page notes {
 The Markdown target keeps one paragraph:
 
 ```console
-$ wcl wdoc markdown main.wcl --out _md
+$ wcl wdoc build main.wcl --out _md --type markdown
 wrote 1 page
 $ cat _md/notes.md
 # Notes
@@ -168,7 +168,7 @@ rendered link would point at something never shipped. `file` therefore declares 
 `:markdown` and stops there. Put one on a page and build to PDF, and the build **refuses**:
 
 ```console
-$ wcl wdoc pdf main.wcl --out _pdf
+$ wcl wdoc build main.wcl --out _pdf --type pdf
 wcl::eval::user_error
 
   × error: `file` has no :pdf implementation (it is native
@@ -197,9 +197,9 @@ page dl {
 ```
 
 ```console
-$ wcl wdoc pdf main.wcl --out _pdf
+$ wcl wdoc build main.wcl --out _pdf --type pdf
 wrote 1 pdf
-$ wcl wdoc markdown main.wcl --out _md
+$ wcl wdoc build main.wcl --out _md --type markdown
 wrote 1 page
 $ cat _md/dl.md
 # Downloads

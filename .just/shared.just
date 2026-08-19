@@ -37,9 +37,18 @@ fmt-check: require-rustfmt
     cargo fmt --all -- --check
 
 # Lint with clippy (warnings are errors)
+#
+# The two `-A` flags exempt the documentation-coverage lints that Cargo.toml
+# enables workspace-wide. They are a backlog (~2550 items when switched on),
+# not a standard we currently meet, so gating on them would mean gating on
+# nothing — `-D warnings` would fail every run and the ~200 other clippy
+# lints would stop being enforced. `-A` after `-D warnings` overrides it for
+# these two only; a plain `cargo clippy` still shows them.
+#
+# Delete both flags once the backlog is cleared — that is the whole switch.
 [group('quality')]
 workspace-lint: require-clippy
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings -A missing_docs -A clippy::missing_docs_in_private_items
 
 # Run all tests (unit + integration)
 [group('test')]
