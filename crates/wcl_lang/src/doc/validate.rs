@@ -3,25 +3,27 @@
 //! Responsibilities:
 //! - Namespace position / uniqueness.
 //! - `use` declarations → alias tables (single-item, namespace, wildcard).
-//! - Per-type/interface/union/symbol_set field-type, variant-name, and
-//!   symbol-name checks (`check_type_ref`).
-//! - Cross-declaration `extends` graph: unknown parents, self-extension,
-//!   cycles, conflicting field types across the effective field set
-//!   (`validate_extends`).
+//! - Path resolution against those tables ([`resolve_path`]), which every
+//!   later name lookup in the document is built on.
 //!
 //! On success returns a [`Resolved`] bundle (file namespace + alias tables)
 //! which the document then stashes for runtime name resolution.
+//!
+//! What the declarations themselves must satisfy — type references that
+//! resolve, unique variant and symbol names, a sound `extends` graph — is
+//! the type system's business, and is checked from here by
+//! [`types::declarations`](super::types) once the alias tables are built.
 
 use std::collections::{HashMap, HashSet};
 
 use miette::NamedSource;
 
-use crate::ast::TypeRef;
 use crate::ast::{self, Span};
 use crate::error::ParseError;
 use crate::symbols::{SymbolIndex, SymbolKind};
 
 use super::span_to_miette;
+use super::types::declarations::{CheckContext, check_declarations};
 
 #[derive(Debug, PartialEq, Eq)]
 /// What a source's `namespace` and `use` declarations resolved to.
@@ -344,7 +346,9 @@ pub(crate) fn validate_document(
         }
     }
 
-    // 4. TypeRef resolution + variant-name uniqueness.
+    // 4. Declaration checking: type references, variant / symbol
+    // uniqueness, connections and the `extends` graph — all of which
+    // are the type system's rules, so they live in `types::declarations`.
     let cx = CheckContext {
         declared: &declared,
         interfaces: &interfaces,
@@ -355,133 +359,7 @@ pub(crate) fn validate_document(
         source,
         file,
     };
-    for item in &ast.items {
-        match item {
-            ast::Item::TypeDecl(t) => {
-                for f in &t.fields {
-                    check_type_ref(&f.ty, f.ty_span, false, &cx)?;
-                }
-            }
-            ast::Item::InterfaceDecl(i) => {
-                for f in &i.fields {
-                    check_type_ref(&f.ty, f.ty_span, false, &cx)?;
-                }
-            }
-            ast::Item::UnionDecl(u) => {
-                let mut seen: HashSet<String> = HashSet::new();
-                for v in &u.variants {
-                    if !seen.insert(v.name.clone()) {
-                        return Err(open_error(
-                            source,
-                            file,
-                            format!(
-                                "duplicate variant '{}' in union '{}'",
-                                v.name,
-                                u.name.join(".")
-                            ),
-                            v.span,
-                            "duplicate variant",
-                        ));
-                    }
-                    match &v.body {
-                        ast::VariantBody::Record { fields, .. } => {
-                            for f in fields {
-                                check_type_ref(&f.ty, f.ty_span, false, &cx)?;
-                            }
-                        }
-                        ast::VariantBody::TypeRef { ty, ty_span } => {
-                            check_type_ref(ty, *ty_span, false, &cx)?;
-                        }
-                        ast::VariantBody::InterfaceRef { iface, iface_span } => {
-                            // InterfaceRef body is the moral equivalent of
-                            // `&Iface` — the interface is the contract, the
-                            // payload is any value satisfying it. Pass
-                            // `parent_is_ref=true` so interface paths are
-                            // accepted (the same rule that lets `&Iface`
-                            // appear in field types).
-                            check_type_ref(
-                                &crate::ast::TypeRef::named(iface.clone()),
-                                *iface_span,
-                                true,
-                                &cx,
-                            )?;
-                        }
-                        ast::VariantBody::Unit => {}
-                    }
-                }
-            }
-            ast::Item::SymbolSetDecl(s) => {
-                let mut seen: HashSet<String> = HashSet::new();
-                for entry in &s.symbols {
-                    if !seen.insert(entry.name.clone()) {
-                        return Err(open_error(
-                            source,
-                            file,
-                            format!(
-                                "duplicate symbol '{}' in symbol_set '{}'",
-                                entry.name,
-                                s.name.join(".")
-                            ),
-                            entry.span,
-                            "duplicate symbol",
-                        ));
-                    }
-                }
-            }
-            ast::Item::ConnectionDecl(c) => {
-                check_type_ref(&c.source, c.source_span, false, &cx)?;
-                check_type_ref(&c.destination, c.destination_span, false, &cx)?;
-                // kind_set must resolve to a declared symbol_set FQN.
-                let resolved = resolve_path(
-                    &c.kind_set,
-                    &file_ns,
-                    &item_aliases,
-                    &ns_aliases,
-                    &wildcards,
-                    &declared,
-                );
-                let kind_set_fqn = match resolved {
-                    Some(fqn) => fqn,
-                    None => {
-                        return Err(open_error(
-                            source,
-                            file,
-                            format!(
-                                "unknown symbol_set '{}' in connection '{}'",
-                                c.kind_set.join("."),
-                                c.name.join(".")
-                            ),
-                            c.kind_set_span,
-                            "symbol_set not declared",
-                        ));
-                    }
-                };
-                let kind_set_fqn_str = kind_set_fqn.join(".");
-                let is_symbol_set = symbols
-                    .lookup(&kind_set_fqn_str)
-                    .map(|r| matches!(r.kind, SymbolKind::SymbolSetDecl))
-                    .unwrap_or(false);
-                if !is_symbol_set {
-                    return Err(open_error(
-                        source,
-                        file,
-                        format!(
-                            "kind '{}' in connection '{}' must be a symbol_set",
-                            kind_set_fqn_str,
-                            c.name.join(".")
-                        ),
-                        c.kind_set_span,
-                        "not a symbol_set",
-                    ));
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // 5. `extends` validation: unknown parents, cycles, and
-    // conflicting field types across the effective field set.
-    validate_extends(ast, &cx)?;
+    check_declarations(ast, symbols, &cx)?;
 
     Ok(Resolved {
         file_ns,
@@ -489,274 +367,4 @@ pub(crate) fn validate_document(
         ns_aliases,
         wildcards,
     })
-}
-
-/// Walks every `type` and `interface` declaration and resolves its
-/// `extends` clauses to canonical FQNs. Surfaces unknown parents,
-/// cycles in the extends graph, and field-type conflicts (across
-/// parents, or between a parent and a child redeclaration).
-fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Result<(), ParseError> {
-    let declared = cx.declared;
-    let file_ns = cx.file_ns;
-    let item_aliases = cx.item_aliases;
-    let ns_aliases = cx.ns_aliases;
-    let wildcards = cx.wildcards;
-    let source = cx.source;
-    let file = cx.file;
-    // Snapshot every parent/child as (decl_fqn, [parent_fqn]) so we
-    // can walk the graph without distinguishing type vs interface.
-    let mut parent_map: HashMap<Vec<String>, Vec<Vec<String>>> = HashMap::new();
-    // Field map: decl_fqn -> [(field_name, TypeRef, span)].
-    type FieldRow<'a> = (&'a str, &'a TypeRef, Span);
-    let mut field_map: HashMap<Vec<String>, Vec<FieldRow<'_>>> = HashMap::new();
-
-    let compose_fqn = |name: &[String]| -> Vec<String> {
-        let mut v = file_ns.to_vec();
-        v.extend(name.iter().cloned());
-        v
-    };
-
-    for item in &ast.items {
-        let (name, extends, fields, decl_span) = match item {
-            ast::Item::TypeDecl(t) => (&t.name, &t.extends, &t.fields, t.span),
-            ast::Item::InterfaceDecl(i) => (&i.name, &i.extends, &i.fields, i.span),
-            _ => continue,
-        };
-        let self_fqn = compose_fqn(name);
-        let mut resolved_parents = Vec::with_capacity(extends.len());
-        for parent_path in extends {
-            let Some(resolved) = resolve_path(
-                parent_path,
-                file_ns,
-                item_aliases,
-                ns_aliases,
-                wildcards,
-                declared,
-            ) else {
-                return Err(open_error(
-                    source,
-                    file,
-                    format!(
-                        "unknown extends target '{}' in '{}'",
-                        parent_path.join("."),
-                        self_fqn.join("."),
-                    ),
-                    decl_span,
-                    "no such type or interface",
-                ));
-            };
-            if resolved == self_fqn {
-                return Err(open_error(
-                    source,
-                    file,
-                    format!("'{}' cannot extend itself", self_fqn.join(".")),
-                    decl_span,
-                    "self-extension",
-                ));
-            }
-            resolved_parents.push(resolved);
-        }
-        parent_map.insert(self_fqn.clone(), resolved_parents);
-        let rows: Vec<FieldRow<'_>> = fields
-            .iter()
-            .map(|f| (f.name.as_str(), &f.ty, f.span))
-            .collect();
-        field_map.insert(self_fqn, rows);
-    }
-
-    // Cycle detection via DFS coloring.
-    fn dfs_cycle(
-        node: &[String],
-        parent_map: &HashMap<Vec<String>, Vec<Vec<String>>>,
-        color: &mut HashMap<Vec<String>, u8>, // 0 = unvisited, 1 = on-stack, 2 = done
-    ) -> Option<Vec<String>> {
-        let key = node.to_vec();
-        match color.get(&key).copied().unwrap_or(0) {
-            1 => return Some(key),
-            2 => return None,
-            _ => {}
-        }
-        color.insert(key.clone(), 1);
-        if let Some(parents) = parent_map.get(&key) {
-            for p in parents {
-                if let Some(cycle) = dfs_cycle(p, parent_map, color) {
-                    return Some(cycle);
-                }
-            }
-        }
-        color.insert(key, 2);
-        None
-    }
-    let mut color: HashMap<Vec<String>, u8> = HashMap::new();
-    for node in parent_map.keys() {
-        if let Some(cycle_node) = dfs_cycle(node, &parent_map, &mut color) {
-            return Err(open_error(
-                source,
-                file,
-                format!("cyclic extends graph involving '{}'", cycle_node.join("."),),
-                Span::new(0, 0),
-                "cycle in extends",
-            ));
-        }
-    }
-
-    // Field-type compatibility: walk each declaration's transitive
-    // ancestors, accumulate (name, TypeRef) pairs, and error on
-    // conflicting types for the same name.
-    fn collect_ancestor_fields<'a>(
-        node: &[String],
-        parent_map: &HashMap<Vec<String>, Vec<Vec<String>>>,
-        field_map: &HashMap<Vec<String>, Vec<(&'a str, &'a TypeRef, Span)>>,
-        out: &mut Vec<(&'a str, &'a TypeRef, Span)>,
-        seen: &mut HashSet<Vec<String>>,
-    ) {
-        let key = node.to_vec();
-        if !seen.insert(key.clone()) {
-            return;
-        }
-        if let Some(parents) = parent_map.get(&key) {
-            for p in parents {
-                collect_ancestor_fields(p, parent_map, field_map, out, seen);
-            }
-        }
-        if let Some(rows) = field_map.get(&key) {
-            out.extend(rows.iter().copied());
-        }
-    }
-
-    for decl_fqn in parent_map.keys() {
-        let mut all_fields: Vec<FieldRow<'_>> = Vec::new();
-        let mut seen: HashSet<Vec<String>> = HashSet::new();
-        collect_ancestor_fields(
-            decl_fqn,
-            &parent_map,
-            &field_map,
-            &mut all_fields,
-            &mut seen,
-        );
-        // Check pairwise. Function-typed fields are compared by
-        // return type only — the same relaxation interface
-        // conformance applies, so a concrete impl can narrow a
-        // `fn(&I) -> R` declared on the parent to `fn(Concrete) -> R`.
-        let mut by_name: HashMap<&str, (&TypeRef, Span)> = HashMap::new();
-        for (name, ty, span) in &all_fields {
-            match by_name.get(name) {
-                Some((existing_ty, _)) if !extends_field_types_compatible(existing_ty, ty) => {
-                    return Err(open_error(
-                        source,
-                        file,
-                        format!(
-                            "conflicting type for field '{}' in '{}' (across extends)",
-                            name,
-                            decl_fqn.join("."),
-                        ),
-                        *span,
-                        "field type conflict",
-                    ));
-                }
-                _ => {
-                    by_name.insert(name, (ty, *span));
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// `true` if two `TypeRef`s are compatible across an `extends`
-/// boundary. Strict equality, except for function types which are
-/// purely structural: the child may narrow a parent's
-/// `fn(&Iface) -> R` to `fn(Concrete) -> Whatever`. Mirrors the
-/// relaxation in `interfaces::iface_field_type_compatible`.
-///
-/// "Equality" here ignores type arguments — they are metadata, so an
-/// override that differs only in them is the same type. The interface
-/// path compares `ResolvedType`s, which never carry arguments at all;
-/// this keeps the two in agreement.
-fn extends_field_types_compatible(a: &TypeRef, b: &TypeRef) -> bool {
-    if matches!((a, b), (TypeRef::Function { .. }, TypeRef::Function { .. })) {
-        return true;
-    }
-    a.same_ignoring_type_args(b)
-}
-
-/// Snapshot of the bookkeeping `validate_document` builds up before it
-/// reaches its TypeRef / extends / connection passes. Threaded through
-/// the deep validators so they can resolve paths against the document's
-/// alias/wildcard tables without 11-arg signatures.
-struct CheckContext<'a> {
-    /// Every type name the document declares.
-    declared: &'a HashSet<Vec<String>>,
-    /// Every interface name the document declares.
-    interfaces: &'a HashSet<Vec<String>>,
-    /// Namespace of the source being checked.
-    file_ns: &'a [String],
-    /// Item aliases in scope.
-    item_aliases: &'a HashMap<String, Vec<String>>,
-    /// Namespace aliases in scope.
-    ns_aliases: &'a HashMap<String, Vec<String>>,
-    /// Wildcard namespaces in scope.
-    wildcards: &'a [Vec<String>],
-    /// Source text, for rendering diagnostics.
-    source: &'a str,
-    /// Source name, for rendering diagnostics.
-    file: &'a str,
-}
-
-/// Check that every name a type reference mentions resolves to
-/// something the document declares.
-fn check_type_ref(
-    t: &TypeRef,
-    ty_span: Span,
-    parent_is_ref: bool,
-    cx: &CheckContext<'_>,
-) -> Result<(), ParseError> {
-    match t {
-        TypeRef::Builtin(_) => Ok(()),
-        TypeRef::Named { path, .. } => {
-            let Some(resolved) = resolve_path(
-                path,
-                cx.file_ns,
-                cx.item_aliases,
-                cx.ns_aliases,
-                cx.wildcards,
-                cx.declared,
-            ) else {
-                return Err(open_error(
-                    cx.source,
-                    cx.file,
-                    format!("unknown type '{}'", path.join(".")),
-                    ty_span,
-                    "type not declared",
-                ));
-            };
-            if cx.interfaces.contains(&resolved) && !parent_is_ref {
-                return Err(open_error(
-                    cx.source,
-                    cx.file,
-                    format!(
-                        "interface '{}' must be used through a reference (`&{}`)",
-                        path.join("."),
-                        path.join(".")
-                    ),
-                    ty_span,
-                    "interface in non-reference position",
-                ));
-            }
-            Ok(())
-        }
-        TypeRef::Reference(inner) => check_type_ref(inner, ty_span, true, cx),
-        // `list<Interface>` is allowed: the list element is a slot for
-        // a `@children(Interface)` collection; the interface tag never
-        // materialises as a stored value, only routes child blocks.
-        TypeRef::List(inner) => check_type_ref(inner, ty_span, true, cx),
-        TypeRef::Tensor { element, .. } => check_type_ref(element, ty_span, false, cx),
-        TypeRef::Function { params, return_ty } => {
-            for p in params {
-                check_type_ref(p, ty_span, false, cx)?;
-            }
-            check_type_ref(return_ty, ty_span, false, cx)
-        }
-    }
 }

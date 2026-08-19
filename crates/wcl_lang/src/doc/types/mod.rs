@@ -13,6 +13,10 @@
 //!   `@unit` factors that ride on the chain.
 //! - [`inherit`] — `extends`. The effective field set of a type or
 //!   interface, walked through its ancestors.
+//! - [`declarations`] / [`extends`] — the open-time checks a declaration
+//!   must pass before any of the above runs: names that resolve, unique
+//!   variant and symbol names, and an `extends` graph that is a DAG with
+//!   consistent field types.
 //! - [`interfaces`] — structural conformance: does this concrete type
 //!   provide what the interface requires?
 //! - [`inhabit`] — does this *value* belong to this type, and can it be
@@ -29,6 +33,8 @@
 //! this module.
 
 mod alias;
+pub(super) mod declarations;
+mod extends;
 mod inhabit;
 mod inherit;
 mod interfaces;
