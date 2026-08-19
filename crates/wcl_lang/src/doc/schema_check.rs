@@ -37,7 +37,7 @@ fn decorator_slot_value_error(
     }
 
     let declared_type = doc.resolve_alias_in(slot.type_ref(), slot.file_ns);
-    if !crate::doc::value_matches_declared(value, &declared_type, slot.optional()) {
+    if !crate::doc::types::value_matches_declared(value, &declared_type, slot.optional()) {
         return Some(EvalError::schema_violation_named(
             Kind::FieldTypeMismatch,
             format!(
@@ -51,7 +51,7 @@ fn decorator_slot_value_error(
             span,
         ));
     }
-    if let Some(error) = crate::doc::symbol_set_membership_error_in(
+    if let Some(error) = crate::doc::types::symbol_set_membership_error_in(
         doc,
         &declared_type,
         value,
@@ -758,10 +758,14 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             for (kind, blk) in block.union_children_blocks(declared.name()) {
                 let result = match kind {
                     crate::doc::UnionChildKind::Nested => {
-                        crate::doc::variant_dispatch::block_to_variant(block.doc, &blk, union)
+                        crate::doc::types::variant_dispatch::block_to_variant(
+                            block.doc, &blk, union,
+                        )
                     }
                     crate::doc::UnionChildKind::TableRow => {
-                        crate::doc::variant_dispatch::table_row_to_variant(block.doc, &blk, union)
+                        crate::doc::types::variant_dispatch::table_row_to_variant(
+                            block.doc, &blk, union,
+                        )
                     }
                 };
                 if let Err(e) = result {
@@ -775,7 +779,7 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             let mut had_match = false;
             for (kind, blk) in block.union_children_blocks(declared.name()) {
                 if matches!(kind, crate::doc::UnionChildKind::Nested)
-                    && crate::doc::variant_dispatch::block_to_variant(block.doc, &blk, union)
+                    && crate::doc::types::variant_dispatch::block_to_variant(block.doc, &blk, union)
                         .is_ok()
                 {
                     had_match = true;
@@ -924,7 +928,7 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         }
 
         // Generic value-vs-type check for non-union typed fields.
-        if !crate::doc::value_matches_type_ref(value, &resolved_ty) {
+        if !crate::doc::types::value_matches_type_ref(value, &resolved_ty) {
             errs.push(EvalError::schema_violation(
                 Kind::FieldTypeMismatch,
                 format!(
@@ -935,7 +939,7 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
                 ),
                 literal_field.span(),
             ));
-        } else if let Some(err) = crate::doc::symbol_set_membership_error_in(
+        } else if let Some(err) = crate::doc::types::symbol_set_membership_error_in(
             block.doc,
             &resolved_ty,
             value,
@@ -1081,7 +1085,7 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             continue;
         }
         let matches_union = union_slots.iter().any(|u| {
-            crate::doc::variant_dispatch::block_to_variant(block.doc, &nested, *u).is_ok()
+            crate::doc::types::variant_dispatch::block_to_variant(block.doc, &nested, *u).is_ok()
         });
         if matches_union {
             continue;

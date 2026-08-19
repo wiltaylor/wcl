@@ -422,9 +422,7 @@ impl<'a> Field<'a> {
                 .and_then(|v| match self.declared_type_ref() {
                     // Coerce a bare-record value to the field's declared
                     // union variant by shape (recursing through lists).
-                    Some(ty) => {
-                        variant_dispatch::coerce_value_to_type(self.doc, v, ty, self.ast.span)
-                    }
+                    Some(ty) => coerce_value_to_type(self.doc, v, ty, self.ast.span),
                     None => Ok(v),
                 })
         };
@@ -462,7 +460,7 @@ impl<'a> Field<'a> {
     pub fn value_typed(&self, type_fqn: &str) -> Result<Value, EvalError> {
         let ty = TypeRef::named(type_fqn.split('.').map(str::to_string).collect());
         let value = self.doc.eval_in_scope(&self.ast.expr, &self.scope)?;
-        variant_dispatch::coerce_value_to_type(self.doc, value, &ty, self.ast.span)
+        coerce_value_to_type(self.doc, value, &ty, self.ast.span)
     }
 
     /// `Some(err)` if this field's name isn't accepted by the

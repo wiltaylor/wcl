@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{DeclName, Decorator, Document, InterfaceDecl, TypeDecl, TypeField};
+use crate::doc::{DeclName, Decorator, Document, InterfaceDecl, TypeDecl, TypeField};
 
 /// A resolved `extends` target. `type` and `interface` declarations
 /// share the same inheritance entry-points (`effective_fields`,
@@ -86,7 +86,7 @@ fn lookup_parent<'a>(
 /// Build the effective-field list for a declaration: ancestors (transitively,
 /// in extends-list order, with later overriding earlier on name) followed by
 /// the declaration's own fields. Shared by `TypeDecl` and `InterfaceDecl`.
-pub(super) fn build_effective_fields<'a, I>(
+pub(crate) fn build_effective_fields<'a, I>(
     doc: &'a Document,
     extends: &[Vec<String>],
     file_ns: &[String],
@@ -111,7 +111,7 @@ where
 /// (required for instance validation) while still inheriting the
 /// interface's `@doc` / `@hidden` — so shared field documentation lives in
 /// one place. Field names contributed only by ancestors are included too.
-pub(super) fn build_merged_decorators<'a, I>(
+pub(crate) fn build_merged_decorators<'a, I>(
     doc: &'a Document,
     extends: &[Vec<String>],
     file_ns: &[String],
@@ -141,7 +141,7 @@ where
 
 /// Single-field lookup against the effective-field set. `own_lookup` checks
 /// the declaration itself; if it misses, walk parents.
-pub(super) fn lookup_effective_field<'a, F>(
+pub(crate) fn lookup_effective_field<'a, F>(
     doc: &'a Document,
     extends: &[Vec<String>],
     file_ns: &[String],
@@ -211,7 +211,7 @@ fn effective_field_via<'a>(
 
 /// Whether `other_fqn` appears anywhere in this declaration's
 /// transitive `extends` chain.
-pub(super) fn is_descendant_of_walk(
+pub(crate) fn is_descendant_of_walk(
     doc: &Document,
     extends_paths: &[Vec<String>],
     file_ns: &[String],

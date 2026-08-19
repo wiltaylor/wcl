@@ -7,11 +7,9 @@ use std::collections::{HashMap, HashSet};
 mod cells;
 mod connections;
 mod decorators;
-mod effective_fields;
 mod eval;
 mod eval_ops;
 mod imports;
-mod interfaces;
 mod loader;
 mod lookup;
 mod match_pat;
@@ -20,16 +18,16 @@ mod provenance;
 mod schema_check;
 mod schema_lookup;
 mod scope;
+mod types;
 mod validate;
-pub(super) mod variant_dispatch;
 mod views;
 pub use imports::{SYSTEM_IMPORT_ROOT, system_import_key};
 pub use loader::{FileLoader, Registry, disk_loader, overlay_loader};
+pub use types::{FieldShape, ResolvedType};
 pub use views::{
     Block, ChildKind, Connection, ConnectionDecl, DeclName, DeclaresKind, Decorator, Field,
-    FieldShape, InterfaceDecl, NamedArg, ResolvedType, RowView, SymbolEntry, SymbolSetDecl,
-    TableView, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
-    VariantBodyView,
+    InterfaceDecl, NamedArg, RowView, SymbolEntry, SymbolSetDecl, TableView, TypeDecl, TypeField,
+    UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem, VariantBodyView,
 };
 pub(crate) use views::{BuiltinDecorator, LetView, UnionChildKind};
 
@@ -48,7 +46,10 @@ use decorators::decorator_name_span;
 use lookup::{find_block, find_field, find_let, iter_blocks, iter_fields};
 use schema_check::{has_annotation_exemption, has_schemaless};
 use scope::Scope;
-use validate::{decl_fqn_matches, resolve_path};
+use types::{
+    format_union_variants_hint, symbol_set_membership_error_in, validate_union,
+    value_matches_type_ref,
+};
 
 /// An opened document: a parsed source, its imports, and the caches that
 /// make repeated reads cheap.
@@ -350,72 +351,6 @@ pub struct SymbolHit<'a> {
     pub source_path: Option<&'a Path>,
 }
 
-/// Scan every source for the first declaration matching `$fqn` whose symbol
-/// kind, AST item, and view struct all share `$variant`'s name, returning the
-/// constructed view from the enclosing fn on a hit. The macro emits only the
-/// search loop — the caller supplies the miss tail (`None`, or a synthetic
-/// fallback). `cells`/`nocells` selects whether the view carries a `cells`
-/// borrow; the optional trailing field names are `TypeDecl`'s two origin
-/// flags — `is_imported`, set from the source's import origin, and
-/// `is_derived`, false for every declaration a source *writes*. Collapses
-/// the five `type_decl`/`interface`/`union_decl`/`symbol_set`/
-/// `connection_decl` lookups (M4).
-macro_rules! find_decl {
-    ($self:ident, $fqn:ident, $variant:ident, cells $(, $imp:ident, $der:ident)?) => {
-        for src in $self.all_sources() {
-            if let Some(rec) = src.symbols.lookup($fqn)
-                && matches!(rec.kind, SymbolKind::$variant)
-                && let ast::Item::$variant(node) = &src.items[rec.path.item_index]
-            {
-                return Some($variant {
-                    ast: node,
-                    file_ns: src.file_ns,
-                    cells: &src.cells[rec.path.item_index],
-                    doc: $self,
-                    $( $imp: src.path.is_some(), $der: false, )?
-                });
-            }
-        }
-    };
-    ($self:ident, $fqn:ident, $variant:ident, nocells) => {
-        for src in $self.all_sources() {
-            if let Some(rec) = src.symbols.lookup($fqn)
-                && matches!(rec.kind, SymbolKind::$variant)
-                && let ast::Item::$variant(node) = &src.items[rec.path.item_index]
-            {
-                return Some($variant {
-                    ast: node,
-                    file_ns: src.file_ns,
-                    doc: $self,
-                });
-            }
-        }
-    };
-}
-
-/// Iterate every `$variant` declaration across the document and its eager
-/// imports, in source order, yielding the matching `cells`-carrying view.
-/// Collapses the `interfaces`/`union_decls`/`symbol_sets` iterators (M4).
-macro_rules! decl_iter_cells {
-    ($self:ident, $variant:ident) => {{
-        let doc = $self;
-        doc.all_sources().into_iter().flat_map(move |src| {
-            src.items
-                .iter()
-                .zip(src.cells.iter())
-                .filter_map(move |(item, cells)| match item {
-                    ast::Item::$variant(node) => Some($variant {
-                        ast: node,
-                        file_ns: src.file_ns,
-                        cells,
-                        doc,
-                    }),
-                    _ => None,
-                })
-        })
-    }};
-}
-
 impl Document {
     /// Lazy dotted-path access into the document. Each segment is
     /// resolved on demand against the current node — only the cells
@@ -534,7 +469,7 @@ impl Document {
                     }
                     let mut out: Vec<Value> = Vec::new();
                     for b in self.blocks() {
-                        if let Ok(v) = variant_dispatch::block_to_variant(self, &b, union) {
+                        if let Ok(v) = types::variant_dispatch::block_to_variant(self, &b, union) {
                             out.push(v);
                         }
                     }
@@ -585,7 +520,9 @@ impl Document {
                     }
                     let projected = self
                         .blocks()
-                        .find_map(|b| variant_dispatch::block_to_variant(self, &b, union).ok())
+                        .find_map(|b| {
+                            types::variant_dispatch::block_to_variant(self, &b, union).ok()
+                        })
                         .unwrap_or(Value::None);
                     if let Ok(mut m) = self.root_children_memo.write() {
                         m.insert(name.to_string(), projected.clone());
@@ -697,22 +634,6 @@ impl Document {
             return Some(DataRef::from_interface(i));
         }
         None
-    }
-
-    /// Resolve a `TypeRef::Named` (or `TypeRef::Reference(Named ...)`,
-    /// which is how interface-typed connection endpoints must be
-    /// written) to its dotted FQN. Returns `None` for builtins,
-    /// lists, tensors, etc.
-    ///
-    /// The reference resolves as if written in a source whose namespace
-    /// is `file_ns` — e.g. a `connection X : Adr -> Adr` declared under
-    /// `namespace lib` resolves its endpoints to `lib.Adr`.
-    pub(crate) fn resolve_type_fqn_in(&self, t: &TypeRef, file_ns: &[String]) -> Option<String> {
-        match t {
-            TypeRef::Named { path, .. } => self.resolve_path_in(path, file_ns).map(|p| p.join(".")),
-            TypeRef::Reference(inner) => self.resolve_type_fqn_in(inner, file_ns),
-            _ => None,
-        }
     }
 
     /// The top-level field with this name, searching the root source
@@ -853,274 +774,6 @@ impl Document {
         })
     }
 
-    /// Look up a type by fully-qualified name (dotted). Searches the
-    /// importer, every eagerly-imported file, and registry-injected
-    /// types in that order.
-    /// Resolve type aliases (`type Port = u16`) inside `ty`, deeply:
-    /// a `Named` ref whose declaration is an alias is replaced by its
-    /// target (transitively, cycle-capped), and list / reference /
-    /// tensor element types resolve recursively. Non-alias refs come
-    /// back unchanged. Used by the schema value checks so a field
-    /// declared with an alias validates against the target type.
-    pub fn resolve_alias(&self, ty: &crate::ast::TypeRef) -> crate::ast::TypeRef {
-        self.resolve_alias_in(ty, &self.file_ns)
-    }
-
-    /// Resolve a path through the `use` aliases visible in the given
-    /// namespace, returning the fully-qualified form.
-    pub(crate) fn resolve_alias_in(
-        &self,
-        ty: &crate::ast::TypeRef,
-        context_ns: &[String],
-    ) -> crate::ast::TypeRef {
-        use crate::ast::TypeRef as T;
-        fn go(doc: &Document, ty: &T, context_ns: &[String], depth: u8) -> T {
-            if depth == 0 {
-                return ty.clone(); // alias cycle — give up, stay permissive
-            }
-            match ty {
-                T::Named { path, args } => {
-                    let resolved_path = doc
-                        .resolve_path_in(path, context_ns)
-                        .unwrap_or_else(|| path.clone());
-                    match doc.type_decl(&resolved_path.join(".")) {
-                        Some(declaration) if declaration.ast.alias.is_some() => go(
-                            doc,
-                            declaration.ast.alias.as_ref().expect("alias checked"),
-                            declaration.file_ns(),
-                            depth - 1,
-                        ),
-                        _ => T::Named {
-                            // Preserve the authored path for runtime value
-                            // matching, which deliberately accepts a shorter
-                            // suffix (`RelatedEdge` against a namespaced
-                            // variant tag). Namespace resolution above is
-                            // needed only to locate an alias declaration.
-                            path: path.clone(),
-                            args: args
-                                .iter()
-                                .map(|arg| go(doc, arg, context_ns, depth - 1))
-                                .collect(),
-                        },
-                    }
-                }
-                T::List(inner) => T::List(Box::new(go(doc, inner, context_ns, depth - 1))),
-                T::Reference(inner) => {
-                    T::Reference(Box::new(go(doc, inner, context_ns, depth - 1)))
-                }
-                T::Tensor { element, dims } => T::Tensor {
-                    element: Box::new(go(doc, element, context_ns, depth - 1)),
-                    dims: dims.clone(),
-                },
-                T::Function { params, return_ty } => T::Function {
-                    params: params
-                        .iter()
-                        .map(|param| go(doc, param, context_ns, depth - 1))
-                        .collect(),
-                    return_ty: Box::new(go(doc, return_ty, context_ns, depth - 1)),
-                },
-                other => other.clone(),
-            }
-        }
-        go(self, ty, context_ns, views::ALIAS_DEPTH)
-    }
-
-    /// The chain of alias declarations behind `ty`, outermost first —
-    /// empty for a non-alias type. Constraint decorators on each link
-    /// apply to values of the aliased type.
-    pub(crate) fn alias_chain(&self, ty: &crate::ast::TypeRef) -> Vec<TypeDecl<'_>> {
-        self.alias_chain_in(ty, &self.file_ns)
-    }
-
-    /// Follow a chain of `use` aliases to its end, bounded so a cyclic
-    /// alias cannot hang the walk.
-    pub(crate) fn alias_chain_in(
-        &self,
-        ty: &crate::ast::TypeRef,
-        context_ns: &[String],
-    ) -> Vec<TypeDecl<'_>> {
-        let mut out = Vec::new();
-        let mut current = ty.clone();
-        let mut current_ns = context_ns;
-        for _ in 0..views::ALIAS_DEPTH {
-            let crate::ast::TypeRef::Named { path, .. } = &current else {
-                break;
-            };
-            let resolved = self
-                .resolve_path_in(path, current_ns)
-                .unwrap_or_else(|| path.clone());
-            let Some(decl) = self.type_decl(&resolved.join(".")) else {
-                break;
-            };
-            let Some(target) = decl.ast.alias.clone() else {
-                break;
-            };
-            out.push(decl);
-            current = target;
-            current_ns = decl.file_ns();
-        }
-        out
-    }
-
-    /// The multiplier declared for `unit` on `ty`'s alias chain via a
-    /// `@unit(name, factor)` decorator, or `None` if the type declares no
-    /// such unit. Mirrors `schema_check::constraint_violation`'s
-    /// alias-chain decorator walk; the factor expression evaluates through
-    /// the document (so `@unit("MiB", 1024 * 1024)` works). Backs both
-    /// literal-unit resolution and the `format_unit` builtin.
-    pub(crate) fn unit_factor(&self, ty: &crate::ast::TypeRef, unit: &str) -> Option<Value> {
-        for link in self.alias_chain(ty) {
-            for d in link.ast.decorators.iter() {
-                if d.name.join(".") != "unit" {
-                    continue;
-                }
-                let Some(name_val) = d.positional.first().and_then(|e| self.eval(e).ok()) else {
-                    continue;
-                };
-                let matches = matches!(&name_val,
-                    Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) | Value::Symbol(s)
-                        if s == unit);
-                if !matches {
-                    continue;
-                }
-                if let Some(factor) = d.positional.get(1).and_then(|e| self.eval(e).ok()) {
-                    return Some(factor);
-                }
-            }
-        }
-        None
-    }
-
-    /// The `type` declaration with this fully-qualified name.
-    pub fn type_decl(&self, fqn: &str) -> Option<TypeDecl<'_>> {
-        find_decl!(self, fqn, TypeDecl, cells, is_imported, is_derived);
-        // Synthetic types live in the root namespace (no file ns prefix)
-        // and are not registered in the parser-built index.
-        let target: Vec<&str> = fqn.split('.').collect();
-        self.synthetic_types
-            .iter()
-            .enumerate()
-            .find(|(_, t)| decl_fqn_matches(&t.name, &target))
-            .map(|(i, t)| TypeDecl {
-                ast: t,
-                file_ns: &[],
-                cells: &self.synthetic_type_cells[i],
-                doc: self,
-                is_imported: false,
-                is_derived: false,
-            })
-    }
-
-    /// Every `type` declaration in scope, synthetic ones included.
-    pub fn type_decls(&self) -> impl Iterator<Item = TypeDecl<'_>> + '_ {
-        let doc = self;
-        let mine_and_imports = self.all_sources().into_iter().flat_map(move |src| {
-            src.items
-                .iter()
-                .zip(src.cells.iter())
-                .filter_map(move |(item, cells)| match item {
-                    ast::Item::TypeDecl(t) => Some(TypeDecl {
-                        ast: t,
-                        file_ns: src.file_ns,
-                        cells,
-                        doc,
-                        is_imported: src.path.is_some(),
-                        is_derived: false,
-                    }),
-                    _ => None,
-                })
-        });
-        let syn = self
-            .synthetic_types
-            .iter()
-            .zip(self.synthetic_type_cells.iter())
-            .map(move |(t, cells)| TypeDecl {
-                ast: t,
-                file_ns: &[],
-                cells,
-                doc,
-                is_imported: false,
-                is_derived: false,
-            });
-        mine_and_imports.chain(syn)
-    }
-
-    /// Every declared decorator and the type that schemas it, in
-    /// [`type_decls`](Self::type_decls) order. This includes declarations
-    /// from eager imports and synthetic types supplied by the environment.
-    pub fn declared_decorators(&self) -> impl Iterator<Item = (String, TypeDecl<'_>)> + '_ {
-        self.type_decls().flat_map(|schema| {
-            let names: Vec<_> = schema
-                .decorators()
-                .filter_map(|decorator| {
-                    if decorator.is(BuiltinDecorator::Decorator) {
-                        first_positional_utf8(&decorator)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            names.into_iter().map(move |name| (name, schema))
-        })
-    }
-
-    /// Look up an interface declaration by fully-qualified name.
-    /// Mirrors `type_decl` / `union_decl`.
-    pub fn interface(&self, fqn: &str) -> Option<InterfaceDecl<'_>> {
-        find_decl!(self, fqn, InterfaceDecl, cells);
-        None
-    }
-
-    /// Every `interface` declaration in scope.
-    pub fn interfaces(&self) -> impl Iterator<Item = InterfaceDecl<'_>> + '_ {
-        decl_iter_cells!(self, InterfaceDecl)
-    }
-
-    /// Look up a union by fully-qualified name (dotted).
-    /// The union a source-written type path resolves to (root-namespace
-    /// context), memoised per path — see the `union_path_memo` field.
-    /// Returns the resolved FQN; look the decl up with [`union_decl`].
-    pub(crate) fn union_fqn_for_path(&self, path: &[String]) -> Option<String> {
-        if let Some(hit) = self.union_path_memo.read().ok()?.get(path) {
-            return hit.clone();
-        }
-        let resolved = self
-            .resolve_path_in(path, &self.file_ns)
-            .map(|p| p.join("."))
-            .unwrap_or_else(|| path.join("."));
-        let fqn = if self.union_decl(&resolved).is_some() {
-            Some(resolved)
-        } else {
-            let raw = path.join(".");
-            if raw != resolved && self.union_decl(&raw).is_some() {
-                Some(raw)
-            } else {
-                None
-            }
-        };
-        if let Ok(mut memo) = self.union_path_memo.write() {
-            memo.insert(path.to_vec(), fqn.clone());
-        }
-        fqn
-    }
-
-    /// The `union` declaration with this fully-qualified name.
-    pub fn union_decl(&self, fqn: &str) -> Option<UnionDecl<'_>> {
-        find_decl!(self, fqn, UnionDecl, cells);
-        None
-    }
-
-    /// Every `union` declaration in scope.
-    pub fn union_decls(&self) -> impl Iterator<Item = UnionDecl<'_>> + '_ {
-        decl_iter_cells!(self, UnionDecl)
-    }
-
-    /// Look up a connection schema by fully-qualified name (dotted).
-    pub fn connection_decl(&self, fqn: &str) -> Option<ConnectionDecl<'_>> {
-        find_decl!(self, fqn, ConnectionDecl, nocells);
-        None
-    }
-
     /// Iterate every top-level connection statement in this document
     /// and its eager imports, in source order.
     pub fn connection_stmts(&self) -> impl Iterator<Item = Connection<'_>> + '_ {
@@ -1130,169 +783,6 @@ impl Document {
                 _ => None,
             })
         })
-    }
-
-    /// Every `connection` declaration in scope.
-    pub fn connection_decls(&self) -> impl Iterator<Item = ConnectionDecl<'_>> + '_ {
-        let doc = self;
-        self.all_sources().into_iter().flat_map(move |src| {
-            src.items.iter().filter_map(move |item| match item {
-                ast::Item::ConnectionDecl(c) => Some(ConnectionDecl {
-                    ast: c,
-                    file_ns: src.file_ns,
-                    doc,
-                }),
-                _ => None,
-            })
-        })
-    }
-
-    /// The `symbol_set` with this fully-qualified name.
-    pub fn symbol_set(&self, fqn: &str) -> Option<SymbolSetDecl<'_>> {
-        find_decl!(self, fqn, SymbolSetDecl, cells);
-        let target: Vec<&str> = fqn.split('.').collect();
-        self.synthetic_symbol_sets
-            .iter()
-            .enumerate()
-            .find(|(_, set)| decl_fqn_matches(&set.name, &target))
-            .map(|(index, set)| SymbolSetDecl {
-                ast: set,
-                file_ns: &[],
-                cells: &self.synthetic_symbol_set_cells[index],
-                doc: self,
-            })
-    }
-
-    /// Every `symbol_set` in scope, synthetic ones included.
-    pub fn symbol_sets(&self) -> impl Iterator<Item = SymbolSetDecl<'_>> + '_ {
-        let doc = self;
-        let authored = decl_iter_cells!(self, SymbolSetDecl);
-        let synthetic = self
-            .synthetic_symbol_sets
-            .iter()
-            .zip(self.synthetic_symbol_set_cells.iter())
-            .map(move |(set, cells)| SymbolSetDecl {
-                ast: set,
-                file_ns: &[],
-                cells,
-                doc,
-            });
-        authored.chain(synthetic)
-    }
-
-    /// Resolve a [`TypeRef`] to either its built-in tag or the user-declared
-    /// [`TypeDecl`] / [`UnionDecl`] it points to. `Named` refs are validated
-    /// at [`Document::open`], so the lookup never fails here.
-    ///
-    /// Names resolve from the document's ROOT namespace. A reference written
-    /// inside a namespaced file must resolve from *that* namespace instead —
-    /// see [`Document::resolve_in`] and [`TypeField::resolved_type`].
-    pub fn resolve<'a>(&'a self, t: &'a TypeRef) -> ResolvedType<'a> {
-        self.resolve_in(t, &self.file_ns)
-    }
-
-    /// [`Document::resolve`] for a reference written in a source whose
-    /// namespace is `file_ns`: the name resolves *within its declaring
-    /// namespace first*. This is what keeps two same-named types in
-    /// different namespaces apart — a user schema's `acme.Container` and
-    /// wdoc's diagram `wdoc.Container` are both named `Container`, and
-    /// resolving an `acme` field's type from the root namespace can answer
-    /// the wrong one.
-    pub fn resolve_in<'a>(&'a self, t: &'a TypeRef, file_ns: &[String]) -> ResolvedType<'a> {
-        match t {
-            TypeRef::Builtin(b) => ResolvedType::Builtin(*b),
-            TypeRef::Named { path, .. } => {
-                let fqn = self
-                    .resolve_path_in(path, file_ns)
-                    .expect("named ref validated at Document::open");
-                let fqn_dotted = fqn.join(".");
-                if let Some(decl) = self.type_decl(&fqn_dotted) {
-                    ResolvedType::Named(decl)
-                } else if let Some(iface) = self.interface(&fqn_dotted) {
-                    ResolvedType::Interface(iface)
-                } else if let Some(union) = self.union_decl(&fqn_dotted) {
-                    ResolvedType::Union(union)
-                } else if let Some(ss) = self.symbol_set(&fqn_dotted) {
-                    ResolvedType::SymbolSet(ss)
-                } else {
-                    ResolvedType::Connection(
-                        self.connection_decl(&fqn_dotted)
-                            .expect("named ref validated at Document::open"),
-                    )
-                }
-            }
-            TypeRef::Reference(inner) => {
-                ResolvedType::Reference(Box::new(self.resolve_in(inner, file_ns)))
-            }
-            TypeRef::List(inner) => ResolvedType::List(Box::new(self.resolve_in(inner, file_ns))),
-            TypeRef::Tensor { element, dims } => ResolvedType::Tensor {
-                element: Box::new(self.resolve_in(element, file_ns)),
-                dims,
-            },
-            TypeRef::Function { params, return_ty } => ResolvedType::Function {
-                params: params.iter().map(|p| self.resolve_in(p, file_ns)).collect(),
-                return_ty: Box::new(self.resolve_in(return_ty, file_ns)),
-            },
-        }
-    }
-
-    /// Prefix a declared name with the root source's namespace.
-    fn compose_fqn(&self, name: &[String]) -> Vec<String> {
-        let mut v = self.file_ns.clone();
-        v.extend(name.iter().cloned());
-        v
-    }
-
-    /// The set of fully-qualified names declared anywhere in the
-    /// document (root + every eagerly-imported file), used as the
-    /// resolution registry for type references. Built once per document
-    /// (see the `ref_registry` field for why that's sound).
-    fn ref_registry(&self) -> &HashSet<Vec<String>> {
-        self.ref_registry.get_or_init(|| self.build_ref_registry())
-    }
-
-    /// Collect every type FQN that some `&T` field references, so the
-    /// reference-acceptance check can be answered by lookup.
-    fn build_ref_registry(&self) -> HashSet<Vec<String>> {
-        let mut registry: HashSet<Vec<String>> = self
-            .ast
-            .items
-            .iter()
-            .filter_map(|item| match item {
-                ast::Item::TypeDecl(t) => Some(self.compose_fqn(&t.name)),
-                ast::Item::InterfaceDecl(i) => Some(self.compose_fqn(&i.name)),
-                ast::Item::UnionDecl(u) => Some(self.compose_fqn(&u.name)),
-                ast::Item::SymbolSetDecl(s) => Some(self.compose_fqn(&s.name)),
-                ast::Item::ConnectionDecl(c) => Some(self.compose_fqn(&c.name)),
-                _ => None,
-            })
-            .collect();
-        // Synthetic types live at the root namespace.
-        for t in &self.synthetic_types {
-            registry.insert(t.name.clone());
-        }
-        for set in &self.synthetic_symbol_sets {
-            registry.insert(set.name.clone());
-        }
-        // Declarations from eagerly-imported files resolve too — e.g. a
-        // connection whose endpoint type `&SvgBlock` is defined in an
-        // imported schema file. Each source's symbol index already holds
-        // FQNs with that file's namespace composed in.
-        for src in self.all_sources() {
-            for rec in src.symbols.iter() {
-                if matches!(
-                    rec.kind,
-                    SymbolKind::TypeDecl
-                        | SymbolKind::InterfaceDecl
-                        | SymbolKind::UnionDecl
-                        | SymbolKind::SymbolSetDecl
-                        | SymbolKind::ConnectionDecl
-                ) {
-                    registry.insert(rec.fqn.split('.').map(str::to_string).collect());
-                }
-            }
-        }
-        registry
     }
 
     /// The over-approximate shadowable-name set — see the
@@ -1355,38 +845,6 @@ impl Document {
             }
             out
         })
-    }
-
-    /// Run the name-resolution algorithm on `path` against this document's
-    /// root file ns / aliases / wildcards / registry.
-    fn resolve_path(&self, path: &[String]) -> Option<Vec<String>> {
-        self.resolve_path_in(path, &self.file_ns)
-    }
-
-    /// Resolve `path` as if it were written in a source whose namespace
-    /// is `file_ns`. This makes a bare reference resolve **within its
-    /// declaring file's namespace first** — e.g. a stdlib type's
-    /// `extends ContentBlock` (written in `namespace wdoc`) resolves to
-    /// `wdoc.ContentBlock`, not the root namespace. The document's
-    /// `use`-aliases/wildcards still apply (they only come from the root
-    /// today).
-    pub(crate) fn resolve_path_in(
-        &self,
-        path: &[String],
-        file_ns: &[String],
-    ) -> Option<Vec<String>> {
-        let registry = self.ref_registry();
-        // `self.wildcards` already includes every imported library's
-        // namespace (added in `validate_document`), so a bare reference
-        // to a stdlib type resolves through it.
-        resolve_path(
-            path,
-            file_ns,
-            &self.item_aliases,
-            &self.ns_aliases,
-            &self.wildcards,
-            registry,
-        )
     }
 
     /// Non-fatal schema diagnostics — advisory siblings of
@@ -2018,7 +1476,7 @@ impl Document {
         use crate::error::SchemaViolationKind as Kind;
         let dispatched_through_union = root_union_slots
             .iter()
-            .any(|u| variant_dispatch::block_to_variant(self, b, *u).is_ok());
+            .any(|u| types::variant_dispatch::block_to_variant(self, b, *u).is_ok());
         if dispatched_through_union {
             return;
         }
@@ -2365,280 +1823,6 @@ impl Document {
         }
         self.blocks().any(|b| walk(&b, kind, id))
     }
-}
-
-/// Whether `value` satisfies a *declared field*: [`value_matches_type_ref`]
-/// plus the optional rule — a `T?` field accepts the `none` literal, so
-/// writing absence out (`note = none`) is as legal as omitting the field.
-///
-/// The `?` lives on the declaration (`ast::TypeField::optional`), not in
-/// `TypeRef`, so `value_matches_type_ref` cannot see it: on its own it
-/// answers `false` for `none` against every concrete type. Every
-/// value-vs-declared-type check goes through here so the two stay in step.
-pub(crate) fn value_matches_declared(value: &Value, ty: &TypeRef, optional: bool) -> bool {
-    (optional && matches!(value, Value::None)) || value_matches_type_ref(value, ty)
-}
-
-/// Conservative check that `value` could inhabit `ty`.
-///
-/// Deliberately one-sided: it returns `true` when it cannot decide, so
-/// the schema check never rejects a value it merely failed to
-/// understand.
-pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
-    use crate::ast::BuiltinType as B;
-    match (value, ty) {
-        (Value::Bool(_), TypeRef::Builtin(B::Bool)) => true,
-        (Value::I8(_), TypeRef::Builtin(B::I8)) => true,
-        (Value::I16(_), TypeRef::Builtin(B::I16)) => true,
-        (Value::I32(_), TypeRef::Builtin(B::I32)) => true,
-        (Value::I64(_), TypeRef::Builtin(B::I64)) => true,
-        (Value::I128(_), TypeRef::Builtin(B::I128)) => true,
-        (Value::Isize(_), TypeRef::Builtin(B::Isize)) => true,
-        (Value::U8(_), TypeRef::Builtin(B::U8)) => true,
-        (Value::U16(_), TypeRef::Builtin(B::U16)) => true,
-        (Value::U32(_), TypeRef::Builtin(B::U32)) => true,
-        (Value::U64(_), TypeRef::Builtin(B::U64)) => true,
-        (Value::U128(_), TypeRef::Builtin(B::U128)) => true,
-        (Value::Usize(_), TypeRef::Builtin(B::Usize)) => true,
-        (Value::F32(_), TypeRef::Builtin(B::F32)) => true,
-        (Value::F64(_), TypeRef::Builtin(B::F64)) => true,
-        (Value::Utf8(_), TypeRef::Builtin(B::Utf8)) => true,
-        (Value::Ascii(_), TypeRef::Builtin(B::Ascii)) => true,
-        (Value::Utf16(_), TypeRef::Builtin(B::Utf16)) => true,
-        (Value::Utf32(_), TypeRef::Builtin(B::Utf32)) => true,
-        (Value::Symbol(_), TypeRef::Builtin(B::Symbol)) => true,
-        (Value::Identifier(_), TypeRef::Builtin(B::Identifier)) => true,
-        // A string for an `identifier` field is a tolerated authoring
-        // form (`set = "platformer"`): consumers read Identifier and
-        // Utf8/Ascii interchangeably for id-typed fields.
-        (Value::Utf8(_) | Value::Ascii(_), TypeRef::Builtin(B::Identifier)) => true,
-        // A symbol against a named type is (typically) a `symbol_set`
-        // member — checking membership would need the declaration, which
-        // `Value` doesn't carry, so stay permissive.
-        (Value::Symbol(_), TypeRef::Named { .. }) => true,
-        (Value::None, _) => false, // None doesn't satisfy any concrete type
-        // Numeric values satisfy any numeric builtin type: the evaluator
-        // promotes numerics (an `f64` field authored as `520` holds an
-        // i64 literal), so an exact-variant check here would flag values
-        // the eval path accepts.
-        (v, TypeRef::Builtin(b)) if v.is_numeric() && b.is_numeric() => true,
-        // Variant value against a named union type: compare FQN.
-        (Value::Variant { union, .. }, TypeRef::Named { path, .. }) => {
-            path_matches_suffix(path, union)
-        }
-        // Record value against a named (non-union) type. Builtin-produced
-        // records (e.g. `@connections` projections) carry the producing
-        // declaration's FQN in `ty` — compare it. Bare record literals
-        // (`ty` empty) stay permissive: matching them by shape would need
-        // the declaration, which `Value` doesn't carry (mirrors the
-        // tensor / function pass-through below).
-        (Value::Record { ty, .. }, TypeRef::Named { path, .. }) => {
-            ty.is_empty() || path_matches_suffix(path, ty)
-        }
-        // Lists check element type recursively — except that a `none`
-        // *element* is always legal. An else-less `if` in a list literal
-        // (`["base", if e.current { "current" }]`) contributes one, and
-        // consumers drop it; the rule that a `none` never satisfies a
-        // concrete type bounds a field's own value, not what a list may
-        // hold on the way to being filtered.
-        (Value::List(items), TypeRef::List(inner)) => items
-            .iter()
-            .all(|el| matches!(el, Value::None) || value_matches_type_ref(el, inner)),
-        // Tensors / functions / references stay permissive — strict
-        // checks here would need richer type information than we
-        // currently carry on `Value`.
-        (Value::Tensor { .. }, TypeRef::Tensor { .. }) => true,
-        (Value::Function(_), TypeRef::Function { .. }) => true,
-        // `&T` fields evaluate to a `Value::DataPath` (lazy navigator).
-        (Value::DataPath { .. }, TypeRef::Reference(_)) => true,
-        _ => false,
-    }
-}
-
-/// When `ty` (already alias-resolved) names a `symbol_set` and `value`
-/// is a symbol that isn't one of its members, return the membership
-/// violation; otherwise `None`. Mirrors the connection-kind membership
-/// check (`schema_check::connection_errors`) so a `status: SomeSet`
-/// field rejects an out-of-set symbol identically whether the block is a
-/// document child or nested — `value_matches_type_ref` stays permissive
-/// for `(Symbol, Named)` because it lacks the declaration to check.
-pub(crate) fn symbol_set_membership_error_in(
-    doc: &Document,
-    ty: &TypeRef,
-    value: &Value,
-    field_name: &str,
-    span: crate::ast::Span,
-    context_ns: &[String],
-) -> Option<EvalError> {
-    let TypeRef::Named { path, .. } = ty else {
-        return None;
-    };
-    let resolved = doc
-        .resolve_path_in(path, context_ns)
-        .unwrap_or_else(|| path.clone());
-    let ss = doc.symbol_set(&resolved.join("."))?;
-    let Value::Symbol(sym) = value else {
-        return None;
-    };
-    if ss.has(sym) {
-        return None;
-    }
-    Some(EvalError::schema_violation(
-        crate::error::SchemaViolationKind::SymbolNotInSet,
-        format!(
-            "field '{field_name}' declared as symbol_set '{}' but ':{sym}' is not one of its members",
-            path.join(".")
-        ),
-        span,
-    ))
-}
-
-/// Render a comma-separated list of all variant names across the
-/// given union slots — used to enrich `UnregisteredKind` errors with
-/// a "did you mean" hint when a nearby `@children(SomeUnion)` field
-/// exists.
-fn format_union_variants_hint(doc: &Document, slots: &[UnionDecl<'_>]) -> String {
-    let mut names: Vec<String> = Vec::new();
-    for u in slots {
-        if let Ok(effective) = doc.effective_variants_of(u.ast) {
-            for v in effective {
-                names.push(format!("{}::{}", u.ast.name.join("."), v.name));
-            }
-        }
-    }
-    names.join(", ")
-}
-
-/// Declaration-time validation for a single union: cycles, duplicate
-/// variant names across the `extends` chain, and structural-shape
-/// collisions between variant bodies that would make dispatch
-/// ambiguous.
-fn validate_union(doc: &Document, u: &ast::UnionDecl) -> Vec<EvalError> {
-    use crate::error::SchemaViolationKind as Kind;
-    let mut out = Vec::new();
-    let effective = match doc.effective_variants_of(u) {
-        Ok(v) => v,
-        Err(e) => {
-            out.push(e);
-            return out;
-        }
-    };
-    // Duplicate variant names across the chain: walk own + all parents
-    // and report any name appearing more than once. effective_variants
-    // dedups silently — we re-walk the raw lists here to catch.
-    let mut seen: std::collections::HashMap<String, ast::Span> = Default::default();
-    fn walk(
-        doc: &Document,
-        u: &ast::UnionDecl,
-        seen: &mut std::collections::HashMap<String, ast::Span>,
-        out: &mut Vec<EvalError>,
-        visiting: &mut std::collections::HashSet<String>,
-    ) {
-        use crate::error::SchemaViolationKind as Kind;
-        let key = u.name.join(".");
-        if visiting.contains(&key) {
-            return;
-        }
-        visiting.insert(key);
-        for parent_path in &u.extends {
-            let resolved = doc
-                .resolve_path_in(parent_path, &doc.file_ns)
-                .map(|p| p.join("."))
-                .unwrap_or_else(|| parent_path.join("."));
-            if let Some(p) = doc
-                .union_decl(&resolved)
-                .or_else(|| doc.union_decl(&parent_path.join(".")))
-            {
-                walk(doc, p.ast, seen, out, visiting);
-            }
-        }
-        for v in &u.variants {
-            if let Some(prev) = seen.get(&v.name) {
-                EvalError::push_schema_violation(
-                    out,
-                    Kind::DuplicateVariant,
-                    format!(
-                        "variant '{}' is declared more than once in union '{}' (first at offset {})",
-                        v.name,
-                        u.name.join("."),
-                        prev.start,
-                    ),
-                    v.span,
-                );
-            } else {
-                seen.insert(v.name.clone(), v.span);
-            }
-        }
-    }
-    walk(
-        doc,
-        u,
-        &mut seen,
-        &mut out,
-        &mut std::collections::HashSet::new(),
-    );
-    // Structural-shape collisions among effective variants. Each pair
-    // is checked once; collisions are flagged on the second offender.
-    for i in 0..effective.len() {
-        for j in (i + 1)..effective.len() {
-            if variant_bodies_collide(&effective[i].body, &effective[j].body) {
-                EvalError::push_schema_violation(
-                    &mut out,
-                    Kind::VariantShapeCollision,
-                    format!(
-                        "variants '{}' and '{}' in union '{}' have identical bodies",
-                        effective[i].name,
-                        effective[j].name,
-                        u.name.join("."),
-                    ),
-                    effective[j].span,
-                );
-            }
-        }
-    }
-    out
-}
-
-/// Bodies "collide" when they're indistinguishable for dispatch:
-/// same set of record-field (name, type) pairs, or identical Unit /
-/// TypeRef / InterfaceRef references.
-///
-/// Type arguments don't distinguish anything — dispatch resolves a
-/// named type by path — so `A(S<X>)` and `B(S<Y>)` collide just as
-/// `A(S)` and `B(S)` do.
-fn variant_bodies_collide(a: &ast::VariantBody, b: &ast::VariantBody) -> bool {
-    use ast::VariantBody as VB;
-    match (a, b) {
-        (VB::Unit, VB::Unit) => true,
-        (VB::TypeRef { ty: a, .. }, VB::TypeRef { ty: b, .. }) => a.same_ignoring_type_args(b),
-        (VB::InterfaceRef { iface: a, .. }, VB::InterfaceRef { iface: b, .. }) => a == b,
-        (VB::Record { fields: af, .. }, VB::Record { fields: bf, .. }) => {
-            if af.len() != bf.len() {
-                return false;
-            }
-            let mut a_sorted: Vec<(&String, &TypeRef)> =
-                af.iter().map(|f| (&f.name, &f.ty)).collect();
-            let mut b_sorted: Vec<(&String, &TypeRef)> =
-                bf.iter().map(|f| (&f.name, &f.ty)).collect();
-            a_sorted.sort_by_key(|(n, _)| (*n).clone());
-            b_sorted.sort_by_key(|(n, _)| (*n).clone());
-            a_sorted
-                .iter()
-                .zip(b_sorted.iter())
-                .all(|((an, at), (bn, bt))| an == bn && at.same_ignoring_type_args(bt))
-        }
-        _ => false,
-    }
-}
-
-/// Whether a pattern's (possibly unqualified) union path matches a
-/// fully-qualified union name, comparing from the right.
-fn path_matches_suffix(pat_path: &[String], union_fqn: &[String]) -> bool {
-    if pat_path.len() > union_fqn.len() {
-        return false;
-    }
-    let offset = union_fqn.len() - pat_path.len();
-    union_fqn[offset..] == *pat_path
 }
 
 /// The source span of any expression, whatever its variant.

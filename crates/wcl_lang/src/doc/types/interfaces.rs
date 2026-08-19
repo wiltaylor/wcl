@@ -10,12 +10,12 @@ use crate::ast::TypeRef;
 use crate::data::{DataKind, DataRef};
 use crate::error::EvalError;
 
-use super::{DeclName, Document, InterfaceDecl, ResolvedType, TypeDecl};
+use crate::doc::{DeclName, Document, InterfaceDecl, ResolvedType, TypeDecl};
 
 /// Find the declared `TypeDecl` corresponding to the concrete value at a
 /// `DataRef`, when one is known. `None` for refs whose target type isn't a
 /// named `TypeDecl` (builtins, unions, etc.).
-pub(super) fn dataref_concrete_type<'a>(
+pub(crate) fn dataref_concrete_type<'a>(
     dr: &DataRef<'a>,
     doc: &'a Document,
 ) -> Option<TypeDecl<'a>> {
@@ -33,13 +33,13 @@ pub(super) fn dataref_concrete_type<'a>(
 }
 
 /// Whether two views name the same declaration, compared by address.
-pub(super) fn same_type_decl(a: &TypeDecl<'_>, b: &TypeDecl<'_>) -> bool {
+pub(crate) fn same_type_decl(a: &TypeDecl<'_>, b: &TypeDecl<'_>) -> bool {
     std::ptr::eq(a.ast, b.ast)
 }
 
 /// Check that a type structurally provides everything an interface
 /// requires, reporting the first field that is missing or mistyped.
-pub(super) fn check_interface_conformance(
+pub(crate) fn check_interface_conformance(
     doc: &Document,
     iface: &InterfaceDecl<'_>,
     target_decl: &TypeDecl<'_>,
@@ -100,7 +100,7 @@ fn iface_field_type_compatible(iface: &ResolvedType<'_>, tg: &ResolvedType<'_>) 
 
 /// Structural equality over resolved types, used by conformance
 /// checking to compare a required field against the provided one.
-pub(super) fn resolved_types_equal(a: &ResolvedType<'_>, b: &ResolvedType<'_>) -> bool {
+pub(crate) fn resolved_types_equal(a: &ResolvedType<'_>, b: &ResolvedType<'_>) -> bool {
     match (a, b) {
         (ResolvedType::Builtin(x), ResolvedType::Builtin(y)) => x == y,
         (ResolvedType::Named(x), ResolvedType::Named(y)) => std::ptr::eq(x.ast, y.ast),

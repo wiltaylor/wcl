@@ -1,7 +1,7 @@
 //! Literal-unit formatting builtins.
 //!
 //! Literal units (`5MiB`) are *parsed* into a base-unit number by the
-//! evaluator (see `doc::variant_dispatch::resolve_unit_literal`). These
+//! evaluator (see `doc::types::inhabit::resolve_unit_literal`). These
 //! builtins go the other way — rendering a stored base-unit number back as
 //! a chosen unit:
 //!

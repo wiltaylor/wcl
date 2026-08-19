@@ -13,8 +13,8 @@ use crate::value::Value;
 
 use super::cells::{ItemCellKind, ItemCells};
 use super::imports::load_import_lazily;
-use super::interfaces;
 use super::scope::Scope;
+use super::types::check_interface_conformance;
 use super::views::{ConnectionDecl, DeclName, TypeDecl, UnionDecl};
 use super::{Document, match_block_first_label, match_block_id_field};
 
@@ -374,8 +374,7 @@ pub(crate) fn connection_type_matches(
     }
     // Interface endpoint: the operand's concrete block type implements it.
     if let Some(iface) = doc.interface(target)
-        && interfaces::check_interface_conformance(doc, &iface, decl, crate::ast::Span::new(0, 0))
-            .is_ok()
+        && check_interface_conformance(doc, &iface, decl, crate::ast::Span::new(0, 0)).is_ok()
     {
         return true;
     }
@@ -409,7 +408,7 @@ fn union_admits_type(doc: &Document, union: &UnionDecl<'_>, decl: &TypeDecl<'_>)
             crate::ast::VariantBody::InterfaceRef { iface, .. } => {
                 if let Some(fqn) = doc.resolve_path_in(iface, ns).map(|p| p.join("."))
                     && let Some(iface_decl) = doc.interface(&fqn)
-                    && interfaces::check_interface_conformance(
+                    && check_interface_conformance(
                         doc,
                         &iface_decl,
                         decl,

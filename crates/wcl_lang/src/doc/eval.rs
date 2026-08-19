@@ -11,9 +11,9 @@ use crate::value::{FnParam, FnValue, Value};
 use super::eval_ops::{apply_binary, apply_unary, as_bool, describe_expr, format_member_path};
 use super::match_pat;
 use super::scope::Scope;
+use super::types::value_matches_declared;
 use super::{
-    Block, Document, expr_to_path_segments, materialise_dataref, materialise_dataref_value,
-    span_of, value_matches_declared,
+    Block, Document, expr_to_path_segments, materialise_dataref, materialise_dataref_value, span_of,
 };
 
 /// Hard cap on nested user-`fn` invocations during a single evaluation.
@@ -868,12 +868,7 @@ impl Document {
         for (param, value) in f.params().iter().zip(args.iter()) {
             // Coerce a bare-record argument to the parameter's declared
             // union variant by shape; all other args pass through.
-            let value = super::variant_dispatch::coerce_value_to_type(
-                self,
-                value.clone(),
-                param.ty(),
-                span,
-            )?;
+            let value = super::types::coerce_value_to_type(self, value.clone(), param.ty(), span)?;
             frame.locals.push((param.name().to_string(), value));
         }
         frame.call_depth += 1;
@@ -961,12 +956,7 @@ impl Document {
                     let v = self.eval_in(&arg.value, ctx)?;
                     // Coerce a bare record nested in a union-typed
                     // variant field to its matching variant by shape.
-                    let v = super::variant_dispatch::coerce_value_to_type(
-                        self,
-                        v,
-                        &decl_field.ty,
-                        span,
-                    )?;
+                    let v = super::types::coerce_value_to_type(self, v, &decl_field.ty, span)?;
                     map.insert(decl_field.name.clone(), v);
                 }
                 // Reject extras — keeps the runtime value strictly
