@@ -17,7 +17,7 @@
 use std::collections::BTreeMap;
 
 use crate::ast;
-use crate::error::{EvalError, SchemaViolationKind};
+use crate::diagnostics::{EvalError, SchemaViolationKind};
 use crate::value::{Value, VariantPayload};
 
 use crate::doc::{Block, Document, UnionDecl};

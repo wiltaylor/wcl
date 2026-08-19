@@ -1,5 +1,5 @@
 use super::*;
-use crate::error::{ArithmeticFault, ParseError};
+use crate::diagnostics::{ArithmeticFault, ParseError};
 
 fn open(src: &str) -> Document {
     // The strict-validation default rejects any top-level field
@@ -1244,7 +1244,7 @@ fn unknown_decorator_qualifier_is_spanned_on_full_name() {
             matches!(
                 error,
                 EvalError::SchemaViolation {
-                    kind: crate::error::SchemaViolationKind::UndeclaredDecorator,
+                    kind: crate::diagnostics::SchemaViolationKind::UndeclaredDecorator,
                     ..
                 }
             )
@@ -1842,7 +1842,7 @@ fn schema_errors_missing_required_child() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::MissingRequired,
+                kind: crate::diagnostics::SchemaViolationKind::MissingRequired,
                 ..
             }
         )),
@@ -1869,7 +1869,7 @@ fn schema_errors_disallowed_child_kind() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::DisallowedChild,
+                kind: crate::diagnostics::SchemaViolationKind::DisallowedChild,
                 ..
             }
         )),
@@ -1896,7 +1896,7 @@ fn schema_errors_children_max_violated() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::ChildrenTooMany,
+                kind: crate::diagnostics::SchemaViolationKind::ChildrenTooMany,
                 ..
             }
         )),
@@ -1923,7 +1923,7 @@ fn schema_errors_block_max_children_violated() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::BlockChildrenOverflow,
+                kind: crate::diagnostics::SchemaViolationKind::BlockChildrenOverflow,
                 ..
             }
         )),
@@ -2082,7 +2082,7 @@ fn computed_children_non_list_is_schema_error() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::FieldTypeMismatch,
+                kind: crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
                 ..
             }
         )),
@@ -2278,7 +2278,7 @@ fn unschemad_block_surfaces_unregistered_kind() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::UnregisteredKind,
+                kind: crate::diagnostics::SchemaViolationKind::UnregisteredKind,
                 ..
             }
         )),
@@ -2429,7 +2429,7 @@ fn required_children_missing_errors() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::MissingRequired,
+                kind: crate::diagnostics::SchemaViolationKind::MissingRequired,
                 message,
                 ..
             } if message.contains("required child kind 'config'")
@@ -2591,7 +2591,7 @@ fn row_column_count_mismatch_errors() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::ChildrenTooFew,
+                kind: crate::diagnostics::SchemaViolationKind::ChildrenTooFew,
                 ..
             }
         )),
@@ -2813,7 +2813,7 @@ fn multiple_document_decls_surface_error() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::MultipleDocumentSchemas,
+                kind: crate::diagnostics::SchemaViolationKind::MultipleDocumentSchemas,
                 ..
             }
         )),
@@ -2829,7 +2829,7 @@ fn top_level_field_without_doc_schema_errors_on_value() {
         matches!(
             err,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::NoDocumentSchema,
+                kind: crate::diagnostics::SchemaViolationKind::NoDocumentSchema,
                 ..
             }
         ),
@@ -2871,8 +2871,8 @@ fn top_level_unregistered_block_kind_errors() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::NoDocumentSchema
-                    | crate::error::SchemaViolationKind::UnregisteredKind,
+                kind: crate::diagnostics::SchemaViolationKind::NoDocumentSchema
+                    | crate::diagnostics::SchemaViolationKind::UnregisteredKind,
                 ..
             }
         )),
@@ -2897,7 +2897,7 @@ fn top_level_block_kind_disallowed_by_doc_schema_errors() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::DisallowedChild,
+                kind: crate::diagnostics::SchemaViolationKind::DisallowedChild,
                 ..
             }
         )),
@@ -2947,8 +2947,8 @@ fn imported_document_still_rejects_unknown_kind() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::UnregisteredKind
-                    | crate::error::SchemaViolationKind::DisallowedChild,
+                kind: crate::diagnostics::SchemaViolationKind::UnregisteredKind
+                    | crate::diagnostics::SchemaViolationKind::DisallowedChild,
                 ..
             }
         )),
@@ -3218,7 +3218,7 @@ fn has_unknown_operand_error(doc: &Document) -> bool {
         matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::UnknownConnectionOperand,
+                kind: crate::diagnostics::SchemaViolationKind::UnknownConnectionOperand,
                 ..
             }
         )
@@ -3256,7 +3256,7 @@ fn has_unknown_connection_error(doc: &Document) -> bool {
         matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::UnknownConnection,
+                kind: crate::diagnostics::SchemaViolationKind::UnknownConnection,
                 ..
             }
         )
@@ -3360,7 +3360,7 @@ fn second_root_document_still_errors_alongside_import() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::MultipleDocumentSchemas,
+                kind: crate::diagnostics::SchemaViolationKind::MultipleDocumentSchemas,
                 ..
             }
         )),
@@ -3437,7 +3437,7 @@ fn user_plus_imported_same_kind_is_not_a_duplicate_error() {
         !doc.schema_errors().iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::DuplicateBlockKind,
+                kind: crate::diagnostics::SchemaViolationKind::DuplicateBlockKind,
                 ..
             }
         )),
@@ -3463,7 +3463,7 @@ fn duplicate_root_block_kind_same_namespace_errors() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::DuplicateBlockKind,
+                kind: crate::diagnostics::SchemaViolationKind::DuplicateBlockKind,
                 ..
             }
         )),
@@ -3613,7 +3613,7 @@ fn nested_block_kind_unregistered_errors_on_schema_errors() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::UnregisteredKind,
+                kind: crate::diagnostics::SchemaViolationKind::UnregisteredKind,
                 ..
             }
         )),
@@ -3654,7 +3654,7 @@ fn field_not_in_block_schema_errors_on_value() {
         matches!(
             err,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::UnknownField,
+                kind: crate::diagnostics::SchemaViolationKind::UnknownField,
                 ..
             }
         ),
@@ -3985,7 +3985,7 @@ fn target_missing_field_errors_interface_not_implemented() {
             matches!(
                 e,
                 EvalError::SchemaViolation {
-                    kind: crate::error::SchemaViolationKind::InterfaceNotImplemented,
+                    kind: crate::diagnostics::SchemaViolationKind::InterfaceNotImplemented,
                     ..
                 }
             ),
@@ -4006,7 +4006,7 @@ fn sibling_target_errors_through_reference() {
             matches!(
                 e,
                 EvalError::SchemaViolation {
-                    kind: crate::error::SchemaViolationKind::InterfaceNotImplemented,
+                    kind: crate::diagnostics::SchemaViolationKind::InterfaceNotImplemented,
                     ..
                 }
             ),
@@ -4071,7 +4071,7 @@ fn children_interface_rejects_non_extending_type() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::DisallowedChild,
+                kind: crate::diagnostics::SchemaViolationKind::DisallowedChild,
                 ..
             }
         )),
@@ -4172,7 +4172,7 @@ fn interface_function_field_rejects_non_function_impl() {
             matches!(
                 e,
                 EvalError::SchemaViolation {
-                    kind: crate::error::SchemaViolationKind::InterfaceNotImplemented,
+                    kind: crate::diagnostics::SchemaViolationKind::InterfaceNotImplemented,
                     ..
                 }
             ),
@@ -4608,7 +4608,7 @@ fn required_field_still_rejects_none() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::FieldTypeMismatch,
+                kind: crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
                 ..
             }
         )),
@@ -4632,7 +4632,7 @@ fn optional_field_still_rejects_a_wrongly_typed_value() {
         errs.iter().any(|e| matches!(
             e,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::FieldTypeMismatch,
+                kind: crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
                 ..
             }
         )),
@@ -4779,7 +4779,7 @@ fn bare_record_no_matching_variant_is_rejected() {
         matches!(
             err,
             EvalError::SchemaViolation {
-                kind: crate::error::SchemaViolationKind::VariantNoMatch,
+                kind: crate::diagnostics::SchemaViolationKind::VariantNoMatch,
                 ..
             }
         ),
@@ -5756,7 +5756,7 @@ fn an_unknown_param_on_an_instance_is_an_unknown_field() {
             matches!(
                 e,
                 EvalError::SchemaViolation {
-                    kind: crate::error::SchemaViolationKind::UnknownField,
+                    kind: crate::diagnostics::SchemaViolationKind::UnknownField,
                     ..
                 }
             ) && format!("{e}").contains("labell")
@@ -5776,7 +5776,7 @@ fn a_missing_required_param_is_a_missing_required_field() {
             matches!(
                 e,
                 EvalError::SchemaViolation {
-                    kind: crate::error::SchemaViolationKind::MissingRequired,
+                    kind: crate::diagnostics::SchemaViolationKind::MissingRequired,
                     ..
                 }
             ) && format!("{e}").contains("label")
@@ -5840,7 +5840,7 @@ fn a_declared_kind_colliding_with_a_declared_type_is_an_error() {
             matches!(
                 e,
                 EvalError::SchemaViolation {
-                    kind: crate::error::SchemaViolationKind::DeclaredKindCollision,
+                    kind: crate::diagnostics::SchemaViolationKind::DeclaredKindCollision,
                     ..
                 }
             ) && format!("{e}").contains("metric_card")

@@ -31,7 +31,7 @@ use std::sync::atomic::Ordering;
 
 use crate::ast::{self, Span};
 use crate::ast::{BuiltinType, TypeRef};
-use crate::error::EvalError;
+use crate::diagnostics::EvalError;
 use crate::value::Value;
 
 use super::cells::{DecoratorCell, FieldCell, ItemCellKind, ItemCells};

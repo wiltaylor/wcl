@@ -15,7 +15,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{self, Span, TypeRef};
-use crate::error::ParseError;
+use crate::diagnostics::ParseError;
 
 use crate::doc::validate::{open_error, resolve_path};
 

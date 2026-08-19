@@ -7,7 +7,7 @@
 //! it needs by reference.
 
 use crate::ast::{self, Span};
-use crate::error::{ArithmeticFault, EvalError};
+use crate::diagnostics::{ArithmeticFault, EvalError};
 use crate::numeric::{
     for_each_float_numeric_variant, for_each_integer_numeric_variant, for_each_numeric_variant,
     for_each_signed_integer_numeric_variant,

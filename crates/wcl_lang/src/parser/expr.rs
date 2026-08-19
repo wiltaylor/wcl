@@ -7,7 +7,7 @@ use crate::ast::{
     BinOp, CALL_BP, ElemTrivia, Expr, FunctionLit, LetBinding, MEMBER_BP, MatchArm, NamedArg,
     Parameter, Pattern, Span, Trivia, UNARY_BP, UnaryOp, VariantArgs,
 };
-use crate::error::ParseError;
+use crate::diagnostics::ParseError;
 use crate::lexer::{NumberLit, TokenKind};
 
 use super::Parser;

@@ -20,7 +20,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 
 use crate::ast::{self, Span};
-use crate::error::EvalError;
+use crate::diagnostics::EvalError;
 use crate::symbols::SymbolIndex;
 use crate::value::Value;
 

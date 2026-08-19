@@ -12,7 +12,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ast;
-use crate::error::EvalError;
+use crate::diagnostics::EvalError;
 
 use crate::value::Value;
 
@@ -28,7 +28,7 @@ fn decorator_slot_value_error(
     value: &Value,
     span: ast::Span,
 ) -> Option<EvalError> {
-    use crate::error::SchemaViolationKind as Kind;
+    use crate::diagnostics::SchemaViolationKind as Kind;
 
     // A schemaless slot declares only the argument's name/cardinality; the
     // host owns its value type (for example, `@default` accepts any value).
@@ -89,7 +89,7 @@ pub(super) fn decorator_argument_errors(
     doc: &Document,
     decorator: &super::Decorator<'_>,
 ) -> Vec<EvalError> {
-    use crate::error::SchemaViolationKind as Kind;
+    use crate::diagnostics::SchemaViolationKind as Kind;
 
     let Some(schema) = decorator.schema() else {
         return Vec::new();
@@ -399,7 +399,7 @@ pub(super) fn duplicate_id_violations<'a>(
 pub(super) fn duplicate_id_errors<'a>(
     siblings: impl Iterator<Item = Block<'a>>,
 ) -> Vec<(EvalError, Block<'a>)> {
-    use crate::error::SchemaViolationKind as Kind;
+    use crate::diagnostics::SchemaViolationKind as Kind;
     let mut seen: HashMap<(String, String, String), ast::Span> = HashMap::new();
     let mut errors = Vec::new();
     for b in siblings {
@@ -478,7 +478,7 @@ pub(super) fn validate_connection_stmts(
     items: &[ast::Item],
     scope: &super::scope::Scope<'_>,
 ) -> Vec<EvalError> {
-    use crate::error::SchemaViolationKind as Kind;
+    use crate::diagnostics::SchemaViolationKind as Kind;
     let mut errs = Vec::new();
     for item in items {
         let ast::Item::Connection(stmt) = item else {
@@ -634,7 +634,7 @@ fn dynamic_connection_admits(
 /// the whole of the check, and the pair is exactly what a hand-rolled
 /// slot checker used to do.
 fn validate_own_fields(block: &Block<'_>, schema: &crate::doc::TypeDecl<'_>) -> Vec<EvalError> {
-    use crate::error::SchemaViolationKind as Kind;
+    use crate::diagnostics::SchemaViolationKind as Kind;
     let mut errs = Vec::new();
     if schema.is_schemaless() {
         return errs;
@@ -677,7 +677,7 @@ fn validate_own_fields(block: &Block<'_>, schema: &crate::doc::TypeDecl<'_>) -> 
 /// Validate one block against its schema: field membership, required
 /// fields, child cardinality and constraint decorators.
 pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
-    use crate::error::SchemaViolationKind as Kind;
+    use crate::diagnostics::SchemaViolationKind as Kind;
     let mut errs = Vec::new();
 
     // Whole-block opt-out — `@schemaless service web { … }` skips

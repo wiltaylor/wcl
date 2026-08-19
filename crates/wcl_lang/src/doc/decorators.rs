@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use miette::NamedSource;
 
 use crate::ast::{self, Span};
-use crate::error::EvalError;
+use crate::diagnostics::EvalError;
 use crate::value::Value;
 
 use super::cells::{DecoratorCell, ItemCellKind, ItemCells, LoadedImport};
@@ -309,7 +309,7 @@ impl Document {
         file_ns: &[String],
         out: &mut Vec<EvalError>,
     ) {
-        use crate::error::SchemaViolationKind as Kind;
+        use crate::diagnostics::SchemaViolationKind as Kind;
 
         if has_annotation_exemption(decorators) {
             return;

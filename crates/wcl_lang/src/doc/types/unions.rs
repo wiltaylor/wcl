@@ -9,7 +9,7 @@
 //! where it is written rather than where it is used.
 
 use crate::ast::{self, TypeRef};
-use crate::error::EvalError;
+use crate::diagnostics::EvalError;
 
 use crate::doc::Document;
 use crate::doc::views::UnionDecl;
@@ -35,7 +35,7 @@ pub(crate) fn format_union_variants_hint(doc: &Document, slots: &[UnionDecl<'_>]
 /// collisions between variant bodies that would make dispatch
 /// ambiguous.
 pub(crate) fn validate_union(doc: &Document, u: &ast::UnionDecl) -> Vec<EvalError> {
-    use crate::error::SchemaViolationKind as Kind;
+    use crate::diagnostics::SchemaViolationKind as Kind;
     let mut out = Vec::new();
     let effective = match doc.effective_variants_of(u) {
         Ok(v) => v,
@@ -55,7 +55,7 @@ pub(crate) fn validate_union(doc: &Document, u: &ast::UnionDecl) -> Vec<EvalErro
         out: &mut Vec<EvalError>,
         visiting: &mut std::collections::HashSet<String>,
     ) {
-        use crate::error::SchemaViolationKind as Kind;
+        use crate::diagnostics::SchemaViolationKind as Kind;
         let key = u.name.join(".");
         if visiting.contains(&key) {
             return;

@@ -14,8 +14,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::builtin::{BuiltinFn, Caller, from_fn};
 use super::expect_function;
+use crate::diagnostics::ArithmeticFault;
 use crate::environment::Environment;
-use crate::error::ArithmeticFault;
 use crate::numeric::{for_each_float_numeric_variant, for_each_integer_numeric_variant};
 use crate::value::{Value, VariantPayload};
 

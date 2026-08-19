@@ -469,7 +469,7 @@ impl<'a> Field<'a> {
     /// applicable schema (parent block, or the document if top-level).
     /// `None` means the membership check passes.
     fn schema_membership_error(&self) -> Option<EvalError> {
-        use crate::error::SchemaViolationKind as Kind;
+        use crate::diagnostics::SchemaViolationKind as Kind;
         match self.scope.frames().last().cloned() {
             Some(frame) => {
                 // Whole-block opt-out shadows individual fields too.
@@ -602,7 +602,7 @@ impl<'a> Field<'a> {
             {
                 // Case B: ancestor acceptance for regular types.
                 return Some(Err(EvalError::schema_violation(
-                    crate::error::SchemaViolationKind::InterfaceNotImplemented,
+                    crate::diagnostics::SchemaViolationKind::InterfaceNotImplemented,
                     format!(
                         "target type '{}' is not '{}' and does not extend it",
                         target_decl.full_name(),

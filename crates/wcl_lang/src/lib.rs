@@ -16,14 +16,12 @@
 
 pub mod ast;
 /// What the language reports about a run rather than computes from one:
-/// the opt-in evaluation profiler.
+/// the error types and the opt-in evaluation profiler.
 mod diagnostics;
 /// The document model: opening, evaluating and querying a file.
 mod doc;
 pub mod edit;
 mod environment;
-/// Parse and evaluation error types, and their diagnostics.
-mod error;
 pub mod format;
 mod functions;
 mod lexer;
@@ -37,6 +35,7 @@ mod symbols;
 mod value;
 
 pub use ast::{BuiltinType, Span, TensorDim, TypeRef};
+pub use diagnostics::{ArithmeticFault, EvalError, ParseError, SchemaViolationKind, SyntaxError};
 pub use diagnostics::{Profile, ProfileKey, ProfileNode};
 pub use doc::{
     Block, ChildKind, Connection, ConnectionDecl, DataKind, DataRef, DeclName, DeclaresKind,
@@ -48,7 +47,6 @@ pub use doc::{
 pub use environment::{
     BuiltType, DecoratorBuilder, Environment, Expander, TypeBuilder, TypeFieldBuilder,
 };
-pub use error::{ArithmeticFault, EvalError, ParseError, SchemaViolationKind, SyntaxError};
 pub use functions::{
     BuiltinFn, Caller, DataPath, FromValue, IntoBuiltin, IntoValue, IntoValueResult, from_fn,
 };

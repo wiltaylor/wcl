@@ -6,7 +6,7 @@ mod types;
 use miette::{NamedSource, SourceSpan};
 
 use crate::ast::{Block, Expr, Item, Source, Span};
-use crate::error::ParseError;
+use crate::diagnostics::ParseError;
 use crate::lexer::{LexError, Lexer, StringLit, Token, TokenKind};
 use crate::symbols::{DuplicateSymbol, SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 

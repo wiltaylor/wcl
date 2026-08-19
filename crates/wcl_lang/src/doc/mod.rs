@@ -36,8 +36,8 @@ use crate::ast::TypeRef;
 use crate::ast::{self, Span};
 #[cfg(test)]
 use crate::ast::{BuiltinType, TensorDim};
+use crate::diagnostics::EvalError;
 use crate::environment::Environment;
-use crate::error::EvalError;
 use crate::symbols::{SymbolIndex, SymbolKind, SymbolRecord};
 use crate::value::Value;
 use cells::{BlockCells, ItemCellKind, ItemCells, LoadedImport};
@@ -868,7 +868,7 @@ impl Document {
     /// intentionally untouched: the strict/lazy agreement contract
     /// covers membership *errors* only.
     pub fn schema_warnings(&self) -> Vec<EvalError> {
-        use crate::error::SchemaViolationKind as Kind;
+        use crate::diagnostics::SchemaViolationKind as Kind;
         let mut out = Vec::new();
 
         let decls = self.document_schema_decls();
@@ -985,7 +985,7 @@ impl Document {
     /// Run the full schema validation pass, pairing each violation
     /// with the source it should be rendered against.
     fn collect_schema_errors(&self) -> CollectedSchemaErrors {
-        use crate::error::SchemaViolationKind as Kind;
+        use crate::diagnostics::SchemaViolationKind as Kind;
         use std::collections::BTreeMap;
         let mut out = Vec::new();
 
@@ -1342,7 +1342,7 @@ impl Document {
         schemas: &DocSchemas<'_>,
         out: &mut Vec<EvalError>,
     ) {
-        use crate::error::SchemaViolationKind as Kind;
+        use crate::diagnostics::SchemaViolationKind as Kind;
         if !has_annotation_exemption(&f.ast.decorators) {
             for decorator in f.decorators() {
                 out.extend(schema_check::decorator_argument_errors(self, &decorator));
@@ -1470,7 +1470,7 @@ impl Document {
         root_union_slots: &[UnionDecl<'_>],
         out: &mut Vec<EvalError>,
     ) {
-        use crate::error::SchemaViolationKind as Kind;
+        use crate::diagnostics::SchemaViolationKind as Kind;
         let dispatched_through_union = root_union_slots
             .iter()
             .any(|u| types::variant_dispatch::block_to_variant(self, b, *u).is_ok());

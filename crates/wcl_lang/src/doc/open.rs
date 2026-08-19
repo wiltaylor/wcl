@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use miette::NamedSource;
 
 use crate::ast;
+use crate::diagnostics::ParseError;
 use crate::environment::Environment;
-use crate::error::ParseError;
 use crate::parser::Parser;
 use crate::symbols::SymbolIndex;
 

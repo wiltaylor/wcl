@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use miette::NamedSource;
 
 use crate::ast::{self, Span};
-use crate::error::ParseError;
+use crate::diagnostics::ParseError;
 use crate::symbols::{SymbolIndex, SymbolKind};
 
 use super::span_to_miette;

@@ -9,7 +9,7 @@ use crate::ast::{
     UseItem, VariantBody,
 };
 use crate::ast::{BuiltinType, TypeRef};
-use crate::error::ParseError;
+use crate::diagnostics::ParseError;
 use crate::lexer::{StringLit, TokenKind};
 
 use super::Parser;

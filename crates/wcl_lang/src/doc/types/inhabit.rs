@@ -18,7 +18,7 @@
 use std::collections::BTreeMap;
 
 use crate::ast::{self, TypeRef};
-use crate::error::EvalError;
+use crate::diagnostics::EvalError;
 use crate::value::{Value, VariantPayload};
 
 use crate::doc::Document;
@@ -143,7 +143,7 @@ pub(crate) fn symbol_set_membership_error_in(
         return None;
     }
     Some(EvalError::schema_violation(
-        crate::error::SchemaViolationKind::SymbolNotInSet,
+        crate::diagnostics::SchemaViolationKind::SymbolNotInSet,
         format!(
             "field '{field_name}' declared as symbol_set '{}' but ':{sym}' is not one of its members",
             path.join(".")
@@ -315,14 +315,14 @@ fn apply_unit_factor(
 
     let frac_err = || {
         EvalError::schema_violation(
-            crate::error::SchemaViolationKind::FieldTypeMismatch,
+            crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
             format!("unit '{unit}' produces a fractional value for integer type '{ty}'"),
             span,
         )
     };
     let range_err = || {
         EvalError::schema_violation(
-            crate::error::SchemaViolationKind::FieldTypeMismatch,
+            crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
             format!("unit '{unit}' product is out of range for type '{ty}'"),
             span,
         )

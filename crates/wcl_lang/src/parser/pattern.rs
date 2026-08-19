@@ -6,7 +6,7 @@
 //! no external coupling beyond the shared [`Parser`] token helpers.
 
 use crate::ast::{Pattern, Span, VariantPatArgs};
-use crate::error::ParseError;
+use crate::diagnostics::ParseError;
 use crate::lexer::TokenKind;
 
 use super::{Parser, describe};

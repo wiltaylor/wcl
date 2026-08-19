@@ -7,8 +7,8 @@
 
 use crate::ast::Span;
 use crate::ast::TypeRef;
+use crate::diagnostics::EvalError;
 use crate::doc::{DataKind, DataRef};
-use crate::error::EvalError;
 
 use crate::doc::{DeclName, Document, InterfaceDecl, ResolvedType, TypeDecl};
 
@@ -45,7 +45,7 @@ pub(crate) fn check_interface_conformance(
     target_decl: &TypeDecl<'_>,
     span: Span,
 ) -> Result<(), EvalError> {
-    use crate::error::SchemaViolationKind as Kind;
+    use crate::diagnostics::SchemaViolationKind as Kind;
     let iface_fqn = iface.full_name();
     let target_fqn = target_decl.full_name();
     for if_field in iface.effective_fields() {

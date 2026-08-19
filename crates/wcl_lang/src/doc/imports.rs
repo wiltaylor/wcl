@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::ast::{self, Span};
-use crate::error::{EvalError, ParseError};
+use crate::diagnostics::{EvalError, ParseError};
 use crate::parser::Parser;
 use crate::symbols::SymbolIndex;
 

@@ -3,7 +3,7 @@
 
 use crate::ast::Span;
 use crate::ast::{BuiltinType, TensorDim, TypeRef};
-use crate::error::ParseError;
+use crate::diagnostics::ParseError;
 use crate::lexer::TokenKind;
 
 use super::{Parser, describe};

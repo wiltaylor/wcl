@@ -5,7 +5,7 @@
 //! on the public Document API.
 
 use crate::ast::{self, Span};
-use crate::error::EvalError;
+use crate::diagnostics::EvalError;
 use crate::value::{FnParam, FnValue, Value};
 
 use super::eval_ops::{apply_binary, apply_unary, as_bool, describe_expr, format_member_path};
@@ -413,7 +413,7 @@ impl Document {
                     Enc::Ascii => {
                         if joined.chars().any(|c| (c as u32) >= 0x80) {
                             Err(EvalError::schema_violation(
-                                crate::error::SchemaViolationKind::FieldTypeMismatch,
+                                crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
                                 "interpolated ascii string contains a non-ASCII character",
                                 *span,
                             ))
