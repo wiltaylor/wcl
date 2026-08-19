@@ -18,30 +18,9 @@ const EXIT_SCHEMA: u8 = 2;
 const EXIT_EVAL: u8 = 3;
 const EXIT_IO: u8 = 4;
 
-/// Loader for every CLI document open: disk imports plus the embedded
-/// wdoc registry, so `wcl check` / `parse` / `eval` / `get` resolve
-/// `import <wdoc.wcl>` exactly like `wcl wdoc build` (previously they
-/// failed with a misleading "failed to read '<wcl-system>/wdoc.wcl'",
-/// leaving `wdoc build` as the only schema checker for wdoc projects).
 fn cli_loader() -> wcl_lang::FileLoader {
     wcl_wdoc::schema_registry().loader(wcl_lang::disk_loader())
 }
-
-/// Environment for every CLI document open. The registry above supplies
-/// wdoc's *schemas*; this supplies its *behaviour* — the expander that
-/// `@contextual` block kinds (`wdoc_repeater`, component instances)
-/// expand through. Without it, projecting their generated children is a
-/// hard error, so every command that evaluates a wdoc document opens
-/// through here rather than through a bare `Environment::new()`.
-///
-/// Unconditional, on purpose: the CLI does **not** sniff a document's
-/// imports to decide whether it is "wdoc's". It is already
-/// unconditionally wdoc-aware for schemas ([`cli_loader`] threads the
-/// registry into every open, not just wdoc documents), and behaviour
-/// follows schemas. The only widening is that wdoc's own builtins
-/// (`page_metadata`, `__wdoc_slot`) are in scope everywhere — which turns
-/// what used to be an "unknown builtin" error in a wdoc document under
-/// `wcl check` into a working call.
 fn cli_environment() -> Environment {
     wcl_wdoc::wdoc_environment()
 }
@@ -470,15 +449,12 @@ fn main() -> ExitCode {
     ExitCode::from(code)
 }
 
-/// Failure opening a diff side: a parse/eval diagnostic, or an I/O / git
-/// error (bad revision, missing path, git/tar absent).
 enum OpenErr {
     Parse(ParseError),
     Io(String),
 }
 
 impl OpenErr {
-    /// Render the error and return the matching exit code.
     fn report(self) -> u8 {
         match self {
             OpenErr::Parse(e) => {
