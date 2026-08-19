@@ -22,3 +22,7 @@ crates/wcl_lang/fuzz/coverage/
 # Local scratch: throwaway notes, prototypes and research findings.
 # Never committed — anything worth keeping belongs in an issue or the book.
 .scratch/
+
+# Local bug tracking: per-checkout bug records. Never committed — anything
+# worth keeping belongs in an issue.
+.bug/
