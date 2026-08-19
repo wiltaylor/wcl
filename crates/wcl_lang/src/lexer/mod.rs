@@ -9,6 +9,7 @@
 
 use crate::ast::{Span, Trivia};
 
+mod finalize;
 mod numbers;
 mod strings;
 

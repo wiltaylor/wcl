@@ -1,8 +1,8 @@
 //! Number-literal lexing. Extracted from `lexer.rs` so the parent file
 //! can stay focused on the dispatch state machine.
 
+use super::finalize::{self, ParsedNumber};
 use crate::ast::Span;
-use crate::numeric::{self, ParsedNumber};
 
 use super::{LexError, Lexer, Token, TokenKind};
 
@@ -141,7 +141,7 @@ impl<'a> Lexer<'a> {
             suffix,
         };
 
-        numeric::finalize(parsed)
+        finalize::finalize(parsed)
             .map(|fin| {
                 let kind = match fin.unit {
                     Some(unit) => TokenKind::NumberWithUnit(Box::new((fin.lit, unit))),
