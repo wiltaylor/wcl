@@ -28,8 +28,9 @@ use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
 
 use crate::ast::{self, Span};
+use crate::ast::{BuiltinType, TensorDim, TypeRef};
 use crate::error::EvalError;
-use crate::value::{BuiltinType, TensorDim, TypeRef, Value};
+use crate::value::Value;
 
 use super::cells::{DecoratorCell, FieldCell, ItemCellKind, ItemCells};
 use super::effective_fields::{

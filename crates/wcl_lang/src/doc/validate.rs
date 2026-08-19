@@ -16,10 +16,10 @@ use std::collections::{HashMap, HashSet};
 
 use miette::NamedSource;
 
+use crate::ast::TypeRef;
 use crate::ast::{self, Span};
 use crate::error::ParseError;
 use crate::symbols::{SymbolIndex, SymbolKind};
-use crate::value::TypeRef;
 
 use super::span_to_miette;
 
@@ -400,7 +400,7 @@ pub(crate) fn validate_document(
                             // accepted (the same rule that lets `&Iface`
                             // appear in field types).
                             check_type_ref(
-                                &crate::value::TypeRef::named(iface.clone()),
+                                &crate::ast::TypeRef::named(iface.clone()),
                                 *iface_span,
                                 true,
                                 &cx,

@@ -8,8 +8,8 @@
 
 use std::collections::HashMap;
 
+use crate::ast::TypeRef;
 use crate::ast::{self, synthetic_decorator, synthetic_field, synthetic_span};
-use crate::value::TypeRef;
 
 use super::cells::ItemCells;
 use super::views::{Block, BuiltinDecorator, DeclName, DeclaresKind, TypeDecl};
@@ -433,7 +433,7 @@ fn derive_kind_schema(
                 &name,
                 typed
                     .clone()
-                    .unwrap_or(TypeRef::Builtin(crate::value::BuiltinType::Utf8)),
+                    .unwrap_or(TypeRef::Builtin(crate::ast::BuiltinType::Utf8)),
                 optional,
             );
             // Legacy `wdoc_slot` declarations were deliberately untyped.

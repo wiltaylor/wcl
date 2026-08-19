@@ -205,7 +205,7 @@ fn none_value_resolves() {
 
 #[test]
 fn type_decls_are_queryable() {
-    use crate::value::BuiltinType;
+    use crate::ast::BuiltinType;
     let doc = open(
         r#"
         type User {
@@ -5711,7 +5711,7 @@ fn a_derived_schema_is_reachable_through_the_typed_introspection_api() {
     // The constraint from the spec: derived schemas must be readable
     // through the same typed surface as declared ones — a consumer that
     // learns a field's shape must not have to know where it came from.
-    use crate::value::BuiltinType;
+    use crate::ast::BuiltinType;
     let doc = declares_kind_doc(DECLARES_KIND_SRC);
     let schema = doc.block_schema("metric_card").expect("derived schema");
     let shape = schema.field("label").expect("label").shape();

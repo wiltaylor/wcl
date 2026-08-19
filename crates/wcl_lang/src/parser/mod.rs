@@ -14,9 +14,9 @@ use crate::symbols::{DuplicateSymbol, SymbolIndex, SymbolKind, SymbolPath, Symbo
 // (included via `mod tests`). Gated to keep lib builds free of unused
 // imports.
 #[cfg(test)]
-use crate::ast::{BinOp, Field, SymbolSetDecl, TypeDecl, UnaryOp, UnionDecl, UseForm, VariantBody};
+use crate::ast::TypeRef;
 #[cfg(test)]
-use crate::value::TypeRef;
+use crate::ast::{BinOp, Field, SymbolSetDecl, TypeDecl, UnaryOp, UnionDecl, UseForm, VariantBody};
 
 /// Recursive-descent parser over a token stream, building both the
 /// syntax tree and the symbol index in one pass.

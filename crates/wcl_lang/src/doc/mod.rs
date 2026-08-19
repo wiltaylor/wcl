@@ -33,13 +33,14 @@ pub use views::{
 };
 pub(crate) use views::{BuiltinDecorator, LetView, UnionChildKind};
 
+use crate::ast::TypeRef;
 use crate::ast::{self, Span};
+#[cfg(test)]
+use crate::ast::{BuiltinType, TensorDim};
 use crate::environment::Environment;
 use crate::error::EvalError;
 use crate::symbols::{SymbolIndex, SymbolKind, SymbolRecord};
-#[cfg(test)]
-use crate::value::{BuiltinType, TensorDim};
-use crate::value::{TypeRef, Value};
+use crate::value::Value;
 use cells::{BlockCells, ItemCellKind, ItemCells, LoadedImport};
 use connections::RESOLVING_CONN_OPERAND;
 pub(crate) use connections::{ConnOperand, connection_type_matches};
@@ -861,7 +862,7 @@ impl Document {
     /// tensor element types resolve recursively. Non-alias refs come
     /// back unchanged. Used by the schema value checks so a field
     /// declared with an alias validates against the target type.
-    pub fn resolve_alias(&self, ty: &crate::value::TypeRef) -> crate::value::TypeRef {
+    pub fn resolve_alias(&self, ty: &crate::ast::TypeRef) -> crate::ast::TypeRef {
         self.resolve_alias_in(ty, &self.file_ns)
     }
 
@@ -869,10 +870,10 @@ impl Document {
     /// namespace, returning the fully-qualified form.
     pub(crate) fn resolve_alias_in(
         &self,
-        ty: &crate::value::TypeRef,
+        ty: &crate::ast::TypeRef,
         context_ns: &[String],
-    ) -> crate::value::TypeRef {
-        use crate::value::TypeRef as T;
+    ) -> crate::ast::TypeRef {
+        use crate::ast::TypeRef as T;
         fn go(doc: &Document, ty: &T, context_ns: &[String], depth: u8) -> T {
             if depth == 0 {
                 return ty.clone(); // alias cycle — give up, stay permissive
@@ -927,7 +928,7 @@ impl Document {
     /// The chain of alias declarations behind `ty`, outermost first —
     /// empty for a non-alias type. Constraint decorators on each link
     /// apply to values of the aliased type.
-    pub(crate) fn alias_chain(&self, ty: &crate::value::TypeRef) -> Vec<TypeDecl<'_>> {
+    pub(crate) fn alias_chain(&self, ty: &crate::ast::TypeRef) -> Vec<TypeDecl<'_>> {
         self.alias_chain_in(ty, &self.file_ns)
     }
 
@@ -935,14 +936,14 @@ impl Document {
     /// alias cannot hang the walk.
     pub(crate) fn alias_chain_in(
         &self,
-        ty: &crate::value::TypeRef,
+        ty: &crate::ast::TypeRef,
         context_ns: &[String],
     ) -> Vec<TypeDecl<'_>> {
         let mut out = Vec::new();
         let mut current = ty.clone();
         let mut current_ns = context_ns;
         for _ in 0..views::ALIAS_DEPTH {
-            let crate::value::TypeRef::Named { path, .. } = &current else {
+            let crate::ast::TypeRef::Named { path, .. } = &current else {
                 break;
             };
             let resolved = self
@@ -967,7 +968,7 @@ impl Document {
     /// alias-chain decorator walk; the factor expression evaluates through
     /// the document (so `@unit("MiB", 1024 * 1024)` works). Backs both
     /// literal-unit resolution and the `format_unit` builtin.
-    pub(crate) fn unit_factor(&self, ty: &crate::value::TypeRef, unit: &str) -> Option<Value> {
+    pub(crate) fn unit_factor(&self, ty: &crate::ast::TypeRef, unit: &str) -> Option<Value> {
         for link in self.alias_chain(ty) {
             for d in link.ast.decorators.iter() {
                 if d.name.join(".") != "unit" {
@@ -2384,7 +2385,7 @@ pub(crate) fn value_matches_declared(value: &Value, ty: &TypeRef, optional: bool
 /// the schema check never rejects a value it merely failed to
 /// understand.
 pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
-    use crate::value::BuiltinType as B;
+    use crate::ast::BuiltinType as B;
     match (value, ty) {
         (Value::Bool(_), TypeRef::Builtin(B::Bool)) => true,
         (Value::I8(_), TypeRef::Builtin(B::I8)) => true,

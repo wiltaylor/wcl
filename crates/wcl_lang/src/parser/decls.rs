@@ -8,9 +8,9 @@ use crate::ast::{
     SymbolEntry, SymbolSetDecl, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDecl, UseForm,
     UseItem, VariantBody,
 };
+use crate::ast::{BuiltinType, TypeRef};
 use crate::error::ParseError;
 use crate::lexer::{StringLit, TokenKind};
-use crate::value::{BuiltinType, TypeRef};
 
 use super::Parser;
 use super::describe;

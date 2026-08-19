@@ -2,9 +2,9 @@
 //! `fn(...) -> T`, named refs, builtin scalars.
 
 use crate::ast::Span;
+use crate::ast::{BuiltinType, TensorDim, TypeRef};
 use crate::error::ParseError;
 use crate::lexer::TokenKind;
-use crate::value::{BuiltinType, TensorDim, TypeRef};
 
 use super::{Parser, describe};
 

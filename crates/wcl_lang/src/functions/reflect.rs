@@ -648,10 +648,7 @@ fn field_record<'a>(f: &TypeField<'a>, decs: &HashMap<String, Vec<Decorator<'a>>
     m.insert("type".to_string(), Value::Utf8(f.type_ref().to_string()));
     m.insert(
         "is_function".to_string(),
-        Value::Bool(matches!(
-            f.type_ref(),
-            crate::value::TypeRef::Function { .. }
-        )),
+        Value::Bool(matches!(f.type_ref(), crate::ast::TypeRef::Function { .. })),
     );
     m.insert("optional".to_string(), Value::Bool(f.optional()));
     m.insert(

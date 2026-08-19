@@ -31,10 +31,11 @@ mod parser;
 mod profile;
 /// The name index built during parsing.
 mod symbols;
-/// Runtime values and the type references that describe them.
+/// Runtime values produced by evaluation. The types that *describe*
+/// them are syntax, and live in [`ast::types`](ast).
 mod value;
 
-pub use ast::Span;
+pub use ast::{BuiltinType, Span, TensorDim, TypeRef};
 pub use data::{DataKind, DataRef};
 pub use doc::{
     Block, ChildKind, Connection, ConnectionDecl, DeclName, DeclaresKind, Decorator, Document,
@@ -56,7 +57,7 @@ pub use lexer::{
 };
 pub use profile::{Profile, ProfileKey, ProfileNode};
 pub use symbols::{SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
-pub use value::{BuiltinType, FnParam, FnValue, TensorDim, TypeRef, Value, VariantPayload};
+pub use value::{FnParam, FnValue, Value, VariantPayload};
 
 /// Parse a WCL source string into an owned [`ast::Source`] for inspection
 /// or mutation. The returned AST has fully `pub` fields. Hosts walk it,

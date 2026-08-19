@@ -6,9 +6,9 @@
 //! underlying AST node, so name-based comparison isn't needed.
 
 use crate::ast::Span;
+use crate::ast::TypeRef;
 use crate::data::{DataKind, DataRef};
 use crate::error::EvalError;
-use crate::value::TypeRef;
 
 use super::{DeclName, Document, InterfaceDecl, ResolvedType, TypeDecl};
 

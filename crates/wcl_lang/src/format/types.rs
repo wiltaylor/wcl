@@ -3,7 +3,7 @@
 
 use std::fmt::Write as _;
 
-use crate::value::{BuiltinType, TensorDim, TypeRef};
+use crate::ast::{BuiltinType, TensorDim, TypeRef};
 
 use super::Printer;
 

@@ -10,10 +10,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::ast;
+use crate::ast::{BuiltinType, TypeRef};
 use crate::ast::{synthetic_decorator, synthetic_field, synthetic_span};
 use crate::doc::Block;
 use crate::functions::BuiltinFn;
-use crate::value::{BuiltinType, TypeRef, Value};
+use crate::value::Value;
 
 /// Host callback that expands a `@contextual` block into the blocks it
 /// generates.

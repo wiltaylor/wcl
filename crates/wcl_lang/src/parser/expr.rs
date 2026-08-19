@@ -2,13 +2,13 @@
 //! `parser/mod.rs` so the parent file can stay focused on the
 //! top-level source / item driver and shared token helpers.
 
+use crate::ast::TypeRef;
 use crate::ast::{
     BinOp, CALL_BP, ElemTrivia, Expr, FunctionLit, LetBinding, MEMBER_BP, MatchArm, NamedArg,
     Parameter, Pattern, Span, Trivia, UNARY_BP, UnaryOp, VariantArgs,
 };
 use crate::error::ParseError;
 use crate::lexer::{NumberLit, TokenKind};
-use crate::value::TypeRef;
 
 use super::Parser;
 use super::describe;

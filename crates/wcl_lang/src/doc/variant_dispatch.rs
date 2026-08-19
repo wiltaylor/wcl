@@ -208,8 +208,8 @@ pub(super) fn table_row_to_variant<'a>(
 /// it — a named union (memoised lookup) or a list that could. Everything
 /// else is a guaranteed pass-through, letting `coerce_value_to_type`
 /// skip per-call resolution and list rebuilds.
-fn type_may_coerce(doc: &Document, ty: &crate::value::TypeRef) -> bool {
-    use crate::value::{BuiltinType, TypeRef};
+fn type_may_coerce(doc: &Document, ty: &crate::ast::TypeRef) -> bool {
+    use crate::ast::{BuiltinType, TypeRef};
     match ty {
         TypeRef::Named { path, .. } => doc.union_fqn_for_path(path).is_some(),
         TypeRef::List(inner) => type_may_coerce(doc, inner),
@@ -226,10 +226,10 @@ fn type_may_coerce(doc: &Document, ty: &crate::value::TypeRef) -> bool {
 pub(crate) fn coerce_value_to_type(
     doc: &Document,
     value: Value,
-    ty: &crate::value::TypeRef,
+    ty: &crate::ast::TypeRef,
     span: ast::Span,
 ) -> Result<Value, EvalError> {
-    use crate::value::TypeRef;
+    use crate::ast::TypeRef;
     // A literal unit resolves against the declared type — multiply by the
     // type's matching `@unit(name, factor)` decorator — regardless of the
     // union fast-path below. An unresolvable unit is an error here.
@@ -262,7 +262,7 @@ pub(crate) fn coerce_value_to_type(
         // field-eval rule in `views.rs`). Other values pass through.
         (
             Value::Utf8(s) | Value::Ascii(s),
-            TypeRef::Builtin(crate::value::BuiltinType::Identifier),
+            TypeRef::Builtin(crate::ast::BuiltinType::Identifier),
         ) => Ok(Value::Identifier(s)),
         (Value::List(items), TypeRef::List(inner)) => {
             let mut out = Vec::with_capacity(items.len());
@@ -323,7 +323,7 @@ fn resolve_unit_literal(
     doc: &Document,
     magnitude: Value,
     unit: &str,
-    ty: &crate::value::TypeRef,
+    ty: &crate::ast::TypeRef,
     span: ast::Span,
 ) -> Result<Value, EvalError> {
     match doc.unit_factor(ty, unit) {
@@ -339,11 +339,11 @@ fn apply_unit_factor(
     doc: &Document,
     magnitude: &Value,
     factor: &Value,
-    ty: &crate::value::TypeRef,
+    ty: &crate::ast::TypeRef,
     unit: &str,
     span: ast::Span,
 ) -> Result<Value, EvalError> {
-    use crate::value::{BuiltinType as B, TypeRef};
+    use crate::ast::{BuiltinType as B, TypeRef};
     let (Some(mf), Some(ff)) = (magnitude.as_f64(), factor.as_f64()) else {
         // A non-numeric factor means the decorator isn't a real unit.
         return Err(EvalError::unit_no_match(unit, ty.to_string(), span));
@@ -573,7 +573,7 @@ fn all_field_types_match(decl_fields: &[ast::TypeField], map: &BTreeMap<String, 
 fn first_type_mismatch<'a>(
     decl_fields: &'a [ast::TypeField],
     map: &'a BTreeMap<String, Value>,
-) -> Option<(&'a str, &'a str, &'a crate::value::TypeRef)> {
+) -> Option<(&'a str, &'a str, &'a crate::ast::TypeRef)> {
     for f in decl_fields {
         if let Some(v) = map.get(&f.name)
             && !super::value_matches_declared(v, &f.ty, f.optional)

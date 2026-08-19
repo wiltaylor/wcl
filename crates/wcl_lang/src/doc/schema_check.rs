@@ -227,7 +227,7 @@ pub(super) fn decorator_argument_errors(
 pub(super) fn constraint_violation(
     doc: &Document,
     field_decorators: &[ast::Decorator],
-    declared_ty: &crate::value::TypeRef,
+    declared_ty: &crate::ast::TypeRef,
     context_ns: &[String],
     value: &Value,
 ) -> Option<String> {
@@ -366,7 +366,7 @@ fn collect_ref_ids(value: &Value, out: &mut Vec<String>) {
 /// parameters (`code wcl`'s language, a component's `name`), which repeat
 /// freely. `None` for unlabeled blocks and schema-less kinds.
 pub(super) fn identity_label(block: &Block<'_>) -> Option<String> {
-    use crate::value::{BuiltinType, TypeRef};
+    use crate::ast::{BuiltinType, TypeRef};
     let schema = block.schema()?;
     let id_typed = schema.fields().any(|f| {
         f.name() == "id"
@@ -587,7 +587,7 @@ pub(super) fn validate_connection_stmts(
 fn decl_type_fqn(
     doc: &crate::doc::Document,
     decl: &crate::doc::ConnectionDecl<'_>,
-    t: &crate::value::TypeRef,
+    t: &crate::ast::TypeRef,
 ) -> Option<String> {
     doc.resolve_type_fqn_in(t, decl.file_ns())
 }
@@ -830,8 +830,8 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
                     (&literal_field.ast.expr, &resolved),
                     (
                         ast::Expr::ListLit { .. },
-                        crate::value::TypeRef::List(inner)
-                    ) if matches!(inner.as_ref(), crate::value::TypeRef::Named { path, .. }
+                        crate::ast::TypeRef::List(inner)
+                    ) if matches!(inner.as_ref(), crate::ast::TypeRef::Named { path, .. }
                         if block.doc.union_fqn_for_path(path).is_some())
                 );
                 if literal_union_list {
@@ -887,7 +887,7 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             .resolve_alias_in(declared.type_ref(), declared.file_ns);
 
         // Union path — preserved verbatim.
-        if let crate::value::TypeRef::Named { path, .. } = &resolved_ty
+        if let crate::ast::TypeRef::Named { path, .. } = &resolved_ty
             && let Some(union_decl) = block.doc.union_decl(&path.join("."))
         {
             let expected_fqn = union_decl.ast.name.clone();
