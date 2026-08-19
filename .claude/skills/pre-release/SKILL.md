@@ -1,6 +1,6 @@
 ---
 name: pre-release
-description: "Cut a WCL GitHub pre-release: commit the trailer-gated release trigger, push, watch CI build the artifacts, then deploy the new pre-release locally with install.sh. Use when the user says /pre-release, or asks to cut/ship/release a pre-release, bump the alpha, or deploy the latest build."
+description: "Skill instructs how to do releases and pre-releases of wcl. Use this when ever the user asks you to do a release or a pre-release"
 user-invocable: true
 argument-hint: "[one-line summary of what's being released]"
 allowed-tools:
@@ -13,92 +13,62 @@ allowed-tools:
   - Read
 ---
 
-# Cut a WCL pre-release
+# Summery
+This repository uses github actions to do a release. They work
+by reading the trailers on a git commit.
 
-Automates the repo's release flow: a `pre-release: true` git trailer on a
-push to `main` makes CI (`.github/workflows/ci.yml`, the `version` job) cut a
-GitHub pre-release — an `-alpha` tag with the Linux/Windows `wcl` binaries and
-the `.vsix` attached. This skill commits that trigger, pushes, watches CI to
-completion, then installs the freshly-built pre-release with `install.sh`.
+IMPORTANT: You have the option of doing a pre-release or a release version. When it doubt
+always ask the user and default to pre-release.
 
-`$ARGUMENTS` (optional) is a one-line summary of what's being released; weave
-it into the trigger commit body. If absent, derive the summary from the
-commits since the last tag.
+IMPORTANT: We are not yet at a stable release version of wcl. Do not use stable till I remove this line from the skill file.
+IMPORTANT: If the user asks to create a release version ask them to remove these lines from the skill file first. Do not offer to do it for them.
 
-> [!IMPORTANT]
-> Only stable releases are blocked in CI — `pre-release: true` is the correct,
-> supported trailer. A `release: true` trailer fails the build on purpose; do
-> not use it.
+## Pre-Checks
+You must check the following before you create a pre-release or release:
+- You are on the main branch. If the user is a on different branch ask them to merge their pr first.
+- Make sure there are no uncommited changes in the branch.
 
-## Steps
-
-Run these in order. **Stop and report** if any precondition or CI step fails —
-never deploy a failed build.
-
-### 1. Preconditions
-
-- Confirm the branch is `main`: `git branch --show-current`. If not, stop and
-  tell the user (releases cut from `main` only — the `version` job is gated on
-  `refs/heads/main`).
-- Confirm the substantive work is already committed:
-  `git status --short`. Ignore the untracked `.bug/` directory (local bug
-  tracking). If there are **uncommitted tracked changes**, stop and ask the
-  user to commit their feat/fix first — uncommitted work won't be in the
-  pushed commit CI builds from. This skill only adds the release *trigger*.
-- Show what's being released: `git describe --tags --match 'v*' --abbrev=0` for
-  the last tag, then `git log <last-tag>..HEAD --format='%h %s'` to list the
-  commits that will ship. Conventional-commit subjects drive the bump
-  (`feat:` → minor on 0.x, `fix:`/`chore:`/… → patch).
-
-### 2. Create the release-trigger commit
-
-Make an **empty** commit (the work is already committed) carrying the trailer.
-Write a body that says what this pre-release covers (use `$ARGUMENTS` if given,
-else summarize the commits from step 1). The trailer line must be exactly
-`pre-release: true`, separated from the body by a blank line:
+## How to do a pre-release or a release:
+To do a pre-release you need to create a release commit like the following:
 
 ```
 git commit --allow-empty -F - <<'MSG'
 chore: cut pre-release
-
-<one paragraph: what landed since the last pre-release>
-
+<Description of changes here>
 pre-release: true
-MSG
 ```
 
-Verify the trailer is on HEAD:
-`git log -1 --format='%(trailers:key=pre-release,valueonly)'` → `true`.
+To do a release you need to put the following trailer at the bottom of a git commit:
 
-### 3. Push
+```
+git commit --allow-empty -F - <<'MSG'
+chore: cut release
+<Description of changes here>
+release
+release: true
+```
 
-`git push origin main`. Capture HEAD's sha for the next step:
-`git rev-parse HEAD`.
+This will trigger a github action build that will also publish the packages to github releases and create a tagged version under there.
 
-### 4. Watch CI
+## Promoting a Pre-release version to Release
+To do this simply create a new release commit above. Don't try to rename a tag.
 
-Find the **CI** workflow run for the pushed commit, then watch it to
-completion. Give the run a moment to register first (`sleep 6`), then:
+## Watch CI
+If you want to watch the progress of the creation of a release you can run the following commands:
 
+List its current progress:
 ```
 gh run list --commit <sha> --workflow CI --json databaseId,status -q '.[0].databaseId'
 ```
 
-(If that returns nothing yet, fall back to `gh run list --branch main --limit 5`
-and pick the in-progress **CI** run for this commit.) Then:
-
+Watch it and wait till it completes or fails.
 ```
 gh run watch <run-id> --exit-status --interval 20
 ```
 
-`--exit-status` makes the command fail if CI fails. If it fails, stop, surface
-the failing job, and **do not deploy**. The Node.js-20 deprecation warnings in
-the annotations are benign — only the job conclusion matters. Confirm success:
-`gh run view <run-id> --json status,conclusion`.
+### Verify the release
 
-### 5. Verify the release
-
-Confirm the new pre-release and its assets exist before deploying:
+Confirm the new pre-release and its assets exist:
 
 ```
 gh release list --limit 1
@@ -109,26 +79,3 @@ gh release view <tag> --json tagName,isPrerelease,assets \
 Expect a `vX.Y.Z-alpha` tag, `prerelease: true`, and three assets:
 `wcl-<ver>-linux-x86_64`, `wcl-<ver>-windows-x86_64.exe`, `wcl-vscode-<num>.vsix`.
 
-### 6. Deploy
-
-Install the newest pre-release from the repo root:
-
-```
-./install.sh --pre
-```
-
-This downloads the Linux binary into `~/.local/bin/wcl` (per `install.sh`).
-
-### 7. Verify the deployment
-
-`wcl --version` — confirm it reports the version just released (the
-`vX.Y.Z-alpha` from step 5, without the leading `v`). Report the final
-outcome: the version cut, that CI passed, and that `wcl` is deployed.
-
-## Notes
-
-- Don't predict the version number — CI computes it by bumping from the latest
-  remote tag, which may be ahead of your local checkout. Read it back from the
-  release (step 5), don't assume.
-- This skill does not touch `.bug/` reports, changelogs, or the docs site —
-  commit those as part of your feat/fix before invoking `/pre-release`.

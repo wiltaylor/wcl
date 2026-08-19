@@ -1,6 +1,6 @@
 ---
 name: wcl
-description: "WCL and wdoc. WCL is a typed configuration and schema language — typed fields, blocks, unions, interfaces, decorators, and a document model that gathers and validates structured data. wdoc is its document generator: declare pages and sites as WCL blocks and render them to a static site, Markdown or PDF. Use when reading, writing or debugging `.wcl` files, wdoc pages and sites, or the `wcl` CLI."
+description: "Details on how to write WCL and WDOC files and how to work with them"
 ---
 
 # WCL and wdoc
