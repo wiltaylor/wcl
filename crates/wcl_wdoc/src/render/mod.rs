@@ -1,37 +1,30 @@
-//! HTML/SVG rendering for wdoc documents.
+//! The rendering core every wdoc backend shares.
+//!
+//! Backend-neutral on purpose: reading values off blocks, expanding
+//! repeaters and components, calling a block's `lower` function and
+//! classifying what it returns, resolving a colour theme to role colours,
+//! and collecting the diagnostics a render pass accumulates. The backends
+//! that consume it are siblings — [`crate::html`], [`crate::svg`],
+//! [`crate::markdown`], [`crate::pdf`] and [`crate::terminal`].
 //!
 //! Split into focused submodules — kept flat (every item is `pub(crate)`
-//! and re-exported here) so they read as one logical unit and external
-//! `crate::render::*` paths are unchanged:
+//! and re-exported here) so they read as one logical unit:
 //!
 //! - [`accessors`] — field / map / value readers + HTML escaping
-//! - [`content_html`] — the HTML reading of the semantic content IR
-//! - [`css`] — injected style constants + `class`-block lowering
 //! - [`expand`] — `wdoc_repeater` / `wdoc_component` body expansion, shared
 //!   by the HTML and SVG (diagram) paths
-//! - [`html`] — page shell, templates, page-level blocks + HTML fundamentals
-//! - [`lower`] — `lower`-function dispatch + recursive variant rendering
-//! - [`svg`] — diagram layout, edge routing, and shape geometry
-//! - [`theme`] — `ColourTheme` → `--wdoc-*` custom-property CSS
+//! - [`lower`] — `lower`-function dispatch, the lowered-node classification
+//!   every backend walks, and the render-pass diagnostic sinks
+//! - [`theme`] — a `theme` block → concrete role colours
 
 mod accessors;
-mod content_html;
-mod css;
 mod expand;
-mod html;
 mod lower;
-mod postprocess;
-mod svg;
 mod theme;
 
 pub(crate) use accessors::*;
-pub(crate) use content_html::*;
-pub(crate) use css::*;
 pub(crate) use expand::*;
-pub(crate) use html::*;
 pub(crate) use lower::*;
-pub(crate) use postprocess::*;
-pub(crate) use svg::*;
 pub(crate) use theme::*;
 
 #[cfg(test)]

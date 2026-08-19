@@ -20,10 +20,11 @@ use regex::Regex;
 use wcl_lang::{Document, FnValue, Value, VariantPayload};
 
 use crate::file::FileRegistry;
+use crate::html::render_styles;
 use crate::icons::IconRegistry;
 use crate::image::ImageRegistry;
 use crate::pdf::ir::{FontFamily, InlineRun, TextStyle};
-use crate::render::{escape_html, render_styles};
+use crate::render::escape_html;
 use crate::tileset::TilesetRegistry;
 use crate::video::VideoRegistry;
 
@@ -67,7 +68,7 @@ pub(crate) struct InlinePatterns {
     compiled: Vec<CompiledPattern>,
     /// Named structured styles, rendered once per site rather than resolving
     /// and re-rendering their blocks for every page template invocation.
-    styles: BTreeMap<String, crate::render::RenderedCss>,
+    styles: BTreeMap<String, crate::html::RenderedCss>,
     /// Names of every `page` in the current site, used by `render_link`
     /// to recognise bare `[text](page_name)` references and rewrite them
     /// to `page_name.html`.

@@ -5,7 +5,7 @@
 //! source text ([`Block::to_source`]) and re-render the same children into
 //! palette-scoped wrappers — neither is expressible in WCL.
 //! The scoped `.wdoc-theme-light` / `.wdoc-theme-dark` classes are emitted by
-//! [`crate::render::theme`]; CSS custom properties inherit, so each wrapper
+//! [`crate::html::theme`]; CSS custom properties inherit, so each wrapper
 //! re-themes its own subtree regardless of the reader's global theme toggle.
 //!
 //! The children are rendered to HTML *twice*, once per pane, with the build's
@@ -20,8 +20,9 @@ use std::path::Path;
 use wcl_lang::{Block, Document};
 
 use crate::highlight;
+use crate::html::render_block;
 use crate::inline::InlinePatterns;
-use crate::render::{append_attr, escape_html, field_bool, field_id, field_utf8, render_block};
+use crate::render::{append_attr, escape_html, field_bool, field_id, field_utf8};
 
 /// The formatted WCL source of a demo block's children — the "example".
 /// Each child is pretty-printed via [`Block::to_source`] and joined with a

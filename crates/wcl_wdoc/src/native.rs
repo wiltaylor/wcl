@@ -68,7 +68,7 @@ const fn every(kind: &'static str) -> NativeKind {
 /// Content entries correspond to an arm in `render/html.rs`
 /// (`render_block`), `pdf/collect.rs` (`collect_block`) and
 /// `markdown/emit.rs` (`Emitter::block`). Diagram entries
-/// correspond to an arm in `render/svg/shapes.rs` (`render_shape`), which
+/// correspond to an arm in `svg/shapes.rs` (`render_shape`), which
 /// every backend reaches: HTML and Markdown embed the rendered SVG, and the
 /// PDF backend paints it. Terminal primitives are read by the terminal
 /// renderer embedded by each backend.
@@ -115,7 +115,7 @@ const NATIVE_DISPATCH: &[NativeKind] = &[
         kind: "file",
         backends: &[Html, Markdown],
     },
-    // ── Diagram shapes (render/svg/shapes.rs) ──────────────────────
+    // ── Diagram shapes (svg/shapes.rs) ──────────────────────
     // Every one of these is `every(...)`, and that is load-bearing:
     // `refuse_uncovered` is called by the three *page* renderers, not by
     // `render_shape`, so a shape declaring narrower coverage would drop

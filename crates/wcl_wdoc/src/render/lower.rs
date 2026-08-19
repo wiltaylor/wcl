@@ -1,16 +1,19 @@
-//! Lowering dispatch: invoke a block's `lower` function and recursively
-//! render the returned fundamental variants (HTML + SVG).
+//! Lowering dispatch: invoke a block's `lower` function, classify the
+//! fundamental variants it returns, and recurse into the custom ones.
+//!
+//! Backend-neutral — what a lowered node *renders as* lives with the
+//! backend that renders it ([`crate::html::lower`], [`crate::svg::lower`],
+//! [`crate::markdown::emit`], [`crate::pdf::collect`], and the terminal's
+//! own `draw_variant`). This module also owns the diagnostic sinks a render
+//! pass accumulates, since every one of those walkers records into them.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use miette::NamedSource;
-use wcl_lang::{Block, Document, EvalError, FnValue, Value, VariantPayload};
+use wcl_lang::{Block, Document, EvalError, FnValue, Value};
 
 use crate::content::Content;
-use crate::inline::InlinePatterns;
-
-use super::*;
 
 /// A function that renders one block to markup — the signature every
 /// kind-specific renderer is registered under.
@@ -324,60 +327,14 @@ pub(crate) fn expand_custom_variant(
     std::sync::Arc::unwrap_or_clone(items)
 }
 
-/// Custom diagram-shape lowering. Resolves the block's `lower`
-/// function, calls it with a record built from the block's fields,
-/// and renders each returned variant. `links` is the inline-pattern
-/// resolver used by `Link` fundamentals; `None` renders their children
-/// unwrapped.
-pub(crate) fn lower_svg_block(
-    doc: &Document,
-    block: &Block<'_>,
-    kind: &str,
-    parent_w: f64,
-    parent_h: f64,
-    links: Option<&InlinePatterns>,
-) -> String {
-    let Some(items) = lower_to_values(doc, block, kind) else {
-        return String::new();
-    };
-    items
-        .iter()
-        .map(|v| render_svg_variant(doc, v, parent_w, parent_h, 0, links))
-        .collect()
-}
-
-/// Custom HTML-block lowering (h1..h6, text, code, callout, wireframe
-/// widgets, and friends).
-pub(crate) fn lower_html_block(
-    doc: &Document,
-    block: &Block<'_>,
-    kind: &str,
-    patterns: &InlinePatterns,
-) -> String {
-    // Route through `lower_block` so HTML shares the other backends'
-    // error handling: a `lower` body that errors records a fatal eval
-    // diagnostic (it used to be silently swallowed here), and a missing
-    // lowering records a warning. A block lowering to the content IR
-    // renders through the shared reading of it (`render_content`).
-    let Some(items) = lower_block(doc, block, kind) else {
-        return String::new();
-    };
-    items
-        .iter()
-        .map(|item| match item {
-            Lowered::Content(node) => render_content(doc, node, patterns),
-            Lowered::Html(value) => render_html_variant(doc, value, 0, patterns),
-        })
-        .collect()
-}
-
 /// Shared tail for a custom (non-fundamental) variant: rebuild its record,
 /// resolve the kind's `lower`, call it, and render each returned variant via
 /// `render_each` at `depth + 1`. Any failure (no `lower`, call error, or a
 /// non-list result) yields an empty string. Used by both the SVG and HTML
-/// dispatchers below; the terminal's `draw_variant` has its own grid-mutating
-/// recursion (no `String` return, no depth marker) and stays separate.
-fn lower_recurse(
+/// dispatchers ([`crate::svg::lower`], [`crate::html::lower`]); the
+/// terminal's `draw_variant` has its own grid-mutating recursion (no
+/// `String` return, no depth marker) and stays separate.
+pub(crate) fn lower_recurse(
     doc: &Document,
     map: &BTreeMap<String, Value>,
     kind: &str,
@@ -388,212 +345,6 @@ fn lower_recurse(
         .iter()
         .map(|v| render_each(v, depth + 1))
         .collect()
-}
-
-// `_parent_w` / `_parent_h` are threaded through so future variant
-// kinds can pick them up; today's fundamentals carry pre-resolved
-// geometry in the payload itself.
-/// Render one lowered content variant as SVG.
-pub(crate) fn render_svg_variant(
-    doc: &Document,
-    value: &Value,
-    _parent_w: f64,
-    _parent_h: f64,
-    depth: usize,
-    links: Option<&InlinePatterns>,
-) -> String {
-    if depth > MAX_LOWER_DEPTH {
-        return depth_marker();
-    }
-    let Value::Variant {
-        variant, payload, ..
-    } = value
-    else {
-        return String::new();
-    };
-    let kind = kind_for_variant(variant);
-    let VariantPayload::Record(map) = payload else {
-        return String::new();
-    };
-    match kind.as_str() {
-        "rect" => render_rect_payload(map),
-        "circle" => render_circle_payload(map),
-        "line" => render_line_payload(map),
-        "label" => render_label_payload(map),
-        "polygon" => render_polygon_payload(map),
-        "polyline" => render_polyline_payload(map),
-        // A recursive wrapper giving lowered sub-shapes a clickable
-        // in-site link. Without a resolver the children pass through
-        // unwrapped (PDF embedding, contexts with no page registry).
-        "link" => {
-            let children = match map.get("children") {
-                Some(Value::List(items)) => items.as_slice(),
-                _ => &[],
-            };
-            let inner: String = children
-                .iter()
-                .map(|v| render_svg_variant(doc, v, _parent_w, _parent_h, depth + 1, links))
-                .collect();
-            match (map_utf8(map, "href"), links) {
-                (Some(href), Some(patterns)) => format!(
-                    "<a href=\"{}\">{inner}</a>",
-                    escape_html(&patterns.resolve_href(&href))
-                ),
-                _ => inner,
-            }
-        }
-        // Custom variant — look up its type's `lower` and recurse with the
-        // variant's record payload as the new arg.
-        other => lower_recurse(doc, map, other, depth, |v, d| {
-            render_svg_variant(doc, v, _parent_w, _parent_h, d, links)
-        }),
-    }
-}
-
-/// If `value` is an `Html::Head`, render its `children` (the
-/// head fragment) and return it; otherwise `None`. Lets `render_template`
-/// hoist a template's top-level head fundamentals into the page `<head>`.
-pub(crate) fn head_fundamental_html_with_blocks(
-    doc: &Document,
-    value: &Value,
-    patterns: &InlinePatterns,
-    block_renderer: Option<&BlockRenderer<'_>>,
-) -> Option<String> {
-    let Value::Variant {
-        variant, payload, ..
-    } = value
-    else {
-        return None;
-    };
-    if kind_for_variant(variant) != "head" {
-        return None;
-    }
-    let VariantPayload::Record(map) = payload else {
-        return Some(String::new());
-    };
-    let head = match map.get("children") {
-        Some(Value::List(items)) => items
-            .iter()
-            .map(|v| render_html_variant_with_blocks(doc, v, 0, patterns, block_renderer))
-            .collect(),
-        _ => String::new(),
-    };
-    Some(head)
-}
-
-/// Render one lowered content variant as HTML.
-pub(crate) fn render_html_variant(
-    doc: &Document,
-    value: &Value,
-    depth: usize,
-    patterns: &InlinePatterns,
-) -> String {
-    render_html_variant_with_blocks(doc, value, depth, patterns, None)
-}
-
-/// Render a lowered variant whose payload carries child blocks the
-/// caller supplies.
-pub(crate) fn render_html_variant_with_blocks(
-    doc: &Document,
-    value: &Value,
-    depth: usize,
-    patterns: &InlinePatterns,
-    block_renderer: Option<&BlockRenderer<'_>>,
-) -> String {
-    if depth > MAX_LOWER_DEPTH {
-        return depth_marker();
-    }
-    let Value::Variant {
-        variant, payload, ..
-    } = value
-    else {
-        return String::new();
-    };
-    let kind = kind_for_variant(variant);
-    let VariantPayload::Record(map) = payload else {
-        return String::new();
-    };
-    match kind.as_str() {
-        "blocks" => match (map.get("blocks"), block_renderer) {
-            (Some(Value::List(handles)), Some(render)) => {
-                let slot = map.get("slot").and_then(|value| match value {
-                    Value::Symbol(name)
-                    | Value::Identifier(name)
-                    | Value::Utf8(name)
-                    | Value::Ascii(name) => Some(name.as_str()),
-                    _ => None,
-                });
-                let owner = map.get("owner").and_then(|value| match value {
-                    Value::Identifier(name) | Value::Utf8(name) | Value::Ascii(name) => {
-                        Some(name.as_str())
-                    }
-                    _ => None,
-                });
-                let fallback = if handles.is_empty() {
-                    match map.get("fallback") {
-                        Some(Value::List(items)) => items
-                            .iter()
-                            .map(|value| {
-                                render_html_variant_with_blocks(
-                                    doc,
-                                    value,
-                                    depth + 1,
-                                    patterns,
-                                    block_renderer,
-                                )
-                            })
-                            .collect(),
-                        _ => String::new(),
-                    }
-                } else {
-                    String::new()
-                };
-                render(handles, slot, owner, &fallback)
-            }
-            _ => String::new(),
-        },
-        "paragraph" => render_paragraph_payload(doc, map, patterns),
-        "table" => render_table_payload(map),
-        "element" => render_element_payload(doc, map, depth, patterns, block_renderer),
-        "raw" => render_raw_payload(map),
-        "style" => map
-            .get("name")
-            .and_then(|value| match value {
-                Value::Symbol(name)
-                | Value::Identifier(name)
-                | Value::Utf8(name)
-                | Value::Ascii(name) => Some(name.as_str()),
-                _ => None,
-            })
-            .and_then(|name| patterns.style(name))
-            .map(|css| format!("<style>{css}</style>"))
-            .unwrap_or_default(),
-        // A `Head` reached in body context renders to nothing — its
-        // children are hoisted into `<head>` only when the fundamental is
-        // returned at a template's top level (see `head_fundamental_html`).
-        "head" => String::new(),
-        // An icon, resolved against the registry so it records sprite
-        // usage. Emitted by the stdlib `callout` lowering (and available
-        // to any user HTML lowering).
-        "icon" => render_icon_fundamental(map, patterns.icons()),
-        // Inline prose run through the inline-pattern engine (bold /
-        // italic / link / icon). The Rust regex engine stays a leaf; the
-        // `<p>`/`<span>` wrappers around it live in WCL (the `text` lower).
-        "inline" => render_inline_fundamental(doc, map, patterns),
-        // Syntax-highlighted code body (syntect). Like `inline`, the
-        // engine is a leaf; the `<pre><code>` wrapper is the `code` lower.
-        "highlighted" => render_highlighted_fundamental(map),
-        // LaTeX → self-contained SVG via RaTeX. Like `highlighted`, the
-        // SVG is a Rust leaf; the centring `<div>` wrapper is in math.rs.
-        "math" => crate::math::render_math_fundamental(map),
-        // A custom variant: expand it through its kind's own `lower`. What
-        // that produces may be content — a user block is free to lower to
-        // the semantic IR through a chain of its own variants.
-        other => lower_recurse(doc, map, other, depth, |v, d| match recursed_content(v) {
-            Some(node) => render_content(doc, &node, patterns),
-            None => render_html_variant_with_blocks(doc, v, d, patterns, block_renderer),
-        }),
-    }
 }
 
 /// The marker string a recursion-bounded renderer emits when it hits
@@ -619,7 +370,7 @@ pub(crate) fn block_to_record(doc: &Document, block: &Block<'_>, kind: &str) -> 
     // larger cell — the text would spill out of the rect.
     // Only fields carrying numeric `width`/`height` geometry that the layout
     // solver may have grown are coerced; leave non-numeric fields alone.
-    let (eff_w, eff_h) = effective_dims(block);
+    let (eff_w, eff_h) = crate::svg::effective_dims(block);
     if fields.get("width").is_some_and(Value::is_numeric)
         || fields.get("height").is_some_and(Value::is_numeric)
     {
@@ -783,5 +534,3 @@ pub(crate) fn kind_for_variant(variant: &str) -> String {
     }
     s
 }
-
-// ── Fundamental renderers (block-side) ────────────────────────────

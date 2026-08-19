@@ -17,9 +17,9 @@ use wcl_lang::{Block, Value, VariantPayload};
 
 use crate::card::render_card_foreign;
 use crate::render::{
-    RenderCtx, emit_circle, emit_line, emit_text, field_f64, field_i64, field_id, field_symbol,
-    field_utf8, field_utf8_list, map_utf8,
+    field_f64, field_i64, field_id, field_symbol, field_utf8, field_utf8_list, map_utf8,
 };
+use crate::svg::{RenderCtx, emit_circle, emit_line, emit_text};
 
 /// Abbreviated month names used on axis labels.
 const MON: [&str; 12] = [

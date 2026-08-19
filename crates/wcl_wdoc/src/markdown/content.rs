@@ -1,7 +1,7 @@
 //! The Markdown backend's reading of the semantic content IR.
 //!
 //! One arm per [`Content`] variant, matched **exhaustively** — the sibling
-//! of [`crate::render::content_html`] and [`crate::pdf::content`]. Three
+//! of [`crate::html::content`] and [`crate::pdf::content`]. Three
 //! walkers read the content IR, and this is one of them.
 //!
 //! Where the HTML reading emits markup and the PDF one emits flow nodes,
@@ -155,10 +155,10 @@ impl Emitter<'_> {
                 desc,
                 ..
             } => {
-                let svg = crate::render::fit_content_drawing(
+                let svg = crate::svg::fit_content_drawing(
                     self.doc,
                     shapes,
-                    crate::render::SvgFrame {
+                    crate::svg::SvgFrame {
                         width: *width,
                         height: *height,
                         class_attr: "",

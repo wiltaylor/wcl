@@ -250,7 +250,7 @@ pub fn pdf(
     let class_css: String = doc
         .blocks()
         .filter(|b| b.kind() == "class")
-        .filter_map(|b| crate::render::render_class(&b))
+        .filter_map(|b| crate::html::render_class(&b))
         .map(|rule| rule.text)
         .collect();
     // Diagram card boxes match the themed web `.wdoc-card` (bg-alt fill,
@@ -329,7 +329,7 @@ pub fn pdf(
             let toc_nodes = spec
                 .block
                 .as_ref()
-                .map(crate::render::read_toc)
+                .map(crate::html::read_toc)
                 .unwrap_or_default();
 
             let (laid, dests, outline) = if toc_nodes.is_empty() {
@@ -449,7 +449,7 @@ fn order_site_pages<'a>(spec: &'a crate::build::SiteSpec<'a>) -> Vec<&'a Block<'
     }
     if let Some(site) = &spec.block {
         let mut toc_names = Vec::new();
-        flatten_toc(&crate::render::read_toc(site), &mut toc_names);
+        flatten_toc(&crate::html::read_toc(site), &mut toc_names);
         for name in toc_names {
             if !seen.contains(&name)
                 && let Some(p) = spec
@@ -468,7 +468,7 @@ fn order_site_pages<'a>(spec: &'a crate::build::SiteSpec<'a>) -> Vec<&'a Block<'
 }
 
 /// Flatten a TOC tree into page names, depth-first in source order.
-fn flatten_toc(nodes: &[crate::render::TocNode], out: &mut Vec<String>) {
+fn flatten_toc(nodes: &[crate::html::TocNode], out: &mut Vec<String>) {
     for node in nodes {
         if let Some(page) = &node.page {
             out.push(page.clone());
@@ -480,7 +480,7 @@ fn flatten_toc(nodes: &[crate::render::TocNode], out: &mut Vec<String>) {
 /// Flatten the toc into `(depth, title, page)` rows, depth-first in source
 /// order, for the printed contents page.
 fn flatten_toc_entries(
-    nodes: &[crate::render::TocNode],
+    nodes: &[crate::html::TocNode],
     depth: u8,
     out: &mut Vec<(u8, String, Option<String>)>,
 ) {
@@ -534,7 +534,7 @@ fn build_toc_section(
 /// Build the PDF outline (reader bookmarks) from the toc, resolving each node's
 /// destination through `dests`. Top-level (and any parent) nodes open expanded.
 fn build_outline_tree(
-    nodes: &[crate::render::TocNode],
+    nodes: &[crate::html::TocNode],
     dests: &HashMap<String, usize>,
 ) -> krilla::outline::Outline {
     let mut outline = krilla::outline::Outline::new();
@@ -550,7 +550,7 @@ fn build_outline_tree(
 /// grouping heading with no page — its first descendant page; a node whose whole
 /// subtree resolves to no page is dropped (krilla requires a destination).
 fn build_outline_node(
-    node: &crate::render::TocNode,
+    node: &crate::html::TocNode,
     dests: &HashMap<String, usize>,
 ) -> Option<krilla::outline::OutlineNode> {
     use krilla::destination::XyzDestination;
@@ -574,7 +574,7 @@ fn build_outline_node(
 
 /// The first resolvable destination at or below `node` (self first, then
 /// children depth-first).
-fn first_dest(node: &crate::render::TocNode, dests: &HashMap<String, usize>) -> Option<usize> {
+fn first_dest(node: &crate::html::TocNode, dests: &HashMap<String, usize>) -> Option<usize> {
     if let Some(p) = &node.page
         && let Some(&i) = dests.get(p)
     {

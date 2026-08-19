@@ -16,9 +16,9 @@ use std::fmt::Write as _;
 
 use wcl_lang::Block;
 
-use crate::render::{
-    RenderCtx, escape_html, field_id, field_utf8, field_utf8_list, render_block, resolve_rect_box,
-};
+use crate::html::render_block;
+use crate::render::{escape_html, field_id, field_utf8, field_utf8_list};
+use crate::svg::{RenderCtx, resolve_rect_box};
 
 /// Render a free-standing `@block("card")` placed in a diagram /
 /// container: resolve its box (anchor-aware, like `rect`) and draw its

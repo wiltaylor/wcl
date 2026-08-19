@@ -20,8 +20,8 @@ use crate::content::{
     CalloutKind, Content, ContentFootnote, ContentTocEntry, ListStyle, chapter_meta_line,
 };
 use crate::inline::InlinePatterns;
-
-use super::*;
+use crate::render::*;
+use crate::svg::*;
 
 /// Render one content node to HTML.
 pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePatterns) -> String {

@@ -7,6 +7,10 @@
 //! shape dispatch, position collection, and icon badges), and
 //! [`primitives`] (geometry resolution + the fundamental SVG emitters).
 //! The shared geometry types + bundled-asset consts live here.
+//!
+//! A backend in its own right, alongside [`crate::html`] and
+//! [`crate::pdf`] — both of which embed what it draws — and built on the
+//! neutral core in [`crate::render`].
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -17,19 +21,20 @@ use wcl_lang::{Block, Document};
 use crate::icons::IconRegistry;
 use crate::image::ImageRegistry;
 use crate::inline::InlinePatterns;
+use crate::render::*;
 use crate::routing::Side;
 use crate::tileset::TilesetRegistry;
 
-use super::*;
-
 mod diagram;
 mod edges;
+mod lower;
 mod primitives;
 mod shapes;
 mod standalone;
 
 pub(crate) use diagram::*;
 pub(crate) use edges::*;
+pub(crate) use lower::*;
 pub(crate) use primitives::*;
 pub(crate) use shapes::*;
 pub(crate) use standalone::*;
@@ -113,27 +118,27 @@ pub(crate) struct CollectCtx<'a> {
 /// The bundled pan + zoom player, written to `_wdoc/` and loaded once
 /// per page when any diagram sets `pan_zoom`. Mirrors the terminal
 /// player asset pattern.
-pub(crate) const DIAGRAM_PAN_ZOOM_JS: &str = include_str!("../../../assets/diagram-pan-zoom.js");
+pub(crate) const DIAGRAM_PAN_ZOOM_JS: &str = include_str!("../../assets/diagram-pan-zoom.js");
 
 /// The bundled map player (layer level-of-detail + popup cards), written
 /// to `_wdoc/` and loaded once per page when any diagram contains a `map`.
 /// Mirrors the pan/zoom + terminal player asset pattern.
-pub(crate) const WDOC_MAP_JS: &str = include_str!("../../../assets/wdoc-map.js");
+pub(crate) const WDOC_MAP_JS: &str = include_str!("../../assets/wdoc-map.js");
 
 /// The bundled dopesheet player (advances the frame `viewBox` at the
 /// authored fps), written to `_wdoc/` and loaded once per page when any
 /// diagram contains a `dopesheet`. Mirrors the terminal player pattern.
-pub(crate) const DOPESHEET_PLAYER_JS: &str = include_str!("../../../assets/dopesheet-player.js");
+pub(crate) const DOPESHEET_PLAYER_JS: &str = include_str!("../../assets/dopesheet-player.js");
 
 /// The bundled video player (click-to-play facade → real `<video>` /
 /// `<iframe>`), written to `_wdoc/` and loaded once per page when any
 /// content-IR video is rendered. Mirrors the dopesheet/terminal player pattern.
-pub(crate) const WDOC_VIDEO_JS: &str = include_str!("../../../assets/wdoc-video.js");
+pub(crate) const WDOC_VIDEO_JS: &str = include_str!("../../assets/wdoc-video.js");
 
 /// The bundled presentation (deck) navigation player, written to
 /// `_wdoc/` and loaded on a `presentation`-template site's single deck
 /// page. Drives the arrow-key slide grid. Mirrors the player pattern.
-pub(crate) const PRESENTATION_PLAYER_JS: &str = include_str!("../../../assets/presentation.js");
+pub(crate) const PRESENTATION_PLAYER_JS: &str = include_str!("../../assets/presentation.js");
 
 /// The +/−/reset control cluster overlaid on an interactive diagram.
 /// The player binds the buttons by their `data-zoom` value.

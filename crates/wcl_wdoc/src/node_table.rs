@@ -11,17 +11,19 @@
 //!
 //! Per-row connectivity reuses the existing edge machinery: each row with
 //! an `id` is registered as its own sub-shape in `collect_shape_positions`
-//! (see `src/render/svg/shapes.rs`), so an edge can target the row id and
+//! (see `src/svg/shapes.rs`), so an edge can target the row id and
 //! the standard west/east anchor logic lands it on the row's edge.
 
 use std::fmt::Write as _;
 
 use wcl_lang::Block;
 
+use crate::html::render_block;
 use crate::render::{
-    RenderCtx, escape_html, expand_container_children, field_f64, field_id, field_symbol_list_opt,
-    field_utf8, field_utf8_list, render_block, resolve_rect_box,
+    escape_html, expand_container_children, field_f64, field_id, field_symbol_list_opt, field_utf8,
+    field_utf8_list,
 };
+use crate::svg::{RenderCtx, resolve_rect_box};
 
 /// Default per-row height when `row_height` is unset.
 const ROW_HEIGHT: f64 = 30.0;

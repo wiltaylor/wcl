@@ -9,14 +9,17 @@ use wcl_lang::{
 };
 
 use crate::css_lint::ClassScan;
+use crate::html::{
+    CollectionTemplateInput, DeckSectionNode, FooterButtonNode, MenuNode, TocNode, find_template,
+    flat_toc_to_value, footer_to_value, menu_to_value, pages_to_value, read_deck, read_menu,
+    read_sidebar_footer, read_toc, render_block, render_css_block, render_page, render_template,
+    site_theme_css, toc_to_value,
+};
 use crate::inline::InlinePatterns;
 use crate::render::{
-    CollectionTemplateInput, DeckSectionNode, FooterButtonNode, MAX_LOWER_DEPTH, MenuNode, TocNode,
-    escape_html, expand_component_children, expand_instance_children, expand_repeater_children,
-    field_bool, field_id, field_symbol, field_symbol_list_opt, field_utf8, field_utf8_list,
-    find_template, flat_toc_to_value, footer_to_value, label_string, menu_to_value, pages_to_value,
-    read_deck, read_menu, read_sidebar_footer, read_toc, render_block, render_css_block,
-    render_page, render_template, site_theme_css, toc_to_value,
+    MAX_LOWER_DEPTH, escape_html, expand_component_children, expand_instance_children,
+    expand_repeater_children, field_bool, field_id, field_symbol, field_symbol_list_opt,
+    field_utf8, field_utf8_list, label_string,
 };
 
 /// The wdoc standard library, embedded in the binary and registered
@@ -319,7 +322,7 @@ const RUST_DISPATCHED_KINDS: &[&str] = &[
     "wdoc_content",
     "wdoc_slot",
     "wdoc_body",
-    // Diagram shapes special-cased in render/svg/shapes.rs.
+    // Diagram shapes special-cased in svg/shapes.rs.
     "rect",
     "circle",
     "line",
@@ -370,7 +373,7 @@ pub(crate) fn reserved_kind_errors(doc: &Document) -> Vec<Report> {
 /// a Rust-dispatched kind ([`reserved_kind_errors`]), a coherent rendering
 /// declaration on every block type ([`crate::native::native_errors`]), and no
 /// `//` line comment inside a CSS declaration body
-/// ([`crate::render::comment_errors`]).
+/// ([`crate::html::comment_errors`]).
 ///
 /// The three entry points (HTML / Markdown / PDF) call this one
 /// function right after `schema_errors`, so a fourth cannot pick up half the
@@ -385,7 +388,7 @@ pub(crate) fn contract_errors(doc: &Document) -> Vec<Report> {
     }
     let mut out = reserved_kind_errors(doc);
     out.extend(crate::native::native_errors(doc));
-    out.extend(crate::render::comment_errors(doc));
+    out.extend(crate::html::comment_errors(doc));
     out
 }
 
@@ -1230,7 +1233,7 @@ fn collect_css_block(b: &Block<'_>, is_lib: bool, fonts: BundledFonts, css: &mut
         // bundle cannot diverge. A bundle no template splices reads as dead
         // code, which is what it is.
         "style" => {
-            let rules = crate::render::render_style(b);
+            let rules = crate::html::render_style(b);
             css.declared.extend(rules.classes.iter().cloned());
             if !is_lib && !rules.text.is_empty() {
                 css.authored.extend(rules.classes);
@@ -1405,26 +1408,26 @@ fn build_site(
     // because a rule scoped to one site would read as dead in the others.
     scan.record_rules(&css.declared, &css.authored);
 
-    let uses_pan_zoom = spec.pages.iter().any(crate::render::uses_pan_zoom);
-    let uses_map = spec.pages.iter().any(crate::render::uses_map);
+    let uses_pan_zoom = spec.pages.iter().any(crate::svg::uses_pan_zoom);
+    let uses_map = spec.pages.iter().any(crate::svg::uses_map);
     // A map drives the same viewBox camera as a pan/zoom diagram, so it
     // needs the pan/zoom player too — plus its own layer/card player.
     if (uses_pan_zoom || uses_map) && write_shared {
         write_asset(
             out_dir,
             "diagram-pan-zoom.js",
-            crate::render::DIAGRAM_PAN_ZOOM_JS,
+            crate::svg::DIAGRAM_PAN_ZOOM_JS,
         )?;
     }
     if uses_map && write_shared {
-        write_asset(out_dir, "wdoc-map.js", crate::render::WDOC_MAP_JS)?;
+        write_asset(out_dir, "wdoc-map.js", crate::svg::WDOC_MAP_JS)?;
     }
     let uses_dopesheet = spec.pages.iter().any(crate::dopesheet::uses_dopesheet);
     if uses_dopesheet && write_shared {
         write_asset(
             out_dir,
             "dopesheet-player.js",
-            crate::render::DOPESHEET_PLAYER_JS,
+            crate::svg::DOPESHEET_PLAYER_JS,
         )?;
     }
     // Site descriptor: the default template + title a template can show.
@@ -1728,7 +1731,7 @@ fn build_site(
     // inferred from authored block kinds: custom lowerings that emit a Video
     // therefore receive the same facade player as the stdlib `video` block.
     if inline_patterns.videos().is_used() {
-        write_asset(out_dir, "wdoc-video.js", crate::render::WDOC_VIDEO_JS)?;
+        write_asset(out_dir, "wdoc-video.js", crate::svg::WDOC_VIDEO_JS)?;
     }
 
     // Copy each local video file / poster referenced by a rendered video
@@ -2473,7 +2476,7 @@ fn build_collection_page(
         write_asset(
             ctx.out_dir,
             "presentation.js",
-            crate::render::PRESENTATION_PLAYER_JS,
+            crate::svg::PRESENTATION_PLAYER_JS,
         )?;
         rendered
             .body
@@ -2627,7 +2630,7 @@ fn build_normal_page(
                 ctx.inline_patterns,
             )
         }
-        None => crate::render::Rendered {
+        None => crate::html::Rendered {
             body: content.clone(),
             head: String::new(),
             page_heading: page_heading_title(page),

@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use wcl_lang::{Environment, Value, from_fn};
 
-use crate::render::HeadingSequence;
+use crate::html::HeadingSequence;
 
 #[derive(Default)]
 /// Per-site navigation indexes, built once per build and reused by

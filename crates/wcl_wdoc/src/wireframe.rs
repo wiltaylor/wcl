@@ -33,10 +33,10 @@ use std::collections::HashMap;
 use wcl_lang::{Block, Document};
 
 use crate::render::{
-    RenderCtx, ThemeRoles, escape_html, expand_container_children, field_bool, field_f64,
-    field_i64, field_id, field_symbol, field_utf8, field_utf8_list, label_string, resolve_rect_box,
-    resolve_roles,
+    ThemeRoles, escape_html, expand_container_children, field_bool, field_f64, field_i64, field_id,
+    field_symbol, field_utf8, field_utf8_list, label_string, resolve_roles,
 };
+use crate::svg::{RenderCtx, resolve_rect_box};
 
 // ── Geometry (px, ported from the wdoc-wireframe CSS rem values) ─────
 

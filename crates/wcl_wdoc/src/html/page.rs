@@ -11,6 +11,8 @@ use wcl_lang::{Block, DeclName, Document, Value};
 use crate::highlight;
 use crate::icons::IconRegistry;
 use crate::inline::InlinePatterns;
+use crate::render::*;
+use crate::svg::*;
 
 use super::*;
 
@@ -599,7 +601,7 @@ pub(crate) fn render_template<'a>(
         Ok(Value::List(items)) => items,
         Ok(_) => return Rendered::default(),
         Err(err) => {
-            super::record_lower_error(template, err);
+            record_lower_error(template, err);
             return Rendered::default();
         }
     };

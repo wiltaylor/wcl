@@ -1,4 +1,8 @@
 //! Field / map / value readers, class-attribute helpers, and HTML escaping.
+//!
+//! The escaping sits in the neutral core rather than [`crate::html`]
+//! because SVG is an XML dialect with the same five specials — the HTML
+//! and SVG backends escape identically, so they share one implementation.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;

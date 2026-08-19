@@ -24,8 +24,9 @@ use crate::inline::InlinePatterns;
 use crate::render::{
     Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_repeater_children, field_symbol,
     field_utf8, fill_content_slot, gather_inline_text, instance_target_def, label_string,
-    lower_block, map_list, map_utf8, map_utf8_list, render_diagram_static, walk_component,
+    lower_block, map_list, map_utf8, map_utf8_list, walk_component,
 };
+use crate::svg::render_diagram_static;
 use crate::terminal::ASSET_DIR;
 
 /// Render one page to a Markdown string, writing any diagram / terminal SVGs

@@ -1,7 +1,7 @@
 //! The PDF backend's reading of the semantic content IR.
 //!
 //! One arm per [`Content`] variant, matched **exhaustively** — the sibling
-//! of [`crate::render::content_html`] and [`crate::markdown::content`].
+//! of [`crate::html::content`] and [`crate::markdown::content`].
 //! Where the HTML reading emits markup, this one emits [`BlockNode`]s: the
 //! paint-agnostic flow model [`layout`](crate::pdf::layout) paginates.
 //!
@@ -289,10 +289,10 @@ pub(crate) fn collect_content(
             ..
         } => {
             out.push(BlockNode::Svg {
-                svg: crate::render::fit_content_drawing(
+                svg: crate::svg::fit_content_drawing(
                     doc,
                     shapes,
-                    crate::render::SvgFrame {
+                    crate::svg::SvgFrame {
                         width: *width,
                         height: *height,
                         class_attr: "",

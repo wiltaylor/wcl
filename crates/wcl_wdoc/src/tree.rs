@@ -12,7 +12,7 @@
 //!
 //! Per-node connectivity reuses the edge machinery: a node with an `id` is
 //! registered as its own sub-shape (see `collect_shape_positions` in
-//! `src/render/svg/shapes.rs`), so an edge can target a single node.
+//! `src/svg/shapes.rs`), so an edge can target a single node.
 
 use std::fmt::Write as _;
 
@@ -20,9 +20,10 @@ use wcl_lang::Block;
 
 use crate::icons::ShapeOverride;
 use crate::render::{
-    RenderCtx, escape_html, expand_container_children, field_f64, field_id, field_utf8,
-    field_utf8_list, label_string, resolve_rect_box,
+    escape_html, expand_container_children, field_f64, field_id, field_utf8, field_utf8_list,
+    label_string,
 };
+use crate::svg::{RenderCtx, resolve_rect_box};
 
 /// Default per-node row height when `row_height` is unset.
 const ROW_HEIGHT: f64 = 24.0;
@@ -199,5 +200,5 @@ pub(crate) fn render_tree(
 
 /// A connector guide line (class-only paint; stroke comes from CSS).
 fn line(x1: f64, y1: f64, x2: f64, y2: f64) -> String {
-    crate::render::emit_line(GUIDE_CLS, x1, y1, x2, y2, None, None)
+    crate::svg::emit_line(GUIDE_CLS, x1, y1, x2, y2, None, None)
 }

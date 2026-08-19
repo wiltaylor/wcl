@@ -21,11 +21,13 @@ use std::fmt::Write as _;
 
 use wcl_lang::Block;
 
+use crate::html::render_block;
 use crate::icons::ShapeOverride;
 use crate::render::{
-    RenderCtx, escape_html, field_bool, field_f64, field_i64, field_id, field_utf8,
-    field_utf8_list, label_string, render_block,
+    escape_html, field_bool, field_f64, field_i64, field_id, field_utf8, field_utf8_list,
+    label_string,
 };
+use crate::svg::RenderCtx;
 
 /// Default marker size, in map units, when a pin sets no `size`.
 const DEFAULT_PIN_SIZE: f64 = 24.0;

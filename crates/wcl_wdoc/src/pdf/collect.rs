@@ -22,8 +22,9 @@ use crate::inline::InlinePatterns;
 use crate::render::{
     Lowered, MAX_LOWER_DEPTH, as_record_variant, cell_text, expand_repeater_children, field_f64,
     field_symbol, field_utf8, fill_content_slot, gather_inline_text, instance_target_def,
-    lower_block, map_list, map_utf8, map_utf8_list, render_diagram, walk_component,
+    lower_block, map_list, map_utf8, map_utf8_list, walk_component,
 };
+use crate::svg::render_diagram;
 
 use super::content;
 use super::ir::{BlockNode, CardSpec, CodeSpan, FontFamily, InlineRun, ListLine, TextStyle};

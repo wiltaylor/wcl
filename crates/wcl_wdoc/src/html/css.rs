@@ -8,7 +8,7 @@ use std::path::Path;
 use miette::Report;
 use wcl_lang::{Block, Document};
 
-use super::*;
+use crate::render::*;
 
 /// One rendered chunk of CSS: the text a page embeds, plus every class name
 /// its selectors target. The two travel together because the class lint
