@@ -4,9 +4,64 @@
 use crate::ast::Span;
 
 use super::{
-    LexError, Lexer, StringEncoding, StringLit, StringPart, StringPrefix, Token, TokenKind,
-    is_ident_cont, is_ident_start,
+    LexError, Lexer, StringEncoding, StringLit, StringPart, Token, TokenKind, is_ident_cont,
+    is_ident_start,
 };
+
+#[derive(Debug, Clone, Copy)]
+/// A parsed string-literal prefix: which encoding it names, and whether
+/// it opts into `${…}` interpolation.
+pub(super) struct StringPrefix {
+    /// The encoding the prefix names.
+    encoding: StringEncoding,
+    /// `true` when the prefix carried a leading `$`.
+    interpolated: bool,
+    /// Raw body: no escape processing and no `${…}` interpolation. Only
+    /// the `<<'TAG'` heredoc opener sets this; the body is taken
+    /// verbatim (handy for backslash-heavy text like LaTeX or regexes).
+    raw: bool,
+}
+
+impl StringPrefix {
+    /// A non-interpolating prefix in the given encoding.
+    pub(super) fn plain(encoding: StringEncoding) -> Self {
+        Self {
+            encoding,
+            interpolated: false,
+            raw: false,
+        }
+    }
+
+    /// An interpolating (`$`-marked) prefix in the given encoding.
+    pub(super) fn interp(encoding: StringEncoding) -> Self {
+        Self {
+            encoding,
+            interpolated: true,
+            raw: false,
+        }
+    }
+
+    /// A raw (`<<'TAG'`) UTF-8 heredoc: literal body, no escapes/interp.
+    pub(super) fn raw_utf8() -> Self {
+        Self {
+            encoding: StringEncoding::Utf8,
+            interpolated: false,
+            raw: true,
+        }
+    }
+
+    /// Map an encoding keyword (`ascii`, `utf16`, …) to its encoding,
+    /// or `None` when the text names no encoding.
+    pub(super) fn encoding_from_text(text: &str) -> Option<StringEncoding> {
+        match text {
+            "utf8" => Some(StringEncoding::Utf8),
+            "ascii" => Some(StringEncoding::Ascii),
+            "utf16" => Some(StringEncoding::Utf16),
+            "utf32" => Some(StringEncoding::Utf32),
+            _ => None,
+        }
+    }
+}
 
 impl<'a> Lexer<'a> {
     /// Lex a string literal in any encoding, interpolating or not,
