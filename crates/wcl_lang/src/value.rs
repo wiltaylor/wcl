@@ -772,7 +772,7 @@ impl std::fmt::Display for TypeRef {
 ///
 /// For the compact, interpolation-friendly form used by the `format(...)`
 /// builtin (unsuffixed numbers, unquoted strings), see
-/// [`crate::collections::format_value`].
+/// [`crate::functions::format_value`].
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

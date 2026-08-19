@@ -8,8 +8,8 @@
 //! promotion in arithmetic. Registered in
 //! [`Environment::new`](crate::Environment::new).
 
-use crate::builtins::from_fn;
 use crate::environment::Environment;
+use crate::functions::from_fn;
 use crate::value::Value;
 
 /// Widen a numeric argument to `f64`, or describe the mismatch for the

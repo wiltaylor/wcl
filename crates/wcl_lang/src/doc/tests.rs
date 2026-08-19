@@ -1327,7 +1327,7 @@ fn cycle_error_renders() {
 // ─── Evaluator (builtins + operators + identifier resolution) ────
 
 fn env_with_test_builtins() -> Environment {
-    use crate::builtins::from_fn;
+    use crate::functions::from_fn;
     let mut env = Environment::empty();
     env.add_builtin("upper", from_fn(|s: String| s.to_uppercase()));
     env.add_builtin("len", from_fn(|s: String| s.len() as i64));
@@ -1687,7 +1687,7 @@ fn decorator_positional_cached_across_calls() {
     let counter = Arc::new(AtomicUsize::new(0));
     let bumper = {
         let c = counter.clone();
-        crate::builtins::from_fn(move || {
+        crate::functions::from_fn(move || {
             c.fetch_add(1, AtomicOrdering::Relaxed);
             7i64
         })
@@ -1709,7 +1709,7 @@ fn decorator_named_arg_cached_across_calls() {
     let counter = Arc::new(AtomicUsize::new(0));
     let bumper = {
         let c = counter.clone();
-        crate::builtins::from_fn(move || {
+        crate::functions::from_fn(move || {
             c.fetch_add(1, AtomicOrdering::Relaxed);
             3i64
         })

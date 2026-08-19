@@ -163,7 +163,7 @@ struct EvalCaller<'a, 'c> {
     err: Option<EvalError>,
 }
 
-impl<'a> crate::builtins::Caller for EvalCaller<'a, '_> {
+impl<'a> crate::functions::Caller for EvalCaller<'a, '_> {
     fn call_fn(&mut self, f: &FnValue, args: &[Value]) -> Result<Value, String> {
         let _profile_guard = self.doc.profile_enter(crate::profile::ProfileKey::UserFn {
             name: String::new(),
@@ -235,7 +235,7 @@ impl<'a> crate::builtins::Caller for EvalCaller<'a, '_> {
             .collect()
     }
 
-    fn builtin_info(&self, name: &str) -> Option<crate::builtins::BuiltinSignature> {
+    fn builtin_info(&self, name: &str) -> Option<crate::functions::BuiltinSignature> {
         self.doc
             .environment()
             .builtin(name)
@@ -402,7 +402,7 @@ impl Document {
                         ast::TemplatePart::Literal(s) => joined.push_str(s),
                         ast::TemplatePart::Expr(e) => {
                             let v = self.eval_in(e, ctx)?;
-                            joined.push_str(&crate::collections::format_value(&v));
+                            joined.push_str(&crate::functions::format_value(&v));
                         }
                     }
                 }
@@ -739,10 +739,10 @@ impl Document {
             return self.eval_in(&expr, ctx);
         }
         match &builtin.kind {
-            crate::builtins::BuiltinKind::Pure(body) => {
+            crate::functions::BuiltinKind::Pure(body) => {
                 (body)(&evald).map_err(|msg| EvalError::builtin_type(name.to_string(), msg, span))
             }
-            crate::builtins::BuiltinKind::Hof(body) => {
+            crate::functions::BuiltinKind::Hof(body) => {
                 let mut caller = EvalCaller {
                     doc: self,
                     ctx,

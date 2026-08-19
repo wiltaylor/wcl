@@ -15,8 +15,6 @@
 //! so the API forces the host to pick one mode per parse.
 
 pub mod ast;
-mod builtins;
-mod collections;
 mod data;
 /// The document model: opening, evaluating and querying a file.
 mod doc;
@@ -25,6 +23,7 @@ mod environment;
 /// Parse and evaluation error types, and their diagnostics.
 mod error;
 pub mod format;
+mod functions;
 mod lexer;
 mod math;
 mod numeric;
@@ -40,9 +39,6 @@ mod units;
 mod value;
 
 pub use ast::Span;
-pub use builtins::{
-    BuiltinFn, Caller, DataPath, FromValue, IntoBuiltin, IntoValue, IntoValueResult, from_fn,
-};
 pub use data::{DataKind, DataRef};
 pub use doc::{
     Block, ChildKind, Connection, ConnectionDecl, DeclName, DeclaresKind, Decorator, Document,
@@ -55,6 +51,9 @@ pub use environment::{
     BuiltType, DecoratorBuilder, Environment, Expander, TypeBuilder, TypeFieldBuilder,
 };
 pub use error::{ArithmeticFault, EvalError, ParseError, SchemaViolationKind, SyntaxError};
+pub use functions::{
+    BuiltinFn, Caller, DataPath, FromValue, IntoBuiltin, IntoValue, IntoValueResult, from_fn,
+};
 pub use lexer::{
     LexError, Lexer, NumberLit, StringEncoding, StringLit, StringPart, Token, TokenKind,
     is_identifier,

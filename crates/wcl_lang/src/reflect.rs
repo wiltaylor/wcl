@@ -6,10 +6,10 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::builtins::{BuiltinFn, BuiltinSignature, Caller, DataPath, FromValue, from_fn};
 use crate::data::{DataKind, DataRef};
 use crate::doc::{ChildKind, DeclName, Decorator, TypeField};
 use crate::environment::Environment;
+use crate::functions::{BuiltinFn, BuiltinSignature, Caller, DataPath, FromValue, from_fn};
 use crate::value::{FnValue, Value};
 
 /// Register the reflection builtins — the functions that let a

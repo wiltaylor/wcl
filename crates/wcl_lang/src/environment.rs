@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use crate::ast;
 use crate::ast::{synthetic_decorator, synthetic_field, synthetic_span};
-use crate::builtins::BuiltinFn;
 use crate::doc::Block;
+use crate::functions::BuiltinFn;
 use crate::value::{BuiltinType, TypeRef, Value};
 
 /// Host callback that expands a `@contextual` block into the blocks it
@@ -72,7 +72,7 @@ impl Environment {
         env.types.extend(builtin_decorator_schemas());
         env.symbol_sets.push(decorator_position_set());
         env.types.extend(stdlib_unit_types());
-        crate::collections::register(&mut env);
+        crate::functions::register(&mut env);
         crate::math::register(&mut env);
         crate::paths::register(&mut env);
         crate::reflect::register(&mut env);
@@ -872,7 +872,7 @@ mod tests {
 
     #[test]
     fn registers_builtin_callable_by_name() {
-        use crate::builtins::from_fn;
+        use crate::functions::from_fn;
         let mut env = Environment::empty();
         env.add_builtin("upper", from_fn(|s: String| s.to_uppercase()));
         assert!(env.builtin("upper").is_some());

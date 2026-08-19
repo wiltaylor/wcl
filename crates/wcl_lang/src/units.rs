@@ -11,8 +11,8 @@
 //! - [`format_unit_value`] (`format_unit_value(n, factor, "MiB")`) is the
 //!   lower-level primitive for callers that already hold the factor.
 
-use crate::builtins::{BuiltinFn, Caller, FromValue, from_fn};
 use crate::environment::Environment;
+use crate::functions::{BuiltinFn, Caller, FromValue, from_fn};
 use crate::value::Value;
 
 /// Register the unit-conversion builtins.

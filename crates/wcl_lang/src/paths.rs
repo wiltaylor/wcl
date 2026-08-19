@@ -11,8 +11,8 @@
 //! segments. A pattern with a trailing `/` owns the whole subtree — it is
 //! read as `pattern/**`.
 
-use crate::builtins::from_fn;
 use crate::environment::Environment;
+use crate::functions::from_fn;
 
 /// Register every path/glob builtin into `env`.
 pub(crate) fn register(env: &mut Environment) {

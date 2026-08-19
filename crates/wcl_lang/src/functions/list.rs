@@ -1,20 +1,26 @@
-//! Collection builtins: map, filter, fold, len, sum, range, head, tail,
-//! the predicate forms (any, all, find, sort_by, min_by, max_by,
-//! group_by), enumerate/slice and the string shapers (chars, repeat,
-//! pad_start, pad_end), the record accessors (keys, values, merge,
-//! map_values), plus the tensor constructor/accessors. Registered in
-//! [`Environment::new`](crate::Environment::new).
+//! List and sequence builtins.
+//!
+//! Everything that walks a collection: the higher-order forms (`map`,
+//! `filter`, `fold`, `any`, `all`, `find`, the `*_by` family), the
+//! shape operations (`head`, `tail`, `take`, `drop`, `slice`,
+//! `reverse`, `flatten`, `zip`, `enumerate`) and the orderings
+//! (`sort`, `sort_by`, `sort_connected`).
+//!
+//! Several of these accept a tensor as well as a list, and `len` and
+//! `slice` also accept a string — the doc text on each registration
+//! says which.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::builtins::{BuiltinFn, Caller, from_fn};
+use super::builtin::{BuiltinFn, Caller, from_fn};
+use super::expect_function;
 use crate::environment::Environment;
 use crate::error::ArithmeticFault;
 use crate::numeric::{for_each_float_numeric_variant, for_each_integer_numeric_variant};
 use crate::value::{Value, VariantPayload};
 
-/// Register every collection builtin into `env`.
-pub(crate) fn register(env: &mut Environment) {
+/// Register every list and sequence builtin into `env`.
+pub(super) fn register(env: &mut Environment) {
     env.add_builtin(
         "map",
         BuiltinFn::hof(2, map_hof)
@@ -47,7 +53,6 @@ pub(crate) fn register(env: &mut Environment) {
             .param("f", "fn (U, T) -> U", "Combines the accumulator with the next element.")
             .returns("U", "The final accumulator value."),
     );
-
     env.add_builtin(
         "len",
         from_fn(len_pure)
@@ -91,82 +96,6 @@ pub(crate) fn register(env: &mut Environment) {
             .param("xs", "[T]", "A list or tensor.")
             .returns("[T]", "The elements after the first."),
     );
-
-    env.add_builtin(
-        "tensor",
-        from_fn(tensor_pure)
-            .doc("Build a tensor from flat row-major data and a shape; the data length must equal the product of the dimensions.")
-            .param("data", "[number]", "Flat, row-major element data.")
-            .param("shape", "[usize]", "The dimension sizes.")
-            .returns("tensor<T>", "The constructed tensor."),
-    );
-    env.add_builtin(
-        "tensor_data",
-        from_fn(tensor_data_pure)
-            .doc("The flat row-major element data of a tensor as a list.")
-            .param("t", "tensor<T>", "The tensor to read.")
-            .returns("[T]", "The tensor's flat, row-major element data."),
-    );
-    env.add_builtin(
-        "tensor_shape",
-        from_fn(tensor_shape_pure)
-            .doc("The dimension sizes of a tensor as a list.")
-            .param("t", "tensor<T>", "The tensor to read.")
-            .returns("[usize]", "The tensor's dimension sizes."),
-    );
-
-    env.add_builtin(
-        "error",
-        from_fn(|msg: String| -> Result<Value, String> { Err(msg) })
-            .doc("Abort evaluation with an error message.")
-            .param("msg", "utf8", "The error message to report.")
-            .returns("never", "Never returns — aborts evaluation."),
-    );
-
-    env.add_builtin(
-        "panic",
-        from_fn(|msg: String| -> Result<Value, String> { Err(msg) })
-            .doc("Abort evaluation with an unrecoverable failure message.")
-            .param("msg", "utf8", "The failure message to report.")
-            .returns("never", "Never returns — aborts evaluation."),
-    );
-    env.add_builtin(
-        "assert",
-        from_fn(|cond: bool, msg: String| -> Result<Value, String> {
-            if cond { Ok(Value::None) } else { Err(msg) }
-        })
-        .doc("Return `none` when `cond` is true, otherwise abort with `msg`.")
-        .param("cond", "bool", "The condition that must hold.")
-        .param(
-            "msg",
-            "utf8",
-            "The error message reported when `cond` is false.",
-        )
-        .returns(
-            "none",
-            "`none` when the assertion holds (otherwise aborts).",
-        ),
-    );
-
-    env.add_builtin(
-        "concat",
-        from_fn(|a: String, b: String| -> String { format!("{a}{b}") })
-            .doc("Concatenate two strings into one.")
-            .param("a", "utf8", "The left-hand string.")
-            .param("b", "utf8", "The string appended after `a`.")
-            .returns("utf8", "The two strings joined together."),
-    );
-    env.add_builtin(
-        "format",
-        BuiltinFn::hof(0, format_hof)
-            // Variadic: keep an explicit signature since `...args` isn't a
-            // structurally-expressible parameter.
-            .with_signature("fn (utf8, ...args) -> utf8")
-            .doc("Substitute trailing arguments into a template's `{}` placeholders (`{{`/`}}` are literal braces).")
-            .param("template", "utf8", "Template string with `{}` placeholders.")
-            .returns("utf8", "The template with placeholders substituted."),
-    );
-
     env.add_builtin(
         "flatten",
         from_fn(flatten_pure)
@@ -189,91 +118,6 @@ pub(crate) fn register(env: &mut Environment) {
                 "Index-paired `[a, b]` lists, up to the shorter length.",
             ),
     );
-
-    env.add_builtin(
-        "tensor_reshape",
-        from_fn(tensor_reshape_pure)
-            .doc("Reinterpret a tensor's data under a new shape; the element count must be unchanged.")
-            .param("t", "tensor<T>", "The tensor to reshape.")
-            .param("shape", "[usize]", "The new dimension sizes.")
-            .returns("tensor<T>", "The same data under the new shape."),
-    );
-
-    // ── String builtins ─────────────────────────────────────────────
-    env.add_builtin(
-        "split",
-        from_fn(|s: String, sep: String| -> Value {
-            Value::list(s.split(&sep).map(|p| Value::Utf8(p.to_string())).collect())
-        })
-        .doc("Split a string on every occurrence of a separator into a list of pieces.")
-        .param("s", "utf8", "The string to split.")
-        .param("sep", "utf8", "The separator to split on.")
-        .returns("[utf8]", "The pieces between separators."),
-    );
-    env.add_builtin(
-        "join",
-        from_fn(|parts: Vec<String>, sep: String| -> String { parts.join(&sep) })
-            .doc("Join a list of strings into one, inserting a separator between each.")
-            .param("parts", "[utf8]", "The strings to join.")
-            .param("sep", "utf8", "The separator inserted between parts.")
-            .returns("utf8", "The joined string."),
-    );
-    env.add_builtin(
-        "replace",
-        from_fn(|s: String, old: String, new: String| -> String { s.replace(&old, &new) })
-            .doc("Replace every occurrence of a substring with another.")
-            .param("s", "utf8", "The string to search.")
-            .param("old", "utf8", "The substring to find.")
-            .param("new", "utf8", "The replacement substring.")
-            .returns("utf8", "The string with every match replaced."),
-    );
-    env.add_builtin(
-        "contains",
-        from_fn(|s: String, needle: String| -> bool { s.contains(&needle) })
-            .doc("Whether a string contains a substring.")
-            .param("s", "utf8", "The string to search.")
-            .param("needle", "utf8", "The substring to look for.")
-            .returns("bool", "`true` if the substring is present."),
-    );
-    env.add_builtin(
-        "starts_with",
-        from_fn(|s: String, prefix: String| -> bool { s.starts_with(&prefix) })
-            .doc("Whether a string begins with a prefix.")
-            .param("s", "utf8", "The string to test.")
-            .param("prefix", "utf8", "The prefix to look for.")
-            .returns("bool", "`true` if the string starts with the prefix."),
-    );
-    env.add_builtin(
-        "ends_with",
-        from_fn(|s: String, suffix: String| -> bool { s.ends_with(&suffix) })
-            .doc("Whether a string ends with a suffix.")
-            .param("s", "utf8", "The string to test.")
-            .param("suffix", "utf8", "The suffix to look for.")
-            .returns("bool", "`true` if the string ends with the suffix."),
-    );
-    env.add_builtin(
-        "to_upper",
-        from_fn(|s: String| -> String { s.to_uppercase() })
-            .doc("Uppercase every character of a string.")
-            .param("s", "utf8", "The string to uppercase.")
-            .returns("utf8", "The uppercased string."),
-    );
-    env.add_builtin(
-        "to_lower",
-        from_fn(|s: String| -> String { s.to_lowercase() })
-            .doc("Lowercase every character of a string.")
-            .param("s", "utf8", "The string to lowercase.")
-            .returns("utf8", "The lowercased string."),
-    );
-    env.add_builtin(
-        "trim",
-        from_fn(|s: String| -> String { s.trim().to_string() })
-            .doc("Remove leading and trailing whitespace from a string.")
-            .param("s", "utf8", "The string to trim.")
-            .returns("utf8", "The string without leading/trailing whitespace."),
-    );
-
-    // ── List builtins ───────────────────────────────────────────────
     env.add_builtin(
         "list_contains",
         from_fn(list_contains_pure)
@@ -386,79 +230,6 @@ pub(crate) fn register(env: &mut Environment) {
         .param("n", "i64", "How many leading elements to skip.")
         .returns("[T]", "The elements after the first `n`."),
     );
-
-    env.add_builtin(
-        "keys",
-        from_fn(|r: Value| -> Result<Value, String> {
-            let fields = record_fields("keys", &r)?;
-            Ok(Value::list(
-                fields.keys().map(|k| Value::Utf8(k.clone())).collect(),
-            ))
-        })
-        .doc("The field names of a record, in deterministic (sorted) order.")
-        .param(
-            "r",
-            "record",
-            "A record value (or a union variant with a record body).",
-        )
-        .returns("[utf8]", "The field names."),
-    );
-    env.add_builtin(
-        "values",
-        from_fn(|r: Value| -> Result<Value, String> {
-            let fields = record_fields("values", &r)?;
-            Ok(Value::list(fields.values().cloned().collect()))
-        })
-        .doc("The field values of a record, in the same order as `keys`.")
-        .param(
-            "r",
-            "record",
-            "A record value (or a union variant with a record body).",
-        )
-        .returns("[T]", "The field values."),
-    );
-    env.add_builtin(
-        "merge",
-        from_fn(|a: Value, b: Value| -> Result<Value, String> {
-            let (a_ty, a_fields) = match a {
-                Value::Record { ty, fields } => (ty, fields),
-                other => {
-                    return Err(format!(
-                        "merge: first argument must be a record, got {}",
-                        other.type_name()
-                    ));
-                }
-            };
-            let b_fields = match b {
-                Value::Record { fields, .. } => fields,
-                other => {
-                    return Err(format!(
-                        "merge: second argument must be a record, got {}",
-                        other.type_name()
-                    ));
-                }
-            };
-            let mut fields = std::sync::Arc::unwrap_or_clone(a_fields);
-            fields.extend(std::sync::Arc::unwrap_or_clone(b_fields));
-            Ok(Value::record(a_ty, fields))
-        })
-        .doc("Combine two records into one; fields of `b` win on a name clash.")
-        .param("a", "record", "The base record.")
-        .param("b", "record", "The overriding record.")
-        .returns("record", "A record with the union of both field sets."),
-    );
-    env.add_builtin(
-        "map_values",
-        BuiltinFn::hof(2, map_values_hof)
-            .doc("Apply a function to every field value of a record, keeping the keys.")
-            .param("r", "record", "The record to transform.")
-            .param("f", "fn (T) -> U", "Function applied to each field value.")
-            .returns(
-                "record",
-                "A record with the same keys and transformed values.",
-            ),
-    );
-
     env.add_builtin(
         "any",
         BuiltinFn::hof(2, any_hof)
@@ -546,7 +317,6 @@ pub(crate) fn register(env: &mut Environment) {
         .param("xs", "[T]", "The list to enumerate.")
         .returns("[[i64, T]]", "`[index, element]` pairs."),
     );
-
     env.add_builtin(
         "slice",
         from_fn(slice_pure)
@@ -555,63 +325,6 @@ pub(crate) fn register(env: &mut Environment) {
             .param("start", "i64", "Inclusive start index (clamped to the length).")
             .param("end", "i64", "Exclusive end index (clamped to the length).")
             .returns("utf8 | [T]", "The sub-string / sub-list."),
-    );
-    env.add_builtin(
-        "chars",
-        from_fn(|s: String| -> Value {
-            Value::list(s.chars().map(|c| Value::Utf8(c.to_string())).collect())
-        })
-        .doc("The characters of a string as a list of one-character strings.")
-        .param("s", "utf8", "The string to split into characters.")
-        .returns("[utf8]", "One string per character."),
-    );
-    env.add_builtin(
-        "repeat",
-        from_fn(|s: String, n: i64| -> String { s.repeat(n.max(0) as usize) })
-            .doc("A string repeated `n` times (empty for `n <= 0`).")
-            .param("s", "utf8", "The string to repeat.")
-            .param("n", "i64", "How many copies to concatenate.")
-            .returns("utf8", "`n` copies of `s`."),
-    );
-    env.add_builtin(
-        "pad_start",
-        from_fn(
-            |s: String, width: i64, pad: String| -> Result<Value, String> {
-                Ok(Value::Utf8(pad_string(s, width, &pad, true)?))
-            },
-        )
-        .doc("Left-pad a string with a fill pattern until it is `width` characters long.")
-        .param("s", "utf8", "The string to pad.")
-        .param("width", "i64", "The target character count.")
-        .param(
-            "pad",
-            "utf8",
-            "The fill pattern (repeated / truncated as needed).",
-        )
-        .returns(
-            "utf8",
-            "The padded string (unchanged if already wide enough).",
-        ),
-    );
-    env.add_builtin(
-        "pad_end",
-        from_fn(
-            |s: String, width: i64, pad: String| -> Result<Value, String> {
-                Ok(Value::Utf8(pad_string(s, width, &pad, false)?))
-            },
-        )
-        .doc("Right-pad a string with a fill pattern until it is `width` characters long.")
-        .param("s", "utf8", "The string to pad.")
-        .param("width", "i64", "The target character count.")
-        .param(
-            "pad",
-            "utf8",
-            "The fill pattern (repeated / truncated as needed).",
-        )
-        .returns(
-            "utf8",
-            "The padded string (unchanged if already wide enough).",
-        ),
     );
 }
 
@@ -837,67 +550,6 @@ fn slice_pure(xs: Value, start: i64, end: i64) -> Result<Value, String> {
             other.type_name()
         )),
     }
-}
-
-/// Shared implementation of `pad_start` and `pad_end`: repeat `pad`
-/// until `s` reaches `width`, on whichever side `at_start` selects.
-fn pad_string(s: String, width: i64, pad: &str, at_start: bool) -> Result<String, String> {
-    if pad.is_empty() {
-        return Err("pad_start/pad_end: pad pattern must not be empty".to_string());
-    }
-    let want = width.max(0) as usize;
-    let have = s.chars().count();
-    if have >= want {
-        return Ok(s);
-    }
-    let fill: String = pad.chars().cycle().take(want - have).collect();
-    Ok(if at_start {
-        format!("{fill}{s}")
-    } else {
-        format!("{s}{fill}")
-    })
-}
-
-/// Borrow the field map out of a record-shaped value: a record literal /
-/// projected record, or a union variant with a record body.
-fn record_fields<'a>(who: &str, v: &'a Value) -> Result<&'a BTreeMap<String, Value>, String> {
-    match v {
-        Value::Record { fields, .. } => Ok(fields),
-        Value::Variant {
-            payload: VariantPayload::Record(fields),
-            ..
-        } => Ok(fields),
-        other => Err(format!(
-            "{who}: expected a record, got {}",
-            other.type_name()
-        )),
-    }
-}
-
-/// `map_values(record, f)` — apply `f` to each value, keeping keys.
-fn map_values_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
-    let f = expect_function("map_values", "second argument", &args[1])?.clone();
-    let (ty, fields) = match &args[0] {
-        Value::Record { ty, fields } => (ty.clone(), fields),
-        Value::Variant {
-            payload: VariantPayload::Record(fields),
-            ..
-        } => (Vec::new(), fields),
-        other => {
-            return Err(format!(
-                "map_values: first argument must be a record, got {}",
-                other.type_name()
-            ));
-        }
-    };
-    let mut out = BTreeMap::new();
-    for (k, v) in fields.iter() {
-        out.insert(k.clone(), caller.call_fn(&f, std::slice::from_ref(v))?);
-    }
-    Ok(Value::Record {
-        ty,
-        fields: std::sync::Arc::new(out),
-    })
 }
 
 /// `contains(xs, needle)` by value equality.
@@ -1174,25 +826,6 @@ fn find_subtree(descendants: &[HashSet<String>], target: &str) -> Option<usize> 
 
 // ── Higher-order ─────────────────────────────────────────────────────
 
-/// Borrow a `&FnValue` from `value`, producing a uniform diagnostic
-/// `"{builtin}: {what} must be a function, got {ty}"` on mismatch.
-/// `what` is interpolated as-is, so prefer phrases like
-/// `"second argument"` (the callsite reads naturally with or without
-/// "the").
-fn expect_function<'a>(
-    builtin: &str,
-    what: &str,
-    value: &'a Value,
-) -> Result<&'a crate::value::FnValue, String> {
-    match value {
-        Value::Function(fv) => Ok(fv),
-        other => Err(format!(
-            "{builtin}: {what} must be a function, got {}",
-            other.type_name()
-        )),
-    }
-}
-
 /// `map(xs, f)` — apply `f` to every element.
 fn map_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
     let f = expect_function("map", "second argument", &args[1])?.clone();
@@ -1394,122 +1027,6 @@ fn sum_pure(v: Value) -> Result<Value, String> {
 
 // ── Tensor primitives ────────────────────────────────────────────────
 
-/// Convert a `Value::List` of integer shape entries into `(dims, product)`,
-/// rejecting empty shapes (when `allow_empty` is false), non-integer
-/// entries, and shape products that overflow `u64`. `builtin` is
-/// interpolated into every error message so the source-level builtin
-/// name (`tensor`, `tensor_reshape`) appears in diagnostics.
-fn validate_tensor_shape(
-    builtin: &str,
-    shape_vals: &[Value],
-    allow_empty: bool,
-) -> Result<(Vec<u64>, u64), String> {
-    if !allow_empty && shape_vals.is_empty() {
-        return Err(format!("{builtin}: shape must have at least one dimension"));
-    }
-    let mut dims: Vec<u64> = Vec::with_capacity(shape_vals.len());
-    for s in shape_vals {
-        let d = s.as_u64().ok_or_else(|| {
-            format!(
-                "{builtin}: shape entries must be non-negative integers, got {}",
-                s.type_name()
-            )
-        })?;
-        dims.push(d);
-    }
-    let mut product: u64 = 1;
-    for d in &dims {
-        product = product
-            .checked_mul(*d)
-            .ok_or_else(|| format!("{builtin}: shape product overflows u64"))?;
-    }
-    Ok((dims, product))
-}
-
-/// `tensor(data, shape)` — build a tensor, checking that the element
-/// count matches the shape's product.
-fn tensor_pure(data: Value, shape: Value) -> Result<Value, String> {
-    let data = match data {
-        Value::List(items) => items,
-        other => {
-            return Err(format!(
-                "tensor: first argument must be a list, got {}",
-                other.type_name()
-            ));
-        }
-    };
-    let shape_vals = match shape {
-        Value::List(items) => items,
-        other => {
-            return Err(format!(
-                "tensor: second argument must be a list of dimensions, got {}",
-                other.type_name()
-            ));
-        }
-    };
-    let (dims, expected) = validate_tensor_shape("tensor", &shape_vals, false)?;
-    if (data.len() as u64) != expected {
-        return Err(format!(
-            "tensor: data length {} does not match shape product {expected}",
-            data.len(),
-        ));
-    }
-    Ok(Value::Tensor { shape: dims, data })
-}
-
-/// `tensor_data(t)` — the elements in row-major order.
-fn tensor_data_pure(v: Value) -> Result<Vec<Value>, String> {
-    match v {
-        Value::Tensor { data, .. } => Ok(std::sync::Arc::unwrap_or_clone(data)),
-        other => Err(format!(
-            "tensor_data: expected tensor, got {}",
-            other.type_name()
-        )),
-    }
-}
-
-/// `tensor_shape(t)` — the extent of each dimension.
-fn tensor_shape_pure(v: Value) -> Result<Vec<i64>, String> {
-    match v {
-        Value::Tensor { shape, .. } => Ok(shape.into_iter().map(|d| d as i64).collect()),
-        other => Err(format!(
-            "tensor_shape: expected tensor, got {}",
-            other.type_name()
-        )),
-    }
-}
-
-/// `tensor_reshape(t, shape)` — reinterpret the same elements under a
-/// new shape of the same total size.
-fn tensor_reshape_pure(t: Value, new_shape: Value) -> Result<Value, String> {
-    let (data, _old_shape) = match t {
-        Value::Tensor { shape, data } => (data, shape),
-        other => {
-            return Err(format!(
-                "tensor_reshape: expected tensor, got {}",
-                other.type_name()
-            ));
-        }
-    };
-    let shape_vals = match new_shape {
-        Value::List(items) => items,
-        other => {
-            return Err(format!(
-                "tensor_reshape: shape must be a list of u64, got {}",
-                other.type_name()
-            ));
-        }
-    };
-    let (dims, expected) = validate_tensor_shape("tensor_reshape", &shape_vals, true)?;
-    if (data.len() as u64) != expected {
-        return Err(format!(
-            "tensor_reshape: data length {} does not match new shape product {expected}",
-            data.len(),
-        ));
-    }
-    Ok(Value::Tensor { shape: dims, data })
-}
-
 /// `flatten(xs)` — concatenate one level of nested lists.
 fn flatten_pure(v: Value) -> Result<Vec<Value>, String> {
     let items = match v {
@@ -1566,126 +1083,4 @@ fn zip_pure(a: Value, b: Value) -> Result<Vec<Value>, String> {
         ])));
     }
     Ok(out)
-}
-
-/// `format(template, ...args)` — `{}` positional substitution.
-fn format_hof(_caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String> {
-    let Some((template_v, rest)) = args.split_first() else {
-        return Err("format: missing template argument".into());
-    };
-    let template = match template_v {
-        Value::Utf8(s) | Value::Ascii(s) => s.clone(),
-        other => {
-            return Err(format!(
-                "format: template must be a string, got {}",
-                other.type_name()
-            ));
-        }
-    };
-    let mut out = String::with_capacity(template.len());
-    let mut idx = 0usize;
-    let mut chars = template.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '{' {
-            if chars.peek() == Some(&'{') {
-                chars.next();
-                out.push('{');
-                continue;
-            }
-            // Expect `}`.
-            if chars.next() != Some('}') {
-                return Err("format: expected '{}' placeholder".into());
-            }
-            let Some(arg) = rest.get(idx) else {
-                return Err(format!(
-                    "format: not enough arguments for placeholder #{idx}"
-                ));
-            };
-            idx += 1;
-            out.push_str(&format_value(arg));
-        } else if c == '}' {
-            if chars.peek() == Some(&'}') {
-                chars.next();
-                out.push('}');
-                continue;
-            }
-            return Err("format: unmatched '}' in template".into());
-        } else {
-            out.push(c);
-        }
-    }
-    if idx < rest.len() {
-        return Err(format!(
-            "format: {} extra arguments after template",
-            rest.len() - idx
-        ));
-    }
-    Ok(Value::Utf8(out))
-}
-
-/// Render a `Value` for inclusion in a `format` substitution. Stays
-/// compact and predictable — host CLIs render richer forms.
-pub(crate) fn format_value(v: &Value) -> String {
-    match v {
-        Value::Utf8(s) | Value::Ascii(s) | Value::Identifier(s) => s.clone(),
-        Value::Symbol(s) => format!(":{s}"),
-        Value::Bool(b) => b.to_string(),
-        Value::None => "none".to_string(),
-        Value::I8(n) => n.to_string(),
-        Value::I16(n) => n.to_string(),
-        Value::I32(n) => n.to_string(),
-        Value::I64(n) => n.to_string(),
-        Value::I128(n) => n.to_string(),
-        Value::Isize(n) => n.to_string(),
-        Value::U8(n) => n.to_string(),
-        Value::U16(n) => n.to_string(),
-        Value::U32(n) => n.to_string(),
-        Value::U64(n) => n.to_string(),
-        Value::U128(n) => n.to_string(),
-        Value::Usize(n) => n.to_string(),
-        Value::F32(n) => n.to_string(),
-        Value::F64(n) => n.to_string(),
-        Value::Utf16(units) => String::from_utf16_lossy(units),
-        Value::Utf32(chars) => chars.iter().collect(),
-        Value::PendingUnit { magnitude, unit } => format!("{}{unit}", format_value(magnitude)),
-        Value::List(items) => {
-            let parts: Vec<String> = items.iter().map(format_value).collect();
-            format!("[{}]", parts.join(", "))
-        }
-        Value::Tensor { shape, data } => {
-            let dims: Vec<String> = shape.iter().map(u64::to_string).collect();
-            let elems: Vec<String> = data.iter().map(format_value).collect();
-            format!("tensor[{}]({})", dims.join("x"), elems.join(", "))
-        }
-        Value::Variant {
-            union,
-            variant,
-            payload,
-        } => {
-            use crate::value::VariantPayload;
-            let path = format!("{}::{}", union.join("."), variant);
-            match payload {
-                VariantPayload::Unit => path,
-                VariantPayload::Positional(v) => format!("{path}({})", format_value(v)),
-                VariantPayload::Record(map) => {
-                    let parts: Vec<String> = map
-                        .iter()
-                        .map(|(k, v)| format!("{k}: {}", format_value(v)))
-                        .collect();
-                    format!("{path} {{ {} }}", parts.join(", "))
-                }
-            }
-        }
-        Value::Function(_) => "<fn>".to_string(),
-        Value::Record { ty, fields } => {
-            let parts: Vec<String> = fields
-                .iter()
-                .map(|(k, v)| format!("{k}: {}", format_value(v)))
-                .collect();
-            format!("{} {{ {} }}", ty.join("."), parts.join(", "))
-        }
-        Value::DataPath { kind, segments } => {
-            format!("&{}<{kind}>", segments.join("."))
-        }
-    }
 }
