@@ -1,5 +1,5 @@
 use super::*;
-use crate::error::ArithmeticFault;
+use crate::error::{ArithmeticFault, ParseError};
 
 fn open(src: &str) -> Document {
     // The strict-validation default rejects any top-level field
