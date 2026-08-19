@@ -10,7 +10,7 @@ use crate::error::ParseError;
 use crate::lexer::{LexError, Lexer, StringLit, Token, TokenKind};
 use crate::symbols::{DuplicateSymbol, SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 
-// Re-exports used by the integration-style tests in `parser_tests.rs`
+// Re-exports used by the integration-style tests in `tests.rs`
 // (included via `mod tests`). Gated to keep lib builds free of unused
 // imports.
 #[cfg(test)]
@@ -919,5 +919,4 @@ pub(super) fn describe(t: &TokenKind) -> String {
 }
 
 #[cfg(test)]
-#[path = "../parser_tests.rs"]
 mod tests;
