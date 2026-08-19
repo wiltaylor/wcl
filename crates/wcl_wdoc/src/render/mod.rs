@@ -5,7 +5,7 @@
 //! classifying what it returns, resolving a colour theme to role colours,
 //! and collecting the diagnostics a render pass accumulates. The backends
 //! that consume it are siblings — [`crate::html`], [`crate::svg`],
-//! [`crate::markdown`], [`crate::pdf`] and [`crate::terminal`].
+//! [`crate::markdown`], [`crate::pdf`] and [`crate::blocks::terminal`].
 //!
 //! Split into focused submodules — kept flat (every item is `pub(crate)`
 //! and re-exported here) so they read as one logical unit:

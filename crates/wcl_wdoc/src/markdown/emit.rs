@@ -19,6 +19,7 @@ use std::path::Path;
 
 use wcl_lang::{Block, Document, Value};
 
+use crate::blocks::terminal::ASSET_DIR;
 use crate::build::BuildError;
 use crate::inline::InlinePatterns;
 use crate::render::{
@@ -27,7 +28,6 @@ use crate::render::{
     lower_block, map_list, map_utf8, map_utf8_list, walk_component,
 };
 use crate::svg::render_diagram_static;
-use crate::terminal::ASSET_DIR;
 
 /// Render one page to a Markdown string, writing any diagram / terminal SVGs
 /// into `<out_dir>/_wdoc/` as a side effect.
@@ -158,7 +158,8 @@ impl Emitter<'_> {
                 out.push(image_ref(&self.svg_alt(block, "diagram"), &rel));
             }
             "terminal" => {
-                let svg = crate::terminal::render_terminal_pdf(self.doc, block, self.base_dir);
+                let svg =
+                    crate::blocks::terminal::render_terminal_pdf(self.doc, block, self.base_dir);
                 let rel = self.write_svg("terminal", &svg)?;
                 out.push(image_ref(&self.svg_alt(block, "terminal"), &rel));
             }
@@ -178,7 +179,7 @@ impl Emitter<'_> {
             // plus one static render of the children — Markdown has no theming,
             // so the dual light/dark preview collapses to a single pass.
             "demo" => {
-                let src = crate::demo::demo_source(block);
+                let src = crate::blocks::demo::demo_source(block);
                 if !src.is_empty() {
                     out.push(format!("```wcl\n{src}\n```"));
                 }

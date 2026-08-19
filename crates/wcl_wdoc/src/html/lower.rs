@@ -172,8 +172,8 @@ pub(crate) fn render_html_variant_with_blocks(
         // engine is a leaf; the `<pre><code>` wrapper is the `code` lower.
         "highlighted" => render_highlighted_fundamental(map),
         // LaTeX → self-contained SVG via RaTeX. Like `highlighted`, the
-        // SVG is a Rust leaf; the centring `<div>` wrapper is in math.rs.
-        "math" => crate::math::render_math_fundamental(map),
+        // SVG is a Rust leaf; the centring `<div>` wrapper is in blocks/math.rs.
+        "math" => crate::blocks::math::render_math_fundamental(map),
         // A custom variant: expand it through its kind's own `lower`. What
         // that produces may be content — a user block is free to lower to
         // the semantic IR through a chain of its own variants.

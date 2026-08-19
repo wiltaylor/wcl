@@ -141,7 +141,7 @@ const NATIVE_DISPATCH: &[NativeKind] = &[
     // lowering record, so neither the row nor the node can be a leaf.
     every("node_row"),
     every("tree_node"),
-    // ── Wireframe widgets (crate::wireframe) ───────────────────────
+    // ── Wireframe widgets (crate::blocks::diagram::wireframe) ───────────────────────
     every("wf_label"),
     every("wf_button"),
     every("wf_input"),
@@ -158,7 +158,7 @@ const NATIVE_DISPATCH: &[NativeKind] = &[
     every("wf_row"),
     every("wf_grid"),
     every("wf_node_graph"),
-    // ── Terminal primitives (crate::terminal) ─────────────────────
+    // ── Terminal primitives (crate::blocks::terminal) ─────────────────────
     every("term_text"),
 ];
 

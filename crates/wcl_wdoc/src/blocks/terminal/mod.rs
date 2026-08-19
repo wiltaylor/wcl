@@ -52,7 +52,7 @@ use widgets::*;
 
 /// Bundled replay player, written into `<out>/_wdoc/` and referenced by
 /// pages that contain a replay terminal.
-pub(crate) const PLAYER_JS: &str = include_str!("../../assets/terminal-player.js");
+pub(crate) const PLAYER_JS: &str = include_str!("../../../assets/terminal-player.js");
 
 /// Embedded JetBrains Mono Nerd Font (Mono variant) faces. Written into
 /// `<out>/_wdoc/` whenever a document uses a terminal so the page's
@@ -60,15 +60,15 @@ pub(crate) const PLAYER_JS: &str = include_str!("../../assets/terminal-player.js
 pub(crate) const FONT_FILES: &[(&str, &[u8])] = &[
     (
         "JetBrainsMonoNerdFontMono-Regular.woff2",
-        include_bytes!("../../assets/fonts/JetBrainsMonoNerdFontMono-Regular.woff2"),
+        include_bytes!("../../../assets/fonts/JetBrainsMonoNerdFontMono-Regular.woff2"),
     ),
     (
         "JetBrainsMonoNerdFontMono-Bold.woff2",
-        include_bytes!("../../assets/fonts/JetBrainsMonoNerdFontMono-Bold.woff2"),
+        include_bytes!("../../../assets/fonts/JetBrainsMonoNerdFontMono-Bold.woff2"),
     ),
     (
         "JetBrainsMonoNerdFontMono-Italic.woff2",
-        include_bytes!("../../assets/fonts/JetBrainsMonoNerdFontMono-Italic.woff2"),
+        include_bytes!("../../../assets/fonts/JetBrainsMonoNerdFontMono-Italic.woff2"),
     ),
 ];
 

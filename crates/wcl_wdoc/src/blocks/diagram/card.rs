@@ -9,7 +9,7 @@
 //! Two entry points share one builder ([`render_card_foreign`]):
 //!   - [`render_card`] — the free-standing `card` shape, positioned by
 //!     `x`/`y`/anchors like a `rect`;
-//!   - the `timeline` renderer (`crate::timeline`), which positions event
+//!   - the `timeline` renderer (`crate::blocks::diagram::timeline`), which positions event
 //!     cards by the timeline's scale and calls the builder directly.
 
 use std::fmt::Write as _;

@@ -126,7 +126,7 @@ impl Emitter<'_> {
             } => {
                 // Static Markdown can't play a video: an online one becomes
                 // a link, a local one is copied out and linked.
-                let url = match crate::video::online_url(source) {
+                let url = match crate::blocks::video::online_url(source) {
                     Some(url) => url,
                     None => self.patterns.videos().register(source, "video"),
                 };

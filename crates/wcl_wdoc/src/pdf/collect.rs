@@ -114,7 +114,7 @@ fn collect_block(
     // bare `<svg>` (no `<div>` / injected CSS to lean on when embedded).
     if kind == "terminal" {
         out.push(BlockNode::Svg {
-            svg: crate::terminal::render_terminal_pdf(doc, block, base_dir),
+            svg: crate::blocks::terminal::render_terminal_pdf(doc, block, base_dir),
         });
         return;
     }
@@ -259,7 +259,7 @@ fn walk_block_variant(
         // A block equation lowers to an `Html::Math` carrying a
         // self-contained `<svg>` (RaTeX) — embed it.
         "math" => out.push(BlockNode::Svg {
-            svg: crate::math::render_math_fundamental(map),
+            svg: crate::blocks::math::render_math_fundamental(map),
         }),
         // A code block lowers to an `Html::Highlighted` — re-run
         // syntect to get coloured token runs for native drawing.

@@ -1229,11 +1229,11 @@ fn flush_link(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::icons::IconRegistry;
-    use crate::image::ImageRegistry;
+    use crate::blocks::diagram::tileset::TilesetRegistry;
+    use crate::blocks::icons::IconRegistry;
+    use crate::blocks::image::ImageRegistry;
     use crate::pdf::ir::InlineRun;
     use crate::pdf::palette::Palette;
-    use crate::tileset::TilesetRegistry;
 
     /// Build a shaper + an embedder over empty registries (mirrors
     /// `svg_embed::tests::with_embedder`) so tests can drive the solver with

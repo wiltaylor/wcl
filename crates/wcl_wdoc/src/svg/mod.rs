@@ -18,12 +18,12 @@ use std::path::Path;
 
 use wcl_lang::{Block, Document};
 
-use crate::icons::IconRegistry;
-use crate::image::ImageRegistry;
+use crate::blocks::diagram::tileset::TilesetRegistry;
+use crate::blocks::icons::IconRegistry;
+use crate::blocks::image::ImageRegistry;
 use crate::inline::InlinePatterns;
 use crate::render::*;
 use crate::routing::Side;
-use crate::tileset::TilesetRegistry;
 
 mod diagram;
 mod edges;

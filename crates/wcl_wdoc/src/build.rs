@@ -1164,7 +1164,7 @@ impl BundledFonts {
         let named = |files: &[(&str, &[u8])]| files.iter().any(|(name, _)| *name == file);
         if named(BOOK_FONT_FILES) {
             self.book
-        } else if named(crate::terminal::FONT_FILES) {
+        } else if named(crate::blocks::terminal::FONT_FILES) {
             self.terminal
         } else {
             true
@@ -1183,7 +1183,7 @@ impl BundledFonts {
 
 /// The `_wdoc/<file>` names a CSS value references, in source order.
 fn bundled_asset_refs(css: &str) -> Vec<&str> {
-    let prefix = format!("{}/", crate::terminal::ASSET_DIR);
+    let prefix = format!("{}/", crate::blocks::terminal::ASSET_DIR);
     css.split(&prefix)
         .skip(1)
         .map(|tail| {
@@ -1387,7 +1387,10 @@ fn build_site(
     // that uses neither pays nothing. The `uses_*` flags drive each page's
     // `<script>` tags, so they're computed regardless; only the asset
     // writes are skipped on the incremental path.
-    let uses_terminals = spec.pages.iter().any(crate::terminal::uses_terminal);
+    let uses_terminals = spec
+        .pages
+        .iter()
+        .any(crate::blocks::terminal::uses_terminal);
     if uses_terminals && write_shared {
         write_terminal_assets(out_dir)?;
     }
@@ -1422,7 +1425,10 @@ fn build_site(
     if uses_map && write_shared {
         write_asset(out_dir, "wdoc-map.js", crate::svg::WDOC_MAP_JS)?;
     }
-    let uses_dopesheet = spec.pages.iter().any(crate::dopesheet::uses_dopesheet);
+    let uses_dopesheet = spec
+        .pages
+        .iter()
+        .any(crate::blocks::diagram::dopesheet::uses_dopesheet);
     if uses_dopesheet && write_shared {
         write_asset(
             out_dir,
@@ -1528,11 +1534,11 @@ fn build_site(
     // Asset registries — fresh per site so the icon sprite + copied
     // images cover exactly this site's usage. They read the document's
     // global iconset/tileset declarations but record usage during render.
-    let icons = crate::icons::IconRegistry::load(doc);
-    let tilesets = crate::tileset::TilesetRegistry::load(doc, base_dir)?;
-    let images = crate::image::ImageRegistry::new(base_dir.map(Path::to_path_buf));
-    let videos = crate::video::VideoRegistry::new(base_dir.map(Path::to_path_buf));
-    let files = crate::file::FileRegistry::new(base_dir.map(Path::to_path_buf));
+    let icons = crate::blocks::icons::IconRegistry::load(doc);
+    let tilesets = crate::blocks::diagram::tileset::TilesetRegistry::load(doc, base_dir)?;
+    let images = crate::blocks::image::ImageRegistry::new(base_dir.map(Path::to_path_buf));
+    let videos = crate::blocks::video::VideoRegistry::new(base_dir.map(Path::to_path_buf));
+    let files = crate::blocks::file::FileRegistry::new(base_dir.map(Path::to_path_buf));
     let inline_patterns = InlinePatterns::load(
         doc,
         page_names,
@@ -1572,7 +1578,7 @@ fn build_site(
             if write_shared {
                 write_default_favicon(out_dir)?;
             }
-            format!("{}/favicon.svg", crate::terminal::ASSET_DIR)
+            format!("{}/favicon.svg", crate::blocks::terminal::ASSET_DIR)
         }
     };
 
@@ -2323,7 +2329,7 @@ fn sprite_has_icons(out_dir: &Path, used: &[String]) -> bool {
     if used.is_empty() {
         return true;
     }
-    let Ok(text) = fs::read_to_string(out_dir.join(crate::icons::SPRITE_HREF)) else {
+    let Ok(text) = fs::read_to_string(out_dir.join(crate::blocks::icons::SPRITE_HREF)) else {
         return false;
     };
     used.iter().all(|id| text.contains(&format!("id=\"{id}\"")))
@@ -2820,7 +2826,7 @@ fn write_chooser_index(
     // The multi-site landing page gets the default favicon (no single site
     // owns it), written into the root `_wdoc/`.
     write_default_favicon(out_dir)?;
-    let favicon = format!("{}/favicon.svg", crate::terminal::ASSET_DIR);
+    let favicon = format!("{}/favicon.svg", crate::blocks::terminal::ASSET_DIR);
     let html = render_page("index", css, &body, Some(&favicon), "");
     write_html_page(&out_dir.join("index.html"), &html, scan)
 }
@@ -2875,7 +2881,7 @@ fn copy_dir_all(src: &Path, dest: &Path) -> std::io::Result<()> {
 /// `_wdoc/` directory if needed. The single create-dir + write + error-map
 /// path every bundled-asset writer shares (players, fonts, favicon, sprite).
 fn write_asset(out_dir: &Path, name: &str, bytes: impl AsRef<[u8]>) -> Result<(), BuildError> {
-    let dir = out_dir.join(crate::terminal::ASSET_DIR);
+    let dir = out_dir.join(crate::blocks::terminal::ASSET_DIR);
     fs::create_dir_all(&dir)
         .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
     let path = dir.join(name);
@@ -2888,10 +2894,14 @@ fn write_asset(out_dir: &Path, name: &str, bytes: impl AsRef<[u8]>) -> Result<()
 /// them by relative URL, so the dev server and any static host resolve
 /// them the same way.
 fn write_terminal_assets(out_dir: &Path) -> Result<(), BuildError> {
-    for (name, bytes) in crate::terminal::FONT_FILES {
+    for (name, bytes) in crate::blocks::terminal::FONT_FILES {
         write_asset(out_dir, name, bytes)?;
     }
-    write_asset(out_dir, "terminal-player.js", crate::terminal::PLAYER_JS)
+    write_asset(
+        out_dir,
+        "terminal-player.js",
+        crate::blocks::terminal::PLAYER_JS,
+    )
 }
 
 /// Embedded book typography faces — Source Serif 4 (body), IBM Plex Sans
@@ -2978,7 +2988,7 @@ fn write_default_favicon(out_dir: &Path) -> Result<(), BuildError> {
 /// reference its `<symbol>`s by relative URL (`_wdoc/icons.svg#id`), so
 /// the dev server and any static host resolve them the same way.
 fn write_icon_sprite(out_dir: &Path, sprite: &str) -> Result<(), BuildError> {
-    write_asset(out_dir, crate::icons::SPRITE_FILE, sprite)
+    write_asset(out_dir, crate::blocks::icons::SPRITE_FILE, sprite)
 }
 
 /// Extract a page block's first label as a string identifier. The
@@ -3162,7 +3172,7 @@ mod tests {
         let tabled = |file: &str| {
             BOOK_FONT_FILES
                 .iter()
-                .chain(crate::terminal::FONT_FILES)
+                .chain(crate::blocks::terminal::FONT_FILES)
                 .any(|(name, _)| *name == file)
         };
         let registry = schema_registry();
@@ -3181,7 +3191,7 @@ mod tests {
         }
         assert_eq!(
             seen,
-            BOOK_FONT_FILES.len() + crate::terminal::FONT_FILES.len(),
+            BOOK_FONT_FILES.len() + crate::blocks::terminal::FONT_FILES.len(),
             "a bundled font face is declared without a stdlib @font-face rule, or twice"
         );
     }

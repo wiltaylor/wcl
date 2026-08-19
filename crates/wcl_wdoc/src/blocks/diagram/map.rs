@@ -21,8 +21,8 @@ use std::fmt::Write as _;
 
 use wcl_lang::Block;
 
+use crate::blocks::icons::ShapeOverride;
 use crate::html::render_block;
-use crate::icons::ShapeOverride;
 use crate::render::{
     escape_html, field_bool, field_f64, field_i64, field_id, field_utf8, field_utf8_list,
     label_string,
@@ -46,7 +46,7 @@ pub(crate) fn render_map(
 ) -> String {
     let width = field_f64(block, "width").unwrap_or(0.0);
     let height = field_f64(block, "height").unwrap_or(0.0);
-    let (ox, oy) = crate::tileset::place(block, parent_w, parent_h, width, height);
+    let (ox, oy) = crate::blocks::diagram::tileset::place(block, parent_w, parent_h, width, height);
     let default_tile = field_i64(block, "tile_size").unwrap_or(DEFAULT_TILE).max(1);
 
     // Layers: explicit `layer` children, or a single implicit layer from
@@ -103,7 +103,7 @@ pub(crate) fn render_map(
 pub(crate) fn map_bbox(block: &Block<'_>, parent_w: f64, parent_h: f64) -> (f64, f64, f64, f64) {
     let width = field_f64(block, "width").unwrap_or(0.0);
     let height = field_f64(block, "height").unwrap_or(0.0);
-    let (x, y) = crate::tileset::place(block, parent_w, parent_h, width, height);
+    let (x, y) = crate::blocks::diagram::tileset::place(block, parent_w, parent_h, width, height);
     (x, y, width, height)
 }
 

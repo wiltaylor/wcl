@@ -1,7 +1,7 @@
 //! The `file` block: ship an arbitrary file into the build output and
 //! (optionally) link to it.
 //!
-//! Like [`crate::image`], a referenced local file is copied into the
+//! Like [`crate::blocks::image`], a referenced local file is copied into the
 //! output and referenced by relative URL. Unlike images, the file keeps
 //! its **basename** under a target subdirectory (`dir`), so the emitted
 //! path is stable and hand-linkable (`scripts/build.sh`) rather than
@@ -16,13 +16,13 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use crate::blocks::image::is_external;
 use crate::build::BuildError;
-use crate::image::is_external;
 
 /// The asset subdirectory the HTML / Markdown targets route a `file` into
 /// when its `dir` is unset (the shared `_wdoc/` folder, alongside images).
 fn default_dir() -> &'static str {
-    crate::terminal::ASSET_DIR
+    crate::blocks::terminal::ASSET_DIR
 }
 
 /// One resolved file reference.
@@ -206,7 +206,10 @@ mod tests {
     fn empty_dir_routes_to_asset_folder() {
         let reg = FileRegistry::new(Some(PathBuf::from("/docs")));
         let e = reg.register("notes.txt", "");
-        assert_eq!(e.url, format!("{}/notes.txt", crate::terminal::ASSET_DIR));
+        assert_eq!(
+            e.url,
+            format!("{}/notes.txt", crate::blocks::terminal::ASSET_DIR)
+        );
     }
 
     #[test]

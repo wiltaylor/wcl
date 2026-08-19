@@ -244,8 +244,8 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
             id,
             class,
         } => {
-            let out = crate::video::render_html(
-                crate::video::VideoPayload {
+            let out = crate::blocks::video::render_html(
+                crate::blocks::video::VideoPayload {
                     source,
                     poster: poster.as_deref(),
                     title: title.as_deref(),
@@ -281,7 +281,7 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
             display,
             id,
             class,
-        } => crate::math::render_math_block(
+        } => crate::blocks::math::render_math_block(
             latex,
             display.unwrap_or(true),
             class.as_deref().unwrap_or(&[]),

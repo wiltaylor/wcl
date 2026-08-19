@@ -213,7 +213,7 @@ pub(crate) fn collect_content(
             }) {
                 out.push(node);
             }
-            if let Some(url) = crate::video::online_url(source) {
+            if let Some(url) = crate::blocks::video::online_url(source) {
                 let label = title
                     .clone()
                     .or_else(|| caption.clone())
@@ -273,7 +273,7 @@ pub(crate) fn collect_content(
             class,
             ..
         } => out.push(BlockNode::Svg {
-            svg: crate::math::render_math_block(
+            svg: crate::blocks::math::render_math_block(
                 latex,
                 display.unwrap_or(true),
                 class.as_deref().unwrap_or(&[]),

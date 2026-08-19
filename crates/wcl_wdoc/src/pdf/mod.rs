@@ -29,11 +29,11 @@ use std::path::Path;
 use miette::{NamedSource, Report};
 use wcl_lang::{Block, Document, Value, disk_loader};
 
+use crate::blocks::diagram::tileset::TilesetRegistry;
+use crate::blocks::icons::IconRegistry;
+use crate::blocks::image::ImageRegistry;
 use crate::build::schema_registry;
-use crate::icons::IconRegistry;
-use crate::image::ImageRegistry;
 use crate::inline::InlinePatterns;
-use crate::tileset::TilesetRegistry;
 
 /// Physical page size. A4 is the default; US Letter is selectable via the CLI.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -225,8 +225,8 @@ pub fn pdf(
         Err(_) => return Err(PdfError::BadDoc("tileset load failed".into())),
     };
     let images = ImageRegistry::new(base_dir.clone());
-    let videos = crate::video::VideoRegistry::new(base_dir.clone());
-    let files = crate::file::FileRegistry::new(base_dir.clone());
+    let videos = crate::blocks::video::VideoRegistry::new(base_dir.clone());
+    let files = crate::blocks::file::FileRegistry::new(base_dir.clone());
     let patterns = InlinePatterns::load(
         &doc,
         page_names,

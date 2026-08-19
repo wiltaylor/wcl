@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 use wcl_lang::{Block, Value, VariantPayload};
 
-use crate::card::render_card_foreign;
+use crate::blocks::diagram::card::render_card_foreign;
 use crate::render::{
     field_f64, field_i64, field_id, field_symbol, field_utf8, field_utf8_list, map_utf8,
 };

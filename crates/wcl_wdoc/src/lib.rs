@@ -15,48 +15,45 @@
 //! colours, and collecting a pass's diagnostics. The backends sit on top of
 //! it, one per output, each a walker over the same lowered nodes —
 //! `html` (the static site), `svg` (the drawings HTML and PDF embed),
-//! `markdown`, [`pdf`](mod@pdf), and `terminal`. The widget modules between them
-//! (`card`, `map`, `tree`, `timeline`, `wireframe`, …) render one block
-//! kind apiece and are consumed by whichever backends can show it.
+//! `markdown` and [`pdf`](mod@pdf).
+//!
+//! `blocks` holds one module per block kind that needs Rust to render at
+//! all, split by where the kind is legal: `blocks::diagram` for the ones
+//! only a `diagram` accepts, `blocks` itself for the ones that reach
+//! ordinary page content. Each is consumed by whichever backends can show
+//! its kind.
+//!
+//! The rest is machinery the above share: `content` (the semantic IR every
+//! backend walks), `inline` (the prose pattern engine), `text` (glyph
+//! measurement), `highlight` (syntect), `native` (which kinds are rendered
+//! in Rust, and by which backends), `routing` plus `force` / `layered` /
+//! `radial` (diagram edge routing and layout), `visibility`, `css_lint`,
+//! `page_metadata` and `git`.
 //!
 //! [`build`](mod@build) drives the HTML backend end to end and holds the entry points
 //! the CLI calls.
 
+mod blocks;
 /// Site building: the HTML backend and the build entry points.
 pub mod build;
-mod card;
 pub mod content;
 mod css_lint;
-mod demo;
-mod dopesheet;
-mod file;
 mod force;
 pub mod git;
 mod highlight;
 mod html;
-mod icons;
-mod image;
 mod inline;
 mod layered;
-mod map;
 mod markdown;
-mod math;
 mod native;
-mod node_table;
 mod page_metadata;
 pub mod pdf;
 mod radial;
 mod render;
 mod routing;
 mod svg;
-mod terminal;
 mod text;
-mod tileset;
-mod timeline;
-mod tree;
-mod video;
 mod visibility;
-mod wireframe;
 
 pub use build::{
     BuildError, BuildOptions, RebuildOutcome, build, build_incremental, build_with_options,

@@ -8,8 +8,8 @@ use std::path::Path;
 
 use wcl_lang::{Block, DeclName, Document, Value};
 
+use crate::blocks::icons::IconRegistry;
 use crate::highlight;
-use crate::icons::IconRegistry;
 use crate::inline::InlinePatterns;
 use crate::render::*;
 use crate::svg::*;
@@ -978,18 +978,20 @@ pub(crate) fn render_block(
         // A page image — the asset copy + src rewrite is special-cased in
         // Rust (the same `image` block is also a diagram shape; see
         // render_shape). Records usage in the image registry.
-        "image" => Some(crate::image::render_html(block, patterns.images())),
+        "image" => Some(crate::blocks::image::render_html(block, patterns.images())),
         // A `file` block ships an arbitrary file into the output (copied
         // into its `dir`, default `_wdoc/`) and renders a download link when
         // `as` is set. Special-cased in Rust like `image` — the copy + path
         // rewrite aren't expressible in WCL.
-        "file" => Some(crate::file::render_html(block, patterns.files())),
+        "file" => Some(crate::blocks::file::render_html(block, patterns.files())),
         "diagram" => Some(render_diagram(doc, block, patterns, base_dir)),
         // The terminal is special-cased in Rust: its grid model, ANSI
         // handling, and asciinema replay aren't expressible in WCL.
         // `base_dir` lets a `source` recording path resolve relative to
         // the source file.
-        "terminal" => Some(crate::terminal::render_terminal(doc, block, base_dir)),
+        "terminal" => Some(crate::blocks::terminal::render_terminal(
+            doc, block, base_dir,
+        )),
         // Renders its body to a Markdown string (the same output the Markdown
         // backend produces) and shows it in a highlighted `code` block.
         // Special-cased here because reaching into the Markdown emitter from a
@@ -1000,7 +1002,9 @@ pub(crate) fn render_block(
         // An example source listing + a live preview of the same children
         // under both palettes (side by side). Special-cased in Rust: it reads
         // the children's source text and re-renders them into themed wrappers.
-        "demo" => Some(crate::demo::render_html(doc, block, patterns, base_dir)),
+        "demo" => Some(crate::blocks::demo::render_html(
+            doc, block, patterns, base_dir,
+        )),
         // Wireframe widgets (`wf_*`) are diagram shapes now — they render only
         // inside a `diagram` (via `render_shape`), never as a page block.
         // A `wdoc_repeater` renders its body once per element of `each`.

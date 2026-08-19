@@ -17,8 +17,8 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::blocks::image::{fnv1a, is_external, sanitize};
 use crate::build::BuildError;
-use crate::image::{fnv1a, is_external, sanitize};
 use crate::render::escape_html;
 
 /// How a `video` `source` is embedded.
@@ -81,7 +81,7 @@ struct VideoEntry {
 
 /// Lazily-populated registry of referenced local video files and posters,
 /// keyed by raw source string so repeat references share one copied file.
-/// Mirrors [`crate::image::ImageRegistry`] but carries no natural
+/// Mirrors [`crate::blocks::image::ImageRegistry`] but carries no natural
 /// dimensions (a video's size is the browser's concern).
 pub(crate) struct VideoRegistry {
     /// Directory relative sources resolve against. `None` when the
@@ -146,7 +146,7 @@ impl VideoRegistry {
             .unwrap_or(prefix);
         // Deterministic + collision-free, mirroring `image`'s scheme.
         let out_file = format!("{prefix}-{}-{:08x}.{ext}", sanitize(stem), fnv1a(source));
-        let url = format!("{}/{}", crate::terminal::ASSET_DIR, out_file);
+        let url = format!("{}/{}", crate::blocks::terminal::ASSET_DIR, out_file);
         VideoEntry {
             url,
             out_file: Some(out_file),
@@ -161,7 +161,7 @@ impl VideoRegistry {
         if entries.values().all(|e| e.out_file.is_none()) {
             return Ok(());
         }
-        let dir = out_dir.join(crate::terminal::ASSET_DIR);
+        let dir = out_dir.join(crate::blocks::terminal::ASSET_DIR);
         fs::create_dir_all(&dir)
             .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
         for entry in entries.values() {

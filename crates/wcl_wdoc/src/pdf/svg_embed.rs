@@ -13,9 +13,9 @@ use std::sync::Arc;
 
 use usvg::{Options, Tree, fontdb};
 
-use crate::icons::IconRegistry;
-use crate::image::ImageRegistry;
-use crate::tileset::TilesetRegistry;
+use crate::blocks::diagram::tileset::TilesetRegistry;
+use crate::blocks::icons::IconRegistry;
+use crate::blocks::image::ImageRegistry;
 
 use super::palette::Palette;
 use super::text::{FONT_FACES, SANS_NAME, SERIF_NAME};
@@ -67,7 +67,7 @@ const NERD_ITALIC: &[u8] =
 /// which names it on every cell `<text>`). Registered as the fontdb monospace
 /// family too, so even a bare `monospace` request resolves to the real Nerd
 /// Font.
-const NERD_FAMILY: &str = crate::terminal::NERD_FONT_FAMILY;
+const NERD_FAMILY: &str = crate::blocks::terminal::NERD_FONT_FAMILY;
 
 /// Parses wdoc SVG strings into positioned-ready usvg trees. Borrows the
 /// icon / image / tileset registries so embedded diagram icons (sprite `<use>`)

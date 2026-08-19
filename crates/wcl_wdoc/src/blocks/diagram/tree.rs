@@ -18,7 +18,7 @@ use std::fmt::Write as _;
 
 use wcl_lang::Block;
 
-use crate::icons::ShapeOverride;
+use crate::blocks::icons::ShapeOverride;
 use crate::render::{
     escape_html, expand_container_children, field_f64, field_id, field_utf8, field_utf8_list,
     label_string,

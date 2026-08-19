@@ -19,14 +19,14 @@ use std::fmt::Write as _;
 use regex::Regex;
 use wcl_lang::{Document, FnValue, Value, VariantPayload};
 
-use crate::file::FileRegistry;
+use crate::blocks::diagram::tileset::TilesetRegistry;
+use crate::blocks::file::FileRegistry;
+use crate::blocks::icons::IconRegistry;
+use crate::blocks::image::ImageRegistry;
+use crate::blocks::video::VideoRegistry;
 use crate::html::render_styles;
-use crate::icons::IconRegistry;
-use crate::image::ImageRegistry;
 use crate::pdf::ir::{FontFamily, InlineRun, TextStyle};
 use crate::render::escape_html;
-use crate::tileset::TilesetRegistry;
-use crate::video::VideoRegistry;
 
 /// Maximum recursion depth when re-tokenizing a match's text
 /// fields. Keeps a self-referential pattern from blowing the
@@ -573,7 +573,7 @@ impl InlinePatterns {
                 }
             }
             "Math" => out.push(InlineRun::Object {
-                svg: crate::math::render_inline_math(map),
+                svg: crate::blocks::math::render_inline_math(map),
             }),
             _ => {}
         }
@@ -594,7 +594,7 @@ impl InlinePatterns {
             "Plain" => self.render_plain(doc, map, depth),
             "Link" => self.render_link(doc, map, depth),
             "Icon" => self.render_icon(map),
-            "Math" => crate::math::render_inline_math(map),
+            "Math" => crate::blocks::math::render_inline_math(map),
             _ => String::new(),
         }
     }

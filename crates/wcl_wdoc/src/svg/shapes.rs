@@ -5,12 +5,12 @@
 
 use wcl_lang::Block;
 
-use crate::dopesheet;
-use crate::icons::{IconRegistry, ShapeOverride};
-use crate::image;
-use crate::map;
+use crate::blocks::diagram::dopesheet;
+use crate::blocks::diagram::map;
+use crate::blocks::diagram::tileset;
+use crate::blocks::icons::{IconRegistry, ShapeOverride};
+use crate::blocks::image;
 use crate::text;
-use crate::tileset;
 
 use super::*;
 
@@ -77,13 +77,16 @@ pub(crate) fn collect_shape_positions(
         // `node_table::row_sides` (the same source the markers use), so the
         // anchor and its visible marker always coincide.
         "node_table" => {
-            let (x, y, w, h) = crate::node_table::node_table_bbox(block, parent_w, parent_h);
+            let (x, y, w, h) =
+                crate::blocks::diagram::node_table::node_table_bbox(block, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
-            for (row, (rx, ry, rw, rh)) in crate::node_table::row_boxes(block, x, y, w) {
+            for (row, (rx, ry, rw, rh)) in
+                crate::blocks::diagram::node_table::row_boxes(block, x, y, w)
+            {
                 let abs = (tx + rx, ty + ry, rw, rh);
                 out.bboxes.push(abs);
                 if let Some(id) = field_id(&row, "id") {
-                    let anchors = crate::node_table::row_sides(&row)
+                    let anchors = crate::blocks::diagram::node_table::row_sides(&row)
                         .iter()
                         .filter_map(|s| {
                             let side = Side::from_symbol(s)?;
@@ -106,9 +109,10 @@ pub(crate) fn collect_shape_positions(
         // its own sub-shape — so an edge can target a single node and the
         // standard west/east anchor logic lands it on the node's row.
         "tree" => {
-            let (x, y, w, h) = crate::tree::tree_bbox(block, parent_w, parent_h);
+            let (x, y, w, h) = crate::blocks::diagram::tree::tree_bbox(block, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
-            for (node, (rx, ry, rw, rh)) in crate::tree::node_rows(block, x, y, w) {
+            for (node, (rx, ry, rw, rh)) in crate::blocks::diagram::tree::node_rows(block, x, y, w)
+            {
                 let abs = (tx + rx, ty + ry, rw, rh);
                 out.bboxes.push(abs);
                 if let Some(id) = field_id(&node, "id") {
@@ -185,8 +189,9 @@ pub(crate) fn collect_shape_positions(
         // A wireframe widget: `x`/`y` from anchors, size from the measured
         // widget tree — mirror render_wireframe_shape so edges can target it
         // and the viewBox fits it. (doc-free; size is theme-independent.)
-        kind if crate::wireframe::is_wireframe_kind(kind) => {
-            let (x, y, w, h) = crate::wireframe::wireframe_bbox(block, parent_w, parent_h);
+        kind if crate::blocks::diagram::wireframe::is_wireframe_kind(kind) => {
+            let (x, y, w, h) =
+                crate::blocks::diagram::wireframe::wireframe_bbox(block, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
         }
         "container" => {
@@ -258,8 +263,8 @@ pub(crate) fn effective_dims(block: &Block<'_>) -> (f64, f64) {
     // A wireframe widget is sized by its measured content, so a layout
     // solver (`:layered` / `:force`) allocates a correct cell instead of
     // the default 80×40. Measurement is doc-free (size is theme-independent).
-    if crate::wireframe::is_wireframe_kind(block.kind()) {
-        return crate::wireframe::measured_size(block);
+    if crate::blocks::diagram::wireframe::is_wireframe_kind(block.kind()) {
+        return crate::blocks::diagram::wireframe::measured_size(block);
     }
     // A circle is sized by its diameter (it carries `r`, not
     // width/height), so a layout solver allocates a correct square
@@ -294,7 +299,7 @@ pub(crate) fn effective_dims(block: &Block<'_>) -> (f64, f64) {
     // node_table_bbox via resolve_rect_box; parent_w/parent_h = 0 is fine
     // for the absolute-`width` case these diagrams use.)
     if block.kind() == "node_table" {
-        let (_, _, w, h) = crate::node_table::node_table_bbox(block, 0.0, 0.0);
+        let (_, _, w, h) = crate::blocks::diagram::node_table::node_table_bbox(block, 0.0, 0.0);
         return (w, h);
     }
     let declared_w = field_f64(block, "width").unwrap_or(80.0);
@@ -414,7 +419,7 @@ pub(crate) fn render_shape(
         // (foreignObject) and whose rows expose per-row connection points
         // — special-cased like `card`.
         "node_table" => {
-            return Some(crate::node_table::render_node_table(
+            return Some(crate::blocks::diagram::node_table::render_node_table(
                 block, ctx, parent_w, parent_h,
             ));
         }
@@ -423,7 +428,9 @@ pub(crate) fn render_shape(
         // special-cased like `node_table` (the indent / connector math
         // isn't expressible in WCL).
         "tree" => {
-            return Some(crate::tree::render_tree(block, ctx, parent_w, parent_h));
+            return Some(crate::blocks::diagram::tree::render_tree(
+                block, ctx, parent_w, parent_h,
+            ));
         }
         // An `image` embeds an external raster as an SVG `<image>`; the
         // asset copy + path rewrite is special-cased like `tilemap`.
@@ -435,12 +442,16 @@ pub(crate) fn render_shape(
         // A `card` holds rich wdoc content drawn as an HTML
         // `<foreignObject>` — special-cased like `map` because the body
         // comes from the block renderer + inline engine, not WCL.
-        "card" => return Some(crate::card::render_card(block, ctx, parent_w, parent_h)),
+        "card" => {
+            return Some(crate::blocks::diagram::card::render_card(
+                block, ctx, parent_w, parent_h,
+            ));
+        }
         // A `timeline` lowers to SVG fundamentals in WCL, but its event
         // `card` children render as `<foreignObject>`s in Rust — so it's
         // special-cased to thread the `RenderCtx` through.
         "timeline" => {
-            return Some(crate::timeline::render_timeline(
+            return Some(crate::blocks::diagram::timeline::render_timeline(
                 block, ctx, parent_w, parent_h,
             ));
         }
@@ -448,8 +459,8 @@ pub(crate) fn render_shape(
         // cased like `card`: the whole family measures + lays out and emits
         // one positioned `<g>`, so it returns directly (no `with_shape_icon`,
         // which would clash with `wf_button`'s own `icon`).
-        kind if crate::wireframe::is_wireframe_kind(kind) => {
-            return Some(crate::wireframe::render_wireframe_shape(
+        kind if crate::blocks::diagram::wireframe::is_wireframe_kind(kind) => {
+            return Some(crate::blocks::diagram::wireframe::render_wireframe_shape(
                 block, ctx, parent_w, parent_h,
             ));
         }

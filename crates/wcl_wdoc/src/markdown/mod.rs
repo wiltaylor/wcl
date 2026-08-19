@@ -24,14 +24,14 @@ use std::path::Path;
 use miette::{NamedSource, Report};
 use wcl_lang::{Block, Document, disk_loader};
 
+use crate::blocks::diagram::tileset::TilesetRegistry;
+use crate::blocks::icons::IconRegistry;
+use crate::blocks::image::ImageRegistry;
 use crate::build::{
     BuildError, SiteSpec, collect_pages, collect_site_specs, page_name, root_site_name,
     schema_registry, site_start_page,
 };
-use crate::icons::IconRegistry;
-use crate::image::ImageRegistry;
 use crate::inline::InlinePatterns;
-use crate::tileset::TilesetRegistry;
 
 /// Render `file` to a folder of Markdown pages (plus SVG assets) under
 /// `out_dir`. Returns the number of pages written. `site_filter` restricts
@@ -208,8 +208,8 @@ fn markdown_site(
     let icons = IconRegistry::load(doc);
     let tilesets = TilesetRegistry::load(doc, base_dir)?;
     let images = ImageRegistry::new(base_dir.map(Path::to_path_buf));
-    let videos = crate::video::VideoRegistry::new(base_dir.map(Path::to_path_buf));
-    let files = crate::file::FileRegistry::new(base_dir.map(Path::to_path_buf));
+    let videos = crate::blocks::video::VideoRegistry::new(base_dir.map(Path::to_path_buf));
+    let files = crate::blocks::file::FileRegistry::new(base_dir.map(Path::to_path_buf));
     let patterns = InlinePatterns::load(
         doc,
         page_names,
@@ -248,10 +248,10 @@ fn markdown_site(
     // `<use href="_wdoc/icons.svg#…">` resolve when the output is served;
     // images and tileset spritesheets are copied into `_wdoc/`.
     if let Some(sprite) = patterns.icons().build_sprite() {
-        let dir = out_dir.join(crate::terminal::ASSET_DIR);
+        let dir = out_dir.join(crate::blocks::terminal::ASSET_DIR);
         fs::create_dir_all(&dir)
             .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
-        let path = dir.join(crate::icons::SPRITE_FILE);
+        let path = dir.join(crate::blocks::icons::SPRITE_FILE);
         fs::write(&path, sprite)
             .map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
     }

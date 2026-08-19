@@ -101,7 +101,7 @@ impl ImageRegistry {
         };
         let dims = fs::read(&src_path)
             .ok()
-            .and_then(|b| crate::tileset::image_dims(&b));
+            .and_then(|b| crate::blocks::diagram::tileset::image_dims(&b));
         let ext = src_path
             .extension()
             .and_then(|e| e.to_str())
@@ -114,7 +114,7 @@ impl ImageRegistry {
         // the full source path (so two `logo.png`s in different dirs don't
         // clash).
         let out_file = format!("image-{}-{:08x}.{ext}", sanitize(stem), fnv1a(source));
-        let url = format!("{}/{}", crate::terminal::ASSET_DIR, out_file);
+        let url = format!("{}/{}", crate::blocks::terminal::ASSET_DIR, out_file);
         ImageEntry {
             url,
             dims,
@@ -130,7 +130,7 @@ impl ImageRegistry {
         if entries.values().all(|e| e.out_file.is_none()) {
             return Ok(());
         }
-        let dir = out_dir.join(crate::terminal::ASSET_DIR);
+        let dir = out_dir.join(crate::blocks::terminal::ASSET_DIR);
         fs::create_dir_all(&dir)
             .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
         for entry in entries.values() {
@@ -288,7 +288,7 @@ fn box_for(
              renders invisible"
         ));
     }
-    let (x, y) = crate::tileset::place(block, parent_w, parent_h, w, h);
+    let (x, y) = crate::blocks::diagram::tileset::place(block, parent_w, parent_h, w, h);
     (x, y, w, h)
 }
 

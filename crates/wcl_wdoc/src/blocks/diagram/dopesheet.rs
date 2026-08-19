@@ -8,7 +8,7 @@
 //! nested `<svg>` whose `viewBox` the bundled `dopesheet-player.js`
 //! advances frame-by-frame at the authored fps. The sheet image is the
 //! same kind of asset the `image` block handles, so the renderer reuses
-//! the [`ImageRegistry`](crate::image::ImageRegistry) to copy it into
+//! the [`ImageRegistry`](crate::blocks::image::ImageRegistry) to copy it into
 //! `_wdoc/` and read its pixel dimensions; frames therefore resolve when
 //! the output is *served*, not via `file://`.
 
@@ -16,7 +16,7 @@ use std::fmt::Write as _;
 
 use wcl_lang::Block;
 
-use crate::image::ImageRegistry;
+use crate::blocks::image::ImageRegistry;
 use crate::render::{
     escape_html, field_bool, field_f64, field_i64, field_id, field_utf8_list, label_string,
 };
@@ -128,7 +128,7 @@ pub(crate) fn render_dopesheet(
     let scale = field_f64(block, "scale").unwrap_or(1.0);
     let dw = fw as f64 * scale;
     let dh = fh as f64 * scale;
-    let (x, y) = crate::tileset::place(block, parent_w, parent_h, dw, dh);
+    let (x, y) = crate::blocks::diagram::tileset::place(block, parent_w, parent_h, dw, dh);
 
     // Initial window: the `from` frame.
     let (c0, r0) = frame_cell(g.from, g.columns);
@@ -209,7 +209,7 @@ pub(crate) fn dopesheet_bbox(
     let scale = field_f64(block, "scale").unwrap_or(1.0);
     let w = fw * scale;
     let h = fh * scale;
-    let (x, y) = crate::tileset::place(block, parent_w, parent_h, w, h);
+    let (x, y) = crate::blocks::diagram::tileset::place(block, parent_w, parent_h, w, h);
     (x, y, w, h)
 }
 

@@ -193,7 +193,7 @@ impl TilesetRegistry {
         if used.is_empty() {
             return Ok(());
         }
-        let dir = out_dir.join(crate::terminal::ASSET_DIR);
+        let dir = out_dir.join(crate::blocks::terminal::ASSET_DIR);
         fs::create_dir_all(&dir)
             .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
         for name in used.iter() {
@@ -252,7 +252,7 @@ pub(crate) fn render_tilemap(
     let margin = cfg.margin as f64;
     let spacing = cfg.spacing as f64;
     let columns = cfg.columns.max(1);
-    let href = format!("{}/{}", crate::terminal::ASSET_DIR, cfg.out_file);
+    let href = format!("{}/{}", crate::blocks::terminal::ASSET_DIR, cfg.out_file);
     let href = escape_html(&href);
 
     // Snap each cell's destination edges to the integer pixel grid via
