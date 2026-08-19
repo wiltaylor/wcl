@@ -44,6 +44,7 @@ pub use doc::{
     TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
     VariantBodyView, disk_loader, overlay_loader, system_import_key,
 };
+pub use edit::{parse_expr, parse_for_edit};
 pub use environment::{
     BuiltType, DecoratorBuilder, Environment, Expander, TypeBuilder, TypeFieldBuilder,
 };
@@ -56,37 +57,3 @@ pub use lexer::{
 };
 pub use symbols::{SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 pub use value::{FnParam, FnValue, Value, VariantPayload};
-
-/// Parse a WCL source string into an owned [`ast::Source`] for inspection
-/// or mutation. The returned AST has fully `pub` fields. Hosts walk it,
-/// edit it, and print it back to a `.wcl` file with
-/// [`format::to_source`].
-///
-/// This is the **edit-path** entry point. It performs *no* evaluation,
-/// schema checks, or import resolution — those happen only when a
-/// [`Document`] is opened from the (post-edit) file. The two paths are
-/// deliberately disjoint so AST mutations can't invalidate a
-/// Document's cached fields silently.
-///
-/// `name` is used for diagnostics only (it becomes the
-/// `NamedSource` label on any [`ParseError`]).
-pub fn parse_for_edit(source: &str, name: impl Into<String>) -> Result<ast::Source, ParseError> {
-    parser::Parser::new(source, name)
-        .parse_source()
-        .map(|(src, _idx)| src)
-}
-
-/// Parse a single WCL expression from a standalone string. Returns the
-/// parsed [`ast::Expr`] ready to drop into a host-mutated AST
-/// (e.g. `field.expr = parse_expr(...)?`).
-///
-/// Fails if the input is empty, has trailing tokens after the
-/// expression, or contains a lex/parse error. `name` is used only for
-/// diagnostics — typically `"<cli>"` or `"<set value>"` when there's
-/// no real source location.
-///
-/// Useful for CLI flows like `wcl set file path <value>`, where
-/// `<value>` is a literal expression supplied on the command line.
-pub fn parse_expr(source: &str, name: impl Into<String>) -> Result<ast::Expr, ParseError> {
-    parser::Parser::new(source, name).parse_expr_only()
-}
