@@ -457,7 +457,7 @@ WCL
 
   p "Extend `SvgBlock` and a `diagram` accepts your block as a child, because its `@children(SvgBlock)` slot admits the interface rather than a list of kinds. Return `list<Svg>` from `lower` and the renderer draws it. The `Svg` union has seven members: `Rect`, `Circle`, `Line`, `Label`, `Polygon`, `Polyline`, and `Link`. The three stdlib charts use the first five."
 
-  p "Here is a whole chart the standard library does not have: a horizontal bar chart, one row per bar, the longest value taking the full width. It is thirty lines, and this page declares them above its own `page` block:"
+  p "Here is a whole chart the standard library does not have: a horizontal bar chart, one row per bar, the longest value taking the full width. It is 34 lines, and this page declares them above its own `page` block:"
 
   code wcl {
     source = <<'WCL'
@@ -524,7 +524,7 @@ WCL
     }
   }
 
-  p "Four things in those thirty lines are worth naming, because they are the four you copy every time."
+  p "Four things in those 34 lines are worth naming, because they are the four you copy every time."
 
   list {
     li "**The data shape is yours.** `HBarRow` is a single-variant union declared beside the block, exactly as `ChartSeries` is declared beside `bar_chart`. The bare `{ label: …, value: … }` records in the document coerce to it by shape, with no work on your part."

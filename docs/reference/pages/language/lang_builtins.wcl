@@ -11,7 +11,7 @@ page lang_builtins {
 
   h1 "Builtins"
 
-  p "A **builtin** is a function the language already knows. You do not import it, declare it or define it. You call it. There are exactly one hundred, and the `wcl` CLI adds three more of wdoc's own, for the 103 this chapter counts."
+  p "A **builtin** is a function the language already knows. You do not import it, declare it or define it. You call it. There are exactly one hundred, and the `wcl` CLI adds two more of wdoc's own, for the 102 this chapter counts."
 
   p "The bulk of this chapter is a catalogue. Each entry carries one builtin's signature, its parameters, its return value, and an example whose printed answer came from a real run."
 
@@ -2392,7 +2392,7 @@ SRC
   code console {
     source = <<'CONSOLE'
 $ wcl get schema.wcl builtins
-103
+102
 CONSOLE
   }
 

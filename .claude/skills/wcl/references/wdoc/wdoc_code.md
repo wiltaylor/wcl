@@ -15,9 +15,10 @@ RS
 }
 ```
 
-Write `<<'TAG'`, with the tag quoted. A plain `<<TAG` interpolates `${…}` and swallows the
-substitutions a shell script or a WCL sample means to show literally. Reach for `$<<TAG` only
-when the interpolation is the point.
+Write `<<'TAG'`, with the tag quoted: it is fully raw, interpreting neither escapes nor
+`${…}`. A plain `<<TAG` interprets backslash escapes, so a `\n` or a `\t` a listing means to
+show literally becomes a real newline or tab. It does **not** interpolate. Reach for `$<<TAG`,
+which does both, only when the interpolation is the point. `$<<'TAG'` does not parse.
 
 ## Fields
 

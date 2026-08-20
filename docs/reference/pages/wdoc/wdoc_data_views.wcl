@@ -511,7 +511,7 @@ WCL
 
   callout "What a collect reaches" {
     class = ["note"]
-    body  = "Collection is **document-global**, not page-local. A `collect` gathers matching deposits from the root document and every file a top-level `import` pulls in, whichever page each one sits on. Tag distinctly, or one page's sidebars turn up in another's appendix. Three limits follow. A `collect` does not reach a file brought in by a block-scoped (lazy) `import`. A `partial` nested inside another partial's body belongs to that body, and no `collect` gathers it separately. Do not put `id`s in a collected body, because per-page id checks run before collection. Finally, a `collect` whose gathered content holds a `collect` of the same tag renders nothing for the inner one. wdoc breaks the cycle rather than following it."
+    body  = "Collection is **document-global**, not page-local. A `collect` gathers matching deposits from the root document and every file a top-level `import` pulls in, whichever page each one sits on. Tag distinctly, or one page's sidebars turn up in another's appendix. Four limits follow. A `collect` does not reach a file brought in by a block-scoped (lazy) `import`. A `partial` nested inside another partial's body belongs to that body, and no `collect` gathers it separately. Do not put `id`s in a collected body, because per-page id checks run before collection. Finally, a `collect` whose gathered content holds a `collect` of the same tag renders nothing for the inner one. wdoc breaks the cycle rather than following it."
   }
 
   h2 "Content that rides on a record"

@@ -1,6 +1,11 @@
 ---
 name: wcl
-description: "Details on how to write WCL and WDOC files and how to work with them"
+description: >-
+  Read, write or debug a `.wcl` file, a wdoc page or site, or a `wcl` CLI
+  invocation. Covers WCL syntax, types, schemas, decorators and connections;
+  wdoc's block vocabulary for documents, diagrams, charts and decks; every
+  builtin; every CLI flag and exit code; and declaring new block kinds. Use
+  before guessing a builtin name or a flag — both are closed lists.
 ---
 
 # WCL and wdoc

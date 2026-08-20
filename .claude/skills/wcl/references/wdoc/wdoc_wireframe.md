@@ -50,7 +50,7 @@ The `Widget` interface declares these, and every `wf_*` type repeats them:
 | `disabled` | `bool` | Dims the control. |
 | `x`, `y` | `f64` | Top-left placement in the diagram (default `0.0`). |
 | `width`, `height` | `f64` | Advisory. The widget is normally content-measured. |
-| `anchor_left`, `anchor_right`, `anchor_top`, `anchor_bottom` | `f64` | Fractional (0–1) anchors pinning an edge to the parent box. |
+| `anchor_left`, `anchor_right`, `anchor_top`, `anchor_bottom` | `f64` | Anchor insets in **pixels** pinning an edge to the parent box. |
 | `connect_points` | `list<AnchorSide>` | Sides an edge attaches to (`:north :east :south :west`). |
 | `theme` | `symbol` | Per-element UI theme, naming a `theme` block. |
 | `accent` | `symbol` | Per-element accent hue. |

@@ -43,13 +43,13 @@ interface Widget extends SvgBlock {
   width:  f64?
   @doc("Advisory box height (the widget is normally content-measured).")
   height: f64?
-  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the left edge to the parent box.")
   anchor_left:   f64?
-  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the right edge to the parent box.")
   anchor_right:  f64?
-  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the top edge to the parent box.")
   anchor_top:    f64?
-  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
   @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
   connect_points: list<AnchorSide>?

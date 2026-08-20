@@ -413,7 +413,7 @@ CONSOLE
 
   h2 "Five ways to get CSS and JS onto a page"
 
-  p "There are now five, and they are easy to confuse because four of them end at the same `<head>`. This is the comparison:"
+  p "There are now five, and they are easy to confuse because three of them end at the same `<head>`. This is the comparison:"
 
   table {
     rows:

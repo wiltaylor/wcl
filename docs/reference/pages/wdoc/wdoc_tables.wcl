@@ -225,7 +225,7 @@ CSS
       | "Markdown" | "`1.`"            | "An indented ordered list; the renderer restarts each level" |
   }
 
-  p "Bullet markers diverge the same way and matter less. HTML leaves them to the browser, the PDF backend cycles `•`, `◦`, `▪` by depth, and Markdown writes `-` at every level. [Output targets](wdoc_outputs) covers what else changes between the four."
+  p "Bullet markers diverge the same way and matter less. HTML leaves them to the browser, the PDF backend cycles `•`, `◦`, `▪` by depth, and Markdown writes `-` at every level. [Output targets](wdoc_outputs) covers what else changes between the three."
 
   h3 "list and li fields"
 
@@ -368,7 +368,7 @@ WCL
 
   callout "Quote your cells" {
     class = ["warning"]
-    body  = "A table is prose laid out on a grid, not a typed record. Nothing checks a cell's type, and there is no declaration to check it against. Write every cell you care about as a string literal and the four targets agree. Leave a unit-carrying or symbol value bare and they do not. `\"512MiB\"` is a cell. `512MiB` is a value that happens to be sitting in one."
+    body  = "A table is prose laid out on a grid, not a typed record. Nothing checks a cell's type, and there is no declaration to check it against. Write every cell you care about as a string literal and the three targets agree. Leave a unit-carrying or symbol value bare and they do not. `\"512MiB\"` is a cell. `512MiB` is a value that happens to be sitting in one."
   }
 
   p "One more cell rule follows from the syntax rather than from rendering. **A bare `|` splits the row**, so any cell containing a pipe must be a quoted string:"

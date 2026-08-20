@@ -19,7 +19,7 @@ page lang_cli {
 
   h2 "One binary, one document model"
 
-  p "Each command below names a `<file>`. That file is the **entry document**: `wcl` parses it, follows its imports, and works on the result. You configure nothing outside the file. There is no project file, no lockfile, no `wcl.toml`."
+  p "Most commands below name a `<file>` (`lsp` names none, `init` names a template and a destination, and `repl`'s is optional). Where a command names one, that file is the **entry document**: `wcl` parses it, follows its imports, and works on the result. You configure nothing outside the file. There is no project file, no lockfile, no `wcl.toml`."
 
   p "Every command that opens a document opens it the same way. Disk imports resolve relative to the importing file, and system imports (`import <wdoc.wcl>`) resolve against the embedded wdoc standard library. That is why `wcl check` validates a wdoc document as thoroughly as `wcl wdoc build` does. The schemas are in scope for both."
 
@@ -33,7 +33,7 @@ page lang_cli {
   code console {
     source = <<'CONSOLE'
 $ wcl --version
-wcl 0.33.2-alpha-156-ge82e431c
+wcl 0.33.2-alpha
 
 $ wcl --help
 WCL command-line interface
@@ -165,7 +165,7 @@ CONSOLE
 
   callout "check is the whole gate" {
     class = ["info"]
-    body  = "`wcl check` runs the parser **and** the schema validator, not only the parser. Run it in a pre-commit hook, in CI, and any time you want to know a file is good without printing it. It is also the one command that reads stdin, so `cat generated.wcl | wcl check -` validates a document that was never written to disk."
+    body  = "`wcl check` runs the parser **and** the schema validator, not only the parser. Run it in a pre-commit hook, in CI, and any time you want to know a file is good without printing it. It also takes `-` in place of a path, so `cat generated.wcl | wcl check -` validates a document that was never written to disk."
   }
 
   h2 "wcl eval and wcl get"

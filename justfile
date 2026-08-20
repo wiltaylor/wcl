@@ -89,18 +89,18 @@ docs-serve-ref *ARGS:
     cargo run -p wcl -- wdoc serve docs/reference/main.wcl --addr 127.0.0.1:8138 {{ARGS}}
 
 # Render the reference book to Markdown under docs/_md/ (gitignored) —
-# smoke-tests `wcl wdoc markdown` (folder of .md + standalone .svg diagrams)
+# smoke-tests `wcl wdoc build --type markdown` (folder of .md + standalone .svg diagrams)
 [group('dev')]
 md-build *ARGS:
-    cargo run -p wcl -- wdoc markdown docs/reference/main.wcl --out docs/_md {{ARGS}}
+    cargo run -p wcl -- wdoc build docs/reference/main.wcl --out docs/_md --type markdown {{ARGS}}
 
-# Render the example and the reference book to PDF under target/pdf/ — smoke-tests `wcl wdoc pdf`
+# Render the example and the reference book to PDF under target/pdf/ — smoke-tests `wcl wdoc build --type pdf`
 [group('dev')]
 wdoc-pdf: (wdoc-pdf-render "examples/wdoc/main.wcl" "target/pdf/examples") (wdoc-pdf-render "docs/reference/main.wcl" "target/pdf/docs")
 
 [private]
 wdoc-pdf-render file out:
-    cargo run -p wcl -- wdoc pdf {{file}} --out {{out}}
+    cargo run -p wcl -- wdoc build {{file}} --out {{out}} --type pdf
 
 # Run criterion benchmarks
 [group('dev')]

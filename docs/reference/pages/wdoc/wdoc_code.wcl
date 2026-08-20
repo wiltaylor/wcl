@@ -303,7 +303,7 @@ WCL
 
   table {
     rows:
-      | "Aspect"        | "HTML, `wdoc build`"                     | "Markdown, `wdoc markdown`"       | "PDF, `wdoc pdf`" |
+      | "Aspect"        | "HTML, `wdoc build`"                     | "Markdown, `wdoc build --type markdown`" | "PDF, `wdoc build --type pdf`" |
       | "Chrome"        | "A `<figure class=\"code-card\">` with a header bar and three window dots" | "None" | "None" |
       | "Filename"      | "In the header bar"                      | "A backticked line above the fence" | "A monospace caption line" |
       | "Language tag"  | "In the header bar, upper-cased by CSS, and as `class=\"language-<tag>\"`" | "The fence info string" | "Not shown" |
@@ -419,7 +419,7 @@ WCL
   list {
     li "[Text and formatting](wdoc_formatting). Prose, headings, and the backtick inline pattern, which is a different thing from this block."
     li "[Demo blocks](wdoc_demo). Show a snippet and its rendered result side by side. A demo is a `code` block plus a live rendering."
-    li "[Output targets](wdoc_outputs). The content IR, the four backends, and what each one can and cannot express."
+    li "[Output targets](wdoc_outputs). The content IR, the three backends, and what each one can and cannot express."
     li "[Themes and styling](wdoc_styling). Palettes, the syntax roles, and `class` blocks."
     li "[Visibility](wdoc_visibility). `@only` and `@except`, for the listing that should reach one target and not another."
     li "[Writing your own blocks](wdoc_extending). `lower`, `@native`, and how a block of yours can produce a listing."

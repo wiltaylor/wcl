@@ -141,11 +141,12 @@ Two neighbours of `set`:
 
 - `wcl fmt <file>` prints the file in canonical form. `--in-place` overwrites the file.
 - `wcl diff <a> <b>` compares two documents *after evaluation*. A re-format therefore produces
-  no diff. The command reports the changed entities and fields:
+  no diff. The command reports the changed entities and fields. Take a copy before the `set`
+  above (`cp config.wcl original.wcl`) and the edit shows up:
 
   ```console
-  $ wcl diff config.wcl edited.wcl
-  # wcl diff config.wcl -> edited.wcl — generated
+  $ wcl diff original.wcl config.wcl
+  # wcl diff original.wcl -> config.wcl — generated
 
   modified "server:web" {
     field "host" {

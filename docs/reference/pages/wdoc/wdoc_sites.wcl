@@ -554,6 +554,6 @@ CONSOLE
     li "[Output targets](wdoc_outputs). One document, three targets: HTML, Markdown and PDF."
     li "[Text and formatting](wdoc_formatting). The inline patterns behind `[a link](page)`, emphasis and inline code."
     li "[Visibility](wdoc_visibility). Keeping a block out of one site, or one target."
-    li "[The CLI](lang_cli). `wdoc build`, `serve`, `markdown`, `pdf` and the rest in full."
+    li "[The CLI](lang_cli). `wdoc build`, `serve`, `--type` and the rest in full."
   }
 }

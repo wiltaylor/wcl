@@ -199,13 +199,13 @@ type Container extends SvgBlock {
   start_angle:   f64?
 
   // Anchors (resolve against the parent's box).
-  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the left edge to the parent box.")
   anchor_left:   f64?
-  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the right edge to the parent box.")
   anchor_right:  f64?
-  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the top edge to the parent box.")
   anchor_top:    f64?
-  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
   @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
@@ -280,13 +280,13 @@ type Rect extends SvgBlock {
   @doc("Style classes — text and SVG paint via the `class` system.")
   class:  list<utf8>?
 
-  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the left edge to the parent box.")
   anchor_left:   f64?
-  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the right edge to the parent box.")
   anchor_right:  f64?
-  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the top edge to the parent box.")
   anchor_top:    f64?
-  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
   @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
@@ -322,13 +322,13 @@ type Circle extends SvgBlock {
   @doc("Style classes — text and SVG paint via the `class` system.")
   class:  list<utf8>?
 
-  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the left edge to the parent box.")
   anchor_left:   f64?
-  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the right edge to the parent box.")
   anchor_right:  f64?
-  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the top edge to the parent box.")
   anchor_top:    f64?
-  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
   @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
@@ -364,13 +364,13 @@ type Line extends SvgBlock {
   @doc("Style classes — text and SVG paint via the `class` system.")
   class:  list<utf8>?
 
-  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the left edge to the parent box.")
   anchor_left:   f64?
-  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the right edge to the parent box.")
   anchor_right:  f64?
-  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the top edge to the parent box.")
   anchor_top:    f64?
-  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
   @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
@@ -407,13 +407,13 @@ type Label extends SvgBlock {
   @doc("Style classes — text and SVG paint via the `class` system.")
   class: list<utf8>?
 
-  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the left edge to the parent box.")
   anchor_left:   f64?
-  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the right edge to the parent box.")
   anchor_right:  f64?
-  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the top edge to the parent box.")
   anchor_top:    f64?
-  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
   @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")
@@ -436,13 +436,13 @@ type Polygon extends SvgBlock {
   @doc("Style classes — text and SVG paint via the `class` system.")
   class:  list<utf8>?
 
-  @doc("Fractional anchor (0–1) pinning the left edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the left edge to the parent box.")
   anchor_left:   f64?
-  @doc("Fractional anchor (0–1) pinning the right edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the right edge to the parent box.")
   anchor_right:  f64?
-  @doc("Fractional anchor (0–1) pinning the top edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the top edge to the parent box.")
   anchor_top:    f64?
-  @doc("Fractional anchor (0–1) pinning the bottom edge to the parent box.")
+  @doc("Anchor inset in canvas units pinning the bottom edge to the parent box.")
   anchor_bottom: f64?
 
   @doc("Which sides (`:left`/`:right`/`:top`/`:bottom`) edges attach to.")

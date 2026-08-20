@@ -87,7 +87,7 @@ WCL
     body  = "The page references images, videos, copied files, icons and tilemaps by relative URL into `_wdoc/`. Those URLs resolve when the output folder is **served**: `wcl wdoc serve`, a static host, any local web server. They do not reliably resolve when you double-click `index.html` and open the page directly from disk, because a browser applies different origin rules to a page it did not load over a connection. If a built page looks right but its pictures are missing, serve the folder before you go looking for a bug."
   }
 
-  p "`wcl wdoc serve <entry>` is the short way to do that while you write. [Output targets](wdoc_outputs) covers the four builds and what each one emits."
+  p "`wcl wdoc serve <entry>` is the short way to do that while you write. [Output targets](wdoc_outputs) covers the three builds and what each one emits."
 
   h2 "image"
 
@@ -436,7 +436,7 @@ WCL
 
   p "Capability says *cannot*. `@except` says *do not want to*. The build refuses until the two agree. See [Visibility](wdoc_visibility) for the backend axis and the rest of the decorator, and [Writing your own blocks](wdoc_extending) for what makes a block native to a target in the first place."
 
-  h2 "One page, four targets"
+  h2 "One page, three targets"
 
   p "Here is the whole chapter as one project you can type out. Three files beside a `main.wcl`:"
 
@@ -605,7 +605,7 @@ CONSOLE
   h2 "Where to go next"
 
   list {
-    li "[Output targets](wdoc_outputs). The four builds, what each emits, and why a block may cover only some of them."
+    li "[Output targets](wdoc_outputs). The three builds, what each emits, and why a block may cover only some of them."
     li "[Visibility](wdoc_visibility). `@only` / `@except`, the backend axis, and per-instance waivers."
     li "[The diagram canvas](wdoc_diagrams). Placement, anchors and sizing for `image` in its shape role."
     li "[Tilemaps and maps](wdoc_tilemaps). Cropping tiles out of a spritesheet."

@@ -21,7 +21,7 @@ page wdoc_callouts {
 
   p "Three blocks in this chapter are **apparatus**: they mark a page up rather than being its prose. A `callout` lifts one paragraph out of the flow and gives it a type. A `footnotes` section collects the notes that the `[^id]` markers in your prose point at. A `chapter_header` opens a page with a kicker, a title and a meta line."
 
-  p "They belong in one chapter for a reason beyond page furniture. Each lowers to exactly **one node of the semantic content IR**: `Content::Callout`, `Content::Footnotes`, `Content::ChapterHeader`. All four output targets render that node from the same declaration[^ir]. No backend re-implements a callout. That is why this chapter can tell you what each block becomes in HTML, in Markdown and in print, and why the three answers differ where they do. [Writing your own blocks](wdoc_extending) covers the lowering mechanism itself."
+  p "They belong in one chapter for a reason beyond page furniture. Each lowers to exactly **one node of the semantic content IR**: `Content::Callout`, `Content::Footnotes`, `Content::ChapterHeader`. All three output targets render that node from the same declaration[^ir]. No backend re-implements a callout. That is why this chapter can tell you what each block becomes in HTML, in Markdown and in print, and why the three answers differ where they do. [Writing your own blocks](wdoc_extending) covers the lowering mechanism itself."
 
   p "Every file and every output below was built with `wcl wdoc build`, `wcl wdoc build --type markdown` and `wcl wdoc build --type pdf` before it was written down. Type them and compare."
 
@@ -438,7 +438,7 @@ CONSOLE
     li "[Icons](wdoc_icons). The packs behind a callout's default glyph, and the `pack.name` an `icon` field takes."
     li "[Themes and styling](wdoc_styling). `class`, `accent`, and where a custom callout type gets its colour."
     li "[Templates and layouts](wdoc_templates). The pass that plants footnote links and heading anchors runs here."
-    li "[Output targets](wdoc_outputs). The four backends this chapter kept comparing."
+    li "[Output targets](wdoc_outputs). The three backends this chapter kept comparing."
     li "[Writing your own blocks](wdoc_extending). Lowering a block of your own to `Content::Callout` or `Content::ChapterHeader`."
   }
 

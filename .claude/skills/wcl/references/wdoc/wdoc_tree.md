@@ -31,7 +31,7 @@ Each of the three carries the same placement set as `rect` or `circle`:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `x`, `y` | `f64` | Top-left placement in the parent diagram (default `0.0`). |
-| `anchor_left`, `anchor_right`, `anchor_top`, `anchor_bottom` | `f64` | Fractional (0–1) anchor insets, instead of `x` / `y`. |
+| `anchor_left`, `anchor_right`, `anchor_top`, `anchor_bottom` | `f64` | Anchor insets in **pixels** from the parent's edges, instead of `x` / `y`. |
 | `id` | `identifier` | Edge-connection name for the whole shape. |
 | `class` | `list<utf8>` | Style classes. |
 | `connect_points` | `list<AnchorSide>` | Sides an edge attaches to. `AnchorSide` is `:north :east :south :west`; omit it for all four. |

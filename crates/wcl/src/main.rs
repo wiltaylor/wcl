@@ -128,7 +128,10 @@ enum Command {
         /// Path to a WCL source file.
         file: PathBuf,
     },
-    /// Parse a WCL file and report whether it is syntactically valid.
+    /// Parse a WCL file, then validate the result against its schemas.
+    /// Prints `OK` when both pass. Exits 1 on a parse failure and 2 on
+    /// a schema violation. Warnings go to stderr and never change the
+    /// exit code.
     Check {
         /// Path to a WCL source file, or `-` to read from stdin
         /// (relative imports then resolve against the current
@@ -263,7 +266,8 @@ enum Command {
         /// not empty.
         #[arg(long)]
         force: bool,
-        /// List the built-in templates and exit.
+        /// List the built-in templates, plus any user templates under
+        /// `$XDG_DATA_HOME/wcl/templates`, and exit.
         #[arg(long)]
         list: bool,
     },
@@ -356,8 +360,8 @@ enum WdocCommand {
         /// When omitted the behaviour depends on `--type`: `html` and
         /// `markdown` render every site into its own `<out>/<name>/`
         /// subdirectory (html also writes a chooser index), while `pdf`
-        /// names the output after the source file's stem. A single-site
-        /// document is unaffected either way.
+        /// writes `<out>/<site>.pdf` per named site, falling back to the
+        /// source file's stem for an unnamed site.
         #[arg(long)]
         site: Option<String>,
         /// Page size. Applies to `--type pdf` only; passing it with any

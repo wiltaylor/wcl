@@ -82,7 +82,7 @@ CONSOLE
 
   h2 "A first schema"
 
-  p "A schema is three decorators and two type declarations. Put them at the top of the same file. Order does not matter to the parser, but it reads better with the shape before the data. The listing below is the file from [the comparison in the introduction](intro#how-wcl-differs-from-json-yaml-and-toml), assembled, with a comment on each half:"
+  p "A schema is four decorators and two type declarations. Put them at the top of the same file. Order does not matter to the parser, but it reads better with the shape before the data. The listing below is the file from [the comparison in the introduction](intro#how-wcl-differs-from-json-yaml-and-toml), assembled, with a comment on each half:"
 
   code wcl {
     filename = "app.wcl"

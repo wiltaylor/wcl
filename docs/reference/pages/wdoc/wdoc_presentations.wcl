@@ -278,7 +278,7 @@ WCL
 
   callout "Notes are hidden, not private" {
     class = ["warning"]
-    body  = "The overlay is hidden with CSS, so the text is in `index.html` and anyone can read the source. And on the static targets it is not even hidden. See [One deck, four targets](#one-deck-four-targets). Write notes as prompts for yourself, never as something the audience must not read."
+    body  = "The overlay is hidden with CSS, so the text is in `index.html` and anyone can read the source. And on the static targets it is not even hidden. See [One deck, three targets](#one-deck-three-targets). Write notes as prompts for yourself, never as something the audience must not read."
   }
 
   h2 "Building and viewing a deck"
@@ -376,8 +376,8 @@ WCL
     rows:
       | "Target"              | "A deck becomes"                         | "Slide order"   | "`fragment`"      | "`notes`"                | "A page no `slide` names" |
       | "`wdoc build`"        | "One `index.html` plus the player"       | "The deck's"    | "Hidden until stepped" | "In the `s` overlay" | "Never rendered" |
-      | "`wdoc pdf`"          | "One PDF per site: a title page, then one page per slide" | "**Source order**" | "Always visible"  | "**Printed in the body**" | "Printed" |
-      | "`wdoc markdown`"     | "One `.md` per slide"                    | "One file each" | "Always visible"  | "**Written into the body**" | "Written" |
+      | "`wdoc build --type pdf`" | "One PDF per site: a title page, then one page per slide" | "**Source order**" | "Always visible"  | "**Printed in the body**" | "Printed" |
+      | "`wdoc build --type markdown`" | "One `.md` per slide"           | "One file each" | "Always visible"  | "**Written into the body**" | "Written" |
   }
 
   p "Run the Markdown target on `talk.wcl` and you see the disagreement at once:"

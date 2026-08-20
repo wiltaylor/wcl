@@ -204,7 +204,7 @@ $ grep -o '<svg[^>]*>' _site/sizes.html
 CONSOLE
   }
 
-  p "One `viewBox`, two rendered boxes. The default 760 asks for a figure two and a half times the size its content needs, so the height goes with it and a two-message exchange fills half a screen. Set `width` near the figure's natural size. There is nothing to crop and nothing to letterbox."
+  p "One `viewBox`, two rendered boxes. The default 760 asks for a figure nearly three times the size its content needs, so the height goes with it and a two-message exchange fills half a screen. Set `width` near the figure's natural size. There is nothing to crop and nothing to letterbox."
 
   callout "The height is never yours to set" {
     class = ["note"]
@@ -450,7 +450,7 @@ $ grep -o '<svg[^>]*>' _md/_wdoc/flow-drawing-1.svg
 CONSOLE
   }
 
-  p "The same `viewBox` and the same fitted height, one written inline into the page and one written out as a standalone `.svg` the Markdown references as an image. The PDF backend takes the third route to the same place: it asks the same fitter for the same string and draws it onto the page. [Output targets](wdoc_outputs) covers all four targets."
+  p "The same `viewBox` and the same fitted height, one written inline into the page and one written out as a standalone `.svg` the Markdown references as an image. The PDF backend takes the third route to the same place: it asks the same fitter for the same string and draws it onto the page. [Output targets](wdoc_outputs) covers all three targets."
 
   p "Two things follow from the geometry being WCL rather than Rust. The first is that `desc` earns its keep: it becomes the `<svg>`'s `role=\"img\"` accessible name and its `<title>`, and in Markdown it becomes the image's alt text. Omit it and the figure is described as `sequence diagram` or `state diagram`. The second is that an empty figure is not a crash. With no participants, or no states, nothing carries geometry, so the fitter falls back to a strip 40 units tall rather than a full-width square of nothing."
 

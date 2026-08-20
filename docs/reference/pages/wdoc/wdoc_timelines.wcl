@@ -164,7 +164,7 @@ CONSOLE
       | "anything shorter"  | "`:minutes`" |
   }
 
-  p "Write `unit` yourself when the automatic choice reads badly. A five-month plan is `:months` either way, but a three-week sprint auto-picks `:weeks` where you may want `:days`."
+  p "Write `unit` yourself when the automatic choice reads badly. A five-month plan is `:months` either way, but a four-week sprint auto-picks `:weeks` where you may want `:days`."
 
   h3 "Tick labels"
 
@@ -519,7 +519,7 @@ TEXT
 
   p "Most wdoc blocks are written in WCL. A block declares a `lower` function returning shapes, the renderer recurses until only leaves remain, and no Rust is involved. That is how the charts work, and how [Writing your own blocks](wdoc_extending) says you add your own. Both blocks in this chapter carry `@native` instead. `@native` declares that the renderer draws the kind and that the kind has no `lower` at all. A wdoc block declares exactly one of the two. Neither and both are build errors."
 
-  p "For the **timeline**, the missing piece is the calendar. Placing a tick on 1 March means knowing that February had 28 days this year and 29 the last. Stepping a month means adding a variable number of days. Flooring to a week means knowing which day was Monday. WCL has arithmetic and it has strings, but it has no date type and no calendar, so a WCL `lower` could not work out where the ticks go. There would be nothing for it to return. The renderer does the calendar work and hands back finished geometry."
+  p "For the **timeline**, the missing piece is the calendar. Placing a tick on 1 March means knowing whether February had 28 days that year or 29. Stepping a month means adding a variable number of days. Flooring to a week means knowing which day was Monday. WCL has arithmetic and it has strings, but it has no date type and no calendar, so a WCL `lower` could not work out where the ticks go. There would be nothing for it to return. The renderer does the calendar work and hands back finished geometry."
 
   p "For the **dopesheet**, the missing pieces are the file and the clock. The frame grid depends on the sheet's pixel dimensions, read off the image file while the site builds, and a WCL expression cannot open a file. The animation is not a drawing at all: it is a script advancing one `viewBox` on a timer, shipped once per site and wired to the data attributes the build stamped on the group. Neither is expressible as a value a `lower` could return."
 
@@ -527,7 +527,7 @@ TEXT
 
   callout "Native does not mean HTML-only" {
     class = ["info"]
-    body  = "Both kinds declare coverage on all four backends, so neither needs an `@except` to survive a Markdown or PDF build. A timeline renders the same static drawing everywhere. A dopesheet renders its `from` frame and stops. The geometry is still stamped on the group, but no player runs beside a `.md` file or inside a PDF. [Output targets](wdoc_outputs) covers what each backend does with a diagram."
+    body  = "Both kinds declare coverage on all three backends, so neither needs an `@except` to survive a Markdown or PDF build. A timeline renders the same static drawing everywhere. A dopesheet renders its `from` frame and stops. The geometry is still stamped on the group, but no player runs beside a `.md` file or inside a PDF. [Output targets](wdoc_outputs) covers what each backend does with a diagram."
   }
 
   h2 "Where to go next"

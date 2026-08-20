@@ -211,6 +211,9 @@ when the output is served, not when a page is opened directly from disk.
 - `every` on a timeline and the whole dopesheet frame geometry are `i64`. A decimal there reads
   as absent, and the renderer falls back to its default without a word.
 - Keep every timeline date to `YYYY-MM-DD`, with an optional `HH:MM` after a space or a `T`.
+- A date the renderer cannot parse **silently drops the thing it belongs to**: the item, the
+  card, or the phase whose `from` / `to` failed. No warning, no placeholder, no build error.
+  A timeline missing an entry is almost always a malformed date.
 - `on` and `side` on a `card` mean something only inside a timeline. A plain diagram ignores
   them.
 - A dopesheet with a wrong sheet path fails the build at the asset copy, not at render time.

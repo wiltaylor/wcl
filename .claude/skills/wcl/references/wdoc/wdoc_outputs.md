@@ -129,9 +129,9 @@ rebuilt: 2 pages (full)
 ```
 
 The fallback is deliberately eager, because the failure mode of being clever here is a stale
-page that looks right. Six kinds of change force a full build: an imported library, the page
-set, the CSS, an asset declaration, a repeater, and one that pulls in an icon the sprite does
-not have yet. So does a change to a file holding a `site` block, which is why editing your
+page that looks right. Seven kinds of change force a full build: an imported library, the page
+set, the CSS, an asset declaration, a repeater, one that pulls in an icon the sprite does
+not have yet, and a file holding a `site` block, which is why editing your
 entry document usually rebuilds everything.
 
 **Scoping is by file, not by block.** Two pages in one `pages.wcl` are one unit: edit either

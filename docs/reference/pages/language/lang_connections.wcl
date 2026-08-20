@@ -341,7 +341,7 @@ CONSOLE
 
   h2 "What check reports"
 
-  p "Four things can go wrong with a statement, and `wcl check` names each at the span that caused it. The four transcripts below are `services.wcl` from the top of this chapter, broken four ways."
+  p "Four things can go wrong with a statement, and `wcl check` names each at the span that caused it. Two of the four transcripts below break `services.wcl` from the top of this chapter. The other two need a small file of their own."
 
   h3 "An operand that names no block"
 

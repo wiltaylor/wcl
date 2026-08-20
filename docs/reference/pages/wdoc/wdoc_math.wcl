@@ -125,7 +125,7 @@ TEX
 
   callout "The quotes on the heredoc tag are not decoration" {
     class = ["warning"]
-    body  = "`<<'TEX'` is the raw form and is verbatim. Plain `<<TEX` is the interpolating form. It reads escapes and `${…}` slots, so `\\frac` fails the parse outright with `invalid escape '\\f'`. That happens before any of this chapter's machinery runs. Always quote the tag for LaTeX. [Values and primitives](lang_values) covers the two heredoc forms."
+    body  = "`<<'TEX'` is the raw form and is verbatim. Plain `<<TEX` still reads escapes, exactly as a quoted WCL string does, so `\\frac` fails the parse outright with `invalid escape '\\f'`. That happens before any of this chapter's machinery runs. Always quote the tag for LaTeX. [Values and primitives](lang_values) covers the two heredoc forms."
   }
 
   p "A `math` block is always display style. There is no field that makes one flow with prose. For that, reach for an inline pattern instead."

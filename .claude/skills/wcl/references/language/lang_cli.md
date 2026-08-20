@@ -8,9 +8,10 @@ every flag it accepts, and what it prints.
 
 ## One binary, one document model
 
-Each command names a `<file>`. That file is the **entry document**: `wcl` parses it, follows
-its imports, and works on the result. Nothing is configured outside the file — no project
-file, no lockfile, no `wcl.toml`.
+Most commands name a `<file>`. That file is the **entry document**: `wcl` parses it, follows
+its imports, and works on the result. The exceptions: `lsp` takes no file, `init` takes a
+template and a destination, and `repl`'s file is optional. Nothing is configured outside the
+file — no project file, no lockfile, no `wcl.toml`.
 
 Every command opens a document the same way. Disk imports resolve relative to the importing
 file, and system imports (`import <wdoc.wcl>`) resolve against the embedded wdoc standard
@@ -105,8 +106,9 @@ $ wcl check sch.wcl --json
 }
 ```
 
-`offset` and `length` are byte positions into the file. `check` is the one command that reads
-stdin, so `cat generated.wcl | wcl check -` validates a document never written to disk.
+`offset` and `length` are byte positions into the file. `check` reads stdin when the file is
+`-`, so `cat generated.wcl | wcl check -` validates a document never written to disk. `fmt -`
+does the same, and `repl` reads its expressions from stdin when it is not a TTY.
 
 ## `wcl eval` and `wcl get`
 

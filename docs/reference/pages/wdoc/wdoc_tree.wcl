@@ -506,7 +506,7 @@ CONSOLE
     li "[Icons](wdoc_icons). Declaring an `iconset`, the bundled packs, and what `icon_set` picks between."
     li "[Timelines and dopesheets](wdoc_timelines). Where a `timeline` reads a card's `on` and `side` fields."
     li "[Data views](wdoc_data_views). `wdoc_repeater` and the components that generate rows and nodes."
-    li "[Output targets](wdoc_outputs). The four backends and what each one does with a page."
+    li "[Output targets](wdoc_outputs). The three backends and what each one does with a page."
     li "[Writing your own blocks](wdoc_extending). `lower` against `@native`, and which one a new shape wants."
   }
 }

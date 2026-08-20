@@ -3,8 +3,9 @@
 A *data view* renders page content from a WCL **data structure** rather than from hand-written
 blocks. Declare the data once; derive every card, table, chart and page from it.
 
-Seven block kinds do this work. All are `@native` — their semantics (slot binding, body
-expansion, iteration, reference resolution) live in Rust, not in a WCL `lower`.
+Ten block kinds do this work, grouped into the seven rows below. All are `@native` — their
+semantics (slot binding, body expansion, iteration, reference resolution) live in Rust, not in
+a WCL `lower`.
 
 | Block | What it does |
 | --- | --- |

@@ -249,7 +249,7 @@ TXT
 WCL
   }
 
-  p "Reach for a heredoc when the prose fights the quoting rules. Inside `\"…\"` every double quote needs a backslash, and every backslash needs another one. In a `<<'TAG'` heredoc the body is taken **verbatim**: no escapes, no interpolation. A sentence full of quoted names, Windows paths, or a regex you are documenting then reads as itself. The `$<<'TAG'` form is the interpolating twin, if you want `${…}` slots. [Values and primitives](lang_values) has the full heredoc syntax."
+  p "Reach for a heredoc when the prose fights the quoting rules. Inside `\"…\"` every double quote needs a backslash, and every backslash needs another one. In a `<<'TAG'` heredoc the body is taken **verbatim**: no escapes, no interpolation. A sentence full of quoted names, Windows paths, or a regex you are documenting then reads as itself. The `$<<TAG` form, tag unquoted, is the interpolating twin, if you want `${…}` slots. [Values and primitives](lang_values) has the full heredoc syntax."
 
   p "Two things to know. The body keeps its **trailing newline**. That is harmless in HTML, where a newline is whitespace. It is also why a heredoc paragraph's closing tag lands on its own line in the built file. And the line breaks you type are not paragraph breaks: the whole heredoc is one `<p>`, wrapped by the browser. Two paragraphs means two `p` blocks."
 

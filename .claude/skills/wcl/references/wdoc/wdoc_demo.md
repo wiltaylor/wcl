@@ -67,7 +67,7 @@ file.
 
 ## `demo` is native
 
-`demo` is `@native` on all four targets. WCL cannot express either half of the job — reading a
+`demo` is `@native` on all three targets. WCL cannot express either half of the job — reading a
 block's own source text, and re-rendering its children into themed wrappers. There is
 therefore no `lower` to intercept and no `Content` payload behind it.
 

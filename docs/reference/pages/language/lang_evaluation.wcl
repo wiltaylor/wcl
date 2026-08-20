@@ -565,7 +565,7 @@ WCL
 
   h2 "The error model"
 
-  p "There are three families of failure. They come from three different stages, and each one has its own exit code. Most confusion about WCL diagnostics is really confusion about which of the three you are looking at."
+  p "There are three families of failure. They come from three different stages, and the exit code narrows down which one you hit. Most confusion about WCL diagnostics is really confusion about which of the three you are looking at."
 
   table {
     rows:

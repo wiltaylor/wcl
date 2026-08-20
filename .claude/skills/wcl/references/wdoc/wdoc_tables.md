@@ -105,7 +105,9 @@ list degrades to a single cell rather than vanishing.
 
 A table with no rows and no header renders as **nothing at all** — an empty string, not an
 empty grid. A computed `rows` that evaluates to an empty list therefore makes the whole table
-disappear; guard it with a `wdoc_repeater` if you want a fallback.
+disappear, silently. A `wdoc_repeater` is no guard: it has no empty or `else` branch, so an
+empty `each` also expands to nothing. An `if` / `else` on `rows` is what gives you a fallback,
+as in `rows = if len(data) == 0 { [["(none)"]] } else { … }`.
 
 Gotcha: a literal `|` outside a quoted cell splits the row. Wrap any cell containing a pipe in
 a string literal.
