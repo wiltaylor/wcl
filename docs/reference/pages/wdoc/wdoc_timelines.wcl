@@ -1,4 +1,4 @@
-// Chapter 36 — Timelines and dopesheets.
+// Timelines and dopesheets.
 //
 // Written against #191. Every diagram, tick label, frame index and
 // default below was built with the `wcl` CLI and read out of the emitted
@@ -9,7 +9,7 @@ page wdoc_timelines {
 
   h1 "Timelines and dopesheets"
 
-  p "Two blocks in this chapter draw time, and they draw different time. `timeline` draws **calendar time**: the 20th of February, the Mondays in March, the leap day in 2024. `dopesheet` draws **animation time**: frame 0, then frame 1, then frame 2, twelve of them a second. One is a dated axis computed by the build; the other is a window sliding over a sprite sheet in the reader's browser. They share a chapter because the question they answer looks the same and their answers have nothing in common — and because both are `@native`, for two different reasons. [Two kinds of time](#two-kinds-of-time) at the end of this chapter is that comparison."
+  p "Two blocks in this chapter draw time, and they draw different time. `timeline` draws **calendar time**: the 20th of February, the Mondays in March, the leap day in 2024. `dopesheet` draws **animation time**: frame 0, then frame 1, then frame 2, twelve of them a second. One is a dated axis computed by the build. The other is a window sliding over a sprite sheet in the reader's browser. They share a chapter because the question they answer looks the same and their answers have nothing in common, and because both are `@native`, for two different reasons. [Two kinds of time](#two-kinds-of-time) at the end of this chapter is that comparison."
 
   p "Both are diagram shapes. Neither is a page block: a `timeline` and a `dopesheet` are children of a `diagram` or a `container`, positioned with `x` / `y` like a `rect`, and connectable by edges. [The diagram canvas](wdoc_diagrams) covers the surface they sit on."
 
@@ -56,14 +56,14 @@ WCL
 
   p "Build it into a folder and read the result from a server:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build roadmap.wcl --out _site
 wrote 1 page
-TEXT
+CONSOLE
   }
 
-  p "The page holds one diagram, and the diagram holds the timeline declared above — the same items and phases, rendered:"
+  p "The page holds one diagram, and the diagram holds the timeline declared above, the same items and phases, rendered:"
 
   diagram { width = 560  height = 200
     timeline { width = 560.0  height = 200.0
@@ -83,18 +83,18 @@ TEXT
     }
   }
 
-  p "Read the drawing against the source. The spine runs from `start` to `end`. The tick marks under it are real calendar months — the 1st of each, with the year printed on January. The three `items` are the dated markers, each with a lead line and a label, alternating above and below the axis until `side: :far` pins one. The two `phases` are the vertical dividers with a heading between them."
+  p "Read the drawing against the source. The spine runs from `start` to `end`. The tick marks under it are real calendar months: the 1st of each, with the year printed on January. The three `items` are the dated markers, each with a lead line and a label, alternating above and below the axis until `side: :far` pins one. The two `phases` are the vertical dividers with a heading between them."
 
   p "Everything after this section refines that one picture."
 
   callout "A timeline does not fill its diagram" {
     class = ["warning"]
-    body  = "`width` and `height` are the timeline's own, and they default to `480.0` × `200.0` whatever the enclosing `diagram` measures. A `timeline` with no size inside a 900 × 300 diagram draws 480 × 200, and the diagram's viewBox shrinks around it — the axis is not clipped, but it is not the diagram either. Write the diagram's numbers twice, as every example here does. Note the types: a `diagram` takes integers, a `timeline` takes floats."
+    body  = "`width` and `height` are the timeline's own, and they default to `480.0` × `200.0` whatever the enclosing `diagram` measures. A `timeline` with no size inside a 900 × 300 diagram draws 480 × 200, and the diagram's viewBox shrinks around it. The axis is not clipped, but it is not the diagram either. Write the diagram's numbers twice, as every example here does. The types differ: a `diagram` takes integers, and a `timeline` takes floats."
   }
 
   h2 "Dates"
 
-  p "There is no date type in WCL. Every date on a timeline is a plain string, and the timeline parses it. Four spellings are accepted:"
+  p "There is no date type in WCL. Every date on a timeline is a plain string, and the timeline parses it. The timeline accepts four spellings:"
 
   table {
     rows:
@@ -105,11 +105,11 @@ TEXT
       | "`\"2026-03-15 14:30:05\"`" | "seconds are optional, and parsed when given" |
   }
 
-  p "Zero-padding is not required: `\"2026-3-1\"` parses as 1 March. There is no timezone and no offset — a timeline places instants on one unbroken scale, and reads every date on it the same way. [Values and primitives](lang_values) covers the string forms themselves."
+  p "Zero-padding is not required: `\"2026-3-1\"` parses as 1 March. There is no timezone and no offset. A timeline places instants on one unbroken scale, and reads every date on it the same way. [Values and primitives](lang_values) covers the string forms themselves."
 
   callout "An unreadable date is dropped, not reported" {
     class = ["warning"]
-    body  = "A date the parser cannot read yields nothing at all: the item, the phase boundary or the card is skipped, the build prints no warning, and the page renders without it. `\"15/03/2026\"` and `\"March 15\"` both vanish this way. The same silence covers `start` and `end` — an unparseable `end` falls back to the fitted scale, so the axis quietly becomes an auto-fitted one. If a milestone is missing from a drawing, check its date string first."
+    body  = "A date the parser cannot read yields nothing at all: the timeline skips the item, the phase boundary, or the card, the build prints no warning, and the page renders without it. `\"15/03/2026\"` and `\"March 15\"` both vanish this way. The same silence covers `start` and `end`. An unparseable `end` falls back to the fitted scale, so the axis becomes an auto-fitted one. If a milestone is missing from a drawing, check its date string first."
   }
 
   h2 "The scale"
@@ -123,14 +123,14 @@ TEXT
       | "one of the two"              | "from the one you gave to the fitted other end" |
       | "neither"                     | "from the first dated event to the last" |
       | "neither, and one event only" | "from that instant to 24 hours later" |
-      | "nothing an end can be fitted from" | "a bare spine — no ticks, nothing pinned" |
+      | "nothing an end can be fitted from" | "a bare spine, with no ticks and nothing pinned" |
   }
 
   p "\"Dated event\" means every date the block carries: each item's `on`, each phase's `from` **and** `to`, and each card's `on`. A phase that reaches past the last milestone widens the axis, and so does a card."
 
-  p "The last row is the one to read twice. **Both** ends have to resolve before a single tick is drawn, so a `start` with nothing dated to fit the other end against draws the bare spine too — not a half-fitted axis. A timeline that has lost its ticks has usually lost its events."
+  p "The last row is the one to read twice. **Both** ends have to resolve before the timeline draws a single tick, so a `start` with nothing dated to fit the other end against draws the bare spine too, not a half-fitted axis. A timeline that has lost its ticks has usually lost its events."
 
-  p "The fitted scale has a consequence you can see. With no `start`, the earliest event sits exactly on the left end of the spine, with no room before it. Give a `start` a week earlier when a milestone needs breathing space:"
+  p "The fitted scale has a consequence you can see. With no `start`, the earliest event sits exactly on the left end of the spine, with no room before it. Give a `start` a week earlier when the first milestone needs room to its left:"
 
   demo {
     diagram = true
@@ -177,13 +177,13 @@ TEXT
       | "`:hours`"   | "the hour"        | "`09:00`" |
       | "`:days`"    | "midnight"        | "`5 Mar`" |
       | "`:weeks`"   | "Monday midnight" | "`9 Mar`" |
-      | "`:months`"  | "the 1st"         | "`Mar` — and `Jan 2026` on January" |
+      | "`:months`"  | "the 1st"         | "`Mar`, and `Jan 2026` on January" |
       | "`:years`"   | "1 January"       | "`2026`" |
   }
 
-  p "The year rides on the January tick and nowhere else, which is what makes a multi-year `:months` axis readable without printing `2026` twelve times."
+  p "The year rides on the January tick and nowhere else, so a multi-year `:months` axis stays readable without printing `2026` twelve times."
 
-  p "The walk starts by flooring the scale's start to the unit, so it can begin before the axis does. A tick that lands outside `start`..`end` is not drawn. That is why the fitted timeline above, whose first item is 20 February, shows its first tick at 1 March: the 1 February boundary is off the left end."
+  p "The walk starts by flooring the scale's start to the unit, so it can begin before the axis does. The timeline does not draw a tick that lands outside `start`..`end`. That is why the fitted timeline above, whose first item is 20 February, shows its first tick at 1 March: the 1 February boundary is off the left end."
 
   h3 "The tick interval"
 
@@ -200,7 +200,7 @@ TEXT
       | "`:years`"   | "1, 2, 5, 10, 20, 50" |
   }
 
-  p "If no interval on the ladder gets there, the last one is used and the axis simply carries more ticks. A nine-hour window therefore ticks hourly, and a two-week window ticks every second day:"
+  p "If no interval on the ladder gets there, the timeline uses the last one and the axis carries more ticks. A nine-hour window therefore ticks hourly, and a two-week window ticks every second day:"
 
   demo {
     diagram = true
@@ -220,7 +220,7 @@ TEXT
 
   callout "The walk stops after 256 ticks" {
     class = ["note"]
-    body  = "A tick loop that walked a calendar for ever would hang a build, so it stops at 256 boundaries and the rest of the spine stays bare. Two things get you there, and both involve overriding an automatic choice. An `every` far too fine for the span: `unit = :years` with `every = 1` across 1600–2200 labels 1600 to 1855 and stops. And a `unit` far too fine for the span, because each ladder has a coarsest rung — `unit = :months` over the same 600 years exhausts its ladder at 12 months and stops at `Jan 1855` too. An axis that chooses both for itself will not reach the cap. Coarsen the `unit`, or widen `every`, rather than shortening the axis."
+    body  = "A tick loop that walked a calendar for ever would hang a build, so it stops at 256 boundaries and the rest of the spine stays bare. Two things get you there, and both involve overriding an automatic choice. An `every` far too fine for the span: `unit = :years` with `every = 1` across 1600–2200 labels 1600 to 1855 and stops. And a `unit` far too fine for the span, because each ladder has a coarsest rung: `unit = :months` over the same 600 years exhausts its ladder at 12 months and stops at `Jan 1855` too. An axis that chooses both for itself will not reach the cap. Coarsen the `unit`, or widen `every`, rather than shortening the axis."
   }
 
   h2 "Milestones"
@@ -239,9 +239,9 @@ WCL
 
   p "Each item draws three things: a small filled marker on the spine, a lead line out from it, and the label at the end of the lead. Items **alternate**: the first goes to the near side, the second to the far, the third back to the near, and so on down the list."
 
-  p "`side` overrides the alternation for one item. `:near` is above a horizontal axis and left of a vertical one; `:far` is below and right. `:auto` means the same as writing nothing."
+  p "`side` overrides the alternation for one item. `:near` is above a horizontal axis and left of a vertical one. `:far` is below and to the right. `:auto` means the same as writing nothing."
 
-  p "The two spellings above are two variants of one union, and which one you get is decided by the **shape** of the record you wrote:"
+  p "The two spellings above are two variants of one union, and the **shape** of the record you wrote decides which one you get:"
 
   code wcl {
     source = <<'WCL'
@@ -252,10 +252,10 @@ union TimelineItem {
 WCL
   }
 
-  p "A bare `{ label: …, on: … }` coerces to `On`; add a `side:` key and it coerces to `OnSided`. That is the ordinary bare-record rule — see [Lists, tensors and records](lang_collections). The practical consequence is that there is no partial item. An item needs both a `label` and an `on`, and a record matching neither variant fails the build rather than leaving a marker silently out of the drawing. Drop the date from `roadmap.wcl`'s first item and the build stops:"
+  p "A bare `{ label: …, on: … }` coerces to `On`. Add a `side:` key and it coerces to `OnSided`. That is the ordinary bare-record rule. See [Lists, tensors and records](lang_collections). The practical consequence is that there is no partial item. An item needs both a `label` and an `on`, and a record matching neither variant fails the build rather than leaving a marker out of the drawing in silence. Drop the date from `roadmap.wcl`'s first item and the build stops:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build roadmap.wcl --out _site
 wcl::eval::schema_violation
 
@@ -272,14 +272,14 @@ wcl::eval::schema_violation
     ╰────
 
 1 schema violation
-TEXT
+CONSOLE
   }
 
-  p "Contrast that with a _date_ the parser cannot read, which is dropped in silence. The shape of an item is checked by the schema; the content of its date string is not."
+  p "Contrast that with a _date_ the parser cannot read, which is dropped in silence. The schema checks the shape of an item. It does not check the content of its date string."
 
   h2 "Phases"
 
-  p "A phase is a named stretch of the axis — discovery, build, launch. Each one is a `label` and two dates:"
+  p "A phase is a named stretch of the axis: discovery, build, launch. Each one is a `label` and two dates:"
 
   demo {
     diagram = true
@@ -303,20 +303,20 @@ TEXT
     }
   }
 
-  p "A phase is drawn as **two boundary dividers and a heading**, not as a filled band. The dividers stand perpendicular to the axis at `from` and at `to`, and the label sits centred between them. Four back-to-back phases like the ones above share their boundaries, so the drawing reads as one divided ruler rather than four separate bars."
+  p "The timeline draws a phase as **two boundary dividers and a heading**, not as a filled band. The dividers stand perpendicular to the axis at `from` and at `to`, and the label sits centred between them. Four back-to-back phases like the ones above share their boundaries, so the drawing reads as one divided ruler rather than four separate bars."
 
-  p "Each phase takes the next colour from the `wdoc-series-1` … `wdoc-series-8` palette, by its position in the list, wrapping after eight. Those are the same series classes the charts use, so a site `theme` recolours a timeline and a chart together — see [Themes and styling](wdoc_styling). The rest of the drawing carries `wdoc-axis` and `wdoc-axis-label` on the spine and ticks, `wdoc-timeline-divider` and `wdoc-timeline-phase-label` on the phases, `wdoc-timeline-marker`, `wdoc-timeline-connector` and `wdoc-timeline-label` on the items, and `wdoc-chart-title` — the chart's, shared — on the title. A `class` block naming any of them restyles every timeline on the site."
+  p "Each phase takes the next colour from the `wdoc-series-1` … `wdoc-series-8` palette, by its position in the list, wrapping after eight. Those are the same series classes the charts use, so a site `theme` recolours a timeline and a chart together. See [Themes and styling](wdoc_styling). The rest of the drawing carries `wdoc-axis` and `wdoc-axis-label` on the spine and ticks, `wdoc-timeline-divider` and `wdoc-timeline-phase-label` on the phases, and `wdoc-timeline-marker`, `wdoc-timeline-connector`, and `wdoc-timeline-label` on the items. The title carries `wdoc-chart-title`, the chart's class, shared. A `class` block naming any of them restyles every timeline on the site."
 
   callout "A timeline's own class and id go nowhere" {
     class = ["warning"]
-    body  = "`class` and `id` are declared on `Timeline` — they are on the field table below — but the renderer emits neither. `timeline { class = [\"mine\"]  id = roadmap }` produces no `mine` class and no `id` attribute anywhere in the SVG, and there is no error to tell you so. Style through the `wdoc-*` classes above, and reach for the site `theme` when a whole book needs one palette. The `class` a `card` child carries **is** emitted; it is only the timeline itself that drops them."
+    body  = "`class` and `id` are declared on `Timeline`, and the field table below lists them, but the renderer emits neither. `timeline { class = [\"mine\"]  id = roadmap }` produces no `mine` class and no `id` attribute anywhere in the SVG, and there is no error to tell you so. Style through the `wdoc-*` classes above, and reach for the site `theme` when a whole book needs one palette. The `class` a `card` child carries **is** emitted. Only the timeline itself drops them."
   }
 
-  p "Phases may overlap, and nothing checks that `from` precedes `to`. A phase written backwards draws its two dividers in the same two places and its heading between them, which is rarely what you meant."
+  p "Phases may overlap, and nothing checks that `from` precedes `to`. A phase written backwards draws its two dividers in the same two places, with its heading between them. That result is rarely what you meant."
 
   h2 "Event cards"
 
-  p "A milestone label is one line of plain text. When an event needs a paragraph, a list or a callout, pin a `card` to the axis instead. A `card` is the ordinary rich-text diagram shape — [Trees, node tables and cards](wdoc_tree) covers it in full — and a timeline reads two of its fields to place it: `on`, the date it hangs from, and `side`."
+  p "A milestone label is one line of plain text. When an event needs a paragraph, a list, or a callout, pin a `card` to the axis instead. A `card` is the ordinary rich-text diagram shape, and a timeline reads two of its fields to place it: `on`, the date it hangs from, and `side`. [Trees, node tables and cards](wdoc_tree) covers the shape in full."
 
   demo {
     diagram = true
@@ -339,13 +339,13 @@ TEXT
     }
   }
 
-  p "Cards carry their own `width` and `height` (`160.0` × `90.0` by default) and alternate sides exactly as items do — but on **their own count**. The first card goes near whether or not an item sat there already, so a timeline mixing items and cards can put both on one side of the spine. Pin the ones that clash with `side`."
+  p "Cards carry their own `width` and `height` (`160.0` × `90.0` by default) and alternate sides exactly as items do, but on **their own count**. The first card goes near whether or not an item sat there already, so a timeline mixing items and cards can put both on one side of the spine. Pin the ones that clash with `side`."
 
-  p "A card is clamped inside the timeline's box. A card near the end of the axis slides back in rather than hanging off the edge, which keeps the diagram tight but means a wide card near a boundary no longer sits centred on its date. Its lead line still points at the right place."
+  p "The timeline clamps a card inside its box. A card near the end of the axis slides back in rather than hanging off the edge. The slide keeps the diagram tight, but a wide card near a boundary no longer sits centred on its date. Its lead line still points at the right place."
 
   h2 "Vertical timelines"
 
-  p "`direction = :vertical` turns the axis on its side: time runs down the page, and items and cards alternate left and right. Everything else — units, ticks, phases, cards — behaves identically. A vertical timeline suits a long release history in a narrow column, where a horizontal one would crush its labels together."
+  p "`direction = :vertical` turns the axis on its side: time runs down the page, and items and cards alternate left and right. Everything else behaves identically: units, ticks, phases, cards. A vertical timeline suits a long release history in a narrow column, where a horizontal one would crush its labels together."
 
   demo {
     diagram = true
@@ -390,13 +390,13 @@ TEXT
     }
   }
 
-  p "That sheet is 72 × 12 pixels: six 12 × 12 frames in one row. Nothing in the block says \"six\" — the build reads the sheet's pixel dimensions off the file and divides. `scale = 6.0` draws each 12-pixel frame at 72, and `fps = 12.0` runs it at twelve frames a second. Click the coin to pause it, and click again to resume."
+  p "That sheet is 72 × 12 pixels: six 12 × 12 frames in one row. Nothing in the block says \"six\". The build reads the sheet's pixel dimensions off the file and divides. `scale = 6.0` draws each 12-pixel frame at 72, and `fps = 12.0` runs it at twelve frames a second. Click the coin to pause it, and click again to resume."
 
-  p "The sheet is named by an inline label, the way an `image` block names its source, and the path is relative to the **build entry file** — not to the page that declares it. That is why the snippet above reads `../assets/pixel-coin.png`: this book's entry sits one folder below the assets it shares, and the page's own location has nothing to do with it. [Images, videos and file assets](wdoc_media) covers the rule. The file is copied into the output's `_wdoc/` folder and referenced by URL, so the frames appear when the output is served and not when a page is opened directly from disk."
+  p "An inline label names the sheet, the way an `image` block names its source, and the path is relative to the **build entry file**, not to the page that declares it. That is why the snippet above reads `../assets/pixel-coin.png`: this book's entry sits one folder below the assets it shares, and the page's own location has nothing to do with it. [Images, videos and file assets](wdoc_media) covers the rule. The build copies the file into the output's `_wdoc/` folder and references it by URL, so the frames appear when the output is served and not when you open a page directly from disk."
 
   callout "A dopesheet with no frame size draws nothing" {
     class = ["warning"]
-    body  = "`frame_width` and `frame_height` have no defaults, and a dopesheet missing either — or carrying an empty source — renders as nothing at all. No error, no placeholder, no gap in the diagram. That is the same best-effort silence a failed shape lowering has. A missing sprite-sheet _file_ is different: that one fails the build when the copy step reaches it."
+    body  = "`frame_width` and `frame_height` have no defaults, and a dopesheet missing either, or carrying an empty source, renders as nothing at all. No error, no placeholder, no gap in the diagram. That is the same best-effort silence a failed shape lowering has. A missing sprite-sheet _file_ is different: that one fails the build when the copy step reaches it."
   }
 
   h2 "Frame geometry"
@@ -406,13 +406,13 @@ TEXT
   table {
     rows:
       | "Field"                          | "Default"                                       | "What it measures" |
-      | "`frame_width` / `frame_height`" | "none — required"                               | "one frame, in sheet pixels" |
+      | "`frame_width` / `frame_height`" | "required"                                      | "one frame, in sheet pixels" |
       | "`offset_x` / `offset_y`"        | "`0`"                                           | "pixels before the first frame" |
       | "`stride_x` / `stride_y`"        | "the frame size"                                | "origin-to-origin step between frames" |
       | "`columns`"                      | "as many whole strides as fit across the sheet" | "frames per row" |
   }
 
-  p "Stride is separate from frame size because a sheet may put a gutter between its frames. A 16-pixel frame drawn every 18 pixels is `frame_width = 16` with `stride_x = 18`; the two pixels between are never sampled."
+  p "Stride is separate from frame size because a sheet may put a gutter between its frames. A 16-pixel frame drawn every 18 pixels is `frame_width = 16` with `stride_x = 18`. The two pixels between are never sampled."
 
   p "The default `columns` is a division, and it truncates:"
 
@@ -424,7 +424,7 @@ total   = columns * rows
 TEXT
   }
 
-  p "On the coin sheet that is `(72 - 0) / 12 = 6` columns, one row, six frames. Add `offset_x = 4` and `stride_x = 14` and it becomes `(72 - 4) / 14 = 4`. Note what is being counted: whole **strides**, not whole frames. A fifth stride would have to start at pixel 60 and reach 74, past the right edge, so it is not counted — even though a fifth 12-pixel frame starting at 60 would have fitted. Say `columns = 5` when you mean that. `rows` is always computed; there is no field for it."
+  p "On the coin sheet that is `(72 - 0) / 12 = 6` columns, one row, six frames. Add `offset_x = 4` and `stride_x = 14` and it becomes `(72 - 4) / 14 = 4`. The division counts whole **strides**, not whole frames. A fifth stride would have to start at pixel 60 and reach 74, past the right edge, so the division skips it, even though a fifth 12-pixel frame starting at 60 would have fitted. Say `columns = 5` when you mean that. `rows` is always computed. There is no field for it."
 
   p "A frame is addressed by one flat index, and the index walks the grid **row by row**:"
 
@@ -443,12 +443,12 @@ TEXT
 
   callout "columns is a claim, not a measurement" {
     class = ["warning"]
-    body  = "An explicit `columns` is trusted. Write `columns = 10` for the six-frame coin sheet and the play range runs to frame 9, whose window lies past the right edge of the image and draws blank. Give `columns` when the build cannot measure the sheet — an `http(s)://` source, or a format whose header it cannot read — and let it be computed otherwise."
+    body  = "The build trusts an explicit `columns`. Write `columns = 10` for the six-frame coin sheet and the play range runs to frame 9, whose window lies past the right edge of the image and draws blank. Give `columns` when the build cannot measure the sheet, as with an `http(s)://` source or a format whose header it cannot read. Otherwise let the build compute it."
   }
 
   h2 "The play range and playback"
 
-  p "`from` and `to` are flat frame indices, and the range they name is **inclusive**. Both are clamped to the sheet: `from` into `0`..`total - 1`, and `to` into `from`..`total - 1`, so `to = 99` on a six-frame sheet plays to frame 5 rather than failing. Omit `to` and it is the last frame; omit `from` and it is 0."
+  p "`from` and `to` are flat frame indices, and the range they name is **inclusive**. The build clamps both to the sheet: `from` into `0`..`total - 1`, and `to` into `from`..`total - 1`, so `to = 99` on a six-frame sheet plays to frame 5 rather than failing. Omit `to` and it is the last frame. Omit `from` and it is 0."
 
   p "The dopesheet below plays only the first three frames, at half the speed, and starts stopped. Click it to play:"
 
@@ -475,25 +475,25 @@ TEXT
     rows:
       | "Field"      | "Default" | "Effect" |
       | "`fps`"      | "`12.0`"  | "frames a second" |
-      | "`loop`"     | "`true`"  | "restart at the end; `false` stops on the last frame" |
-      | "`autoplay`" | "`true`"  | "start on load; `false` waits for a click" |
+      | "`loop`"     | "`true`"  | "restart at the end. `false` stops on the last frame" |
+      | "`autoplay`" | "`true`"  | "start on load. `false` waits for a click" |
       | "`controls`" | "`true`"  | "draw the centred play glyph" |
-      | "`scale`"    | "`1.0`"   | "display size — a 12-pixel frame at `6.0` draws 72 wide" |
+      | "`scale`"    | "`1.0`"   | "display size. A 12-pixel frame at `6.0` draws 72 wide" |
       | "`smooth`"   | "`false`" | "`true` opts into the browser's image smoothing" |
   }
 
-  p "The glyph is `▶` while a dopesheet is paused and `↻` once a non-looping one has finished, and it is hidden while the animation runs. Pixel art is drawn with nearest-neighbour scaling by default, which is what `smooth = false` means. Set `smooth = true` for a sheet of photographs or smooth vector frames, where hard pixel edges would be an artefact rather than the style."
+  p "The glyph is `▶` while a dopesheet is paused and `↻` once a non-looping one has finished, and it disappears while the animation runs. The browser scales pixel art with nearest neighbour by default, which is what `smooth = false` means. Set `smooth = true` for a sheet of photographs or smooth vector frames, where hard pixel edges would be an artefact rather than the style."
 
   callout "controls = false hides the glyph, not the click" {
     class = ["note"]
-    body  = "The whole dopesheet group listens for a click, and `controls = false` only stops the play glyph being drawn. A reader can still pause a dopesheet that shows no control, and will then have no way of telling that it is paused. Reach for `controls = false` when a dopesheet is decorative and loops for ever, not when you want it uninterruptible."
+    body  = "The whole dopesheet group listens for a click, and `controls = false` only hides the play glyph. A reader can still pause a dopesheet that shows no control, and will then have no way of telling that it is paused. Reach for `controls = false` when a dopesheet is decorative and loops for ever, not when you want it uninterruptible."
   }
 
   h3 "Tracks and keys"
 
-  p "The block is named after the animator's dope sheet — the grid of tracks down one axis and frames across the other, with a key marked in each cell that changes. A wdoc `dopesheet` is **one** of those tracks: the sprite sheet is the track, and its keys are the frame indices, one per frame with no gaps between them. There is no `track` child block and no per-key field."
+  p "The block is named after the animator's dope sheet: the grid of tracks down one axis and frames across the other, with a key marked in each cell that changes. A wdoc `dopesheet` is **one** of those tracks: the sprite sheet is the track, and its keys are the frame indices, one per frame with no gaps between them. There is no `track` child block and no per-key field."
 
-  p "Several tracks are several dopesheets in one diagram. Each carries its own sheet, its own range and its own `fps`, and each is placed with `x` / `y` like any shape — so a character, its shadow and a spinning pickup are three blocks that happen to overlap. Shapes are drawn in the order they are declared, so a dopesheet written later overlays one written earlier. That draw order is the whole compositing model: there is no z-index and no shared clock, and two dopesheets at different `fps` values drift apart as they run."
+  p "Several tracks are several dopesheets in one diagram. Each carries its own sheet, its own range, and its own `fps`, and you place each with `x` / `y` like any shape. A character, its shadow, and a spinning pickup are three blocks that happen to overlap. The renderer draws shapes in the order you declare them, so a dopesheet written later overlays one written earlier. That draw order is the whole compositing model: there is no z-index and no shared clock, and two dopesheets at different `fps` values drift apart as they run."
 
   h2 "Dopesheet fields"
 
@@ -509,7 +509,7 @@ TEXT
       | "A position on it is"   | "a date"                                      | "a frame index" |
       | "Time comes from"       | "ISO strings you author"                      | "counting up from `from` at `fps`" |
       | "Who computes it"       | "the build, against a real calendar"          | "the reader's browser, while the page is open" |
-      | "What reaches the page" | "finished SVG — spine, ticks, markers, cards" | "one windowed `<svg>` plus the frame geometry" |
+      | "What reaches the page" | "finished SVG: spine, ticks, markers, cards"  | "one windowed `<svg>` plus the frame geometry" |
       | "The scale is set by"   | "`start` / `end`, or a fit to the events"     | "the sheet's own pixel dimensions" |
       | "In Markdown and PDF"   | "the same drawing"                            | "the `from` frame, frozen" |
       | "Reach for it when"     | "the reader needs to see _when_"              | "the reader needs to see _motion_" |
@@ -517,27 +517,27 @@ TEXT
 
   h3 "Why both are native"
 
-  p "Most wdoc blocks are written in WCL. A block declares a `lower` function returning shapes, the renderer recurses until only leaves remain, and no Rust is involved — that is how the charts work, and how [Writing your own blocks](wdoc_extending) says you add your own. Both blocks in this chapter carry `@native` instead, which is the declaration that a kind is drawn by the renderer and has no `lower` at all. A wdoc block declares exactly one of the two; neither and both are build errors."
+  p "Most wdoc blocks are written in WCL. A block declares a `lower` function returning shapes, the renderer recurses until only leaves remain, and no Rust is involved. That is how the charts work, and how [Writing your own blocks](wdoc_extending) says you add your own. Both blocks in this chapter carry `@native` instead. `@native` declares that the renderer draws the kind and that the kind has no `lower` at all. A wdoc block declares exactly one of the two. Neither and both are build errors."
 
-  p "For the **timeline**, the missing piece is the calendar. Placing a tick on 1 March means knowing that February had 28 days this year and 29 the last. Stepping a month means adding a variable number of days. Flooring to a week means knowing which day was Monday. WCL has arithmetic and it has strings, but it has no date type and no calendar, so a WCL `lower` could not work out where the ticks go — there would be nothing for it to return. The renderer does the calendar work and hands back finished geometry."
+  p "For the **timeline**, the missing piece is the calendar. Placing a tick on 1 March means knowing that February had 28 days this year and 29 the last. Stepping a month means adding a variable number of days. Flooring to a week means knowing which day was Monday. WCL has arithmetic and it has strings, but it has no date type and no calendar, so a WCL `lower` could not work out where the ticks go. There would be nothing for it to return. The renderer does the calendar work and hands back finished geometry."
 
   p "For the **dopesheet**, the missing pieces are the file and the clock. The frame grid depends on the sheet's pixel dimensions, read off the image file while the site builds, and a WCL expression cannot open a file. The animation is not a drawing at all: it is a script advancing one `viewBox` on a timer, shipped once per site and wired to the data attributes the build stamped on the group. Neither is expressible as a value a `lower` could return."
 
-  p "The two reasons are worth keeping apart, because they generalise differently. A block is native when what it needs is **knowledge the language does not have** — a calendar, a font metric, the bytes of a file. It is also native when what it produces is **not a shape** — a script, an HTML fragment, a copied asset. `timeline` is the first kind and `dopesheet` is mostly the second. A block of your own that fits neither description should be lowering in WCL instead."
+  p "The two reasons are worth keeping apart, because they generalise differently. A block is native when what it needs is **knowledge the language does not have**: a calendar, a font metric, the bytes of a file. It is also native when what it produces is **not a shape**: a script, an HTML fragment, a copied asset. `timeline` is the first kind and `dopesheet` is mostly the second. A block of your own that fits neither description should lower in WCL instead."
 
   callout "Native does not mean HTML-only" {
     class = ["info"]
-    body  = "Both kinds declare coverage on all four backends, so neither needs an `@except` to survive a Markdown or PDF build. A timeline renders the same static drawing everywhere. A dopesheet renders its `from` frame and stops — the geometry is still stamped on the group, but no player runs beside a `.md` file or inside a PDF. [Output targets](wdoc_outputs) covers what each backend does with a diagram."
+    body  = "Both kinds declare coverage on all four backends, so neither needs an `@except` to survive a Markdown or PDF build. A timeline renders the same static drawing everywhere. A dopesheet renders its `from` frame and stops. The geometry is still stamped on the group, but no player runs beside a `.md` file or inside a PDF. [Output targets](wdoc_outputs) covers what each backend does with a diagram."
   }
 
   h2 "Where to go next"
 
   list {
-    li "[The diagram canvas](wdoc_diagrams) — the surface both blocks sit on, and how `x` / `y`, anchors and layout place a shape on it."
-    li "[Charts](wdoc_charts) — the other data-driven axis, and the one that _is_ written in WCL. Compare its `lower` with this chapter's two natives."
-    li "[Trees, node tables and cards](wdoc_tree) — the `card` shape a timeline pins to a date."
-    li "[Tilemaps and maps](wdoc_tilemaps) — the other blocks that crop an external image into a grid."
-    li "[Images, videos and file assets](wdoc_media) — how a sprite sheet's path resolves, and where the copy lands."
-    li "[Writing your own blocks](wdoc_extending) — `lower`, `@native`, and which one a new block of yours should carry."
+    li "[The diagram canvas](wdoc_diagrams). The surface both blocks sit on, and how `x` / `y`, anchors and layout place a shape on it."
+    li "[Charts](wdoc_charts). The other data-driven axis, and the one that _is_ written in WCL. Compare its `lower` with this chapter's two natives."
+    li "[Trees, node tables and cards](wdoc_tree). The `card` shape a timeline pins to a date."
+    li "[Tilemaps and maps](wdoc_tilemaps). The other blocks that crop an external image into a grid."
+    li "[Images, videos and file assets](wdoc_media). How a sprite sheet's path resolves, and where the copy lands."
+    li "[Writing your own blocks](wdoc_extending). `lower`, `@native`, and which one a new block of yours should carry."
   }
 }

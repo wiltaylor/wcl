@@ -403,7 +403,7 @@ type LpStep extends ContentBlock {
 type LpFooter extends ContentBlock {
   @doc("Short prose under the brand wordmark.")
   tagline: utf8
-  @doc("Brand wordmark text (chrome — dropped in Markdown).")
+  @doc("Brand wordmark text. Chrome, so Markdown drops it.")
   brand: utf8?
   copyright: utf8?
   note: utf8?

@@ -1,4 +1,4 @@
-// Chapter 17 — Websites.
+// Websites.
 //
 // Written against #174. Every snippet, every build output and every error
 // message below was run through `wcl wdoc build` before it was written
@@ -9,7 +9,7 @@ page wdoc_websites {
 
   h1 "Websites"
 
-  p "A **website** is the third thing wdoc builds. A book renders a chapter tree into a sidebar; a presentation renders pages into a slide deck; a website renders _your_ HTML and CSS, with wdoc-rendered content dropped into holes you cut in it. You bring the design — a Figma export, a Claude artifact, a hand-built theme, a Vite bundle. wdoc brings the words."
+  p "A **website** is the third thing wdoc builds. A book renders a chapter tree into a sidebar. A presentation renders pages into a slide deck. A website renders _your_ HTML and CSS, with wdoc-rendered content dropped into holes you cut in it. You bring the design: a Figma export, a Claude artifact, a hand-built theme, a Vite bundle. wdoc brings the words."
 
   p "Three mechanisms make that split work, and this chapter is those three. **Named slots** are the holes. The **slot contract** decides what a page may put in them. **Head assets** get the design's stylesheet and script onto the page. A fourth piece, the `assets` folder, ships files some other tool already built."
 
@@ -84,7 +84,7 @@ page pricing {
 WCL
   }
 
-  p "Save the second as `assets/site.css`. Its contents do not matter to wdoc — that is rather the point — so anything will do:"
+  p "Save the second as `assets/site.css`. Its contents do not matter to wdoc. That is rather the point, so anything will do:"
 
   code css {
     filename = "assets/site.css"
@@ -98,13 +98,13 @@ CSS
 
   p "Build it:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 wrote 2 pages
 $ ls _site
 _wdoc  assets  index.html  pricing.html
-TEXT
+CONSOLE
   }
 
   p "The body of `_site/index.html` is the design, with the page's four items routed into it (line breaks added here for reading):"
@@ -124,7 +124,7 @@ TEXT
 HTML
   }
 
-  p "Read what became of each item. The `hero { … }` block filled the **named slot** `hero`. The `h2` and the `p` filled nothing by name, so they landed in the reserved slot `content`. Nothing filled `footer`, so the **default** on its declaration ran instead. Meanwhile `assets/site.css` was linked into the `<head>` because the site listed it under `stylesheets`, and the whole `assets/` folder was copied into `_site/` because the site listed it under `assets`. Those are two separate decisions about one file, and [the comparison below](#five-ways-to-get-css-and-js-onto-a-page) is mostly about not confusing them."
+  p "Read what became of each item. The `hero { … }` block filled the **named slot** `hero`. The `h2` and the `p` filled nothing by name, so they landed in the reserved slot `content`. Nothing filled `footer`, so the **default** on its declaration ran instead. Meanwhile the build linked `assets/site.css` into the `<head>` because the site listed it under `stylesheets`, and copied the whole `assets/` folder into `_site/` because the site listed it under `assets`. Those are two separate decisions about one file, and [the comparison below](#five-ways-to-get-css-and-js-onto-a-page) is mostly about not confusing them."
 
   p "The body of `_site/pricing.html` is the other half of the experiment. It fills `footer` and not `hero`, so the footer carries its own words and the hero section is not emitted at all:"
 
@@ -167,17 +167,17 @@ WCL
   list {
     li "**The type.** For a content hole it is `content`. `content<T>` narrows what a page may put there: `T` names a block type or an interface, and a fill whose kind is neither `T` nor a descendant of it fails the build."
     li "**`?`** makes the slot optional. A page need not fill it, and `slot(c, :hero)` then places nothing."
-    li "**`*`** makes the slot _repeated_, which turns the whole template into a **collection template** — one output page assembled from every member page's copy of that slot. The built-in `presentation` template is exactly this (`slot content: content*`); see [Presentations](wdoc_presentations)."
+    li "**`*`** makes the slot _repeated_. A repeated slot turns the whole template into a **collection template**: one output page assembled from every member page's copy of that slot. The built-in `presentation` template is exactly this, with `slot content: content*`. See [Presentations](wdoc_presentations)."
     li "**`= expr`** gives the slot a default: a `fn(SlotOwner) -> list<Html>` that runs only when the page leaves the slot empty. A slot with a default is optional whether or not it also carries `?`."
   }
 
   p "`content` is a **reserved name**. Whatever else a layout declares, `content` means \"everything the page did not put somewhere else\", and it must be declared with the `content` type. Declare it as anything else and the build stops before it renders a single page:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 template `acme`: reserved slot `content` must have a `content` type, found `utf8`
-TEXT
+CONSOLE
   }
 
   callout "Two things called a slot" {
@@ -187,7 +187,7 @@ TEXT
 
   h3 "Filling a slot"
 
-  p "A page fills a named slot with a **bare block of the same name**. There is no keyword on the page side and no ordering rule — a fill may sit anywhere among the page's items:"
+  p "A page fills a named slot with a **bare block of the same name**. There is no keyword on the page side and no ordering rule. A fill may sit anywhere among the page's items:"
 
   code wcl {
     source = <<'WCL'
@@ -205,13 +205,13 @@ page index {
 WCL
   }
 
-  p "Every page item that is _not_ a named fill is **loose content**, and all of it fills the reserved `content` slot in the order you wrote it. That is the entire routing rule. A page that fills nothing by name is therefore just an ordinary wdoc page, which is why a page written for a book drops into a website layout unchanged."
+  p "Every page item that is _not_ a named fill is **loose content**, and all of it fills the reserved `content` slot in the order you wrote it. That is the entire routing rule. A page that fills nothing by name is therefore just an ordinary wdoc page. That is why a page written for a book drops into a website layout unchanged."
 
-  p "A fill is a wrapper, not a block in its own right: the layout places the fill's _children_, and the `hero { … }` wrapper never appears in the output. Look again at the built HTML at the top of the chapter — the `<section class=\"hero\">` came from the layout, and only the `<h1>` and the `<p>` came from inside the fill."
+  p "A fill is a wrapper, not a block in its own right: the layout places the fill's _children_, and the `hero { … }` wrapper never appears in the output. Look again at the built HTML at the top of the chapter: the `<section class=\"hero\">` came from the layout, and only the `<h1>` and the `<p>` came from inside the fill."
 
   h3 "Placing a slot"
 
-  p "Inside `render`, two functions read a slot. `slot(c, name)` returns the placement — a `list<Html>` you drop wherever the design wants it. `slot_blocks(c, name)` returns the raw block handles, which is how you ask whether the page filled it at all:"
+  p "Inside `render`, two functions read a slot. `slot(c, name)` returns the placement, a `list<Html>` you drop wherever the design wants it. `slot_blocks(c, name)` returns the raw block handles, so it can tell you whether the page filled the slot at all:"
 
   code wcl {
     source = <<'WCL'
@@ -224,26 +224,26 @@ else { [ el("section", ["hero"], slot(c, :hero)) ] }
 WCL
   }
 
-  p "That guard earns its two extra lines. `slot(c, :hero)` on an unfilled optional slot returns an empty list, and `el(\"section\", [\"hero\"], [])` still emits `<section class=\"hero\"></section>` — an empty box that your CSS will happily give four rems of padding. The built-in layout packages the same guard as `website_slot_section(c, name, tag, cls)`; the worked example above packages it as `section_for`."
+  p "That guard earns its two extra lines. `slot(c, :hero)` on an unfilled optional slot returns an empty list, and `el(\"section\", [\"hero\"], [])` still emits `<section class=\"hero\"></section>`, an empty box that your CSS will happily give four rems of padding. The built-in layout packages the same guard as `website_slot_section(c, name, tag, cls)`. The worked example above packages it as `section_for`."
 
   p "Both functions refuse a name the calling template did not declare. That is a render-time error rather than a contract error, because here it is the layout that is wrong, not the page:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 wcl::eval::builtin_type
 
   × '__wdoc_slot': template references slot `hero` but does not declare it
-TEXT
+CONSOLE
   }
 
-  p "A slot's default fires here, at placement time, and only when the slot resolved to no blocks. It receives the slot's **owner** — the `TemplateCtx` for an ordinary page — so a default can read the site title, the page name, or anything else the context carries. The built-in `website` layout uses exactly that so an unfilled footer still reads as the site title."
+  p "A slot's default fires here, at placement time, and only when the slot resolved to no blocks. It receives the slot's **owner**, the `TemplateCtx` for an ordinary page, so a default can read the site title, the page name, or anything else the context carries. The built-in `website` layout uses exactly that so an unfilled footer still reads as the site title."
 
   h2 "The slot contract"
 
-  p "The contract is checked once per page, before any page renders. It is a **structural** check: it reads the page's block kinds and the template's slot declarations, and it evaluates nothing. So a contract error names the page and the template and stops the build, rather than producing a page with something quietly missing from it."
+  p "wdoc checks the contract once per page, before any page renders. It is a **structural** check: it reads the page's block kinds and the template's slot declarations, and it evaluates nothing. So a contract error names the page and the template and stops the build, rather than producing a page with something quietly missing from it."
 
-  p "Which template a page is checked against is the page's own `template` field when it has one, and the site's `default_template` otherwise. A page whose template does not resolve to a literal symbol is left alone: a false accusation is worse than a check deferred to render."
+  p "wdoc checks a page against its own `template` field when it has one, and against the site's `default_template` otherwise. A page whose template does not resolve to a literal symbol goes unchecked: a false accusation is worse than a check deferred to render."
 
   p "These are its refusals, with the message each one prints. [Conditional fills](#conditional-fills) below adds one more:"
 
@@ -259,11 +259,11 @@ TEXT
       | "Declared the reserved `content` slot as something else"    | "template `acme`: reserved slot `content` must have a `content` type, found `utf8`" |
   }
 
-  p "Rows four and five are one mistake seen from two distances, and the difference tells you where to look. \"Template `acme` does not declare it\" means a layout this site really renders with _does_ declare `hero`, so you have probably pointed the page at the wrong template. \"No layout used by this site declares it\" means the name is known only to a layout that nothing selects — a typo, or a layout you forgot to wire up."
+  p "Rows four and five are one mistake seen from two distances, and the difference tells you where to look. \"Template `acme` does not declare it\" means a layout this site really renders with _does_ declare `hero`, so you have probably pointed the page at the wrong template. \"No layout used by this site declares it\" means the name is known only to a layout that nothing selects: a typo, or a layout you forgot to wire up."
 
   h3 "Conditional fills"
 
-  p "A page that more than one layout may render can mark a fill **conditional** with `?`. A conditional fill the selected layout does not declare is dropped rather than refused:"
+  p "A page that more than one layout may render can mark a fill **conditional** with `?`. wdoc drops a conditional fill the selected layout does not declare, rather than refusing it:"
 
   code wcl {
     source = <<'WCL'
@@ -274,25 +274,25 @@ page index {
 WCL
   }
 
-  p "The escape is narrow on purpose. A conditional fill is dropped only when _some_ layout this site uses declares that slot — \"this layout has no hero, but that one does\". Name a slot that only an unused layout declares and the build still stops, `?` or no `?`:"
+  p "The escape is narrow on purpose. wdoc drops a conditional fill only when _some_ layout this site uses declares that slot: \"this layout has no hero, but that one does\". Name a slot that only an unused layout declares and the build still stops, `?` or no `?`:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 page `index` conditionally fills slot `banner`, but no layout used by this site declares it
-TEXT
+CONSOLE
   }
 
-  p "That is the message for a `banner? { … }` beside a layout of your own that declares only `content`: `banner` is a name the stdlib's `website` layout declares, but nothing in this site selects that layout. Conditionally fill a name that _nothing_ in the document declares and you never reach this check at all — the language refuses the block first, as the next section explains."
+  p "That is the message for a `banner? { … }` beside a layout of your own that declares only `content`: `banner` is a name the stdlib's `website` layout declares, but nothing in this site selects that layout. Conditionally fill a name that _nothing_ in the document declares and you never reach this check at all. The language refuses the block first, as the next section explains."
 
   h3 "Two checkers, two voices"
 
-  p "A bare `hero { … }` inside a `page` is not a block kind wdoc knows. The **language** admits it because some top-level holder in the document declares `slot hero: content` — that is the only question `wcl check` asks, and it asks it document-wide, without deciding which holder is the active one. Everything scoped — which template, which site, filled once or twice, the right kind of child — belongs to wdoc, and runs at build time."
+  p "A bare `hero { … }` inside a `page` is not a block kind wdoc knows. The **language** admits it because some top-level holder in the document declares `slot hero: content`. That is the only question `wcl check` asks, and it asks it document-wide, without deciding which holder is the active one. Everything scoped belongs to wdoc and runs at build time: which template, which site, filled once or twice, the right kind of child."
 
   p "You can hear which checker refused you. Invent a name that no template and no component declares anywhere, and the language answers first, with a span:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 wcl::eval::schema_violation
 
@@ -304,25 +304,25 @@ wcl::eval::schema_violation
    ╰────
 
 1 schema violation
-TEXT
+CONSOLE
   }
 
   callout "The stdlib layouts are in scope too" {
     class = ["warning"]
-    body  = "`import <wdoc.wcl>` brings in the built-in `webpage`, `book`, `presentation` and `website` templates, and their slot names — `content`, `banner`, `hero`, `sidebar`, `footer` — count as declared as far as the language is concerned. So a stray `hero { … }` beside your own layout never produces the schema violation above. It produces one of the two \"fills slot `hero`, but …\" contract errors instead, which is the more useful answer anyway."
+    body  = "`import <wdoc.wcl>` brings in the built-in `webpage`, `book`, `presentation` and `website` templates. Their slot names `content`, `banner`, `hero`, `sidebar` and `footer` count as declared as far as the language is concerned. So a stray `hero { … }` beside your own layout never produces the schema violation above. It produces one of the two \"fills slot `hero`, but …\" contract errors instead, which is the more useful answer anyway."
   }
 
   h3 "Repeaters"
 
-  p "A `wdoc_repeater` inside a page is inspected structurally rather than evaluated: each named fill it generates counts as one possible fill however many elements the data has, and anything else it generates counts as possible loose content. Root-level repeaters — the ones generating whole `page` blocks — are deliberately left unchecked, because which layout each generated page pairs with is a render-time decision."
+  p "wdoc inspects a `wdoc_repeater` inside a page structurally rather than evaluating it: each named fill it generates counts as one possible fill however many elements the data has, and anything else it generates counts as possible loose content. Root-level repeaters, the ones generating whole `page` blocks, are deliberately left unchecked, because which layout each generated page pairs with is a render-time decision."
 
   h2 "Head assets"
 
-  p "A design needs its stylesheet and its script in the page `<head>`, and there are two ways to put them there. They are less alternatives than two owners: the **site** owns what belongs to every page, and the **layout** owns what belongs to that layout."
+  p "A design needs its stylesheet and its script in the page `<head>`, and there are two ways to put them there. The two are not alternatives. They are two owners: the **site** owns what belongs to every page, and the **layout** owns what belongs to that layout."
 
   h3 "From the site block"
 
-  p "Three `site` fields take lists of hrefs. `stylesheets` and `fonts` both become `<link rel=\"stylesheet\">`; `scripts` becomes a deferred `<script>`:"
+  p "Three `site` fields take lists of hrefs. `stylesheets` and `fonts` both become `<link rel=\"stylesheet\">`. `scripts` becomes a deferred `<script>`:"
 
   code wcl {
     source = <<'WCL'
@@ -346,7 +346,7 @@ WCL
 HTML
   }
 
-  p "Each href is HTML-escaped and otherwise emitted **exactly as you wrote it**. wdoc does not resolve it, copy it, or check that anything is there. That is deliberate: one field takes a URL, a path under a copied [`assets` folder](#the-assets-folder) and a path to a shipped `file` block's output, with no mode switch. `fonts` and `stylesheets` produce identical markup — two names exist so a reader of the `site` block can see which link is typography and which is design."
+  p "wdoc HTML-escapes each href and otherwise emits it **exactly as you wrote it**. Nothing resolves it, copies it, or checks that anything is there. That is deliberate: one field takes a URL, a path under a copied [`assets` folder](#the-assets-folder) and a path to a shipped `file` block's output, with no mode switch. `fonts` and `stylesheets` produce identical markup. Two names exist so a reader of the `site` block can see which link is typography and which is design."
 
   h3 "From the layout"
 
@@ -357,9 +357,9 @@ HTML
       | "Helper"                          | "Adds to every page that layout renders" |
       | "`wdoc_head_stylesheet(href)`"    | "`<link rel=\"stylesheet\" href>`" |
       | "`wdoc_head_script(src)`"         | "a deferred `<script src>`" |
-      | "`wdoc_head_font(href)`"          | "a web-font `<link rel=\"stylesheet\" href>` — identical to `wdoc_head_stylesheet`, named for intent at the call site" |
-      | "`wdoc_head_meta(name, content)`" | "`<meta name content>` — a description, a viewport, an `og:*` tag" |
-      | "`wdoc_head_raw(html)`"           | "verbatim head HTML — a `<base>`, a preconnect, an inline `<style>`" |
+      | "`wdoc_head_font(href)`"          | "a web-font `<link rel=\"stylesheet\" href>`, identical to `wdoc_head_stylesheet`, named for intent at the call site" |
+      | "`wdoc_head_meta(name, content)`" | "`<meta name content>` for a description, a viewport, an `og:*` tag" |
+      | "`wdoc_head_raw(html)`"           | "verbatim head HTML: a `<base>`, a preconnect, an inline `<style>`" |
   }
 
   p "Each returns a `list<Html>`, so they compose into the `flatten([…])` a layout is usually built from:"
@@ -377,16 +377,16 @@ render = fn(c: TemplateCtx) -> list<Html>
 WCL
   }
 
-  p "The site's head assets come first in the `<head>`, then the layout's, in the order the layout returned them. Nothing is deduplicated: name the same stylesheet in both places and it is linked twice."
+  p "The site's head assets come first in the `<head>`, then the layout's, in the order the layout returned them. wdoc deduplicates nothing: name the same stylesheet in both places and the page links it twice."
 
   callout "Top level only" {
     class = ["warning"]
-    body  = "A `Head` is hoisted into `<head>` only when it is an element of the list `render` returned. A `Head` nested inside an element's `children` renders to **nothing** — it does not leak into the `<body>`, and it does not warn. If a head helper had no effect, check that it is not sitting inside an `el(…)` call."
+    body  = "A `Head` is hoisted into `<head>` only when it is an element of the list `render` returned. A `Head` nested inside an element's `children` renders to **nothing**. It does not leak into the `<body>`, and it does not warn. If a head helper had no effect, check that it is not sitting inside an `el(…)` call."
   }
 
   h2 "The assets folder"
 
-  p "`stylesheets` and `scripts` link files. `assets` **copies** them. Each entry is one relative path used twice: as a source relative to the document, and as a destination relative to this site's output directory. `assets = [\"assets\"]` reads `./assets/` and writes `<out>/assets/`; `assets = [\"design/dist\"]` reads `./design/dist/` and writes `<out>/design/dist/`. The copy is recursive and keeps every name it finds."
+  p "`stylesheets` and `scripts` link files. `assets` **copies** them. Each entry is one relative path used twice: as a source relative to the document, and as a destination relative to this site's output directory. `assets = [\"assets\"]` reads `./assets/` and writes `<out>/assets/`. `assets = [\"design/dist\"]` reads `./design/dist/` and writes `<out>/design/dist/`. The copy is recursive and keeps every name it finds."
 
   code wcl {
     source = <<'WCL'
@@ -398,18 +398,18 @@ site acme {
 WCL
   }
 
-  p "Verbatim is the feature. Because nothing is rewritten, `assets` takes a folder some other tool built — a Vite or webpack `dist/`, a Tailwind output, a downloaded theme — and you reference the hashed filenames it emitted by their output path. Because source and destination are the same string, keep entries inside the document's own folder: an entry that climbs out with `..` writes outside the output folder too."
+  p "Verbatim is the feature. Because wdoc rewrites nothing, `assets` takes a folder some other tool built: a Vite or webpack `dist/`, a Tailwind output, a downloaded theme. You then reference the hashed filenames it emitted by their output path. Because source and destination are the same string, keep entries inside the document's own folder: an entry that climbs out with `..` writes outside the output folder too."
 
   p "The folder has to exist. A missing one stops the build:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 copy assets folder nope: No such file or directory (os error 2)
-TEXT
+CONSOLE
   }
 
-  p "To ship one file rather than a folder — a download, a schema, an example config — use the `file` block instead. [Images, videos and file assets](wdoc_media) covers it."
+  p "To ship one file rather than a folder, such as a download, a schema or an example config, use the `file` block instead. [Images, videos and file assets](wdoc_media) covers it."
 
   h2 "Five ways to get CSS and JS onto a page"
 
@@ -422,10 +422,10 @@ TEXT
       | "A named `style` block"  | "`style \"x\" { … }` + `css_style(:x)`" | "a `<style>` in the `<body>`, where you place it" | "every page that layout renders" | "the CSS belongs to one layout or one part of it" |
       | "Site head assets"       | "`stylesheets` / `scripts` / `fonts`"   | "`<head>`, before the layout's"                   | "every page of the site"         | "a file or URL that is the same everywhere" |
       | "Layout head assets"     | "`wdoc_head_*(…)`"                      | "`<head>`, after the site's"                      | "every page that layout renders" | "the layout, not the site, owns the asset" |
-      | "The assets folder"      | "`assets = [\"dist\"]`"                 | "copied into the output tree; nothing is linked"  | "the whole site build"           | "another tool already built the files" |
+      | "The assets folder"      | "`assets = [\"dist\"]`"                 | "copied into the output tree, and nothing is linked"  | "the whole site build"           | "another tool already built the files" |
   }
 
-  p "The last row is the one that catches people, because it is the only one that links nothing. `assets` puts bytes in the output directory and stops there. Copying a stylesheet and referencing it are two decisions, which is why the worked example names `assets/site.css` twice — once under `assets` to ship the folder, once under `stylesheets` to link the file. Rows one and two belong to [Themes and styling](wdoc_styling), which covers them properly."
+  p "The last row is the one that catches people, because it is the only one that links nothing. `assets` puts bytes in the output directory and stops there. Copying a stylesheet and referencing it are two decisions. That is why the worked example names `assets/site.css` twice: once under `assets` to ship the folder, once under `stylesheets` to link the file. Rows one and two belong to [Themes and styling](wdoc_styling), which covers them properly."
 
   h2 "The built-in website layout"
 
@@ -484,11 +484,11 @@ page pricing {
 WCL
   }
 
-  p "The three optional slots each vanish when unfilled, and the content grid drops to one column when `sidebar` is empty — `pricing` above renders as header, content, footer and nothing else. The `footer` slot's default means an unfilled footer still reads as the site title rather than as a blank bar."
+  p "The three optional slots each vanish when unfilled, and the content grid drops to one column when `sidebar` is empty. `pricing` above renders as header, content, footer and nothing else. The `footer` slot's default means an unfilled footer still reads as the site title rather than as a blank bar."
 
   h3 "Header, nav and footer parts"
 
-  p "The layout is composed from named parts, and `wdoc_website_layout(c)` is its whole body. Copy that one function, swap a part, and you are retheming rather than starting from an empty file:"
+  p "Named parts compose the layout, and `wdoc_website_layout(c)` is its whole body. Copy that one function, swap a part, and you are retheming rather than starting from an empty file:"
 
   code wcl {
     source = <<'WCL'
@@ -506,12 +506,12 @@ WCL
   }
 
   list {
-    li "**`wdoc_part_website_css()`** — the default header / hero / grid / footer styling, as a `<style>` placed in the body. Drop this line and every other part still works, unstyled."
-    li "**`website_header(c)`** — the sticky `<header class=\"ws-header\">`: the site title as a link home, then the nav, then the controls."
-    li "**The nav** — the site's curated `menu` tree, via `wdoc_part_menu_tree(c)`. With no `menu` block declared, the header falls back to a flat `<ul class=\"menu\">` of one link per page, so a two-page site needs no nav configuration at all. The entry matching the current page carries the `current` class."
-    li "**`website_header_controls(c)`** — the right-hand cluster: `wdoc_part_search_box` when the site sets `search = true`, and `wdoc_part_theme_toggle` when it sets `theme_toggle = true`. With neither flag set the cluster is not emitted, so the header keeps the shape it had before."
-    li "**`website_body(c)`** — `<main>`, plus an `<aside>` beside it only when the page filled `sidebar`. The `has-aside` class on the wrapper is what switches the grid to two columns."
-    li "**`website_footer(c)`** — `<footer class=\"ws-footer\">` around the `footer` slot. It places the slot unconditionally, because the slot's own default guarantees something is there."
+    li "**`wdoc_part_website_css()`.** The default header, hero, grid and footer styling, as a `<style>` placed in the body. Drop this line and every other part still works, unstyled."
+    li "**`website_header(c)`.** The sticky `<header class=\"ws-header\">`: the site title as a link home, then the nav, then the controls."
+    li "**The nav.** The site's curated `menu` tree, via `wdoc_part_menu_tree(c)`. With no `menu` block declared, the header falls back to a flat `<ul class=\"menu\">` of one link per page, so a two-page site needs no nav configuration at all. The entry matching the current page carries the `current` class."
+    li "**`website_header_controls(c)`.** The right-hand cluster: `wdoc_part_search_box` when the site sets `search = true`, and `wdoc_part_theme_toggle` when it sets `theme_toggle = true`. With neither flag set the layout emits no cluster, so the header keeps the shape it had before."
+    li "**`website_body(c)`.** `<main>`, plus an `<aside>` beside it only when the page filled `sidebar`. The `has-aside` class on the wrapper is what switches the grid to two columns."
+    li "**`website_footer(c)`.** `<footer class=\"ws-footer\">` around the `footer` slot. It places the slot unconditionally, because the slot's own default guarantees something is there."
   }
 
   p "Each of those parts is an ordinary `let` binding in the wdoc standard library, so your own layout may call any of them. The controls cluster and the menu tree are the two worth taking: they read site configuration you would otherwise have to re-implement."
@@ -520,29 +520,29 @@ WCL
 
   p "For a real design, start from the scaffold rather than a blank file:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl init website ./my-site
 $ wcl wdoc build my-site/main.wcl --out my-site/_site
-TEXT
+CONSOLE
   }
 
-  p "It writes a five-file project: `main.wcl` (the imports and the `site`, with `assets` and `scripts` already wired), `theme.wcl` (a slot-declaring layout built from raw HTML), `components.wcl` (starter landing components — hero, feature cards, steps, footer — and their style rules), `content.wcl` (one page, built from those components plus named fills), and `assets/app.js`. Every file is meant to be edited or thrown away. [The CLI](lang_cli) covers `wcl init` and how it finds a template."
+  p "It writes a five-file project: `main.wcl` (the imports and the `site`, with `assets` and `scripts` already wired), `theme.wcl` (a slot-declaring layout built from raw HTML), `components.wcl` (starter landing components for a hero, feature cards, steps and a footer, plus their style rules), `content.wcl` (one page, built from those components plus named fills), and `assets/app.js`. Every file is meant to be edited or thrown away. [The CLI](lang_cli) covers `wcl init` and how it finds a template."
 
   h2 "What a website is not"
 
-  p "Two limits are worth stating plainly. First, everything in this chapter is **HTML-only**. Head assets, the copied `assets` folder and a raw-HTML layout mean nothing to a Markdown or PDF build, which renders page bodies and ignores templates entirely — see [Output targets](wdoc_outputs). Author your words as real wdoc blocks and they degrade cleanly; bury them inside `raw(…)` and only the website will ever show them."
+  p "Two limits are worth stating plainly. First, everything in this chapter is **HTML-only**. Head assets, the copied `assets` folder and a raw-HTML layout mean nothing to a Markdown or PDF build, which renders page bodies and ignores templates entirely. See [Output targets](wdoc_outputs). Author your words as real wdoc blocks and they degrade cleanly. Bury them inside `raw(…)` and only the website will ever show them."
 
-  p "Second, a slot is a hole, not a component. It has a name, an optional type restriction and a default, and that is the whole model. The moment you want parameters, repetition or reuse across pages, what you want is a `wdoc_component` ([Data views](wdoc_data_views)) or a block of your own ([Writing your own blocks](wdoc_extending)) placed _inside_ a slot — not a cleverer slot."
+  p "Second, a slot is a hole, not a component. It has a name, an optional type restriction and a default, and that is the whole model. The moment you want parameters, repetition or reuse across pages, what you want is a `wdoc_component` ([Data views](wdoc_data_views)) or a block of your own ([Writing your own blocks](wdoc_extending)) placed _inside_ a slot, not a cleverer slot."
 
   h2 "Where to go next"
 
   list {
-    li "[Templates and layouts](wdoc_templates) — `template`, `TemplateCtx`, the stdlib parts and the `el` constructor family this chapter builds on."
-    li "[Documents, pages and sites](wdoc_sites) — the `site` block in full, `menu`, `root`, and the shape of the output tree."
-    li "[Themes and styling](wdoc_styling) — `theme`, `accent`, and the structured `class` / `style` blocks the comparison table names."
-    li "[Presentations](wdoc_presentations) — repeated slots (`content*`) and the collection templates they turn on."
-    li "[Data views](wdoc_data_views) — `wdoc_component`, its own `slot` declarations, and repeaters."
-    li "[Output targets](wdoc_outputs) — what a website build shares with the Markdown and PDF targets, and what it keeps to itself."
+    li "[Templates and layouts](wdoc_templates). `template`, `TemplateCtx`, the stdlib parts and the `el` constructor family this chapter builds on."
+    li "[Documents, pages and sites](wdoc_sites). The `site` block in full, `menu`, `root`, and the shape of the output tree."
+    li "[Themes and styling](wdoc_styling). `theme`, `accent`, and the structured `class` and `style` blocks the comparison table names."
+    li "[Presentations](wdoc_presentations). Repeated slots, written `content*`, and the collection templates they turn on."
+    li "[Data views](wdoc_data_views). `wdoc_component`, its own `slot` declarations, and repeaters."
+    li "[Output targets](wdoc_outputs). What a website build shares with the Markdown and PDF targets, and what it keeps to itself."
   }
 }

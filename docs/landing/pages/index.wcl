@@ -12,7 +12,7 @@
 
 page index { sites = [:wcl]  title = "Why WCL?"  start = true
   banner {
-    callout "Heavy development — not production ready." {
+    callout "Heavy development, not production ready." {
       class = ["warning"]
       body  = "The language, APIs, and `wdoc` output can change at any time without notice."
     }
@@ -20,7 +20,7 @@ page index { sites = [:wcl]  title = "Why WCL?"  start = true
 
   lp_hero "One language for every shape of data." {
     badge    = "Typed configuration & schema language"
-    lede     = "WCL lets you express structured data the way it actually is — records, unions, interfaces, and decorators — gather it into a document model that validates itself, then project that single model into config, HTML, Markdown and books."
+    lede     = "WCL lets you express structured data the way it actually is: records, unions, interfaces, and decorators. Gather it into a document model that validates itself, then project that single model into config, HTML, Markdown and books."
     footnote = "Open source · built in the open by Wil Taylor"
     lp_cta "Get started"  { href = "./reference/"  primary = true }
     lp_cta "View source"  { href = "https://github.com/wiltaylor/wcl" }
@@ -30,7 +30,7 @@ page index { sites = [:wcl]  title = "Why WCL?"  start = true
     id      = taste
     eyebrow = "A taste"
     heading = "A document is fields and blocks. A schema is the rules they follow."
-    body    = "Declare your types with decorators that describe how raw syntax maps onto them — `@inline`, `@default`, `@children`. The data reads like the thing it describes, and the document model validates the whole shape before anything downstream sees it."
+    body    = "Declare your types with decorators that describe how raw syntax maps onto them: `@inline`, `@default`, `@children`. The data reads like the thing it describes, and the document model validates the whole shape before anything downstream sees it."
     code wcl {
       filename = "service.wcl"
       source = <<'WCL'
@@ -60,32 +60,32 @@ page index { sites = [:wcl]  title = "Why WCL?"  start = true
   lp_features {
     id      = features
     eyebrow = "Why WCL"
-    title   = "Built to express data naturally — and keep it honest."
+    title   = "Built to express data naturally, and keep it honest."
     lede    = "A small, typed core that scales from a single config file to a complete documented model."
 
     lp_feature "Flexible structure" {
       icon = "lucide.blocks"
-      body = "Map almost any data structure with a statically typed core — records, vectors and tensors, union types, interfaces, and decorators that bind surface syntax to your model. Express the shapes you actually have, checked before runtime."
+      body = "Map almost any data structure with a statically typed core: records, vectors and tensors, union types, interfaces, and decorators that bind raw syntax to your model. Express the shapes you actually have. WCL checks them before runtime."
     }
     lp_feature "Schemas" {
       icon = "lucide.shield-check"
-      body = "Declare a schema once and easily validate your data against it — types, required fields, and constraints all checked, so mistakes surface before anything downstream runs."
+      body = "Declare a schema once and validate your data against it. WCL checks types, required fields, and constraints, so mistakes show up before anything downstream runs."
     }
     lp_feature "Natural, block-based syntax" {
       icon = "lucide.braces"
-      body = "Blocks and fields read like the thing you're describing — `service \"web\" { … }` — not a wall of nested brackets."
+      body = "Blocks and fields read like the thing you're describing: `service \"web\" { … }`. Not a wall of nested brackets."
     }
     lp_feature "One format, multiple uses" {
       icon = "lucide.share-2"
-      body = "The same WCL format is equally at home as typed application configuration and as the source for documentation — pages, sites and books rendered with wdoc."
+      body = "The same WCL format works as typed application configuration and as the source for documentation: pages, sites and books rendered with wdoc."
     }
     lp_feature "Data–presentation separation" {
       icon = "lucide.component"
-      body = "Keep your data model separate from how it's shown. Project the same typed data structures into documentation — many views and layouts over one validated source, with no copy-paste."
+      body = "Keep your data model separate from how it's shown. Project the same typed data structures into documentation: many views and layouts over one validated source, with no copy-paste."
     }
     lp_feature "Rich diagram support" {
       icon = "lucide.workflow"
-      body = "wdoc draws diagrams straight from WCL — flowcharts, sequence and state diagrams, charts, timelines, trees, and class/DB tables — with automatic layout and edge routing, themed to match the page."
+      body = "wdoc draws diagrams straight from WCL: flowcharts, sequence and state diagrams, charts, timelines, trees, and class and DB tables. Layout and edge routing are automatic, and wdoc themes each diagram to match the page."
     }
   }
 
@@ -93,7 +93,7 @@ page index { sites = [:wcl]  title = "Why WCL?"  start = true
     id      = start
     eyebrow = "Getting started"
     title   = "Install it and scaffold your first project."
-    lede    = "Grab a prebuilt binary with the install script, then let `wcl init` scaffold a ready-to-build project — a book, a presentation deck, and more."
+    lede    = "Grab a prebuilt binary with the install script, then let `wcl init` scaffold a ready-to-build project: a book, a presentation deck, and more."
 
     lp_step "Install the CLI"          { command = "curl -fsSL https://wcl.dev/install.sh | sh -s -- --pre" }
     lp_step "Scaffold a new book"      { command = "wcl init book ./my-book" }
@@ -105,7 +105,7 @@ page index { sites = [:wcl]  title = "Why WCL?"  start = true
       brand     = "wcl.dev"
       tagline   = "A typed configuration and schema language. Open source, built in the open."
       copyright = "© 2026 WCL · Wil Taylor"
-      note      = "Heavy development — not production ready"
+      note      = "Heavy development, not production ready"
 
       lp_footcol "WCL" {
         lp_footlink "Home"            { href = "index" }

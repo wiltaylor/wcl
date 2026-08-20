@@ -1,4 +1,4 @@
-// Chapter 11 — Connections.
+// Connections.
 //
 // Written against #169. Every snippet and every transcript below was run
 // against the `wcl` CLI before it was written down; nothing here is
@@ -8,7 +8,7 @@ page lang_connections {
 
   h1 "Connections"
 
-  p "Most of a document is a tree. A **connection** is the language's answer to the part that is not: an edge from one block to another, declared once as a schema and written as an arrow. `web -> db :uses` is a whole item — the thirteenth of the thirteen [item forms](lang_documents#the-thirteen-item-forms) — and a field declared `@connections(DependsOn)` reads every such arrow back as a list of records."
+  p "Most of a document is a tree. A **connection** is the language's answer to the part that is not: an edge from one block to another, declared once as a schema and written as an arrow. `web -> db :uses` is a whole item, the thirteenth of the thirteen [item forms](lang_documents#the-thirteen-item-forms), and a field declared `@connections(DependsOn)` reads every such arrow back as a list of records."
 
   p "This chapter covers the declaration, the statement, the field that projects them, how an arrow's two operands resolve to blocks, how a statement finds its schema, and what `wcl check` says when any of that fails. It ends with the comparison that matters: connections are one of three ways a document points at another block, and the other two are `@ref` and `&T`."
 
@@ -52,20 +52,20 @@ WCL
 
   p "Four blocks, three arrows, and one field that turns the arrows into data:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check services.wcl
 OK
 
 $ wcl get services.wcl edges
 [DependsOn { destination: api, kind: :uses, source: web }, DependsOn { destination: db, kind: :depends_on, source: api }, DependsOn { destination: cache, kind: :uses, source: api }]
-TEXT
+CONSOLE
   }
 
-  p "Read the shape off that output. Every arrow became a record with exactly three slots — `source`, `destination`, `kind` — and nothing else. `web -> api` carried no symbol, so it got `:uses`, the first member of `EdgeKind`. A host reads the same list as JSON:"
+  p "Read the shape off that output. Every arrow became a record with exactly three slots and nothing else: `source`, `destination`, `kind`. `web -> api` carried no symbol, so it got `:uses`, the first member of `EdgeKind`. A host reads the same list as JSON:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get services.wcl edges --json
 [
   {
@@ -84,7 +84,7 @@ $ wcl get services.wcl edges --json
     "source": "api"
   }
 ]
-TEXT
+CONSOLE
   }
 
   p "Three items did that work, and the rest of this chapter is those three in turn: the `connection` declaration that describes the edge, the `->` statements that write them, and the `@connections` field that reads them back."
@@ -104,24 +104,24 @@ connection DependsOn : Service -> Service : EdgeKind
 WCL
   }
 
-  p "**All four are required.** There is no shorthand that drops the kind set — `connection DependsOn: Service -> Service` fails with `expected ':' before connection kind symbol_set`. If a relationship really has one flavour, declare a one-member set and let every statement default to it."
+  p "**All four are required.** There is no shorthand that drops the kind set. `connection DependsOn: Service -> Service` fails with `expected ':' before connection kind symbol_set`. If a relationship really has one flavour, declare a one-member set and let every statement default to it."
 
   p "The name is a declaration name like any other: it may be dotted, and it lives in the file's namespace. See [Namespaces and imports](lang_namespaces)."
 
-  p "The kind position must resolve to a `symbol_set`, and both ways of getting that wrong are caught at the declaration rather than at the first arrow. An undeclared name reports `unknown symbol_set 'Nope' in connection 'DependsOn'`; a name that is declared, but as something else, reports `kind 'EdgeKind' in connection 'DependsOn' must be a symbol_set`."
+  p "The kind position must resolve to a `symbol_set`, and both ways of getting that wrong fail at the declaration rather than at the first arrow. An undeclared name reports `unknown symbol_set 'Nope' in connection 'DependsOn'`. A name that is declared, but as something else, reports `kind 'EdgeKind' in connection 'DependsOn' must be a symbol_set`."
 
   p "The two endpoint positions are **type references, not block kinds**. `Service` here is the type carrying `@block(\"service\")`, not the string `\"service\"`. That distinction is the whole of [how a statement finds its schema](#how-a-statement-finds-its-schema) below, because a type reference can be polymorphic and a kind string cannot."
 
   p "A declaration may carry decorators. Only one is meaningful today: [`@dynamic`](#dynamic-endpoints). Whichever way you space the first colon, `wcl fmt` prints the canonical form:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat tight.wcl
 connection DependsOn: Service -> Service : EdgeKind
 
 $ wcl fmt tight.wcl
 connection DependsOn : Service -> Service : EdgeKind
-TEXT
+CONSOLE
   }
 
   h2 "Connection statements"
@@ -136,9 +136,9 @@ api -> cache : uses       # the space is allowed; `wcl fmt` closes it up
 WCL
   }
 
-  p "That is the entire grammar. A statement has **no label, no body and no fields of its own**. The kind symbol is the only payload it carries, which is why the vocabulary is worth designing: wdoc's own edge kinds include `yes` and `no` precisely so that a decision branch in a flowchart can name its answer through the kind."
+  p "That is the entire grammar. A statement has **no label, no body and no fields of its own**. The kind symbol is the only payload it carries, so the vocabulary is worth designing. wdoc's own edge kinds include `yes` and `no` so that a decision branch in a flowchart can name its answer through the kind."
 
-  p "The two operands are bare identifiers. They are not paths — `east.db -> web` does not reach into `east`, it fails to parse with `expected '.' or '::' in qualified block kind, found '->'`. They are not expressions either: no call, no interpolation, no reference to a `let`. What an operand names is a block, and [the next section](#how-an-operand-resolves) is the rule for which one."
+  p "The two operands are bare identifiers. They are not paths. `east.db -> web` does not reach into `east`. It fails to parse with `expected '.' or '::' in qualified block kind, found '->'`. They are not expressions either: no call, no interpolation, no reference to a `let`. What an operand names is a block, and [the next section](#how-an-operand-resolves) is the rule for which one."
 
   p "Statements sit wherever items sit: at the document's top level, inside a block, or in an imported file that gets spliced in. They are checked wherever they sit, whether or not any field reads them. A document with a `connection` declaration and a stray arrow that nothing projects still validates the arrow."
 
@@ -156,7 +156,7 @@ type Cfg {
 WCL
   }
 
-  p "The field is **projected, not written**. You never author `edges = [...]`; the value is synthesised from the sibling statements each time it is forced. Every record has the same three slots:"
+  p "The field is **projected, not written**. You never author `edges = [...]`. The value is synthesised from the sibling statements each time it is forced. Every record has the same three slots:"
 
   table {
     rows:
@@ -166,7 +166,7 @@ WCL
       | "`kind`"        | "The statement's symbol, or the kind set's first member" |
   }
 
-  p "\"Sibling\" is the load-bearing word. A `@connections` field gathers the statements written **at its own level** — the ones beside it in the same block, or the top-level ones for a field on the `@document` type. It does not sweep the whole tree. Declare the field on a `@block` type and every instance projects its own arrows:"
+  p "\"Sibling\" is the load-bearing word. A `@connections` field gathers the statements written **at its own level**: the ones beside it in the same block, or the top-level ones for a field on the `@document` type. It does not sweep the whole tree. Declare the field on a `@block` type and every instance projects its own arrows:"
 
   code wcl {
     filename = "regions.wcl"
@@ -202,8 +202,8 @@ region west {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check regions.wcl
 OK
 
@@ -212,14 +212,14 @@ $ wcl get regions.wcl regions.east.edges
 
 $ wcl get regions.wcl regions.west.edges
 [DependsOn { destination: cache, kind: :uses, source: web }]
-TEXT
+CONSOLE
   }
 
   p "Two blocks each declare a `web`, and neither region's edge list mentions the other's. That is scoping doing its job, and it is the subject of the next section."
 
   callout "One schema, many fields" {
     class = ["note"]
-    body  = "Nothing stops two fields from naming the same connection schema, at different levels or in different types. The wdoc standard library does exactly that: `diagram` and `container` both declare `@connections(Edge) edges: list<Edge>`, so a nested container gathers its own child edges while the diagram gathers the top-level ones. The declaration says what an edge _is_; each field says whose edges it collects."
+    body  = "Nothing stops two fields from naming the same connection schema, at different levels or in different types. The wdoc standard library does exactly that: `diagram` and `container` both declare `@connections(Edge) edges: list<Edge>`, so a nested container gathers its own child edges while the diagram gathers the top-level ones. The declaration says what an edge _is_. Each field says whose edges it collects."
   }
 
   h2 "How an operand resolves"
@@ -227,12 +227,12 @@ TEXT
   p "An operand is an identifier, and resolving it means finding the block that answers to that name. The rule is two steps and a tie-break."
 
   list {
-    li "**Scope first, innermost out.** Starting with the block the statement is written in, each enclosing block is searched for a descendant that answers to the name — its own children first, then deeper. The first hit wins and the search stops."
-    li "**Then the document.** If no enclosing scope has it, one document-wide index answers — and that index holds every block at every depth, not only the top-level ones."
+    li "**Scope first, innermost out.** The search starts at the block the statement is written in and works outward. It looks in each enclosing block for a descendant that answers to the name, its own children first, then deeper. The first hit wins and the search stops."
+    li "**Then the document.** If no enclosing scope has it, one document-wide index answers. That index holds every block at every depth, not only the top-level ones."
     li "**A block answers to its first label, else to its `id` field.** `service web { … }` answers to `web`. A block with no label but `id = \"web\"` answers to `web` too. A second or third label never identifies a block."
   }
 
-  p "The scope step is why the two `web` blocks in `regions.wcl` stayed apart: each statement found its own region's service before the document index was ever consulted. The document step is why an arrow at the top level may reach into a block:"
+  p "The scope step is why the two `web` blocks in `regions.wcl` stayed apart: each statement found its own region's service before the search ever reached the document index. The document step is why an arrow at the top level may reach into a block:"
 
   code wcl {
     filename = "deep.wcl"
@@ -261,24 +261,24 @@ gateway -> db          # `db` lives inside `east`, and the arrow still finds it
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check deep.wcl
 OK
 
 $ wcl get deep.wcl edges
 [DependsOn { destination: db, kind: :uses, source: gateway }]
-TEXT
+CONSOLE
   }
 
   callout "The document index is first-match, and it is flat" {
     class = ["warning"]
-    body  = "Two blocks in different parts of the tree may answer to one name, and the document-wide fallback keeps only the first it walks into. `gateway -> db` reaches `east.db` because that is the `db` the walk met first — there is no path syntax to say which one you meant, and no error when there is more than one. Scope is the tool for that: write the arrow inside the block whose `db` you mean, and the innermost-out search settles it before the index is asked."
+    body  = "Two blocks in different parts of the tree may answer to one name, and the document-wide fallback keeps only the first it walks into. `gateway -> db` reaches `east.db` because that is the `db` the walk met first. There is no path syntax to say which one you meant, and no error when there is more than one. Scope is the tool for that: write the arrow inside the block whose `db` you mean, and the innermost-out search settles it before the index is asked."
   }
 
   h2 "How a statement finds its schema"
 
-  p "A statement names no schema. `web -> db` says nothing about `DependsOn`. The schema is found by **dispatch**: both operands are resolved to blocks, each block's type is read, and every `connection` declaration in the document is asked whether it accepts that pair of types. Exactly one must say yes."
+  p "A statement names no schema. `web -> db` says nothing about `DependsOn`. **Dispatch** finds the schema: it resolves both operands to blocks, reads each block's type, and asks every `connection` declaration in the document whether it accepts that pair of types. Exactly one must say yes."
 
   p "\"Accepts\" is not type equality. An endpoint position admits three things:"
 
@@ -290,7 +290,7 @@ TEXT
       | "`Node` (a `union`)"  | "Any type one of `Node`'s variants admits"        | "Either, per variant" |
   }
 
-  p "The interface form is the one that scales. Declare the endpoint as `&Node` and a single connection spans every kind of block that looks like a node — which is how one declaration covers a whole diagram vocabulary:"
+  p "The interface form is the one that scales. Declare the endpoint as `&Node` and a single connection spans every kind of block that looks like a node. One declaration then covers a whole diagram vocabulary:"
 
   code wcl {
     filename = "poly.wcl"
@@ -325,19 +325,19 @@ jobs -> main :reads
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check poly.wcl
 OK
 
 $ wcl get poly.wcl rels
 [Rel { destination: jobs, kind: :calls, source: web }, Rel { destination: main, kind: :reads, source: web }, Rel { destination: main, kind: :reads, source: jobs }]
-TEXT
+CONSOLE
   }
 
-  p "Three block types, three arrows, one declaration. Add a fourth block type with a `name: identifier` field and it joins the graph with no edit to `Rel`. Add one without that field and every arrow touching it is refused — which is the point of writing the interface rather than a union of the three names you happen to have today."
+  p "Three block types, three arrows, one declaration. Add a fourth block type with a `name: identifier` field and it joins the graph with no edit to `Rel`. Add one without that field and every arrow touching it is refused. That refusal is the point of writing the interface rather than a union of the three names you happen to have today."
 
-  p "[Types](lang_types) covers interfaces, unions and `extends` in full, including the trap that `extends` on a `@block` type does **not** let an instance write the inherited fields. A subtype endpoint dispatches; its instances still have to redeclare what they write."
+  p "[Types](lang_types) covers interfaces, unions and `extends` in full, including the trap that `extends` on a `@block` type does **not** let an instance write the inherited fields. A subtype endpoint dispatches. Its instances still have to redeclare what they write."
 
   h2 "What check reports"
 
@@ -347,8 +347,8 @@ TEXT
 
   p "Change `web -> api` on line 24 to `web -> worker`:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check services.wcl
 wcl::eval::schema_violation
 
@@ -362,10 +362,10 @@ wcl::eval::schema_violation
     ╰────
 
 services.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
-  p "This is the dangling reference of the connection world, and the message tells the two ends apart: an unresolvable left operand reports `connection source '…'`, a right one `connection destination '…'`. When both are broken, the source is reported first."
+  p "An unresolvable operand is the dangling reference of the connection world, and the message tells the two ends apart: an unresolvable left operand reports `connection source '…'`. An unresolvable right operand reports `connection destination '…'`. When both are broken, `wcl check` reports the source first."
 
   h3 "No schema accepts the pair"
 
@@ -397,8 +397,8 @@ web -> jobs
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check queues.wcl
 wcl::eval::schema_violation
 
@@ -411,10 +411,10 @@ wcl::eval::schema_violation
     ╰────
 
 queues.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
-  p "The message names the two **types**, not the two identifiers, because types are what dispatch matched on. A document with no `connection` declaration at all reports the same error for its first arrow — an arrow is never schema-free."
+  p "The message names the two **types**, not the two identifiers, because types are what dispatch matched on. A document with no `connection` declaration at all reports the same error for its first arrow. An arrow is never schema-free."
 
   h3 "More than one schema accepts the pair"
 
@@ -446,8 +446,8 @@ web -> db
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check ambiguous.wcl
 wcl::eval::schema_violation
 
@@ -461,22 +461,22 @@ wcl::eval::schema_violation
     ╰────
 
 ambiguous.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "Two connections over the same pair of types is a modelling decision rather than a slip, and the fix is a modelling one: separate the endpoint types, or fold the two relationships into one and let the kind symbol tell them apart."
 
-  callout "An ambiguous arrow still projects — into both lists" {
+  callout "An ambiguous arrow still projects into both lists" {
     class = ["warning"]
-    body  = "`check` refuses the document above, but projection is a separate mechanism and it does not arbitrate. Ask for either field and the arrow is in it: `wcl get ambiguous.wcl deps` answers `[DependsOn { destination: db, kind: :uses, source: web }]` and `wcl get ambiguous.wcl calls` answers `[TalksTo { destination: db, kind: :uses, source: web }]` — one edge, counted twice. Fix the ambiguity; do not build on a document that only `get` will read."
+    body  = "`check` refuses the document above, but projection is a separate mechanism and it does not arbitrate. Ask for either field and the arrow is in it: `wcl get ambiguous.wcl deps` answers `[DependsOn { destination: db, kind: :uses, source: web }]` and `wcl get ambiguous.wcl calls` answers `[TalksTo { destination: db, kind: :uses, source: web }]`. One edge, counted twice. Fix the ambiguity. Do not build on a document that only `get` will read."
   }
 
   h3 "A kind outside the vocabulary"
 
   p "Change `api -> cache :uses` on line 26 to `:calls`, which `EdgeKind` does not declare:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check services.wcl
 wcl::eval::schema_violation
 
@@ -489,14 +489,14 @@ wcl::eval::schema_violation
     ╰────
 
 services.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "The symbol is checked against the schema the statement dispatched to, so this error appears only once dispatch has succeeded. A statement that fails dispatch never gets its kind checked at all."
 
   h2 "Dynamic endpoints"
 
-  p "Every rule above assumes an operand names a block that exists in the file. Sometimes it cannot: the thing on the other end is generated at consume time, by a repeater or a component the host expands. `@dynamic` on the declaration relaxes exactly that assumption."
+  p "Every rule above assumes an operand names a block that exists in the file. Sometimes it cannot: a repeater or a component the host expands generates the other end at consume time. `@dynamic` on the declaration relaxes exactly that assumption."
 
   code wcl {
     filename = "dyn.wcl"
@@ -523,19 +523,19 @@ web -> shard_0          # no such block — and that is allowed here
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check dyn.wcl
 OK
 
 $ wcl get dyn.wcl edges
 [DependsOn { destination: db, kind: :uses, source: web }, DependsOn { destination: shard_0, kind: :uses, source: web }]
-TEXT
+CONSOLE
   }
 
-  p "Two changes, and only two. `wcl check` stops reporting the unresolved operand, and the projection emits the raw identifier — `shard_0` — instead of dropping the statement. Everything else holds: the operand that _does_ resolve is still type-checked against its role, and a statement whose resolved end fits no schema is still refused."
+  p "Two changes, and only two. `wcl check` stops reporting the unresolved operand, and the projection emits the raw identifier, `shard_0`, instead of dropping the statement. Everything else holds: the operand that _does_ resolve is still type-checked against its role, and a statement whose resolved end fits no schema is still refused."
 
-  p "This is not a looser mode to switch on while you tidy up. It moves one check out of the language and into whatever consumes the document, and the consumer then has to do it. wdoc's own edge schema is the case it exists for:"
+  p "`@dynamic` is not a looser mode to switch on while you tidy up. It moves one check out of the language and into whatever consumes the document, and the consumer then has to do it. wdoc's own edge schema is the case it exists for:"
 
   code wcl {
     source = <<'WCL'
@@ -545,11 +545,11 @@ connection Edge: &SvgBlock -> &SvgBlock : EdgeKind
 WCL
   }
 
-  p "A diagram's `a -> b` may name a shape a repeater has not produced yet, so the build matches unresolved ids against the rendered shape ids and warns about the ones that match nothing. Leave `@dynamic` off for a connection whose endpoints are always literal — it is the only thing standing between a typo and a silently missing edge. [Connections and routing](wdoc_diagram_connections) covers the diagram side."
+  p "A diagram's `a -> b` may name a shape a repeater has not produced yet, so the build matches unresolved ids against the rendered shape ids and warns about the ones that match nothing. Leave `@dynamic` off for a connection whose endpoints are always literal. That check is the only thing standing between a typo and a silently missing edge. [Connections and routing](wdoc_diagram_connections) covers the diagram side."
 
   h2 "Referential integrity"
 
-  p "A connection is not the only way one block points at another. The plainest way is an ordinary field holding an id — and `@ref(\"kind\")` is how you say that the id must name something real."
+  p "A connection is not the only way one block points at another. The plainest way is an ordinary field holding an id. `@ref(\"kind\")` is how you say that the id must name something real."
 
   code wcl {
     filename = "refs.wcl"
@@ -585,8 +585,8 @@ WCL
 
   p "`wcl check` prints `OK`. Point `steps` at a screen that does not exist and it names the id, the kind, and nothing else:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check refs.wcl
 wcl::eval::schema_violation
 
@@ -594,13 +594,13 @@ wcl::eval::schema_violation
   │ 'screen' block
 
 refs.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "Break two of them and one violation covers both:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check refs.wcl
 wcl::eval::schema_violation
 
@@ -608,16 +608,16 @@ wcl::eval::schema_violation
   │ 'screen' block
 
 refs.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "Four rules follow from how that check is written, and every one of them is a difference from a connection operand:"
 
   list {
-    li "**The argument is a block kind string, not a type.** `@ref(\"screen\")` matches the kind written before the brace. There is no polymorphism here — no interface, no union, no `extends`. One decorator, one kind."
-    li "**The whole document is in range.** A target nested three blocks deep counts. There is no scope chain and no innermost-first tie-break; the only question is whether such a block exists anywhere."
+    li "**The argument is a block kind string, not a type.** `@ref(\"screen\")` matches the kind written before the brace. There is no polymorphism here: no interface, no union, no `extends`. One decorator, one kind."
+    li "**The whole document is in range.** A target nested three blocks deep counts. There is no scope chain and no innermost-first tie-break. The only question is whether such a block exists anywhere."
     li "**Lists are checked element by element**, and one violation reports every missing id in the field."
-    li "**A `none` is fine.** An unset optional reference is not a dangling one. So is a value that is not an id at all — the ordinary value-against-type check owns that failure, and the two never double-report."
+    li "**A `none` is fine.** An unset optional reference is not a dangling one. So is a value that is not an id at all. The ordinary value-against-type check owns that failure, and the two never double-report."
   }
 
   p "The id itself may be written bare or quoted: `entry = login` and `entry = \"login\"` are both accepted, and both resolve against the same ids. [Values and primitives](lang_values) covers why `identifier` and a string are interchangeable in that position."
@@ -630,28 +630,28 @@ TEXT
     rows:
       | "Form"       | "Written as"                           | "What is checked"                                                                                | "Checked by"           | "What you get back"                                         | "Reach for it when" |
       | "`@ref`"     | "`@ref(\"screen\") entry: identifier`" | "A block of that _kind_ exists with that id, anywhere in the document"                           | "`wcl check`"          | "The id, unchanged"                                         | "The id itself is the data, and one block names one other" |
-      | "`&T`"       | "`focus: &Drawable`"                   | "The target's _type_ satisfies `T` — structurally for an interface, nominally for a record type" | "Whatever reads it"    | "A lazy path you can read the target's fields through"      | "You need the target's contents, not its name" |
+      | "`&T`"       | "`focus: &Drawable`"                   | "The target's _type_ satisfies `T`, structurally for an interface, nominally for a record type" | "Whatever reads it"    | "A lazy path you can read the target's fields through"      | "You need the target's contents, not its name" |
       | "Connection" | "`web -> db :uses`"                    | "Both ends name a block, exactly one schema accepts the pair of _types_, the kind is in the set" | "`wcl check`"          | "A projected list of `{source, destination, kind}` records" | "The document holds a graph, and something walks the edges" |
   }
 
-  p "Put it as a question about where the relationship is written. `@ref` and `&T` go **on the block that points**, one field per relationship, and they read well when a block has a few named links: a flow has an entry screen. A connection goes **beside the blocks**, one line per edge, and it reads well when the edges outnumber the blocks and no single block owns them: a service graph, a diagram, a dependency set. Forty edges as forty `@ref` fields is a graph pretending to be a schema; forty arrows is a graph."
+  p "Put it as a question about where the relationship is written. `@ref` and `&T` go **on the block that points**, one field per relationship, and they read well when a block has a few named links: a flow has an entry screen. A connection goes **beside the blocks**, one line per edge, and it reads well when the edges outnumber the blocks and no single block owns them: a service graph, a diagram, a dependency set. Forty edges as forty `@ref` fields is a graph pretending to be a schema. Forty arrows is a graph."
 
-  p "Mind the fourth column, because it is the difference you feel first. `@ref` and a connection are both **schema-pass** checks: `wcl check` refuses the document. `&T` is not. Its two readings run when the navigator is built, so `wcl check` prints `OK` on a `&Drawable` field pointing at a block with no `x`, and the failure appears as `<error: type 'Note' does not implement interface 'Drawable': missing field 'x'>` the moment `wcl parse` or a host reads through it. [Types](lang_types) has the warning in full."
+  p "Mind the fourth column, because it is the difference you feel first. `@ref` and a connection are both **schema-pass** checks: `wcl check` refuses the document. `&T` is not. Its two readings run when the navigator is built. `wcl check` prints `OK` on a `&Drawable` field pointing at a block with no `x`, and the failure appears as `<error: type 'Note' does not implement interface 'Drawable': missing field 'x'>` the moment `wcl parse` or a host reads through it. [Types](lang_types) has the warning in full."
 
-  p "What the checks catch also differs in strength. `&T` is the strongest thing checked — the target's whole type, not its spelling — but it is checked latest. A connection is next, and it is checked by `check`: both ends must exist, and their types must fit a declared schema. `@ref` is the weakest: a kind and an id, matched as strings. Reach down that list only when the stronger form does not fit what you are modelling."
+  p "What the checks catch also differs in strength. `&T` checks the most: the target's whole type, not its spelling. It is also checked latest. A connection is next, and `check` is what catches it: both ends must exist, and their types must fit a declared schema. `@ref` is the weakest: a kind and an id, matched as strings. Reach down that list only when the stronger form does not fit what you are modelling."
 
   callout "wdoc's `connection` chapter is about drawing, not declaring" {
     class = ["note"]
-    body  = "[Connections and routing](wdoc_diagram_connections) covers how wdoc _draws_ an edge — the route it takes, where it anchors on each shape, how it is labelled. Its subject is the rendering of the `Edge` schema above. This chapter's subject is the language mechanism that any host, wdoc included, builds on. The arrow you type is the same one."
+    body  = "[Connections and routing](wdoc_diagram_connections) covers how wdoc _draws_ an edge: the route it takes, where it anchors on each shape, how it is labelled. Its subject is the rendering of the `Edge` schema above. This chapter's subject is the language mechanism that any host, wdoc included, builds on. The arrow you type is the same one."
   }
 
   h2 "Where to go next"
 
   list {
-    li "[Types](lang_types) — interfaces, unions and `extends`, which decide what an endpoint accepts, plus `&T` reference fields in full."
-    li "[Schemas](lang_schemas) — `@document`, `@block`, `@children` and the rest of what `wcl check` checks."
-    li "[Decorators](lang_decorators) — `@connections`, `@ref` and `@dynamic` in the company of every other builtin decorator."
-    li "[How a document evaluates](lang_evaluation) — why a projected field costs nothing until something reads it."
-    li "[Connections and routing](wdoc_diagram_connections) — the same arrows, drawn."
+    li "[Types](lang_types). Interfaces, unions and `extends`, which decide what an endpoint accepts, plus `&T` reference fields in full."
+    li "[Schemas](lang_schemas). `@document`, `@block`, `@children` and the rest of what `wcl check` checks."
+    li "[Decorators](lang_decorators). `@connections`, `@ref` and `@dynamic` in the company of every other builtin decorator."
+    li "[How a document evaluates](lang_evaluation). Why a projected field costs nothing until something reads it."
+    li "[Connections and routing](wdoc_diagram_connections). The same arrows, drawn."
   }
 }

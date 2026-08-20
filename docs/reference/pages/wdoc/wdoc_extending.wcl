@@ -1,4 +1,4 @@
-// Chapter 41 — Writing your own blocks.
+// Writing your own blocks.
 //
 // Written against #196. Every snippet below was built with `wcl wdoc
 // build` / `wcl wdoc build --type markdown` before it was written down; the outputs
@@ -17,16 +17,16 @@ page wdoc_extending {
   p "wdoc renders a block exactly one of two ways, and the block's **type** says which:"
 
   list {
-    li "`lower` — a function the renderer calls with a record of the block's fields. It returns a list of nodes the renderer knows how to draw. This is the path open to you."
-    li "`@native` — the renderer implements the kind in Rust and never calls a lowering. This path is closed to user blocks; see [Native blocks](#native-blocks)."
+    li "`lower` is a function the renderer calls with a record of the block's fields. It returns a list of nodes the renderer knows how to draw, and it is the path open to you."
+    li "`@native` means the renderer implements the kind in Rust and never calls a lowering. That path is closed to user blocks. See [Native blocks](#native-blocks)."
   }
 
   p "Declaring both, or neither, fails the build. That check is the whole point of the split. Before it existed, 57 stdlib types declared a `lower` returning `[]` while Rust intercepted the kind. Each of those was dead code. It satisfied an interface and nothing else, and the editor's schema introspection then read it as truth."
 
-  p "Because a native block must not fake a lowering, `lower` is declared **optional** on all three interfaces. The type system therefore does not make it exactly-one-of; a build check does:"
+  p "Because a native block must not fake a lowering, `lower` is declared **optional** on all three interfaces. The type system therefore does not make it exactly-one-of. A build check does:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build api.wcl --out _site
 wdoc::native
 
@@ -37,7 +37,7 @@ wdoc::native
   9 │     @block("endpoint")
  10 │ ╭─▶ type Endpoint extends ContentBlock {
     ╰────
-TEXT
+CONSOLE
   }
 
   h2 "A block with a lowering, end to end"
@@ -87,8 +87,8 @@ WCL
 
   p "Build it. The `<body>` of the emitted page:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build api.wcl --out _site
 wrote 1 page
 
@@ -99,13 +99,13 @@ $ cat _site/api.html
 <h3 class="heading-3"><span class="code">GET /users</span></h3><p>List every user. Paginated by <span class="code">?page=</span>.</p>
 <h3 class="heading-3"><span class="code">POST /users</span></h3><p>Create a user.</p>
 </body>
-TEXT
+CONSOLE
   }
 
   p "The same document, rendered to Markdown by the same lowering:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build api.wcl --out _md --type markdown
 wrote 1 page
 
@@ -119,20 +119,20 @@ List every user. Paginated by `?page=`.
 ### `POST /users`
 
 Create a user.
-TEXT
+CONSOLE
   }
 
-  p "Read the declaration one line at a time. `@block(\"endpoint\")` registers the kind, exactly as it would for a data block — see [Schemas](lang_schemas). `extends ContentBlock` says the block produces **page content**, which is what makes it legal inside a `page`. `@inline(0)` and `@inline(1)` bind the two labels, so `endpoint \"GET\" \"/users\"` reads like the thing it describes. `summary` is an ordinary field."
+  p "Read the declaration one line at a time. `@block(\"endpoint\")` registers the kind, exactly as it would for a data block. See [Schemas](lang_schemas). `extends ContentBlock` says the block produces **page content**, which is what a `page` accepts. `@inline(0)` and `@inline(1)` bind the two labels, so `endpoint \"GET\" \"/users\"` reads like the thing it describes. `summary` is an ordinary field."
 
-  p "`id` and `class` deserve a note. `ContentBlock` declares only two members — `id`, the anchor target, and the optional `lower` slot. **`class` is not inherited.** Declare it yourself, as the examples here do and as every stdlib content block does. Leave it out and an instance that sets a class is refused: `field 'class' is not declared by schema 'Endpoint'`."
+  p "`id` and `class` deserve a note. `ContentBlock` declares only two members: `id`, the anchor target, and the optional `lower` slot. **`class` is not inherited.** Declare it yourself, as the examples here do and as every stdlib content block does. Leave it out and an instance that sets a class is refused: `field 'class' is not declared by schema 'Endpoint'`."
 
-  p "`lower` is the interesting one. It is a **field with a default value** — an ordinary function literal, checked and evaluated like any other expression in the document. The renderer looks it up and calls it. Nothing registers it; nothing dispatches on a naming convention."
+  p "`lower` is the interesting one. It is a **field with a default value**: an ordinary function literal, checked and evaluated like any other expression in the document. The renderer looks it up and calls it. Nothing registers it. Nothing dispatches on a naming convention."
 
-  p "Note what the lowering returns: two `Content` nodes, not markup. `Content::Heading` carries `level: 3` as a **number**. The `class=\"heading-3\"` in the HTML above is derived from that number by the HTML backend, and the Markdown backend derives `###` from the same number. Neither reads the other's output."
+  p "Note what the lowering returns: two `Content` nodes, not markup. `Content::Heading` carries `level: 3` as a **number**. The `class=\"heading-3\"` in the HTML above is what the HTML backend derives from that number, and the Markdown backend derives `###` from the same number. Neither reads the other's output."
 
   callout "Give your kinds a prefix" {
     class = ["warning"]
-    body  = "A page block whose kind matches a **template slot name** fills that slot instead of rendering as content. The built-in `website` layout declares the slots `content`, `banner`, `hero`, `sidebar` and `footer`. So a block kind named `hero` never reaches its lowering — and on a bare page, with no layout at all, it renders nothing and reports nothing. The stdlib's own landing components carry an `lp_` prefix for exactly this reason. Prefix your kinds. [Templates and layouts](wdoc_templates) covers slots."
+    body  = "A page block whose kind matches a **template slot name** fills that slot instead of rendering as content. The built-in `website` layout declares the slots `content`, `banner`, `hero`, `sidebar` and `footer`. So a block kind named `hero` never reaches its lowering. On a bare page, with no layout at all, it renders nothing and reports nothing. The stdlib's own landing components carry an `lp_` prefix to avoid that collision. Prefix your kinds. [Templates and layouts](wdoc_templates) covers slots."
   }
 
   h3 "What the lowering is handed"
@@ -142,7 +142,7 @@ TEXT
   list {
     li "**Every declared field is present.** A field the instance omits arrives as `none`, or as the schema's declared default if it has one. A lowering never has to test for a missing key."
     li "**Labels fill their `@inline(n)` field.** An explicit `verb = \"GET\"` fills the same field when the instance gives no label. So `endpoint { verb = \"GET\" … }` lowers identically to `endpoint \"GET\" …`."
-    li "**Child blocks arrive as records, not as blocks.** The schema projection completes each `@children(...)` record, so it carries every declared field of its own type — including the optionals, as `none`."
+    li "**Child blocks arrive as records, not as blocks.** The schema projection completes each `@children(...)` record, so it carries every declared field of its own type, including the optionals, as `none`."
     li "**A field whose expression fails becomes `none`.** The block still lowers. The build records the error, prints the diagnostic and exits non-zero."
   }
 
@@ -155,7 +155,7 @@ TEXT
 TEXT
   }
 
-  p "Two returns are not errors. `[]` renders nothing, and so does `none` — that is how a lowering opts out conditionally."
+  p "Two returns are not errors. `[]` renders nothing, and so does `none`. That is how a lowering opts out conditionally."
 
   h3 "Overriding the lowering on one instance"
 
@@ -176,7 +176,7 @@ badge "this one is different" {
 WCL
   }
 
-  p "Reach for this rarely. It is the escape hatch for the one instance that does not fit, not a substitute for a second kind."
+  p "Reach for the override rarely. It is the escape hatch for the one instance that does not fit, not a substitute for a second kind."
 
   h2 "The three lowering interfaces"
 
@@ -185,12 +185,12 @@ WCL
   table {
     rows:
       | "Interface"     | "Lowering returns"      | "Rendered as"                         | "Declared in" |
-      | "`ContentBlock`" | "`list<Content>`"      | "Page content — prose, media, apparatus" | "`core.wcl`" |
+      | "`ContentBlock`" | "`list<Content>`"      | "Page content: prose, media, apparatus" | "`core.wcl`" |
       | "`SvgBlock`"     | "`list<Svg>`"          | "Shapes inside a `diagram`"           | "`core.wcl`" |
       | "`TermPrimitive`" | "`list<TermFundamental>`" | "Cells of a `terminal` grid"     | "`terminal.wcl`" |
   }
 
-  p "**Placement is a separate question, and a separate mechanism.** A `page` accepts `@children(ContentBlock)`; a `diagram` accepts `@children(SvgBlock)`; a `terminal` accepts `@children(TermPrimitive)`. The accepts-type on the slot is what admits your block — there is no parallel hierarchy of placement interfaces to also extend. Write the `endpoint` block from the last section inside a `diagram` and the schema refuses it before any lowering runs, because the slot says so:"
+  p "**Placement is a separate question, and a separate mechanism.** A `page` accepts `@children(ContentBlock)`, a `diagram` accepts `@children(SvgBlock)`, and a `terminal` accepts `@children(TermPrimitive)`. The accepts-type on the slot is what admits your block. There is no parallel hierarchy of placement interfaces to also extend. Write the `endpoint` block from the last section inside a `diagram` and the schema refuses it before any lowering runs, because the slot says so:"
 
   code text {
     source = <<'TEXT'
@@ -204,11 +204,11 @@ WCL
 TEXT
   }
 
-  p "A `TermPrimitive` also carries `row` and `col` (1-based grid coordinates), because a terminal cell has to sit somewhere. See [Terminals and TUI](wdoc_terminals)."
+  p "A `TermPrimitive` also carries `row` and `col`, the 1-based grid coordinates, because a terminal cell has to sit somewhere. See [Terminals and TUI](wdoc_terminals)."
 
   h3 "A diagram shape"
 
-  p "A custom shape is the same shape of declaration with a different interface and a different return union. This one draws a rounded box with a centred label:"
+  p "You declare a custom shape the same way, with a different interface and a different return union. This one draws a rounded box with a centred label:"
 
   code wcl {
     filename = "chip.wcl"
@@ -248,8 +248,8 @@ WCL
 
   p "A custom shape is a first-class member of the diagram graph. The `parser -> evaluator` statement routes an edge between the two chips exactly as it would between two `rect`s:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build chip.wcl --out _site
 wrote 1 page
 
@@ -261,24 +261,24 @@ $ cat _site/shapes.html
 ...
 <polyline points="130,42 170,42" fill="none" stroke="currentColor" marker-end="url(#wdoc-arrow)" data-kind="default" />
 ...
-TEXT
+CONSOLE
   }
 
   p "The `Svg` union is small and geometric: `Rect`, `Circle`, `Line`, `Label`, `Polygon`, `Polyline`, and `Link` (a clickable wrapper around child shapes). [The diagram canvas](wdoc_diagrams) covers layout, anchoring and the `connect_points` a shape may declare so edges attach to its sides."
 
   h2 "The semantic content IR"
 
-  p "`Content` is the vocabulary a `ContentBlock` lowering returns. It deserves a section of its own, because its shape is a deliberate decision that constrains what you can write."
+  p "`Content` is the vocabulary a `ContentBlock` lowering returns. It deserves a section of its own, because its design is a deliberate decision that constrains what you can write."
 
-  p "It is the **target-neutral document vocabulary**: one variant per document concept, declared once in `lib/content.wcl`, consumed by every output target. Three rules hold it together."
+  p "It is the **target-neutral document vocabulary**. `lib/content.wcl` declares one variant per document concept, and every output target reads that one declaration. Three rules hold it together."
 
   list {
     li "**It is closed.** There is no `Raw` variant and no generic `Container { role, children }`. A concept that is not in the union is not page content."
-    li "**One variant per concept.** A shared container with a `role: symbol` would be a stringly-typed key. Each backend would interpret or ignore it, which is the divergence this layer exists to end."
+    li "**One variant per concept.** A shared container with a `role: symbol` would be a stringly-typed key. Each backend would interpret or ignore it, and that divergence is what this layer exists to end."
     li "**Semantics live in fields, never in strings.** `Heading.level` is a number. `Callout.kind` is a symbol from a declared vocabulary. Neither is a class name a backend matches by hand."
   }
 
-  p "`class` survives as a style hint (the class system is read by the non-HTML targets too) and `id` as an anchor target. Neither may carry meaning a backend has to parse back out."
+  p "`class` survives as a style hint (the non-HTML targets read the class system too) and `id` as an anchor target. Neither may carry meaning a backend has to parse back out."
 
   p "The eighteen variants, in the four groups the declaration uses:"
 
@@ -296,18 +296,18 @@ TEXT
       | "Media"          | "`Video`"        | "`source`, `poster`, `title`, size" |
       | "Media"          | "`File`"         | "`path`, `label`" |
       | "Media"          | "`Math`"         | "`latex`, `display`" |
-      | "Media"          | "`Drawing`"      | "`shapes: list<Svg>` — the page-level SVG bridge" |
-      | "Media"          | "`Terminal`"     | "`lines` — the resolved screen" |
+      | "Media"          | "`Drawing`"      | "`shapes: list<Svg>`. The page-level SVG bridge" |
+      | "Media"          | "`Terminal`"     | "`lines`. The resolved screen" |
       | "Apparatus"      | "`Toc`"          | "resolved `entries`, not a marker to expand" |
       | "Apparatus"      | "`Footnotes`"    | "resolved `notes`" |
       | "Apparatus"      | "`ChapterHeader`" | "`title`, `kicker`, and the meta line" |
-      | "Presentation"   | "`Fragment`"     | "`body` — a step-revealed group on a slide" |
-      | "Presentation"   | "`SpeakerNotes`" | "`body` — presenter-only commentary" |
+      | "Presentation"   | "`Fragment`"     | "`body`. A step-revealed group on a slide" |
+      | "Presentation"   | "`SpeakerNotes`" | "`body`. Presenter-only commentary" |
   }
 
   p "Two consequences follow, and both are load-bearing."
 
-  p "**The wdoc build script generates the Rust enum from the WCL declaration.** It parses `lib/content.wcl` and walks every type reachable from `union Content`. From that walk it emits the enum, its supporting records and symbol sets, and the `Value` conversions. There is no second copy to drift. Reachability is also the closedness check. Some field types cannot cross a backend boundary — a function, a reference, a tensor, a type the stdlib does not declare. One of those fails the build here, rather than becoming a hole the renderers ignore."
+  p "**The wdoc build script generates the Rust enum from the WCL declaration.** It parses `lib/content.wcl` and walks every type reachable from `union Content`. From that walk it emits the enum, its supporting records and symbol sets, and the `Value` conversions. There is no second copy to drift. Reachability is also the closedness check. Some field types cannot cross a backend boundary: a function, a reference, a tensor, a type the stdlib does not declare. One of those fails the build here, rather than becoming a hole the renderers ignore."
 
   p "**Every backend matches the union exhaustively.** Three walkers read it: HTML, PDF and Markdown. Not one of them has a catch-all arm. Add a variant to the union and you get a compile error in three places, rather than silence in three outputs. That is the mechanism, not a convention someone remembers to follow."
 
@@ -318,15 +318,15 @@ TEXT
 
   h3 "Union tag, not variant name"
 
-  p "A lowered value is classified by the **union it belongs to**, never by the name of its variant. This matters because the names collide on purpose: `Paragraph`, `Table` and `Math` are declared by both `Content` and the HTML vocabulary described next. A name-based test would read one as the other, and would do it silently."
+  p "The renderer classifies a lowered value by the **union it belongs to**, never by the name of its variant. The distinction matters because the names collide on purpose. Both `Content` and the HTML vocabulary described next declare `Paragraph`, `Table` and `Math`. A name-based test would read one as the other, and would do it silently."
 
-  p "So `Content::Paragraph { text: … }` and `Html::Paragraph { spans: [ … ] }` are different nodes with different fields and different reach. Write the union prefix and the compiler of your document — the schema checker — keeps them apart for you."
+  p "So `Content::Paragraph { text: … }` and `Html::Paragraph { spans: [ … ] }` are different nodes with different fields and different reach. Write the union prefix, and the schema checker keeps them apart for you."
 
   h2 "The HTML vocabulary, and what it costs"
 
-  p "A lowering may also return members of `Html`, the HTML **element** vocabulary: `Element`, `Paragraph`, `Table`, `Raw`, `Style`, `Head`, `Icon`, `Inline`, `Highlighted`, `Math`, and the `Blocks` placement handle that templates use. The `el` constructor family is shorthand for the common shapes — `el(tag, cls, kids)`, `ela(…, attrs, …)`, `eli(…, id, …)`, and the leaves `raw`, `inl`, `icon` and `para`. [Documents, pages and sites](wdoc_sites) covers the family in full."
+  p "A lowering may also return members of `Html`, the HTML **element** vocabulary: `Element`, `Paragraph`, `Table`, `Raw`, `Style`, `Head`, `Icon`, `Inline`, `Highlighted`, `Math`, and the `Blocks` placement handle that templates use. The `el` constructor family is shorthand for the common cases: `el(tag, cls, kids)`, `ela(…, attrs, …)`, `eli(…, id, …)`, and the leaves `raw`, `inl`, `icon` and `para`. [Documents, pages and sites](wdoc_sites) covers the family in full."
 
-  p "This is how the stdlib's own landing-page components are built, and it is the right tool when you are laying out a marketing page for HTML. Understand what you are trading:"
+  p "The stdlib builds its own landing-page components this way, and `Html` is the right tool when you lay out a marketing page for HTML. Understand what you are trading:"
 
   code wcl {
     filename = "promo.wcl"
@@ -371,13 +371,13 @@ After.
 TEXT
   }
 
-  p "The degradation is sensible here, and it is not guaranteed to be. A `Content::Heading { level: 1 }` is a heading everywhere by declaration. An `<h1>` is a heading everywhere because somebody taught three walkers to recognise a tag name. Prefer `Content` for anything that has to leave the browser. Reach for `Html` when the output genuinely is HTML chrome — a backdrop, a nav, a card frame — and expect it to drop away elsewhere."
+  p "The degradation is sensible here, and it is not guaranteed to be. A `Content::Heading { level: 1 }` is a heading everywhere by declaration. An `<h1>` is a heading everywhere because somebody taught three walkers to recognise a tag name. Prefer `Content` for anything that has to leave the browser. Reach for `Html` when the output genuinely is HTML chrome: a backdrop, a nav, a card frame. Expect it to drop away elsewhere."
 
   h2 "Lowering recurses"
 
-  p "A lowering does not have to bottom out in one step. The renderer inspects every value it gets back. A value that is neither a `Content` node nor a member of the target's fundamental vocabulary counts as **another block kind's variant**. Its record becomes the argument, the renderer resolves and calls that kind's `lower`, and it walks the results again."
+  p "A lowering does not have to bottom out in one step. The renderer inspects every value it gets back. A value that is neither a `Content` node nor a member of the target's fundamental vocabulary counts as **another block kind's variant**. Its record becomes the argument. The renderer resolves and calls that kind's `lower`, then walks the results again."
 
-  p "The rule for the mapping is mechanical. A variant named `Badge` names the kind `badge`; `NodeRow` names `node_row`. Capitals become word boundaries."
+  p "The rule for the mapping is mechanical. A variant named `Badge` names the kind `badge`. `NodeRow` names `node_row`. Capitals become word boundaries."
 
   code wcl {
     filename = "recurse.wcl"
@@ -410,10 +410,10 @@ page badges {
 WCL
   }
 
-  p "Both lines reach the same output, and they reach it on every target — the recursion runs in each backend's walker, not only in the HTML one:"
+  p "Both lines reach the same output, and they reach it on every target. The recursion runs in each backend's walker, not only in the HTML one:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat _site/badges.html
 ...
 <p><span class="bold">written directly</span></p>
@@ -423,10 +423,10 @@ $ cat _md/badges.md
 **written directly**
 
 **reached through a second lowering**
-TEXT
+CONSOLE
   }
 
-  p "The recursion is depth-limited to 32 levels. A lowering that never terminates does not hang the build; it stops and leaves a marker where the content would have been:"
+  p "The recursion is depth-limited to 32 levels. A lowering that never terminates does not hang the build. The recursion stops at the limit and leaves a marker where the content would have been:"
 
   code text {
     source = <<'TEXT'
@@ -436,11 +436,11 @@ TEXT
 TEXT
   }
 
-  p "In practice you will build a parent's children yourself more often than you emit another kind's variant. Read the materialised `@children` records and construct their nodes inside the parent's lowering. Both routes work. Building the tree in one place is easier to follow."
+  p "In practice you build a parent's children yourself more often than you emit another kind's variant. Read the materialised `@children` records and construct their nodes inside the parent's lowering. Both routes work. Building the tree in one place is easier to follow."
 
   h2 "Native blocks"
 
-  p "`@native` is the other half of `lower`. It says: **wdoc's Rust dispatch renders this kind, and no lowering will be called.**"
+  p "`@native` is the other half of `lower`. It says: **wdoc's Rust dispatch renders this kind, and no lowering runs.**"
 
   code wcl {
     source = <<'WCL'
@@ -452,7 +452,7 @@ type FileObj extends ContentBlock { … }
 WCL
   }
 
-  p "The reason a block is native is always the same: its output is not expressible in WCL. Calendar arithmetic, an ANSI grid, an image crop measured from the file on disk, valid nested list markup, the layout of a measured widget. `lib/content.wcl` classifies all 35 stdlib `ContentBlock` types, with a one-line reason for each. Sixteen lower to a fixed payload; nineteen need an authored subtree or renderer-only state."
+  p "The reason a block is native is always the same: its output is not expressible in WCL. Calendar arithmetic, an ANSI grid, an image crop measured from the file on disk, valid nested list markup, the layout of a measured widget. `lib/content.wcl` classifies all 35 stdlib `ContentBlock` types, with a one-line reason for each. Sixteen lower to a fixed payload. Nineteen need an authored subtree or renderer-only state."
 
   p "**You cannot make your own block native.** The kind has to be one wdoc's registry knows about:"
 
@@ -464,23 +464,23 @@ WCL
 TEXT
   }
 
-  p "`backends` names the output targets whose Rust dispatch handles the kind: `:html`, `:pdf`, `:markdown`. Omitting it means every target, which is the common case — 51 of the 53 registered kinds cover all three. The declaration is **cross-checked against the registry in both directions**, and both directions are errors:"
+  p "`backends` names the output targets whose Rust dispatch handles the kind: `:html`, `:pdf`, `:markdown`. Omit it and the kind covers every target. That is the common case: 51 of the 53 registered kinds cover all three. The declaration is **cross-checked against the registry in both directions**, and a mismatch in either direction is an error:"
 
   list {
     li "A target claimed but not implemented would render nothing at all."
     li "A target implemented but not claimed would render something nobody declared. That is how the last stub `lower` got in."
   }
 
-  p "So adding a Rust arm for a kind means adding its registry row **and** its `@native` declaration, in the same change. Neither half alone builds."
+  p "So a new Rust arm for a kind needs its registry row **and** its `@native` declaration, in the same change. Neither half alone builds."
 
   h3 "Uncovered targets"
 
-  p "Only two stdlib kinds cover a subset today, and each is a fact about the target rather than an omission. `markdown_source` needs the HTML build's machinery to tap the Markdown emitter, so it is `:html` only. `file` ships a copy into an output folder, and a PDF is one self-contained document with no folder beside it — so `file` covers everything but `:pdf`."
+  p "Only two stdlib kinds cover a subset today, and each is a fact about the target rather than an omission. `markdown_source` needs the HTML build's machinery to tap the Markdown emitter, so it is `:html` only. `file` ships a copy into an output folder, and a PDF is one self-contained document with no folder beside it. So `file` covers everything but `:pdf`."
 
-  p "Using a native block on a target it does not cover is a **build error**, not a silent drop:"
+  p "A native block used on a target it does not cover is a **build error**, not a silent drop:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build preview.wcl --out _md --type markdown
 wcl::eval::user_error
 
@@ -494,7 +494,7 @@ wcl::eval::user_error
     ·            ╰── error raised here
  12 │ }
     ╰────
-TEXT
+CONSOLE
   }
 
   p "The waiver is the visibility system's backend axis, applied to the instance:"
@@ -511,7 +511,7 @@ page overview {
 WCL
   }
 
-  p "With that decorator the HTML build renders the block and the Markdown build skips the page's preview and prints nothing about it. The split is the point: **capability says _can't_, author intent says _don't want to_, and the build refuses until the two agree**. [Visibility](wdoc_visibility) covers `@only` and `@except` in full."
+  p "With that decorator the HTML build renders the block, and the Markdown build skips the page's preview and prints nothing about it. The split is the point: **capability says _can't_, author intent says _don't want to_, and the build refuses until the two agree**. [Visibility](wdoc_visibility) covers `@only` and `@except` in full."
 
   h2 "Components: the path with no lowering"
 
@@ -552,8 +552,8 @@ page api {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build comp.wcl --out _site
 wrote 1 page
 
@@ -562,12 +562,12 @@ $ cat _site/api.html
 <h1 class="heading-1">API</h1>
 <h3 class="heading-3"><span class="code">GET /users</span></h3><p class="muted">List every user.</p>
 <h3 class="heading-3"><span class="code">POST /users</span></h3><p class="lead">Create a user.</p><p>Rate limited to 10 requests a minute.</p>
-TEXT
+CONSOLE
   }
 
-  p "Four things to notice. The component is instantiated **by its own name**, as a bare block. A slot with a `= value` default is optional; one without is required, and `?` after the type makes it optional with no default. `wdoc_content { }` marks where the instance's own nested blocks render — which is why the `p` written inside the second instance lands after the summary. And a slot reference inside the body is an ordinary expression, so `$\"${verb} ${path}\"` interpolates it."
+  p "Four things to notice. You instantiate the component **by its own name**, as a bare block. A slot with a `= value` default is optional. One without is required, and `?` after the type makes it optional with no default. `wdoc_content { }` marks where the instance's own nested blocks render, so the `p` written inside the second instance lands after the summary. And a slot reference inside the body is an ordinary expression, so `$\"${verb} ${path}\"` interpolates it."
 
-  p "A slot may also be a **hole other blocks fill**, rather than a value. Type it `content` and write its name where the body should land; the instance fills it with a block of that name:"
+  p "A slot may also be a **hole other blocks fill**, rather than a value. Type it `content` and write its name where the body should land. The instance fills it with a block of that name:"
 
   code wcl {
     source = <<'WCL'
@@ -593,7 +593,7 @@ WCL
 
   p "`content<T>` narrows what the hole accepts to one child kind or interface. Where `wdoc_content` is the single anonymous hole for whatever the instance nests, a named `content` slot lets one component have several."
 
-  p "The interesting part is what validates all of this. `WdocComponent` carries `@declares_kind(name = 0, params = \"slots\", body = \"body\")` — the language's way of saying **instances of this type declare block kinds of their own**. Kind lookup derives a schema for `endpoint` from the instance's own slots, and then checks an instance like any other block. Omit `summary`:"
+  p "The interesting part is what validates the component. `WdocComponent` carries `@declares_kind(name = 0, params = \"slots\", body = \"body\")`, the language's way of saying **instances of this type declare block kinds of their own**. Kind lookup derives a schema for `endpoint` from the instance's own slots, and then checks an instance like any other block. Omit `summary`:"
 
   code text {
     source = <<'TEXT'
@@ -619,11 +619,11 @@ TEXT
 TEXT
   }
 
-  p "An unfilled defaultless slot is a missing required field. An undeclared slot is an unknown field. Both are the ordinary schema violations of [Schemas](lang_schemas) — there is no component vocabulary inside the language, only a decorator that tells the schema where to look. [Data views](wdoc_data_views) covers components and `wdoc_repeater` from the authoring side."
+  p "An unfilled defaultless slot is a missing required field. An undeclared slot is an unknown field. Both are the ordinary schema violations of [Schemas](lang_schemas). There is no component vocabulary inside the language, only a decorator that tells the schema where to look. [Data views](wdoc_data_views) covers components and `wdoc_repeater` from the authoring side."
 
   callout "A derived schema is not a declaration" {
     class = ["info"]
-    body  = "The language derives the schema for `endpoint` lazily, from the component instance. It is deliberately absent from the document's list of type declarations, because it is not one. Anything that introspects your document by walking declarations — a generated reference page, an editor palette — will not find it. Such a tool must ask for the block schema by kind instead."
+    body  = "The language derives the schema for `endpoint` lazily, from the component instance. It is deliberately absent from the document's list of type declarations, because it is not one. Anything that introspects your document by walking declarations, such as a generated reference page or an editor palette, will not find it. Such a tool must ask for the block schema by kind instead."
   }
 
   h2 "Choosing a mechanism"
@@ -634,23 +634,23 @@ TEXT
     rows:
       | "Mechanism"                    | "You write"                       | "Reaches"                          | "Checked as"                | "Reach for it when" |
       | "`lower` → `Content`"          | "A WCL function"                  | "HTML, PDF, Markdown"              | "Your `@block` type"        | "The block means something a document concept already names" |
-      | "`lower` → `Svg`"              | "A WCL function"                  | "Every target that embeds the SVG" | "Your `@block` type"        | "The block is a picture — a diagram shape" |
-      | "`lower` → `Html`"             | "A WCL function"                  | "HTML fully; others degrade"       | "Your `@block` type"        | "The output genuinely is HTML chrome" |
+      | "`lower` → `Svg`"              | "A WCL function"                  | "Every target that embeds the SVG" | "Your `@block` type"        | "The block is a picture, a diagram shape" |
+      | "`lower` → `Html`"             | "A WCL function"                  | "HTML fully. Others degrade"       | "Your `@block` type"        | "The output genuinely is HTML chrome" |
       | "`wdoc_component`"             | "Markup with named slots"         | "Whatever its body's blocks reach" | "A schema derived from the slots" | "The block is an arrangement of blocks that exist" |
       | "`@native`"                    | "Rust, inside wdoc"               | "The registry's declared backends" | "Cross-checked both ways"   | "Never, in your own document" |
   }
 
-  p "The table says what each mechanism is for. The order to try them in is what it cannot say. Start with a component. Move to a `lower` as soon as the arrangement needs a decision — a conditional, a `map` over a list, a computed number. Reach for `Html` last, and only for chrome the other three targets can afford to lose."
+  p "The table says what each mechanism is for. The order to try them in is what it cannot say. Start with a component. Move to a `lower` as soon as the arrangement needs a decision: a conditional, a `map` over a list, a computed number. Reach for `Html` last, and only for chrome the other three targets can afford to lose."
 
   h2 "Where to go next"
 
   list {
-    li "[Schemas](lang_schemas) — `@block`, `@children`, `@inline` and what `wcl check` checks, since a custom block is first of all a schema."
-    li "[Types](lang_types) — interfaces, unions and the `extends` relation the three lowering interfaces are built on."
-    li "[Functions](lang_functions) — function literals, parameters and the return-type checking a lowering does and does not get."
-    li "[Data views](wdoc_data_views) — components, repeaters and partials from the authoring side."
-    li "[Visibility](wdoc_visibility) — `@only` and `@except`, including the backend axis that waives an uncovered native block."
-    li "[The diagram canvas](wdoc_diagrams) — layout, anchoring and connections, for a custom `SvgBlock`."
-    li "[Terminals and TUI](wdoc_terminals) — the grid model a custom `TermPrimitive` draws into."
+    li "[Schemas](lang_schemas). `@block`, `@children`, `@inline` and what `wcl check` checks, since a custom block is first of all a schema."
+    li "[Types](lang_types). Interfaces, unions and the `extends` relation the three lowering interfaces are built on."
+    li "[Functions](lang_functions). Function literals, parameters and the return-type checking a lowering does and does not get."
+    li "[Data views](wdoc_data_views). Components, repeaters and partials from the authoring side."
+    li "[Visibility](wdoc_visibility). `@only` and `@except`, including the backend axis that waives an uncovered native block."
+    li "[The diagram canvas](wdoc_diagrams). Layout, anchoring and connections, for a custom `SvgBlock`."
+    li "[Terminals and TUI](wdoc_terminals). The grid model a custom `TermPrimitive` draws into."
   }
 }

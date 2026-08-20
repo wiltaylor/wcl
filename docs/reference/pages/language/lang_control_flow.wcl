@@ -1,4 +1,4 @@
-// Chapter 6 — Control flow.
+// Control flow.
 //
 // Written against the parser and evaluator, not the older concept units.
 // Where the two disagreed the code won: `if` branches are *not*
@@ -9,17 +9,17 @@ page lang_control_flow {
 
   h1 "Control flow"
 
-  p "WCL has no statements, no loops and no early return. It has **expressions**, and an expression always produces exactly one value. Control flow is therefore not a way to _do_ something conditionally — it is a way to _choose_ a value."
+  p "WCL has no statements, no loops, and no early return. It has **expressions**, and an expression always produces exactly one value. Control flow is therefore not a way to _do_ something conditionally. It is a way to _choose_ a value."
 
   p "There are five forms, plus one operator:"
 
   list {
-    li "`if` / `else` — choose between two values on a boolean."
-    li "`match` — choose among many values by testing a pattern."
-    li "`if let` — bind and choose in one step, when only one pattern interests you."
-    li "`{ … }` — a block expression: name intermediate values, then produce one."
-    li "`try` / `catch` — produce a fallback value when evaluation fails."
-    li "`??` — produce a fallback value when the left side is `none`."
+    li "**`if` and `else`.** Choose between two values on a boolean."
+    li "**`match`.** Choose among many values by testing a pattern."
+    li "**`if let`.** Bind and choose in one step, when only one pattern interests you."
+    li "**`{ … }`.** A block expression: name intermediate values, then produce one."
+    li "**`try` and `catch`.** Produce a fallback value when evaluation fails."
+    li "**`??`.** Produce a fallback value when the left side is `none`."
   }
 
   p "Every file and every command below was run before it was written down. Type them and compare."
@@ -95,8 +95,8 @@ WCL
 
   p "Read the four computed fields back:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check release.wcl
 OK
 $ wcl get release.wcl services.web.tier
@@ -107,25 +107,25 @@ $ wcl get release.wcl services.web.subtitle
 "no tagline"
 $ wcl get release.wcl services.web.budget
 12.0
-TEXT
+CONSOLE
   }
 
   p "Now edit the `rollout` field and read `plan` again. Nothing else in the file moves. Change the line to `rollout = Rollout::AllAtOnce`:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get release.wcl services.web.plan
 "all at once"
-TEXT
+CONSOLE
   }
 
   p "Then to `rollout = Rollout::BlueGreen { window_minutes: 30u32 }`:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get release.wcl services.web.plan
 "blue/green over 30m"
-TEXT
+CONSOLE
   }
 
   p "The rest of this chapter takes them one at a time."
@@ -142,12 +142,12 @@ tier = if self.replicas > 10u32 { "large" }
 WCL
   }
 
-  p "`else if` chains as far as you like. Each arm is tested in source order, and the first true one wins. Every arm is an ordinary block expression, so it may hold `let` bindings of its own — see [Block expressions](#block-expressions)."
+  p "`else if` chains as far as you like. WCL tests each arm in source order, and the first true one wins. Every arm is an ordinary block expression, so it may hold `let` bindings of its own. See [Block expressions](#block-expressions)."
 
-  p "The condition must be a `bool`. There is no truthiness — a number, a string and `none` are all refused. The diagnostic borrows its wording from `&&`, which shares the same check, so read past the operator name to the type:"
+  p "The condition must be a `bool`. There is no truthiness. WCL refuses a number, a string, and `none` alike. The diagnostic borrows its wording from `&&`, which shares the same check, so read past the operator name to the type:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat truthy.wcl
 @document
 type Cfg { a: utf8 }
@@ -157,10 +157,10 @@ $ wcl get truthy.wcl a
 wcl::eval::type_mismatch
 
   × operator '&&' is not defined for i64 and —
-TEXT
+CONSOLE
   }
 
-  callout "The branches are not checked against each other" {
+  callout "WCL does not check the branches against each other" {
     class = ["warning"]
     body  = "`if cond { 1 } else { \"x\" }` is legal. Only the branch that runs produces a value, and only that value meets the field's declared type. With `cond` false the field gets `\"x\"` and `wcl check` prints `OK`. Flip `cond` to true and the same file fails with `field 'a' declared as utf8 but value is i64`. A branch you never take is a branch nothing checks. Write both branches at one type yourself."
   }
@@ -184,8 +184,8 @@ WCL
 
   p "That `none` is a value, and it has to land somewhere that accepts absence. A field declared `subtitle: utf8?` accepts it. A list element accepts it, and the `none` **stays in the list** rather than disappearing:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat classes.wcl
 @document
 type Cfg { classes: list<utf8> }
@@ -195,13 +195,13 @@ $ wcl check classes.wcl
 OK
 $ wcl get classes.wcl classes
 ["nav", none]
-TEXT
+CONSOLE
   }
 
   p "A **required** field does not accept it. Assign an else-less `if` to `title: utf8` and the file fails whenever the condition is false:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat title.wcl
 @document
 type Cfg { title: utf8 }
@@ -213,14 +213,14 @@ wcl::eval::schema_violation
   × field 'title' declared as utf8 but value is none
 
 title.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "Only the plain `if` may drop its `else`. [`if let`](#if-let) may not."
 
   h2 "match"
 
-  p "A `match` tests one value — the **scrutinee** — against a list of patterns. The first arm whose pattern fits wins, in source order, and its body is the value of the whole expression."
+  p "A `match` tests one value, the **scrutinee**, against a list of patterns. The first arm whose pattern fits wins, in source order, and its body is the value of the whole expression."
 
   code wcl {
     source = <<'WCL'
@@ -234,9 +234,9 @@ plan = match self.rollout {
 WCL
   }
 
-  p "Each arm is `pattern => expression`, and arms are separated by commas. The trailing comma is optional. A pattern that binds names — `percent`, `window_minutes` — makes them available in that arm's body and nowhere else. [Patterns](#patterns) below is the full vocabulary."
+  p "Each arm is `pattern => expression`, and commas separate the arms. The trailing comma is optional. A pattern may also bind names, such as `percent` and `window_minutes`. Those bindings are available in that arm's body and nowhere else. [Patterns](#patterns) below is the full vocabulary."
 
-  p "An arm body is any expression, so a block, a nested `match` or an `if` all fit:"
+  p "An arm body is any expression, so a block, a nested `match`, or an `if` all fit:"
 
   code wcl {
     source = <<'WCL'
@@ -249,7 +249,7 @@ WCL
 
   h3 "Guards"
 
-  p "An `if expr` between the pattern and the `=>` is a **guard**. The arm fires only when the pattern fits _and_ the guard is true. A pattern that fits with a false guard does not stop the search. WCL goes on to the next arm, which is how the two `Rollout::Canary` arms above divide one variant between them."
+  p "An `if expr` between the pattern and the `=>` is a **guard**. The arm fires only when the pattern fits _and_ the guard is true. A pattern that fits with a false guard does not stop the search. WCL goes on to the next arm. That is how the two `Rollout::Canary` arms above divide one variant between them."
 
   code wcl {
     source = <<'WCL'
@@ -262,14 +262,14 @@ size = match n {
 WCL
   }
 
-  p "A guard must evaluate to a `bool`. Anything else fails with `match guard must return bool, got i64`, naming the type it got."
+  p "A guard must evaluate to a `bool`. Anything else fails with `match guard must return bool, got i64`, and the message names the type WCL found."
 
   h3 "The last arm must catch everything"
 
   p "WCL does not compute exhaustiveness from the scrutinee's type. It enforces a **structural** rule instead, at parse time: the final arm must be a single wildcard or binding pattern, with no alternation and no guard. Anything else is a parse error, not a runtime surprise."
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat partial.wcl
 @document
 type Cfg { a: utf8 }
@@ -290,13 +290,13 @@ wcl::parse
    ·        ╰── this arm is refutable; add `_ => …` at the end
  7 │ }
    ╰────
-TEXT
+CONSOLE
   }
 
-  p "A guard on the final arm is refused for the same reason, because a guard can fail:"
+  p "WCL refuses a guard on the final arm for the same reason, because a guard can fail:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat guarded.wcl
 @document
 type Cfg { a: utf8 }
@@ -317,14 +317,14 @@ wcl::parse
    ·            ╰── make the final arm `_ => …` (no alternation, no guard)
  7 │ }
    ╰────
-TEXT
+CONSOLE
   }
 
   p "The rule costs one arm and buys a guarantee: **a `match` always produces a value.** There is no \"no arm matched\" outcome you can reach from source, so no `match` needs a fallback around it."
 
   callout "Cheap, not clever" {
     class = ["note"]
-    body  = "The trade is deliberate. A type-directed exhaustiveness check would let you drop `_ => …` once you cover every variant of a union. It would then have to re-check every `match` in every importing document each time that union grew. The structural rule is decided by the parser alone, so it costs nothing and never changes its mind. The price is a `_` arm you may know is unreachable."
+    body  = "The trade is deliberate. A type-directed exhaustiveness check would let you drop `_ => …` once you cover every variant of a union. It would then have to re-check every `match` in every importing document each time that union grew. The parser alone decides the structural rule, so it costs nothing and never changes its mind. The price is a `_` arm you may know is unreachable."
   }
 
   h2 "Patterns"
@@ -343,18 +343,18 @@ TEXT
       | "`Union::Variant(pat)`"        | "A variant with a positional payload, matched by `pat`." | "`Shape::Square(side) => …`" |
       | "`Union::Variant { f: pat }`"  | "A record variant, field by field."                    | "`Shape::Rect { w, h } => …`" |
       | "`Union::Variant { f, .. }`"   | "The same, ignoring the fields you did not name."      | "`Shape::Rect { w, .. } => …`" |
-      | "`Variant { … }`"              | "The same, unqualified — the variant is resolved against the value's own union." | "`Rect { h, .. } => …`" |
+      | "`Variant { … }`"              | "The same, unqualified. WCL resolves the variant against the value's own union." | "`Rect { h, .. } => …`" |
       | "`pat1 | pat2`"                | "Either alternative."                                  | "`1 | 3 | 5 => \"odd\"`" |
   }
 
   p "Three details are worth spelling out."
 
-  p "**A record pattern names the fields it wants.** `{ w, h }` is shorthand for `{ w: w, h: h }` — the field's own name becomes the binding. Write `{ w: width }` to bind it under another name. `wcl fmt` expands the shorthand back to the long form, so do not be surprised when a formatted file reads `{ percent: percent }`."
+  p "**A record pattern names the fields it wants.** `{ w, h }` is shorthand for `{ w: w, h: h }`. The field's own name becomes the binding. Write `{ w: width }` to bind it under another name. `wcl fmt` expands the shorthand back to the long form, so do not be surprised when a formatted file reads `{ percent: percent }`."
 
   p "**Alternatives must bind the same names.** `1 | 3 | 5` binds nothing, so it is fine. `0 | k` is not, because the arm body would not know whether `k` exists:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat alt.wcl
 @document
 type Cfg { a: utf8 }
@@ -375,13 +375,13 @@ wcl::parse
    ·       ╰── each `|` alternative must introduce the same bindings
  6 │   _ => "y",
    ╰────
-TEXT
+CONSOLE
   }
 
   p "**A variant-literal scrutinee needs parentheses.** Write the scrutinee as a variant and the brace that should open the match opens the variant's record body instead. The parser then reads your first arm as a record field, and says so:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat lit.wcl
 union Shape { Empty none  Square f64 }
 @document
@@ -398,7 +398,7 @@ wcl::parse
    ·                               ─┬
    ·                                ╰── unexpected token
    ╰────
-TEXT
+CONSOLE
   }
 
   p "Wrap the scrutinee, or put it in a name first. Both of these parse:"
@@ -412,7 +412,7 @@ b = match s { Shape::Empty => "empty", _ => "other" }
 WCL
   }
 
-  p "An ordinary reference needs no parentheses. `match cache { … }` and `match self.rollout { … }` are unambiguous, which is why the rest of this chapter never wraps one."
+  p "An ordinary reference needs no parentheses. `match cache { … }` and `match self.rollout { … }` are unambiguous, and the rest of this chapter never wraps one."
 
   callout "A record pattern ignores what it does not name" {
     class = ["warning"]
@@ -429,7 +429,7 @@ a = if let Cache::Redis { url, .. } = cache { url } else { "not redis" }
 WCL
   }
 
-  p "The pattern is the full vocabulary from [Patterns](#patterns), the bindings it introduces are in scope in the `then` block only, and both blocks are ordinary block expressions. `else if let` chains, and a chain may end in a plain `else if` or a plain `else`:"
+  p "The pattern is the full vocabulary from [Patterns](#patterns). The bindings it introduces are in scope in the `then` block only, and both blocks are ordinary block expressions. `else if let` chains, and a chain may end in a plain `else if` or a plain `else`:"
 
   code wcl {
     source = <<'WCL'
@@ -439,16 +439,16 @@ b = if let S::Circle(r) = s { $"circle ${r}" }
 WCL
   }
 
-  callout "The else is required — a known gap" {
+  callout "The required else is a known gap" {
     class = ["warning"]
-    body  = "A plain `if` may drop its `else`; an `if let` may not. `a = if let S::Circle(r) = s { \"c\" }` fails to parse with `'if let' requires an 'else' branch`. This is scope, not a semantic obstacle — the evaluator would happily answer `none` on a no-match, exactly as a branchless `if` does. Until it is lifted, write `else { none }` yourself, and give the field an optional type."
+    body  = "A plain `if` may drop its `else`. An `if let` may not. `a = if let S::Circle(r) = s { \"c\" }` fails to parse with `'if let' requires an 'else' branch`. The gap is scope, not a semantic obstacle. The evaluator would answer `none` on a no-match, exactly as a branchless `if` does. Until the restriction is lifted, write `else { none }` yourself, and give the field an optional type."
   }
 
   p "An `if let` also takes no guard. `if let P = x if cond { … }` is a parse error. Put the test inside the `then` block, or write a `match` arm with a guard. That arm is what a guarded `if let` would have been anyway."
 
   h2 "Which one to reach for"
 
-  p "`match`, `if let` and `??` overlap, and a great many expressions could be written with any of the three. Save this as `choose.wcl` and compare them side by side:"
+  p "`match`, `if let`, and `??` overlap, and you could write a great many expressions with any of the three. Save this as `choose.wcl` and compare them side by side:"
 
   code wcl {
     filename = "choose.wcl"
@@ -487,8 +487,8 @@ by_match = match cache {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check choose.wcl
 OK
 $ wcl get choose.wcl by_coalesce
@@ -497,10 +497,10 @@ $ wcl get choose.wcl by_if_let
 "redis://localhost"
 $ wcl get choose.wcl by_match
 "redis://localhost for 60s"
-TEXT
+CONSOLE
   }
 
-  p "The three are ordered by how much of the value you need to look at."
+  p "The table below orders the three by how much of the value you need to look at."
 
   table {
     rows:
@@ -528,7 +528,7 @@ budget = {
 WCL
   }
 
-  p "Three rules, all enforced by the parser:"
+  p "The parser enforces three rules:"
 
   list {
     li "**Every binding ends in a semicolon.** The tail does not."
@@ -546,24 +546,24 @@ WCL
 
   callout "A block never starts with a field name and a colon" {
     class = ["note"]
-    body  = "`{ … }` in expression position is also the syntax for a bare record literal. The parser decides by lookahead, and the test is exact: an opening brace followed by an identifier and a `:` opens a **record**; anything else opens a **block**. `{ let x = 1; x }` is a block. `{ name: \"web\" }` is a record. See [Lists, tensors and records](lang_collections)."
+    body  = "`{ … }` in expression position is also the syntax for a bare record literal. The parser decides by lookahead, and the test is exact: an opening brace followed by an identifier and a `:` opens a **record**. Anything else opens a **block**. `{ let x = 1; x }` is a block. `{ name: \"web\" }` is a record. See [Lists, tensors and records](lang_collections)."
   }
 
   h3 "let bindings and let items"
 
-  p "WCL spells two different things `let`, and they are not the same construct. The `let` **binding** described above lives inside a block expression and ends in a semicolon. The `let` **item** from [Documents, fields and blocks](lang_documents) sits at file or block scope and takes no semicolon."
+  p "WCL spells two different things `let`. The `let` **binding** described above lives inside a block expression and ends in a semicolon. The `let` **item** from [Documents, fields and blocks](lang_documents) sits at file or block scope and takes no semicolon."
 
   table {
     rows:
       | "Form"           | "Written as"         | "Lives in"                   | "Terminator"     | "Scope" |
-      | "`let` binding"  | "`let name = expr;`" | "A `{ … }` block expression" | "`;` — required" | "The rest of that block" |
+      | "`let` binding"  | "`let name = expr;`" | "A `{ … }` block expression" | "`;`, required" | "The rest of that block" |
       | "`let` item"     | "`let name = expr`"  | "A file, or a block body"    | "None"           | "Sibling and descendant expressions" |
   }
 
   p "Neither is document data, and that is the one thing they do share: `wcl get` reaches neither, and the schema validates neither. What separates them is reach. A binding is gone at the closing brace:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat scope.wcl
 @document
 type Cfg { a: u32  b: u32 }
@@ -578,15 +578,15 @@ $ wcl get scope.wcl b
 wcl::eval::unresolved_reference
 
   × unresolved reference 'z'
-TEXT
+CONSOLE
   }
 
-  p "Note that `wcl check` passed that file. `check` reports **schema** violations; an unresolved reference is an evaluation error, and it surfaces when something forces the field. [How a document evaluates](lang_evaluation) covers the split."
+  p "`wcl check` passed that file. `wcl check` reports **schema** violations. An unresolved reference is an evaluation error, and it surfaces when something forces the field. [How a document evaluates](lang_evaluation) covers the split."
 
   p "A binding may shadow an item of the same name, and the innermost one wins:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat shadow.wcl
 @document
 type Cfg { a: u32 }
@@ -595,10 +595,10 @@ a = { let n = 2u32; n }
 
 $ wcl get shadow.wcl a
 2u32
-TEXT
+CONSOLE
   }
 
-  p "The rule of thumb: a `let` item is for a value two fields share; a `let` binding is for a step inside one field's calculation."
+  p "The rule of thumb: a `let` item is for a value two fields share. A `let` binding is for a step inside one field's calculation."
 
   h2 "try and catch"
 
@@ -643,8 +643,8 @@ raised     = try error("boom") catch e => e
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get try.wcl arithmetic
 "operator '/' cannot divide by zero"
 $ wcl get try.wcl missing
@@ -653,15 +653,15 @@ $ wcl get try.wcl cyclic
 "cycle while evaluating 'x'"
 $ wcl get try.wcl raised
 "error: boom"
-TEXT
+CONSOLE
   }
 
   p "That last one is the `error(\"boom\")` builtin. `panic` and a failed `assert` render the same way, and `try` catches all three. The names differ in intent, not in what they do. [Builtins](lang_builtins) covers them."
 
-  p "What `try` does **not** catch is a schema violation, because a violation is not an evaluation failure. The body succeeds, produces a value, and the value is then measured against the declared type:"
+  p "What `try` does **not** catch is a schema violation, because a violation is not an evaluation failure. The body succeeds, produces a value, and WCL then measures that value against the declared type:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat wrong.wcl
 @document
 type Cfg { a: u32 }
@@ -673,7 +673,7 @@ wcl::eval::schema_violation
   × field 'a' declared as u32 but value is utf8
 
 wrong.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   callout "A fallback, not a silencer" {
@@ -681,15 +681,15 @@ TEXT
     body  = "`try` makes any evaluation failure recoverable, cycles and upstream field errors included. That reach is the point, and it is also the risk: a `try` wrapped around a whole calculation turns a real mistake into a plausible default that nothing complains about. Wrap the smallest expression that can fail, and only where the fallback means something. It is a division that may divide by zero, not a document that may be wrong."
   }
 
-  p "The `catch` binder is a name, not a pattern — there is no `catch Error::Parse(e) => …`. A failure is a message, and if you need to branch on it, `match` the string."
+  p "The `catch` binder is a name, not a pattern. There is no `catch Error::Parse(e) => …`. A failure is a message, and if you need to branch on it, `match` the string."
 
   h2 "Where to go next"
 
   list {
-    li "[Expressions and operators](lang_expressions) — the operator precedence table, `??` among them, and numeric promotion."
-    li "[Types](lang_types) — unions and their variants, which is what most `match` arms are made of."
-    li "[Functions](lang_functions) — a function body is a block expression, and a `fn` item is a `let` item."
-    li "[How a document evaluates](lang_evaluation) — laziness, caching, cycle detection, and why `wcl check` and `wcl get` disagree about some errors."
-    li "[Builtins](lang_builtins) — `error`, `panic` and `assert`, the three ways to make a `try` fire."
+    li "[Expressions and operators](lang_expressions). The operator precedence table, `??` among them, and numeric promotion."
+    li "[Types](lang_types). Unions and their variants. Most `match` arms are made of them."
+    li "[Functions](lang_functions). A function body is a block expression, and a `fn` item is a `let` item."
+    li "[How a document evaluates](lang_evaluation). Laziness, caching, cycle detection, and why `wcl check` and `wcl get` disagree about some errors."
+    li "[Builtins](lang_builtins). `error`, `panic`, and `assert`, the three ways to make a `try` fire."
   }
 }

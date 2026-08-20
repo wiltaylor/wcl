@@ -1,4 +1,4 @@
-// Chapter 10 — Decorators.
+// Decorators.
 //
 // Written against #168. Every snippet and every transcript below was run
 // through the `wcl` CLI before it was written down; nothing here is
@@ -32,7 +32,7 @@ WCL
 
   list {
     li "**Positional arguments come first.** A positional argument after a named one is a parse error: `positional argument cannot follow named argument`."
-    li "**Arguments are expressions**, not literals. `@max(limit * 2)` parses. They are evaluated lazily, like everything else — see [How a document evaluates](lang_evaluation)."
+    li "**Arguments are expressions**, not literals. `@max(limit * 2)` parses. They are evaluated lazily, like everything else. See [How a document evaluates](lang_evaluation)."
     li "**A trailing comma is allowed**, and an empty list (`@doc()`) parses. Whether an empty list is _valid_ is the decorator schema's business, not the parser's."
   }
 
@@ -56,7 +56,7 @@ WCL
       | "`:fn`"         | "A `fn` item"                                | "`fn label(s: utf8) -> utf8 { … }`" |
   }
 
-  p "Note the pair that is easy to run together. `:type_field` is the _declaration_ `port: u32` inside a type; `:field` is the _assignment_ `owner = \"platform\"` inside a document. They are different positions because they are different things, and a decorator may be legal on one and not the other."
+  p "Note the pair that is easy to run together. `:type_field` is the _declaration_ `port: u32` inside a type. `:field` is the _assignment_ `owner = \"platform\"` inside a document. They are different positions because they are different things, and a decorator may be legal on one and not the other."
 
   p "One file exercising every position checks green:"
 
@@ -118,8 +118,8 @@ WCL
 
   p "The item forms outside that list accept no decorator at all, and each says so at parse time rather than at check time:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check import.wcl
 wcl::parse
 
@@ -134,7 +134,7 @@ $ wcl check table.wcl
 wcl::parse
 
   × decorators are not allowed on table headers
-TEXT
+CONSOLE
   }
 
   h2 "Every decorator is declared"
@@ -178,13 +178,13 @@ WCL
   p "Read the declaration as a type, because it is one. Each field is one argument slot:"
 
   list {
-    li "**`@inline(N)` makes a slot positional**, at zero-based index `N`. `level` carries `@inline(0)`, so `@stability(:beta)` fills it. A slot with no `@inline` is **named-only** — `since` can be written `since = \"0.4\"` and no other way."
+    li "**`@inline(N)` makes a slot positional**, at zero-based index `N`. `level` carries `@inline(0)`, so `@stability(:beta)` fills it. A slot with no `@inline` is **named-only**. `since` can be written `since = \"0.4\"` and no other way."
     li "**A `?` makes a slot optional.** `level` is required, `since` is not."
     li "**A slot's declared type is checked.** `level: Stability` means the argument must be a member of that symbol set, and `:experimental` is refused with the same message a field of that type would give."
     li "**`@default(expr)` supplies an omitted value**, exactly as it does on an ordinary schema field."
   }
 
-  p "A decorator may appear at most once on one node — `@inline(0) @inline(1) a: utf8` is refused, not merged. Declare it `@decorator(\"tag\", repeatable = true)` when repetition is the point. Exactly one built-in takes that opt-in: `@unit`, so one numeric alias can carry `KiB`, `MiB` and `GiB` at once."
+  p "A decorator may appear at most once on one node. `@inline(0) @inline(1) a: utf8` is refused, not merged. Declare it `@decorator(\"tag\", repeatable = true)` when repetition is the point. Exactly one built-in takes that opt-in: `@unit`, so one numeric alias can carry `KiB`, `MiB` and `GiB` at once."
 
   h3 "Six ways to get it wrong"
 
@@ -201,7 +201,7 @@ WCL
       | "`@stability(:beta) @stability(:stable)`" | "`decorator '@stability' may appear at most once on one node`" |
   }
 
-  p "The fourth row is the one worth reading twice. A surplus positional is not reported as \"too many arguments\": it is reported as a missing `@inline(1)` slot, because that is the actual gap. Adding `@inline(1)` to `since` would make `@stability(:beta, \"0.4\")` legal."
+  p "The fourth row is the one worth reading twice. A surplus positional is not reported as \"too many arguments\". It is reported as a missing `@inline(1)` slot, because that is the actual gap. Adding `@inline(1)` to `since` would make `@stability(:beta, \"0.4\")` legal."
 
   h3 "@applies_to: restricting the positions"
 
@@ -239,7 +239,7 @@ TEXT
 
   callout "A bad declaration is reported once" {
     class = ["note"]
-    body  = "When `@applies_to` names a block kind that does not exist, the decorator's every _use_ site stops being checked against `kinds`. That is deliberate: a misspelt kind is one declaration error, and repeating it at forty otherwise-correct call sites would bury the line that needs fixing."
+    body  = "When `@applies_to` names a block kind that does not exist, the decorator's every _use_ site stops being checked against `kinds`. That is deliberate. A misspelt kind is one declaration error, and repeating it at forty otherwise-correct call sites would bury the line that needs fixing."
   }
 
   h3 "Namespaced decorators"
@@ -269,7 +269,7 @@ type Service { @inline(0) name: identifier  port: u32 }
 WCL
   }
 
-  p "`@owner(\"platform\")` resolves too — the import brings the namespace into scope. Reach for the qualifier when two libraries declare the same decorator name, or when the reader needs to know whose vocabulary this is. A qualifier that resolves to nothing has its own message: `decorator '@nope.owner' has no declaration in the qualified namespace`. See [Namespaces and imports](lang_namespaces)."
+  p "`@owner(\"platform\")` resolves too. The import brings the namespace into scope. Reach for the qualifier when two libraries declare the same decorator name, or when the reader needs to know whose vocabulary this is. A qualifier that resolves to nothing has its own message: `decorator '@nope.owner' has no declaration in the qualified namespace`. See [Namespaces and imports](lang_namespaces)."
 
   h2 "Three vocabularies, one mechanism"
 
@@ -284,7 +284,7 @@ WCL
       | "Yours"        | "A `@decorator(\"…\")` type in your document" | "You, by reflection" | "`@stability` above" |
   }
 
-  p "The built-in vocabulary is twenty-two decorators. Every one is listed below with the chapter that covers it, because most of them are somebody else's chapter — this one owns only the rows marked _here_."
+  p "The built-in vocabulary is twenty-two decorators. Every one is listed below with the chapter that covers it, because most of them are somebody else's chapter. This one owns only the rows marked _here_."
 
   table {
     rows:
@@ -314,14 +314,14 @@ WCL
 
   callout "The comparison that matters: describe or change" {
     class = ["info"]
-    body  = "Split the twenty-two by what the language does with one. Most of them **describe a shape**: `@block`, `@child`, `@children`, `@inline`, `@default`, `@table`, `@document`, `@ref`, `@min`, `@max`, `@non_empty`, `@unit`. The language reads every one, and what it reads is a fact about the declaration it sits on. Five of them **change how the language handles the node**: `@schemaless` turns validation off, `@by_ref` changes what reification produces, `@contextual` changes where a block may sit and where its children come from, `@block_slot` changes what a `slot` derives to, and `@declares_kind` makes an instance declare kinds. Writing one of those is not annotating a declaration; it is changing how every instance of it is placed, checked or reified. And exactly one built-in is **read by nobody**: `@doc`. The language declares it and never looks at it, so documentation metadata has one agreed spelling — which is the shape a library vocabulary takes too. wdoc declares `@only`, `@except` and `@wdoc.file`; wdoc, not the language, reads them."
+    body  = "Split the twenty-two by what the language does with one. Most of them **describe a shape**: `@block`, `@child`, `@children`, `@inline`, `@default`, `@table`, `@document`, `@ref`, `@min`, `@max`, `@non_empty`, `@unit`. The language reads every one, and what it reads is a fact about the declaration it sits on. Five of them **change how the language handles the node**: `@schemaless` turns validation off, `@by_ref` changes what reification produces, `@contextual` changes where a block may sit and where its children come from, `@block_slot` changes what a `slot` derives to, and `@declares_kind` makes an instance declare kinds. Writing one of those is not annotating a declaration. It is changing how every instance of it is placed, checked or reified. And exactly one built-in is **read by nobody**: `@doc`. The language declares it and never looks at it, so documentation metadata has one agreed spelling. A library vocabulary takes that shape too. wdoc declares `@only`, `@except` and `@wdoc.file`, and wdoc, not the language, reads them."
   }
 
-  p "Four of the five changers get a section below. `@schemaless` is the fifth, and it belongs to [Schemas](lang_schemas) beside the checks it switches off. `@doc` and `@connections` get one each as well — the first because it is the decorator you will write most, the second because it is the one whose field is populated by statements rather than by a value."
+  p "Four of the five changers get a section below. `@schemaless` is the fifth, and it belongs to [Schemas](lang_schemas) beside the checks it switches off. `@doc` and `@connections` get one each as well. The first is the decorator you will write most. The second is the one whose field is populated by statements rather than by a value."
 
   h2 "@doc"
 
-  p "`@doc(\"text\")` attaches documentation to a declaration or one of its fields. It sits beside the **doc comment** — the unbroken run of `#` or `//` lines above a declaration that [Documents, fields and blocks](lang_documents) covers — and the two are read by two different builtins."
+  p "`@doc(\"text\")` attaches documentation to a declaration or one of its fields. It sits beside the **doc comment**, the unbroken run of `#` or `//` lines above a declaration that [Documents, fields and blocks](lang_documents) covers. Two different builtins read them."
 
   p "`stability.wcl` above already carries both, one on the type and one on `port`. Give its `@document` schema two more fields and read them back:"
 
@@ -339,21 +339,21 @@ field_doc = decorator_arg(Service.port, "doc", "text")
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get stability.wcl type_doc
 "Everything the platform runs."
 $ wcl get stability.wcl field_doc
 "Listening port; must be free at startup."
-TEXT
+CONSOLE
   }
 
-  p "Which to reach for is a question about the reader. A doc comment is prose for a person reading the file; `doc_comment()` reads it back for a hover card or a generated page. `@doc` is an argument — a checked `utf8` slot on a declared decorator, evaluated like any other expression — so reach for it when the text is data your program consumes rather than a note to the next author."
+  p "Which to reach for is a question about the reader. A doc comment is prose for a person reading the file, and `doc_comment()` reads it back for a hover card or a generated page. `@doc` is an argument: a checked `utf8` slot on a declared decorator, evaluated like any other expression. Reach for it when the text is data your program consumes rather than a note to the next author."
 
 
   h2 "@by_ref"
 
-  p "When a block is reified — turned into a record so an expression can consume it — its nested blocks are reified with it, in place. `@by_ref` on a block type changes that: a `@child` or `@children` slot of that kind becomes a **resolvable reference** to the content instead of a copy of it."
+  p "When a block is reified, turned into a record so an expression can consume it, its nested blocks are reified with it, in place. `@by_ref` on a block type changes that: a `@child` or `@children` slot of that kind becomes a **resolvable reference** to the content instead of a copy of it."
 
   p "Run the difference. This file reifies its `card` blocks with `map`:"
 
@@ -387,22 +387,22 @@ first = map(cards, fn(c: any) -> any { c })
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get byref.wcl first
 [Card { body: &cards.intro.body<block>, name: intro, title: "Welcome" }]
 
 # ...and with the @by_ref removed from Body:
 $ wcl get byref.wcl first
 [Card { body: Body { text: "the long form" }, name: intro, title: "Welcome" }]
-TEXT
+CONSOLE
   }
 
-  p "`&cards.intro.body<block>` is an address, not content. The consumer decides when — and whether — to resolve it. That is the point: a long body reified into every record that mentions it is duplicated work and duplicated storage, and a consumer that renders the body once and links to it wants the address, not forty copies."
+  p "`&cards.intro.body<block>` is an address, not content. The consumer decides when, and whether, to resolve it. That is the point: a long body reified into every record that mentions it is duplicated work and duplicated storage, and a consumer that renders the body once and links to it wants the address, not forty copies."
 
   h2 "@connections"
 
-  p "`@connections(S)` on a field says: gather this scope's `->` statements and project each one as a record of the connection schema `S`."
+  p "`@connections(S)` on a field gathers this scope's `->` statements and projects each one as a record of the connection schema `S`."
 
   code wcl {
     filename = "graph.wcl"
@@ -430,20 +430,20 @@ web -> db :uses
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get graph.wcl deps
 [DependsOn { destination: db, kind: :uses, source: web }]
-TEXT
+CONSOLE
   }
 
-  p "The decorator is the whole of the wiring: it names which connection declaration this field collects, and the arrow statements supply the edges. [Connections](lang_connections) covers the `connection` declaration, the endpoint types, the edge-kind symbol set and `@dynamic`."
+  p "The decorator is the whole of the wiring. It names which connection declaration this field collects, and the arrow statements supply the edges. [Connections](lang_connections) covers the `connection` declaration, the endpoint types, the edge-kind symbol set and `@dynamic`."
 
   h2 "@contextual"
 
-  p "A nested block is normally legal only where its parent's schema declares it as a child kind. `@contextual` on a `@block` type lifts that rule for the kind: a contextual block is legal **wherever nested blocks are legal at all**, and no parent has to name it."
+  p "A nested block is normally legal only where its parent's schema declares it as a child kind. `@contextual` on a `@block` type lifts that rule for the kind. A contextual block is legal **wherever nested blocks are legal at all**, and no parent has to name it."
 
-  p "The kind that needs this is the one whose meaning is _repetition_, or _instantiation_ — a block that is not content itself but produces content. Its body cannot be validated where it sits, because the body only means something once it is expanded with bindings."
+  p "The kind that needs the lifted rule is the one whose meaning is _repetition_, or _instantiation_. It is a block that is not content itself but produces content. Its body cannot be validated where it sits, because the body only means something once it is expanded with bindings."
 
   code wcl {
     filename = "deck.wcl"
@@ -482,8 +482,8 @@ WCL
 
   p "`Deck` declares one child kind, `card`. It never mentions `repeat`, and `wcl check` prints `OK`. Drop the `@contextual` and the same file fails:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check deck.wcl
 OK
 
@@ -492,21 +492,21 @@ $ wcl check deck.wcl
 wcl::eval::schema_violation
 
   × block kind 'repeat' is not allowed inside 'deck'
-TEXT
+CONSOLE
   }
 
-  p "Placement is only half. `@contextual` also marks the block as one whose children are **generated**, and the language does not know how. It cannot: \"iterate `each`, bind each element to the symbol named by `as`\" is behaviour, and behaviour belongs to whoever defined the vocabulary. So the host registers an **expander** — a Rust callback on the `Environment` — and the language consults it when it projects a `@children(\"card\")` slot, so the generated cards land in the slot exactly like the authored one."
+  p "Placement is only half. `@contextual` also marks the block as one whose children are **generated**, and the language does not know how. It cannot: \"iterate `each`, bind each element to the symbol named by `as`\" is behaviour, and behaviour belongs to whoever defined the vocabulary. So the host registers an **expander**, a Rust callback on the `Environment`, and the language consults it when it projects a `@children(\"card\")` slot, so the generated cards land in the slot exactly like the authored one."
 
   callout "A decorator declares that, never how" {
     class = ["note"]
-    body  = "Demanding a `@contextual` block's generated children from a document opened with no registered expander is a hard error naming the kind. The language declines to guess. Parsing and formatting never demand them, which is why `deck.wcl` above checks green with no host in sight: `wcl check`, `wcl parse` and `wcl fmt` never ask what the `repeat` expands to. Anything that evaluates the expansion must open the document with the host's environment."
+    body  = "Demanding a `@contextual` block's generated children from a document opened with no registered expander is a hard error naming the kind. The language declines to guess. Parsing and formatting never demand them, so `deck.wcl` above checks green with no host in sight: `wcl check`, `wcl parse` and `wcl fmt` never ask what the `repeat` expands to. Anything that evaluates the expansion must open the document with the host's environment."
   }
 
   h2 "@declares_kind"
 
   p "Here is new ground, and it is worth naming as such. Everything so far attached data to a declaration. `@declares_kind` attaches data to a declaration whose **instances declare block kinds of their own**."
 
-  p "It is how a host adds a template-like concept — a component, a widget, a macro — without the language ever learning that concept's name. The author writes one `component` block; from then on `metric_card` is a block kind like any other."
+  p "It is how a host adds a template-like concept such as a component, a widget or a macro, without the language ever learning that concept's name. The author writes one `component` block. From then on `metric_card` is a block kind like any other."
 
   code wcl {
     filename = "components.wcl"
@@ -565,7 +565,7 @@ WCL
       | "`body = \"field\"`"   | "The declarer field holding the template body"              | "optional" |
   }
 
-  p "`body` is carried, never read. What an instance expands to is the host's expander again — see [@contextual](#contextual) — and the derived schema below carries `@contextual` for exactly that reason."
+  p "`body` is carried, never read. What an instance expands to is the host's expander again. See [@contextual](#contextual). The derived schema below carries `@contextual` for exactly that reason."
 
   h3 "The derived schema"
 
@@ -582,16 +582,16 @@ WCL
 TEXT
   }
 
-  p "Both messages name `metric_card` as the schema, and neither the message nor the code that produced it knows the word \"component\". That is the whole point: the host contributed a vocabulary, and the language's generic checks apply to it."
+  p "Both messages name `metric_card` as the schema, and neither the message nor the code that produced it knows the word \"component\". That is the whole point. The host contributed a vocabulary, and the language's generic checks apply to it."
 
   callout "Membership, not types" {
     class = ["warning"]
-    body  = "An instance of a declared kind gets exactly two checks: every field it writes is a declared param, and every required param is written. The value in a param is **not** type-checked. `slot count: u32` filled with `count = \"three\"` passes `wcl check`. The declared type is preserved on the derived schema so a host can read it; deciding what a param may hold is that host's business, because it is the host that binds it."
+    body  = "An instance of a declared kind gets exactly two checks: every field it writes is a declared param, and every required param is written. The value in a param is **not** type-checked. `slot count: u32` filled with `count = \"three\"` passes `wcl check`. The declared type is preserved on the derived schema so a host can read it. Deciding what a param may hold is that host's business, because it is the host that binds it."
   }
 
   h3 "@block_slot"
 
-  p "A param may be declared with a type: `slot title: utf8`. One type marker changes what that means. A type carrying `@block_slot` is not a scalar parameter at all — it is a **nested-block hole**, and the derivation skips it."
+  p "A param may be declared with a type: `slot title: utf8`. One type marker changes what that means. A type carrying `@block_slot` is not a scalar parameter at all. It is a **nested-block hole**, and the derivation skips it."
 
   code wcl {
     source = <<'WCL'
@@ -615,19 +615,19 @@ page panels {
 WCL
   }
 
-  p "`title` and `count` become fields of the `panel` schema. `inner` becomes nothing the language checks: what may go in the hole, and what it means when it gets there, is the host's contract, resolved when it fills the slot. The marker exists so that contract stays host-neutral — the language never learns that wdoc calls its hole type `content`."
+  p "`title` and `count` become fields of the `panel` schema. `inner` becomes nothing the language checks: what may go in the hole, and what it means when it gets there, is the host's contract, resolved when it fills the slot. The marker exists so that contract stays host-neutral. The language never learns that wdoc calls its hole type `content`."
 
   h3 "Three consequences to respect"
 
   p "A derived schema is not a declaration, and three things follow from that. A consumer that gets any of them wrong fails quietly rather than loudly."
 
   list {
-    li "**The derivation is lazy and built once** — a `OnceLock` arena on the document, filled on the first lookup that needs it. Deriving a schema evaluates the declarer's labels, and evaluating can resolve a name through a block's schema, landing back in the lookup that started the derivation. The derivation stands down for such a re-entrant call rather than recursing, so no diagnostic path may run inside it: a lookup that missed _and_ was being validated would report an unregistered kind that is perfectly registered."
-    li "**A derived schema is absent from `type_decls()`.** It is reachable through kind lookup — `block_schema`, or `derived_block_schema` directly — and nowhere else. Anything that introspects by walking the document's declarations will not find it, and neither will a reference by name; a consumer that must tell the two apart asks `TypeDecl::is_derived`."
-    li "**Both sides of the collision check look up without the fallback.** A declared `@block(\"metric_card\")` beside a `component metric_card` is incoherent — expansion dispatches the kind to the declarer while schema lookup validates instances against the declared type — so the collision itself is the error, reported at the declarer. Because the check consults declared kinds only, a declared kind can never collide with itself."
+    li "**The derivation is lazy and built once.** A `OnceLock` arena on the document, filled on the first lookup that needs it. Deriving a schema evaluates the declarer's labels, and evaluating can resolve a name through a block's schema, landing back in the lookup that started the derivation. The derivation stands down for such a re-entrant call rather than recursing, so no diagnostic path may run inside it: a lookup that missed _and_ was being validated would report an unregistered kind that is perfectly registered."
+    li "**A derived schema is absent from `type_decls()`.** It is reachable through kind lookup, `block_schema` or `derived_block_schema` directly, and nowhere else. Anything that introspects by walking the document's declarations will not find it, and neither will a reference by name. A consumer that must tell the two apart asks `TypeDecl::is_derived`."
+    li "**Both sides of the collision check look up without the fallback.** A declared `@block(\"metric_card\")` beside a `component metric_card` is incoherent. Expansion dispatches the kind to the declarer while schema lookup validates instances against the declared type, so the collision itself is the error, reported at the declarer. Because the check consults declared kinds only, a declared kind can never collide with itself."
   }
 
-  p "The second is the one you can watch. Add two fields to `components.wcl` and ask for each. `Component` is a declaration and reflects; `metric_card` is a derived schema and does not resolve as a name at all:"
+  p "The second is the one you can watch. Add two fields to `components.wcl` and ask for each. `Component` is a declaration and reflects. `metric_card` is a derived schema and does not resolve as a name at all:"
 
   code wcl {
     source = <<'WCL'
@@ -636,32 +636,32 @@ card_kind      = decorator_arg(metric_card, "block", "name")
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get components.wcl component_kind
 "component"
 $ wcl get components.wcl card_kind
 wcl::eval::unresolved_reference
 
   × unresolved reference 'metric_card'
-TEXT
+CONSOLE
   }
 
-  p "The third is the one that bites in a build. Add a type that declares the same kind — `@block(\"metric_card\") type MetricCard { label: utf8 }`, with a `@children(\"metric_card\")` slot on `Page` so it is placed — and the one message names both halves:"
+  p "The third is the one that bites in a build. Add a type that declares the same kind, `@block(\"metric_card\") type MetricCard { label: utf8 }`, with a `@children(\"metric_card\")` slot on `Page` so it is placed, and the one message names both halves:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check components.wcl
 wcl::eval::schema_violation
 
   × block 'component' declares the kind 'metric_card', which collides with the
   │ @block/@table kind "metric_card" declared by type 'MetricCard' — rename it
-TEXT
+CONSOLE
   }
 
   h2 "Reading decorators back"
 
-  p "Decorators are data, and a document can read its own. Four builtins do it, all of them taking a **reference** — a declaration's name, or a dotted path to one of its fields. Give `stability.wcl` from [Every decorator is declared](#every-decorator-is-declared) three more fields, replacing its `@document` schema with this one:"
+  p "Decorators are data, and a document can read its own. Four builtins do it, all of them taking a **reference**: a declaration's name, or a dotted path to one of its fields. Give `stability.wcl` from [Every decorator is declared](#every-decorator-is-declared) three more fields, replacing its `@document` schema with this one:"
 
   code wcl {
     source = <<'WCL'
@@ -679,18 +679,18 @@ service_decs  = decorator_names(Service)
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get stability.wcl service_level
 :beta
 $ wcl get stability.wcl service_since
 "0.4"
 $ wcl get stability.wcl service_decs
 ["doc", "stability", "block"]
-TEXT
+CONSOLE
   }
 
-  p "Read `service_decs` closely. The list holds `@doc`, `@stability` **and** `@block`, in source order — a built-in decorator and one of your own come back through the same call, because there was never a difference between them to preserve."
+  p "Read `service_decs` closely. The list holds `@doc`, `@stability` **and** `@block`, in source order. A built-in decorator and one of your own come back through the same call, because there was never a difference between them to preserve."
 
   table {
     rows:
@@ -705,25 +705,25 @@ TEXT
 
   callout "These builtins take a reference, not a value" {
     class = ["warning"]
-    body  = "`decorator_names(Service)` works. `decorator_names(services.web)` does not — a block reached through a gather field has already reified to a record, and the call fails with `expected data path (e.g. a type or block reference), found record`. Nor does a member access chain directly off one of these calls: bind the result to a `let` first, then read the field."
+    body  = "`decorator_names(Service)` works. `decorator_names(services.web)` does not. A block reached through a gather field has already reified to a record, and the call fails with `expected data path (e.g. a type or block reference), found record`. Nor does a member access chain directly off one of these calls: bind the result to a `let` first, then read the field."
   }
 
   h2 "Declaring decorators from a Rust host"
 
-  p "A Rust embedder registers its vocabulary on an `Environment`, which is merged into every document opened with it. `TypeBuilder`, `TypeFieldBuilder` and `DecoratorBuilder` build the declarations programmatically — a host-registered `@decorator` type is the same declaration a `.wcl` file would have written, and nothing downstream can tell them apart."
+  p "A Rust embedder registers its vocabulary on an `Environment`, which is merged into every document opened with it. `TypeBuilder`, `TypeFieldBuilder` and `DecoratorBuilder` build the declarations programmatically. A host-registered `@decorator` type is the same declaration a `.wcl` file would have written, and nothing downstream can tell them apart."
 
   p "On the reading side, `TypeDecl::decorators()` and the `Decorator` view mirror the builtins above: `resolved_arg_value` is what `decorator_arg` calls, `declares_kind()` reads the `@declares_kind` contract as a struct, and `Document::derived_block_schema` / `TypeDecl::is_derived` are the two entry points to a schema that is not a declaration. `Environment::set_expander` registers the callback [@contextual](#contextual) needs."
 
-  p "The API surface changes with the crate, so it is documented where it lives rather than here. Run `cargo doc --open` and read `wcl_lang::Environment`, `wcl_lang::doc::TypeDecl` and `wcl_lang::doc::Decorator`."
+  p "The API changes with the crate, so it is documented where it lives rather than here. Run `cargo doc --open` and read `wcl_lang::Environment`, `wcl_lang::doc::TypeDecl` and `wcl_lang::doc::Decorator`."
 
   h2 "Where to go next"
 
   list {
-    li "[Schemas](lang_schemas) — `@document`, `@block`, `@child`, `@children`, `@inline`, `@table`, `@schemaless`, and what `wcl check` actually checks."
-    li "[Types](lang_types) — the constraint decorators `@min`, `@max` and `@non_empty`, and the type system they constrain."
-    li "[Connections](lang_connections) — `connection` declarations, arrow statements, `@connections` and `@dynamic` in full."
-    li "[Builtins](lang_builtins) — `decorator_names`, `decorator_arg`, `decl_info`, `decorators_for_kind`, `doc_comment`."
-    li "[Visibility](wdoc_visibility) — wdoc's `@only` / `@except`, a library vocabulary built on this chapter's mechanism."
-    li "[Writing your own blocks](wdoc_extending) — where a `@declares_kind` component and a host expander meet a real renderer."
+    li "[Schemas](lang_schemas). `@document`, `@block`, `@child`, `@children`, `@inline`, `@table`, `@schemaless`, and what `wcl check` actually checks."
+    li "[Types](lang_types). The constraint decorators `@min`, `@max` and `@non_empty`, and the type system they constrain."
+    li "[Connections](lang_connections). `connection` declarations, arrow statements, `@connections` and `@dynamic` in full."
+    li "[Builtins](lang_builtins). `decorator_names`, `decorator_arg`, `decl_info`, `decorators_for_kind`, `doc_comment`."
+    li "[Visibility](wdoc_visibility). wdoc's `@only` / `@except`, a library vocabulary built on this chapter's mechanism."
+    li "[Writing your own blocks](wdoc_extending). Where a `@declares_kind` component and a host expander meet a real renderer."
   }
 }

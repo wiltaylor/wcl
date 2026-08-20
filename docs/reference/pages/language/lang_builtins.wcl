@@ -1,4 +1,4 @@
-// Chapter 13 — Builtins.
+// Builtins.
 //
 // The catalogue was generated once from the running `wcl` binary — every
 // signature, parameter and return description below is `fn_signature`'s
@@ -11,7 +11,7 @@ page lang_builtins {
 
   h1 "Builtins"
 
-  p "A **builtin** is a function the language already knows. You do not import it, declare it or define it — you call it. There are exactly one hundred, and the `wcl` CLI adds three more of wdoc's own, which is where the 103 in this chapter comes from."
+  p "A **builtin** is a function the language already knows. You do not import it, declare it or define it. You call it. There are exactly one hundred, and the `wcl` CLI adds three more of wdoc's own, for the 103 this chapter counts."
 
   p "The bulk of this chapter is a catalogue. Each entry carries one builtin's signature, its parameters, its return value, and an example whose printed answer came from a real run."
 
@@ -19,20 +19,20 @@ page lang_builtins {
 
   h2 "One call, one answer"
 
-  p "A builtin call is an ordinary call expression. [Expressions and operators](lang_expressions#calls) covers the syntax; four rules govern what a builtin does with it."
+  p "A builtin call is an ordinary call expression. [Expressions and operators](lang_expressions#calls) covers the syntax. Four rules govern what a builtin does with it."
 
   list {
-    li "**Arity is fixed.** Every builtin but one takes an exact number of arguments. Supplying the wrong count is an error at the call site, not a partially applied function — there is no currying in WCL."
-    li "**Arguments are positional.** WCL has no keyword arguments and no defaults. A builtin that wants named options takes a record instead, so the option names are written at the call site."
-    li "**Arguments are values.** Each one is evaluated before the call, left to right. A function argument — the `fn(x: i64) -> i64 { … }` you hand to `map` — is a value like any other; see [Functions](lang_functions)."
-    li "**A failure aborts the field.** A builtin that cannot answer reports an error rather than returning a sentinel, and that error propagates out through whichever field forced it. `try body catch e => fallback` recovers one; see [Control flow](lang_control_flow)."
+    li "**Arity is fixed.** Every builtin but one takes an exact number of arguments. The wrong argument count is an error at the call site, not a partially applied function. WCL has no currying."
+    li "**Arguments are positional.** WCL has no keyword arguments and no defaults. A builtin that wants named options takes a record instead, so you write the option names at the call site."
+    li "**Arguments are values.** WCL evaluates each one before the call, left to right. A function argument, the `fn(x: i64) -> i64 { … }` you hand to `map`, is a value like any other. See [Functions](lang_functions)."
+    li "**A failure aborts the field.** A builtin that cannot answer reports an error rather than returning a sentinel, and that error propagates out through whichever field forced it. `try body catch e => fallback` recovers one. See [Control flow](lang_control_flow)."
   }
 
   p "The one exception to fixed arity is `format`, which takes a template plus as many arguments as the template has `{}` slots."
 
   callout "Builtins are the last place the resolver looks" {
     class = ["note"]
-    body  = "A name in call position is resolved against the document first — `let` bindings, `fn` items, fields — and only then against the builtin registry. So a `fn len(xs: list<utf8>) -> u32 { … }` of your own **shadows** the builtin inside its scope. The flip side is the error message: a name that resolves to nothing callable is reported as `unknown built-in 'box'`, because the registry is where the search ended, not where it began."
+    body  = "The resolver checks a name in call position against the document first: `let` bindings, `fn` items and fields. Only then does it check the builtin registry. So a `fn len(xs: list<utf8>) -> u32 { … }` of your own **shadows** the builtin inside its scope. The flip side is the error message. A name that resolves to nothing callable is reported as `unknown built-in 'box'`, because the registry is where the search ended, not where it began."
   }
 
   h2 "A file that uses seven of them"
@@ -74,8 +74,8 @@ service "cache" { region = "eu-west-1"  replicas = 1u32 }
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check release.wcl
 OK
 $ wcl get release.wcl names
@@ -88,14 +88,14 @@ $ wcl get release.wcl replicas
 7u32
 $ wcl get release.wcl summary
 "3 services over 2 regions, 7 replicas, busiest is web"
-TEXT
+CONSOLE
   }
 
-  p "Three things in that file are worth naming before the catalogue starts. A gather field is a `list<Service>`, so every list builtin works on it directly. `unique` keeps **first-seen** order, which is why `us-east-1` leads. And `busiest` wraps its call in a block expression: `max_by` returns a record-shaped value, and reading a field straight off a call — `max_by(…).name` — fails with `expected a reference, got call`. Bind it with a `let` first. That rule bites hardest in [Reflection](#reflection), where almost every builtin answers a record."
+  p "Three things in that file are worth naming before the catalogue starts. A gather field is a `list<Service>`, so every list builtin works on it directly. `unique` keeps **first-seen** order, so `us-east-1` leads. And `busiest` wraps its call in a block expression: `max_by` returns a record-shaped value, and reading a field straight off a call, `max_by(…).name`, fails with `expected a reference, got call`. Bind it with a `let` first. That rule bites hardest in [Reflection](#reflection), where almost every builtin answers a record."
 
   h2 "Asking the language what it has"
 
-  p "The catalogue below was generated from the language itself, and you can regenerate it. `builtin_names()` answers every registered name, sorted, and `fn_signature(name)` answers that builtin's documentation as a record."
+  p "The catalogue below comes from the language itself, and you can regenerate it. `builtin_names()` answers every registered name, sorted, and `fn_signature(name)` answers that builtin's documentation as a record."
 
   code wcl {
     filename = "catalogue.wcl"
@@ -113,29 +113,29 @@ sig   = { let s = fn_signature("map"); s.signature }
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get catalogue.wcl count
 102
 $ wcl get catalogue.wcl first
 ["__wdoc_slot", "abs", "acos"]
 $ wcl get catalogue.wcl sig
 "fn(xs: [T], f: fn (T) -> U) -> [U]"
-TEXT
+CONSOLE
   }
 
-  p "The count is 102 rather than 100, and the first name is one you did not write, because the environment a builtin lives in belongs to the **host**, not to the language. The `wcl` CLI is a wdoc-aware host: it registers wdoc's two builtins into every document it opens, whether or not the document imports wdoc. The bare language registers one hundred. `wcl repl` shows both, because a REPL started with a file opens it the way the CLI opens any document, and a REPL started without one evaluates against an empty document in the plain language environment:"
+  p "The count is 102 rather than 100, and the first name is one you did not write, because the environment a builtin lives in belongs to the **host**, not to the language. The `wcl` CLI is a wdoc-aware host: it registers wdoc's two builtins into every document it opens, whether or not the document imports wdoc. The bare language registers one hundred. `wcl repl` shows both counts. A REPL started with a file opens that file the way the CLI opens any document. A REPL started without a file evaluates against an empty document, in the plain language environment:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ echo 'len(builtin_names())' | wcl repl
 100
 $ echo 'len(builtin_names())' | wcl repl release.wcl
 102
-TEXT
+CONSOLE
   }
 
-  p "The hundred are registered by five modules of `wcl_lang`, and this chapter groups them by what they are for rather than by which module holds them."
+  p "Five modules of `wcl_lang` register the hundred. This chapter groups them by what they are for rather than by which module holds them."
 
   table {
     rows:
@@ -155,48 +155,48 @@ TEXT
   table {
     rows:
       | "When you want" | "Reach for" | "Not" | "Because" |
-      | "A substring test" | "`contains(s, needle)`" | "`list_contains`" | "`contains` is strings only and _fails_ on a list; `list_contains` accepts a list or a tensor and answers `false` for anything else, silently" |
+      | "A substring test" | "`contains(s, needle)`" | "`list_contains`" | "`contains` is strings only and _fails_ on a list. `list_contains` accepts a list or a tensor and answers `false` for anything else, silently" |
       | "The matching element" | "`find(xs, pred)`" | "`index_of` / `list_contains`" | "`find` answers the element or `none`, `index_of` answers a position or `-1`, `list_contains` answers a `bool`. Three questions, three shapes" |
-      | "A sub-list by position" | "`slice(xs, a, b)`" | "`take` + `drop`" | "`slice` clamps both bounds and also reads a string; `take`/`drop` are the one-sided forms and are lists only" |
+      | "A sub-list by position" | "`slice(xs, a, b)`" | "`take` + `drop`" | "`slice` clamps both bounds and also reads a string. `take`/`drop` are the one-sided forms and are lists only" |
       | "The smallest of a list" | "`min_by(xs, key)`" | "`min(a, b)`" | "`min` compares exactly two numbers. `min_by` walks a list and answers an element, or `none` when it is empty" |
-      | "A sorted list" | "`sort(xs)`" | "`sort_by(xs, key)`" | "`sort` orders numbers or strings directly and _fails_ on a mixed list; `sort_by` is for everything else, and is stable" |
-      | "A string built from parts" | "`format(t, …)`" | "`concat` / `join`" | "`format` renders any value into a `{}` slot; `concat` and `join` demand strings. The interpolated `$\"…${x}…\"` literal renders the same way `format` does — see [Values and primitives](lang_values#interpolation)" |
-      | "To stop on a bad value" | "`assert(cond, msg)`" | "`error` / `panic`" | "`assert` is the guard form; `error` and `panic` abort unconditionally. All three fail the same way, and `try`/`catch` recovers all three" |
+      | "A sorted list" | "`sort(xs)`" | "`sort_by(xs, key)`" | "`sort` orders numbers or strings directly and _fails_ on a mixed list. `sort_by` is for everything else, and is stable" |
+      | "A string built from parts" | "`format(t, …)`" | "`concat` / `join`" | "`format` renders any value into a `{}` slot. `concat` and `join` demand strings. The interpolated `$\"…${x}…\"` literal renders the same way `format` does. See [Values and primitives](lang_values#interpolation)" |
+      | "To stop on a bad value" | "`assert(cond, msg)`" | "`error` / `panic`" | "`assert` is the guard form. `error` and `panic` abort unconditionally. All three fail the same way, and `try`/`catch` recovers all three" |
       | "A byte size rendered" | "`format_unit(v, type, unit)`" | "`format_unit_value`" | "`format_unit` reads the factor from the type's `@unit` decorator, so it survives a change to the factor. `format_unit_value` takes the factor from you and checks nothing" |
-      | "To know if a path is covered" | "`path_contains(p, c)`" | "`glob_match` / `glob_overlaps`" | "`path_contains` is a segment-aware prefix test between two concrete paths. `glob_match` tests one path against a pattern; `glob_overlaps` tests two _patterns_ against each other" |
+      | "To know if a path is covered" | "`path_contains(p, c)`" | "`glob_match` / `glob_overlaps`" | "`path_contains` is a segment-aware prefix test between two concrete paths. `glob_match` tests one path against a pattern. `glob_overlaps` tests two _patterns_ against each other" |
   }
 
-  p "One pair deserves its own sentence. `error` and `panic` are the **same function under two names** — identical implementations, identical `error: <msg>` output, and both equally catchable by `try`/`catch`. Nothing about `panic` is more final than `error`. Choose between them for the reader, not for the runtime."
+  p "One pair deserves its own sentence. `error` and `panic` are the **same function under two names**. They have identical implementations and identical `error: <msg>` output, and `try`/`catch` catches both. Nothing about `panic` is more final than `error`. Choose between them for the reader, not for the runtime."
 
   h2 "How to read an entry"
 
-  p "Every entry below carries four things: the signature, a one-line description, a table of parameters and the return, and an example. The signature is the one the language reports for itself through `fn_signature`, which uses an **informal notation** — it is documentation, not a type you may write."
+  p "Every entry below carries four things: the signature, a one-line description, a table of parameters and the return, and an example. The signature is the one the language reports for itself through `fn_signature`, which uses an **informal notation**. It is documentation, not a type you may write."
 
   table {
     rows:
       | "In a signature" | "Means" | "Legal as a field type" | "Legal as a parameter type" |
-      | "`[T]`" | "A list of any one element type" | "No — write `list<T>`, see [Lists, tensors and records](lang_collections#lists)" | "No — write `list<T>`" |
-      | "`T` / `U` / `K` / `A` / `B`" | "A type variable: whatever you pass, or whatever your callback returns" | "No — WCL has no generic declarations" | "No" |
-      | "`number`" | "Any numeric value, widened to `f64` on the way in" | "No — write `i64`, `u32`, `f64`, …, see [Values and primitives](lang_values#numbers)" | "Yes" |
-      | "`record`" | "A record value, or a union variant with a record body" | "No — declare a type of your own, see [Lists, tensors and records](lang_collections#records)" | "Yes" |
-      | "`&T`" | "A reference to a declaration — a type, field, block or variant named in an expression" | "Yes — see [Types](lang_types#reference-types)" | "Yes" |
+      | "`[T]`" | "A list of any one element type" | "No. Write `list<T>`. See [Lists, tensors and records](lang_collections#lists)" | "No. Write `list<T>`" |
+      | "`T` / `U` / `K` / `A` / `B`" | "A type variable: whatever you pass, or whatever your callback returns" | "No. WCL has no generic declarations" | "No" |
+      | "`number`" | "Any numeric value, widened to `f64` on the way in" | "No. Write `i64`, `u32`, `f64` or another concrete numeric type. See [Values and primitives](lang_values#numbers)" | "Yes" |
+      | "`record`" | "A record value, or a union variant with a record body" | "No. Declare a type of your own. See [Lists, tensors and records](lang_collections#records)" | "Yes" |
+      | "`&T`" | "A reference to a declaration: a type, field, block or variant named in an expression" | "Yes. See [Types](lang_types#reference-types)" | "Yes" |
       | "`any`" | "Any value at all" | "No" | "No" |
       | "`never`" | "The call does not return" | "No" | "No" |
   }
 
-  p "Two consequences follow. Most of that notation is for reading, not for writing. A field declared `record` fails with `unknown type 'record'`. So the result of a builtin that answers a record either stays inside an expression, which is where most of them belong, or you copy it into a type you declared. A **callback parameter** is looser: it may be typed `record`, `number` or `&T`. That is why the reflection examples below write `fn(f: record) -> utf8 { … }`."
+  p "Two consequences follow. Most of that notation is for reading, not for writing. A field declared `record` fails with `unknown type 'record'`. So the result of a builtin that answers a record usually stays inside an expression, which is where most of them belong. To store it in a field, copy it into a type you declared. A **callback parameter** is looser: it may be typed `record`, `number` or `&T`. That is why the reflection examples below write `fn(f: record) -> utf8 { … }`."
 
-  p "And `[T]` says nothing about the element type. `sort` and `sum` check theirs at run time and fail on a mixed list, because the signature could not."
+  p "And `[T]` says nothing about the element type. `sort` and `sum` check theirs at run time and fail on a mixed list, because the signature cannot check it for them."
 
   p "The example line ends in a `# → …` comment carrying the answer `wcl repl` prints for it. That is the display form: `abs(-7.5)` is `7.5` and not `7`, because every math builtin answers an `f64`."
 
   h2 "Lists"
 
-  p "Twenty-eight builtins over `list<T>`, the collection everything else turns into. A gather field is one, a table's rows are one, and `split`, `range`, `keys` and `chars` all answer one. [Lists, tensors and records](lang_collections#lists) covers the value; this section covers what you can do to it."
+  p "Twenty-eight builtins over `list<T>`, the collection everything else turns into. A gather field is one, a table's rows are one, and `split`, `range`, `keys` and `chars` all answer one. [Lists, tensors and records](lang_collections#lists) covers the value. This section covers what you can do to it."
 
   p "They divide by job. **Build** one with `range`. **Read** one with `len`, `at`, `head`, `tail`, `take`, `drop`, `slice`, `index_of` and `list_contains`. **Transform** one with `map`, `filter`, `fold`, `flatten`, `zip`, `enumerate`, `reverse` and `unique`. **Search** one with `any`, `all` and `find`. **Order** one with `sort`, `sort_by`, `sort_connected`, `min_by`, `max_by` and `group_by`. And `sum` reduces a numeric one."
 
-  p "Nine of them also accept a **tensor**, reading its flat row-major data: `at`, `fold`, `head`, `index_of`, `len`, `list_contains`, `map`, `sum` and `tail`. Only `map` keeps the shape; the rest answer a plain value or a plain list. The other nineteen refuse a tensor, and `filter` says why — dropping elements would invalidate the shape."
+  p "Nine of them also accept a **tensor**, reading its flat row-major data: `at`, `fold`, `head`, `index_of`, `len`, `list_contains`, `map`, `sum` and `tail`. Only `map` keeps the shape. The rest answer a plain value or a plain list. The other nineteen refuse a tensor, and `filter` says why: dropping elements would invalidate the shape."
 
   p "Two accept a **string**: `len`, which counts characters, and `slice`. Everything else that reads a string lives under [Strings](#strings)."
 
@@ -272,7 +272,7 @@ at([10, 20, 30], 1)   # → 20
 SRC
   }
 
-  p "Out of range is a **failure**, not a `none`: `at([1, 2], 5)` reports `'at': at: index 5 out of bounds`. Reach for [`head`](#head) or a guarded [`slice`](#slice) when the index may not be there. Also accepts a tensor, indexing its flat data."
+  p "Out of range is a **failure**, not a `none`: `at([1, 2], 5)` reports `'at': at: index 5 out of bounds`. When the index may not be there, reach for [`head`](#head) or a guarded [`slice`](#slice). Also accepts a tensor, indexing its flat data."
 
   h3 "drop"
 
@@ -321,7 +321,7 @@ enumerate(["a", "b"])   # → [[0, "a"], [1, "b"]]
 SRC
   }
 
-  p "The pairs are two-element **lists**, not records: read the index with `at(pair, 0)` and the element with `at(pair, 1)`."
+  p "The pairs are two-element **lists**, not records. Read the index with `at(pair, 0)` and the element with `at(pair, 1)`."
 
   h3 "filter"
 
@@ -347,7 +347,7 @@ filter([1, 2, 3, 4], fn(x: i64) -> bool { x % 2 == 0 })   # → [2, 4]
 SRC
   }
 
-  p "Refuses a tensor outright — dropping elements would invalidate the shape. The message says so: `filter: tensors are not supported (would invalidate shape); use map or convert to a list`."
+  p "Refuses a tensor outright, because dropping elements would invalidate the shape. The message says so: `filter: tensors are not supported (would invalidate shape); use map or convert to a list`."
 
   h3 "find"
 
@@ -447,7 +447,7 @@ group_by([1, 2, 3, 4], fn(x: i64) -> i64 { x % 2 })   # → [ { items: [1, 3], k
 SRC
   }
 
-  p "Groups appear in **first-seen key order**, not sorted key order — grouping `[1, 2, 3, 4]` by `x % 2` puts the odd group first, because `1` came first."
+  p "Groups appear in **first-seen key order**, not sorted key order. Grouping `[1, 2, 3, 4]` by `x % 2` puts the odd group first, because `1` came first."
 
   h3 "head"
 
@@ -498,7 +498,7 @@ index_of([10, 20, 30], 20)   # → 1
 SRC
   }
 
-  p "Accepts a list or a tensor, and answers `-1` for anything else — including a string, which it never searches."
+  p "Accepts a list or a tensor, and answers `-1` for anything else, including a string, which it never searches."
 
   h3 "len"
 
@@ -523,7 +523,7 @@ len([10, 20, 30])   # → 3
 SRC
   }
 
-  p "Three shapes, one question. A list answers with its element count, a tensor with the product of its dimensions, and a string with its **character** count — `len(\"héllo\")` is `5`, not the byte length."
+  p "Three shapes, one question. A list answers with its element count, a tensor with the product of its dimensions, and a string with its **character** count. `len(\"héllo\")` is `5`, not the byte length."
 
   h3 "list_contains"
 
@@ -549,7 +549,7 @@ list_contains([1, 2, 3], 2)   # → true
 SRC
   }
 
-  p "Accepts a list or a tensor. Anything else answers `false` rather than failing, so a mis-typed argument is silent — see [Choosing between the near-twins](#choosing-between-the-near-twins)."
+  p "Accepts a list or a tensor. Anything else answers `false` rather than failing, so a mis-typed argument is silent. See [Choosing between the near-twins](#choosing-between-the-near-twins)."
 
   h3 "map"
 
@@ -722,7 +722,7 @@ sort([3, 1, 2])   # → [1, 2, 3]
 SRC
   }
 
-  p "Mixed lists fail loudly rather than inventing an order: `sort([1, \"a\"])` reports `list must be all numeric or all strings, found mixed`. Tensors are refused; sort `tensor_data(t)` instead."
+  p "Mixed lists fail loudly rather than inventing an order: `sort([1, \"a\"])` reports `list must be all numeric or all strings, found mixed`. Tensors are refused. Sort `tensor_data(t)` instead."
 
   h3 "sort_by"
 
@@ -773,7 +773,7 @@ sort_connected([{ id: "a" }, { id: "b" }, { id: "c" }],
 SRC
   }
 
-  p "Written for diagram layout: it reads an `id` field off each item, recurses into a `children` field, and reorders so that edge-joined items sit together. Items no edge names keep their relative order."
+  p "Written for diagram layout. It reads an `id` field off each item, recurses into a `children` field, and reorders so that edge-joined items sit together. Items that no edge names keep their relative order."
 
   h3 "sum"
 
@@ -798,7 +798,7 @@ sum([1, 2, 3, 4])   # → 10
 SRC
   }
 
-  p "An empty list is a failure — `sum([])` reports `'sum': sum: empty list` — because there is no zero to return without knowing the element type. Also accepts a tensor."
+  p "An empty list is a failure, because there is no zero to return without knowing the element type. `sum([])` reports `'sum': sum: empty list`. Also accepts a tensor."
 
   h3 "tail"
 
@@ -823,7 +823,7 @@ tail([1, 2, 3])   # → [2, 3]
 SRC
   }
 
-  p "Accepts a tensor, and drops the shape: the answer is always a plain list."
+  p "Accepts a tensor, and drops the shape. The answer is always a plain list."
 
   h3 "take"
 
@@ -900,7 +900,7 @@ SRC
 
   h2 "Records"
 
-  p "Four builtins over the record — the `{ name: value, … }` literal covered in [Lists, tensors and records](lang_collections#records). A record has no declared type and no field order, which is why `keys` sorts."
+  p "Four builtins over the record, the `{ name: value, … }` literal covered in [Lists, tensors and records](lang_collections#records). A record has no declared type and no field order, so `keys` sorts."
 
   h3 "keys"
 
@@ -925,7 +925,7 @@ keys({ name: "Rex", age: 4 })   # → ["age", "name"]
 SRC
   }
 
-  p "Sorted, always — a record's field order is not preserved, so `keys` gives you a deterministic one instead."
+  p "Sorted, always. WCL does not preserve a record's field order, so `keys` gives you a deterministic one instead."
 
   h3 "map_values"
 
@@ -1128,7 +1128,7 @@ format("{} = {}", "x", 42)   # → "x = 42"
 SRC
   }
 
-  p "The one variadic builtin. `{}` takes the next argument in order; `{{` and `}}` are literal braces. A slot renders the value the way a person reads it — a `u32` loses its suffix — which is the same rendering an interpolated `$\"…${x}…\"` string performs. See [Values and primitives](lang_values#interpolation)."
+  p "The one variadic builtin. `{}` takes the next argument in order. `{{` and `}}` are literal braces. A slot renders the value the way a person reads it, so a `u32` loses its suffix. That is the same rendering an interpolated `$\"…${x}…\"` string performs. See [Values and primitives](lang_values#interpolation)."
 
   h3 "join"
 
@@ -1206,7 +1206,7 @@ pad_start("42", 5, "0")   # → "00042"
 SRC
   }
 
-  p "The pad pattern is repeated and truncated to fill the gap, so a multi-character pattern may end mid-pattern. A string already `width` wide comes back unchanged; nothing is ever cut."
+  p "`pad_start` repeats and truncates the pad pattern to fill the gap, so a multi-character pattern may end mid-pattern. A string already `width` wide comes back unchanged. Nothing is ever cut."
 
   h3 "repeat"
 
@@ -1378,7 +1378,7 @@ SRC
 
   h2 "Tensors"
 
-  p "One constructor and three accessors. A tensor is a flat, row-major buffer plus a shape — see [Lists, tensors and records](lang_collections#tensors). These four are the only builtins that know about the shape. The nine list builtins that accept a tensor all read its flat data, and only `map` gives a tensor back."
+  p "One constructor and three accessors. A tensor is a flat, row-major buffer plus a shape. See [Lists, tensors and records](lang_collections#tensors). These four are the only builtins that know about the shape. The nine list builtins that accept a tensor all read its flat data, and only `map` gives a tensor back."
 
   h3 "tensor"
 
@@ -1453,7 +1453,7 @@ tensor_reshape(tensor([1, 2, 3, 4], [2, 2]), [4])   # → tensor[4](1, 2, 3, 4)
 SRC
   }
 
-  p "The element count must be unchanged; the data is not copied or reordered, only re-read."
+  p "The element count must be unchanged. `tensor_reshape` does not copy or reorder the data. It only re-reads it."
 
   h3 "tensor_shape"
 
@@ -1480,7 +1480,7 @@ SRC
 
   h2 "Failing on purpose"
 
-  p "Three ways to stop. All three are implemented as the same abort: evaluation of the field that forced them ends, and the message is printed after `error:`. All three are recoverable by `try body catch e => fallback` — see [Control flow](lang_control_flow)."
+  p "Three ways to stop. All three are the same abort: evaluation of the field that forced them ends, and the CLI prints the message after `error:`. `try body catch e => fallback` recovers all three. See [Control flow](lang_control_flow)."
 
   p "The difference is the shape of the call, not the severity. `assert` takes a condition and does nothing when it holds. `error` and `panic` take no condition and always abort. They are literally the same function registered twice."
 
@@ -1549,16 +1549,16 @@ service "web" {
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get guard.wcl services.web.checked
 wcl::eval::user_error
 
   × error: port must be above 1024
-SRC
+CONSOLE
   }
 
-  p "The failure aborts the field that called it, and the message is printed verbatim after `error:`. `try … catch e => …` recovers it — see [Control flow](lang_control_flow)."
+  p "The failure aborts the field that called it, and the CLI prints the message verbatim after `error:`. `try … catch e => …` recovers it. See [Control flow](lang_control_flow)."
 
   h3 "panic"
 
@@ -1587,11 +1587,11 @@ SRC
 
   h2 "Math"
 
-  p "Twenty-nine builtins, and one rule that covers all of them: **arguments widen to `f64` and results are `f64`**. `sqrt(144)` answers `12.0`, not `12`. That is why the signatures say `number` going in and `f64` coming out — an `i64`, a `u32` and an `f64` are all accepted, and none of them survives the call as itself."
+  p "Twenty-nine builtins, and one rule that covers all of them: **arguments widen to `f64` and results are `f64`**. `sqrt(144)` answers `12.0`, not `12`. That is why the signatures say `number` going in and `f64` coming out. An `i64`, a `u32` and an `f64` are all accepted, and none of them survives the call as itself."
 
-  p "Nothing here is a constraint check. `sqrt(-1)`, `ln(0)` and `0.0 / 0.0` produce the IEEE answers (`NaN`, `-inf`) rather than errors, exactly as the floating-point arithmetic in [Expressions and operators](lang_expressions#integers-refuse-to-be-wrong-floats-do-not) does."
+  p "Nothing here is a constraint check. `sqrt(-1)`, `ln(0)` and `0.0 / 0.0` produce the IEEE answers (`NaN`, `-inf`) rather than errors, exactly as the floating-point arithmetic in [Expressions and operators](lang_expressions#integers-refuse-to-be-wrong-but-floats-do-not) does."
 
-  p "The trigonometric functions work in **radians**. `radians` and `degrees` convert; `pi`, `tau` and `e` are the three nullary constants."
+  p "The trigonometric functions work in **radians**. `radians` and `degrees` convert. `pi`, `tau` and `e` are the three nullary constants."
 
   h3 "abs"
 
@@ -1780,7 +1780,7 @@ clamp(12.0, 0.0, 10.0)   # → 10.0
 SRC
   }
 
-  p "No check that `lo <= hi`. When they are the wrong way round the answer is `lo`."
+  p "No check that `lo <= hi`. When they are the wrong way round, the answer is `lo`."
 
   h3 "cos"
 
@@ -2276,9 +2276,9 @@ SRC
 
   h2 "Reflection"
 
-  p "Twelve builtins that read the document rather than its data: what a type declares, what decorates it, what a namespace holds, what the source said. They exist so a document can generate its own reference — which is how the catalogue in this chapter was produced."
+  p "Twelve builtins that read the document rather than its data: what a type declares, what decorates it, what a namespace holds, what the source said. They exist so a document can generate its own reference. That is how the catalogue in this chapter was produced."
 
-  p "Most of them take a **reference** — the declaration's bare name, written in expression position; the rest take a name as a string. Every example below is a field of one small file, so you can see what each answers against the same schema:"
+  p "Most of them take a **reference**, the declaration's bare name written in expression position. The rest take a name as a string. Every example below is a field of one small file, so you can see what each answers against the same schema:"
 
   code wcl {
     filename = "schema.wcl"
@@ -2335,7 +2335,7 @@ service web { port = 8080u32 }
 WCL
   }
 
-  p "Two shapes recur. A builtin returning `[&T]` answers a list of further references, so the usual move is to `map` over it and reflect each one — that is what `children` and `declarations` do above. And a builtin returning a `record` must be **bound before a field is read off it**: `decl_info(Service).kind` fails with `expected a reference, got call`, while `{ let d = decl_info(Service); d.kind }` answers `\"type\"`. Note that only `wcl get` and a build catch it — the field is lazy, so `wcl check` alone reports `OK`."
+  p "Two shapes recur. A builtin returning `[&T]` answers a list of further references, so the usual move is to `map` over it and reflect each one. That is what `children` and `declarations` do above. And a builtin returning a `record` must be **bound before a field is read off it**: `decl_info(Service).kind` fails with `expected a reference, got call`, while `{ let d = decl_info(Service); d.kind }` answers `\"type\"`. Only `wcl get` and a build catch it. The field is lazy, so `wcl check` alone reports `OK`."
 
   h3 "ast_string"
 
@@ -2360,11 +2360,11 @@ source = ast_string(Limits)
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl source
 "@block(\"limits\")\ntype Limits {\n  cpu: f64\n}"
-SRC
+CONSOLE
   }
 
   h3 "builtin_names"
@@ -2389,11 +2389,11 @@ builtins = len(builtin_names())
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl builtins
 103
-SRC
+CONSOLE
   }
 
   h3 "child_types"
@@ -2419,11 +2419,11 @@ children = map(child_types(Inventory), fn(t: &Service) -> utf8 { { let d = decl_
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl children
 ["Service"]
-SRC
+CONSOLE
   }
 
   h3 "decl_info"
@@ -2449,14 +2449,14 @@ kind = { let d = decl_info(Service); d.kind }
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl kind
 "type"
-SRC
+CONSOLE
   }
 
-  p "The `kind` of a `@document` type is still `\"type\"`; the `is_document` flag is what tells you it is the document schema."
+  p "The `kind` of a `@document` type is still `\"type\"`. The `is_document` flag is what tells you it is the document schema."
 
   h3 "decorator_arg"
 
@@ -2483,11 +2483,11 @@ block_kind = decorator_arg(Service, "block", "name")
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl block_kind
 "service"
-SRC
+CONSOLE
   }
 
   h3 "decorator_names"
@@ -2513,11 +2513,11 @@ decorators = decorator_names(Service)
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl decorators
 ["block"]
-SRC
+CONSOLE
   }
 
   h3 "decorators_for_kind"
@@ -2543,14 +2543,14 @@ legal_on = len(decorators_for_kind("service"))
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl legal_on
 22
-SRC
+CONSOLE
   }
 
-  p "Answers the decorator **schemas** that are legal on the kind, which includes every built-in one — 22 of them for an ordinary block, before the document declares any of its own."
+  p "Answers the decorator **schemas** that are legal on the kind, every built-in one included. An ordinary block has 22, before the document declares any of its own."
 
   h3 "doc_comment"
 
@@ -2575,14 +2575,14 @@ doc = doc_comment(Service)
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl doc
 "The edge service: terminates TLS and forwards to the app tier.\nOwned by the platform team."
-SRC
+CONSOLE
   }
 
-  p "The run must be unbroken: a blank line ends it, and anything above the blank line belongs to nothing. See [Documents, fields and blocks](lang_documents#doc-comments)."
+  p "The run must be unbroken. A blank line ends it, and anything above the blank line belongs to nothing. See [Documents, fields and blocks](lang_documents#doc-comments)."
 
   h3 "eval"
 
@@ -2607,14 +2607,14 @@ doubled = eval("2 * 21")
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl doubled
 42
-SRC
+CONSOLE
   }
 
-  p "The expression is parsed and evaluated **in the calling scope**, so it can see `self`, sibling fields and `let` bindings: a field written `doubled = eval(\"self.port * 2u32\")` inside a `service` whose `port` is `80u32` answers `160u32`."
+  p "`eval` parses and evaluates the expression **in the calling scope**, so the expression can see `self`, sibling fields and `let` bindings: a field written `doubled = eval(\"self.port * 2u32\")` inside a `service` whose `port` is `80u32` answers `160u32`."
 
   h3 "fn_signature"
 
@@ -2639,14 +2639,14 @@ map_sig = { let s = fn_signature("map"); s.signature }
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl map_sig
 "fn(xs: [T], f: fn (T) -> U) -> [U]"
-SRC
+CONSOLE
   }
 
-  p "Takes a function value, or a builtin's **name as a string**. The record it returns has to be bound before you can read a field off it — `fn_signature(\"map\").signature` fails with `expected a reference, got call`, while `{ let s = fn_signature(\"map\"); s.signature }` does not."
+  p "Takes a function value, or a builtin's **name as a string**. The record it returns has to be bound before you can read a field off it: `fn_signature(\"map\").signature` fails with `expected a reference, got call`, while `{ let s = fn_signature(\"map\"); s.signature }` does not."
 
   h3 "namespace_decls"
 
@@ -2671,11 +2671,11 @@ declarations = map(namespace_decls("app"), fn(t: &Service) -> utf8 { { let d = d
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl declarations
 ["Service", "Limits", "Inventory"]
-SRC
+CONSOLE
   }
 
   p "Imported declarations are included. Filter on `decl_info(d).is_imported` to keep only the ones the document declares itself."
@@ -2703,18 +2703,18 @@ fields = map(type_fields(Service), fn(f: record) -> utf8 { f.name })
 SRC
   }
 
-  code text {
-    source = <<'SRC'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get schema.wcl fields
 ["name", "port", "limits"]
-SRC
+CONSOLE
   }
 
   h2 "Paths and globs"
 
-  p "Three pure string functions. Nothing here touches the disk: a path is a `/`-separated sequence of segments, empty and `.` segments are dropped, and a pattern with a trailing `/` owns its whole subtree. `src`, `src/` and `./src` are the same path to all three."
+  p "Three pure string functions. Nothing here touches the disk. A path is a `/`-separated sequence of segments. Empty and `.` segments are dropped, and a pattern with a trailing `/` owns its whole subtree. `src`, `src/` and `./src` are the same path to all three."
 
-  p "Glob syntax is shared by `glob_match` and `glob_overlaps`: `*` matches within one segment, `**` spans whole segments, `?` matches one character, and `[abc]` / `[a-z]` / `[!x]` are character classes."
+  p "`glob_match` and `glob_overlaps` share one glob syntax: `*` matches within one segment, `**` spans whole segments, `?` matches one character, and `[abc]` / `[a-z]` / `[!x]` are character classes."
 
   h3 "glob_match"
 
@@ -2764,7 +2764,7 @@ glob_overlaps("src/", "src/*.rs")   # → true
 SRC
   }
 
-  p "Conservative in one direction only: an exotic pairing of negated classes may answer `true` when no shared path exists, but never `false` when one does."
+  p "Conservative in one direction only. An exotic pairing of negated classes may answer `true` when no shared path exists, but never `false` when one does."
 
   h3 "path_contains"
 
@@ -2794,7 +2794,7 @@ SRC
 
   h2 "Units"
 
-  p "Two builtins, both going the same direction: from a stored base-unit number back to a labelled string. Writing `512MiB` in a document is the other direction, and the evaluator does that one — see [Values and primitives](lang_values#literal-units)."
+  p "Two builtins, both going the same direction: from a stored base-unit number back to a labelled string. Writing `512MiB` in a document is the other direction, and the evaluator does that one. See [Values and primitives](lang_values#literal-units)."
 
   h3 "format_unit"
 
@@ -2821,7 +2821,7 @@ format_unit(5242880, "std.ByteSize", "MiB")   # → "5 MiB"
 SRC
   }
 
-  p "Reads the factor off the named type's `@unit` decorator rather than hard-coding one, so it stays correct if the factor changes. The exact inverse of writing `5MiB` — see [Values and primitives](lang_values#literal-units)."
+  p "Reads the factor off the named type's `@unit` decorator rather than hard-coding one, so it stays correct if the factor changes. The exact inverse of writing `5MiB`. See [Values and primitives](lang_values#literal-units)."
 
   h3 "format_unit_value"
 
@@ -2852,7 +2852,7 @@ SRC
 
   h2 "Builtins the host adds"
 
-  p "The two the `wcl` CLI registers on wdoc's behalf. They are not part of the language, they are not in `wcl_lang`, and a host embedding WCL without wdoc will not have them — but `builtin_names()` reports them under the CLI, so they are catalogued here rather than left unexplained."
+  p "The two the `wcl` CLI registers on wdoc's behalf. They are not part of the language, they are not in `wcl_lang`, and a host embedding WCL without wdoc will not have them. But `builtin_names()` reports them under the CLI, so they are catalogued here rather than left unexplained."
 
   p "Nothing stops you adding your own. A host registers a Rust closure against a name and it becomes callable from every document that host opens. See the `wcl_lang` crate docs for `Environment::add_builtin` and `from_fn`."
 
@@ -2903,16 +2903,16 @@ __wdoc_slot(c.slots, name, :blocks)   # → the blocks filling the named slot
 SRC
   }
 
-  p "wdoc's, and **internal**. It backs the template `slot` machinery and is the one builtin the CLI registers with no documented signature, which is why `fn_signature(\"__wdoc_slot\")` answers a record whose every field is empty. Treat it as private to the standard library."
+  p "wdoc's, and **internal**. It backs the template `slot` machinery and is the one builtin the CLI registers with no documented signature. That is why `fn_signature(\"__wdoc_slot\")` answers a record whose every field is empty. Treat it as private to the standard library."
 
   h2 "Where to go next"
 
   list {
-    li "[Lists, tensors and records](lang_collections) — the three collection values every builtin in the first four sections operates on."
-    li "[Functions](lang_functions) — the `fn(…) -> T { … }` literal you hand to `map`, `filter`, `fold` and the `_by` family."
-    li "[Control flow](lang_control_flow) — `try`/`catch`, which recovers the failure a builtin raises."
-    li "[Expressions and operators](lang_expressions#calls) — call syntax, precedence, and the operators that do what a builtin would otherwise have to."
-    li "[Decorators](lang_decorators) — what the reflection builtins are reading when they answer a decorator name or argument."
-    li "[The CLI](lang_cli) — `wcl repl`, which is the fastest way to check what a builtin does."
+    li "[Lists, tensors and records](lang_collections). The three collection values every builtin in the first four sections operates on."
+    li "[Functions](lang_functions). The `fn(…) -> T { … }` literal you hand to `map`, `filter`, `fold` and the `_by` family."
+    li "[Control flow](lang_control_flow). `try`/`catch`, which recovers the failure a builtin raises."
+    li "[Expressions and operators](lang_expressions#calls). Call syntax, precedence, and the operators that do what a builtin would otherwise have to."
+    li "[Decorators](lang_decorators). What the reflection builtins are reading when they answer a decorator name or argument."
+    li "[The CLI](lang_cli). `wcl repl`, which is the fastest way to check what a builtin does."
   }
 }

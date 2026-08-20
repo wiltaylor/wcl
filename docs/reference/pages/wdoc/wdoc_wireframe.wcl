@@ -1,4 +1,4 @@
-// Chapter 40 — Wireframes.
+// Wireframes.
 //
 // Written against #195. Every widget claim below was checked against
 // `crates/wcl_wdoc/src/wireframe.rs` and rendered before it was written
@@ -15,7 +15,7 @@ page wdoc_wireframe {
 
   h1 "Wireframes"
 
-  p "A **wireframe** is a mock-up of an interface: a window, a phone screen, a row of buttons. wdoc draws one from eighteen `wf_*` blocks — four frames, four layout containers, seven controls, and a three-block node graph. The result is static SVG. It renders in the book, in a PDF and in a slide deck, and it costs you no screenshot to keep up to date."
+  p "A **wireframe** is a mock-up of an interface: a window, a phone screen, a row of buttons. wdoc draws one from eighteen `wf_*` blocks. There are four frames, four layout containers, seven controls, and a three-block node graph. The result is static SVG. It renders in the book, in a PDF and in a slide deck, and it costs you no screenshot to keep up to date."
 
   p "The one fact to carry through the chapter: **a widget is a diagram shape, not a page block**. Every `wf_*` widget extends `SvgBlock`, so it lives inside a `diagram`, sits at an `x` / `y`, and connects to other shapes with edges. It never sits directly in a page body."
 
@@ -23,7 +23,7 @@ page wdoc_wireframe {
 
   h2 "One screen, start to finish"
 
-  p "Save this as `mock.wcl`. It is a complete document — schema, site, page and mock-up:"
+  p "Save this as `mock.wcl`. It is a complete document, and it holds the schema, the site, the page and the mock-up:"
 
   code wcl {
     filename = "mock.wcl"
@@ -60,14 +60,14 @@ page checkout {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build mock.wcl --out _site
 wrote 1 page
-TEXT
+CONSOLE
   }
 
-  p "The page holds one `diagram`. The diagram holds one `wf_window`. Everything else nests inside the window, and nothing carries a size or a coordinate. This is what it draws:"
+  p "The page holds one `diagram`. The diagram holds one `wf_window`. Everything else nests inside the window, and nothing carries a size or a coordinate. Here is what it draws:"
 
   diagram {
     width = 340  height = 260
@@ -94,15 +94,15 @@ TEXT
 
   p "`wf_button` is not a content block. Add one to the page body of `mock.wcl`, beside the `h1`, and the schema refuses it: a `page` declares `@children(ContentBlock)`, and a widget is an `SvgBlock`."
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check mock.wcl
 wcl::eval::schema_violation
 
   × block kind 'wf_button' is not allowed inside 'page'
 
 mock.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "The `diagram` is what admits it, and the same containment gives you the rest of the diagram canvas for free. A widget takes an `id`, so an edge can name it. It takes `x` and `y`, so you can place it. It may stand beside a `rect`, a `card` or a flowchart shape in one drawing. [The diagram canvas](wdoc_diagrams) covers the canvas itself, and [Connections and routing](wdoc_diagram_connections) covers the edges."
@@ -122,7 +122,7 @@ TEXT
     }
   }
 
-  p "An edge leaves and arrives at the midpoint of a side. Narrow the choice with `connect_points`, which takes the four `AnchorSide` symbols — `:north`, `:east`, `:south` and `:west`. A widget with no `connect_points` offers all four."
+  p "An edge leaves and arrives at the midpoint of a side. Narrow the choice with `connect_points`, which takes the four `AnchorSide` symbols: `:north`, `:east`, `:south` and `:west`. A widget with no `connect_points` offers all four."
 
   p "You may also let the diagram place the widgets. Under `layout = :layered`, `:force`, `:radial` or `:grid` the solver reads each widget's measured size and assigns the coordinates. Drop `x` and `y` and write only the edges:"
 
@@ -142,7 +142,7 @@ TEXT
 
   h2 "The canvas needs a size"
 
-  p "`width` and `height` are fields of the `diagram`, and a wireframe diagram must set both. They are the size the `<svg>` element is drawn at. Leave them out and the element is `width=\"0\" height=\"0\"`: the build succeeds, `wcl check` prints `OK`, and the mock-up is invisible."
+  p "`width` and `height` are fields of the `diagram`, and a wireframe diagram must set both. They are the size the renderer draws the `<svg>` element at. Leave them out and the element is `width=\"0\" height=\"0\"`: the build succeeds, `wcl check` prints `OK`, and the mock-up is invisible."
 
   callout "Nothing warns you about a sizeless canvas" {
     class = ["warning"]
@@ -155,17 +155,17 @@ TEXT
 
   p "A widget sizes itself from its content. A button is as wide as its caption plus padding. A window is as wide as its widest child, subject to a 256px minimum, and as tall as its stacked children plus the titlebar. Nothing cascades down from the diagram, and nothing inherits a size from a parent."
 
-  p "That is why `width` and `height` are declared **advisory** on the shared `Widget` interface. For every widget except the three device frames they are read for the anchor arithmetic and ignored for drawing. Setting `width = 400.0` on a `wf_button` does not widen the button."
+  p "That is why `width` and `height` are declared **advisory** on the shared `Widget` interface. For every widget except the three device frames, the renderer reads them for the anchor arithmetic and ignores them for drawing. `width = 400.0` on a `wf_button` does not widen the button."
 
-  p "Text is measured with an average glyph advance rather than a font metric — there is no font system in the build. The estimate rounds up, so a box is occasionally a little roomy and never clips its label."
+  p "The renderer measures text with an average glyph advance rather than a font metric, because the build has no font system. The estimate rounds up, so a box is occasionally a little roomy and never clips its label."
 
   p "The device frames are the exception, and they are the exception on purpose: a phone mock-up is only useful at phone proportions."
 
   table {
     rows:
       | "Frame"      | "Default size"   | "What `width` / `height` do" |
-      | "`wf_browser`" | "640 × 440"    | "Each pins its own axis; the unset axis keeps the default" |
-      | "`wf_phone`"   | "280 × 580"    | "As above; `orientation = :landscape` swaps the two defaults" |
+      | "`wf_browser`" | "640 × 440"    | "Each pins its own axis, and the unset axis keeps the default" |
+      | "`wf_phone`"   | "280 × 580"    | "As above. `orientation = :landscape` swaps the two defaults" |
       | "`wf_tablet`"  | "480 × 640"    | "As above" |
   }
 
@@ -175,7 +175,7 @@ TEXT
 
   p "Every container widget declares `@children(Widget)`, so any widget may go inside any container, to any depth. A window holds a panel, the panel holds a row, the row holds three buttons."
 
-  p "The container owns the layout of its children. **A child's `x` and `y` are ignored**: only the outermost widget's placement puts the group on the canvas. Both buttons below are declared with coordinates, and both are laid out by the panel anyway:"
+  p "The container owns the layout of its children. **A child's `x` and `y` are ignored**: only the outermost widget's placement puts the group on the canvas. Both buttons below carry coordinates, and the panel lays out both of them anyway:"
 
   demo {
     diagram = true
@@ -190,7 +190,7 @@ TEXT
 
   callout "Only the built-in widgets nest" {
     class = ["warning"]
-    body  = "A container lays out the sixteen built-in widgets and drops anything else. A widget of your own — a `@block(\"wf_gauge\") type ... extends Widget` with its own `lower` — renders perfectly well as a top-level shape in the `diagram`, and renders as **nothing** inside a `wf_window`. It is dropped silently, not reported. See [Writing your own widget](#writing-your-own-widget)."
+    body  = "A container lays out the sixteen built-in widgets and drops anything else. A widget of your own, say a `@block(\"wf_gauge\") type ... extends Widget` with its own `lower`, renders perfectly well as a top-level shape in the `diagram`, and renders as **nothing** inside a `wf_window`. The container drops it silently and reports nothing. See [Writing your own widget](#writing-your-own-widget)."
   }
 
   h2 "Frames"
@@ -257,7 +257,7 @@ TEXT
 
   h3 "wf_phone"
 
-  p "A phone shell: a bezel around a screen, a status bar with a notch and a battery, and a home-indicator pill at the foot. The inline label is optional and becomes the status-bar caption — the clock, by convention."
+  p "A phone shell: a bezel around a screen, a status bar with a notch and a battery, and a home-indicator pill at the foot. The inline label is optional and becomes the status-bar caption, the clock by convention."
 
   demo {
     diagram = true
@@ -284,7 +284,7 @@ TEXT
 
   h3 "wf_tablet"
 
-  p "The same chrome on a larger, squarer frame, with a camera dot in place of the notch. Its fields are `wf_phone`'s. Landscape suits a two-pane layout — and, as above, the frame is pinned smaller than its 640 × 480 landscape default:"
+  p "The same chrome on a larger, squarer frame, with a camera dot in place of the notch. Its fields are `wf_phone`'s. Landscape suits a two-pane layout, and, as above, the example below pins the frame smaller than its 640 × 480 landscape default:"
 
   demo {
     diagram = true
@@ -309,11 +309,11 @@ TEXT
 
   h2 "Layout"
 
-  p "Four containers arrange what a frame holds. `wf_panel` also draws something — a border and a caption. The other three draw nothing at all: they are pure arrangement."
+  p "Four containers arrange what a frame holds. `wf_panel` also draws something, a border and a caption. The other three draw nothing at all: they are pure arrangement."
 
   h3 "wf_panel"
 
-  p "A bordered group with an optional caption. Use it to say that a set of controls belongs together. Its `title` is an **ordinary field**, not an inline label — write `wf_panel { title = \"Network\" }`, not `wf_panel \"Network\"`. That is the one naming inconsistency in the family, and it is worth remembering."
+  p "A bordered group with an optional caption. Use it to say that a set of controls belongs together. Its `title` is an **ordinary field**, not an inline label. Write `wf_panel { title = \"Network\" }`, not `wf_panel \"Network\"`. That is the one naming inconsistency in the family, and it is worth remembering."
 
   demo {
     diagram = true
@@ -335,7 +335,7 @@ TEXT
 
   h3 "wf_row"
 
-  p "Lays its children out left to right, with a 13px gap, each centred on the row's vertical middle. It has no fields of its own. A row is what you reach for when a frame's default vertical stack is wrong — a button bar, a pair of fields, a toolbar."
+  p "Lays its children out left to right, with a 13px gap, each centred on the row's vertical middle. It has no fields of its own. A row is what you reach for when a frame's default vertical stack is wrong: a button bar, a pair of fields, a toolbar."
 
   demo {
     diagram = true
@@ -351,7 +351,7 @@ TEXT
 
   h3 "wf_column"
 
-  p "Stacks its children top to bottom with a 10px gap — the same flow a window or panel body already uses. It has no fields of its own, and it earns its place inside a `wf_row` or a `wf_grid`, where the flow would otherwise be horizontal:"
+  p "Stacks its children top to bottom with a 10px gap, the same flow a window or panel body already uses. It has no fields of its own, and it earns its place inside a `wf_row` or a `wf_grid`, where the flow would otherwise be horizontal:"
 
   demo {
     diagram = true
@@ -390,7 +390,7 @@ TEXT
 
   callout "An empty container keeps its footprint" {
     class = ["note"]
-    body  = "A `wf_row`, `wf_column` or `wf_grid` with no children does not collapse to nothing. Each measures as placeholder cells of 72 × 34: two side by side for a row, two stacked for a column, and two rows of `columns` cells for a grid. The editor can then see the container, select it, and drop a widget into it. A published build just shows the blank space."
+    body  = "A `wf_row`, `wf_column` or `wf_grid` with no children does not collapse to nothing. Each measures as placeholder cells of 72 × 34: two side by side for a row, two stacked for a column, and two rows of `columns` cells for a grid. The editor can then see the container, select it, and drop a widget into it. A published build shows the blank space."
   }
 
   h2 "Controls"
@@ -414,7 +414,7 @@ TEXT
     }
   }
 
-  p "Any of them may be dimmed with `disabled = true`, which draws it at 45% opacity. The flag is on the shared interface, so a container takes it too, and dimming a `wf_panel` dims everything inside it."
+  p "`disabled = true` dims any of them, at 45% opacity. The flag is on the shared interface, so a container takes it too, and a dimmed `wf_panel` dims everything inside it."
 
   demo {
     diagram = true
@@ -439,7 +439,7 @@ TEXT
     rows:
       | "Field"   | "Type"    | "Meaning" |
       | "`text`"  | "`utf8`"  | "The caption. Written as the inline label." |
-      | "`icon`"  | "`utf8?`" | "A leading glyph as `pack.name`. **Accepted and not drawn** — see below." |
+      | "`icon`"  | "`utf8?`" | "A leading glyph as `pack.name`. **Accepted and not drawn**, as described below." |
   }
 
   callout "The icon field draws nothing today" {
@@ -471,7 +471,7 @@ TEXT
 
   h3 "wf_dropdown"
 
-  p "A select field: the currently chosen option, with a chevron on the right. The inline label is the chosen option. There is no list of alternatives — a wireframe shows the closed state."
+  p "A select field: the chosen option, with a chevron on the right. The inline label is the chosen option. There is no list of alternatives. A wireframe shows the closed state."
 
   h3 "wf_checkbox"
 
@@ -479,7 +479,7 @@ TEXT
 
   h3 "wf_radio"
 
-  p "A round dot with a caption. `selected = true` fills it. Nothing groups radios or enforces that one is chosen — lay the group out yourself and mark the active one."
+  p "A round dot with a caption. `selected = true` fills it. Nothing groups radios or enforces that one is chosen. Lay the group out yourself and mark the active one."
 
   demo {
     diagram = true
@@ -536,11 +536,11 @@ TEXT
       | "`links`"     | "`list<WfLink>`" | "The wires. Written as `wf_link` children." |
   }
 
-  p "Note the default: a node graph flows left to right, while a `layout = :layered` diagram flows top to bottom. The two defaults differ because the two things differ — a node editor is read across, a flowchart down."
+  p "A node graph flows left to right, while a `layout = :layered` diagram flows top to bottom. The two defaults differ because the two things differ. You read a node editor across. You read a flowchart down."
 
   h3 "wf_node"
 
-  p "One box: a title band over a body of ports. `inputs` label the ports down the left edge, `outputs` the ports down the right edge. Give a node an `x` or a `y` to pin it, and the solver places the rest around it."
+  p "One box: a title band over a body of ports. `inputs` label the ports down the left edge, and `outputs` label the ports down the right edge. Give a node an `x` or a `y` to pin it, and the solver places the rest around it."
 
   table {
     rows:
@@ -555,24 +555,24 @@ TEXT
 
   h3 "wf_link"
 
-  p "One wire, from an output port to an input port. An endpoint is `\"node\"` or `\"node.port\"`. The node part is the target's `id`; the port part matches a port label, ignoring case. A bare `\"node\"` takes its first port, and a node with exactly one port on the relevant side accepts any port name."
+  p "One wire, from an output port to an input port. An endpoint is `\"node\"` or `\"node.port\"`. The node part is the target's `id`. The port part matches a port label, and case does not matter. A bare `\"node\"` takes its first port, and a node with exactly one port on the relevant side accepts any port name."
 
   table {
     rows:
       | "Field"    | "Type"    | "Meaning" |
-      | "`from`"   | "`utf8`"  | "Source endpoint — an **output** port. Written as the inline label." |
-      | "`to`"     | "`utf8`"  | "Destination endpoint — an **input** port." |
+      | "`from`"   | "`utf8`"  | "Source endpoint, an **output** port. Written as the inline label." |
+      | "`to`"     | "`utf8`"  | "Destination endpoint, an **input** port." |
       | "`label`"  | "`utf8?`" | "Optional caption at the wire's midpoint." |
   }
 
   callout "An unresolvable link disappears" {
     class = ["warning"]
-    body  = "A link is dropped when its endpoint names an unknown node, or a port that a multi-port node does not have. The build says nothing. The usual cause is a missing `id`: a `wf_node` without one cannot be addressed at all, so every link touching it silently vanishes while the node itself still draws."
+    body  = "The graph drops a link when its endpoint names an unknown node, or a port that a multi-port node does not have. The build says nothing. The usual cause is a missing `id`: nothing can address a `wf_node` without one, so every link touching it silently vanishes while the node itself still draws."
   }
 
   h2 "The shared fields"
 
-  p "The sixteen widgets all extend the `Widget` interface, so every field below is legal on every one of them. `wf_node` and `wf_link` are the two blocks in the family that do not. They are graph parts rather than shapes, and they carry only the fields [Node graphs](#node-graphs) lists. The standard library repeats the shared fields in each type's declaration; you never write them out yourself."
+  p "The sixteen widgets all extend the `Widget` interface, so every field below is legal on every one of them. `wf_node` and `wf_link` are the two blocks in the family that do not. They are graph parts rather than shapes, and they carry only the fields [Node graphs](#node-graphs) lists. The standard library repeats the shared fields in each type's declaration. You never write them out yourself."
 
   table {
     rows:
@@ -589,14 +589,14 @@ TEXT
 
   callout "Anchor an edge, and declare a size with it" {
     class = ["warning"]
-    body  = "The anchors are pixel insets. They resolve from the **declared** `width` / `height`, not from the measured content, which is the one place the advisory size still bites. `anchor_left = 20.0` puts the left edge 20px in, as expected. `anchor_right = 20.0` computes `parent − 20 − width`, and `width` is 0 unless you declared it. The widget's left edge therefore lands 20px short of the right edge, with its body hanging off the canvas. Anchor from the left and the top, or declare an approximate `width` and `height` beside the right and bottom anchors."
+    body  = "The anchors are pixel insets. They resolve from the **declared** `width` / `height`, not from the measured content. That is the one place the advisory size still matters. `anchor_left = 20.0` puts the left edge 20px in, as expected. `anchor_right = 20.0` computes `parent − 20 − width`, and `width` is 0 unless you declared it. The widget's left edge therefore lands 20px short of the right edge, and its body hangs off the canvas. Anchor from the left and the top, or declare an approximate `width` and `height` beside the right and bottom anchors."
   }
 
   h3 "Theming"
 
-  p "A wireframe paints itself from the resolved **UI theme** — the site's `ui_theme`, `ui_accent` and `ui_mode`, falling back to the document theme. The renderer bakes those colours into the SVG as literal hex rather than leaving them to CSS. That is why a wireframe looks the same in the book, in a PDF and in a slide deck. [Themes and styling](wdoc_styling) covers the palettes."
+  p "A wireframe paints itself from the resolved **UI theme**: the site's `ui_theme`, `ui_accent` and `ui_mode`, which fall back to the document theme. The renderer bakes those colours into the SVG as literal hex rather than leaving them to CSS. That is why a wireframe looks the same in the book, in a PDF and in a slide deck. [Themes and styling](wdoc_styling) covers the palettes."
 
-  p "Override the theme per mock-up with `theme`, `accent` or `mode` on the **outermost** widget. Every widget declares the three fields. Only the one the diagram places is read, so a `mode = :light` on a nested button changes nothing."
+  p "Override the theme per mock-up with `theme`, `accent` or `mode` on the **outermost** widget. Every widget declares the three fields. The renderer reads only the one the diagram places, so a `mode = :light` on a nested button changes nothing."
 
   p "For a single element, use a class instead. Declare it once at the top level of the document:"
 
@@ -623,16 +623,16 @@ WCL
 
   h2 "The family at a glance"
 
-  p "Eighteen blocks, one table. \"Inline label\" is what the value after the kind means; \"Children\" says whether the widget may hold other widgets."
+  p "Eighteen blocks, one table. \"Inline label\" is what the value after the kind means.\"Children\" says whether the widget may hold other widgets."
 
   table {
     rows:
       | "Block"           | "Group"   | "Inline label"          | "Children" | "Sized by" |
       | "`wf_window`"     | "Frame"   | "Titlebar caption"      | "Yes"      | "Content, minimum 256 wide" |
-      | "`wf_browser`"    | "Frame"   | "Address-bar URL"       | "Yes"      | "640 × 440; each axis pinnable; height grows to fit" |
-      | "`wf_phone`"      | "Frame"   | "Status caption (optional)" | "Yes"  | "280 × 580; each axis pinnable; height grows to fit" |
-      | "`wf_tablet`"     | "Frame"   | "Status caption (optional)" | "Yes"  | "480 × 640; each axis pinnable; height grows to fit" |
-      | "`wf_panel`"      | "Layout"  | "None — `title` is a field" | "Yes"  | "Content" |
+      | "`wf_browser`"    | "Frame"   | "Address-bar URL"       | "Yes"      | "640 × 440. Each axis pinnable, height grows to fit" |
+      | "`wf_phone`"      | "Frame"   | "Status caption (optional)" | "Yes"  | "280 × 580. Each axis pinnable, height grows to fit" |
+      | "`wf_tablet`"     | "Frame"   | "Status caption (optional)" | "Yes"  | "480 × 640. Each axis pinnable, height grows to fit" |
+      | "`wf_panel`"      | "Layout"  | "None. `title` is a field" | "Yes"   | "Content" |
       | "`wf_row`"        | "Layout"  | "None"                  | "Yes"      | "Content, laid out left to right" |
       | "`wf_column`"     | "Layout"  | "None"                  | "Yes"      | "Content, laid out top to bottom" |
       | "`wf_grid`"       | "Layout"  | "None"                  | "Yes"      | "Content, flowed across `columns` columns" |
@@ -648,13 +648,13 @@ WCL
       | "`wf_link`"       | "Graph"   | "The `from` endpoint"   | "No"       | "Not drawn as a box" |
   }
 
-  p "Three rows repay a second look. `wf_panel` is the only widget whose caption is a field rather than a label. `wf_node` and `wf_link` are the only two blocks in the family that are not diagram shapes: their `id` names a link endpoint inside the graph, no edge in the diagram reaches them, and they have no life outside a `wf_node_graph`. And every \"Yes\" in the Children column means one thing — `@children(Widget)`, any widget, any depth."
+  p "Three rows repay a second look. `wf_panel` is the only widget whose caption is a field rather than a label. `wf_node` and `wf_link` are the only two blocks in the family that are not diagram shapes: their `id` names a link endpoint inside the graph, no edge in the diagram reaches them, and they have no life outside a `wf_node_graph`. And every \"Yes\" in the Children column means one thing: `@children(Widget)`, any widget, any depth."
 
   h2 "Writing your own widget"
 
   p "A widget is a diagram shape, so writing one is writing a shape. Declare a `@block(\"…\") type … extends Widget` with a `lower` that returns `list<Svg>`, and place it in a `diagram` like any other. [Writing your own blocks](wdoc_extending) covers the lowering mechanism in full."
 
-  p "The family has no progress bar. Here is one — a track, a fill in proportion to `value`, and a caption over both:"
+  p "The family has no progress bar. Here is one, with a track, a fill in proportion to `value`, and a caption over both:"
 
   code wcl {
     source = <<'WCL'
@@ -703,10 +703,10 @@ WCL
   h2 "Where to go next"
 
   list {
-    li "[The diagram canvas](wdoc_diagrams) — the `diagram` block itself, its layouts, and the other shapes a widget may share a canvas with."
-    li "[Connections and routing](wdoc_diagram_connections) — edges, anchors and the router that draws around your widgets."
-    li "[Terminals and TUI](wdoc_terminals) — the other interface mock-up family, for command lines and text UIs."
-    li "[Themes and styling](wdoc_styling) — the palettes a wireframe bakes in, and the `class` blocks that override them."
-    li "[Writing your own blocks](wdoc_extending) — `lower`, the `Svg` fundamentals, and what `@native` means."
+    li "[The diagram canvas](wdoc_diagrams). The `diagram` block itself, its layouts, and the other shapes a widget may share a canvas with."
+    li "[Connections and routing](wdoc_diagram_connections). Edges, anchors and the router that draws around your widgets."
+    li "[Terminals and TUI](wdoc_terminals). The other interface mock-up family, for command lines and text UIs."
+    li "[Themes and styling](wdoc_styling). The palettes a wireframe bakes in, and the `class` blocks that override them."
+    li "[Writing your own blocks](wdoc_extending). `lower`, the `Svg` fundamentals, and what `@native` means."
   }
 }

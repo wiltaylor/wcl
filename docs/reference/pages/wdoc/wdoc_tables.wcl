@@ -1,4 +1,4 @@
-// Chapter 25 — Lists and tables.
+// Lists and tables.
 //
 // Written against #180. Every snippet was built with `wcl wdoc build` and
 // `wcl wdoc build --type markdown` before it was written down; the rendered output shown
@@ -18,15 +18,15 @@ page wdoc_tables {
 
   h1 "Lists and tables"
 
-  p "Two blocks put a sequence of things on a page. A `list` puts them one under another; a `table` puts them on a grid. Neither renders through the semantic content IR. Both are `@native`, and [Why both are native](#why-both-are-native) says why that is a property of how you _write_ them rather than an omission."
+  p "Two blocks put a sequence of things on a page. A `list` puts them one under another. A `table` puts them on a grid. Neither renders through the semantic content IR. Both are `@native`, and [Why both are native](#why-both-are-native) explains why being native follows from how you _write_ them rather than from an omission."
 
-  p "This chapter covers `list` and `li`, nesting and numbering, and `table` in both of its authoring forms. It covers what a cell may hold. It also covers the two things a `table` has no field for: alignment and captions."
+  p "This chapter covers `list` and `li`, nesting and numbering, `table` in both of its authoring forms, and what a cell may hold. It also covers the two things a `table` has no field for: alignment and captions."
 
   p "Every example below was built before it was written down. Type them and compare."
 
   h2 "One file with both"
 
-  p "Save this as `release.wcl`. It is the whole worked example — a `list` and a `table` in one page, with nothing else in the file but the site that carries them:"
+  p "Save this as `release.wcl`. It is the whole worked example, a `list` and a `table` in one page, with nothing else in the file but the site that carries them:"
 
   code wcl {
     filename = "release.wcl"
@@ -70,13 +70,13 @@ WCL
 
   p "Build it, and read the same page out as Markdown:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build release.wcl --out _site
 wrote 1 page
 $ wcl wdoc build release.wcl --out _md --type markdown
 wrote 1 page
-TEXT
+CONSOLE
   }
 
   p "`_md/release.md` is byte-for-byte this:"
@@ -104,18 +104,18 @@ TEXT
 MD
   }
 
-  p "Two things to notice already. The `` `wcl check config.wcl` `` inside an `li` and the `**Rejects**` inside a cell both survived: item text and cell text run through the inline-pattern engine, exactly as a `p` does. And the Markdown sub-steps restarted at `1.`, where the HTML build numbers them `2.1` and `2.2`. [Numbering](#numbering) covers that, and it is the first of three places where these two blocks do not agree across targets — [cells](#cells) and [alignment](#alignment) are the other two."
+  p "Two things to notice already. The `` `wcl check config.wcl` `` inside an `li` and the `**Rejects**` inside a cell both survived. Item text and cell text run through the inline-pattern engine, exactly as a `p` does. And the Markdown sub-steps restarted at `1.`, where the HTML build numbers them `2.1` and `2.2`. [Numbering](#numbering) covers that difference, the first of three places where these two blocks do not agree across targets. [Cells](#cells) and [alignment](#alignment) are the other two."
 
   h2 "Lists"
 
-  p "A `list` block holds `li` items. It is a bullet list by default — a `<ul>` in HTML — and each `li` carries its text as the block's inline label:"
+  p "A `list` block holds `li` items. By default it is a bullet list, a `<ul>` in HTML. Each `li` carries its text as the block's inline label:"
 
   code wcl {
     source = <<'WCL'
 list {
   li "Plain item"
   li "With **bold** and `code`"
-  li "And a [link to chapter 22](wdoc_formatting)"
+  li "And a [link to Text and formatting](wdoc_formatting)"
 }
 WCL
   }
@@ -125,14 +125,14 @@ WCL
   list {
     li "Plain item"
     li "With **bold** and `code`"
-    li "And a [link to chapter 22](wdoc_formatting)"
+    li "And a [link to Text and formatting](wdoc_formatting)"
   }
 
   p "The text is the `@inline(0)` slot of `Li`, so `li \"text\"` is a labelled block with an empty body, not a field assignment. Everything [Text and formatting](wdoc_formatting) documents works inside it: emphasis, inline code, links, icons and inline math."
 
   h3 "Numbered lists"
 
-  p "Set `style = :numbered` for an ordered list — an `<ol>` carrying the `wdoc-list-numbered` class:"
+  p "Set `style = :numbered` for an ordered list, an `<ol>` carrying the `wdoc-list-numbered` class:"
 
   code wcl {
     source = <<'WCL'
@@ -152,7 +152,7 @@ WCL
     li "Third step"
   }
 
-  p "`style` takes the two-member `ListStyle` symbol set — `:bullet` and `:numbered`. Omitting the field is the same as writing `:bullet`."
+  p "`style` takes the two-member `ListStyle` symbol set: `:bullet` and `:numbered`. If you omit the field, you get `:bullet`."
 
   h3 "Nesting"
 
@@ -194,16 +194,16 @@ WCL
     }
   }
 
-  p "The schema behind that is one interface. `Li.children` is declared `@children(ListNode)`, and `ListNode` is the interface both `Li` and `ListBlock` extend — so an `li` admits further `li`s, further `list`s, or a mix, and nothing else. Nesting is unbounded in depth."
+  p "The schema behind that is one interface. `Li.children` is declared `@children(ListNode)`, and `ListNode` is the interface both `Li` and `ListBlock` extend. An `li` therefore admits further `li`s, further `list`s, or a mix, and nothing else. Nesting is unbounded in depth."
 
   callout "A sublist is inside its item, not after it" {
     class = ["note"]
-    body  = "The nested `<ul>` / `<ol>` is emitted _inside_ the parent `<li>`, before its closing tag. That is what makes it a sublist rather than a second list, and — as [Why both are native](#why-both-are-native) explains — it is also why an `li` cannot be a block that lowers on its own."
+    body  = "The nested `<ul>` / `<ol>` sits _inside_ the parent `<li>`, before its closing tag. That is what makes it a sublist rather than a second list. As [Why both are native](#why-both-are-native) explains, it is also why an `li` cannot be a block that lowers on its own."
   }
 
   h3 "Numbering"
 
-  p "A numbered sublist reads `2.1`, `2.2` in the HTML build, and no Rust code counts the items to get there. The three rules the stdlib injects into every page's `<head>` do it with CSS counters:"
+  p "A numbered sublist reads `2.1`, `2.2` in the HTML build, and no Rust code counts the items to get there. The three rules the stdlib injects into every page's `<head>` number the items with CSS counters:"
 
   code css {
     source = <<'CSS'
@@ -213,7 +213,7 @@ ol.wdoc-list-numbered > li::marker { content: counters(wdoc-li, ".") ". "; }
 CSS
   }
 
-  p "Each nested `ol.wdoc-list-numbered` resets its own counter, and `counters(…, \".\")` joins every level in scope — which is why an `li`-under-`li` sublist has to inherit the parent's style for the joined number to mean anything. Hierarchical numbering therefore costs the renderer no per-item state at all."
+  p "Each nested `ol.wdoc-list-numbered` resets its own counter, and `counters(…, \".\")` joins every level in scope. That is why an `li`-under-`li` sublist has to inherit the parent's style for the joined number to mean anything. Hierarchical numbering therefore costs the renderer no per-item state at all."
 
   p "It also does not survive a target that has no CSS. The three backends number a nested ordered list three ways:"
 
@@ -225,7 +225,7 @@ CSS
       | "Markdown" | "`1.`"            | "An indented ordered list; the renderer restarts each level" |
   }
 
-  p "Bullet markers diverge the same way and matter less: HTML leaves them to the browser, the PDF backend cycles `•`, `◦`, `▪` by depth, and Markdown writes `-` at every level. [Output targets](wdoc_outputs) covers what else changes between the four."
+  p "Bullet markers diverge the same way and matter less. HTML leaves them to the browser, the PDF backend cycles `•`, `◦`, `▪` by depth, and Markdown writes `-` at every level. [Output targets](wdoc_outputs) covers what else changes between the four."
 
   h3 "list and li fields"
 
@@ -233,22 +233,22 @@ CSS
     rows:
       | "Block"  | "Field"    | "Type"           | "Meaning" |
       | "`list`" | "`style`"  | "`ListStyle?`"   | "`:bullet` (default, `<ul>`) or `:numbered` (`<ol>`)" |
-      | "`list`" | "`items`"  | "`list<Li>`"     | "The items — written as `li` child blocks, not as a field" |
+      | "`list`" | "`items`"  | "`list<Li>`"     | "The items, written as `li` child blocks, not as a field" |
       | "`list`" | "`id`"     | "`identifier?`"  | "Explicit HTML id on the `<ul>` / `<ol>`" |
       | "`list`" | "`class`"  | "`list<utf8>?`"  | "Extra classes, appended after `wdoc-list-numbered`" |
-      | "`li`"   | "`text`"   | "`utf8`"         | "The item text — the `@inline(0)` label slot" |
-      | "`li`"   | "`children`" | "`list<ListNode>`" | "Nested `li`s or `list`s — written as child blocks" |
+      | "`li`"   | "`text`"   | "`utf8`"         | "The item text, in the `@inline(0)` label slot" |
+      | "`li`"   | "`children`" | "`list<ListNode>`" | "Nested `li`s or `list`s, written as child blocks" |
       | "`li`"   | "`id`"     | "`identifier?`"  | "Explicit HTML id on the `<li>`" |
       | "`li`"   | "`class`"  | "`list<utf8>?`"  | "Classes on the `<li>`" |
   }
 
   h2 "Tables"
 
-  p "A `table` renders a grid: an optional heading row over body rows. It has **two authoring forms**, and which one you get is decided by whether the block carries a `rows` field."
+  p "A `table` renders a grid: an optional heading row over body rows. It has **two authoring forms**, and whether the block carries a `rows` field decides which one you get."
 
   h3 "Pipe rows"
 
-  p "The first form is WCL's [pipe-table syntax](lang_documents#tables) under a `rows:` header. The colon is the whole distinction — `rows:` opens a table, `rows =` assigns a field. **The first row is the heading row**:"
+  p "The first form is WCL's [pipe-table syntax](lang_documents#tables) under a `rows:` header. The colon is the whole distinction. `rows:` opens a table, `rows =` assigns a field. **The first row is the heading row**:"
 
   code wcl {
     source = <<'WCL'
@@ -268,11 +268,11 @@ WCL
       | "Bob"   | "_Ops_"   | 5       |
   }
 
-  p "This is the form to reach for when the data is written by hand at the point of use. It reads as a table in the source, which is most of its value."
+  p "Reach for this form when you write the data by hand at the point of use. It reads as a table in the source, and that is most of its value."
 
   h3 "Computed rows"
 
-  p "The second form sets `rows` as an ordinary field — a list of cell-lists — with an optional `header` list beside it. Use it when the rows come from data rather than from your keyboard:"
+  p "The second form sets `rows` as an ordinary field, a list of cell-lists, with an optional `header` list beside it. Use it when the rows come from data rather than from your keyboard:"
 
   code wcl {
     filename = "roster.wcl"
@@ -297,11 +297,11 @@ WCL
     rows   = [["Alice", "Dev", "3"], ["Bob", "Ops", "5"]]
   }
 
-  p "Because `rows` is a field like any other, anything that produces a `list<list<utf8>>` can fill it: a `map` over a gather field ([Builtins](lang_builtins), [Functions](lang_functions)), a `let` computed at the top of the file, or a `wdoc_slot` on a component. That last one is the reason the form exists — a component can take a table's rows as a parameter, which the pipe form cannot express. See [Data views](wdoc_data_views)."
+  p "Because `rows` is a field like any other, anything that produces a `list<list<utf8>>` can fill it: a `map` over a gather field ([Builtins](lang_builtins), [Functions](lang_functions)), a `let` computed at the top of the file, or a `wdoc_slot` on a component. That last one is the reason the form exists. A component can take a table's rows as a parameter, and the pipe form cannot express that. See [Data views](wdoc_data_views)."
 
   h3 "The two forms do not mix"
 
-  p "A `table` carrying both is not an error and not a merge. The presence of a `rows` **field** selects the computed path, and the pipe rows in the same block are then never read:"
+  p "A `table` carrying both is not an error and not a merge. The presence of a `rows` **field** selects the computed path, and nothing then reads the pipe rows in the same block:"
 
   code wcl {
     source = <<'WCL'
@@ -319,22 +319,22 @@ WCL
       | "pipe" | "ignored" |
   }
 
-  p "Note what the header did there. The pipe form's first row _is_ the header; the computed form's header is the separate `header` field. Switching a table from pipe rows to computed rows without moving the first row into `header` silently demotes it to a body row."
+  p "Note what the header did there. The pipe form's first row _is_ the header. The computed form's header is the separate `header` field. If you switch a table from pipe rows to computed rows without moving the first row into `header`, that row becomes a body row and nothing warns you."
 
   table {
     rows:
       | "Question"                | "Pipe rows"                     | "Computed rows" |
       | "Written as"              | "`rows:` then one row per line" | "`rows = […]` (+ `header = […]`)" |
       | "Where the heading row comes from" | "The first row"        | "The `header` field" |
-      | "Header-less table"       | "Not expressible — row one is always the header" | "Omit `header`" |
-      | "Rows from data"          | "No"                            | "Yes — any expression of the right shape" |
+      | "Header-less table"       | "Not expressible. Row one is always the header" | "Omit `header`" |
+      | "Rows from data"          | "No"                            | "Yes, with any expression of the right shape" |
       | "Fed by a component slot" | "No"                            | "Yes" |
       | "Reads as a grid in source" | "Yes"                         | "Only as far as your literal does" |
   }
 
   h3 "Header-less tables"
 
-  p "Omit `header` on the computed form and no `<thead>` is emitted at all — the whole table is body rows. There is no way to say this with pipe rows, because the first pipe row is the header by definition:"
+  p "Omit `header` on the computed form and the build emits no `<thead>` at all. The whole table is body rows. Pipe rows have no way to express that, because the first pipe row is the header by definition:"
 
   code wcl {
     source = <<'WCL'
@@ -354,7 +354,7 @@ WCL
 
   p "A cell holding a string runs through the inline-pattern engine, so bold, italic, inline code, links, icons and inline math all work inside one, exactly as they do in an `li`. A cell holding any other scalar is stringified."
 
-  p "Stringified is doing real work in that sentence, and it is the one place a table will surprise you. The HTML build prints the value's own spelling; the Markdown and PDF backends read the cell through a numeric conversion that a symbol, and any value carrying a unit, do not survive intact:"
+  p "Stringified does real work in that sentence, and it is the one place a table will surprise you. The HTML build prints the value's own spelling. The Markdown and PDF backends read the cell through a numeric conversion, and neither a symbol nor a value carrying a unit survives that conversion intact:"
 
   table {
     rows:
@@ -368,7 +368,7 @@ WCL
 
   callout "Quote your cells" {
     class = ["warning"]
-    body  = "A table is prose laid out on a grid, not a typed record — nothing checks a cell's type and nothing is declared for it to be checked against. Write every cell you care about as a string literal and the four targets agree; leave a unit-carrying or symbol value bare and they do not. `\"512MiB\"` is a cell. `512MiB` is a value that happens to be sitting in one."
+    body  = "A table is prose laid out on a grid, not a typed record. Nothing checks a cell's type, and there is no declaration to check it against. Write every cell you care about as a string literal and the four targets agree. Leave a unit-carrying or symbol value bare and they do not. `\"512MiB\"` is a cell. `512MiB` is a value that happens to be sitting in one."
   }
 
   p "One more cell rule follows from the syntax rather than from rendering. **A bare `|` splits the row**, so any cell containing a pipe must be a quoted string:"
@@ -383,13 +383,13 @@ table {
 WCL
   }
 
-  p "Write the pipe as itself inside the quotes. There is no `\\|` escape — the lexer rejects it with `invalid escape '\\|'`. The Markdown backend escapes the character back to `\\|` on its way out, so the round trip is fine; it is only the WCL source that needs the quotes."
+  p "Write the pipe as itself inside the quotes. There is no `\\|` escape. The lexer rejects it with `invalid escape '\\|'`. The Markdown backend escapes the character back to `\\|` on its way out, so the round trip is fine. Only the WCL source needs the quotes."
 
-  p "Cell count is not checked either. A short row and a long row both build, producing a ragged `<tr>`; the header row's length does not constrain the body. This mirrors the [pipe rows in a data document](lang_documents#tables), which are equally unchecked, and for the same reason — a pipe row is parsed as a row of expressions, not validated against a declared shape."
+  p "Nothing checks the cell count either. A short row and a long row both build, and the result is a ragged `<tr>`. The header row's length does not constrain the body. The same holds for [pipe rows in a data document](lang_documents#tables), which are equally unchecked, and for the same reason. WCL parses a pipe row as a row of expressions, and does not validate it against a declared shape."
 
   h3 "Alignment"
 
-  p "`table` has **no alignment field**. Every cell is left-aligned by the base rule the stdlib injects with the rest of the table styling:"
+  p "`table` has **no alignment field**. The base rule the stdlib injects with the rest of the table styling left-aligns every cell:"
 
   code css {
     source = <<'CSS'
@@ -397,7 +397,7 @@ WCL
 CSS
   }
 
-  p "Change it with a class. Declare one with a `nest` selector picking the column, list it in the table's `class` field, and the cascade does the rest — a `class` rule is emitted after the base rules, so it wins without `!important`:"
+  p "Change the alignment with a class. Declare a class with a `nest` selector that picks the column, list that class in the table's `class` field, and the cascade does the rest. A `class` rule comes after the base rules, so it wins without `!important`:"
 
   code wcl {
     source = <<'WCL'
@@ -415,7 +415,7 @@ table {
 WCL
   }
 
-  p "The third column right-aligns. A `class` block is site-wide, so this chapter declares the same rule under the prefixed name `wdoc-ch25-right` to keep a generic `num-right` out of the other 41 chapters — the table below is that one:"
+  p "The third column right-aligns. A `class` block is site-wide, so this chapter declares the same rule under the prefixed name `wdoc-ch25-right` to keep a generic `num-right` out of the other 41 chapters. The table below uses it:"
 
   table {
     class = ["wdoc-ch25-right"]
@@ -425,11 +425,11 @@ WCL
       | "db"      | "us-east-1" | "5432" |
   }
 
-  p "Two consequences worth stating plainly. The column is selected **by position**, so inserting a column moves the alignment with the index rather than with the data. And alignment is CSS, so it exists in the HTML build and nowhere else: the Markdown backend writes `| --- |` separators with no alignment colons, and the PDF backend lays every cell out left-aligned. [Themes and styling](wdoc_styling) covers `class`, `base` and `nest` in full."
+  p "Two consequences worth stating plainly. The selector picks the column **by position**, so if you insert a column, the alignment moves with the index rather than with the data. And alignment is CSS, so it exists in the HTML build and nowhere else. The Markdown backend writes `| --- |` separators with no alignment colons, and the PDF backend lays every cell out left-aligned. [Themes and styling](wdoc_styling) covers `class`, `base` and `nest` in full."
 
   h3 "Captions"
 
-  p "`table` has no `caption` field either, and this one has a way out. The semantic content IR's `Content::Table` variant _does_ carry a caption, and a block of your own that lowers to it reaches the `<caption>` element that the built-in `table` never emits:"
+  p "`table` has no `caption` field either, and this gap has a way out. The semantic content IR's `Content::Table` variant _does_ carry a caption, and a block of your own that lowers to it reaches the `<caption>` element that the built-in `table` never emits:"
 
   code wcl {
     filename = "captioned.wcl"
@@ -461,7 +461,7 @@ WCL
   table {
     rows:
       | "Field"    | "Type"                | "Meaning" |
-      | "`rows`"   | "`list<list<utf8>>?`" | "Body rows. Present as a **field** ⇒ the computed form; written as `rows:` ⇒ pipe rows, first row is the header. `@schemaless`, so a cell of any scalar type passes." |
+      | "`rows`"   | "`list<list<utf8>>?`" | "Body rows. Present as a **field** ⇒ the computed form. Written as `rows:` ⇒ pipe rows, and the first row is the header. `@schemaless`, so a cell of any scalar type passes." |
       | "`header`" | "`list<utf8>?`"       | "The heading row of the computed form. Omit for a header-less table. Ignored by the pipe form." |
       | "`id`"     | "`identifier?`"       | "Explicit HTML id on the `<table>`" |
       | "`class`"  | "`list<utf8>?`"       | "Extra classes, appended after `wdoc-table`" |
@@ -469,7 +469,7 @@ WCL
 
   callout "TableBlock, not Table" {
     class = ["info"]
-    body  = "The type behind the block is named `TableBlock`, because `Table` is the reserved type name the `@table` decorator claims — see [Schemas](lang_schemas). The block kind you write is still `table`."
+    body  = "The type behind the block is named `TableBlock`, because `Table` is the reserved type name the `@table` decorator claims. See [Schemas](lang_schemas). The block kind you write is still `table`."
   }
 
   h2 "Choosing between them"
@@ -482,39 +482,39 @@ WCL
       | "One entry is"                 | "A statement"                     | "A record" |
       | "Structure comes from"         | "Nesting depth"                   | "Columns, named by the header" |
       | "Ordering is meaningful"       | "With `style = :numbered`"        | "Only if you sort the rows" |
-      | "Entries may hold sub-entries" | "Yes, unbounded"                  | "No — a cell is prose" |
-      | "Can be fed from data"         | "No — items are authored blocks"  | "Yes, via the computed form" |
+      | "Entries may hold sub-entries" | "Yes, unbounded"                  | "No. A cell is prose" |
+      | "Can be fed from data"         | "No. Items are authored blocks"   | "Yes, via the computed form" |
       | "Renders as"                   | "`<ul>` / `<ol>`"                 | "`<table>`" |
   }
 
-  p "The last row of that comparison is the one that decides most cases. A `list`'s items are blocks you write; a `table`'s rows can be a value you compute. When the content is generated, the choice is already made for you."
+  p "The last row of that comparison is the one that decides most cases. A `list`'s items are blocks you write. A `table`'s rows can be a value you compute. When the content is generated, the choice is already made for you."
 
   h2 "Why both are native"
 
-  p "Every other prose block in wdoc — `p`, `h1`, `code`, `callout`, `math` — declares a `lower` returning nodes of the semantic content IR, and each backend renders that one declaration. `list` and `table` declare `@native` instead. A block declares exactly one of the two; both, or neither, fails the build."
+  p "Every other prose block in wdoc declares a `lower` that returns nodes of the semantic content IR, and each backend renders that one declaration. `p`, `h1`, `code`, `callout` and `math` all work that way. `list` and `table` declare `@native` instead. A block declares exactly one of the two. Both, or neither, fails the build."
 
   p "`@native` is not a to-do. It is a claim about the block's **authored value**, and the two blocks make it for two different reasons."
 
   list {
-    li "**`list` needs its `li` / `list` block structure.** A lowering returns a flat `list<Content>` — siblings. A sublist has to end up _inside_ its parent's `<li>`, and a WCL lowering has no way to reach into the node it just returned and put a later one in it. The nesting is in the authored block tree, so the block tree is what the renderer has to walk."
-    li "**`table`'s pipe rows are in the block's syntax, not in its value.** `rows:` is a table item — WCL's own pipe-row form — and a table item is not a field. A `lower` receives the typed block value, where a field would be; the pipe rows are not there to receive. Only the computed form's `rows` field is a value at all, and a block declares one rendering, not one per authoring form."
+    li "**`list` needs its `li` / `list` block structure.** A lowering returns a flat `list<Content>`: siblings. A sublist has to end up _inside_ its parent's `<li>`, and a WCL lowering has no way to reach into the node it just returned and put a later one in it. The nesting is in the authored block tree, so the block tree is what the renderer has to walk."
+    li "**`table`'s pipe rows are in the block's syntax, not in its value.** `rows:` is a table item, WCL's own pipe-row form, and a table item is not a field. A `lower` receives the typed block value, where a field would be. The pipe rows are not there to receive. Only the computed form's `rows` field is a value at all, and a block declares one rendering, not one per authoring form."
   }
 
-  p "So the reason is the same shape in both cases and it is not about HTML: what you write is a structure the language holds in the block tree, and a lowering is handed a value. The `Content::List` and `Content::Table` variants still exist, and — as [Captions](#captions) showed — a block of yours may lower to either. What `@native` says is that these two blocks, as authored, cannot."
+  p "So the reason is the same shape in both cases, and it is not about HTML. What you write is a structure the language holds in the block tree, and a lowering receives a value. The `Content::List` and `Content::Table` variants still exist, and as [Captions](#captions) showed, a block of yours may lower to either. What `@native` says is that these two blocks, as authored, cannot."
 
   callout "Native is a coverage claim, not an exemption" {
     class = ["note"]
-    body  = "`@native` names the targets that implement the kind, and it is cross-checked both ways against the Rust dispatch table: a target claimed but not implemented, or implemented but not claimed, fails the build. `list` and `table` both claim all three — HTML, PDF and Markdown — so neither has to be waived out of any build. See [Output targets](wdoc_outputs)."
+    body  = "`@native` names the targets that implement the kind, and the build cross-checks it both ways against the Rust dispatch table. A target claimed but not implemented, or implemented but not claimed, fails the build. `list` and `table` both claim HTML, PDF and Markdown, so no build has to waive either one. See [Output targets](wdoc_outputs)."
   }
 
   h2 "Where to go next"
 
   list {
-    li "[Text and formatting](wdoc_formatting) — the inline patterns that run inside every `li` and every string cell."
-    li "[Themes and styling](wdoc_styling) — `class`, `base`, `nest`, and the cascade the alignment recipe leans on."
-    li "[Data views](wdoc_data_views) — components, repeaters and the slots that feed a computed table's `rows`."
-    li "[Output targets](wdoc_outputs) — what HTML, PDF and Markdown builds each do with the same page."
-    li "[Writing your own blocks](wdoc_extending) — `lower`, the `Content` union, and `@native`."
-    li "[Documents, fields and blocks](lang_documents#tables) — the pipe-row syntax as a language feature, and the other twelve item forms."
+    li "[Text and formatting](wdoc_formatting). The inline patterns that run inside every `li` and every string cell."
+    li "[Themes and styling](wdoc_styling). `class`, `base`, `nest`, and the cascade the alignment recipe leans on."
+    li "[Data views](wdoc_data_views). Components, repeaters and the slots that feed a computed table's `rows`."
+    li "[Output targets](wdoc_outputs). What HTML, PDF and Markdown builds each do with the same page."
+    li "[Writing your own blocks](wdoc_extending). `lower`, the `Content` union, and `@native`."
+    li "[Documents, fields and blocks](lang_documents#tables). The pipe-row syntax as a language feature, and the other twelve item forms."
   }
 }

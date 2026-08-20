@@ -1,4 +1,4 @@
-// Chapter 9 — Schemas.
+// Schemas.
 //
 // Written against #167. Every snippet and every command output below was
 // run against the `wcl` CLI before it was written down; nothing here is
@@ -62,10 +62,10 @@ stage deploy {
 WCL
   }
 
-  p "Two commands read it. `wcl check` validates the whole file against the schema; `wcl get` walks a dotted path to one value:"
+  p "Two commands read it. `wcl check` validates the whole file against the schema. `wcl get` walks a dotted path to one value:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check pipeline.wcl
 OK
 $ wcl get pipeline.wcl project
@@ -78,7 +78,7 @@ $ wcl get pipeline.wcl stages.build.steps.compile.timeout
 300u32
 $ wcl get pipeline.wcl stages.build.steps.test.timeout
 900u32
-TEXT
+CONSOLE
   }
 
   p "Read the last two answers. Neither `compile` nor `test` declares a schema, and only `test` writes a `timeout`. `compile` answers `300u32` anyway, because the schema supplies it. That is the whole shape of the chapter: what the document _means_ is the file plus the schema, not the file alone."
@@ -102,21 +102,21 @@ TEXT
       | "`@schemaless`"| "a `type`, a block, or a field" | "That the node is not checked" | "[This chapter](#schemaless-the-way-out)" |
   }
 
-  p "Four more decorators constrain a _value_ rather than a shape — `@min`, `@max`, `@non_empty` and `@ref`. They belong to [Decorators](lang_decorators), which also covers declaring decorators of your own with `@decorator`."
+  p "Four more decorators constrain a _value_ rather than a shape: `@min`, `@max`, `@non_empty` and `@ref`. They belong to [Decorators](lang_decorators), which also covers declaring decorators of your own with `@decorator`."
 
   callout "A schema is data too" {
     class = ["note"]
     body  = "Decorators are values, not syntax. `@children(\"step\", min = 1)` is a call with one positional argument and one named one, and `wcl check` validates those arguments against the decorator's own declared schema. Misspell it as `minimum = 1` and you get `argument 'minimum' is not declared by decorator schema 'Children'` rather than silence. That is also why a decorator you invent needs an `@decorator` declaration before you may use it. See [Decorators](lang_decorators)."
   }
 
-  h2 "@document — the shape of the root"
+  h2 "@document: the shape of the root"
 
-  p "`@document` marks the type that governs the top level of a file. Its fields are the top-level fields; its `@child` / `@children` slots are the block kinds allowed at the root. The decorator takes an optional name, which is documentation only — `@document` and `@document(\"pipeline\")` behave identically."
+  p "`@document` marks the type that governs the top level of a file. Its fields are the top-level fields. Its `@child` / `@children` slots are the block kinds allowed at the root. The decorator takes an optional name, which is documentation only. `@document` and `@document(\"pipeline\")` behave identically."
 
-  p "Without one, top-level data has nothing to stand on. Delete the `Pipeline` type from `pipeline.wcl` and every top-level item is refused, one violation each:"
+  p "Without one, top-level data has nothing to stand on. Delete the `Pipeline` type from `pipeline.wcl` and `wcl check` refuses every top-level item, one violation each:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
@@ -131,15 +131,15 @@ wcl::eval::schema_violation
   × top-level block 'stage' has no @document schema
 
 pipeline.wcl: 3 schema violations
-TEXT
+CONSOLE
   }
 
   p "A file that declares only types, `let` bindings and functions needs no `@document` at all. It is a library, not data, and `wcl check` prints `OK`."
 
   p "Put the `@document` back and the failures change shape. Now there _is_ a root schema, and the question becomes whether it declares what you wrote. A top-level field it does not declare, and a declared block kind it does not gather, each get their own sentence:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 # with a top-level `owner = "platform"` added
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
@@ -156,31 +156,31 @@ wcl::eval::schema_violation
   │ 'Pipeline'
 
 pipeline.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "`step` is a perfectly good kind. It is just not one `Pipeline` gathers, so it has nowhere to sit at the root."
 
-  h2 "@block — declaring a nestable kind"
+  h2 "@block: declaring a nestable kind"
 
-  p "`@block(\"kind\")` registers a type as a block kind. The string is the word you write before the brace; the type's fields are what may go inside it. `stage build { … }` is legal because `Stage` carries `@block(\"stage\")`, and `Stage` is what checks the body."
+  p "`@block(\"kind\")` registers a type as a block kind. The string is the word you write before the brace. The type's fields are what may go inside it. `stage build { … }` is legal because `Stage` carries `@block(\"stage\")`, and `Stage` is what checks the body."
 
-  p "A kind with no declaration is refused. Add a `job` block to the end of `pipeline.wcl` and the block itself is the violation — nothing in the file says what a `job` is:"
+  p "A kind with no declaration is refused. Add a `job` block to the end of `pipeline.wcl` and the block itself is the violation. Nothing in the file says what a `job` is:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × block kind 'job' has no @block or @table declaration
 
 pipeline.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   callout "Two ways to be refused, and they read differently" {
     class = ["note"]
-    body  = "`has no @block or @table declaration` means the kind does not exist. `is not allowed inside 'x'` means it exists but has nowhere to land here — see [the next section](#child-and-children-where-a-nested-block-lands). Inside a block body the second message wins, even for an entirely unknown kind. A typo'd `task` inside a `stage` reports `block kind 'task' is not allowed inside 'stage'`. At the document root you get the first message instead."
+    body  = "`has no @block or @table declaration` means the kind does not exist. `is not allowed inside 'x'` means it exists but has nowhere to land here. See [the next section](#child-and-children-where-a-nested-block-lands). Inside a block body the second message wins, even for an entirely unknown kind. A typo'd `task` inside a `stage` reports `block kind 'task' is not allowed inside 'stage'`. At the document root you get the first message instead."
   }
 
   p "Kind strings are unique **per namespace**. Two declarations claiming `\"step\"` in one namespace are ambiguous, and the second one is the error:"
@@ -201,8 +201,8 @@ step compile { }
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check two-steps.wcl
 wcl::eval::schema_violation
 
@@ -217,12 +217,12 @@ wcl::eval::schema_violation
    ╰────
 
 two-steps.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
-  p "Across namespaces there is no clash: two libraries may each declare a `\"step\"`, and a document names the one it means with `lib::step { … }`. See [Namespaces and imports](lang_namespaces)."
+  p "Across namespaces there is no clash. Two libraries may each declare a `\"step\"`, and a document names the one it means with `lib::step { … }`. See [Namespaces and imports](lang_namespaces)."
 
-  h2 "@inline — a label fills a field"
+  h2 "@inline: a label fills a field"
 
   p "A block's labels are positional values written between the kind and the brace. `@inline(n)` binds label position `n` to a field, counting from zero:"
 
@@ -241,7 +241,7 @@ WCL
 
   p "Note the declaration order. `path` comes first and takes the second label, because the **slot number** decides, not the position in the type. That instance means `kind = \"binary\"` and `path = \"target/release/wcl\"`. [Documents, fields and blocks](lang_documents#blocks-and-labels) covers labels from the writing side, including when to quote one."
 
-  p "One `@inline` field is special by **name**. A field called `id`, declared `@inline(0) id: identifier`, makes the first label the block's identity, and two siblings of one kind may not share it:"
+  p "One `@inline` field is special by **name**. A field called `id`, declared `@inline(0) id: identifier`, makes the first label the block's identity, and two siblings of one kind may not share that label:"
 
   code wcl {
     filename = "services.wcl"
@@ -260,8 +260,8 @@ service web { port = 9090u32 }
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check services.wcl
 wcl::eval::schema_violation
 
@@ -275,19 +275,19 @@ wcl::eval::schema_violation
     ╰────
 
 services.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
-  p "Rename that field to `name` and the same file checks green. The label is still the label, but the language no longer treats it as an identity, so repeats are allowed. Reach for `id` when other parts of the document point at the block; reach for `name` when the label is a parameter that may repeat."
+  p "Rename that field to `name` and the same file checks green. The label is still the label, but the language no longer treats it as an identity, so repeats are allowed. Reach for `id` when other parts of the document point at the block. Reach for `name` when the label is a parameter that may repeat."
 
   callout "Labels are not counted or typed" {
     class = ["warning"]
-    body  = "`@inline` says which field a label fills. It does not make `wcl check` verify how many labels an instance wrote, or what type they hold. Against the `Artifact` above, both `artifact \"binary\" \"a\" \"b\" { … }` and `artifact 42 { … }` print `OK`. Only a `@table` row has its values counted — see [that section](#table-a-kind-whose-instances-are-rows). Write your labels correctly; the tool will not catch you."
+    body  = "`@inline` says which field a label fills. It does not make `wcl check` verify how many labels an instance wrote, or what type they hold. Against the `Artifact` above, both `artifact \"binary\" \"a\" \"b\" { … }` and `artifact 42 { … }` print `OK`. Only a `@table` row has its values counted. See [that section](#table-a-kind-whose-instances-are-rows). Write your labels correctly. The tool will not catch you."
   }
 
-  h2 "@child and @children — where a nested block lands"
+  h2 "@child and @children: where a nested block lands"
 
-  p "A nested block needs a field to land in. `@child(\"kind\")` declares a slot for exactly one; `@children(\"kind\")` declares a list. The field's own type describes what it holds — `Limits` for one, `list<Step>` for many:"
+  p "A nested block needs a field to land in. `@child(\"kind\")` declares a slot for exactly one. `@children(\"kind\")` declares a list. The field's own type describes what it holds, `Limits` for one and `list<Step>` for many:"
 
   code wcl {
     source = <<'WCL'
@@ -300,10 +300,10 @@ type Service {
 WCL
   }
 
-  p "These slots are also the _permission_: a nested block whose kind no `@child` or `@children` field on the enclosing schema names is refused, even when the kind itself is properly declared."
+  p "These slots are also the _permission_. When no `@child` or `@children` field on the enclosing schema names a kind, `wcl check` refuses nested blocks of that kind, even when the kind itself is properly declared."
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 # a `stage` written inside another `stage`
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
@@ -311,50 +311,50 @@ wcl::eval::schema_violation
   × block kind 'stage' is not allowed inside 'stage'
 
 pipeline.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   h3 "Counting children"
 
-  p "Five constraints count nested blocks. Three ride the slot, two ride the type's `@block`:"
+  p "Five constraints count nested blocks. Three go on the field, two go on the type's `@block`:"
 
   table {
     rows:
       | "Written as" | "On" | "Means" |
       | "`@children(\"step\", min = 1)`" | "the field" | "At least one `step`" |
       | "`@children(\"step\", max = 4)`" | "the field" | "At most four `step`s" |
-      | "`@child(\"limits\")`"           | "the field" | "Exactly one `limits` — none is an error, two is an error" |
+      | "`@child(\"limits\")`"           | "the field" | "Exactly one `limits`. None is an error, two is an error" |
       | "`@block(\"stage\", max_children = 8)`"            | "the type" | "At most eight nested blocks in total, of every kind" |
       | "`@block(\"stage\", required_children = [\"step\"])`" | "the type" | "At least one `step`, whichever field holds it" |
   }
 
   p "Each one has its own message. Empty the `deploy` stage of `pipeline.wcl` and the `min = 1` fires:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × field 'steps' requires at least 1 'step' children, found 0
 
 pipeline.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "Give `build` nine steps and the type-level cap fires instead, counting every nested block rather than one field's worth:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × block 'stage' contains 9 children (max allowed: 8)
 
 pipeline.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
-  p "`@child` is the cardinality that needs no numbers. Declared plain it means exactly one; declared optional (`limits: Limits?`) it means none or one. Both ends are checked:"
+  p "`@child` is the cardinality that needs no numbers. Declared plain it means exactly one. Declared optional (`limits: Limits?`) it means none or one. Both ends are checked:"
 
   code wcl {
     filename = "limits.wcl"
@@ -380,8 +380,8 @@ service db {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check limits.wcl
 wcl::eval::schema_violation
 
@@ -392,7 +392,7 @@ wcl::eval::schema_violation
   × field 'limits' expects a single 'limits' child, found 2
 
 limits.wcl: 2 schema violations
-TEXT
+CONSOLE
   }
 
   h3 "A slot may take a union"
@@ -425,20 +425,20 @@ WCL
 
   p "Both blocks land in the one slot, each as its own variant:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check checks.wcl
 OK
 $ wcl get checks.wcl checks.ready.probes
 [Probe::Http { url: "https://example.test" }, Probe::Shell { cmd: "pgrep api" }]
-TEXT
+CONSOLE
   }
 
-  p "Neither `http` nor `shell` carries a `@block` declaration, and neither needs one — `url` matched `Http`, `cmd` matched `Shell`. A bare record in a union-typed field goes through the same shape-based dispatch. [Lists, tensors and records](lang_collections#bare-records-become-union-variants) covers the matching rule; [Types](lang_types) covers unions and interfaces."
+  p "Neither `http` nor `shell` carries a `@block` declaration, and neither needs one. `url` matched `Http`, `cmd` matched `Shell`. A bare record in a union-typed field goes through the same shape-based dispatch. [Lists, tensors and records](lang_collections#bare-records-become-union-variants) covers the matching rule. [Types](lang_types) covers unions and interfaces."
 
-  h2 "required_fields — what an instance must write"
+  h2 "required_fields: what an instance must write"
 
-  p "Here is the fact that catches everyone. Declaring a field non-optional does **not** make an instance supply it. `port: u32` says what `port` holds if it is there; it does not say it must be there. `wcl check` prints `OK` on a `service` that writes no `port` at all."
+  p "Here is the fact that catches everyone. Declaring a field non-optional does **not** make an instance supply it. `port: u32` says what `port` holds if it is there. It does not say it must be there. `wcl check` prints `OK` on a `service` that writes no `port` at all."
 
   p "The decorator that means \"an instance must write this\" is `required_fields` on `@block`, and that is why `Stage` carries it:"
 
@@ -453,8 +453,8 @@ type Stage {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 # with `owner = "sre"` deleted from the `deploy` stage
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
@@ -462,7 +462,7 @@ wcl::eval::schema_violation
   × block 'stage' is missing required field 'owner'
 
 pipeline.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "So the two axes are independent, and they answer different questions:"
@@ -477,10 +477,10 @@ TEXT
 
   callout "required_fields is literal" {
     class = ["warning"]
-    body  = "The check asks one question — did this instance write a field of that name? A field with a `@default` still counts as missing when it is listed, so listing a defaulted field defeats its default. And a name in the list that the type never declares is reported against every instance: `required_fields = [\"nope\"]` yields `block 'service' is missing required field 'nope'` forever. Spell the names as the type does."
+    body  = "The check asks one question: did this instance write a field of that name? A field with a `@default` still counts as missing when it is listed, so listing a defaulted field defeats its default. And a name in the list that the type never declares is reported against every instance: `required_fields = [\"nope\"]` yields `block 'service' is missing required field 'nope'` forever. Spell the names as the type does."
   }
 
-  h2 "@default — a value the author may omit"
+  h2 "@default: a value the author may omit"
 
   p "A default supplies the value when an instance leaves the field out. There are two spellings, and they may not be combined."
 
@@ -497,7 +497,7 @@ type Step {
 WCL
   }
 
-  p "The **decorator** form keeps the declared type and puts the value beside it. Reach for it when the type is not inferable from a literal — a symbol set, a named type, an alias:"
+  p "The **decorator** form keeps the declared type and puts the value beside it. Reach for it when the type is not inferable from a literal, such as a symbol set, a named type or an alias:"
 
   code wcl {
     filename = "defaults.wcl"
@@ -520,8 +520,8 @@ service api { port = 9090u32  tier = :pro }
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check defaults.wcl
 OK
 $ wcl get defaults.wcl services.web.port
@@ -532,13 +532,13 @@ $ wcl get defaults.wcl services.web.zones
 ["a"]
 $ wcl get defaults.wcl services.api.port
 9090u32
-TEXT
+CONSOLE
   }
 
   p "Writing both forms on one field is a **parse** error, not a silent precedence rule. It fails before any schema runs:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 # with the port line written as `@default(80u32) port  = 80u32`
 $ wcl check defaults.wcl
 wcl::parse
@@ -552,16 +552,16 @@ wcl::parse
    ·                      ╰── redundant default
  7 │   @default(:free) tier:  Tier
    ╰────
-TEXT
+CONSOLE
   }
 
-  p "The inline form has one limit worth knowing: the type is inferred from the literal, so only a literal will do. `retries = 3u32` works; `retries = 1u32 + 2u32` does not, and the parser says so and points you at `@default(...)`."
+  p "The inline form has one limit worth knowing: the type is inferred from the literal, so only a literal will do. `retries = 3u32` works. `retries = 1u32 + 2u32` does not, and the parser says so and points you at `@default(...)`."
 
-  p "A default is read at the moment the field is asked for, like every other expression in a document — see [How a document evaluates](lang_evaluation)."
+  p "A default is read at the moment the field is asked for, like every other expression in a document. See [How a document evaluates](lang_evaluation)."
 
-  h2 "@table — a kind whose instances are rows"
+  h2 "@table: a kind whose instances are rows"
 
-  p "`@table(\"kind\")` registers a block kind exactly as `@block` does, with one difference in how instances are written: a row's values are its labels, one per declared field, and the parent writes them under a table header. [Documents, fields and blocks](lang_documents#tables) covers the row syntax; what follows is what the schema side does with it."
+  p "`@table(\"kind\")` registers a block kind exactly as `@block` does, with one difference in how instances are written: a row's values are its labels, one per declared field, and the parent writes them under a table header. [Documents, fields and blocks](lang_documents#tables) covers the row syntax. What follows is what the schema side does with it."
 
   code wcl {
     filename = "api.wcl"
@@ -593,21 +593,21 @@ WCL
 
   p "The rows count as children of the enclosing block, so `max = 2` sees three of them:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check api.wcl
 wcl::eval::schema_violation
 
   × field 'routes' allows at most 2 'route' children, found 3
 
 api.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "A `@table` type is still a block kind, so you may write a row the long way. Written that way, its labels **are** counted against the declared field list:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 # `route "GET" { path = "/users" }` inside the api block
 $ wcl check api.wcl
 wcl::eval::schema_violation
@@ -615,19 +615,19 @@ wcl::eval::schema_violation
   × table row for 'route' has 1 values, expected 3
 
 api.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "That count reaches only the block form. The pipe form checks nothing: a short row, a long row and a wrongly-typed cell all pass. [Documents, fields and blocks](lang_documents#tables) makes the same point from the writing side."
 
-  p "Validation of a `@table` block stops at that count. A row nests nothing, so the checker never looks inside one — a block written in a row simply disappears. Keep a row to its cells."
+  p "Validation of a `@table` block stops at that count. A row nests nothing, so the checker never looks inside one. A block written in a row disappears. Keep a row to its cells."
 
   callout "Every declared field is a column" {
     class = ["warning"]
-    body  = "The count above is the type's whole field list, `@child` and `@children` slots included. Give a `@table` type a `@children(\"note\", min = 1) notes: list<Note>` and you have not opened it to nested blocks — you have added a third column. A two-cell row now fails with `table row for 'route' has 2 values, expected 3`, a third cell satisfies it, and the `min = 1` never runs. Declare child slots on `@block` types only."
+    body  = "The count above is the type's whole field list, `@child` and `@children` slots included. Give a `@table` type a `@children(\"note\", min = 1) notes: list<Note>` and you have not opened it to nested blocks. You have added a third column. A two-cell row now fails with `table row for 'route' has 2 values, expected 3`, a third cell satisfies it, and the `min = 1` never runs. Declare child slots on `@block` types only."
   }
 
-  h2 "@schemaless — the way out"
+  h2 "@schemaless: the way out"
 
   p "Some data is genuinely open: a generated file, a payload a host interprets, a scratch block during a migration. `@schemaless` turns the checks off, and where you write it decides how much it turns off."
 
@@ -686,20 +686,20 @@ service db {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check open.wcl
 OK
-TEXT
+CONSOLE
   }
 
   p "The bare form takes an optional reason string, as `service web` uses above. It is documentation, not behaviour, and it is the difference between a reader trusting the escape hatch and wondering about it."
 
-  p "The narrow form is for a different problem. Every decorator must be declared — `@owner(\"wil\")` on a block fails with `decorator 'owner' has no @decorator declaration`. Writing `@schemaless(annotations = true)` beside it accepts the annotation while leaving the block's fields and children fully checked."
+  p "The narrow form is for a different problem. Every decorator must be declared. `@owner(\"wil\")` on a block fails with `decorator 'owner' has no @decorator declaration`. Writing `@schemaless(annotations = true)` beside it accepts the annotation while leaving the block's fields and children fully checked."
 
   h2 "Where each check runs"
 
-  p "The checker treats the root and a block body differently. A block body gets the full walk; the root gets membership and nothing more. You will not notice until you write a constraint at the root and it never fires. Here is the difference in one table:"
+  p "The checker treats the root and a block body differently. A block body gets the full walk. The root gets membership and nothing more. You will not notice until you write a constraint at the root and it never fires. Here is the difference in one table:"
 
   table {
     rows:
@@ -708,10 +708,10 @@ TEXT
       | "Does the value match its type?" | "Yes" | "Yes" |
       | "Is this block kind declared?"   | "Yes" | "Yes" |
       | "Is this block kind allowed here?" | "Yes" | "Yes" |
-      | "`required_fields`"              | "No — `@document` has no such argument" | "Yes" |
-      | "`@children` `min` / `max`"      | "**No — not enforced**" | "Yes" |
-      | "`@child` cardinality"           | "**No — not enforced**" | "Yes" |
-      | "`max_children` / `required_children`" | "No — `@document` has no such argument" | "Yes" |
+      | "`required_fields`"              | "No. `@document` has no such argument" | "Yes" |
+      | "`@children` `min` / `max`"      | "**No**, not enforced" | "Yes" |
+      | "`@child` cardinality"           | "**No**, not enforced" | "Yes" |
+      | "`max_children` / `required_children`" | "No. `@document` has no such argument" | "Yes" |
       | "Duplicate `id` labels"          | "Yes" | "Yes" |
   }
 
@@ -734,14 +734,14 @@ service b { }
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check root-counts.wcl
 OK
-TEXT
+CONSOLE
   }
 
-  p "Two services under `max = 1`, and a missing `owner`, and the document is green. `@child` behaves the same way up there: a root `@child(\"limits\") limits: Limits` with no `limits` block, or with two, also checks `OK`. Move the same slot one level down — onto a `@block` type — and every one of them fires. When a count matters, put the field on a block."
+  p "Two services under `max = 1`, and a missing `owner`, and the document is green. `@child` behaves the same way up there: a root `@child(\"limits\") limits: Limits` with no `limits` block, or with two, also checks `OK`. Move the same slot one level down, onto a `@block` type, and every one of them fires. When a count matters, put the field on a block."
 
   h2 "Document schemas compose per namespace"
 
@@ -789,18 +789,18 @@ WCL
 
   p "Both halves check, and both halves read:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check app.wcl
 OK
 $ wcl get app.wcl owner
 "platform"
 $ wcl get app.wcl services.web.port
 8080u32
-TEXT
+CONSOLE
   }
 
-  p "Neither schema alone accepts this file. `AppDoc` never heard of `service`; `CatalogDoc` never heard of `owner`. The merge accepts both, and that is the mechanism behind every `import <wdoc.wcl>` document that adds top-level tags of its own — see [Namespaces and imports](lang_namespaces)."
+  p "Neither schema alone accepts this file. `AppDoc` never heard of `service`. `CatalogDoc` never heard of `owner`. The merge accepts both, and that is the mechanism behind every `import <wdoc.wcl>` document that adds top-level tags of its own. See [Namespaces and imports](lang_namespaces)."
 
   h3 "One root-authored @document per namespace"
 
@@ -824,8 +824,8 @@ service web { port = 8080u32 }
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check app-two-roots.wcl
 wcl::eval::schema_violation
 
@@ -841,14 +841,14 @@ wcl::eval::schema_violation
    ╰────
 
 app-two-roots.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "Merge the two fields back into one `@document` and the file checks green. The rule is about how many root schemas _you_ wrote, not how many are in play."
 
   h3 "The gather-field collision"
 
-  p "The merge resolves each field name to exactly **one** declaration, root-authored first. Two schemas declaring the same name is therefore not a merge — it is a silent choice, and the loser's gathered blocks vanish from that field."
+  p "The merge resolves each field name to exactly **one** declaration, root-authored first. Two schemas declaring the same name is therefore not a merge. It is a silent choice, and the loser's gathered blocks vanish from that field."
 
   p "Give `AppDoc` a gather field named `services`, colliding with the library's:"
 
@@ -876,8 +876,8 @@ WCL
 
   p "The document is valid. The schema declares both kinds and allows both of them, and no value is ill-typed. But `services` now gathers `tool` blocks, so no path reaches a `service` through it:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check collide.wcl
 warning: gather field 'services' of @document 'AppDoc' (this document) collides with 'services' declared by @document 'catalog.CatalogDoc' (/home/you/app/catalog.wcl) — the merged document schema resolves 'services' to only one declaration, so the other schema's gathered blocks silently vanish; rename one field
 collide.wcl: 1 warning
@@ -885,32 +885,32 @@ OK
 $ wcl get collide.wcl services.web.port
 no such path: services.web.port
 did you mean: service?
-TEXT
+CONSOLE
   }
 
-  p "`OK` is not a mistake. The warning is advisory: it goes to standard error, and the exit code stays zero, because nothing here is a schema violation. The document is well-formed and means something other than what its author meant."
+  p "`OK` is not a mistake. The warning is advisory. It goes to standard error, and the exit code stays zero, because nothing here is a schema violation. The document is well-formed and means something other than what its author meant."
 
   callout "This is a build-time failure, one layer up" {
     class = ["warning"]
-    body  = "The damage lands where the field is _iterated_. A wdoc template writing `each = services` renders the wrong blocks, or fails at build time with `unresolved reference`. That is long after `wcl check` said `OK`, and it names no collision. This is why a schema built to compose with a large library names its gathers away from the obvious word: `sw_components`, not `components`. A library gather field and a document gather field sharing a name is a rename, not a debugging session. Heed the warning."
+    body  = "The damage lands where the field is _iterated_. A wdoc template writing `each = services` renders the wrong blocks, or fails at build time with `unresolved reference`. That is long after `wcl check` said `OK`, and the build error names no collision. So a schema built to compose with a large library names its gathers away from the obvious word: `sw_components`, not `components`. A library gather field and a document gather field sharing a name is a rename, not a debugging session. Heed the warning."
   }
 
   h2 "How a validation error reads"
 
   p "Every schema failure is one `wcl::eval::schema_violation` with one sentence. The sentence names the thing, the rule and the schema, and nothing else:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × field 'zone' is not declared by schema 'Step'
 
 pipeline.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
-  p "Read it in three parts. `field 'zone'` is what you wrote. `is not declared by` is the rule. `schema 'Step'` names the type the checker consulted. Check that part first: a violation you did not expect usually means a different schema resolved than you thought."
+  p "Read it in three parts. `field 'zone'` is what you wrote. `is not declared by` is the rule. `schema 'Step'` names the type the checker consulted. Check that part first. A violation you did not expect usually means a different schema resolved than you thought."
 
   p "The messages are stable enough to grep for. These are the ones this chapter has produced:"
 
@@ -931,17 +931,17 @@ TEXT
       | "`duplicate id: 'k' block 'x' is already declared`" | "Two siblings share an `@inline(0) id`" |
   }
 
-  p "`wcl check` reports every violation it finds, then a count, and exits non-zero — 2 for schema violations, 1 when the file does not even parse. Warnings, as [the collision above](#the-gather-field-collision) shows, print to standard error and change neither. [The CLI](lang_cli) covers the exit codes in full."
+  p "`wcl check` reports every violation it finds, then a count, and exits non-zero: 2 for schema violations, 1 when the file does not even parse. Warnings, as [the collision above](#the-gather-field-collision) shows, print to standard error and change neither. [The CLI](lang_cli) covers the exit codes in full."
 
   p "One last thing about _when_ these run. `wcl check` is the strict pass: it walks everything, whether or not anything reads it. But the same checks also run **lazily**, on the field you ask for, so reading a bad field reports it too:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get pipeline.wcl stages.build.steps.compile.zone
 wcl::eval::schema_violation
 
   × field 'zone' is not declared by schema 'Step'
-TEXT
+CONSOLE
   }
 
   p "The two paths agree on membership by design, and they cover each other. Nothing you read slips past the lazy check, and nothing you never read escapes the strict one. See [How a document evaluates](lang_evaluation) for what lazy means everywhere else."
@@ -949,11 +949,11 @@ TEXT
   h2 "Where to go next"
 
   list {
-    li "[Decorators](lang_decorators) — declaring decorators with `@decorator`, and the value constraints `@min`, `@max`, `@non_empty` and `@ref`."
-    li "[Types](lang_types) — `type`, `interface`, `union`, aliases and `&T` references, and what a `@child(SomeUnion)` slot dispatches on."
-    li "[Namespaces and imports](lang_namespaces) — how a schema library reaches your document, and what `lib::kind` qualifies."
-    li "[Documents, fields and blocks](lang_documents) — the item forms a schema governs, from the writing side."
-    li "[How a document evaluates](lang_evaluation) — laziness, caching and cycles, and why a default costs nothing until it is read."
-    li "[The CLI](lang_cli) — `check`, its `--json` report, and the exit codes."
+    li "[Decorators](lang_decorators). Declaring decorators with `@decorator`, and the value constraints `@min`, `@max`, `@non_empty` and `@ref`."
+    li "[Types](lang_types). `type`, `interface`, `union`, aliases and `&T` references, and what a `@child(SomeUnion)` slot dispatches on."
+    li "[Namespaces and imports](lang_namespaces). How a schema library reaches your document, and what `lib::kind` qualifies."
+    li "[Documents, fields and blocks](lang_documents). The item forms a schema governs, from the writing side."
+    li "[How a document evaluates](lang_evaluation). Laziness, caching and cycles, and why a default costs nothing until it is read."
+    li "[The CLI](lang_cli). `check`, its `--json` report, and the exit codes."
   }
 }

@@ -1,4 +1,4 @@
-// Chapter 33 — Flowcharts and swimlanes.
+// Flowcharts and swimlanes.
 //
 // Written against #188. Every diagram on this page is live: the `code`
 // block above each one holds the same source, and both were built with
@@ -8,19 +8,19 @@ page wdoc_flowcharts {
 
   h1 "Flowcharts and swimlanes"
 
-  p "There is no `flowchart` block. A flowchart is a [diagram](wdoc_diagrams) holding four shapes and a list of [connections](wdoc_diagram_connections), and this chapter is about the two things that make it worth drawing in WCL rather than in a drawing program: the `:layered` layout, which places the shapes for you from the connection graph, and the swim-lane, which is a **technique** rather than a block kind."
+  p "There is no `flowchart` block. A flowchart is a [diagram](wdoc_diagrams) holding four shapes and a list of [connections](wdoc_diagram_connections). Two things make it worth drawing in WCL rather than in a drawing program: the `:layered` layout, which places the shapes for you from the connection graph, and the swim-lane, which is a **technique** rather than a block kind. This chapter is about both."
 
-  p "Every diagram below is rendered by this page from the source printed above it. Type them into a document of your own and compare."
+  p "This page renders every diagram below from the source printed above it. Type them into a document of your own and compare."
 
   h2 "The four shapes"
 
-  p "Four stdlib block kinds draw the figures a flowchart is made of. They take the same fields; only the figure differs."
+  p "Four stdlib block kinds draw the figures a flowchart is made of. They take the same fields. Only the figure differs."
 
   table {
     rows:
       | "Kind"        | "Figure"    | "Default size" | "What it means" |
-      | "`process`"   | "Rectangle" | "80 × 40"      | "A step — something happens" |
-      | "`decision`"  | "Diamond"   | "80 × 40"      | "A branch — a question with named answers" |
+      | "`process`"   | "Rectangle" | "80 × 40"      | "A step. Something happens" |
+      | "`decision`"  | "Diamond"   | "80 × 40"      | "A branch. A question with named answers" |
       | "`terminator`"| "Oval"      | "80 × 40"      | "A start or an end of the flow" |
       | "`node`"      | "Circle"    | "56 × 56"      | "A vertex in a graph, not a step in a flow" |
   }
@@ -51,34 +51,34 @@ WCL
     node       "queue"     { x = 442.0  y = 27.0  width = 56.0   height = 56.0 }
   }
 
-  p "`node` is the odd one out, and it is in the same file for a reason. A circle is not a flowchart figure — it is a graph vertex, and it is what you reach for when the picture has no direction: a dependency web, a network, anything you would lay out with `:force` or `:radial` rather than in ranks. It shares the flowchart fields so it can sit in the same diagram, and its box is square by default because a solver allocating a cell for a circle should allocate a square one."
+  p "`node` is the odd one out, and it is in the same file for a reason. A circle is not a flowchart figure. It is a graph vertex, and it is what you reach for when the picture has no direction: a dependency web, a network, anything you would lay out with `:force` or `:radial` rather than in ranks. It shares the flowchart fields so it can sit in the same diagram, and its box is square by default because a solver allocating a cell for a circle should allocate a square one."
 
   h3 "The fields they share"
 
-  p "All four are independent `@block` types extending `SvgBlock`. They are not variants of one base type, and none of them extends `node` — the shared field list is written out four times in the stdlib rather than inherited. What matters to you is that the list is the same one:"
+  p "All four are independent `@block` types extending `SvgBlock`. They are not variants of one base type, and none of them extends `node`. The stdlib writes the shared field list out four times rather than inheriting it. What matters to you is that the list is the same one:"
 
   table {
     rows:
       | "Field"            | "Type"               | "What it does" |
       | "the inline label" | "`utf8`"             | "The centred text. Wraps and shrinks to fit the figure." |
       | "`id`"             | "`identifier?`"      | "The name an edge connects to. A shape with no `id` can never be an endpoint." |
-      | "`x` / `y`"        | "`f64` (default 0)"  | "Top-left corner. Omit under an auto-layout — see [the warning below](#layered-auto-layout)." |
+      | "`x` / `y`"        | "`f64` (default 0)"  | "Top-left corner. Omit under an auto-layout. See [the warning below](#layered-auto-layout)." |
       | "`width` / `height`"| "`f64`"             | "The figure's box. A layout solver reserves exactly this." |
       | "`fill` / `stroke`"| "`utf8?`"            | "Explicit colours, which opt the shape out of theming." |
-      | "`class`"          | "`list<utf8>?`"      | "Style classes — see [Themes and styling](wdoc_styling)." |
+      | "`class`"          | "`list<utf8>?`"      | "Style classes. See [Themes and styling](wdoc_styling)." |
       | "`connect_points`" | "`list<AnchorSide>?`"| "Which sides (`:north` / `:east` / `:south` / `:west`) edges may attach to. Default: all four." |
-      | "`icon`"           | "`utf8?`"            | "An icon badge inside the figure — see [Icons](wdoc_icons). `icon_size`, `icon_pos` and `icon_class` tune it." |
+      | "`icon`"           | "`utf8?`"            | "An icon badge inside the figure. See [Icons](wdoc_icons). `icon_size`, `icon_pos` and `icon_class` tune it." |
       | "`link`"           | "`utf8?`"            | "Makes the figure a link to an in-site page. An unknown page fails the build." |
   }
 
   callout "Leave fill unset" {
     class = ["note"]
-    body  = "An unstyled shape — no `fill`, no `stroke`, no `class` — gets a theme class named after its kind (`wdoc-process`, `wdoc-decision`, `wdoc-terminator`, `wdoc-node`), which is why the four figures above have different coloured outlines with no colour anywhere in the source. Those classes follow the site's light and dark mode. Set `fill` and you have opted out of that for good: the colour you wrote is the colour every reader gets, in both modes and in the PDF. Reach for `class` instead when you want a shape to stand out."
+    body  = "An unstyled shape, with no `fill`, no `stroke` and no `class`, gets a theme class named after its kind (`wdoc-process`, `wdoc-decision`, `wdoc-terminator`, `wdoc-node`). That is why the four figures above have different coloured outlines with no colour anywhere in the source. Those classes follow the site's light and dark mode. Set `fill` and you have opted out of that for good. The colour you wrote is the colour every reader gets, in both modes and in the PDF. Reach for `class` instead when you want a shape to stand out."
   }
 
   h2 "Wiring the flow"
 
-  p "Shapes are connected with the document-level [connection statement](lang_connections), `source -> destination :kind`, written inside the diagram. Both ends name a shape's `id`. The kind comes from the `EdgeKind` symbol set. Every kind draws the same arrow; two of the five add a word to it:"
+  p "You connect shapes with the document-level [connection statement](lang_connections), `source -> destination :kind`, written inside the diagram. Both ends name a shape's `id`. The kind comes from the `EdgeKind` symbol set. Every kind draws the same arrow. Two of the five add a word to it:"
 
   table {
     rows:
@@ -90,18 +90,18 @@ WCL
       | "`:no`"      | "An arrow **labelled `no`** at its midpoint." |
   }
 
-  p "The three that draw the same thing are not interchangeable to a stylesheet: whichever kind you write is stamped on the rendered path as `data-kind`, so `:data` can be dashed and `:flow` solid without either one changing what the model says. What those three lack is the word, not an identity of their own."
+  p "The three that draw the same thing are not interchangeable to a stylesheet. The renderer stamps whichever kind you write onto the rendered path as `data-kind`, so `:data` can be dashed and `:flow` solid without either one changing what the model says. What those three lack is the word, not an identity of their own."
 
-  p "That is the whole labelling story for a `->` statement, and it is a short one: the grammar carries a kind and nothing else, so a decision names its answers through the kind. `:yes` and `:no` exist because those two answers are the ones a flowchart asks for over and over. An edge that needs any other word has to come from a computed `edges` list — [Connections and routing](wdoc_diagram_connections) covers that path."
+  p "That is the whole labelling story for a `->` statement, and it is a short one: the grammar carries a kind and nothing else, so a decision names its answers through the kind. `:yes` and `:no` exist because those two answers are the ones a flowchart asks for over and over. An edge that needs any other word has to come from a computed `edges` list. [Connections and routing](wdoc_diagram_connections) covers that path."
 
   callout "An endpoint that names nothing is dropped" {
     class = ["warning"]
-    body  = "`Edge` is declared `@dynamic`, because a diagram's endpoints may name ids that a repeater generated rather than ids you typed. The price of that is that a misspelled endpoint is not an error: the edge is dropped with a build warning and the diagram renders without it. If an arrow you wrote is missing, check the spelling of both ids before you suspect the router."
+    body  = "`Edge` is declared `@dynamic`, because a diagram's endpoints may name ids that a repeater generated rather than ids you typed. The price of that is that a misspelled endpoint is not an error. The build warns, drops the edge, and renders the diagram without it. If an arrow you wrote is missing, check the spelling of both ids before you suspect the router."
   }
 
   h2 "Layered auto-layout"
 
-  p "Set `layout = :layered` and stop writing coordinates. The solver ranks the shapes topologically against the diagram's own connection graph, stacks the ranks along one axis, and spreads each rank along the other. Here is a complete document — save it, build it, and you have a flowchart:"
+  p "Set `layout = :layered` and stop writing coordinates. The solver ranks the shapes topologically against the diagram's own connection graph, stacks the ranks along one axis, and spreads each rank along the other. Here is a complete document. Save it, build it, and you have a flowchart:"
 
   code wcl {
     filename = "fulfilment.wcl"
@@ -138,11 +138,11 @@ page fulfilment {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build fulfilment.wcl --out _site
 wrote 1 page
-TEXT
+CONSOLE
   }
 
   diagram {
@@ -162,7 +162,7 @@ TEXT
     ship    -> done    :flow
   }
 
-  p "Not one coordinate. The five shapes are in source order here only because that reads well — reorder them and the picture is identical, because the ranks come from the edges."
+  p "Not one coordinate. The five shapes are in source order here only because that reads well. Reorder them and the picture is identical, because the ranks come from the edges."
 
   h3 "How a rank is assigned"
 
@@ -171,11 +171,11 @@ TEXT
   list {
     li "**A shape's rank is one past its deepest predecessor.** Where two paths reach the same shape, the longer one wins, so a shape never sits above something that flows into it."
     li "**A shape nothing flows into starts at rank 0.** That includes a shape with no `id` at all: it cannot be an edge endpoint, so it joins the first rank in source order."
-    li "**A cycle is not an error.** Shapes the sort could not reach — everything in a cycle, and everything downstream of one — go together on a single rank below the deepest ranked shape, in source order. The picture stays readable; it just stops claiming an order it cannot know."
-    li "**A `label`, a `line` and a `boundary` are not flow nodes.** They are annotations: the solver skips them, gives them the whole content box to place themselves against, and lets them contribute nothing to it. Every other child, including a plain `rect`, is ranked."
+    li "**A cycle is not an error.** Shapes the sort could not reach, everything in a cycle and everything downstream of one, go together on a single rank below the deepest ranked shape, in source order. The picture stays readable. It just stops claiming an order it cannot know."
+    li "**A `label`, a `line` and a `boundary` are not flow nodes.** They are annotations: the solver skips them, gives them the whole content box to place themselves against, and lets them contribute nothing to it. The solver ranks every other child, including a plain `rect`."
   }
 
-  p "Ranks stack along the primary axis, which `direction` chooses. Within a rank, shapes sit in source order, and the rank as a whole is centred against the widest rank in the diagram — which is what keeps a fan-out symmetric."
+  p "Ranks stack along the primary axis, which `direction` chooses. Within a rank, shapes sit in source order, and the solver centres the rank as a whole against the widest rank in the diagram. That is what keeps a fan-out symmetric."
 
   table {
     rows:
@@ -188,12 +188,12 @@ TEXT
 
   callout "x and y are not ignored under a layout" {
     class = ["warning"]
-    body  = "The solver positions each shape by wrapping it in a transform, and the shape then draws itself at its own `x` / `y` inside that wrapper. The two **add up**. A left-over `x = 200.0` on a `:layered` shape neither overrides the layout nor raises an error — it silently shifts that one figure 200 units off its rank, arrows and all. When you switch a hand-placed diagram to `:layered`, delete the coordinates."
+    body  = "The solver positions each shape by wrapping it in a transform, and the shape then draws itself at its own `x` / `y` inside that wrapper. The two **add up**. A left-over `x = 200.0` on a `:layered` shape neither overrides the layout nor raises an error. It silently shifts that one figure 200 units off its rank, arrows and all. When you switch a hand-placed diagram to `:layered`, delete the coordinates."
   }
 
   h3 "Branching"
 
-  p "A `decision` earns its diamond when its outgoing edges are `:yes` and `:no`. This one runs left to right, which gives the two answers a rank of their own to sit in:"
+  p "A `decision` earns its diamond when its outgoing edges are `:yes` and `:no`. This one runs left to right, so the two answers get a rank of their own to sit in:"
 
   code wcl {
     source = <<'WCL'
@@ -241,22 +241,22 @@ WCL
     backordered -> delivered :flow
   }
 
-  p "`packed` and `backordered` share one rank, and `delivered` sits past both of them rather than beside `backordered`, because a rank is one past the **deepest** predecessor. Read the two branch labels: each sits at the midpoint of its own arrow, which is why the direction matters here more than it looks."
+  p "`packed` and `backordered` share one rank, and `delivered` sits past both of them rather than beside `backordered`, because a rank is one past the **deepest** predecessor. Read the two branch labels. Each sits at the midpoint of its own arrow, and that is why the direction matters here more than it looks."
 
   callout "Two branch labels on a top-to-bottom decision collide" {
     class = ["warning"]
-    body  = "A label is drawn at the arc-length midpoint of its path. In a top-to-bottom layout both branches leave the diamond's south side, run down the same trunk, and only part near the bottom — so both midpoints land on that shared trunk and `yes` is printed over `no`. Widening `node_gap` does not fix it; it only makes the trunk longer. Two things do. Run the flow `:left_to_right`, as above, so the branches split vertically. Or keep it top-to-bottom and give the diamond `connect_points = [:east, :west, :north]`, which forces the answers out of its sides and takes their labels with them."
+    body  = "The renderer draws a label at the arc-length midpoint of its path. In a top-to-bottom layout both branches leave the diamond's south side, run down the same trunk, and only part near the bottom. Both midpoints land on that shared trunk, so `yes` prints over `no`. Widening `node_gap` does not fix it. It only makes the trunk longer. Two things do. Run the flow `:left_to_right`, as above, so the branches split vertically. Or keep it top-to-bottom and give the diamond `connect_points = [:east, :west, :north]`, which forces the answers out of its sides and takes their labels with them."
   }
 
   h3 "Elbow routing"
 
-  p "Placing the shapes is only half of it. Edges are routed afterwards, and by default (`routing = :elbow`) each one is an orthogonal polyline found by an A* search over a coarse grid, with the other shapes' boxes as obstacles and a turn penalty that biases the result toward long straight runs. The first and last leg leave perpendicular to the side they attach to, so an arrow meets a figure square-on rather than at a corner."
+  p "Placing the shapes is only half of it. The renderer routes the edges afterwards. By default (`routing = :elbow`) each edge is an orthogonal polyline found by an A* search over a coarse grid, with the other shapes' boxes as obstacles and a turn penalty that biases the result toward long straight runs. The first and last leg leave perpendicular to the side they attach to, so an arrow meets a figure square-on rather than at a corner."
 
   p "Three consequences are worth knowing:"
 
   list {
     li "**Edges route around shapes, not through them.** That is why a flowchart with a long back-edge still reads: the arrow goes the long way rather than crossing three boxes."
-    li "**Parallel edges are nudged apart**, so a shared corridor does not become one thick line. `edge_separation` (default `4`) is the step. The legs touching a shape are never moved, so arrows leaving one anchor stay aligned."
+    li "**Parallel edges are nudged apart**, so a shared corridor does not become one thick line. `edge_separation` (default `4`) is the step. The pass never moves the legs touching a shape, so arrows leaving one anchor stay aligned."
     li "**An unroutable edge fails the build.** When the shapes are packed too tightly for any orthogonal path to exist, the build stops and names both ends of the edge rather than drawing a line through the boxes in between. Widen `node_gap` or `layer_gap`, grow the canvas, or set `routing = :straight`."
   }
 
@@ -272,7 +272,7 @@ WCL
     li "**Leave the layout alone.** A swim-lane gives a shape's position a meaning, so the position has to be yours. Keep the diagram's default `:free` layout and place every shape by `x` / `y`."
     li "**Draw each lane as a `rect`** spanning the full width of the canvas, with a translucent fill so the shapes on top of it stay legible."
     li "**Name each lane with a `label`** in a gutter down the left-hand side."
-    li "**Place each shape inside its lane's band** — the same `y` for everything in one lane, `x` advancing with the flow."
+    li "**Place each shape inside its lane's band.** The same `y` for everything in one lane, `x` advancing with the flow."
     li "**Wire it with edges as usual.** The arrows cross between lanes, and those crossings are the point of the whole picture: each one is a hand-off from one party to another."
   }
 
@@ -354,16 +354,16 @@ WCL
     packing  -> shipped  :flow
   }
 
-  p "Read it by its crossings. Three of the four arrows cross a band, and each crossing is a hand-off: the customer hands the order to sales, sales hands the approved order down to the warehouse, and sales hands a refusal back up to the customer. The fourth arrow, `packing -> shipped`, stays inside one band — that step is nobody else's business. None of that is in the shapes, and none of it is in the edges. All of it is in the `y` values."
+  p "Read it by its crossings. Three of the four arrows cross a band, and each crossing is a hand-off: the customer hands the order to sales, sales hands the approved order down to the warehouse, and sales hands a refusal back up to the customer. The fourth arrow, `packing -> shipped`, stays inside one band. That step is nobody else's business. None of that is in the shapes, and none of it is in the edges. All of it is in the `y` values."
 
-  p "Three numbers do the work, and writing them down once keeps the picture straight. A **band pitch** — 92 here — is the distance from one lane's top edge to the next one's. A **band height** — 84 — leaves an 8-unit gutter between bands. A **shape inset** — 22 — is the distance from a band's top edge to the top of the shapes in it. Every lane after the first is the one before it plus the pitch, so a shape 40 units high sits at `y = 22.0`, `114.0` or `206.0`; the diamond is 60 high, so it sits at `104.0` to stay centred in its band."
+  p "Three numbers do the work, and writing them down once keeps the picture straight. A **band pitch**, 92 here, is the distance from one lane's top edge to the next one's. A **band height**, 84, leaves an 8-unit gutter between bands. A **shape inset**, 22, is the distance from a band's top edge to the top of the shapes in it. Every lane after the first is the one before it plus the pitch, so a shape 40 units high sits at `y = 22.0`, `114.0` or `206.0`. The diamond is 60 high, so it sits at `104.0` to stay centred in its band."
 
   callout "Why the layout has to stay free" {
     class = ["warning"]
-    body  = "Only a `label`, a `line` and a `boundary` are exempt from a layout solver. A `rect` is an ordinary flow node, so under `:layered` your three lane bands are ranked like any other shape: they land on rank 0 side by side, 620 units wide each, and shove the flowchart off to the right of them. There is no error and no warning — only a picture that makes no sense. Swim-lanes and auto-layout are alternatives, not a combination."
+    body  = "Only a `label`, a `line` and a `boundary` are exempt from a layout solver. A `rect` is an ordinary flow node, so under `:layered` the solver ranks your three lane bands like any other shape: they land on rank 0 side by side, 620 units wide each, and shove the flowchart off to the right of them. There is no error and no warning, only a picture that makes no sense. Swim-lanes and auto-layout are alternatives, not a combination."
   }
 
-  p "The `fill` values are two translucent greys, `#7f7f7f14` and `#7f7f7f2e`: one hue at two alpha levels, so alternating bands read as stripes. Mid-grey at a low alpha is the one colour that works over a white page and a dark one, which is why the lanes are the exception to [the advice about `fill` above](#the-four-shapes) — a band is chrome, not a figure. If your site has a palette of its own, put the two greys in a `class` instead and let [the theme](wdoc_styling) choose them."
+  p "The `fill` values are two translucent greys, `#7f7f7f14` and `#7f7f7f2e`: one hue at two alpha levels, so alternating bands read as stripes. Mid-grey at a low alpha is the one colour that works over a white page and a dark one, and that is why the lanes are the exception to [the advice about `fill` above](#the-four-shapes). A band is chrome, not a figure. If your site has a palette of its own, put the two greys in a `class` instead and let [the theme](wdoc_styling) choose them."
 
   h3 "Vertical lanes"
 
@@ -433,7 +433,7 @@ WCL
     v_packing  -> v_received :flow
   }
 
-  p "Which way round to draw it is a question about the reader, not about wdoc. Horizontal lanes suit a process with many steps and few parties, because the picture grows in the direction a page is already wide. Vertical lanes suit the opposite — a handful of steps handed between many parties — and they read like a sequence diagram, which is what to reach for instead once the hand-offs matter more than the steps. [Sequence and state diagrams](wdoc_sequence_state) covers that."
+  p "Which way round to draw it is a question about the reader, not about wdoc. Horizontal lanes suit a process with many steps and few parties, because the picture grows in the direction a page is already wide. Vertical lanes suit the opposite, a handful of steps handed between many parties, and they read like a sequence diagram. Reach for a sequence diagram instead once the hand-offs matter more than the steps. [Sequence and state diagrams](wdoc_sequence_state) covers that."
 
   h2 "Choosing between the two"
 
@@ -442,21 +442,21 @@ WCL
   table {
     rows:
       | "The question the picture answers" | "Reach for" |
-      | "What happens next?"               | "`:layered` — let the edges rank the shapes" |
-      | "Who does each step?"              | "Swim-lanes — position carries the answer" |
-      | "What is connected to what?"       | "`node` with `:force` or `:radial` — see [The diagram canvas](wdoc_diagrams)" |
+      | "What happens next?"               | "`:layered`. Let the edges rank the shapes" |
+      | "Who does each step?"              | "Swim-lanes. Position carries the answer" |
+      | "What is connected to what?"       | "`node` with `:force` or `:radial`. See [The diagram canvas](wdoc_diagrams)" |
       | "In what order do these parties talk?" | "A [sequence diagram](wdoc_sequence_state)" |
   }
 
-  p "The temptation is to want both halves at once — auto-layout inside lanes. Nothing in the model offers it, because a lane is a claim about where a shape belongs and a solver's whole job is to decide where a shape belongs. Pick the one whose claim you care about."
+  p "The temptation is to want both halves at once: auto-layout inside lanes. Nothing in the model offers it, because a lane is a claim about where a shape belongs and a solver's whole job is to decide where a shape belongs. Pick the one whose claim you care about."
 
   h2 "Where to go next"
 
   list {
-    li "[The diagram canvas](wdoc_diagrams) — the `diagram` block itself, the other layout modes, `container`, `boundary`, and the primitive shapes a lane band is made of."
-    li "[Connections and routing](wdoc_diagram_connections) — edges in depth: `connect_points`, routing, computed edge lists, and edge labels beyond `yes` / `no`."
-    li "[Sequence and state diagrams](wdoc_sequence_state) — the two other diagram families, both of which draw their own layout."
-    li "[Themes and styling](wdoc_styling) — the class system behind `wdoc-process` and its siblings, and how to give a lane band a themed colour."
-    li "[Writing your own blocks](wdoc_extending) — how `process` lowers to a `Rect` plus a `Label`, and how to declare a figure of your own the same way."
+    li "[The diagram canvas](wdoc_diagrams). The `diagram` block itself, the other layout modes, `container`, `boundary`, and the primitive shapes a lane band is made of."
+    li "[Connections and routing](wdoc_diagram_connections). Edges in depth: `connect_points`, routing, computed edge lists, and edge labels beyond `yes` / `no`."
+    li "[Sequence and state diagrams](wdoc_sequence_state). The two other diagram families, both of which draw their own layout."
+    li "[Themes and styling](wdoc_styling). The class system behind `wdoc-process` and its siblings, and how to give a lane band a themed colour."
+    li "[Writing your own blocks](wdoc_extending). How `process` lowers to a `Rect` plus a `Label`, and how to declare a figure of your own the same way."
   }
 }

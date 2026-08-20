@@ -1,4 +1,4 @@
-// Chapter 27 — Icons.
+// Icons.
 //
 // Every snippet, every command transcript and every fragment of emitted
 // markup below was run against the `wcl` CLI before it was written down.
@@ -9,7 +9,7 @@ page wdoc_icons {
 
   h1 "Icons"
 
-  p "Two complete icon packs — **Lucide** (1711 glyphs) and **Bootstrap Icons** (2078) — are compiled into the `wcl` binary. Nothing is downloaded, nothing is read from disk at build time, and you declare nothing to use them. This chapter covers the three places an icon may go, the `iconset` block that renames a pack and styles it, the rules that turn a name into a glyph, the shared sprite the build emits, and what each of the three output targets does with an icon. It ends with both packs in full, every glyph drawn beside its name."
+  p "Two complete icon packs, **Lucide** (1711 glyphs) and **Bootstrap Icons** (2078), are compiled into the `wcl` binary. The build downloads nothing and reads nothing from disk, and you declare nothing to use them. This chapter covers the three places an icon may go, the `iconset` block that renames a pack and styles it, the rules that turn a name into a glyph, the shared sprite the build emits, and what each of the three output targets does with an icon. It ends with both packs in full, every glyph drawn beside its name."
 
   p "Every file and command below was run before it was written down. Type them and compare."
 
@@ -55,16 +55,16 @@ page lab {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build icons.wcl --out site
 wrote 1 page
 $ ls site/_wdoc/icons.svg
 site/_wdoc/icons.svg
-TEXT
+CONSOLE
   }
 
-  p "The paragraph renders as prose with two glyphs in it, and the diagram draws a third and a fourth. Both are reproduced below — unstyled, because this book declares no `ui` set of its own:"
+  p "The paragraph renders as prose with two glyphs in it, and the diagram draws a third and a fourth. Both are reproduced below. They are unstyled, because this book declares no `ui` set of its own:"
 
   p "Bare :heart:, prefixed :bootstrap.house:, and a time like 10:30 that stays prose."
 
@@ -77,47 +77,47 @@ TEXT
     }
   }
 
-  p "Four icons, three mechanisms. `:heart:` and `:bootstrap.house:` are the **inline pattern** — a `:name:` token inside any prose string. The compass is the **icon block**, a placeable shape inside a `diagram`. The shield on the `Validate` box is a **badge**: the `icon` field that every box-like shape carries. All four resolve through one registry, and all four end up in one file, `site/_wdoc/icons.svg`, holding exactly the four glyphs the build used."
+  p "Four icons, three mechanisms. `:heart:` and `:bootstrap.house:` are the **inline pattern**: a `:name:` token inside any prose string. The compass is the **icon block**, a placeable shape inside a `diagram`. The shield on the `Validate` box is a **badge**: the `icon` field that every box-like shape carries. All four resolve through one registry, and all four end up in one file, `site/_wdoc/icons.svg`, holding exactly the four glyphs the build used."
 
-  p "Note the last clause of the paragraph too. `10:30` sits in prose that is scanned for icon tokens, and comes out untouched. Neither the pattern nor the lookup ever fails a build."
+  p "Note the last clause of the paragraph too. `10:30` sits in prose that the pattern engine scans for icon tokens, and comes out untouched. Neither the pattern nor the lookup ever fails a build."
 
   h2 "The two bundled packs"
 
-  p "The packs are vendored into the repository and bundled by `crates/wcl_wdoc/build.rs`, which concatenates every `*.svg` in a pack directory into one blob and emits a name-sorted index into it. Looking an icon up is a binary search and a slice — there is no per-icon file and no runtime read."
+  p "The packs are vendored into the repository, and `crates/wcl_wdoc/build.rs` bundles them. It concatenates every `*.svg` in a pack directory into one blob and emits a name-sorted index into it. An icon lookup is a binary search and a slice. There is no per-icon file and no runtime read."
 
   table {
     rows:
       | "Pack"        | "Upstream"                              | "Licence" | "Glyphs" | "Paints with" |
-      | "`lucide`"    | "github.com/lucide-icons/lucide"        | "ISC"     | "1711"   | "`stroke=\"currentColor\"` — outline style" |
-      | "`bootstrap`" | "github.com/twbs/icons"                 | "MIT"     | "2078"   | "`fill=\"currentColor\"` — solid style" |
+      | "`lucide`"    | "github.com/lucide-icons/lucide"        | "ISC"     | "1711"   | "`stroke=\"currentColor\"`, outline style" |
+      | "`bootstrap`" | "github.com/twbs/icons"                 | "MIT"     | "2078"   | "`fill=\"currentColor\"`, solid style" |
   }
 
-  p "An **icon name is the file stem**. `house.svg` is the icon `house`; `alarm-clock-check.svg` is `alarm-clock-check`. Names are lower-case, digits and hyphens only — which is what lets a `set.name` token be split on its dot without ambiguity. The two galleries at the end of this chapter list every name in both packs."
+  p "An **icon name is the file stem**. `house.svg` is the icon `house`. `alarm-clock-check.svg` is `alarm-clock-check`. Names are lower-case, digits and hyphens only, so a `set.name` token splits on its dot without ambiguity. The two galleries at the end of this chapter list every name in both packs."
 
-  p "The two packs overlap in places and diverge in most. Both have `house`, `heart`, `wrench` and `zoom-in`; only Lucide has `shield-check`, only Bootstrap has `windows`. When both provide a name and you have not said which you mean, [the resolution order](#how-a-name-resolves) decides."
+  p "The two packs overlap in places and diverge in most. Both have `house`, `heart`, `wrench` and `zoom-in`. Only Lucide has `shield-check`, and only Bootstrap has `windows`. When both provide a name and you have not said which you mean, [the resolution order](#how-a-name-resolves) decides."
 
   h3 "Licensing"
 
-  p "Both licences are permissive and both require the licence text to travel with the files. That obligation is already met inside this repository: each pack directory keeps its upstream `LICENSE` beside the SVGs, and the two files are vendored verbatim — only `icons/*.svg` and `LICENSE` are copied from upstream, nothing else."
+  p "Both licences are permissive and both require the licence text to travel with the files. This repository already meets that obligation: each pack directory keeps its upstream `LICENSE` beside the SVGs, and the two files are vendored verbatim. Only `icons/*.svg` and `LICENSE` are copied from upstream, nothing else."
 
   callout "You are redistributing the glyphs" {
     class = ["warning"]
-    body  = "A built site embeds the icons it uses into `_wdoc/icons.svg`, and a PDF embeds them into the document itself. That is redistribution, and the ISC and MIT terms follow the glyphs out of your build. Neither licence asks for attribution on the page — both ask that the licence text be included with the distributed copies. If you ship the output rather than the source, ship the two licence files with it. `crates/wcl_wdoc/assets/icons/README.md` records where each pack came from and how to update it."
+    body  = "A built site embeds the icons it uses into `_wdoc/icons.svg`, and a PDF embeds them into the document itself. Embedding the glyphs is redistribution, and the ISC and MIT terms follow the glyphs out of your build. Neither licence asks for attribution on the page. Both ask that the licence text be included with the distributed copies. If you ship the output rather than the source, ship the two licence files with it. `crates/wcl_wdoc/assets/icons/README.md` records where each pack came from and how to update it."
   }
 
   h2 "Inline icons"
 
-  p "Inside any prose string, `:name:` becomes an icon. The pattern is one of the built-in inline patterns, so it works everywhere the others do — a `p`, a `text` block's `span`, a `li`, a table cell, a callout body, a chart label. [Text and formatting](wdoc_formatting) covers the pattern engine as a whole."
+  p "Inside any prose string, `:name:` becomes an icon. The pattern is one of the built-in inline patterns, so it works everywhere the others do: a `p`, a `text` block's `span`, a `li`, a table cell, a callout body, a chart label. [Text and formatting](wdoc_formatting) covers the pattern engine as a whole."
 
   p "The token is deliberately narrow. It matches a colon, a character from `a`–`z` or `0`–`9`, then any run of lower-case letters, digits, dots, hyphens and underscores, then a closing colon. Three consequences follow:"
 
   list {
-    li "`:Home:` does not match — the first character after the colon must be lower-case or a digit."
-    li "`10:30` does not match — a token needs a **closing** colon and there is none. `note: see below` does not match either — the character after the colon must be a letter or a digit, and a space is neither."
+    li "`:Home:` does not match. The first character after the colon must be lower-case or a digit."
+    li "`10:30` does not match. A token needs a **closing** colon and there is none. `note: see below` does not match either. The character after the colon must be a letter or a digit, and a space is neither."
     li "`:lucide.compass:` matches as one token, dot and all, and the dot is what separates the set name from the icon name."
   }
 
-  p "A token that matches but resolves to nothing is emitted as the literal text you wrote. That is the whole safety story for the pattern: prose that happens to look like an icon reference is left as prose."
+  p "If a token matches but resolves to nothing, the build emits the literal text you wrote. That is the whole safety story for the pattern: prose that happens to look like an icon reference stays prose."
 
   p "Write this:"
 
@@ -143,11 +143,11 @@ WCL
 TEXT
   }
 
-  p "Two things to read out of that. First, each icon is a `<use>` of the shared sprite rather than a copy of the glyph — [the sprite](#the-shared-sprite) explains why. Second, the styling on the `heart` came from the `ui` iconset and its `icon_def`, while `bootstrap.house` names a set that declares no defaults and so carries no inline style at all."
+  p "Two things to read out of that. First, each icon is a `<use>` of the shared sprite rather than a copy of the glyph. [The sprite](#the-shared-sprite) explains why. Second, the styling on the `heart` came from the `ui` iconset and its `icon_def`, while `bootstrap.house` names a set that declares no defaults and so carries no inline style at all."
 
   callout "An inline icon carries no classes of its own" {
     class = ["note"]
-    body  = "The `:name:` token has no syntax for a class or a size — there is nowhere to put one. Every class and every style on an inline icon comes from the `iconset` (or its `icon_def`) that resolved it. If you need one glyph styled differently from the rest of its set, give the set an `icon_def` for it, or declare a second set."
+    body  = "The `:name:` token has no syntax for a class or a size. There is nowhere to put one. Every class and every style on an inline icon comes from the `iconset` (or its `icon_def`) that resolved it. If you need one glyph styled differently from the rest of its set, give the set an `icon_def` for it, or declare a second set."
   }
 
   h2 "Iconsets"
@@ -174,18 +174,18 @@ WCL
     rows:
       | "Field"        | "Type"          | "Means" |
       | "label"        | "`identifier`"  | "The set's own name. It is what `:ui.heart:` and a diagram icon's `set = ui` refer to." |
-      | "`pack`"       | "`utf8?`"       | "The bundled pack to read glyphs from — `\"lucide\"` or `\"bootstrap\"`. **Defaults to the set's own name**, which is why `iconset lucide {}` needs no `pack`." |
+      | "`pack`"       | "`utf8?`"       | "The bundled pack to read glyphs from: `\"lucide\"` or `\"bootstrap\"`. **Defaults to the set's own name**, so `iconset lucide {}` needs no `pack`." |
       | "`size`"       | "`utf8?`"       | "Default size for **inline** icons, as a CSS length: `\"1.25em\"`, `\"20px\"`. Ignored by diagram icons and badges." |
-      | "`color`"      | "`utf8?`"       | "Default foreground. Every glyph paints with `currentColor`, so this is the one knob that recolours both packs." |
+      | "`color`"      | "`utf8?`"       | "Default foreground. Every glyph paints with `currentColor`, so `color` is the one setting that recolours both packs." |
       | "`fill`"       | "`utf8?`"       | "Explicit `fill` override, for the rare case where `color` is not enough." |
-      | "`background`" | "`utf8?`"       | "Background behind the glyph. On an inline icon it is a CSS `background`; on a diagram icon it becomes a `<rect>` drawn under the glyph." |
+      | "`background`" | "`utf8?`"       | "Background behind the glyph. On an inline icon it is a CSS `background`. On a diagram icon it becomes a `<rect>` drawn under the glyph." |
       | "`class`"      | "`list<utf8>?`" | "Classes added to every icon from this set, on top of the built-in `wdoc-icon`. See [Themes and styling](wdoc_styling)." |
       | "`icon_def`"   | "child blocks"  | "Per-icon overrides, below." |
   }
 
   h3 "Per-icon overrides"
 
-  p "An `icon_def` child names one icon in the set and overrides the set's defaults for it. It carries the same five styling fields — `size`, `color`, `fill`, `background`, `class` — and nothing else. [Sizing and colour](#sizing-and-colour) has the layering rule that decides what an override replaces."
+  p "An `icon_def` child names one icon in the set and overrides the set's defaults for it. It carries the same five styling fields and nothing else: `size`, `color`, `fill`, `background`, `class`. [Sizing and colour](#sizing-and-colour) has the layering rule that decides what an override replaces."
 
   code wcl {
     source = <<'WCL'
@@ -204,7 +204,7 @@ WCL
 
   callout "An iconset is a document-root declaration" {
     class = ["warning"]
-    body  = "The registry is built from the `iconset` blocks at the **root of the document**, not from the page an icon appears on. An `iconset` written inside a `page` is not a root block and will not be found. In a multi-file document every `import`ed file's root blocks merge into one root, so a set declared in any imported file styles icons in every page of every site the document builds. That is the reach to keep in mind before you rename `lucide`."
+    body  = "wdoc builds the registry from the `iconset` blocks at the **root of the document**, not from the page an icon appears on. An `iconset` written inside a `page` is not a root block, and the registry never finds it. In a multi-file document every `import`ed file's root blocks merge into one root, so a set declared in any imported file styles icons in every page of every site the document builds. That is the reach to keep in mind before you rename `lucide`."
   }
 
   h3 "How a name resolves"
@@ -212,15 +212,15 @@ WCL
   p "A name reaches a glyph through one registry, loaded once per build from those root `iconset` blocks. Four rules, in this order:"
 
   list {
-    li "**A `set.name` token names the set.** `:ui.heart:` looks only at the set called `ui`. If no set has that name, or that set's pack has no `heart`, the lookup fails — it does not try elsewhere. (One caller has a fallback after that failure; the example below is it.)"
-    li "**A bare `name` tries every set in declaration order**, and the first whose pack holds the icon wins. The document's own sets come before the two the library declares, so a set of yours is always consulted first."
+    li "**A `set.name` token names the set.** `:ui.heart:` looks only at the set called `ui`. If no set has that name, or that set's pack has no `heart`, the lookup fails. It does not try elsewhere. (One caller has a fallback after that failure. The example below is it.)"
+    li "**A bare `name` tries every set in declaration order**, and the first whose pack holds the icon wins. The document's own sets come before the two the library declares, so the lookup always tries a set of yours first."
     li "**On a diagram icon, an explicit `set =` field beats a `set.` prefix** on the name. `icon \"lucide.compass\" { set = ui }` reads from `ui`."
-    li "**A failed lookup is never a build error.** Inline, the literal `:name:` text is emitted. In a diagram, nothing is drawn. A badge whose `icon` misses simply has no badge."
+    li "**A failed lookup is never a build error.** Inline, the build emits the literal `:name:` text. In a diagram, it draws nothing. A shape whose `icon` misses gets no badge."
   }
 
-  p "The library declares `iconset lucide {}` and `iconset bootstrap {}` unconditionally, which is why both packs work in a document that declares nothing. Because a set's `pack` defaults to its own name, those two declarations are the whole of their configuration."
+  p "The library declares `iconset lucide {}` and `iconset bootstrap {}` unconditionally, so both packs work in a document that declares nothing. Because a set's `pack` defaults to its own name, those two declarations are the whole of their configuration."
 
-  p "Declaring a set with one of those names **replaces** it — a root set is found before a library one:"
+  p "Declaring a set with one of those names **replaces** it, because the lookup reaches a root set before a library one:"
 
   code wcl {
     filename = "override.wcl"
@@ -245,9 +245,9 @@ WCL
 
   p "Build that and the sprite holds one symbol, `lucide-triangle-alert`, while the paragraph renders the literal text `:lucide.triangle-alert:`. Both halves of that are worth understanding, because they are the one place the rules above are not the whole story."
 
-  p "The warning callout's default glyph is `lucide.triangle-alert`, and Bootstrap has no icon by that name, so the set lookup failed. One path has a second chance after that failure: an icon named through the `Html::Icon` value — the `icon(name, class)` constructor, and so a callout's default glyph and a `sidebar_footer` button — falls back to a compiled-in pack whose name matches the prefix. That is why the callout drew the real Lucide glyph."
+  p "The warning callout's default glyph is `lucide.triangle-alert`, and Bootstrap has no icon by that name, so the set lookup failed. One path has a second chance after that failure. An icon named through the `Html::Icon` value falls back to a compiled-in pack whose name matches the prefix. That value covers the `icon(name, class)` constructor, and so a callout's default glyph and a `sidebar_footer` button. That is why the callout drew the real Lucide glyph."
 
-  p "Nothing else gets that fallback. The author's own inline token did not: rule 1 applied, the lookup failed, and the literal text was emitted. Nor does a diagram `icon` block, nor a shape badge — both resolve through the set list and stop there."
+  p "Nothing else gets that fallback. The author's own inline token did not. Rule 1 applied, the lookup failed, and the build emitted the literal text. Nor does a diagram `icon` block, nor a shape badge. Both resolve through the set list and stop there."
 
   callout "Renaming a built-in set moves the furniture" {
     class = ["warning"]
@@ -256,7 +256,7 @@ WCL
 
   h2 "The placeable icon block"
 
-  p "`icon` is also a shape. It extends `SvgBlock`, so it is a legal child of a `diagram` or a `container`, it is placed by `x` / `y` or by anchors, and an edge may attach to it exactly as to a `rect`. [The diagram canvas](wdoc_diagrams) covers placement and [Connections and routing](wdoc_diagram_connections) covers the edges."
+  p "`icon` is also a shape. It extends `SvgBlock`, so it is a legal child of a `diagram` or a `container`. You place it by `x` / `y` or by anchors, and an edge may attach to it exactly as to a `rect`. [The diagram canvas](wdoc_diagrams) covers placement and [Connections and routing](wdoc_diagram_connections) covers the edges."
 
   diagram {
     width = 260  height = 100
@@ -284,44 +284,44 @@ WCL
       | "label"          | "`identifier`"  | "—"       | "The icon name, optionally `set.name`." |
       | "`set`"          | "`identifier?`" | "—"       | "Which declared iconset to read from. Beats a `set.` prefix on the name." |
       | "`x` / `y`"      | "`f64`"         | "`0.0`"   | "Top-left placement in diagram units, when the layout is manual." |
-      | "`width` / `height`" | "`f64`"     | "`24.0`"  | "Size in diagram units. This — not `size` — is what sizes a diagram icon." |
+      | "`width` / `height`" | "`f64`"     | "`24.0`"  | "Size in diagram units. `width` and `height`, not `size`, are what size a diagram icon." |
       | "`scale`"        | "`f64?`"        | "—"       | "Extra multiplier on `width` and `height`. It scales from the top-left corner: `x` / `y` do not move." |
       | "`color`"        | "`utf8?`"       | "set's"   | "Foreground, over the set's default." |
       | "`fill`"         | "`utf8?`"       | "set's"   | "Fill override." |
       | "`background`"   | "`utf8?`"       | "set's"   | "Drawn as a `<rect>` behind the glyph, filling the same box." |
       | "`class`"        | "`list<utf8>?`" | "set's"   | "Classes, added to the set's." |
       | "`id`"           | "`identifier?`" | "—"       | "The shape's id, so an edge can name it." |
-      | "`size`"         | "`utf8?`"       | "—"       | "Declared for symmetry with `iconset`. **A diagram icon ignores it** — see the warning below." |
+      | "`size`"         | "`utf8?`"       | "—"       | "Declared for symmetry with `iconset`. **A diagram icon ignores it.** See the warning below." |
       | "anchors"        | "`f64?`"        | "—"       | "`anchor_left` and its siblings place the icon against the parent's edges instead of by `x` / `y`." |
       | "`connect_points`" | "`list<AnchorSide>?`" | "—" | "Which sides an edge may attach to." |
   }
 
   callout "size does not size a diagram icon" {
     class = ["warning"]
-    body  = "`size` is a CSS length, and the SVG render path never writes one: a diagram icon's geometry is `width` × `height`, multiplied by `scale`. Setting `size` on the block, or on the `iconset` it draws from, changes nothing in the output. Both were tried. Use `width` / `height` in a diagram, and keep `size` for the inline path."
+    body  = "`size` is a CSS length, and the SVG render path never writes one. A diagram icon's geometry is `width` × `height`, multiplied by `scale`. Setting `size` on the block, or on the `iconset` it draws from, changes nothing in the output. Both were tried. Use `width` / `height` in a diagram, and keep `size` for the inline path."
   }
 
-  p "A `set` on the block and a set prefix on the name do different jobs, and the difference shows up in the styling. `icon \"lucide.compass\"` reads from the `lucide` set — the library one, with no defaults — so it inherits no colour even if you have a beautifully styled set of your own. `icon \"compass\" { set = ui }` reads from `ui`, and picks up its `color`, `background` and classes."
+  p "A `set` on the block and a set prefix on the name do different jobs, and the difference shows up in the styling. `icon \"lucide.compass\"` reads from the `lucide` set, which is the library one with no defaults, so it inherits no colour even if you have a beautifully styled set of your own. `icon \"compass\" { set = ui }` reads from `ui`, and picks up its `color`, `background` and classes."
 
   h2 "Icon badges on shapes"
 
-  p "The third mechanism puts an icon **on** a shape rather than beside it. Every box-like shape — `rect`, `circle`, `container`, `process`, `decision`, `terminator`, and any custom `SvgBlock` shape that declares the same fields — carries four badge fields:"
+  p "The third mechanism puts an icon **on** a shape rather than beside it. Every box-like shape carries four badge fields, and that means `rect`, `circle`, `container`, `process`, `decision`, `terminator`, and any custom `SvgBlock` shape that declares the same fields:"
 
   table {
     rows:
       | "Field"        | "Type"          | "Default"            | "Means" |
-      | "`icon`"       | "`utf8?`"       | "—"                  | "The icon name, optionally `set.name`. Absent ⇒ no badge." |
+      | "`icon`"       | "`utf8?`"       | "—"                  | "The icon name, optionally `set.name`. Absent means no badge." |
       | "`icon_size`"  | "`f64?`"        | "`min(w, h) * 0.4`"  | "Badge size in diagram units." |
       | "`icon_pos`"   | "`IconPos?`"    | "`:left`"            | "Where in the shape's box the badge sits." |
       | "`icon_class`" | "`list<utf8>?`" | "—"                  | "Classes on the badge." |
   }
 
-  p "`IconPos` is a symbol set with seven members. Corner and edge placements are inset from the box by a tenth of its shorter side; `:center` is not inset."
+  p "`IconPos` is a symbol set with seven members. Corner and edge placements are inset from the box by a tenth of its shorter side. `:center` is not inset."
 
   table {
     rows:
       | "Symbol"          | "Places the badge" |
-      | "`:left`"         | "Against the left edge, vertically centred — **the default**." |
+      | "`:left`"         | "Against the left edge, vertically centred. **The default**." |
       | "`:right`"        | "Against the right edge, vertically centred." |
       | "`:center`"       | "In the middle of the box. Every badge draws over the shape, so this one overlaps a centred label." |
       | "`:top_left`"     | "Top-left corner." |
@@ -353,11 +353,11 @@ process "Validate" {
 WCL
   }
 
-  p "A badge takes no `set` field. Write the set into the name — `icon = \"ui.shield-check\"` — when you want a set other than the first one that answers."
+  p "A badge takes no `set` field. Write the set into the name, as in `icon = \"ui.shield-check\"`, when you want a set other than the first one that answers."
 
   callout "Two shapes have no box to badge" {
     class = ["note"]
-    body  = "`line` and `label` have no bounding box a badge could be anchored to, so they carry no badge even though they are shapes. Everything else resolves a box: `circle`, `container` and `polygon` from their own geometry, and every remaining kind from its rectangle."
+    body  = "`line` and `label` have no bounding box to anchor a badge to, so they carry no badge even though they are shapes. Everything else resolves a box: `circle`, `container` and `polygon` from their own geometry, and every remaining kind from its rectangle."
   }
 
   h2 "Sizing and colour"
@@ -365,38 +365,38 @@ WCL
   p "Styling arrives in three layers, and each later layer wins field by field:"
 
   list {
-    li "**The set's defaults** — the `size` / `color` / `fill` / `background` / `class` on the `iconset`."
+    li "**The set's defaults.** The `size` / `color` / `fill` / `background` / `class` on the `iconset`."
     li "**The `icon_def` for this one icon**, if the set declares one."
-    li "**The placement itself** — the fields on the `icon` block, or `icon_class` on a badge."
+    li "**The placement itself.** The fields on the `icon` block, or `icon_class` on a badge."
   }
 
-  p "Scalar fields replace; `class` lists concatenate, so an icon ends up wearing `wdoc-icon`, then the set's classes, then the icon's own."
+  p "Scalar fields replace. `class` lists concatenate, so an icon ends up wearing `wdoc-icon`, then the set's classes, then the icon's own."
 
-  p "What each field actually does depends on where the icon is drawn, and the table is the comparison worth having in one place:"
+  p "What each field does depends on where the icon is drawn, and the table below is the comparison worth having in one place:"
 
   table {
     rows:
       | "Field"        | "Inline `:name:`"                        | "Diagram `icon` block"                | "Shape badge" |
-      | "`size`"       | "CSS `width` and `height`"               | "**Ignored**"                         | "**Ignored** — use `icon_size`" |
+      | "`size`"       | "CSS `width` and `height`"               | "**Ignored**"                         | "**Ignored**. Use `icon_size`" |
       | "`color`"      | "CSS `color`, driving `currentColor`"    | "Same, on the `<use>`"                | "From the set only" |
       | "`fill`"       | "CSS `fill`"                             | "Same"                                | "From the set only" |
       | "`background`" | "CSS `background`"                       | "A `<rect>` behind the glyph"         | "From the set only" |
       | "`class`"      | "From the set only"                      | "Set's + the block's `class`"         | "Set's + `icon_class`" |
-      | "geometry"     | "`1em`, i.e. the surrounding font size"  | "`width` × `height` × `scale`"        | "`icon_size`, default `min(w, h) * 0.4`" |
+      | "geometry"     | "`1em`, the surrounding font size"  | "`width` × `height` × `scale`"        | "`icon_size`, default `min(w, h) * 0.4`" |
   }
 
-  p "The default inline size is not a hard-coded number in the renderer: the library ships a `base \"svg.wdoc-icon\"` rule setting `width: 1em; height: 1em`, so an inline icon is as tall as the text around it and moves with it. An iconset's `size` overrides that rule with an inline style. The selector is deliberately `svg.wdoc-icon` — element **and** class — so it cannot touch a diagram icon, which is a `<use>` and not an `<svg>`."
+  p "The default inline size is not a hard-coded number in the renderer. The library ships a `base \"svg.wdoc-icon\"` rule setting `width: 1em; height: 1em`, so an inline icon is as tall as the text around it and moves with it. An iconset's `size` overrides that rule with an inline style. The selector is deliberately `svg.wdoc-icon`, element **and** class, so it cannot touch a diagram icon, which is a `<use>` and not an `<svg>`."
 
   callout "currentColor is the whole colour story" {
     class = ["note"]
-    body  = "Lucide draws with `stroke=\"currentColor\"` and Bootstrap with `fill=\"currentColor\"`, and the sprite preserves those attributes. So one property — the CSS `color` of whatever contains the icon — recolours both packs, and an icon with no `color` of its own simply takes the colour of the text or the shape it sits in. That is why an icon in a themed callout is already the callout's colour, and why a `class` from [Themes and styling](wdoc_styling) restyles icons for free."
+    body  = "Lucide draws with `stroke=\"currentColor\"` and Bootstrap with `fill=\"currentColor\"`, and the sprite preserves those attributes. So one property recolours both packs: the CSS `color` of whatever contains the icon. An icon with no `color` of its own takes the colour of the text or the shape it sits in. That is why an icon in a themed callout is already the callout's colour, and why a `class` from [Themes and styling](wdoc_styling) restyles icons for free."
   }
 
   h2 "The shared sprite"
 
-  p "No glyph is ever copied into a page. Each use emits a `<use href=\"_wdoc/icons.svg#pack-name\"/>`, and after every page has rendered, the build writes one `_wdoc/icons.svg` holding a `<symbol>` for each icon that was actually used. A document that references four icons ships four symbols, out of the 3789 available."
+  p "The build never copies a glyph into a page. Each use emits a `<use href=\"_wdoc/icons.svg#pack-name\"/>`, and after every page has rendered, the build writes one `_wdoc/icons.svg`. That file holds a `<symbol>` for each icon the build used. A document that references four icons ships four symbols, out of the 3789 available."
 
-  p "The symbol is the pack's own SVG with its root tag rewritten. `viewBox` is kept; presentation attributes — `fill`, `stroke`, `stroke-width`, `stroke-linecap` — are kept, because they are what makes the glyph draw; `width`, `height`, `xmlns`, `id`, `class`, `role`, `aria-hidden` and `focusable` are dropped, because the `<use>` supplies the size and the rest is noise. The id is `{pack}-{name}`."
+  p "The symbol is the pack's own SVG with its root tag rewritten. The rewrite keeps `viewBox`. It also keeps the presentation attributes `fill`, `stroke`, `stroke-width` and `stroke-linecap`, because they are what makes the glyph draw. It drops `width`, `height`, `xmlns`, `id`, `class`, `role`, `aria-hidden` and `focusable`, because the `<use>` supplies the size and the rest is noise. The id is `{pack}-{name}`."
 
   code text {
     filename = "site/_wdoc/icons.svg"
@@ -412,16 +412,16 @@ WCL
 TEXT
   }
 
-  p "Three facts follow from the sprite being a separate file. A page with fifty repetitions of one icon carries fifty short `<use>` elements and one copy of the path data. The `href` is written relative, `_wdoc/icons.svg`, so it resolves both under the dev server and on a static host. And it is a **fetch**, which means the icons appear when the output is served rather than when a page file is opened directly from disk."
+  p "Three facts follow from the sprite being a separate file. A page with fifty repetitions of one icon carries fifty short `<use>` elements and one copy of the path data. The build writes the `href` relative, `_wdoc/icons.svg`, so it resolves both under the dev server and on a static host. And it is a **fetch**, so the icons appear when the output is served rather than when you open a page file directly from disk."
 
   callout "A malformed glyph is dropped, not fatal" {
     class = ["note"]
-    body  = "If a pack SVG has no root `<svg>` tag and no usable `viewBox` (and no `width`/`height` pair to synthesise one from), the icon is left out of the sprite and the `<use>` referring to it renders nothing. Nothing about icons fails a build — not a missing name, not a malformed glyph, not an unknown set."
+    body  = "If a pack SVG has no root `<svg>` tag and no usable `viewBox` (and no `width`/`height` pair to synthesise one from), the build leaves the icon out of the sprite, and the `<use>` referring to it renders nothing. Nothing about icons fails a build: not a missing name, not a malformed glyph, not an unknown set."
   }
 
-  h3 "One registry, every surface"
+  h3 "One registry, every caller"
 
-  p "There is exactly one icon registry per build. The renderer threads it through as `patterns.icons()`, and every surface that can name an icon asks the same object: the inline pattern engine, the diagram shape renderer, the badge renderer, a callout's default glyph, a `sidebar_footer` button's `icon`, and the `icon(name, class)` constructor available to your own blocks. One consequence matters in practice — the sprite is complete because everything records its usage in the same place, so a glyph that only a callout asked for is still in the file."
+  p "There is exactly one icon registry per build. The renderer threads it through as `patterns.icons()`, and every caller that can name an icon asks the same object: the inline pattern engine, the diagram shape renderer, the badge renderer, a callout's default glyph, a `sidebar_footer` button's `icon`, and the `icon(name, class)` constructor available to your own blocks. One consequence matters in practice: the sprite is complete because everything records its usage in the same place, so a glyph that only a callout asked for is still in the file."
 
   h2 "Icons across the three output targets"
 
@@ -431,16 +431,16 @@ TEXT
     rows:
       | "Target"     | "Inline `:name:`"                                  | "Diagram and badge icons"                                   | "The sprite" |
       | "HTML"       | "`<svg class=\"wdoc-icon\"><use …/></svg>`, sized `1em`" | "`<use>` inside the page's SVG"                       | "Written to `_wdoc/icons.svg`" |
-      | "PDF"        | "The pack glyph embedded directly, one em tall, painted in the page's foreground colour" | "The `<symbol>`s are spliced into the embedded SVG's `<defs>` and the sprite href rewritten to a local `#id`" | "None — there is no file to fetch" |
-      | "Markdown"   | "Degrades to the literal `:name:` text"            | "Survives: the diagram is exported as an `.svg` file that references the sprite" | "Written to `_wdoc/icons.svg`" |
+      | "PDF"        | "The pack glyph embedded directly, one em tall, painted in the page's foreground colour" | "The `<symbol>`s are spliced into the embedded SVG's `<defs>` and the sprite href rewritten to a local `#id`" | "None. There is no file to fetch" |
+      | "Markdown"   | "Degrades to the literal `:name:` text"            | "Survives: the build exports the diagram as an `.svg` file that references the sprite" | "Written to `_wdoc/icons.svg`" |
   }
 
-  p "Two of those rows deserve a sentence each. In **PDF** there is no sprite file to fetch, so the glyph must travel inside the document. An inline icon is embedded as the raw pack glyph, so an iconset's `size` and `color` do not reach it: it is one em tall, and it is the page's text colour. In **Markdown** the inline pattern has nowhere to go, because GitHub-flavoured Markdown has no inline SVG. The token you wrote comes back out as text. Diagrams are unaffected either way, because a diagram was always going to be an image."
+  p "Two of those rows deserve a sentence each. In **PDF** there is no sprite file to fetch, so the glyph must travel inside the document. The PDF renderer embeds an inline icon as the raw pack glyph, so an iconset's `size` and `color` do not reach it. It is one em tall, and it is the page's text colour. In **Markdown** the inline pattern has nowhere to go, because GitHub-flavoured Markdown has no inline SVG. The token you wrote comes back out as text. Diagrams are unaffected either way, because a diagram was always going to be an image."
 
   p "Build the file from the top of this chapter as Markdown and the difference is plain:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build icons.wcl --out md --type markdown
 wrote 1 page
 $ cat md/lab.md
@@ -449,10 +449,10 @@ $ cat md/lab.md
 Bare :heart:, prefixed :bootstrap.house:, and a time like 10:30 that stays prose.
 
 ![diagram](_wdoc/lab-diagram-1.svg)
-TEXT
+CONSOLE
   }
 
-  p "If an icon has to survive into Markdown, put it in a diagram, or use a text marker instead. [Visibility](wdoc_visibility) is the other tool here — `@except(backends = [:markdown])` on the block that carries the decorative icon, and a plain-text block in its place — but note that the axis is per **block**, and an inline `:name:` is not a block. A paragraph is the smallest thing you can hide."
+  p "If an icon has to survive into Markdown, put it in a diagram, or use a text marker instead. [Visibility](wdoc_visibility) is the other tool here: put `@except(backends = [:markdown])` on the block that carries the decorative icon, and a plain-text block in its place. The axis is per **block**, though, and an inline `:name:` is not a block. A paragraph is the smallest thing you can hide."
 
   h2 "Icons in your own blocks"
 
@@ -474,13 +474,13 @@ type Status extends ContentBlock {
 WCL
   }
 
-  p "The name resolves through the same registry and by the same rules, and it records its usage, so a glyph only your block asks for is still in the sprite. `icon()` is also the constructor that carries the [compiled-in pack fallback](#how-a-name-resolves): a `pack.name` that no declared set covers still resolves, exactly as a callout's default glyph does. A name that even that cannot place emits nothing rather than failing. [Writing your own blocks](wdoc_extending) covers the lowering interface, and `inl` alongside `icon` in the `el` family."
+  p "The name resolves through the same registry and by the same rules, and `icon()` records its usage, so a glyph only your block asks for is still in the sprite. `icon()` is also the constructor that carries the [compiled-in pack fallback](#how-a-name-resolves): a `pack.name` that no declared set covers still resolves, exactly as a callout's default glyph does. A name that even the fallback cannot place emits nothing rather than failing. [Writing your own blocks](wdoc_extending) covers the lowering interface, and `inl` alongside `icon` in the `el` family."
 
   p "The other route needs no lowering at all. Because `Html::Inline` and every prose string run through the inline pattern engine, a block that emits prose gets `:name:` support for nothing."
 
   h2 "All Lucide icons"
 
-  p "Every icon in the bundled Lucide pack (1711). Reference one inline as `:lucide.<name>:`, or as a shape badge / `icon` block with `lucide.<name>`."
+  p "Every icon in the bundled Lucide pack (1711). Reference one inline as `:lucide.<name>:`. In a shape badge or an `icon` block, write `lucide.<name>`."
 
   table {
     rows:
@@ -917,7 +917,7 @@ WCL
 
   h2 "All Bootstrap icons"
 
-  p "Every icon in the bundled Bootstrap Icons pack (2078). Reference one inline as `:bootstrap.<name>:`, or as a shape badge / `icon` block with `bootstrap.<name>`."
+  p "Every icon in the bundled Bootstrap Icons pack (2078). Reference one inline as `:bootstrap.<name>:`. In a shape badge or an `icon` block, write `bootstrap.<name>`."
 
   table {
     rows:
@@ -1447,11 +1447,11 @@ WCL
   h2 "Where to go next"
 
   list {
-    li "[Text and formatting](wdoc_formatting) — the inline pattern engine `:name:` belongs to, and the rest of what a prose string may carry."
-    li "[Themes and styling](wdoc_styling) — the `class` system an iconset's `class` and `color` hang off, and how `currentColor` reaches an icon."
-    li "[Callouts, footnotes and chapter headers](wdoc_callouts) — the block whose default glyphs a renamed `lucide` set moves."
-    li "[The diagram canvas](wdoc_diagrams) — placement, anchors and layout for the `icon` block and every shape that wears a badge."
-    li "[Output targets](wdoc_outputs) — HTML, PDF and Markdown, and what else differs between them."
-    li "[Writing your own blocks](wdoc_extending) — lowering to `Html`, where the `icon(name, class)` constructor lives."
+    li "[Text and formatting](wdoc_formatting). The inline pattern engine `:name:` belongs to, and the rest of what a prose string may carry."
+    li "[Themes and styling](wdoc_styling). The `class` system an iconset's `class` and `color` hang off, and how `currentColor` reaches an icon."
+    li "[Callouts, footnotes and chapter headers](wdoc_callouts). The block whose default glyphs a renamed `lucide` set moves."
+    li "[The diagram canvas](wdoc_diagrams). Placement, anchors and layout for the `icon` block and every shape that wears a badge."
+    li "[Output targets](wdoc_outputs). HTML, PDF and Markdown, and what else differs between them."
+    li "[Writing your own blocks](wdoc_extending). Lowering to `Html`, where the `icon(name, class)` constructor lives."
   }
 }

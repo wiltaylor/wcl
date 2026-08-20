@@ -1,4 +1,4 @@
-// Chapter 19 — Themes and styling.
+// Themes and styling.
 //
 // Written against #176. Every *emitted CSS* fragment quoted below was read out
 // of a real build: the WCL was built with `wcl wdoc build` and the resulting
@@ -28,20 +28,20 @@ page wdoc_styling {
 
   h1 "Themes and styling"
 
-  p "A wdoc site has no stylesheet on disk. Everything it looks like is computed at build time from two kinds of block: a **`theme`**, which is a pair of colour palettes, and a family of **structured CSS blocks** — `class`, `base`, `nest`, `media`, `keyframes`, `font_face` and `style` — which are CSS rules written as typed WCL rather than as a string. This chapter covers both, the cascade that joins them, the seven themes that ship, and how to replace any part of it."
+  p "A wdoc site has no stylesheet on disk. The build computes everything it looks like from two kinds of block. A **`theme`** is a pair of colour palettes. The **structured CSS blocks**, `class`, `base`, `nest`, `media`, `keyframes`, `font_face` and `style`, are CSS rules written as typed WCL rather than as a string. This chapter covers both kinds, the cascade that joins them, the seven themes that ship, and how to replace any part of it."
 
   p "Everything below was built and read back out of the emitted HTML. Type the examples and compare."
 
   h2 "Two layers, one cascade"
 
-  p "The two layers do not compete. A theme sets **CSS custom properties** — `--wdoc-bg`, `--wdoc-fg`, `--wdoc-blue`, thirty-one of them — and every built-in rule paints with `var(--wdoc-…)` rather than with a colour. So the theme decides the colours and the rules decide the shapes, and a new block type needs no theme work at all: it references the variables and it is themed."
+  p "The two layers do not compete. A theme sets **CSS custom properties**: `--wdoc-bg`, `--wdoc-fg`, `--wdoc-blue`, thirty-one of them. Every built-in rule paints with `var(--wdoc-…)` rather than with a colour. So the theme decides the colours and the rules decide the shapes, and a new block type needs no theme work at all: it references the variables and it is themed."
 
   p "The rules themselves arrive in three groups, and the build emits them into one `<style>` element in this order:"
 
   list {
-    li "**Library rules** — the bundled `class` and `base` blocks that ship inside wdoc (`lib/css-classes.wcl` and its neighbours). They stand on their own without a theme, so a document with no `site` block still renders legibly: most carry a literal colour, and the syntax-token rules carry a variable **with a literal fallback** — `color: var(--wdoc-syn-kw, #cf222e)`."
-    li "**The theme** — the custom properties for the selected palette, followed by the rules that apply them (`lib/theme-rules.wcl`). These overwrite the library colours."
-    li "**Your rules** — every `class` / `base` / `media` / `keyframes` / `font_face` block you write yourself."
+    li "**Library rules.** The bundled `class` and `base` blocks that ship inside wdoc (`lib/css-classes.wcl` and its neighbours). They stand on their own without a theme, so a document with no `site` block still renders legibly: most carry a literal colour, and the syntax-token rules carry a variable **with a literal fallback**, `color: var(--wdoc-syn-kw, #cf222e)`."
+    li "**The theme.** The custom properties for the selected palette, followed by the rules that apply them (`lib/theme-rules.wcl`). These overwrite the library colours."
+    li "**Your rules.** Every `class`, `base`, `media`, `keyframes` or `font_face` block you write yourself."
   }
 
   p "Same specificity, later wins. That single ordering is the whole override story: your `class \"wdoc-series-1\"` beats the theme's, which beats the library's, and you never write `!important`. The section on [emission order](#the-order-rules-are-emitted-in) shows the three rules for one class stacked up in real output."
@@ -78,11 +78,11 @@ page colour {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build handbook.wcl --out _site
 wrote 1 page
-TEXT
+CONSOLE
   }
 
   p "Open `_site/colour.html` and the `<style>` element holds the palette, as literal hex, on `:root`:"
@@ -96,11 +96,11 @@ TEXT
 CSS
   }
 
-  p "Three fields did that. `theme = :gruvbox` chose the palette. `accent = :green` pointed the active accent at the palette's green. `theme_toggle = true` added a button. The page itself named no colour, and that is the point: [Documents, pages and sites](wdoc_sites) covers the rest of the `site` block."
+  p "Three fields did that. `theme = :gruvbox` chose the palette. `accent = :green` pointed the active accent at the palette's green. `theme_toggle = true` added a button. The page itself named no colour, and that is the point. [Documents, pages and sites](wdoc_sites) covers the rest of the `site` block."
 
   callout "A site-less document is unthemed" {
     class = ["note"]
-    body  = "The palette is emitted per `site`. A document with no `site` block gets the library defaults and nothing else — no `--wdoc-*` variables at all. That is deliberate: a bare page fragment should not carry a page background. (The bundled `@font-face` rules still ship, because they are plain top-level `font_face` blocks rather than part of a theme.) A `site` that declares no `theme` gets `:forge`, and so does a `theme` name that resolves to nothing."
+    body  = "The build emits the palette per `site`. A document with no `site` block gets the library defaults and nothing else: no `--wdoc-*` variables at all. That is deliberate: a bare page fragment should not carry a page background. (The bundled `@font-face` rules still ship, because they are plain top-level `font_face` blocks rather than part of a theme.) A `site` that declares no `theme` gets `:forge`, and so does a `theme` name that resolves to nothing."
   }
 
   h2 "What a theme is"
@@ -124,7 +124,7 @@ WCL
 
   h3 "The thirty-one palette roles"
 
-  p "A palette declares up to thirty-one colour roles, in five groups. They are generic on purpose — the roles describe what a colour is _for_, not which block uses it, so a block type added later already has what it needs."
+  p "A palette declares up to thirty-one colour roles, in five groups. They are generic on purpose. The roles describe what a colour is _for_, not which block uses it, so a block type added later already has what it needs."
 
   table {
     rows:
@@ -132,11 +132,11 @@ WCL
       | "Surfaces" | "`bg`, `book_bg`, `bg_alt`, `bg_inset`, `overlay`, `border`, `border_strong`" | "Page gutter, reading column, sidebars and code cards, table headers, rules, kbd outlines" |
       | "Ink"      | "`fg`, `fg_muted`, `fg_subtle`, `heading`, `selection`" | "Body text, captions and nav, comments and metadata, headings and strong text, text selection" |
       | "Accent"   | "`accent`, `accent_2`, `link`, `on_accent`" | "Active nav and markers, secondary highlights, hyperlinks, text drawn on an accent fill" |
-      | "Syntax"   | "`syn_kw`, `syn_str`, `syn_num`, `syn_fn`, `syn_type`, `syn_comment`, `syn_punct`" | "Code-block highlighting — see [Code](wdoc_code)" |
+      | "Syntax"   | "`syn_kw`, `syn_str`, `syn_num`, `syn_fn`, `syn_type`, `syn_comment`, `syn_punct`" | "Code-block highlighting. See [Code](wdoc_code)" |
       | "Hue ring" | "`red`, `orange`, `yellow`, `green`, `cyan`, `blue`, `purple`, `pink`" | "Chart series 1–8, callout accents, diagram shape borders, timeline phases" |
   }
 
-  p "The hue ring is the one to understand, because three separate systems read it and they must agree. Chart series 1 through 8 are blue, green, yellow, red, purple, cyan, orange, pink in that order. Callouts key on it too — `note` takes blue, `info` cyan, `tip` and `success` green, `warning` yellow, `error` red. Flowchart shapes take blue for `process`, orange for `decision`, green for `terminator`. Move a theme's `green` and every one of those follows."
+  p "The hue ring is the one to understand, because three separate systems read it and they must agree. Chart series 1 through 8 are blue, green, yellow, red, purple, cyan, orange, pink in that order. Callouts key on it too: `note` takes blue, `info` cyan, `tip` and `success` green, `warning` yellow, `error` red. Flowchart shapes take blue for `process`, orange for `decision`, green for `terminator`. Move a theme's `green` and every one of those follows."
 
   h3 "From role to custom property"
 
@@ -145,37 +145,37 @@ WCL
   table {
     rows:
       | "Role"      | "Custom property"     | "Why" |
-      | "`accent`"  | "`--wdoc-accent-pal`" | "`--wdoc-accent` is the _active_ accent, set separately — see [The accent hue](#the-accent-hue)" |
+      | "`accent`"  | "`--wdoc-accent-pal`" | "`--wdoc-accent` is the _active_ accent, set separately. See [The accent hue](#the-accent-hue)" |
       | "`accent_2`" | "`--wdoc-accent2`"   | "No hyphen before the digit" |
   }
 
-  p "A role you leave out emits no property at all. That matters more than it sounds: there is no second source of `--wdoc-*` in a themed site, so an omitted role is an **undefined** variable, not an inherited one. A rule that reads it becomes invalid at computed-value time and the property falls back to its initial or inherited value — which is rarely the colour you wanted. Set every role you paint with, or start from a copy of a built-in palette and edit it."
+  p "A role you leave out emits no property at all. That matters more than it sounds: there is no second source of `--wdoc-*` in a themed site, so an omitted role is an **undefined** variable, not an inherited one. A rule that reads it becomes invalid at computed-value time and the property falls back to its initial or inherited value. That value is rarely the colour you wanted. Set every role you paint with, or start from a copy of a built-in palette and edit it."
 
   callout "One place an omitted role does fall back" {
     class = ["info"]
-    body  = "The wireframe renderer bakes concrete colours into its SVG rather than referencing variables, because it has no CSS to lean on once the SVG is embedded in a PDF. That path resolves eight roles — `book_bg`, `bg_alt`, `bg_inset`, `overlay`, `border`, `fg`, `fg_muted` and the accent hue — and fills any the palette omits from the built-in Forge palette of the same mode. See [Wireframes](wdoc_wireframe)."
+    body  = "The wireframe renderer bakes concrete colours into its SVG rather than referencing variables, because it has no CSS to lean on once the SVG is embedded in a PDF. That path resolves eight roles: `book_bg`, `bg_alt`, `bg_inset`, `overlay`, `border`, `fg`, `fg_muted` and the accent hue. It fills any the palette omits from the built-in Forge palette of the same mode. See [Wireframes](wdoc_wireframe)."
   }
 
   h2 "The stylesheet a theme emits"
 
-  p "The theme layer is a fixed sequence of rule blocks, always in this order. Reading it top to bottom explains every light/dark behaviour in the rest of the chapter:"
+  p "The theme layer is a fixed sequence of rule blocks, always in this order. Reading it top to bottom explains every light and dark behaviour in the rest of the chapter:"
 
   table {
     rows:
       | "#" | "Rule" | "Carries" |
       | "1" | "`:root { --wdoc-font-head … }`" | "The default font stacks" |
-      | "2" | "`:root { … }`" | "The **dark** palette — dark is the default mode" |
+      | "2" | "`:root { … }`" | "The **dark** palette. Dark is the default mode" |
       | "3" | "`@media (prefers-color-scheme: light) { :root { … } }`" | "The light palette, for a reader whose system prefers light" |
       | "4" | "`:root[data-theme=\"dark\"] { … }`" | "The dark palette again, for the explicit toggle" |
       | "5" | "`:root[data-theme=\"light\"] { … }`" | "The light palette again, for the explicit toggle" |
-      | "6" | "`.wdoc-theme-dark { … }`" | "The dark palette scoped to a subtree — see [Scoped palettes](#scoped-palettes)" |
+      | "6" | "`.wdoc-theme-dark { … }`" | "The dark palette scoped to a subtree. See [Scoped palettes](#scoped-palettes)" |
       | "7" | "`.wdoc-theme-light { … }`" | "The light palette scoped to a subtree" |
-      | "8" | "`:root { --wdoc-font-* }`" | "The theme's own font stacks, overriding rule 1 — emitted only if it sets any" |
+      | "8" | "`:root { --wdoc-font-* }`" | "The theme's own font stacks, overriding rule 1. Emitted only if the theme sets any" |
       | "9" | "`:root { --wdoc-accent: … }`" | "The active accent" |
       | "10" | "The apply rules" | "Everything that reads the variables: body, links, headings, code cards, callouts, tables, charts, diagram shapes, trees" |
   }
 
-  p "Rules 2 to 7 are the same two lists of declarations, each written three times over — once for the default, once for the toggle, once for a scoped subtree. That redundancy is what makes the toggle and the side-by-side preview work. Rule 10 is where those variables finally become visible styling."
+  p "Rules 2 to 7 are the same two lists of declarations, each written three times over: once for the default, once for the toggle, once for a scoped subtree. That redundancy is what makes the toggle and the side-by-side preview work. Rule 10 is where those variables finally become visible styling."
 
   h2 "Light and dark"
 
@@ -191,9 +191,9 @@ WCL
 
   h2 "Scoped palettes"
 
-  p "Rules 6 and 7 are the interesting ones. `.wdoc-theme-dark` and `.wdoc-theme-light` re-declare the whole palette on an ordinary class rather than on the root. Custom properties inherit, so the nearest ancestor carrying one of those classes decides the colours for everything inside it — whatever the reader's global mode."
+  p "Rules 6 and 7 are the interesting ones. `.wdoc-theme-dark` and `.wdoc-theme-light` re-declare the whole palette on an ordinary class rather than on the root. Custom properties inherit, so the nearest ancestor carrying one of those classes decides the colours for everything inside it, whatever the reader's global mode."
 
-  p "That is how a `demo` block shows the same content under both palettes at once. It renders its children twice, wrapping one copy in each class. Here is a live one — the callout below is authored once and painted twice:"
+  p "That is how a `demo` block shows the same content under both palettes at once. It renders its children twice, wrapping one copy in each class. Here is a live one. The callout below is authored once and painted twice:"
 
   demo "One callout, both palettes" {
     callout "Tip" {
@@ -202,7 +202,7 @@ WCL
     }
   }
 
-  p "The classes are not private to `demo`. They are two ordinary class rules in the site stylesheet, so any block whose `class` field you can set will re-scope the palette for its own subtree:"
+  p "The classes are not private to `demo`. They are two ordinary class rules in the site stylesheet, so any block whose `class` field you can set re-scopes the palette for its own subtree:"
 
   code wcl {
     source = <<'WCL'
@@ -215,12 +215,12 @@ WCL
 
   callout "Scoped palettes move variables, not mode blocks" {
     class = ["warning"]
-    body  = "A scoped palette re-declares custom properties. It does **not** re-evaluate a `class`'s `dark {}` / `light {}` blocks, because those hang off `prefers-color-scheme` and `:root[data-theme]` — neither of which a wrapper class can change. So a class that paints with `var(--wdoc-accent)` flips inside a `demo` pane, and a class that carries mode blocks shows the same colour in both panes. When you want a class to follow a scoped palette, paint it with a variable."
+    body  = "A scoped palette re-declares custom properties. It does **not** re-evaluate a `class`'s `dark {}` and `light {}` blocks, because those hang off `prefers-color-scheme` and `:root[data-theme]`, and a wrapper class can change neither. So a class that paints with `var(--wdoc-accent)` flips inside a `demo` pane, and a class that carries mode blocks shows the same colour in both panes. When you want a class to follow a scoped palette, paint it with a variable."
   }
 
-  p "That claim is easy to check rather than take on faith. Two classes are declared at the top of this chapter's source: `ch19-var` paints with `var(--wdoc-accent)`, and `ch19-mode` sets `#88c0d0` in a `dark {}` block and `#5e81ac` in a `light {}` one. Both are applied below, in a `demo`:"
+  p "That claim is easy to check rather than take on faith. This chapter's source declares two classes at the top: `ch19-var` paints with `var(--wdoc-accent)`, and `ch19-mode` sets `#88c0d0` in a `dark {}` block and `#5e81ac` in a `light {}` one. The `demo` below applies both:"
 
-  demo "A variable follows the pane; a mode block follows the reader" {
+  demo "A variable follows the pane, a mode block follows the reader" {
     p "Painted with var(--wdoc-accent) — different in each pane." { class = ["ch19-var"] }
     p "Painted with dark {} / light {} — the same in both panes." { class = ["ch19-mode"] }
   }
@@ -229,20 +229,20 @@ WCL
 
   h2 "The accent hue"
 
-  p "`--wdoc-accent` is the colour of active navigation, heading markers, chapter kickers, footnote references, badges and blockquote rules. It is set by one generated rule at the end of the palette block, and it points at another variable rather than at a colour:"
+  p "`--wdoc-accent` is the colour of active navigation, heading markers, chapter kickers, footnote references, badges and blockquote rules. One generated rule at the end of the palette block sets it, and that rule points at another variable rather than at a colour:"
 
   table {
     rows:
       | "`site.accent`" | "Rule emitted" | "Effect" |
       | "One of `:red` `:orange` `:yellow` `:green` `:cyan` `:blue` `:purple` `:pink`" | "`--wdoc-accent: var(--wdoc-green)`" | "The named hue from the ring, in whichever mode is active" |
-      | "Absent, or any other symbol" | "`--wdoc-accent: var(--wdoc-accent-pal)`" | "The palette's own `accent` role — the theme's designed choice" |
+      | "Absent, or any other symbol" | "`--wdoc-accent: var(--wdoc-accent-pal)`" | "The palette's own `accent` role, the theme's designed choice" |
   }
 
   p "Because the rule points at a variable and not a colour, the accent follows the mode for free: `accent = :green` picks gruvbox's `#b8bb26` in dark and its `#79740e` in light, with no second declaration anywhere."
 
   callout "The default accent is the theme's, not blue" {
     class = ["warning"]
-    body  = "A `site` that sets no `accent` gets `var(--wdoc-accent-pal)` — the `accent` role its palette declares. Gruvbox's orange, rosé's mauve, forge's blue. There is one place where an unrecognised hue name does fall back to blue, and it is the separate path that themes `wf_*` wireframe elements: it reads `ui_accent`, falls back to `accent`, and blues anything it does not recognise. The document's own accent never does."
+    body  = "A `site` that sets no `accent` gets `var(--wdoc-accent-pal)`, the `accent` role its palette declares. Gruvbox's orange, rosé's mauve, forge's blue. There is one place where an unrecognised hue name does fall back to blue, and it is the separate path that themes `wf_*` wireframe elements: it reads `ui_accent`, falls back to `accent`, and blues anything it does not recognise. The document's own accent never does."
   }
 
   h2 "The seven built-in themes"
@@ -251,35 +251,35 @@ WCL
 
   h3 "forge"
 
-  p "The default, and the one a `site` gets when it names no theme or names one that does not resolve. A compact, high-contrast palette whose colours are hex equivalents of the Forge design system's OKLCH tokens, so they survive the SVG and PDF renderers that cannot evaluate OKLCH. It is the only built-in that sets all three font stacks, and the only one whose eight hues are all distinct in both modes — which makes it the safest choice for an eight-series chart."
+  p "The default, and the one a `site` gets when it names no theme or names one that does not resolve. A compact, high-contrast palette whose colours are hex equivalents of the Forge design system's OKLCH tokens, so they survive the SVG and PDF renderers that cannot evaluate OKLCH. It is the only built-in that sets all three font stacks, and the only one whose eight hues are all distinct in both modes. Distinct hues make it the safest choice for an eight-series chart."
 
   h3 "nord"
 
-  p "Cool blue-grey, the classic Nord palette. Dark reads on `#2e3440`, light on `#eceff4`. Its hue ring is deliberately narrow: in dark mode `cyan`, `blue`, `purple` and `pink` are all `#81a1c1`, so only five of the eight hues differ. This book is set in nord, which is why its charts repeat a colour past four series."
+  p "Cool blue-grey, the classic Nord palette. Dark reads on `#2e3440`, light on `#eceff4`. Its hue ring is deliberately narrow: in dark mode `cyan`, `blue`, `purple` and `pink` are all `#81a1c1`, so only five of the eight hues differ. This book is set in nord, so its charts repeat a colour past four series."
 
   h3 "tokyonight"
 
-  p "A vivid night palette — near-black `#1a1b26` under saturated blues and purples, with a notably desaturated light mode built on `#e1e2e7` rather than white. Seven distinct hues in each mode; `purple` and `pink` share a value."
+  p "A vivid night palette: near-black `#1a1b26` under saturated blues and purples, with a desaturated light mode built on `#e1e2e7` rather than white. Seven distinct hues in each mode. `purple` and `pink` share a value."
 
   h3 "gruvbox"
 
-  p "Warm retro. Dark is `#282828` under muted earth tones, light is the cream `#fbf1c7` that gives it its character — the warmest light surface of the seven. It is also the one built-in that sets an orange palette accent, so a gruvbox site that names no `accent` reads warm throughout. Six distinct hues per mode."
+  p "Warm retro. Dark is `#282828` under muted earth tones, light is the cream `#fbf1c7` that gives it its character, the warmest light surface of the seven. It is also the one built-in that sets an orange palette accent, so a gruvbox site that names no `accent` reads warm throughout. Six distinct hues per mode."
 
   h3 "catppuccin"
 
-  p "Soft pastel — Mocha for dark, Latte for light. Lower contrast than forge or tokyonight by design, with a mauve accent and a blue link. Seven distinct hues per mode."
+  p "Soft pastel: Mocha for dark, Latte for light. Lower contrast than forge or tokyonight by design, with a mauve accent and a blue link. Seven distinct hues per mode."
 
   h3 "rose"
 
-  p "Rosé Pine — muted rose, Main for dark and Dawn for light. Its Dawn surface is a near-white with a warm cast, `#fffaf3`, and its accent is a mauve paired with a teal link — an unusual pairing, and the reason the theme reads calmer than its saturation suggests. Six distinct hues per mode."
+  p "Rosé Pine: muted rose, Main for dark and Dawn for light. Its Dawn surface is a near-white with a warm cast, `#fffaf3`, and its accent is a mauve paired with a teal link. That pairing is unusual, and it is the reason the theme reads calmer than its saturation suggests. Six distinct hues per mode."
 
   h3 "paper"
 
-  p "A warm print look. It is the only built-in that overrides just one font stack — `font_head` becomes `'Source Serif 4', Georgia, serif`, leaving body and mono at the defaults, so headings are serif over a serif body. Its light mode is near-white `#fcfbf7`; its dark mode is a warm near-black. Five distinct hues in each mode makes it the narrowest ring of the seven — a poor fit for a chart-heavy site and a good one for prose."
+  p "A warm print look. It is the only built-in that overrides just one font stack: `font_head` becomes `'Source Serif 4', Georgia, serif`, leaving body and mono at the defaults, so headings are serif over a serif body. Its light mode is near-white `#fcfbf7`. Its dark mode is a warm near-black. Five distinct hues in each mode makes it the narrowest ring of the seven: a poor fit for a chart-heavy site and a good one for prose."
 
   h3 "Comparing them"
 
-  p "The table below is the comparison a per-theme description cannot make: the reading surface each theme puts your text on, the accent it chooses for itself, and how many of the eight hue roles actually differ. The last column is the one that decides whether a chart with six or eight series is readable."
+  p "The table below is the comparison a per-theme description cannot make: the reading surface each theme puts your text on, the accent it chooses for itself, and how many of the eight hue roles differ. The last column is the one that decides whether a chart with six or eight series is readable."
 
   table {
     rows:
@@ -293,7 +293,7 @@ WCL
       | "`paper`" | "`#211e1b`" | "`#fcfbf7`" | "`#d98b8b` / `#8a1c1c`" | "5 / 5" | "Serif headings" |
   }
 
-  p "\"Defaults\" means IBM Plex Sans for headings, Source Serif 4 for body copy and JetBrains Mono for code — see [Fonts](#fonts)."
+  p "\"Defaults\" means IBM Plex Sans for headings, Source Serif 4 for body copy and JetBrains Mono for code. See [Fonts](#fonts)."
 
   h2 "Writing your own theme"
 
@@ -344,18 +344,18 @@ page colour {
 WCL
   }
 
-  p "Two rules of thumb turn that into a good theme. **Start from a built-in and edit it** — copy the palette pair from `lib/theme.wcl` and change what you need, rather than starting from the six roles you happen to think of. And **fill the hue ring even if you draw no charts**, because callouts and diagram shape borders read it too."
+  p "Two habits turn that into a good theme. **Start from a built-in and edit it.** Copy the palette pair from `lib/theme.wcl` and change what you need, rather than starting from the six roles you happen to think of. And **fill the hue ring even if you draw no charts**, because callouts and diagram shape borders read it too."
 
   callout "A theme block is not per-site" {
     class = ["note"]
-    body  = "Themes are document-level blocks and each `site` picks one by name, so a multi-site document may declare one theme and select it everywhere, or declare five and give each site its own. What is _not_ document-level is the emission: the palette is written into each site's stylesheet separately, so a theme nothing selects costs nothing."
+    body  = "Themes are document-level blocks and each `site` picks one by name, so a multi-site document may declare one theme and select it everywhere, or declare five and give each site its own. What is _not_ document-level is the emission: the build writes the palette into each site's stylesheet separately, so a theme nothing selects costs nothing."
   }
 
   h2 "Fonts"
 
   h3 "The three stacks"
 
-  p "The templates read exactly three font variables. `--wdoc-font-head` sets headings, sidebars, table headers and badges; `--wdoc-font-body` sets body copy; `--wdoc-font-mono` sets code, kbd, heading markers and chapter kickers. Their defaults are emitted for every themed site:"
+  p "The templates read exactly three font variables. `--wdoc-font-head` sets headings, sidebars, table headers and badges. `--wdoc-font-body` sets body copy. `--wdoc-font-mono` sets code, kbd, heading markers and chapter kickers. The build emits their defaults for every themed site:"
 
   code css {
     source = <<'CSS'
@@ -365,9 +365,9 @@ WCL
 CSS
   }
 
-  p "A theme's `font_head` / `font_body` / `font_mono` fields override them, one at a time — the theme's rule is emitted after the defaults, and only for the fields it sets. That is how `paper` gets serif headings over an unchanged serif body, and how `forge` gets sans body copy. All three take a complete CSS font stack, quotes and fallbacks included, because the value is written into the property verbatim."
+  p "A theme's `font_head`, `font_body` and `font_mono` fields override them, one at a time. The build emits the theme's rule after the defaults, and only for the fields the theme sets. That is how `paper` gets serif headings over an unchanged serif body, and how `forge` gets sans body copy. All three take a complete CSS font stack, quotes and fallbacks included, because the build writes the value into the property verbatim."
 
-  p "Those three families are embedded in the `wcl` binary and written into the output's `_wdoc/` folder as `@font-face` rules alongside the other shared assets. They resolve when the site is served, not when a page is opened directly from disk."
+  p "The `wcl` binary embeds those three families, and the build writes them into the output's `_wdoc/` folder as `@font-face` rules alongside the other shared assets. They resolve when the site is served, not when a page is opened directly from disk."
 
   h3 "Shipping your own font"
 
@@ -403,11 +403,11 @@ theme house {
 WCL
   }
 
-  p "That emits `@font-face { font-family: 'Inter'; font-weight: 400; font-style: normal; font-display: swap; src: url('fonts/Inter-Regular.woff2') format('woff2'); }` and copies `fonts/` next to the pages. For a hosted font service, skip steps 1 and 2 and put the stylesheet URL in the site's `fonts` list, which becomes a `<link rel=\"stylesheet\">` in every page head."
+  p "That emits `@font-face { font-family: 'Inter'; font-weight: 400; font-style: normal; font-display: swap; src: url('fonts/Inter-Regular.woff2') format('woff2'); }` and copies `fonts/` next to the pages. For a hosted font service, skip steps 1 and 2 and put the stylesheet URL in the site's `fonts` list. Each entry becomes a `<link rel=\"stylesheet\">` in every page head."
 
   callout "The family label is not quoted for you" {
     class = ["warning"]
-    body  = "`font_face` writes its label into `font-family:` exactly as given. `font_face \"Inter\"` emits `font-family: Inter;`, which is valid CSS for a single-word family and invalid for `Source Serif 4`. The bundled faces are declared as `font_face \"'Source Serif 4'\"` — quotes inside the string — for that reason. Do the same and it is always right."
+    body  = "`font_face` writes its label into `font-family:` exactly as given. `font_face \"Inter\"` emits `font-family: Inter;`, which is valid CSS for a single-word family and invalid for `Source Serif 4`. wdoc declares the bundled faces as `font_face \"'Source Serif 4'\"`, with quotes inside the string, for that reason. Do the same and it is always right."
   }
 
   h2 "Classes"
@@ -429,7 +429,7 @@ p "A highlighted line." { class = ["callout-accent"] }
 WCL
   }
 
-  p "Hyphenated names may be written bare, as above, or quoted — `class \"callout-accent\"` is the same block. Quote a name that is not a valid identifier for any other reason. Bare is worth reaching for, because the names you most often override are the built-in hyphenated ones."
+  p "You may write hyphenated names bare, as above, or quoted. `class \"callout-accent\"` is the same block. Quote a name that is not a valid identifier for any other reason. Bare is worth reaching for, because the names you most often override are the built-in hyphenated ones."
 
   h3 "What a class block holds"
 
@@ -437,17 +437,17 @@ WCL
     rows:
       | "Field" | "Emits" | "For" |
       | "`css`" | "The string, verbatim" | "Anything. The escape hatch, and the field most rules use" |
-      | "`fill`" | "`fill: …`" | "SVG shapes — diagram nodes, chart series, timeline markers" |
+      | "`fill`" | "`fill: …`" | "SVG shapes: diagram nodes, chart series, timeline markers" |
       | "`stroke`" | "`stroke: …`" | "SVG outlines and lines" |
       | "`stroke_width`" | "`stroke-width: …`" | "SVG line weight" |
       | "`opacity`" | "`opacity: …`" | "Both SVG and HTML" |
-      | "`accent`" | "`--callout-accent: …`" | "A callout's heading, border and icon colour — see [Callouts](wdoc_callouts)" |
-      | "`sites`" | "Nothing" | "Restricts the rule to named sites — see [Scoping rules to one site](#scoping-rules-to-one-site)" |
-      | "`dark` / `light`" | "Extra rules" | "Per-mode overrides — [below](#per-mode-overrides-dark-and-light)" |
-      | "`nest`" | "Extra rules" | "Selectors rooted at this class — [below](#nesting)" |
+      | "`accent`" | "`--callout-accent: …`" | "A callout's heading, border and icon colour. See [Callouts](wdoc_callouts)" |
+      | "`sites`" | "Nothing" | "Restricts the rule to named sites. See [Scoping rules to one site](#scoping-rules-to-one-site)" |
+      | "`dark` / `light`" | "Extra rules" | "Per-mode overrides. See [below](#per-mode-overrides-dark-and-light)" |
+      | "`nest`" | "Extra rules" | "Selectors rooted at this class. See [below](#nesting)" |
   }
 
-  p "The four SVG fields and `accent` are shorthands, not a separate mechanism: they are written into the same declaration block as `css`, and they are written **first**. So on a collision `css` wins, and `class x { fill = \"#f00\"  css = \"fill:#00f;\" }` paints blue. They exist because a diagram shape's `class` reaches an SVG element, where `fill` and `stroke` are the properties that matter and a raw string would be all quoting."
+  p "The four SVG fields and `accent` are shorthands, not a separate mechanism: the build writes them into the same declaration block as `css`, and it writes them **first**. So on a collision `css` wins, and `class x { fill = \"#f00\"  css = \"fill:#00f;\" }` paints blue. They exist because a diagram shape's `class` reaches an SVG element, where `fill` and `stroke` are the properties that matter and a raw string would be all quoting."
 
   h3 "Per-mode overrides: dark and light"
 
@@ -464,11 +464,11 @@ WCL
 CSS
   }
 
-  p "Three things in there are worth naming. **Dark is merged into the base rule**, because dark is the default mode — there is no `@media (prefers-color-scheme: dark)` anywhere. **The light rule carries only its own declarations**, so it overrides the base for the properties it names and inherits the rest. And **both `data-theme` rules are emitted whenever either mode block is present**, including the side that declared nothing: a class with only a `light {}` still gets a `data-theme=\"dark\"` rule carrying the base alone. Without it, a reader on a light-preferring system would press the toggle and see the media rule keep winning."
+  p "Three things in there are worth naming. **The build merges dark into the base rule**, because dark is the default mode. There is no `@media (prefers-color-scheme: dark)` anywhere. **The light rule carries only its own declarations**, so it overrides the base for the properties it names and inherits the rest. And **the build emits both `data-theme` rules whenever either mode block is present**, including the side that declared nothing: a class with only a `light {}` still gets a `data-theme=\"dark\"` rule carrying the base alone. Without it, a reader on a light-preferring system would press the toggle and see the media rule keep winning."
 
   h3 "Nesting"
 
-  p "A `nest` block is a selector fragment plus its declarations. The fragment is joined to the class selector by one rule: **`&` is the class, and a fragment with no `&` is a descendant.**"
+  p "A `nest` block is a selector fragment plus its declarations. One rule joins the fragment to the class selector: **`&` is the class, and a fragment with no `&` is a descendant.**"
 
   table {
     rows:
@@ -480,9 +480,9 @@ CSS
       | "`nest \"th, td\" { … }`" | "`.card th, .card td { … }`" |
   }
 
-  p "The last row is the subtle one: a selector list is split at its top-level commas and each branch is expanded independently, so `th, td` becomes two descendant selectors rather than one broken one. Commas inside a functional pseudo-class such as `:is(…)`, inside an attribute selector, or inside a quoted string stay where they are — and an `&` inside an attribute selector is left alone."
+  p "The last row is the subtle one: wdoc splits a selector list at its top-level commas and expands each branch independently, so `th, td` becomes two descendant selectors rather than one broken one. Commas inside a functional pseudo-class such as `:is(…)`, inside an attribute selector, or inside a quoted string stay where they are. wdoc also leaves an `&` inside an attribute selector alone."
 
-  p "One `class` block may carry any number of `nest` children. Repeating the class block is equally fine and often reads better — the bundled rules do it, one `nest` per block."
+  p "One `class` block may carry any number of `nest` children. Repeating the class block is equally fine and often reads better. The bundled rules do it, one `nest` per block."
 
   h2 "base, media, keyframes and font_face"
 
@@ -490,7 +490,7 @@ CSS
 
   h3 "base"
 
-  p "A `base` block is a selector and its declarations, and nothing is added to either. The label is the selector, written out in full and emitted **verbatim** — which makes `base` the block for everything a class root cannot express: an element, a reset, a selector list, a pseudo-element, a tag-qualified rule, or `:root` itself when you want custom properties of your own."
+  p "A `base` block is a selector and its declarations, and wdoc adds nothing to either. The label is the selector, written out in full and emitted **verbatim**. Verbatim emission makes `base` the block for everything a class root cannot express: an element, a reset, a selector list, a pseudo-element, a tag-qualified rule, or `:root` itself when you want custom properties of your own."
 
   code wcl {
     source = <<'WCL'
@@ -511,12 +511,12 @@ WCL
 
   callout "Choose base or class by the selector's root" {
     class = ["note"]
-    body  = "`class \"card\"` and `base \".card\"` emit the same rule, but they are not interchangeable in intent. Use `class` when the root is a single bare class, because that is what `nest`, the mode blocks and the SVG shorthands attach to. Use `base` for everything else. The bundled library follows the same split, which is why a user `class` reliably overrides a bundled one: the selectors match exactly."
+    body  = "`class \"card\"` and `base \".card\"` emit the same rule, but they are not interchangeable in intent. Use `class` when the root is a single bare class, because that is what `nest`, the mode blocks and the SVG shorthands attach to. Use `base` for everything else. The bundled library follows the same split, so a user `class` reliably overrides a bundled one: the selectors match exactly."
   }
 
   h3 "media"
 
-  p "A `media` block wraps `class` and `base` children in a media query. Its label is the query **without** the `@media` keyword, so any query CSS accepts — a width, a print target, a reduced-motion preference — is legal there:"
+  p "A `media` block wraps `class` and `base` children in a media query. Its label is the query **without** the `@media` keyword. Any query CSS accepts is legal there, whether a width, a print target or a reduced-motion preference:"
 
   code wcl {
     source = <<'WCL'
@@ -535,11 +535,11 @@ media "(max-width: 48rem)" {
 WCL
   }
 
-  p "A `class` inside a `media` keeps everything a top-level one has, mode blocks included — a class with a `light {}` emits its own `@media (prefers-color-scheme: light)` **inside** the outer query. Nested at-rules are valid CSS and the browser reads them as an `and`, so the inner rule applies only where both queries match."
+  p "A `class` inside a `media` keeps everything a top-level one has, mode blocks included. A class with a `light {}` emits its own `@media (prefers-color-scheme: light)` **inside** the outer query. Nested at-rules are valid CSS and the browser reads them as an `and`, so the inner rule applies only where both queries match."
 
   h3 "keyframes"
 
-  p "A `keyframes` block is an animation. Its label is the animation name, and each frame is a `base` child whose selector is the frame position — `from`, `to`, or a percentage:"
+  p "A `keyframes` block is an animation. Its label is the animation name, and each frame is a `base` child whose selector is the frame position. Write `from`, `to`, or a percentage:"
 
   code wcl {
     source = <<'WCL'
@@ -554,11 +554,11 @@ class house-entrance { css = "animation:house-fade-in 240ms ease-out;" }
 WCL
   }
 
-  p "`base` is the only child kind a `keyframes` accepts, and that is enforced rather than ignored: a `class` inside one fails the build with `block kind 'class' is not allowed inside 'keyframes'`. Pair an animation with the `prefers-reduced-motion` query above, since a reader who has asked for less motion should get it."
+  p "`base` is the only child kind a `keyframes` accepts, and that limit is enforced rather than ignored: a `class` inside one fails the build with `block kind 'class' is not allowed inside 'keyframes'`. Pair an animation with the `prefers-reduced-motion` query above, since a reader who has asked for less motion should get it."
 
   h3 "font_face"
 
-  p "A `font_face` block is an `@font-face` rule with typed descriptors instead of a declaration string. Its label is the family and `src` is required; `weight`, `style` and `display` are optional and emit `font-weight`, `font-style` and `font-display`. The descriptors are written in a fixed order — family, weight, style, display, then `src` — so two faces of one family always read alike. [Shipping your own font](#shipping-your-own-font) walks the whole three-step job; the block itself is one declaration per face:"
+  p "A `font_face` block is an `@font-face` rule with typed descriptors instead of a declaration string. Its label is the family, and `src` is required. `weight`, `style` and `display` are optional and emit `font-weight`, `font-style` and `font-display`. The descriptors come out in a fixed order: family, weight, style, display, then `src`. Two faces of one family therefore always read alike. [Shipping your own font](#shipping-your-own-font) walks the whole three-step job. The block itself is one declaration per face:"
 
   code wcl {
     source = <<'WCL'
@@ -580,7 +580,7 @@ WCL
 
   h2 "style bundles"
 
-  p "A `style` block is a **named** set of the same rules — `class`, `base`, `font_face`, `media` and `keyframes` children, under one identifier. It differs from a top-level rule in exactly one way, and it is the important one: **a `style` bundle is not emitted into the page stylesheet.** It is rendered where a template asks for it."
+  p "A `style` block is a **named** set of the same rules: `class`, `base`, `font_face`, `media` and `keyframes` children, under one identifier. It differs from a top-level rule in exactly one way, and it is the important one: **the build never emits a `style` bundle into the page stylesheet.** The build renders it where a template asks for it."
 
   code wcl {
     source = <<'WCL'
@@ -593,11 +593,11 @@ WCL
 
   p "Nothing above reaches a page until a template writes `css_style(:card_extras)`, which places the bundle's rules as a `<style>` element at that point in the output. Declare that same `class \"kicker\"` at the top level instead and it is in every page of the site whether anything uses it or not."
 
-  p "This is how the built-in templates keep their layout CSS beside themselves — the book, webpage, website and presentation templates each render one bundle by name — and it is the mechanism to reach for when you write your own. [Templates and layouts](wdoc_templates) covers the template side; [Writing your own blocks](wdoc_extending) covers `css_style` among the other `Html` constructors."
+  p "This is how the built-in templates keep their layout CSS beside themselves. The book, webpage, website and presentation templates each render one bundle by name. Reach for the same mechanism when you write your own. [Templates and layouts](wdoc_templates) covers the template side. [Writing your own blocks](wdoc_extending) covers `css_style` among the other `Html` constructors."
 
   callout "The theme is two style bundles" {
     class = ["info"]
-    body  = "The apply rules that paint with `var(--wdoc-…)` are not special-cased Rust strings. They are a `style` bundle named `wdoc-theme-apply`, and the font defaults are another named `wdoc-theme-font-defaults`; the theme emitter looks both up by name and splices them around the palette. Only the palette itself and the one accent rule are generated, because only those two have declarations that come from your data."
+    body  = "The apply rules that paint with `var(--wdoc-…)` are not special-cased Rust strings. They are a `style` bundle named `wdoc-theme-apply`, and the font defaults are another named `wdoc-theme-font-defaults`. The theme emitter looks both up by name and splices them around the palette. It generates only the palette itself and the one accent rule, because only those two have declarations that come from your data."
   }
 
   h2 "The order rules are emitted in"
@@ -622,9 +622,9 @@ WCL
 CSS
   }
 
-  p "Identical specificity three times over, so the last one paints. Two consequences follow, and both are load-bearing. **A theme overrides the library's neutral defaults**, which is what makes an unthemed document render legibly and a themed one render in its palette. **Your rules override the theme**, which is what makes overriding a built-in class a one-liner instead of a specificity fight."
+  p "Identical specificity three times over, so the last one paints. Two consequences follow, and both are load-bearing. **A theme overrides the library's neutral defaults.** That override is what makes an unthemed document render legibly and a themed one render in its palette. **Your rules override the theme.** Overriding a built-in class is therefore a one-liner instead of a specificity fight."
 
-  p "There is one wrinkle. Origin is decided by where the block was _declared_, not by which file the build read it from: blocks from the embedded library are library rules, blocks from your source are yours. A `wdoc_repeater` or a component instance that generates `class` blocks keeps the origin of the block that generated it, so a repeater in your document emitting a design system's worth of classes still lands in the user group and still wins."
+  p "There is one wrinkle. Where the block was _declared_ decides its origin, not which file the build read it from: blocks from the embedded library are library rules, blocks from your source are yours. A `wdoc_repeater` or a component instance that generates `class` blocks keeps the origin of the block that generated it, so a repeater in your document emitting a design system's worth of classes still lands in the user group and still wins."
 
   h2 "The built-in class vocabulary"
 
@@ -633,11 +633,11 @@ CSS
   table {
     rows:
       | "Family" | "Classes" | "Set by" |
-      | "Inline emphasis" | "`bold`, `italic`, `code`" | "The `**bold**`, `_italic_` and backtick-code patterns in prose — see [Text and formatting](wdoc_formatting)" |
+      | "Inline emphasis" | "`bold`, `italic`, `code`" | "The `**bold**`, `_italic_` and backtick-code patterns in prose. See [Text and formatting](wdoc_formatting)" |
       | "Headings" | "`heading-1` … `heading-6`" | "Derived from the level on every `h1`–`h6`" |
-      | "Chart series" | "`wdoc-series-1` … `wdoc-series-8`" | "Cycled over series, and over timeline phases — see [Charts](wdoc_charts)" |
+      | "Chart series" | "`wdoc-series-1` … `wdoc-series-8`" | "Cycled over series, and over timeline phases. See [Charts](wdoc_charts)" |
       | "Chart chrome" | "`wdoc-axis`, `wdoc-grid`, `wdoc-axis-label`, `wdoc-chart-title`, `wdoc-legend`, `wdoc-line`, `wdoc-point-label`, `wdoc-annotation`" | "Chart structure" |
-      | "Diagram shapes" | "`wdoc-process`, `wdoc-decision`, `wdoc-terminator`, `wdoc-node`, `wdoc-shape-text`, `wdoc-boundary`, `wdoc-boundary-label`, `wdoc-edge-label`" | "Flowchart blocks — see [Flowcharts and swimlanes](wdoc_flowcharts)" |
+      | "Diagram shapes" | "`wdoc-process`, `wdoc-decision`, `wdoc-terminator`, `wdoc-node`, `wdoc-shape-text`, `wdoc-boundary`, `wdoc-boundary-label`, `wdoc-edge-label`" | "Flowchart blocks. See [Flowcharts and swimlanes](wdoc_flowcharts)" |
       | "Sequence and state" | "`wdoc-participant`, `wdoc-participant-line`, `wdoc-lifeline`, `wdoc-seq-message`, `wdoc-seq-arrow`, `wdoc-seq-text`, `wdoc-note`, `wdoc-note-text`, `wdoc-state`, `wdoc-state-initial`" | "See [Sequence and state diagrams](wdoc_sequence_state)" |
       | "Timelines" | "`wdoc-timeline-divider`, `-marker`, `-connector`, `-label`, `-phase-label`" | "See [Timelines and dopesheets](wdoc_timelines)" |
       | "Callouts" | "`callout` plus `note`, `info`, `tip`, `warning`, `error`, `success`" | "A callout's `class` field" |
@@ -646,7 +646,7 @@ CSS
       | "Template navigation" | "`site-header`, `book-chapter`, `book-section`, `book-onpage-link`, `current`" | "The book and webpage sidebars" |
   }
 
-  p "Two of those repay a closer look. **The heading classes are derived, not authored** — an `h3` becomes `<h3 class=\"heading-3\">`, and the class is computed from the level rather than written by you, so `class \"heading-3\" { css = \"font-size:1.5rem;\" }` restyles every third-level heading in the site. And **the six callout kinds are hue roles in disguise**: the theme sets `--callout-accent` per kind from the ring, so moving your palette's `yellow` moves every warning callout without touching a callout rule."
+  p "Two of those repay a closer look. **The heading classes are derived, not authored.** An `h3` becomes `<h3 class=\"heading-3\">`, and the class is computed from the level rather than written by you, so `class \"heading-3\" { css = \"font-size:1.5rem;\" }` restyles every third-level heading in the site. And **the six callout kinds are hue roles in disguise**: the theme sets `--callout-accent` per kind from the ring, so moving your palette's `yellow` moves every warning callout without touching a callout rule."
 
   p "For anything the vocabulary does not name, the `class` field is on every content block, so an authored class always reaches the element you meant."
 
@@ -662,11 +662,11 @@ base "figure" { css = "margin:0;"  sites = [:handbook, :marketing] }
 WCL
   }
 
-  p "The list names sites; a rule with no `sites` field, or an empty one, belongs to every site. This is per-rule scoping, unlike a `page`, which a multi-site document requires to declare its membership. It is also the only way one document can carry two visual identities — since a theme is selected per site, and each site's stylesheet is built independently, a rule tuned to one palette can be kept off the other. [Visibility](wdoc_visibility) covers the parallel `sites` axis on content."
+  p "The list names sites. A rule with no `sites` field, or an empty one, belongs to every site. That scoping is per rule, unlike a `page`, which a multi-site document requires to declare its membership. It is also the only way one document can carry two visual identities. You select a theme per site, and the build writes each site's stylesheet independently, so you can keep a rule tuned to one palette off the other. [Visibility](wdoc_visibility) covers the parallel `sites` axis on content."
 
   h2 "What the build checks"
 
-  p "Two things about your CSS the build looks at. One is an error, because it is never right; the other is a warning, because it cannot always tell."
+  p "Two things about your CSS the build looks at. One is an error, because it is never right. The other is a warning, because the build cannot always tell."
 
   h3 "A line comment is an error"
 
@@ -687,15 +687,15 @@ WCL
   p "After a build has rendered, wdoc reads the class names its pages actually carry, compares them with the class names its rules select, and warns about each direction:"
 
   list {
-    li "A name **in the markup that no rule selects** — a misspelled class name, or a hook nothing styles."
-    li "A rule **this document authors that no page carries** — a misspelled selector, or a rule left behind."
+    li "A name **in the markup that no rule selects**: a misspelled class name, or a hook nothing styles."
+    li "A rule **this document authors that no page carries**: a misspelled selector, or a rule left behind."
   }
 
-  p "It reads the rendered output rather than your source because a class name reaches markup three ways: a `class` field, a raw HTML string inside a template, and the renderer's own markup. Only the finished page sees all three — and it sees a computed name, such as `format(\"level-{}\", h.level)`, already resolved to `level-2`."
+  p "It reads the rendered output rather than your source because a class name reaches markup three ways: a `class` field, a raw HTML string inside a template, and the renderer's own markup. Only the finished page sees all three. It also sees a computed name, such as `format(\"level-{}\", h.level)`, already resolved to `level-2`."
 
-  p "Two things it deliberately does not judge. **The bundled rules**: wdoc's stylesheet ships the whole built-in vocabulary and your document uses a slice of it, so an unused library rule is another document's rule, not dead code. **Generator vocabularies**: syntax highlighting mints one class per grammar scope (`tok-…`) and one per language (`language-…`), an open-ended set no stylesheet could ever declare."
+  p "Two things it deliberately does not judge. **The bundled rules.** wdoc's stylesheet ships the whole built-in vocabulary and your document uses a slice of it, so an unused library rule is another document's rule, not dead code. **Generator vocabularies.** Syntax highlighting mints one class per grammar scope (`tok-…`) and one per language (`language-…`), an open-ended set no stylesheet could ever declare."
 
-  p "The remaining case is a class you emit **on purpose** and style nowhere — a hook for a script, or a name you want a reader to be able to restyle. Nothing in the markup tells that apart from a typo, so you say it in the source: **an empty `class` block declares the name and emits no CSS.**"
+  p "The remaining case is a class you emit **on purpose** and style nowhere: a hook for a script, or a name you want a reader to be able to restyle. Nothing in the markup tells that apart from a typo, so you say it in the source: **an empty `class` block declares the name and emits no CSS.**"
 
   code wcl {
     source = <<'WCL'
@@ -708,11 +708,11 @@ WCL
   h2 "Where to go next"
 
   list {
-    li "[Documents, pages and sites](wdoc_sites) — the whole `site` block: templates, titles, tables of contents, search, multi-site routing."
-    li "[Templates and layouts](wdoc_templates) — how a template reads the theme variables, and where `css_style` fits."
-    li "[Demo blocks](wdoc_demo) — the side-by-side light/dark preview the scoped palettes exist for."
-    li "[Callouts, footnotes and chapter headers](wdoc_callouts) — the six callout kinds and the `--callout-accent` property a class can set."
-    li "[Charts](wdoc_charts) — the eight-series cycle that reads the hue ring."
-    li "[Writing your own blocks](wdoc_extending) — declaring a block type that paints with `var(--wdoc-…)` and is themed for free."
+    li "[Documents, pages and sites](wdoc_sites). The whole `site` block: templates, titles, tables of contents, search, multi-site routing."
+    li "[Templates and layouts](wdoc_templates). How a template reads the theme variables, and where `css_style` fits."
+    li "[Demo blocks](wdoc_demo). The side-by-side light and dark preview the scoped palettes exist for."
+    li "[Callouts, footnotes and chapter headers](wdoc_callouts). The six callout kinds and the `--callout-accent` property a class can set."
+    li "[Charts](wdoc_charts). The eight-series cycle that reads the hue ring."
+    li "[Writing your own blocks](wdoc_extending). Declaring a block type that paints with `var(--wdoc-…)` and is themed for free."
   }
 }

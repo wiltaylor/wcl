@@ -1,4 +1,4 @@
-// Chapter 22 — Text and formatting.
+// Text and formatting.
 //
 // Every snippet, every rendered fragment and every command below was run
 // against the `wcl` CLI before it was written down. The HTML excerpts are
@@ -8,7 +8,7 @@ page wdoc_formatting {
 
   h1 "Text and formatting"
 
-  p "Most of a document is prose. The vocabulary for it is small: six heading blocks, two paragraph blocks, one grid, and a regex engine that turns markers such as `**bold**` into styled runs. This chapter covers all four. It covers the anchors and section numbers a heading grows on its way to HTML. It covers how to declare a marker of your own, and the one thing a `span` used to do and no longer does."
+  p "Most of a document is prose. The vocabulary for it is small: six heading blocks, two paragraph blocks, one grid, and a regex engine that turns markers such as `**bold**` into styled runs. This chapter covers all four, along with the anchors and section numbers a heading gains on its way to HTML. It also covers how to declare a marker of your own, and the one thing a `span` used to do and no longer does."
 
   p "Every file and every command below was run before it was written down. Type them and compare."
 
@@ -73,11 +73,11 @@ WCL
 
   p "Build it:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build notes.wcl --out _site
 wrote 1 page
-TEXT
+CONSOLE
   }
 
   p "This is the page body `_site/release_04.html` carries, reformatted onto one line per block:"
@@ -120,13 +120,13 @@ WCL
 
   p "The level is a **number** carried on the lowered node, not a class the backend reads back. The HTML backend then emits both: a real `<h3>` tag, plus a `heading-3` class as a style hook derived from that number. The bundled theme sizes each level through `class \"heading-3\" { … }`. Declare your own class of that name and it overrides the bundled one by cascade. See [Themes and styling](wdoc_styling)."
 
-  p "Inline patterns run in a heading like anywhere else, so `h2 \"Fixing **fast**\"` renders the emphasis. The page's own `title` field is _not_ prose — it is metadata for the `<title>` tag and the navigation, and markers in it stay literal."
+  p "Inline patterns run in a heading like anywhere else, so `h2 \"Fixing **fast**\"` renders the emphasis. The page's own `title` field is _not_ prose. It is metadata for the `<title>` tag and the navigation, and markers in it stay literal."
 
   h3 "Anchors"
 
-  p "Every heading gets an `id`, whether or not you write one. A heading with no anchor cannot be linked to. Write one explicitly in the `id` field and it is used verbatim. Note the quotes in the snippet above: the field's type is `identifier`, and a bare identifier holds no hyphen. Quote an id to write it in the same hyphenated style the derived ones use."
+  p "Every heading gets an `id`, whether or not you write one. You cannot link to a heading that has no anchor. Write one explicitly in the `id` field and the build uses it verbatim. The snippet above quotes each id for a reason: the field's type is `identifier`, and a bare identifier holds no hyphen. Quote an id to write it in the same hyphenated style the derived ones use."
 
-  p "Leave the field out and the id is derived from the rendered heading text by four rules:"
+  p "Leave the field out and the build derives the id from the rendered heading text by four rules:"
 
   list {
     li "ASCII letters and digits are kept, lowercased."
@@ -135,37 +135,37 @@ WCL
     li "A title used twice on one page gets `-2`, `-3`, … appended to the second and later copies."
   }
 
-  p "So `h1 \"Release 0.4\"` anchors at `release-0-4`, and a second `h2 \"Highlights\"` anchors at `highlights-2`. Markers are stripped before the slug is cut, because the id comes from the rendered text. `h2 \"Fixing **fast**\"` is therefore `fixing-fast`, not `fixing-fast-`."
+  p "So `h1 \"Release 0.4\"` anchors at `release-0-4`, and a second `h2 \"Highlights\"` anchors at `highlights-2`. The build strips markers before it cuts the slug, because the id comes from the rendered text. `h2 \"Fixing **fast**\"` is therefore `fixing-fast`, not `fixing-fast-`."
 
-  p "That is what the `page#anchor` link form points at. Both halves are written without a file extension:"
+  p "That is what the `page#anchor` link form points at. Write both halves without a file extension:"
 
   code wcl {
     source = <<'WCL'
-p "See [the highlights](release_04#highlights) and [chapter 23](wdoc_code)."
+p "See [the highlights](release_04#highlights) and [the code chapter](wdoc_code)."
 WCL
   }
 
-  callout "The page name is checked; the fragment is not" {
+  callout "The build checks the page name, not the fragment" {
     class = ["warning"]
-    body  = "A link whose target names no page in the site fails the build — `wcl wdoc build` prints `link to unknown page 'nowhere'` and exits non-zero. That check stops at the `#`. `[x](wdoc_code#no-such-heading)` builds green and lands the reader at the top of the right page. When you link to an anchor, open the target chapter and read the heading you are pointing at."
+    body  = "A link whose target names no page in the site fails the build. `wcl wdoc build` prints `link to unknown page 'nowhere'` and exits non-zero. That check stops at the `#`. `[x](wdoc_code#no-such-heading)` builds without error and lands the reader at the top of the right page. When you link to an anchor, open the target chapter and read the heading you are pointing at."
   }
 
   h3 "Anchor ids and the page outline"
 
-  p "The `id` on that `<h2>` is not in the source. A page-wide finishing pass walks the emitted headings in reading order and stamps each with its id, slugged from the heading text and suffixed `-2`, `-3` when the same text repeats on a page. It injects nothing visible: a heading renders exactly the text you wrote."
+  p "The `id` on that `<h2>` is not in the source. A page-wide finishing pass walks the emitted headings in reading order and stamps each with its id. The id is slugged from the heading text, and suffixed `-2`, `-3` when the same text repeats on a page. It injects nothing visible: a heading renders exactly the text you wrote."
 
-  p "The same walk numbers `h2` and `h3` — `h2` counts `1`, `2`, `3`; `h3` counts `1.1`, `1.2` inside the current `h2`, and resets on the next one — but that number reaches only the page-metadata side, where it decides which levels enter the outline and fills `number` on each entry. No template in the stdlib prints it. See [Templates](wdoc_templates)."
+  p "The same walk numbers `h2` and `h3`. `h2` counts `1`, `2`, `3`. `h3` counts `1.1`, `1.2` inside the current `h2`, and resets on the next one. But that number reaches only the page-metadata side, where it decides which levels enter the outline and fills `number` on each entry. No template in the stdlib prints it. See [Templates](wdoc_templates)."
 
-  p "**Only `h2` and `h3` are numbered, and only they appear in the book template's \"on this page\" outline.** That is not a styling accident: `h1` is the page's own title and the sidebar already names it, and `h4` through `h6` are detail below the granularity a reader navigates by. They still render, still get anchors, and still take links — they are simply not part of the outline. Structure a chapter with `h2` and `h3`; reach for `h4` when you genuinely need a fourth level, knowing it will not show up in the nav."
+  p "**Only `h2` and `h3` are numbered, and only they appear in the book template's \"on this page\" outline.** The omission is not a styling accident: `h1` is the page's own title and the sidebar already names it, and `h4` through `h6` are detail below the granularity a reader navigates by. They still render, still get anchors, and still take links. They are not part of the outline. Structure a chapter with `h2` and `h3`. Reach for `h4` when you need a fourth level, and know that it will not show up in the nav."
 
   callout "Anchors are an HTML finish" {
     class = ["note"]
-    body  = "The Markdown backend writes `## Highlights` — no id, because Markdown has none. The PDF backend renders a heading as **one styled run**, which has a sharper consequence: inline markers inside a heading are not interpreted there, so `h2 \"Fixing **fast**\"` prints its asterisks in the PDF while rendering bold in HTML. Keep markers out of headings in a document you also ship as PDF. See [Output targets](wdoc_outputs)."
+    body  = "The Markdown backend writes `## Highlights` with no id, because Markdown has none. The PDF backend renders a heading as **one styled run**. The consequence is sharper: it does not interpret inline markers inside a heading, so `h2 \"Fixing **fast**\"` prints its asterisks in the PDF while rendering bold in HTML. Keep markers out of headings in a document you also ship as PDF. See [Output targets](wdoc_outputs)."
   }
 
   h2 "Paragraphs"
 
-  p "`p \"…\"` is the paragraph. Its label is the prose; the whole string runs through the inline-pattern engine. Two optional fields ride along, `id` and `class`, and both land on the emitted `<p>`:"
+  p "`p \"…\"` is the paragraph. Its label is the prose. The whole string runs through the inline-pattern engine. Two optional fields ride along, `id` and `class`, and both land on the emitted `<p>`:"
 
   code wcl {
     source = <<'WCL'
@@ -206,14 +206,14 @@ WCL
 HTML
   }
 
-  p "Read that output carefully, because it is the whole behaviour. The label and the spans **concatenate into one paragraph**, in source order, with nothing between them. The trailing spaces in the source above are what separates the sentences. There is no wrapper element per span. And the paragraph carries the `id` and `class` of the `text`, not of any span."
+  p "Read that output carefully, because it is the whole behaviour. The label and the spans **concatenate into one paragraph**, in source order, with nothing between them. The trailing spaces in the source above are what separate the sentences. There is no wrapper element per span. And the paragraph carries the `id` and `class` of the `text`, not of any span."
 
   callout "A span's own id and class no longer render" {
     class = ["warning"]
-    body  = "`span \"…\" { class = [\"accent\"] }` used to paint, and does not any more. Blocks lower to a **semantic content IR**, and its prose node carries a string, not a list of styled runs. There is nowhere for a per-span `id` or `class` to go, so the fields are dropped on the way through. Outside HTML this changed nothing. The Markdown and PDF walkers already flattened a `text` to its concatenated child text. In a book, though, a styled span stopped painting. The fields stay **declared**, so existing documents keep validating rather than failing on a field that no longer does anything. Carrying them back needs an inline-run concept in the IR, which is its own piece of work. Until then, style the whole paragraph with `class` on the `text`, and style _within_ it with the inline patterns below. `**bold**` and friends emit their own `<span>` and are unaffected."
+    body  = "`span \"…\" { class = [\"accent\"] }` used to paint, and does not any more. Blocks lower to a **semantic content IR**, and its prose node carries a string, not a list of styled runs. There is nowhere for a per-span `id` or `class` to go, so lowering drops them. Outside HTML, the change made no difference. The Markdown and PDF walkers already flattened a `text` to its concatenated child text. In a book, though, a styled span stopped painting. The fields stay **declared**, so existing documents keep validating rather than failing on a field that no longer does anything. Carrying them back needs an inline-run concept in the IR, a separate piece of work. Until then, style the whole paragraph with `class` on the `text`, and style _within_ it with the inline patterns below. `**bold**` and friends emit their own `<span>` and are unaffected."
   }
 
-  p "Which leaves `text` doing one job that `p` cannot: composing a paragraph out of separately-computed pieces. Each `span` label is an expression, so a repeater, a `match`, or a call can produce one — see [Data views](wdoc_data_views)."
+  p "So `text` does one job that `p` cannot: composing a paragraph out of separately-computed pieces. Each `span` label is an expression, so a repeater, a `match`, or a call can produce one. See [Data views](wdoc_data_views)."
 
   h3 "Which paragraph form to use"
 
@@ -231,7 +231,7 @@ HTML
 
   h2 "Heredoc prose"
 
-  p "A paragraph label is an expression, so anywhere `p \"…\"` is legal a heredoc is too. Both spellings work — the label slot and the `text` field:"
+  p "A paragraph label is an expression, so anywhere `p \"…\"` is legal a heredoc is too. Both the label slot and the `text` field work:"
 
   code wcl {
     source = <<'WCL'
@@ -249,7 +249,7 @@ TXT
 WCL
   }
 
-  p "Reach for a heredoc when the prose fights the quoting rules. Inside `\"…\"` every double quote needs a backslash, and every backslash needs another one. In a `<<'TAG'` heredoc the body is taken **verbatim**: no escapes, no interpolation. A sentence full of quoted names, Windows paths or a regex you are documenting then reads as itself. The `$<<'TAG'` form is the interpolating twin, if you want `${…}` slots. [Values and primitives](lang_values) has the full heredoc syntax."
+  p "Reach for a heredoc when the prose fights the quoting rules. Inside `\"…\"` every double quote needs a backslash, and every backslash needs another one. In a `<<'TAG'` heredoc the body is taken **verbatim**: no escapes, no interpolation. A sentence full of quoted names, Windows paths, or a regex you are documenting then reads as itself. The `$<<'TAG'` form is the interpolating twin, if you want `${…}` slots. [Values and primitives](lang_values) has the full heredoc syntax."
 
   p "Two things to know. The body keeps its **trailing newline**. That is harmless in HTML, where a newline is whitespace. It is also why a heredoc paragraph's closing tag lands on its own line in the built file. And the line breaks you type are not paragraph breaks: the whole heredoc is one `<p>`, wrapped by the browser. Two paragraphs means two `p` blocks."
 
@@ -257,8 +257,8 @@ WCL
 
   p "The markers are not hard-coded. Each one is an `inline_pattern` block declaring a regex and a function from the captured groups to a list of `InlineSpan` values. The built-ins ship in the wdoc standard library, and a document can add its own or override one. These are the built-ins, written here inside a code block so they stay literal:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 **bold**              →  <span class="bold">
 _italic_              →  <span class="italic">
 `code`                →  <span class="code">, contents verbatim
@@ -269,12 +269,12 @@ https://…             →  the same, with no brackets
 :lucide.check:        →  an inline icon
 $x^2$                 →  a text-style equation
 $$\int x \, dx$$      →  a display-style equation
-TEXT
+CONSOLE
   }
 
-  p "The first three are this chapter's; [Links](#links) below covers the four link forms; [Icons](wdoc_icons) and [Math](wdoc_math) cover the last three."
+  p "The first three are this chapter's. [Links](#links) below covers the four link forms. [Icons](wdoc_icons) and [Math](wdoc_math) cover the last three."
 
-  p "The three emphasis markers produce nothing but a `<span>` with a class. The class is where the styling lives: the bundled `class \"bold\"`, `class \"italic\"` and `class \"code\"` carry the weight, slant and monospace family, and the selected theme adds the colour. Declare a class of the same name to override either — [Themes and styling](wdoc_styling) covers it."
+  p "The three emphasis markers produce nothing but a `<span>` with a class. The class is where the styling lives: the bundled `class \"bold\"`, `class \"italic\"` and `class \"code\"` carry the weight, slant, and monospace family, and the selected theme adds the colour. Declare a class of the same name to override either. [Themes and styling](wdoc_styling) covers it."
 
   h3 "Where the engine runs"
 
@@ -289,18 +289,18 @@ TEXT
     li "the prose inside a `card`, a `node_table` row, and the other blocks that hold body text."
   }
 
-  p "It does **not** run on a `code` block's `source`, which is the point of a code block. Nor on a page's `title`, a `filename`, or any other field that is metadata rather than prose."
+  p "It does **not** run on a `code` block's `source`. That exemption is what a code block is for. Nor does it run on a page's `title`, a `filename`, or any other field that is metadata rather than prose."
 
   h3 "Matching rules"
 
   p "Five rules decide what a string becomes. They are worth knowing in order, because most surprises are one of them:"
 
   list {
-    li "**Earliest start wins.** Every pattern is tried at each position; the match that begins first is taken, and scanning resumes after it. Wrap `**not bold**` in backticks and the asterisks survive, because the backtick comes first."
-    li "**A tie goes to declaration order**, and the document's own blocks are enumerated before the imported library's. That is how a pattern of yours overrides a built-in with the same syntax."
-    li "**A code span is verbatim.** Its contents are not re-scanned, on any backend, which is why `safe_mode_password` keeps its underscores in this sentence."
+    li "**Earliest start wins.** The engine tries every pattern at each position, takes the match that begins first, and resumes scanning after it. Wrap `**not bold**` in backticks and the asterisks survive, because the backtick comes first."
+    li "**A tie goes to declaration order**, and the build enumerates the document's own blocks before the imported library's. That is how a pattern of yours overrides a built-in with the same syntax."
+    li "**A code span is verbatim.** The engine does not re-scan its contents on any backend, so `safe_mode_password` keeps its underscores in this sentence."
     li "**Everything else nests.** The `text` a pattern returns is fed back through the engine, up to **eight levels** deep, so `**bold with _italic_ inside**` works."
-    li "**There is no escape character.** A backslash is an ordinary character to the engine. To show a marker literally, put it in a code span — that is what the rest of this chapter does."
+    li "**There is no escape character.** A backslash is an ordinary character to the engine. To show a marker literally, put it in a code span. That is what the rest of this chapter does."
   }
 
   h3 "Links"
@@ -309,25 +309,25 @@ TEXT
 
   code wcl {
     source = <<'WCL'
-p "In this site: [chapter 23](wdoc_code), or [an anchor](wdoc_code#code-blocks)."
+p "In this site: [the code chapter](wdoc_code), or [an anchor](wdoc_code#code-blocks)."
 p "In another site of the same build: [the guide](handbook:getting_started)."
 p "Outside: [example](https://example.com), or bare https://example.com/docs."
 WCL
   }
 
-  p "A bare token target is a **page name**, not a path. The build rewrites it to `wdoc_code.html` for the web target and `wdoc_code.md` for Markdown, so one source works for both. A target that starts with `#`, `/`, `./` or `../`, that contains `://`, or that carries a `mailto:` / `tel:` scheme passes through untouched and is never checked. A `site:page` target crosses to another site declared in the same document and gets however many `../` steps that takes; [Documents, pages and sites](wdoc_sites) covers multi-site builds."
+  p "A bare token target is a **page name**, not a path. The build rewrites it to `wdoc_code.html` for the web target and `wdoc_code.md` for Markdown, so one source works for both. A target that starts with `#`, `/`, `./`, or `../`, that contains `://`, or that carries a `mailto:` or `tel:` scheme passes through untouched, and the build never checks it. A `site:page` target crosses to another site declared in the same document and gets however many `../` steps that takes. [Documents, pages and sites](wdoc_sites) covers multi-site builds."
 
   p "The bare-URL form drops the scheme from the link text: `https://example.com/docs` renders as `example.com/docs`. It also stops before sentence-final punctuation, so a URL at the end of a sentence keeps its full stop as prose."
 
   p "An unresolved target fails the build:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build notes.wcl --out _site
 link to unknown page 'nowhere'
 $ echo $?
 2
-TEXT
+CONSOLE
   }
 
   h3 "Footnote references"
@@ -352,11 +352,11 @@ and another<sup class="footnote-ref" id="fnref-two"><a href="#fn-two">2</a></sup
 HTML
   }
 
-  p "The marker inside the brackets is the footnote's declaration id. The printed number comes from the order the definitions appear in, not from the order the references do. A `[^id]` naming no defined footnote is left in the prose exactly as typed, which is deliberate: it costs nothing when a `[^…]` is genuinely part of the text. [Callouts, footnotes and chapter headers](wdoc_callouts) covers the `footnotes` block itself."
+  p "The marker inside the brackets is the footnote's declaration id. The printed number comes from the order the definitions appear in, not from the order the references do. The build leaves a `[^id]` naming no defined footnote in the prose exactly as typed. That is deliberate: it costs nothing when a `[^…]` is genuinely part of the text. [Callouts, footnotes and chapter headers](wdoc_callouts) covers the `footnotes` block itself."
 
   h3 "Declaring your own pattern"
 
-  p "An `inline_pattern` block is a name, a regex, an optional `boundary` gate, and a `to_span` function. It must sit at the **document root** — beside the `site`, not inside a page — and it then applies to every page the build renders."
+  p "An `inline_pattern` block is a name, a regex, an optional `boundary` gate, and a `to_span` function. It must sit at the **document root**, beside the `site` and not inside a page. It then applies to every page the build renders."
 
   code wcl {
     source = <<'WCL'
@@ -370,13 +370,13 @@ class "strike" { css = "text-decoration:line-through;" }
 WCL
   }
 
-  p "`to_span` receives the regex's capture groups as a `list<utf8>`: `at(g, 0)` is the whole match, `at(g, 1)` the first explicit group, and so on. It returns a **list**, so one match may produce several spans. Four variants are available: `Plain` (a classed `<span>`), `Link`, `Icon` and `Math`. A `to_span` that returns something other than a list leaves the matched text alone rather than failing the build."
+  p "`to_span` receives the regex's capture groups as a `list<utf8>`: `at(g, 0)` is the whole match, `at(g, 1)` is the first explicit group, and so on. It returns a **list**, so one match may produce several spans. There are four variants: `Plain` (a classed `<span>`), `Link`, `Icon`, and `Math`. A `to_span` that returns something other than a list leaves the matched text alone rather than failing the build."
 
-  p "`boundary = true` skips a match that touches a letter, digit or underscore on either side. The built-in `italic` uses it, which is why `safe_mode_password` keeps its underscores while `a _word_ here` formats. Turn it on for any marker built from characters that also occur inside identifiers."
+  p "`boundary = true` skips a match that touches a letter, digit, or underscore on either side. The built-in `italic` uses it, so `safe_mode_password` keeps its underscores while `a _word_ here` formats. Turn it on for any marker built from characters that also occur inside identifiers."
 
   callout "A pattern that re-emits its own trigger nests eight deep" {
     class = ["warning"]
-    body  = "Because a returned span's `text` is fed back through the engine, a pattern whose output contains the syntax that produced it matches itself. Return `at(g, 0)` from the `#([0-9]+)` pattern above and `#177` renders as eight nested `<a>` tags. The depth cap is the only thing that stops it, and the page is silently wrong rather than broken. Return text the pattern cannot match: `at(g, 1)` (just the digits), or a rewrite like `$\"issue ${at(g, 1)}\"`. The built-in bare-URL pattern does exactly this — it drops the `https://` from its own display text."
+    body  = "Because a returned span's `text` is fed back through the engine, a pattern whose output contains the syntax that produced it matches itself. Return `at(g, 0)` from the `#([0-9]+)` pattern above and `#177` renders as eight nested `<a>` tags. The depth cap is the only thing that stops it, and the page is silently wrong rather than broken. Return text the pattern cannot match: `at(g, 1)` (just the digits), or a rewrite like `$\"issue ${at(g, 1)}\"`. The built-in bare-URL pattern works this way. It drops the `https://` from its own display text."
   }
 
   h2 "Columns"
@@ -401,7 +401,7 @@ other half.</p></div>
 HTML
   }
 
-  p "It is a CSS grid, and that explains the edges. Any number of slots is fine — `[33.3, 33.3, 33.3]` for equal thirds. A child count that is not a multiple of the slot count simply wraps onto another row, because that is what a grid does. `id` and `class` on the `column` land on the wrapping `<div>`."
+  p "It is a CSS grid, and that explains the edges. Any number of slots is fine: `[33.3, 33.3, 33.3]` for equal thirds. A child count that is not a multiple of the slot count wraps onto another row, because that is what a grid does. `id` and `class` on the `column` land on the wrapping `<div>`."
 
   p "One child is one slot, whatever it is, and there is no bare wrapper block to group two of them. Nest a single-slot `column` when a slot needs more than one block:"
 
@@ -421,7 +421,7 @@ column {
 WCL
   }
 
-  p "Children may be any wdoc content — paragraphs, headings, callouts, code, diagrams, another `column`."
+  p "Children may be any wdoc content: paragraphs, headings, callouts, code, diagrams, another `column`."
 
   callout "The layout is HTML-only" {
     class = ["note"]
@@ -431,12 +431,12 @@ WCL
   h2 "Where to go next"
 
   list {
-    li "[Code](wdoc_code) — `code` blocks, the language tags, and why their source is the one prose the engine leaves alone."
-    li "[Callouts, footnotes and chapter headers](wdoc_callouts) — the `footnotes` block behind `[^id]`, and the admonitions this chapter kept using."
-    li "[Lists and tables](wdoc_tables) — `list` / `li` and `table`, both of which run every cell through the inline engine."
-    li "[Themes and styling](wdoc_styling) — the `class` block behind `bold`, `italic`, `code` and `heading-N`."
-    li "[Icons](wdoc_icons) and [Math](wdoc_math) — the two built-in patterns this chapter only named."
-    li "[Output targets](wdoc_outputs) — what the HTML, Markdown and PDF backends each make of the blocks above."
-    li "[Writing your own blocks](wdoc_extending) — when a pattern is not enough and you want a block of your own."
+    li "[Code](wdoc_code). `code` blocks, the language tags, and why their source is the one prose the engine leaves alone."
+    li "[Callouts, footnotes and chapter headers](wdoc_callouts). The `footnotes` block behind `[^id]`, and the admonitions this chapter kept using."
+    li "[Lists and tables](wdoc_tables). `list` / `li` and `table`, both of which run every cell through the inline engine."
+    li "[Themes and styling](wdoc_styling). The `class` block behind `bold`, `italic`, `code` and `heading-N`."
+    li "[Icons](wdoc_icons) and [Math](wdoc_math). The two built-in patterns this chapter only named."
+    li "[Output targets](wdoc_outputs). What the HTML, Markdown and PDF backends each make of the blocks above."
+    li "[Writing your own blocks](wdoc_extending). When a pattern is not enough and you want a block of your own."
   }
 }

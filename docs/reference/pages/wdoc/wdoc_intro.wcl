@@ -1,0 +1,47 @@
+// Introduction to wdoc.
+//
+// The conceptual half of what used to be the "The other half: wdoc" section
+// of the Introduction chapter: what wdoc is, why it is a schema rather than
+// a second language, and a map of Part II. The technical entry point is
+// wdoc_sites; this page sits above it and links down.
+page wdoc_intro {
+  title = "Introduction to wdoc"
+
+  h1 "Introduction to wdoc"
+
+  p "**wdoc** is a document generator written in WCL. You declare pages and sites as blocks, and `wcl wdoc` renders them to a static website, a Markdown tree or a PDF. The book you are reading is a wdoc site, and its source is one `main.wcl` that declares the site and its table of contents, plus one `.wcl` file per chapter."
+
+  p "The relationship between the two halves is simpler than it sounds: **wdoc is a schema**. `import <wdoc.wcl>` pulls in a library of type declarations shipped inside the binary, and every block it gives you is an ordinary `@block` type of the kind you can declare yourself: `site`, `page`, `h1`, `p`, `code`, `table` and `callout`. The same checker reads it, the same paths address it, and the same errors come back. [Quick start](quickstart#your-first-wdoc-site) builds one in a dozen lines."
+
+  p "That symmetry is why the two halves share one book. A wdoc page is a WCL document, so everything in Part I applies to it: a page body can compute a heading from a `let`, a site can `import` its data from another file, and a repeater can project a list of typed records into one rendered section per record."
+
+  callout "wdoc is not a second language" {
+    class = ["note"]
+    body  = "There is no wdoc parser, no wdoc file extension and no wdoc syntax. A `.wcl` file becomes a document the moment it imports the wdoc standard library, and stops being one if you delete that line. Anything you can do to a WCL document — `wcl check`, `wcl get`, `wcl fmt`, `wcl diff` — you can do to a wdoc page, because it is the same object."
+  }
+
+  h2 "What Part II covers"
+
+  p "Twenty-seven chapters, in four groups. Read [Documents, pages and sites](wdoc_sites) first: it is the map of the output, and every later chapter fills in what goes inside a page. After that, look up the block you need."
+
+  table {
+    rows:
+      | "Group"                     | "What it covers" |
+      | "Documents and presentation"| "[The entry document, pages and sites](wdoc_sites), templates and layouts, websites, presentations, themes and styling, visibility, and the output targets." |
+      | "Content blocks"            | "Headings and prose, code listings, callouts and footnotes, lists and tables, images and video, icons, math, [data views](wdoc_data_views), and demo blocks." |
+      | "Diagrams and drawn blocks" | "The diagram canvas and its routing, flowcharts, sequence and state diagrams, charts, timelines, trees, tilemaps, terminals and wireframes." |
+      | "Extending"                 | "[Writing your own blocks](wdoc_extending): the lowering mechanism, the three lowering interfaces, and native blocks." |
+  }
+
+  p "The two halves meet properly in [Data views](wdoc_data_views), where a page projects typed data from a WCL document into rendered sections. That is the chapter to read if you came to wdoc to document data you already keep in WCL."
+
+  h2 "Where to go next"
+
+  list {
+    li "[Documents, pages and sites](wdoc_sites). The entry document, the `page` and `site` blocks, navigation, and the output tree. The first chapter of Part II, and the one to read first."
+    li "[Output targets](wdoc_outputs). What the HTML, Markdown and PDF builds each do with a page, and what a block can and cannot promise on all three."
+    li "[Text and formatting](wdoc_formatting). Headings, paragraphs and the inline pattern vocabulary — the blocks every page uses."
+    li "[Data views](wdoc_data_views). Components, repeaters and partials: rendering a document from data rather than from prose."
+    li "[Writing your own blocks](wdoc_extending). How to add a block of your own, and how lowering reaches every target at once."
+  }
+}

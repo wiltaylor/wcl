@@ -1,4 +1,4 @@
-// Chapter 23 — Code.
+// Code.
 //
 // Written against the sources (#178): `crates/wcl_wdoc/lib/code.wcl`,
 // `src/highlight.rs`, `src/render/content_html.rs`,
@@ -11,13 +11,13 @@ page wdoc_code {
 
   h1 "Code"
 
-  p "A `code` block is a source listing: a language tag, a lump of text, and an optional filename. It is the block a technical document uses most, and it is deliberately thin. It measures nothing, draws no chrome and knows nothing about the page around it. It hands the renderer a listing and the language it is written in, and each output target draws that listing the way its own medium wants."
+  p "A `code` block is a source listing: a language tag, a lump of text, and an optional filename. It is the block a technical document uses most, and it is deliberately thin. It measures nothing, draws no chrome, and knows nothing about the page around it. It hands the renderer a listing and the language it is written in, and each output target draws that listing the way its own medium wants."
 
   p "This chapter covers the block and its five fields, the language tags that resolve to a grammar, and what HTML, Markdown and PDF each make of one listing. Every example below was built and read back before it was written down."
 
   h2 "One listing, three outputs"
 
-  p "Save this as `listing.wcl`. It is a whole document — the import, a site, a page, one `code` block:"
+  p "Save this as `listing.wcl`. It is a whole document, with the import, a site, a page, and one `code` block:"
 
   code wcl {
     filename = "listing.wcl"
@@ -50,12 +50,12 @@ SH
 WCL
   }
 
-  p "Note the two heredocs. The outer one is the WCL you are reading; the inner one is the listing itself. Both are **raw** heredocs — `<<'TAG'` with the tag quoted — so nothing inside either is escaped or interpolated. That is the form to reach for every time. See [Values and primitives](lang_values) for the whole heredoc grammar."
+  p "The example uses two heredocs. The outer one is the WCL you are reading. The inner one is the listing itself. Both are **raw** heredocs, `<<'TAG'` with the tag quoted, so nothing inside either is escaped or interpolated. That is the form to reach for every time. See [Values and primitives](lang_values) for the whole heredoc grammar."
 
   p "Build it three ways:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check listing.wcl
 OK
 $ wcl wdoc build listing.wcl --out _site
@@ -64,13 +64,13 @@ $ wcl wdoc build listing.wcl --out _md --type markdown
 wrote 1 page
 $ wcl wdoc build listing.wcl --out manual.pdf --type pdf
 wrote 1 pdf
-TEXT
+CONSOLE
   }
 
   p "One block produced three renderings. The Markdown one is the easiest to read back whole, so start there:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat _md/install.md
 # Install
 
@@ -85,7 +85,7 @@ curl -fsSL https://example.com/tool.tar.gz -o tool.tar.gz
 tar -xzf tool.tar.gz
 install -m 755 tool/bin/tool /usr/local/bin/tool
 ```
-TEXT
+CONSOLE
   }
 
   p "The filename became a line of its own. The language tag became the fence's info string. Nothing else survived, because nothing else means anything in Markdown. [What each backend draws](#what-each-backend-draws) works through the other two."
@@ -97,9 +97,9 @@ TEXT
   table {
     rows:
       | "Field"     | "Type"        | "Written as"                     | "What it does" |
-      | "`language`" | "`identifier`" | "the inline label — `code bash {`" | "Picks the highlight grammar and labels the listing" |
+      | "`language`" | "`identifier`" | "the inline label, `code bash {`"  | "Picks the highlight grammar and labels the listing" |
       | "`source`"  | "`utf8`"      | "`source = <<'SH' … SH`"          | "The listing text, verbatim" |
-      | "`filename`" | "`utf8?`"    | "`filename = \"install.sh\"`"      | "Names the listing — see [Filename and caption](#filename-and-caption)" |
+      | "`filename`" | "`utf8?`"    | "`filename = \"install.sh\"`"      | "Names the listing. See [Filename and caption](#filename-and-caption)" |
       | "`id`"      | "`identifier?`" | "`id = \"install\"`"             | "HTML only: the `id` attribute on the `<pre>`" |
       | "`class`"   | "`list<utf8>?`" | "`class = [\"wide\"]`"           | "HTML only: added beside `code-block` on the `<pre>`" |
   }
@@ -128,11 +128,11 @@ PY
 WCL
   }
 
-  p "Nothing in `source` runs through the inline-pattern engine either. A listing containing `**stars**` or `[brackets](x)` keeps them exactly as typed — the patterns apply to prose, not to code. See [Text and formatting](wdoc_formatting)."
+  p "Nothing in `source` runs through the inline-pattern engine either. A listing containing `**stars**` or `[brackets](x)` keeps them exactly as typed. The patterns apply to prose, not to code. See [Text and formatting](wdoc_formatting)."
 
   h2 "The language tag"
 
-  p "The tag is the block's inline label, so it is written before the brace and nowhere else:"
+  p "The tag is the block's inline label, so you write it before the brace and nowhere else:"
 
   code wcl {
     source = <<'WCL'
@@ -142,16 +142,16 @@ code rust {
 WCL
   }
 
-  p "It does two jobs at once, and they are worth keeping apart. It **picks the grammar** the highlighter uses. It is also **shown verbatim** — as the label in the HTML card's header bar, and as the fence info string in Markdown. The two can disagree, and that is not always a mistake: a tag no grammar answers to still labels the listing and still produces a fence a Markdown consumer may know how to colour."
+  p "It does two jobs at once, and they are worth keeping apart. It **picks the grammar** the highlighter uses. It is also **shown verbatim**: as the label in the HTML card's header bar, and as the fence info string in Markdown. The two can disagree, and that is not always a mistake: a tag no grammar answers to still labels the listing and still produces a fence a Markdown consumer may know how to colour."
 
   h3 "Which tags resolve"
 
-  p "wdoc bundles 214 grammars in all: the syntect defaults, two-face's curated extras, and WCL's own — so `code wcl { … }` highlights the language this book is written in. A tag resolves in two steps:"
+  p "wdoc bundles 214 grammars in all: the syntect defaults, two-face's curated extras, and WCL's own. So `code wcl { … }` highlights the language this book is written in. A tag resolves in two steps:"
 
   list {
     style = :numbered
-    li "Match the tag against every grammar's **file-extension** list, ignoring case. `rs` finds Rust; `md` finds Markdown; `yml` finds YAML."
-    li "Otherwise match the grammar's **name**, ignoring case. `python` finds Python; `Rust` finds Rust; `dockerfile` finds Dockerfile."
+    li "Match the tag against every grammar's **file-extension** list, ignoring case. `rs` finds Rust. `md` finds Markdown. `yml` finds YAML."
+    li "Otherwise match the grammar's **name**, ignoring case. `python` finds Python. `Rust` finds Rust. `dockerfile` finds Dockerfile."
   }
 
   p "No match means plain text: the listing renders, escaped and un-coloured. Here are the tags a technical document reaches for most, all checked against the loaded set:"
@@ -184,7 +184,7 @@ WCL
       | "Plain Text"    | "`txt`"                | "AWK"         | "`awk`" |
   }
 
-  p "The list is not the limit. Anything with a Sublime grammar in the bundled set is reachable the same way — Clojure, Erlang, Dart, Perl, OCaml, F# (as `\"f#\"`), R, VimL, Typst, Svelte, Vue, GLSL, WGSL, jsonnet, x86 assembly and about a hundred and fifty more."
+  p "The list is not the limit. Anything with a Sublime grammar in the bundled set is reachable the same way: Clojure, Erlang, Dart, Perl, OCaml, F# (as `\"f#\"`), R, VimL, Typst, Svelte, Vue, GLSL, WGSL, jsonnet, x86 assembly and about a hundred and fifty more."
 
   h3 "Tags that do not resolve"
 
@@ -193,29 +193,47 @@ WCL
   table {
     rows:
       | "Tag"      | "What happens"        | "Write instead" |
-      | "`shell`"  | "plain text"          | "`sh`, `bash` or `zsh`" |
-      | "`console`" | "plain text"         | "`text` — see below" |
+      | "`shell`"  | "plain text"          | "`sh`, `bash` or `zsh` for a script, `console` for a session" |
       | "`plaintext`" | "plain text"       | "`text` or `txt`" |
       | "`csharp`" | "plain text"          | "`\"c#\"` or `cs`" |
       | "`fsharp`" | "plain text"          | "`\"f#\"`" |
-      | "`powershell`" | "plain text"      | "nothing — no PowerShell grammar ships" |
+      | "`powershell`" | "plain text"      | "nothing. No PowerShell grammar ships" |
   }
 
-  p "`text` is the useful one. No grammar is named `text` and no file extension is `text`, so `code text { … }` falls straight through to plain text — which is exactly what a terminal transcript or a snippet of output wants. Every `$ wcl …` listing in this book is written that way. `txt` reaches the real Plain Text grammar and renders identically."
+  p "`text` is the useful one for output with no prompts in it. No grammar is named `text` and no file extension is `text`, so `code text { … }` falls straight through to plain text. `txt` reaches the real Plain Text grammar and renders identically."
+
+  h3 "`console` for a terminal session"
+
+  p "A transcript is not a script. It interleaves what you typed with what the command printed back, so a script grammar is the wrong tool: `bash` tokenises the output as source, and an apostrophe in a diagnostic such as `field 'replicas' is below @min(0)` opens a string literal that mis-colours the rest of the line."
+
+  p "`console` is a session grammar, bundled alongside the WCL one because no shell-session grammar ships with the syntax set. It colours the prompt marker and the command you ran, and leaves every other line untouched:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check app.wcl --json
+wcl::eval::schema_violation
+
+  × field 'replicas': value -1 is below @min(0)
+
+app.wcl: 1 schema violation
+CONSOLE
+  }
+
+  p "The prompt, the program name and its options carry token classes. The four output lines carry none, so they render exactly as `text` would have. Tag a session `console`, a shell _script_ `bash`, and bare output with no `$` line `text`."
 
   callout "A tag with punctuation must be quoted" {
     class = ["note"]
-    body  = "The tag is an `identifier`, and `c++`, `c#` and `f#` are not valid bare identifiers. Quote them — `code \"c#\" { … }` — exactly as you would quote any other block label. The quotes are about the text, not the declared type; see [Documents, fields and blocks](lang_documents)."
+    body  = "The tag is an `identifier`, and `c++`, `c#`, and `f#` are not valid bare identifiers. Quote them, `code \"c#\" { … }`, exactly as you would quote any other block label. The quotes are about the text, not the declared type. See [Documents, fields and blocks](lang_documents)."
   }
 
   callout "A missing tag is not caught" {
     class = ["warning"]
-    body  = "The schema declares `language` as a required field, but a block with no label at all is not currently refused: `code { source = \"…\" }` passes `wcl check`, renders as plain text, and emits an empty language label and a bare `class=\"language-\"`. That is a gap, not a feature. Always write a tag; write `text` when there is no language."
+    body  = "The schema declares `language` as a required field, but nothing currently refuses a block with no label at all: `code { source = \"…\" }` passes `wcl check`, renders as plain text, and emits an empty language label and a bare `class=\"language-\"`. That is a gap, not a feature. Always write a tag. Write `text` when there is no language."
   }
 
   h2 "Filename and caption"
 
-  p "`filename` is the only caption a listing has. There is no `caption` field on `code` — the filename **is** the caption, and each backend puts it where a caption belongs in that medium."
+  p "`filename` is the only caption a listing has. There is no `caption` field on `code`. The filename **is** the caption, and each backend puts it where a caption belongs in that medium."
 
   code wcl {
     source = <<'WCL'
@@ -237,11 +255,11 @@ WCL
       | "PDF"      | "A monospace caption paragraph immediately above the listing" |
   }
 
-  p "Leave it out and each target simply drops that part: the HTML header bar keeps its window dots and language label, and Markdown and PDF start at the listing. A filename is worth writing whenever the reader is meant to save the listing somewhere — which, in a document that teaches, is most of the time."
+  p "Leave it out and each target drops that part: the HTML header bar keeps its window dots and language label, and Markdown and PDF start at the listing. A filename is worth writing whenever the reader is meant to save the listing somewhere. In a document that teaches, that is most of the time."
 
   h2 "`code` is not a native block"
 
-  p "Most of the heavyweight blocks in wdoc are **native**: a terminal, a tilemap, a tree, a table. A native block is intercepted in Rust because its output is not expressible in WCL — measured widget layout, calendar arithmetic, an ANSI grid. See [Writing your own blocks](wdoc_extending) for what that means and what it costs."
+  p "Most of the heavyweight blocks in wdoc are **native**: a terminal, a tilemap, a tree, a table. wdoc intercepts a native block in Rust because its output is not expressible in WCL: measured widget layout, calendar arithmetic, an ANSI grid. See [Writing your own blocks](wdoc_extending) for what that means and what it costs."
 
   p "`code` is not one of them. It is an ordinary `ContentBlock` with an ordinary `lower`, and the whole of it is this:"
 
@@ -268,15 +286,15 @@ type Code extends ContentBlock {
 WCL
   }
 
-  p "`Content::Code` is a node of the semantic content IR — the closed, target-neutral union every backend matches exhaustively. The lowering carries five fields across and stops. It does not build a card. It does not pick a colour. It does not know which target is running."
+  p "`Content::Code` is a node of the semantic content IR: the closed, target-neutral union every backend matches exhaustively. The lowering carries five fields across and stops. It does not build a card. It does not pick a colour. It does not know which target is running."
 
-  p "The alternative is worth picturing, because it is the shape this block deliberately does not have. Build the card in the lowering and the header bar becomes HTML markup — which means a second target wanting a filename has to reach past the lowering and re-read the block's own fields to get one. One payload and three readings of it is what keeps a field from meaning something on one target and nothing on the next. [Output targets](wdoc_outputs) covers the union and the backends in full."
+  p "The alternative is worth picturing, because it is the shape this block deliberately does not have. Build the card in the lowering and the header bar becomes HTML markup. A second target that wants a filename then has to reach past the lowering and re-read the block's own fields to get one. One payload and three readings of it is what keeps a field from meaning something on one target and nothing on the next. [Output targets](wdoc_outputs) covers the union and the backends in full."
 
   p "Two consequences follow, and both are practical:"
 
   list {
     li "**A listing means the same thing everywhere.** Add a filename and it appears in all three outputs, in the shape each one uses for a caption. There is no target where the field is quietly ignored."
-    li "**Your own block can produce a listing.** A `@block` type extending `ContentBlock` may return a `Content::Code` from its `lower`, and it inherits all three renderings for free. A generated-config block, a `manifest` block that prints itself as JSON — none of them need a line of Rust. See [Writing your own blocks](wdoc_extending)."
+    li "**Your own block can produce a listing.** A `@block` type extending `ContentBlock` may return a `Content::Code` from its `lower`, and it inherits all three renderings for free. Neither a generated-config block nor a `manifest` block that prints itself as JSON needs a line of Rust. See [Writing your own blocks](wdoc_extending)."
   }
 
   h2 "What each backend draws"
@@ -285,11 +303,11 @@ WCL
 
   table {
     rows:
-      | "Aspect"        | "HTML — `wdoc build`"                    | "Markdown — `wdoc markdown`"      | "PDF — `wdoc pdf`" |
+      | "Aspect"        | "HTML, `wdoc build`"                     | "Markdown, `wdoc markdown`"       | "PDF, `wdoc pdf`" |
       | "Chrome"        | "A `<figure class=\"code-card\">` with a header bar and three window dots" | "None" | "None" |
       | "Filename"      | "In the header bar"                      | "A backticked line above the fence" | "A monospace caption line" |
       | "Language tag"  | "In the header bar, upper-cased by CSS, and as `class=\"language-<tag>\"`" | "The fence info string" | "Not shown" |
-      | "Highlighting"  | "`<span class=\"tok-…\">` runs, coloured by the theme's CSS" | "None — the consumer colours the fence" | "Coloured runs drawn into the page" |
+      | "Highlighting"  | "`<span class=\"tok-…\">` runs, coloured by the theme's CSS" | "None. The consumer colours the fence" | "Coloured runs drawn into the page" |
       | "Line numbers"  | "A CSS counter gutter, always on"        | "None"                            | "None" |
       | "`id` / `class`" | "On the `<pre>`"                        | "Dropped"                         | "Dropped" |
   }
@@ -311,16 +329,16 @@ WCL
 HTML
   }
 
-  p "Three things in there are worth knowing about. The `<span class=\"code-lang\">` holds the tag exactly as you wrote it — `bash`, not `BASH`; the upper-casing is a CSS rule on the class, so a theme may drop it. Every source line is wrapped in its own `<span class=\"code-line\">`, and the gutter numbers are a CSS counter on that wrapper rather than text in the markup — which is why copying a listing out of the page copies the code and not the numbers. And the gutter is not optional: HTML listings always carry line numbers."
+  p "Three things in there are worth knowing about. The `<span class=\"code-lang\">` holds the tag exactly as you wrote it, `bash` and not `BASH`. The upper-casing is a CSS rule on the class, so a theme may drop it. Every source line is wrapped in its own `<span class=\"code-line\">`, and the gutter numbers are a CSS counter on that wrapper rather than text in the markup. That is why copying a listing out of the page copies the code and not the numbers. And the gutter is not optional: HTML listings always carry line numbers."
 
   callout "Per-line highlighting restarts the grammar" {
     class = ["warning"]
-    body  = "Wrapping each line separately is what makes the gutter work, and it has a real cost: the HTML highlighter starts each line from scratch. A construct that spans lines loses its scope after the first one. Give it a Rust block comment and line 1 is comment-coloured, while `spanning lines */` on line 2 comes back as ordinary source with `*` and `/` read as operators. Short listings — what a document carries — are unaffected. The PDF backend has no gutter and carries grammar state across lines, so the same listing prints correctly there. When a listing needs a long block comment, prefer line comments."
+    body  = "Wrapping each line separately is what makes the gutter work, and it has a real cost: the HTML highlighter starts each line from scratch. A construct that spans lines loses its scope after the first one. Give it a Rust block comment and line 1 is comment-coloured, while `spanning lines */` on line 2 comes back as ordinary source with `*` and `/` read as operators. Short listings, the kind a document carries, are unaffected. The PDF backend has no gutter and carries grammar state across lines, so the same listing prints correctly there. When a listing needs a long block comment, prefer line comments."
   }
 
   h3 "The Markdown fence"
 
-  p "The one piece of real work Markdown does is the fence itself. It is widened past the longest backtick run in the source, so a listing that contains a fenced block still nests correctly."
+  p "The one piece of real work Markdown does is the fence itself. The backend widens it past the longest backtick run in the source, so a listing that contains a fenced block still nests correctly."
 
   code wcl {
     source = <<'WCL'
@@ -353,11 +371,11 @@ fn main() {}
 TEXT
   }
 
-  p "Highlighting is not wdoc's job here. The tag rides out on the fence and whatever renders the Markdown — a repository host, a static site — colours it with its own grammars. That is also why a tag no syntect grammar answers to is still worth writing: `code shell { … }` is plain text in the built site and a highlighted shell block on a repository host."
+  p "Highlighting is not wdoc's job here. The tag rides out on the fence, and whatever renders the Markdown, a repository host or a static site, colours it with its own grammars. That is also why a tag no syntect grammar answers to is still worth writing: `code shell { … }` is plain text in the built site and a highlighted shell block on a repository host."
 
   h3 "The PDF listing"
 
-  p "The PDF backend has no CSS to colour a `tok-` class with, so it does the colouring itself: the source is highlighted into runs of text plus an RGB triple, against a light theme chosen to read on a white page, and those runs are drawn into the page. A filename becomes a monospace caption paragraph above the listing. There is no card, no gutter, and no way to restyle the token colours from the document — a PDF listing looks the same whichever theme the site selects. [Output targets](wdoc_outputs) covers the rest of the PDF backend."
+  p "The PDF backend has no CSS to colour a `tok-` class with, so it does the colouring itself. It highlights the source into runs of text plus an RGB triple, against a light theme chosen to read on a white page, and draws those runs into the page. A filename becomes a monospace caption paragraph above the listing. There is no card, no gutter, and no way to restyle the token colours from the document. A PDF listing looks the same whichever theme the site selects. [Output targets](wdoc_outputs) covers the rest of the PDF backend."
 
   h2 "Colouring the tokens"
 
@@ -369,9 +387,9 @@ TEXT
 HTML
   }
 
-  p "The bundled rules target the short, stable ends of those scopes — `.tok-keyword`, `.tok-string`, `.tok-comment`, `.tok-constant`, `.tok-entity.tok-name.tok-function` and a few more. Each one resolves a palette variable with a literal fallback, so a document with no theme still gets a readable light palette."
+  p "The bundled rules target the short, stable ends of those scopes: `.tok-keyword`, `.tok-string`, `.tok-comment`, `.tok-constant`, `.tok-entity.tok-name.tok-function` and a few more. Each one resolves a palette variable with a literal fallback, so a document with no theme still gets a readable light palette."
 
-  p "Which means the ordinary way to recolour code is not to write CSS at all. A theme's palette carries seven syntax roles; set them and every listing on the site follows:"
+  p "So the ordinary way to recolour code is not to write CSS at all. A theme's palette carries seven syntax roles. Set them and every listing on the site follows:"
 
   code wcl {
     source = <<'WCL'
@@ -394,17 +412,17 @@ site manual {
 WCL
   }
 
-  p "For anything the roles do not reach — a scope with no bundled rule, or the card chrome itself — declare a `class` block against the `tok-` selector or against `code-card`, `code-filename`, `code-name`, `code-lang` and `code-block`. [Themes and styling](wdoc_styling) covers palettes, roles and `class` blocks in full."
+  p "Some scopes have no bundled rule, and the card chrome has none either. For anything the roles do not reach, declare a `class` block against the `tok-` selector or against `code-card`, `code-filename`, `code-name`, `code-lang` and `code-block`. [Themes and styling](wdoc_styling) covers palettes, roles and `class` blocks in full."
 
   h2 "Where to go next"
 
   list {
-    li "[Text and formatting](wdoc_formatting) — prose, headings, and the backtick inline pattern, which is a different thing from this block."
-    li "[Demo blocks](wdoc_demo) — show a snippet and its rendered result side by side, which is a `code` block plus a live rendering."
-    li "[Output targets](wdoc_outputs) — the content IR, the four backends, and what each one can and cannot express."
-    li "[Themes and styling](wdoc_styling) — palettes, the syntax roles, and `class` blocks."
-    li "[Visibility](wdoc_visibility) — `@only` and `@except`, for the listing that should reach one target and not another."
-    li "[Writing your own blocks](wdoc_extending) — `lower`, `@native`, and how a block of yours can produce a listing."
-    li "[Values and primitives](lang_values) — heredocs, raw and interpolating, in full."
+    li "[Text and formatting](wdoc_formatting). Prose, headings, and the backtick inline pattern, which is a different thing from this block."
+    li "[Demo blocks](wdoc_demo). Show a snippet and its rendered result side by side. A demo is a `code` block plus a live rendering."
+    li "[Output targets](wdoc_outputs). The content IR, the four backends, and what each one can and cannot express."
+    li "[Themes and styling](wdoc_styling). Palettes, the syntax roles, and `class` blocks."
+    li "[Visibility](wdoc_visibility). `@only` and `@except`, for the listing that should reach one target and not another."
+    li "[Writing your own blocks](wdoc_extending). `lower`, `@native`, and how a block of yours can produce a listing."
+    li "[Values and primitives](lang_values). Heredocs, raw and interpolating, in full."
   }
 }

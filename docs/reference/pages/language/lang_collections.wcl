@@ -1,4 +1,4 @@
-// Chapter 3 — Lists, tensors and records.
+// Lists, tensors and records.
 //
 // Written against #161. Every snippet and every command output below was
 // run against the `wcl` CLI before it was written down; nothing here is
@@ -60,8 +60,8 @@ WCL
 
   p "`wcl check` validates it, and `wcl get` reads each shape back:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check fleet.wcl
 OK
 $ wcl get fleet.wcl regions
@@ -74,14 +74,14 @@ $ wcl get fleet.wcl machines.web.capacity
 Capacity::Scaled { max: 10u32, min: 2u32 }
 $ wcl get fleet.wcl machines.db.capacity
 Capacity::Fixed { units: 3u32 }
-TEXT
+CONSOLE
   }
 
   p "Read the last three answers. `load` came back as `tensor[2x3](…)`: six numbers, plus the shape they are read under. `capacity` was written as a bare `{ … }` in both machines, and came back as `Capacity::Scaled` in one and `Capacity::Fixed` in the other. Nothing in the file names a variant. The **shape of the record** picked one, and [its own section](#bare-records-become-union-variants) covers how."
 
   h2 "Lists"
 
-  p "A `list<T>` is an ordered sequence of values of one type `T`. Write one with square brackets and commas; the trailing comma is optional."
+  p "A `list<T>` is an ordered sequence of values of one type `T`. Write one with square brackets and commas. The trailing comma is optional."
 
   code wcl {
     filename = "lists.wcl"
@@ -108,8 +108,8 @@ WCL
 
   p "The literal itself carries no type. The **field's declared type** supplies one, and `wcl check` holds the value to it element by element. Change one port to a string and the field is refused:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check lists.wcl
 OK
 
@@ -120,14 +120,14 @@ wcl::eval::schema_violation
   × field 'ports' declared as list<u32> but value is list
 
 lists.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
-  p "The message names the field, not the offending element — a long list tells you _that_ an element is wrong, not _which_. Numeric elements are the one loose end: the evaluator promotes between numeric types, so `[1, 2]` satisfies `list<u32>` even though the literals are default-typed integers. [Values and primitives](lang_values) covers the promotion rule."
+  p "The message names the field, not the offending element. A long list tells you _that_ an element is wrong, not _which_. Numeric elements are the one loose end: the evaluator promotes between numeric types, so `[1, 2]` satisfies `list<u32>` even though the literals are default-typed integers. [Values and primitives](lang_values) covers the promotion rule."
 
   p "`spare = []` shows the second rule: **the empty list is legal for any element type.** There is nothing in `[]` to check. A gather field with no children evaluates to exactly this."
 
-  p "Lists are also what the rest of the language hands you. A `@children(\"kind\")` gather field is a `list<T>`, and a `@table` header fills one row per line. So do the builtins — `range`, `split`, `keys` and `enumerate` all return one. See [Documents, fields and blocks](lang_documents#tables) for the first two and [Builtins](lang_builtins) for the rest."
+  p "Lists are also what the rest of the language hands you. A `@children(\"kind\")` gather field is a `list<T>`, and a `@table` header fills one row per line. So do the builtins: `range`, `split`, `keys` and `enumerate` all return one. See [Documents, fields and blocks](lang_documents#tables) for the first two and [Builtins](lang_builtins) for the rest."
 
   callout "A none element is always legal" {
     class = ["note"]
@@ -136,7 +136,7 @@ TEXT
 
   h3 "Lists of lists"
 
-  p "A list element may itself be a list, to any depth. `grid` above is a `list<list<i64>>` — two rows of three. Nothing requires the rows to agree: `[[1, 2], [3], [4, 5, 6]]` also satisfies `list<list<i64>>`, because the element rule only asks that each element be a `list<i64>`."
+  p "A list element may itself be a list, to any depth. `grid` above is a `list<list<i64>>`: two rows of three. Nothing requires the rows to agree: `[[1, 2], [3], [4, 5, 6]]` also satisfies `list<list<i64>>`, because the element rule only asks that each element be a `list<i64>`."
 
   p "That permission is the point of the distinction. A list of lists is **ragged by default**. When the data is genuinely rectangular and the rank matters, reach for a [tensor](#tensors) instead."
 
@@ -168,8 +168,8 @@ count  = len(regions)
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get pick.wcl first
 "us-east-1"
 $ wcl get pick.wcl last
@@ -182,13 +182,13 @@ $ wcl get pick.wcl found
 1
 $ wcl get pick.wcl count
 3
-TEXT
+CONSOLE
   }
 
   p "Indices are zero-based, and the readers differ in how strict they are:"
 
   list {
-    li "**`at(xs, i)` is strict.** A negative index is `at: index -1 is negative`; one past the end is `at: index 7 out of bounds`. Both are evaluation errors, not `none`."
+    li "**`at(xs, i)` is strict.** A negative index is `at: index -1 is negative`. One past the end is `at: index 7 out of bounds`. Both are evaluation errors, not `none`."
     li "**`head(xs)` is not.** It answers `none` for an empty list rather than failing."
     li "**`slice(xs, start, end)` clamps.** The range is half-open, and both bounds are pulled back to the length, so `slice([1, 2, 3], 1, 99)` is `[2, 3]`."
     li "**`index_of(xs, needle)` answers `-1`** when nothing matches, rather than `none`."
@@ -198,7 +198,7 @@ TEXT
 
   callout "A dotted path does not index" {
     class = ["warning"]
-    body  = "`wcl get fleet.wcl regions.0` answers `no such path: regions.0`. A dotted path walks fields, blocks and block labels — a list position is none of the three. Read the whole list, or compute the element inside the document and read the field that holds it. The same is true of a table row, for the same reason: see [Documents, fields and blocks](lang_documents#tables)."
+    body  = "`wcl get fleet.wcl regions.0` answers `no such path: regions.0`. A dotted path walks fields, blocks and block labels. A list position is none of the three. Read the whole list, or compute the element inside the document and read the field that holds it. The same is true of a table row, for the same reason: see [Documents, fields and blocks](lang_documents#tables)."
   }
 
   h2 "Tensors"
@@ -219,7 +219,7 @@ type Model {
 WCL
   }
 
-  p "A symbolic dimension documents a relationship for the program reading the document — that `batch` and some other tensor share their `N`. WCL itself does not resolve one: nothing in the language binds `N` to a number, and nothing compares two `N`s."
+  p "A symbolic dimension documents a relationship for the program reading the document: that `batch` and some other tensor share their `N`. WCL itself does not resolve one: nothing in the language binds `N` to a number, and nothing compares two `N`s."
 
   h3 "Building and reshaping"
 
@@ -247,8 +247,8 @@ percent = map(load, fn(x: f64) -> f64 x * 100.0)
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get load.wcl shape
 [2, 3]
 $ wcl get load.wcl flat
@@ -257,26 +257,26 @@ $ wcl get load.wcl by_hour
 tensor[3x2](0.4, 0.6, 0.9, 0.3, 0.5, 0.8)
 $ wcl get load.wcl percent
 tensor[2x3](40.0, 60.0, 90.0, 30.0, 50.0, 80.0)
-TEXT
+CONSOLE
   }
 
-  p "`tensor_reshape` re-views the same numbers under a new shape. Look at `by_hour`: the six elements are in the same order, and only the shape line changed. Both builtins enforce one rule — **the element count must equal the product of the dimensions.** Give `tensor` two elements and a `[2, 3]` shape, and the failure arrives when the value is forced:"
+  p "`tensor_reshape` re-views the same numbers under a new shape. Look at `by_hour`: the six elements are in the same order, and only the shape line changed. Both builtins enforce one rule: **the element count must equal the product of the dimensions.** Give `tensor` two elements and a `[2, 3]` shape, and the failure arrives when the value is forced:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 # with `load = tensor([0.4, 0.6], [2, 3])`
 $ wcl get load.wcl load
 wcl::eval::builtin_type
 
   × 'tensor': tensor: data length 2 does not match shape product 6
-TEXT
+CONSOLE
   }
 
-  p "\"When the value is forced\" is exact, and it is why the command above is `wcl get` rather than `wcl check`. Fields evaluate lazily and `wcl check` reports schema violations, not evaluation failures — it prints `OK` for that file. [How a document evaluates](lang_evaluation) covers the split; [The CLI](lang_cli) covers which command forces what."
+  p "\"When the value is forced\" is exact, and it is why the command above is `wcl get` rather than `wcl check`. Fields evaluate lazily and `wcl check` reports schema violations, not evaluation failures. It prints `OK` for that file. [How a document evaluates](lang_evaluation) covers the split. [The CLI](lang_cli) covers which command forces what."
 
   callout "A declared shape is not a checked shape" {
     class = ["warning"]
-    body  = "The dimensions in `tensor<f64, [2, 3]>` describe the field. They are not compared against the tensor that lands in it. A field declared `tensor<f64, [2, 3]>` holding `tensor([0.4, 0.6], [1, 2])` passes `wcl check`, and `wcl get` answers `tensor[1x2](0.4, 0.6)`. Only the constructor's own product rule is enforced. Write the shape you mean; the tool checks that the data fits the shape you passed to `tensor(…)`, not that either matches the declaration."
+    body  = "The dimensions in `tensor<f64, [2, 3]>` describe the field. They are not compared against the tensor that lands in it. A field declared `tensor<f64, [2, 3]>` holding `tensor([0.4, 0.6], [1, 2])` passes `wcl check`, and `wcl get` answers `tensor[1x2](0.4, 0.6)`. Only the constructor's own product rule is enforced. Write the shape you mean. The tool checks that the data fits the shape you passed to `tensor(…)`, not that either matches the declaration."
   }
 
   h3 "List builtins over a tensor"
@@ -295,13 +295,13 @@ bumped = map(m, fn(x: f64) -> f64 x + 1.0)          # tensor[2x2](4.0, 2.0, 3.0,
 WCL
   }
 
-  p "Note the two answers that surprise. `len` counts **elements**, not rows — a 2×2 tensor has length 4. And `tail` hands back a plain list, because dropping one element of a rectangle leaves something that is not one."
+  p "Note the two answers that surprise. `len` counts **elements**, not rows: a 2×2 tensor has length 4. And `tail` hands back a plain list, because dropping one element of a rectangle leaves something that is not one."
 
   p "Builtins that would break the rectangle refuse it outright rather than quietly returning a list. `filter(m, …)` reports `filter: tensors are not supported (would invalidate shape); use map or convert to a list`, and `sort(m)` reports `expected list, found tensor`. Reach for `tensor_data(m)` when you want the flat list and mean it."
 
   h2 "Records"
 
-  p "A record is a fixed set of named fields, written as a bare `{ name: value, … }`. There is **no constructor syntax** — no `Endpoint { … }` form, no `new`. A record literal is anonymous, and takes its meaning from where it lands: the declared type of the field, parameter or variant slot it fills."
+  p "A record is a fixed set of named fields, written as a bare `{ name: value, … }`. There is **no constructor syntax**: no `Endpoint { … }` form, no `new`. A record literal is anonymous, and takes its meaning from where it lands: the declared type of the field, parameter or variant slot it fills."
 
   code wcl {
     filename = "records.wcl"
@@ -329,15 +329,15 @@ slots    = keys(settings)
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get records.wcl host
 "localhost"
 $ wcl get records.wcl port
 8080u32
 $ wcl get records.wcl slots
 ["host", "port"]
-TEXT
+CONSOLE
   }
 
   p "The trailing comma is optional, as in a list. A `{` opens a record only when the next two tokens are a name and a colon. Anything else is a **block expression**, so `{ let a = 1; a }` is a computation. That leaves `{}` as neither: an empty record has no spelling. [Expressions and operators](lang_expressions) covers the block form."
@@ -348,8 +348,8 @@ TEXT
 
   p "The first is a document field. Write the record straight into `endpoint` and then try to read through it:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ cat records-field.wcl
 type Endpoint { host: utf8  port: u32 }
 
@@ -365,12 +365,12 @@ $ wcl get records-field.wcl host
 wcl::eval::unresolved_reference
 
   × unresolved reference 'endpoint.host'
-TEXT
+CONSOLE
   }
 
   p "The second is a call result. `at(dogs, 0).name` parses, and then does not resolve as a field read: it reports `expected a reference, got call`. A member chain resolves through the document tree, and a call sits outside it."
 
-  p "Both have the same one-line fix: put the record in a name first. Three kinds of name work — a `let` item, a `let` binding inside a block expression, and a function parameter:"
+  p "Both have the same one-line fix: put the record in a name first. The three kinds of name that work are a `let` item, a `let` binding inside a block expression, and a function parameter:"
 
   code wcl {
     source = <<'WCL'
@@ -391,7 +391,7 @@ WCL
 
   callout "A record literal is not checked against a plain type" {
     class = ["warning"]
-    body  = "A bare record carries no declared type of its own, so nothing compares it to the type the field declares. Against `resident: Dog`, the value `{ nickname: \"Rex\", colour: \"brown\" }` passes `wcl check` — wrong field names, missing fields, and no complaint. A **union**-typed field is the exception. The [next section](#bare-records-become-union-variants) explains why it has to be: to name a variant, dispatch has no choice but to match the field set. When you want a shape the tool enforces, declare a block kind and write a block ([Documents, fields and blocks](lang_documents)), or declare a union."
+    body  = "A bare record carries no declared type of its own, so nothing compares it to the type the field declares. Against `resident: Dog`, the value `{ nickname: \"Rex\", colour: \"brown\" }` passes `wcl check`: wrong field names, missing fields, and no complaint. A **union**-typed field is the exception. The [next section](#bare-records-become-union-variants) explains why it has to be: to name a variant, dispatch has no choice but to match the field set. When you want a shape the tool enforces, declare a block kind and write a block ([Documents, fields and blocks](lang_documents)), or declare a union."
   }
 
   h3 "The record builtins"
@@ -408,11 +408,11 @@ let doubled  = map_values({ low: 1, high: 9 }, fn(x: i64) -> i64 x * 2)
 WCL
   }
 
-  p "Field order is **sorted by name**, not written order: `keys(rex)` answers `[\"age\", \"name\"]`, and `values` answers in the same order. A record is a set of named slots, so nothing preserves the order you typed them in. `group_by` also produces records — one `{ key, items }` per distinct key — which is how a grouped list is read back."
+  p "Field order is **sorted by name**, not written order: `keys(rex)` answers `[\"age\", \"name\"]`, and `values` answers in the same order. A record is a set of named slots, so nothing preserves the order you typed them in. `group_by` also produces records, one `{ key, items }` per distinct key. That is how a grouped list is read back."
 
   h2 "Bare records become union variants"
 
-  p "This is the rule the opening example turned on, and it is the one thing in this chapter that changes what a value _is_. A bare record may land in a slot whose declared type names a **union**. The record is then matched against every variant of that union by shape. The unique match wins, and the value becomes that variant."
+  p "Bare-record dispatch is the rule the opening example turned on, and it is the one thing in this chapter that changes what a value _is_. A bare record may land in a slot whose declared type names a **union**. The record is then matched against every variant of that union by shape. The unique match wins, and the value becomes that variant."
 
   p "Matching is by **name set first, then field types**. A variant matches when its declared field names are exactly the record's field names. Every value must also satisfy the declared type of the field it fills."
 
@@ -445,8 +445,8 @@ label = slots({ min: 1u32, max: 2u32 })
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get capacity.wcl one
 Capacity::Fixed { units: 3u32 }
 $ wcl get capacity.wcl many
@@ -455,7 +455,7 @@ $ wcl get capacity.wcl plan
 Plan::Tiered { base: Capacity::Fixed { units: 1u32 }, burst: Capacity::Scaled { max: 8u32, min: 2u32 } }
 $ wcl get capacity.wcl label
 "max+min"
-TEXT
+CONSOLE
   }
 
   h3 "Where the coercion runs"
@@ -494,18 +494,18 @@ bare  = { units: 3u32 }                    # no match — `note` is missing
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get optional.wcl named
 Capacity::Fixed { note: none, units: 3u32 }
 $ wcl get optional.wcl bare
 wcl::eval::schema_violation
 
   × no variant of 'Capacity' matches the supplied shape
-TEXT
+CONSOLE
   }
 
-  p "So the two forms are not interchangeable. Reach for the bare record when the field set is unmistakable and the variant name buys nothing. That is the whole reason the coercion exists. Reach for `Union::Variant { … }` when a variant has optional fields, or when two variants are close enough to make a reader think. Reach for it too when you simply want the name on the page."
+  p "So the two forms are not interchangeable. Reach for the bare record when the field set is unmistakable and the variant name buys nothing. That is the whole reason the coercion exists. Reach for `Union::Variant { … }` when a variant has optional fields, or when two variants are close enough to make a reader think. Reach for it too when you want the name on the page."
 
   h3 "When no variant matches"
 
@@ -513,32 +513,32 @@ TEXT
 
   p "**No variant has those field names.** Take `capacity.wcl` and rename the one field:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 # with `one = { size: 3u32 }`
 $ wcl get capacity.wcl one
 wcl::eval::schema_violation
 
   × no variant of 'Capacity' matches the supplied shape
-TEXT
+CONSOLE
   }
 
   p "**Exactly one variant matches by name but a value has the wrong type.** That near miss gets a focused message naming the field and both types, rather than the blanket one above:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 # with `one = { units: "three" }`
 $ wcl get capacity.wcl one
 wcl::eval::schema_violation
 
   × field 'units' of variant Capacity::Fixed expects Builtin(U32), got utf8
-TEXT
+CONSOLE
   }
 
   p "**Two variants share a shape.** This one is caught at the declaration, not at the use, and `wcl check` is what catches it. A union whose variants cannot be told apart is refused before any value is written against it:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 # collide.wcl declares `Capacity` with `Fixed` and `Cap` identical.
 $ wcl check collide.wcl
 wcl::eval::schema_violation
@@ -553,21 +553,21 @@ wcl::eval::schema_violation
    ╰────
 
 collide.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
-  p "The first two are evaluation errors, so `wcl check` prints `OK` for those files. The failure appears when something forces the field. The third is a schema violation, which is why it is the one `check` catches. That ordering is deliberate: ambiguity is a fault in the union itself, and the language refuses to let you declare one."
+  p "The first two are evaluation errors, so `wcl check` prints `OK` for those files. The failure appears when something forces the field. The third is a schema violation, and that is why `check` catches it. That ordering is deliberate: ambiguity is a fault in the union itself, and the language refuses to let you declare one."
 
   h2 "List, tensor or record?"
 
-  p "The three are not variations on one idea. Each answers a different question about the values it holds — how many, in what arrangement, and how you name them."
+  p "The three are not variations on one idea. Each answers a different question about the values it holds: how many, in what arrangement, and how you name them."
 
   table {
     rows:
       | "Kind"      | "Written"                    | "Holds"                              | "An element is reached by" | "Checked against the declared type" |
-      | "`list<T>`" | "`[a, b, c]`"                | "Any number of values of one type"   | "Position, via `at`"       | "Yes — element by element" |
+      | "`list<T>`" | "`[a, b, c]`"                | "Any number of values of one type"   | "Position, via `at`"       | "Yes: element by element" |
       | "`tensor<T, [dims]>`" | "`tensor([…], […])`" | "A flat run plus the shape to read it under" | "Flat position, via `at`" | "The element count against the shape you passed; **not** the declared dims" |
-      | "record"    | "`{ a: 1, b: 2 }`"           | "A fixed set of named fields"        | "Name, via `.` on a bound name" | "Nothing — unless the declared type is a union" |
+      | "record"    | "`{ a: 1, b: 2 }`"           | "A fixed set of named fields"        | "Name, via `.` on a bound name" | "Nothing, unless the declared type is a union" |
   }
 
   p "Reach for a list by default. It is what the rest of the language already speaks: `@children`, tables and every collection builtin hand you one. Reach for a tensor when the **arrangement** is part of the data: a matrix, an image, a batch. Reach for a record when the parts have names rather than positions."
@@ -577,11 +577,11 @@ TEXT
   h2 "Where to go next"
 
   list {
-    li "[Values and primitives](lang_values) — the scalars all three are built out of, and the numeric promotion rule behind `[1, 2]` satisfying `list<u32>`."
-    li "[Types](lang_types) — `type`, `interface`, `union` and `symbol_set` in full, including the variant forms this chapter only dispatched to."
-    li "[Expressions and operators](lang_expressions) — block expressions, `let` bindings, member access and the rest of what may sit on the right of an `=`."
-    li "[Functions](lang_functions) — `fn` literals and `fn` items, the closures every collection builtin takes."
-    li "[Builtins](lang_builtins) — every collection, tensor and record builtin with its signature."
-    li "[Schemas](lang_schemas) — `@children`, `@table` and what `wcl check` does and does not check."
+    li "[Values and primitives](lang_values). The scalars all three are built out of, and the numeric promotion rule behind `[1, 2]` satisfying `list<u32>`."
+    li "[Types](lang_types). `type`, `interface`, `union` and `symbol_set` in full, including the variant forms this chapter only dispatched to."
+    li "[Expressions and operators](lang_expressions). Block expressions, `let` bindings, member access and the rest of what may sit on the right of an `=`."
+    li "[Functions](lang_functions). `fn` literals and `fn` items, the closures every collection builtin takes."
+    li "[Builtins](lang_builtins). Every collection, tensor and record builtin with its signature."
+    li "[Schemas](lang_schemas). `@children`, `@table` and what `wcl check` does and does not check."
   }
 }

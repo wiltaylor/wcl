@@ -1,4 +1,4 @@
-// Chapter 28 — Math.
+// Math.
 //
 // Written against #183. Every equation on this page was built with
 // `wcl wdoc build` before it was written down: the subset table lists
@@ -9,9 +9,9 @@ page wdoc_math {
 
   h1 "Math"
 
-  p "There are three ways to put an equation on a page, and all three carry LaTeX. The `math` block is a centred equation on a line of its own. The inline patterns `$…$` and `$$…$$` put one inside a sentence. All three end at the same node — a `Content::Math` holding the LaTeX — and each output target typesets it from there."
+  p "There are three ways to put an equation on a page, and all three carry LaTeX. The `math` block is a centred equation on a line of its own. The inline patterns `$…$` and `$$…$$` put one inside a sentence. All three end at the same node, a `Content::Math` holding the LaTeX, and each output target typesets it from there."
 
-  p "The typesetting is RaTeX, a pure-Rust pipeline, and every equation comes out as one self-contained SVG: the glyphs are `<path>` outlines embedded in it, not characters in a webfont. No script and no font download stands between a reader and an equation."
+  p "The typesetting is RaTeX, a pure-Rust pipeline, and every equation comes out as one self-contained SVG. The glyphs are `<path>` outlines embedded in it, not characters in a webfont. No script and no font download stands between a reader and an equation."
 
   h2 "A page with equations"
 
@@ -43,14 +43,14 @@ TEX
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build quadratic.wcl --out _site
 wrote 1 page
-TEXT
+CONSOLE
   }
 
-  p "That page carries four equations of two kinds. Three are inline — two in the first sentence, one in the last: they sit on the text baseline and take the surrounding font size. The fourth is a `math` block: centred, on a line of its own, and typeset in display style, which is why its fraction and its root come out full size. Here is the same content, rendered by this book:"
+  p "That page carries four equations of two kinds. Three are inline, two in the first sentence and one in the last. They sit on the text baseline and take the surrounding font size. The fourth is a `math` block: centred, on a line of its own, and typeset in display style. That is why its fraction and its root come out full size. Here is the same content, rendered by this book:"
 
   p "A quadratic $ax^2 + bx + c = 0$ has two real roots whenever its discriminant $b^2 - 4ac$ is positive. Both of them come out of one expression:"
 
@@ -62,7 +62,7 @@ TEX
 
   h2 "The math block"
 
-  p "`math` takes its LaTeX as a label — the value between the kind and the braces — so a one-line equation needs no body at all:"
+  p "`math` takes its LaTeX as a label, the value between the kind and the braces, so a one-line equation needs no body at all:"
 
   code wcl {
     source = <<'WCL'
@@ -79,7 +79,7 @@ WCL
       | "Field"   | "Type"           | "What it does" |
       | "`source`" | "`utf8`, `@inline(0)`" | "The LaTeX. Written as the block's first label, not as a named field." |
       | "`id`"     | "`identifier?`"   | "An HTML id on the wrapping `div`, so a link may point at the equation." |
-      | "`class`"  | "`list<utf8>?`"   | "Extra classes on that same wrapper — the hook for resizing or recolouring it." |
+      | "`class`"  | "`list<utf8>?`"   | "Extra classes on that same wrapper, the hook for resizing or recolouring it." |
   }
 
   code wcl {
@@ -91,11 +91,11 @@ math "e^{i\\pi} + 1 = 0" {
 WCL
   }
 
-  p "The block renders as a `<div class=\"wdoc-math …\">` holding one self-contained `<svg>`. The stdlib gives that wrapper its centring, its vertical margin and a horizontal scrollbar for an equation wider than the column. Anything you pass in `class` is added to that same element, after `wdoc-math` — see [Themes and styling](wdoc_styling) for declaring one."
+  p "The block renders as a `<div class=\"wdoc-math …\">` holding one self-contained `<svg>`. The stdlib gives that wrapper its centring, its vertical margin and a horizontal scrollbar for an equation wider than the column. The build adds anything you pass in `class` to that same element, after `wdoc-math`. See [Themes and styling](wdoc_styling) for declaring one."
 
   h3 "Quote it or heredoc it"
 
-  p "LaTeX is mostly backslashes, and a quoted WCL string reads escapes. In a quoted label every backslash has to be doubled:"
+  p "LaTeX is mostly backslashes, and a quoted WCL string reads escapes. In a quoted label, double every backslash:"
 
   code wcl {
     source = <<'WCL'
@@ -103,7 +103,7 @@ math "\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}"
 WCL
   }
 
-  p "A **raw heredoc** takes the same LaTeX verbatim, which is what you want for anything longer than a fraction:"
+  p "A **raw heredoc** takes the same LaTeX verbatim, and that is what you want for anything longer than a fraction:"
 
   code wcl {
     source = <<'WCL'
@@ -125,10 +125,10 @@ TEX
 
   callout "The quotes on the heredoc tag are not decoration" {
     class = ["warning"]
-    body  = "`<<'TEX'` is the raw form and is verbatim. Plain `<<TEX` is the interpolating form: it reads escapes and `${…}` slots, so `\\frac` fails the parse outright with `invalid escape '\\f'` — before any of this chapter's machinery runs. Always quote the tag for LaTeX. [Values and primitives](lang_values) covers the two heredoc forms."
+    body  = "`<<'TEX'` is the raw form and is verbatim. Plain `<<TEX` is the interpolating form. It reads escapes and `${…}` slots, so `\\frac` fails the parse outright with `invalid escape '\\f'`. That happens before any of this chapter's machinery runs. Always quote the tag for LaTeX. [Values and primitives](lang_values) covers the two heredoc forms."
   }
 
-  p "A `math` block is always display style. There is no field that makes one flow with prose — for that, reach for an inline pattern instead."
+  p "A `math` block is always display style. There is no field that makes one flow with prose. For that, reach for an inline pattern instead."
 
   h2 "Inline math"
 
@@ -142,11 +142,11 @@ WCL
 
   p "Text style $\\sum_{i=1}^{n} i$ against display style $$\\sum_{i=1}^{n} i$$ — the same LaTeX, twice."
 
-  p "The difference is the math style, not the placement. Both stay in the line and both align to the text baseline. Display style is the one that puts the summation's limits above and below the sign and sets a fraction at full size; text style tucks the limits alongside and shrinks the fraction so the line keeps its spacing. Reach for `$…$` by default, and for `$$…$$` when the cramped form is the harder one to read. `$$…$$` is declared first, so it wins at a `$$` opener."
+  p "The difference is the math style, not the placement. Both stay in the line and both align to the text baseline. Display style is the one that puts the summation's limits above and below the sign and sets a fraction at full size. Text style tucks the limits alongside and shrinks the fraction so the line keeps its spacing. Reach for `$…$` by default, and for `$$…$$` when the cramped form is the harder one to read. `$$…$$` is declared first, so it wins at a `$$` opener."
 
   h3 "The delimiter rule"
 
-  p "No inline equation may cross a line: both patterns stop at a newline, so a `$…$` you wrapped across two lines stays prose. The `$…$` pattern carries a second rule on top of that, because a single `$` is also a currency sign — its body may not have whitespace touching either delimiter:"
+  p "No inline equation may cross a line. Both patterns stop at a newline, so a `$…$` you wrapped across two lines stays prose. The `$…$` pattern carries a second rule on top of that, because a single `$` is also a currency sign. Its body may not have whitespace touching either delimiter:"
 
   table {
     rows:
@@ -158,11 +158,11 @@ WCL
       | "`A range of $10-$20`" | "**An equation** reading `10-`, and the trap below." |
   }
 
-  p "`$$…$$` has no such guard — nothing in prose opens with two dollar signs by accident, so `$$ x^2 $$` is an equation, spaces and all."
+  p "`$$…$$` has no such guard. Nothing in prose opens with two dollar signs by accident, so `$$ x^2 $$` is an equation, spaces and all."
 
   callout "There is no backslash escape for a dollar sign" {
     class = ["warning"]
-    body  = "`\\$10-\\$20` does not help: the backslash is prose, the pattern still matches, and you get an error marker where the price was. Two things do work. Put the text in a code span — `$10-$20` between backticks is verbatim and is never re-tokenized — or keep a space after the dollar sign. Read the rule as a guard against the common case, not as a promise."
+    body  = "`\\$10-\\$20` does not help. The backslash is prose, the pattern still matches, and you get an error marker where the price was. Two things do work. Put the text in a code span, because `$10-$20` between backticks is verbatim and nothing re-tokenizes it. Or keep a space after the dollar sign. Read the rule as a guard against the common case, not as a promise."
   }
 
   h2 "Which of the three to reach for"
@@ -177,7 +177,7 @@ WCL
       | "`$…$`"    | "Text"       | "In the sentence, on the baseline" | "No"                 | "A symbol or a small expression is part of the prose" |
   }
 
-  p "Nothing stops a `math` block from being one symbol, or a `$$…$$` from being a three-line derivation. Both read badly. The rule of thumb is the one above: if the sentence needs the equation to finish, keep it inline; if the equation needs the reader to stop, give it a block."
+  p "Nothing stops a `math` block from being one symbol, or a `$$…$$` from being a three-line derivation. Both read badly. The rule is the one above. If the sentence needs the equation to finish, keep it inline. If the equation needs the reader to stop, give it a block."
 
   h2 "The LaTeX subset"
 
@@ -204,7 +204,7 @@ WCL
 
   p "**A command KaTeX does not define is an error, however ordinary it looks in a `.tex` file.** `\\includegraphics{a.png}` fails with `Undefined control sequence: \\includegraphics`, and so does anything else a LaTeX package would have supplied. What you do get beyond the core is what KaTeX itself carries: `\\ce{H2O}` for chemistry, and `\\href{…}{…}` for a link."
 
-  p "**Each equation is a document of its own.** `\\def` and `\\newcommand` work, and their effect ends at the closing delimiter. Define a macro in one `math` block and the next one reports `Undefined control sequence`. There is no page-wide preamble, so a macro you want twice has to be written twice. Nor can you lift the LaTeX into a WCL binding and point a block at it. `source` is a label, and a label is a literal: `math tex` with a `let tex` beside it reads `tex` as an identifier, and the build stops with `block 'math' lowered to a malformed content node`, naming `latex` as the field that is not a `utf8`."
+  p "**Each equation is a document of its own.** `\\def` and `\\newcommand` work, and their effect ends at the closing delimiter. Define a macro in one `math` block and the next one reports `Undefined control sequence`. There is no page-wide preamble, so a macro you want in two equations goes in both. Nor can you lift the LaTeX into a WCL binding and point a block at it. `source` is a label, and a label is a literal. `math tex` with a `let tex` beside it reads `tex` as an identifier, and the build stops with `block 'math' lowered to a malformed content node`, naming `latex` as the field that is not a `utf8`."
 
   h2 "When the LaTeX is wrong"
 
@@ -218,7 +218,7 @@ WCL
       | "`\\begin{unknownenv} x \\end{unknownenv}`" | "`ParseError: No such environment: unknownenv`" |
   }
 
-  p "The same marker replaces an inline equation, so a `$10-$20` that matched by accident shows up as red monospace in the middle of the sentence rather than as a build failure. Layout is guarded the same way: a panic inside the layout engine on pathological input becomes the marker `math layout panicked`, not a crashed build."
+  p "The same marker replaces an inline equation, so a `$10-$20` that matched by accident shows up as red monospace in the middle of the sentence rather than as a build failure. The layout stage has the same guard. A panic inside the layout engine on pathological input becomes the marker `math layout panicked`, not a crashed build."
 
   callout "Markdown does not typeset, so it does not check" {
     class = ["note"]
@@ -227,11 +227,11 @@ WCL
 
   h2 "Colour and size"
 
-  p "An equation follows the colour of the text around it. RaTeX paints its glyphs black; the renderer rewrites that default black to `currentColor` on the way out, so a theme, a class, or the light/dark toggle carries the equation with it. A colour you asked for explicitly is not black and is therefore left alone — `\\textcolor{red}{x}` stays red under every theme."
+  p "An equation follows the colour of the text around it. RaTeX paints its glyphs black. The renderer rewrites that default black to `currentColor` on the way out, so a theme, a class, or the light/dark toggle carries the equation with it. A colour you asked for explicitly is not black, so the rewrite leaves it alone. `\\textcolor{red}{x}` stays red under every theme."
 
   math "\\textcolor{#bf616a}{E} = \\textcolor{#a3be8c}{m}c^2"
 
-  p "Size works the same way. The `<svg>` is sized in `em` from the layout's own metrics, not in pixels, so an equation scales with the font of whatever contains it. To make one bigger, change the font size of the wrapper through `class` rather than reaching for a LaTeX sizing command:"
+  p "Size works the same way. The `<svg>` carries its size in `em` from the layout's own metrics, not in pixels, so an equation scales with the font of whatever contains it. To make one bigger, change the font size of the wrapper through `class` rather than reaching for a LaTeX sizing command:"
 
   code wcl {
     source = <<'WCL'
@@ -264,25 +264,25 @@ lower = fn(m: Math) -> list<Content> [
 WCL
   }
 
-  p "That matters more than it looks. `Content::Math` is a node of the semantic content IR — the closed union every backend matches exhaustively — and its payload is fixed: some LaTeX, a style, an optional id and some classes. The typesetting is still Rust's work, because a layout engine is not expressible in WCL. But each target does that work from the same payload rather than from its own reading of the block, and adding a target means adding one arm. See [Writing your own blocks](wdoc_extending) for the `lower`-or-`@native` rule this is the good half of, and [Output targets](wdoc_outputs) for the targets themselves."
+  p "That matters more than it looks. `Content::Math` is a node of the semantic content IR, the closed union every backend matches exhaustively. Its payload is fixed: some LaTeX, a style, an optional id and some classes. The typesetting is still Rust's work, because a layout engine is not expressible in WCL. But each target does that work from the same payload rather than from its own reading of the block, and adding a target means adding one arm. See [Writing your own blocks](wdoc_extending) for the `lower`-or-`@native` rule that `math` is the good half of, and [Output targets](wdoc_outputs) for the targets themselves."
 
   table {
     rows:
       | "Target"   | "What it does with `Content::Math`" |
       | "HTML"     | "Typesets it: a `<div class=\"wdoc-math\">` around a self-contained `<svg>`, `id` applied." |
-      | "PDF"      | "Typesets the same SVG and places it as a block. The `id` is dropped — there is nothing to link to." |
+      | "PDF"      | "Typesets the same SVG and places it as a block. The PDF drops the `id`, because there is nothing to link to." |
       | "Markdown" | "Emits the LaTeX between `$$` fences, untypeset. Inline math keeps its own `$…$` or `$$…$$`." |
   }
 
-  p "Inline math travels the same road one level down. `$…$` and `$$…$$` produce an `InlineSpan::Math`, HTML and PDF hand it to the same typesetter that serves the block, and Markdown writes the delimiters back out. One LaTeX-to-SVG leaf serves both forms and both typesetting targets."
+  p "Inline math works the same way one level down. `$…$` and `$$…$$` produce an `InlineSpan::Math`, HTML and PDF hand it to the same typesetter that serves the block, and Markdown writes the delimiters back out. One LaTeX-to-SVG leaf serves both forms and both typesetting targets."
 
   h2 "Where to go next"
 
   list {
-    li "[Text and formatting](wdoc_formatting) — the inline pattern system `$…$` belongs to, and the rest of it."
-    li "[Code](wdoc_code) — the other block that carries a fixed payload for each backend to render its own way."
-    li "[Themes and styling](wdoc_styling) — declaring the `class` an equation reaches for."
-    li "[Output targets](wdoc_outputs) — what HTML, PDF and Markdown each do with a page."
-    li "[Writing your own blocks](wdoc_extending) — `lower`, `@native`, and why `math` is the first and not the second."
+    li "[Text and formatting](wdoc_formatting). The inline pattern system `$…$` belongs to, and the rest of it."
+    li "[Code](wdoc_code). The other block that carries a fixed payload for each backend to render its own way."
+    li "[Themes and styling](wdoc_styling). Declaring the `class` an equation reaches for."
+    li "[Output targets](wdoc_outputs). What HTML, PDF and Markdown each do with a page."
+    li "[Writing your own blocks](wdoc_extending). `lower`, `@native`, and why `math` is the first and not the second."
   }
 }

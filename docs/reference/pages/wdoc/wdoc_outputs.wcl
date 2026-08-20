@@ -1,4 +1,4 @@
-// Chapter 21 — Output targets.
+// Output targets.
 //
 // Written against #213, the wave-5 pass over the *stripped* crates. Two
 // things changed under this chapter and both are stated where they belong:
@@ -16,7 +16,7 @@ page wdoc_outputs {
 
   p "One document, three outputs, one command. `wcl wdoc build --type html` renders a website, `--type pdf` a paginated PDF, and `--type markdown` a folder of `.md` files (`md` is an alias). `html` is the default, so a bare `wcl wdoc build` is the website. `wcl wdoc serve` is that first target with a watcher and a browser attached, not a fourth thing."
 
-  p "This chapter covers each target: what it writes, what it can carry, and what it cannot. It then covers the mechanism that keeps the three honest: one closed content vocabulary that every backend must match exhaustively. Two dev-loop devices are built on that mechanism, and this chapter covers them too — `wcl wdoc serve` and the `markdown_source` block."
+  p "This chapter covers each target: what it writes, what it can carry, and what it cannot. It then covers the mechanism that keeps the three honest: one closed content vocabulary that every backend must match exhaustively. Two dev-loop devices build on that mechanism, and they are here too: `wcl wdoc serve` and the `markdown_source` block."
 
   p "[The CLI](lang_cli) lists every flag. This chapter is about what happens after you type them."
 
@@ -30,18 +30,18 @@ page wdoc_outputs {
 
   callout "A new content node is a compile error in three places" {
     class = ["info"]
-    body  = "The content vocabulary is a closed union with no generic container and no raw-markup escape hatch. Every backend matches it **exhaustively** — no catch-all arm in the HTML walker, the PDF walker or the Markdown walker. So a variant added to the union does not silently render as nothing in two of three outputs. It fails to compile until all three say what to do with it. That is the mechanism, not a convention someone remembers to follow."
+    body  = "The content vocabulary is a closed union with no generic container and no raw-markup escape hatch. Every backend matches it **exhaustively**: no catch-all arm in the HTML walker, the PDF walker or the Markdown walker. So a variant added to the union does not silently render as nothing in two of three outputs. It fails to compile until all three say what to do with it. That is the mechanism, not a convention someone remembers to follow."
   }
 
-  h2 "--type html — the website"
+  h2 "--type html: the website"
 
   p "`build` renders every page to HTML and writes the shared assets beside them."
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 wrote 2 pages
-TEXT
+CONSOLE
   }
 
   code text {
@@ -58,26 +58,26 @@ TEXT
 
   h3 "build never wipes --out"
 
-  p "The output directory is created if missing and written into. It is never emptied first, so a build can write beside hand-authored files — and a renamed or deleted page leaves its old file behind."
+  p "The build creates the output directory if it is missing, then writes into it. It never empties the directory first, so a build can write beside hand-authored files. A renamed or deleted page leaves its old file behind."
 
-  p "Delete the directory yourself when the output has to match the document exactly. [Documents, pages and sites](wdoc_sites#a-build-never-wipes-its-output) works that consequence through with a rename."
+  p "When the output has to match the document exactly, delete the directory yourself. [Documents, pages and sites](wdoc_sites#a-build-never-wipes-its-output) works that consequence through with a rename."
 
   callout "Everything the site needs is served, not read from disk" {
     class = ["warning"]
     body  = "Search fetches its index over HTTP, and so do the player scripts. The site works when a host serves it, or when `wcl wdoc serve` does. Opening a page directly from disk gives you the prose and loses the search box."
   }
 
-  h2 "wcl wdoc serve — the dev loop"
+  h2 "wcl wdoc serve: the dev loop"
 
   p "`serve` runs a build, then serves the result over HTTP with a watcher and a live-reload script in every page."
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc serve main.wcl --out _serve
 rendered 2 pages
 serving http://127.0.0.1:8199  (source: main.wcl, out: _serve)
 auto-rebuild is off — press Enter here to rebuild after edits
-TEXT
+CONSOLE
   }
 
   p "That third line is the design, not a missing feature. The watcher sees every `.wcl` change and **accumulates** it. It does not rebuild:"
@@ -90,22 +90,22 @@ TEXT
 
   p "A rebuild happens when you ask for one, and there are exactly two ways to ask. Press **Enter** in the console where `serve` is running, or send `POST /__wdoc_rebuild`:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ curl -s -X POST http://127.0.0.1:8199/__wdoc_rebuild
 {"ok":true,"summary":"2 pages (intro, ref)"}
-TEXT
+CONSOLE
   }
 
   p "The HTTP form **waits** for the build and reports what it did. An editor hook, or a file-watcher of your own, can therefore trigger a rebuild and know whether it succeeded. The browser reloads on its own: each page long-polls `/__wdoc_reload` and reloads when the build generation changes. The generation moves on a failed build too, so a browser parked on the error page picks up the fix."
 
-  p "Omitting `--out` gives you a temporary directory that is removed on shutdown, which is usually what you want while writing."
+  p "Omit `--out` while you are writing and you get a temporary directory that `serve` removes on shutdown."
 
   h3 "What a rebuild re-renders"
 
   p "A rebuild drains **every** pending change at once and hands the whole set to the incremental builder. There is no scoping below that: it is the changed set, or a full build."
 
-  p "The incremental builder maps each changed file onto the top-level blocks that came from it. Say every changed file contributed only `page` blocks. It then re-renders those pages in place and leaves the shared site-wide artifacts untouched — the icon sprite, the search index, the CSS embedded in each page:"
+  p "The incremental builder maps each changed file onto the top-level blocks that came from it. Say every changed file contributed only `page` blocks. It then re-renders those pages in place and leaves the shared site-wide artifacts untouched, among them the icon sprite, the search index and the CSS embedded in each page:"
 
   code text {
     source = <<'TEXT'
@@ -121,44 +121,44 @@ rebuilt: 2 pages (full)
 TEXT
   }
 
-  p "The fallback is deliberately eager, because the failure mode of being clever here is a stale page that looks right. Six kinds of change force a full build: an imported library, the page set, the CSS, an asset declaration, a repeater, and one that pulls in an icon the sprite does not have yet. So does a change to a file holding a `site` block, which is why editing your entry document usually rebuilds everything."
+  p "The fallback is deliberately eager, because the failure mode of being clever here is a stale page that looks right. Six kinds of change force a full build: an imported library, the page set, the CSS, an asset declaration, a repeater, and one that pulls in an icon the sprite does not have yet. A change to a file holding a `site` block does too. That is why editing your entry document usually rebuilds everything."
 
   callout "Scoping is by file, not by block" {
     class = ["note"]
     body  = "Two pages in one `pages.wcl` are one unit: edit either and both re-render. That is not a limitation worth working around by splitting files. The saving is in skipping the *other* fifty pages and the aggregate writes, and the parse happens either way because imports force it."
   }
 
-  h2 "--type pdf — print"
+  h2 "--type pdf: print"
 
   p "`--type pdf` renders each site to one paginated PDF. It is pure Rust: no browser, no headless Chrome, no external binary."
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _pdf --type pdf
 wrote 1 pdf
 $ ls _pdf
 handbook.pdf
-TEXT
+CONSOLE
   }
 
-  p "The file is named after the **site**, not after the source document. With no `site` block at all, the source file stem names it. `--page-size letter` switches from A4; that flag applies to this type only, and passing it with `--type html` or `--type markdown` is an error rather than being quietly ignored. Note the count, too: `pdf` reports **sites**, not pages, so a three-page two-site document says `wrote 2 pdfs`."
+  p "The build names the file after the **site**, not after the source document. With no `site` block at all, the source file stem names it. `--page-size letter` switches from A4. That flag applies to this type only, and passing it with `--type html` or `--type markdown` is an error rather than being quietly ignored. The count differs too: `pdf` reports **sites**, not pages, so a three-page two-site document says `wrote 2 pdfs`."
 
-  p "Prose, headings, lists, tables, code listings, callouts, footnotes, chapter headers, images and maths all paginate. Diagrams, sequence and state diagrams, terminals and wireframes are painted from the same shape vocabulary the other targets draw. A diagram in a PDF is therefore the same drawing at the same viewBox. It is not a screenshot and it is not a fallback."
+  p "Prose, headings, lists, tables, code listings, callouts, footnotes, chapter headers, images and maths all paginate. The PDF renderer paints diagrams, sequence and state diagrams, terminals and wireframes from the same shape vocabulary the other targets draw. A diagram in a PDF is therefore the same drawing at the same viewBox. It is not a screenshot and it is not a fallback."
 
   p "What a PDF cannot do is anything interactive or anything that lives beside the document:"
 
   list {
     li "**Video** shows its poster image, with a link only when the source is an online URL. A link to a local path in a distributed PDF is worse than no link."
-    li "**`file`** is not covered at all. There is no output folder beside a PDF to ship a copy into. A `file` on a page you build to PDF is therefore refused, until you waive it with `@except(backends = [:pdf])`. [Visibility](wdoc_visibility) covers the waiver."
-    li "**Search, the theme toggle, diagram pan-and-zoom, terminal replay and the deck player** are HTML devices. They are simply absent."
+    li "**`file`.** The PDF target does not cover it at all. There is no output folder beside a PDF to ship a copy into. The build therefore refuses a `file` on a page you build to PDF, until you waive it with `@except(backends = [:pdf])`. [Visibility](wdoc_visibility) covers the waiver."
+    li "**Search, the theme toggle, diagram pan-and-zoom, terminal replay and the deck player** are HTML devices. They are absent."
   }
 
-  h2 "--type markdown — text"
+  h2 "--type markdown: text"
 
   p "`--type markdown` writes one `.md` per page, plus the standalone `.svg` files that Markdown references. `--type md` is an alias."
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _md --type markdown
 wrote 1 page
 $ find _md -type f
@@ -166,10 +166,10 @@ _md/index.md
 _md/one.md
 _md/_wdoc/one-diagram-1.svg
 _md/_wdoc/video-clip-b97542c2.mp4
-TEXT
+CONSOLE
   }
 
-  p "The target is aimed at readers that want text: a model, a search index, a repository someone browses on a code host. So it keeps meaning and drops chrome."
+  p "The target aims at readers that want text: a model, a search index, a repository someone browses on a code host. So it keeps meaning and drops chrome."
 
   p "Here is a page carrying frontmatter, prose, an equation, a diagram and a video, and the whole file it produced:"
 
@@ -200,11 +200,11 @@ MD
   table {
     rows:
       | "In the document"        | "In the Markdown" |
-      | "a `frontmatter` block"  | "a YAML header — the other two targets pass over it" |
-      | "`[link](one)`"          | "`[link](one.md)` — a page name becomes a file name" |
+      | "a `frontmatter` block"  | "a YAML header. The other two targets pass over it" |
+      | "`[link](one)`"          | "`[link](one.md)`. A page name becomes a file name" |
       | "a `math` block"         | "`$$ … $$`, still LaTeX, for the reader to typeset" |
       | "a `diagram`"            | "a standalone `.svg` under `_wdoc/`, referenced by an image" |
-      | "a `video`"              | "a link; a local source is copied out first" |
+      | "a `video`"              | "a link. The build copies a local source out first" |
   }
 
   p "Two more worth knowing. A `code` block becomes a fence under its filename rather than a styled card. A `callout` becomes a GitHub alert (`> [!NOTE]`), keyed on the callout's kind:"
@@ -218,9 +218,9 @@ MD
 MD
   }
 
-  p "Diagrams, terminals and wireframes render as **plain SVG** rather than as an approximation in text, which is why a zoomable diagram survives the trip. Equations stay LaTeX for the same reason: converting either to ASCII would lose the thing worth keeping."
+  p "Diagrams, terminals and wireframes render as **plain SVG** rather than as an approximation in text, so a zoomable diagram survives the trip. Equations stay LaTeX for the same reason: converting either to ASCII would lose the thing worth keeping."
 
-  h2 "markdown_source — previewing the Markdown"
+  h2 "markdown_source: previewing the Markdown"
 
   p "There is a block for reading a page's generated Markdown _inside_ the book, next to the rendered version. Wrap the content in `markdown_source`:"
 
@@ -253,7 +253,7 @@ MD
 
   p "Set `id` to the previewed page's name. It is the filename stem for any diagram or terminal SVGs the body's Markdown writes. The `![](…)` references then line up with what a real `wcl wdoc build --type markdown` run would produce."
 
-  p "The block is native on `:html` and only `:html`, because it taps the Markdown emitter from inside the HTML build. Using it on another target is refused rather than rendering nothing — see [Visibility](wdoc_visibility) for the waiver."
+  p "The block is native on `:html` and only `:html`, because it taps the Markdown emitter from inside the HTML build. The build refuses it on another target rather than rendering nothing. See [Visibility](wdoc_visibility) for the waiver."
 
   h2 "Choosing a target"
 
@@ -262,21 +262,21 @@ MD
   table {
     rows:
       | "`--type`"   | "Reach for it when" | "Give up" |
-      | "`html`"     | "People will read it in a browser" | "nothing — this is the full-fidelity target, and the default" |
+      | "`html`"     | "People will read it in a browser" | "nothing. This is the full-fidelity target, and the default" |
       | "`pdf`"      | "It has to print, or travel as one file" | "interactivity, `file` assets, playable video" |
-      | "`markdown`" | "A model, a diff or a code host will read it" | "layout, theming, search; keeps the meaning" |
+      | "`markdown`" | "A model, a diff or a code host will read it" | "layout, theming, search. It keeps the meaning" |
   }
 
-  p "Building more than one from the same source is the normal case, and it is what the `backends` axis is for: the paragraph that only makes sense in a browser carries `@only(backends = [:html])`, and everything else is written once."
+  p "Building more than one from the same source is the normal case, and it is what the `backends` axis is for: the paragraph that makes sense only in a browser carries `@only(backends = [:html])`, and you write everything else once."
 
   h2 "Where to go next"
 
   list {
-    li "[The CLI](lang_cli) — every flag of `build` and `serve`, and the exit codes they return."
-    li "[Visibility](wdoc_visibility) — `@only` and `@except`, and waiving a native block on a target that cannot render it."
-    li "[Documents, pages and sites](wdoc_sites) — the output tree, multi-site routing, the start page and search."
-    li "[Writing your own blocks](wdoc_extending) — lowering versus `@native`, and how a block declares the targets it covers."
-    li "[Code](wdoc_code) — the chrome each backend draws around a `code` block."
-    li "[Images, videos and file assets](wdoc_media) — the `file` block the PDF target does not cover."
+    li "[The CLI](lang_cli). Every flag of `build` and `serve`, and the exit codes they return."
+    li "[Visibility](wdoc_visibility). `@only` and `@except`, and waiving a native block on a target that cannot render it."
+    li "[Documents, pages and sites](wdoc_sites). The output tree, multi-site routing, the start page and search."
+    li "[Writing your own blocks](wdoc_extending). Lowering versus `@native`, and how a block declares the targets it covers."
+    li "[Code](wdoc_code). The chrome each backend draws around a `code` block."
+    li "[Images, videos and file assets](wdoc_media). The `file` block the PDF target does not cover."
   }
 }

@@ -1,4 +1,4 @@
-// Chapter 15 — Documents, pages and sites.
+// Documents, pages and sites.
 //
 // Written against `crates/wcl_wdoc/src/{build.rs,render/html.rs}` and
 // `crates/wcl_wdoc/lib/{core.wcl,templates.wcl}`. Every file, command and
@@ -10,19 +10,19 @@ page wdoc_sites {
 
   h1 "Documents, pages and sites"
 
-  p "wdoc renders a WCL document into something a reader opens — a website, a folder of Markdown, a PDF. This chapter is about the HTML build, because that is the one whose structure the other targets follow. The document itself is not a special file format. It is the same tree of fields and blocks that [Documents, fields and blocks](lang_documents) describes, read by the same parser and checked by the same schema engine. One import is what makes it a wdoc document."
+  p "wdoc renders a WCL document into something a reader opens: a website, a folder of Markdown, a PDF. This chapter is about the HTML build, because that is the one whose structure the other targets follow. The document itself is not a special file format. It is the same tree of fields and blocks that [Documents, fields and blocks](lang_documents) describes, read by the same parser and checked by the same schema engine. One import is what makes it a wdoc document."
 
-  p "This chapter covers that import, the two blocks that decide the shape of the output — `page` and `site` — the navigation blocks a site holds, and the directory a build writes. It is the map of the whole wdoc half of this book: every later chapter fills in what goes _inside_ a page."
+  p "This chapter covers that import, the `page` and `site` blocks that decide the shape of the output, the navigation blocks a site holds, and the directory a build writes. It is the map of the whole wdoc half of this book: every later chapter fills in what goes _inside_ a page."
 
   p "Every file, command and listing below was run before it was written down. Type them and compare."
 
   h2 "The entry document"
 
-  p "A build starts at one file, the **entry document**, and follows its `import` statements. Everything the build can see — pages, sites, styles, your own block types — has to be reachable from there."
+  p "A build starts at one file, the **entry document**, and follows its `import` statements. Everything the build can see has to be reachable from there: pages, sites, styles, your own block types."
 
-  p "The entry document opens with `import <wdoc.wcl>`. The angle brackets mean a **system import**: the file is not on your disk, it is the standard library embedded in the `wcl` binary. That one line brings the whole wdoc vocabulary into scope — the `@document` schema that makes `page` and `site` legal at the top level, every content block, the built-in templates and themes. [Namespaces and imports](lang_namespaces) covers the two import forms."
+  p "The entry document opens with `import <wdoc.wcl>`. The angle brackets mean a **system import**: the file is not on your disk, it is the standard library embedded in the `wcl` binary. That one line brings the whole wdoc vocabulary into scope: the `@document` schema that makes `page` and `site` legal at the top level, every content block, the built-in templates and themes. [Namespaces and imports](lang_namespaces) covers the two import forms."
 
-  p "Here is a complete site — three files:"
+  p "Here is a complete site, in three files:"
 
   code wcl {
     filename = "main.wcl"
@@ -86,18 +86,18 @@ WCL
 
   p "Build it:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 wrote 3 pages
-TEXT
+CONSOLE
   }
 
-  p "Note what the two imported files do **not** carry. No import of their own, no site name, no template. A `page` block is legal in `pages/operations.wcl` only because `main.wcl` imported the wdoc schema, and the pages join the `handbook` site without saying so because the document declares exactly one. Splitting a document across files is a filing decision, not a structural one — see [Namespaces and imports](lang_namespaces)."
+  p "Note what the two imported files do **not** carry. No import of their own, no site name, no template. A `page` block is legal in `pages/operations.wcl` only because `main.wcl` imported the wdoc schema, and the pages join the `handbook` site without saying so because the document declares exactly one. Splitting a document across files is a filing decision, not a structural one. See [Namespaces and imports](lang_namespaces)."
 
   callout "One import, or nothing parses" {
     class = ["warning"]
-    body  = "Drop the `import <wdoc.wcl>` line and the failure is not a missing feature, it is a schema violation: `block kind 'page' has no @block or @table declaration`. Nothing declares `page`, so the document has no root schema to stand on. That is the same rule [Documents, fields and blocks](lang_documents) states — there is no schema-free document, and a wdoc document gets its schema from the standard library."
+    body  = "Drop the `import <wdoc.wcl>` line and the failure is not a missing feature, it is a schema violation: `block kind 'page' has no @block or @table declaration`. Nothing declares `page`, so the document has no root schema to stand on. That is the same rule [Documents, fields and blocks](lang_documents) states: there is no schema-free document, and a wdoc document gets its schema from the standard library."
   }
 
   h2 "Pages"
@@ -109,48 +109,48 @@ TEXT
       | "Field"        | "Type"           | "What it does" |
       | "the label"    | "`identifier`"   | "The page name: the output filename and the link target. See [Page names are routes](#page-names-are-routes)." |
       | "`title`"      | "`utf8?`"        | "The browser tab title. Falls back to the page name." |
-      | "`template`"   | "`symbol?`"      | "Wrap this one page in a named template, overriding the site's `default_template`. See [Templates and layouts](wdoc_templates)." |
+      | "`template`"   | "`symbol?`"      | "Wrap this one page in a named template instead of the site's `default_template`. See [Templates and layouts](wdoc_templates)." |
       | "`sites`"      | "`list<symbol>?`" | "Which sites this page belongs to. Required once the document declares more than one." |
       | "`start`"      | "`bool?`"        | "Mark this page as the site's landing page. See [The start page](#the-start-page)." |
       | "`frontmatter`" | "a child block" | "YAML front matter for the Markdown target only. See [Front matter](#front-matter)." |
       | "`id`"         | "`identifier?`"  | "Declared, and no built-in target renders it. An id you want in the output goes on a content block, not on the page." |
   }
 
-  p "Everything else inside a `page` is content. Which blocks are legal there is not a list the `page` type spells out — it is the interface `ContentBlock`, so any block that lowers to page content fits, including the ones you declare yourself. [Writing your own blocks](wdoc_extending) covers that end of it."
+  p "Everything else inside a `page` is content. Which blocks are legal there is not a list the `page` type spells out. It is the interface `ContentBlock`, so any block that lowers to page content fits, including the ones you declare yourself. [Writing your own blocks](wdoc_extending) covers that end of it."
 
   h3 "Page names are routes"
 
   p "The page's label is not decoration. It is the route. A page named `deploying` becomes `deploying.html` in an HTML build and `deploying.md` in a Markdown one, and `[the plan](deploying)` anywhere in the site resolves to it."
 
-  p "Because the name becomes a filename, it is constrained. A route must be non-empty and built only from `A-Za-z0-9_-`. A bare identifier label always passes, which is why you rarely meet the rule; a quoted label lets you break it:"
+  p "Because the name becomes a filename, it is constrained. A route must be non-empty and built only from `A-Za-z0-9_-`. A bare identifier label always passes, so you rarely meet the rule. A quoted label lets you break it:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build a.wcl --out _o
 page route "getting started" is not slug-safe — a generated page name must be
 non-empty and contain only [A-Za-z0-9_-]; build one with e.g.
 `to_lower(replace(s, " ", "-"))`
-TEXT
+CONSOLE
   }
 
-  p "Write `page \"getting-started\"` instead and it builds to `getting-started.html`. The quotes are needed there only because a hyphen is not legal in a bare identifier — see [Blocks and labels](lang_documents#blocks-and-labels)."
+  p "Write `page \"getting-started\"` instead and it builds to `getting-started.html`. The quotes are needed there only because a hyphen is not legal in a bare identifier. See [Blocks and labels](lang_documents#blocks-and-labels)."
 
   p "Routes are unique **per site**. Two pages of one site sharing a name would silently overwrite each other's file, so the build refuses:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build b.wcl --out _o
 site "default": duplicate page "intro"
-TEXT
+CONSOLE
   }
 
   p "Two _different_ sites may each have a page named `index`, because each site writes into its own directory."
 
-  p "Links between pages are ordinary markdown-style links in prose, and the target is a page name rather than a path. Add `#anchor` to land on a heading; the anchor is the heading text lowercased, with every run of other characters collapsed to a single hyphen — `\"The two-minute rollback\"` becomes `the-two-minute-rollback`. Write `site_name:page_name` to cross into another site of the same document. [Text and formatting](wdoc_formatting) covers the inline patterns in full."
+  p "Links between pages are ordinary markdown-style links in prose, and the target is a page name rather than a path. Add `#anchor` to land on a heading. The anchor is the heading text lowercased, with every run of other characters collapsed to a single hyphen. So `\"The two-minute rollback\"` becomes `the-two-minute-rollback`. Write `site_name:page_name` to cross into another site of the same document. [Text and formatting](wdoc_formatting) covers the inline patterns in full."
 
-  callout "A page name is checked; an anchor is not" {
+  callout "A page name is checked, but an anchor is not" {
     class = ["warning"]
-    body  = "A link whose page name matches nothing fails the build — `link to unknown page 'deployment'` — so renaming a page cannot quietly break navigation. The `#fragment` half is passed through untouched. A link to a heading that no longer exists still builds, and still lands the reader at the top of the right page."
+    body  = "A link whose page name matches nothing fails the build with `link to unknown page 'deployment'`, so renaming a page cannot quietly break navigation. The build passes the `#fragment` half through untouched. A link to a heading that no longer exists still builds, and still lands the reader at the top of the right page."
   }
 
   h3 "The start page"
@@ -158,31 +158,31 @@ TEXT
   p "`/` has to serve something. Two mechanisms decide what, in this order:"
 
   list {
-    li "The page with `start = true` is copied to `index.html` **in addition to** its own `<name>.html`. At most one page per site may set it; a second one fails the build, naming both."
+    li "The build copies the page with `start = true` to `index.html` **in addition to** its own `<name>.html`. At most one page per site may set it. A second one fails the build and names both."
     li "Otherwise a page literally named `index` already wrote `index.html`."
   }
 
   p "The first wins outright: a site with both a `start` page and a page named `index` serves the `start` page at `/`, because the copy runs after the pages are written. The `index` page is still there under its own name, and nothing warns you. Pick one mechanism per site."
 
-  p "With neither, a single-site build produces no `index.html` at all — the pages are there, the directory has no landing page, and a server will show you its own listing. That is worth checking before you deploy. In a multi-site build the missing case is filled instead: any site of that build with no landing page gets a small generated `index.html` that redirects to its first page, so `/` and every `/<site>/` go somewhere."
+  p "With neither, a single-site build produces no `index.html` at all. The pages are there, the directory has no landing page, and a server will show you its own listing. That is worth checking before you deploy. A multi-site build fills the gap instead: any site of that build with no landing page gets a small generated `index.html` that redirects to its first page, so `/` and every `/<site>/` go somewhere."
 
   h3 "Three names for one page"
 
-  p "A page carries up to three pieces of text that all read like a title, and they drive different surfaces. Keeping them straight saves an afternoon:"
+  p "A page carries up to three pieces of text that all read like a title, and each one drives a different part of the output. Keeping them straight saves an afternoon:"
 
   table {
     rows:
       | "The name"                  | "Where it is written"                | "What it drives" |
       | "The route"                 | "the page's label"                   | "The filename and every `[…](page)` link" |
-      | "`title`"                   | "the page's `title` field"           | "The browser tab. `<title>` is `<page title> — <site title>`; the suffix is dropped when the site sets no title, or sets the same one" |
+      | "`title`"                   | "the page's `title` field"           | "The browser tab. `<title>` is `<page title> — <site title>`. The build drops the suffix when the site sets no title, or sets the same one" |
       | "The first `h1`"            | "the page body"                      | "The label the built-in navigation shows for the page when no `toc` names it" |
   }
 
-  p "Run the difference. Give a page `title = \"Deploy (tab)\"` and `h1 \"Deploying a release\"`, in a `book` site with no `toc`: the browser tab reads `Deploy (tab) — Handbook`, and the sidebar entry reads `Deploying a release`. Add a `toc`, and the sidebar reads neither — it reads the `chapter` label, which is a fourth piece of text under the site's control rather than the page's. That is the point of a `toc`: the book decides how it lists its own chapters."
+  p "Run the difference. Give a page `title = \"Deploy (tab)\"` and `h1 \"Deploying a release\"`, in a `book` site with no `toc`: the browser tab reads `Deploy (tab) — Handbook`, and the sidebar entry reads `Deploying a release`. Add a `toc`, and the sidebar reads neither. It reads the `chapter` label, a fourth piece of text under the site's control rather than the page's. That is the point of a `toc`: the book decides how it lists its own chapters."
 
   h3 "Front matter"
 
-  p "A `frontmatter` child block attaches YAML to a page for the **Markdown target only**. The HTML and PDF targets pass over it. Use it when the `.md` files feed something that reads a YAML header — a static-site generator, an indexer, an agent."
+  p "A `frontmatter` child block attaches YAML to a page for the **Markdown target only**. The HTML and PDF targets pass over it. Use it when the `.md` files feed something that reads a YAML header: a static-site generator, an indexer, an agent."
 
   code wcl {
     filename = "release_notes.wcl"
@@ -204,8 +204,8 @@ page release_notes {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build release_notes.wcl --out _md --type markdown
 wrote 1 page
 $ cat _md/release_notes.md
@@ -220,14 +220,14 @@ draft: false
 # Release notes
 
 What changed in 1.4.
-TEXT
+CONSOLE
   }
 
-  p "The block is **open**: it declares no fields of its own, so any `key = value` you write is accepted and serialized in source order. Strings, numbers, booleans, symbols, lists and nested records all get proper block YAML. That openness is the one thing to respect — a typo in a key is not a schema violation here, it is a key in your YAML. [Output targets](wdoc_outputs) covers the Markdown backend."
+  p "The block is **open**: it declares no fields of its own, so the build accepts any `key = value` you write and serializes it in source order. Strings, numbers, booleans, symbols, lists and nested records all get proper block YAML. That openness is the one thing to respect. A typo in a key is not a schema violation here, it is a key in your YAML. [Output targets](wdoc_outputs) covers the Markdown backend."
 
   h2 "Sites"
 
-  p "A `site` block is one output site: a directory of pages that share a template, a title, a theme and a navigation tree. It says how a set of pages is presented; the pages themselves say nothing about presentation."
+  p "A `site` block is one output site: a directory of pages that share a template, a title, a theme and a navigation tree. It says how a set of pages is presented. The pages themselves say nothing about presentation."
 
   code wcl {
     source = <<'WCL'
@@ -244,11 +244,11 @@ WCL
   table {
     rows:
       | "Field"              | "What it does"                                                        | "Covered in" |
-      | "the label"          | "The site name. Optional for one site; required for two or more."     | "[One document, several sites](#one-document-several-sites)" |
+      | "the label"          | "The site name. Optional for one site, required for two or more."     | "[One document, several sites](#one-document-several-sites)" |
       | "`root`"             | "Render this site at the output root instead of a subdirectory."      | "[One document, several sites](#one-document-several-sites)" |
       | "`default_template`" | "`:book`, `:webpage`, `:presentation`, or your own."                  | "[Templates and layouts](wdoc_templates)" |
       | "`title`"            | "The site title, shown in the chrome and in every page's `<title>`."  | "This chapter" |
-      | "`theme` / `accent` / `theme_toggle`" | "Colour scheme, accent hue, light/dark toggle."      | "[Themes and styling](wdoc_styling)" |
+      | "`theme` / `accent` / `theme_toggle`" | "Colour scheme, accent hue, light and dark toggle."      | "[Themes and styling](wdoc_styling)" |
       | "`search`"           | "Client-side full-text search over this site's pages."                | "[Templates and layouts](wdoc_templates)" |
       | "`icon`"             | "A favicon path, resolved relative to the document and copied into the output." | "This chapter" |
       | "`assets`"           | "Folders copied verbatim into the site's output."                     | "[The assets folder](#the-assets-folder)" |
@@ -257,9 +257,9 @@ WCL
       | "`sidebar_footer` / `deck`" | "Pinned buttons and a slide grid."                            | "[Templates and layouts](wdoc_templates), [Presentations](wdoc_presentations)" |
   }
 
-  p "That is the shape of the block, not the whole of it. A `summary` line describes the site to a parent document that lists it, and a `ui_theme` / `ui_accent` / `ui_mode` trio themes the mocked application inside a wireframe separately from the document around it — see [Wireframes](wdoc_wireframe)."
+  p "That is the shape of the block, not the whole of it. A `summary` line describes the site to a parent document that lists it, and a `ui_theme` / `ui_accent` / `ui_mode` trio themes the mocked application inside a wireframe separately from the document around it. See [Wireframes](wdoc_wireframe)."
 
-  p "A document with no `site` block at all still builds. Every page renders bare — no template, no theme, its content straight into the `<body>`. That is the shortest useful wdoc document there is:"
+  p "A document with no `site` block at all still builds. Every page renders bare: no template, no theme, its content straight into the `<body>`. That is the shortest useful wdoc document there is:"
 
   code wcl {
     filename = "hello.wcl"
@@ -275,12 +275,12 @@ WCL
 
   h3 "One document, several sites"
 
-  p "One document may declare several `site` blocks — a marketing front page and a handbook, say, sharing one set of styles and one build. Three rules come with the second site, and all three exist to stop a site you add later from silently changing a page you did not touch."
+  p "One document may declare several `site` blocks: a marketing front page and a handbook, say, sharing one set of styles and one build. Three rules come with the second site, and all three exist to stop a site you add later from silently changing a page you did not touch."
 
   list {
-    li "**Every site must be named.** With one site the label is optional; with two, an unnamed one is a build error. The name is the output subdirectory and the thing a page points at."
-    li "**Every page must name its sites.** `sites = [:handbook]`, or `sites = [:marketing, :handbook]` for a page both show. A page that names none is a build error, because the site chooses the page's template — an untagged page would be re-templated by a site added later without the page changing. A name matching no `site` block is an error too."
-    li "**At most one site may set `root = true`.** That site renders flat at the output root; the others render under `<out>/<name>/`. With no root site, the build generates a chooser `index.html` at the root that links to each one."
+    li "**Every site must be named.** With one site the label is optional. With two, an unnamed one is a build error. The name is the output subdirectory and the thing a page points at."
+    li "**Every page must name its sites.** `sites = [:handbook]`, or `sites = [:marketing, :handbook]` for a page both show. A page that names none is a build error, because the site chooses the page's template. A site added later would re-template an untagged page without the page changing. A name matching no `site` block is an error too."
+    li "**At most one site may set `root = true`.** That site renders flat at the output root. The others render under `<out>/<name>/`. With no root site, the build generates a chooser `index.html` at the root that links to each one."
   }
 
   code wcl {
@@ -366,26 +366,26 @@ page deploying {
 WCL
   }
 
-  p "One more file, and it is not WCL: `brand/extra.css`, beside `main.wcl`. The `assets` field ships the folder it sits in — [The assets folder](#the-assets-folder) below."
+  p "One more file, and it is not WCL: `brand/extra.css`, beside `main.wcl`. The `assets` field ships the folder it sits in. See [The assets folder](#the-assets-folder) below."
 
-  p "`[handbook](handbook:index)` is the cross-site form. It is checked exactly as an in-site link is: an unknown site, or an unknown page within a known site, fails the build. The build works out the relative path between the two directories for you, so the page on the other side links back with a plain `[the site](marketing:home)` and gets `../home.html`."
+  p "`[handbook](handbook:index)` is the cross-site form. The build checks it exactly as it checks an in-site link: an unknown site, or an unknown page within a known site, fails the build. The build works out the relative path between the two directories for you, so the page on the other side links back with a plain `[the site](marketing:home)` and gets `../home.html`."
 
   p "You can also build one site on its own with `--site`, which renders it flat at `--out` as though it were the only one:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _one --site handbook
 wrote 2 pages
-TEXT
+CONSOLE
   }
 
   h2 "Navigation"
 
-  p "A site holds its navigation tree, not its pages. Two blocks describe one, and they are not alternatives to each other: they belong to different templates."
+  p "A site holds its navigation tree, not its pages. Two blocks describe a navigation tree, and they are not alternatives to each other: they belong to different templates."
 
   h3 "toc and chapter"
 
-  p "A `toc` is a book's table of contents — the sidebar the `:book` template draws, and the reading order that gives every page its previous/next links. It holds `chapter` entries, nested to any depth."
+  p "A `toc` is a book's table of contents: the sidebar the `:book` template draws, and the reading order that gives every page its previous and next links. It holds `chapter` entries, nested to any depth."
 
   code wcl {
     source = <<'WCL'
@@ -399,22 +399,22 @@ toc {
 WCL
   }
 
-  p "A `chapter`'s label is the text in the sidebar, and `page = <name>` links it to a page of this site. Both parts are optional in the useful direction: **a `chapter` with no `page` is a grouping heading**. `\"Operations\"` above is a heading with no page behind it — it is a place in the tree, not a route, and clicking it opens its children rather than navigating."
+  p "A `chapter`'s label is the text in the sidebar, and `page = <name>` links it to a page of this site. Both parts are optional in the useful direction: **a `chapter` with no `page` is a grouping heading**. `\"Operations\"` above is a heading with no page behind it. It is a place in the tree, not a route, and clicking it opens its children rather than navigating."
 
   p "That is the one thing a flat page list cannot express, and it is why a book with more than a handful of pages wants a `toc`. It also lets the book order and name its chapters independently of the pages themselves: source order stops mattering, and the sidebar reads the `chapter` label rather than the page's `h1`."
 
-  p "A `chapter` naming a page that this site does not have is a build error. Point the handbook's first chapter at `home` — a page of the _other_ site in the document above — and the build stops:"
+  p "A `chapter` naming a page that this site does not have is a build error. Point the handbook's first chapter at `home`, a page of the _other_ site in the document above, and the build stops:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 unknown template "toc chapter links to unknown page "home""
-TEXT
+CONSOLE
   }
 
   h3 "menu and item"
 
-  p "A `menu` is a website navbar — the top strip the `:webpage` template draws. It holds `item` entries, and an item nests into a dropdown."
+  p "A `menu` is a website navbar: the top strip the `:webpage` template draws. It holds `item` entries, and an item nests into a dropdown."
 
   code wcl {
     source = <<'WCL'
@@ -432,7 +432,7 @@ WCL
   p "An item's label is its text. It links one of two ways, and they are not equivalent:"
 
   list {
-    li "`page = <name>` names a page of this site. It is **checked** — an unknown name fails the build — and rendered as `<name>.html`."
+    li "`page = <name>` names a page of this site. The build **checks** it and renders it as `<name>.html`. An unknown name fails the build."
     li "`href = \"…\"` is a raw URL, emitted verbatim and checked by nobody. Use it for an external site, or for a sub-site directory such as `\"handbook/\"`."
     li "`page` wins if you write both."
     li "An item with children and neither `page` nor `href` is a plain dropdown label. An item with none of the three is plain text."
@@ -445,15 +445,15 @@ WCL
   table {
     rows:
       | "Block"      | "Read by"                 | "Shape"                          | "Page links checked" | "External links" | "If absent" |
-      | "`toc`"      | "the `:book` template"    | "A tree; a page-less `chapter` is a grouping heading" | "Yes"  | "No — a `chapter` links a page or nothing" | "The sidebar falls back to a flat list of every page in the site, labelled by each page's first `h1`" |
-      | "`menu`"     | "the `:webpage` template" | "A tree; nested `item`s are dropdowns"                | "Yes, for `page`" | "Yes, via `href`" | "The navbar falls back to a flat list of every page in the site" |
+      | "`toc`"      | "the `:book` template"    | "A tree. A page-less `chapter` is a grouping heading" | "Yes"  | "No. A `chapter` links a page or nothing" | "The sidebar falls back to a flat list of every page in the site, labelled by each page's first `h1`" |
+      | "`menu`"     | "the `:webpage` template" | "A tree. Nested `item`s are dropdowns"                | "Yes, for `page`" | "Yes, via `href`" | "The navbar falls back to a flat list of every page in the site" |
   }
 
-  p "Neither is required, and the fallback is genuinely usable for a small site. Reach for the explicit block when source order stops being the reading order, when a heading has to group pages that have no page of their own, or when navigation has to point somewhere the document does not own."
+  p "Neither is required, and the fallback is genuinely usable for a small site. Reach for the explicit block when source order stops being the reading order, when a heading has to group pages without having a page of its own, or when navigation has to point somewhere the document does not own."
 
   callout "Both blocks live in the site, and describe only that site" {
     class = ["note"]
-    body  = "A `toc` and a `menu` are children of a `site` block, so a multi-site document writes one of each per site and each names only its own pages. A `chapter` or an `item` naming a page that belongs to another site fails, even though the page exists in the document — from this site's point of view it is not there. Cross-site navigation is a link, either `site:page` in prose or an `href` in a menu item."
+    body  = "A `toc` and a `menu` are children of a `site` block, so a multi-site document writes one of each per site and each names only its own pages. A `chapter` or an `item` naming a page that belongs to another site fails, even though the page exists in the document. From this site's point of view it is not there. Cross-site navigation is a link, either `site:page` in prose or an `href` in a menu item."
   }
 
   p "Two more site-level navigation blocks exist, and belong to their own chapters: `sidebar_footer` pins launcher buttons under the `book` sidebar ([Templates and layouts](wdoc_templates)), and `deck` arranges pages into a slide grid ([Presentations](wdoc_presentations))."
@@ -462,8 +462,8 @@ WCL
 
   p "Build the two-site document above and this is what lands in `--out`:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 wrote 4 pages
 $ find _site -type f -not -name '*.woff2' | sort
@@ -475,23 +475,23 @@ _site/home.html
 _site/index.html
 _site/product.html
 _site/_wdoc/favicon.svg
-TEXT
+CONSOLE
   }
 
   p "The `-not -name '*.woff2'` is there to keep the listing readable. Each `_wdoc/` also holds thirteen font files: the book typography ships with any site at all, themed or not, and only a document with no `site` block skips it."
 
-  p "Reading it top to bottom: `brand/` is the copied `assets` folder, `handbook/` is the sub-site, and `home.html` / `product.html` / `index.html` are the root site rendering flat beside it — `index.html` being the copy of `home.html` that `start = true` produced. Four rules explain that shape, and they hold for every build:"
+  p "Reading it top to bottom: `brand/` is the copied `assets` folder, `handbook/` is the sub-site, and `home.html` / `product.html` / `index.html` are the root site rendering flat beside it. `index.html` is the copy of `home.html` that `start = true` produced. Four rules explain that shape, and they hold for every build:"
 
   list {
     li "**One `.html` per page**, named after the page's route, in its site's directory."
-    li "**The root site renders flat** at `--out`; every other site renders under `<out>/<name>/`. A single-site document, and a `--site` build, are the flat case."
+    li "**The root site renders flat** at `--out`. Every other site renders under `<out>/<name>/`. A single-site document, and a `--site` build, are the flat case."
     li "**`index.html` is a copy**, not a redirect, when a `start` page produced it. The page stays reachable at its own name as well."
-    li "**Each site owns a `_wdoc/` directory** holding what its own pages reference: the favicon, the book typography, the shared icon sprite, the search index, and the small player scripts an interactive block pulls in. The last three are paid for only on use — there are no player scripts in the listing above because no page used one, and no icon sprite because no page drew an icon."
+    li "**Each site owns a `_wdoc/` directory** holding what its own pages reference: the favicon, the book typography, the shared icon sprite, the search index, and the small player scripts an interactive block pulls in. The last three are paid for only on use. There are no player scripts in the listing above because no page used one, and no icon sprite because no page drew an icon."
   }
 
   h3 "The assets folder"
 
-  p "`assets` on a site names folders to copy into that site's output, recursively and verbatim. It is the seam for anything an external tool built — a bundler's `dist/`, a folder of downloads, brand images the document does not reference block by block."
+  p "`assets` on a site names folders to copy into that site's output, recursively and verbatim. It is the seam for anything an external tool built: a bundler's `dist/`, a folder of downloads, brand images the document does not reference block by block."
 
   p "That is the pair of fields the `marketing` site above carries, with everything else stripped away:"
 
@@ -507,27 +507,27 @@ site marketing {
 WCL
   }
 
-  p "Each entry is a path relative to the entry document, and it keeps its name in the output: `brand/` beside `main.wcl` becomes `_site/brand/`. Nothing rewrites what is inside, so reference a copied file by the output path it landed at — which is what `stylesheets = [\"brand/extra.css\"]` does above, adding a verbatim `<link rel=\"stylesheet\" href=\"brand/extra.css\">` to every page of the site."
+  p "Each entry is a path relative to the entry document, and it keeps its name in the output: `brand/` beside `main.wcl` becomes `_site/brand/`. Nothing rewrites what is inside, so reference a copied file by the output path it landed at. That is what `stylesheets = [\"brand/extra.css\"]` does above, adding a verbatim `<link rel=\"stylesheet\" href=\"brand/extra.css\">` to every page of the site."
 
   callout "assets is not how you use an image" {
     class = ["note"]
-    body  = "An `image` block resolves its own path and copies the file into `_wdoc/` for you, with the `<img>` pointed at the copy. Reach for `assets` for the files no block references — the bundle, the archive, the `robots.txt`. See [Images, videos and file assets](wdoc_media)."
+    body  = "An `image` block resolves its own path and copies the file into `_wdoc/` for you, with the `<img>` pointed at the copy. Reach for `assets` for the files no block references: the bundle, the archive, the `robots.txt`. See [Images, videos and file assets](wdoc_media)."
   }
 
   h3 "The output tree is relocatable"
 
-  p "Every href the build emits is relative. A page links a sibling as `deploying.html`, its assets as `_wdoc/favicon.svg`, a sub-site as `handbook/index.html`, and the way back out as `../home.html`. Nothing is written from the server root."
+  p "Every href the build emits is relative. A page links a sibling as `deploying.html`, its assets as `_wdoc/favicon.svg`, a sub-site as `handbook/index.html`, and the way back out as `../home.html`. The build never writes a path from the server root."
 
-  p "So the tree does not care where it is served from. `_site` works at the domain root, at `/docs/`, at `/preview/pr-142/`, and moved to another directory on disk — no rebuild, no base-path setting, because there is no base path to set. Two things still need a server rather than a directory opened straight from disk: full-text search and anything else that fetches a file, since a browser will not fetch from a page that was opened as a local file."
+  p "So the tree does not care where it is served from. `_site` works at the domain root, at `/docs/`, at `/preview/pr-142/`, and moved to another directory on disk: no rebuild, no base-path setting, because there is no base path to set. Two things still need a server rather than a directory opened straight from disk: full-text search and anything else that fetches a file, since a browser will not fetch from a page that was opened as a local file."
 
   h3 "A build never wipes its output"
 
-  p "`--out` is created if it is missing and never cleared. A build writes the files it produced and leaves everything else alone."
+  p "The build creates `--out` if it is missing and never clears it. A build writes the files it produced and leaves everything else alone."
 
-  p "That is deliberate — the output directory may hold things the build did not make, and destroying a directory a user named on the command line is not a thing a build tool should do. It has one consequence you have to hold in your head. Go back to the first example, rename `rolling_back` to `rollback` — in the page, in the `toc` entry and in the link that points at it — and rebuild into the same `_site`:"
+  p "That is deliberate. The output directory may hold things the build did not make, and destroying a directory a user named on the command line is not a thing a build tool should do. It has one consequence you have to hold in your head. Go back to the first example. Rename `rolling_back` to `rollback` in the page, in the `toc` entry and in the link that points at it, then rebuild into the same `_site`:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 wrote 3 pages
 $ ls _site/*.html
@@ -535,25 +535,25 @@ _site/deploying.html
 _site/index.html
 _site/rollback.html
 _site/rolling_back.html
-TEXT
+CONSOLE
   }
 
   p "`rolling_back.html` is still there. It is a stale copy of a page that no longer exists, it is still linkable, and no later build will remove it. A deleted page behaves the same way."
 
   callout "Wipe it yourself when it must be exact" {
     class = ["warning"]
-    body  = "Where the output has to match the document exactly — a publish step, a link-checked CI job — delete the directory yourself before you build. One `rm -rf` in the recipe, above the `wcl wdoc build` line, is the whole fix. A dev-server rebuild does not need it: a stale page is only a page nothing links to."
+    body  = "Where the output has to match the document exactly, in a publish step or a link-checked CI job, delete the directory yourself before you build. One `rm -rf` in the recipe, above the `wcl wdoc build` line, is the whole fix. A dev-server rebuild does not need it: a stale page is only a page nothing links to."
   }
 
   h2 "Where to go next"
 
   list {
-    li "[Templates and layouts](wdoc_templates) — the `:book` / `:webpage` / `:presentation` built-ins, what a template is handed, and writing your own."
-    li "[Websites](wdoc_websites) — the website template, its named slots and its `<head>` assets."
-    li "[Themes and styling](wdoc_styling) — `theme`, `accent`, and the `class` system behind them."
-    li "[Output targets](wdoc_outputs) — one document, three targets: HTML, Markdown and PDF."
-    li "[Text and formatting](wdoc_formatting) — the inline patterns behind `[a link](page)`, emphasis and inline code."
-    li "[Visibility](wdoc_visibility) — keeping a block out of one site, or one target."
-    li "[The CLI](lang_cli) — `wdoc build`, `serve`, `markdown`, `pdf` and the rest in full."
+    li "[Templates and layouts](wdoc_templates). The `:book`, `:webpage` and `:presentation` built-ins, what a template is handed, and how to write your own."
+    li "[Websites](wdoc_websites). The website template, its named slots and its `<head>` assets."
+    li "[Themes and styling](wdoc_styling). `theme`, `accent`, and the `class` system behind them."
+    li "[Output targets](wdoc_outputs). One document, three targets: HTML, Markdown and PDF."
+    li "[Text and formatting](wdoc_formatting). The inline patterns behind `[a link](page)`, emphasis and inline code."
+    li "[Visibility](wdoc_visibility). Keeping a block out of one site, or one target."
+    li "[The CLI](lang_cli). `wdoc build`, `serve`, `markdown`, `pdf` and the rest in full."
   }
 }

@@ -1,4 +1,4 @@
-// Chapter 5 — Expressions and operators.
+// Expressions and operators.
 //
 // Written against #163. Every snippet, value and error message below was
 // run through `wcl repl` / `wcl get` / `wcl check` before it was written
@@ -13,16 +13,16 @@ page lang_expressions {
 
   p "Every value and every error message below came from a real run. The quickest way to check one is `wcl repl`, which evaluates a bare expression against an empty document:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl repl
 wcl> 1 + 2 * 3
 7
 wcl> :quit
-TEXT
+CONSOLE
   }
 
-  p "Give it a file and identifiers resolve against that document's top-level names, which is how the transcripts later in this chapter read a real document. [The CLI](lang_cli) covers `repl` in full."
+  p "Give it a file and identifiers resolve against that document's top-level names. The transcripts later in this chapter read a real document that way. [The CLI](lang_cli) covers `repl` in full."
 
   h2 "The shape of an expression"
 
@@ -37,7 +37,7 @@ TEXT
       | "Infix"    | "joins a left and a right operand"    | "`a + b`, `a == b`, `a && b`, `a ?? b`" |
   }
 
-  p "Three atoms are covered elsewhere because they are whole subjects: `if`, `match` and `try` are expressions like any other and live in [Control flow](lang_control_flow); a `{ … }` block expression with its `let name = expr;` bindings lives there too; a `fn(…) -> T …` literal lives in [Functions](lang_functions). Every one of them may appear anywhere this chapter says \"expression\" — including as an operand."
+  p "Three atoms are covered elsewhere because they are whole subjects: `if`, `match` and `try` are expressions like any other and live in [Control flow](lang_control_flow). A `{ … }` block expression with its `let name = expr;` bindings lives there too. A `fn(…) -> T …` literal lives in [Functions](lang_functions). Every one of them may appear anywhere this chapter says \"expression\", including as an operand."
 
   p "Parentheses are the fifth thing, and they are only grouping. They are also **kept**: `wcl fmt` prints `1 + (2 * 3)` back exactly as written, because the parentheses are a node in the tree rather than a hint the parser discards. Write them wherever they help the reader, and never write them to fix a precedence you had to guess."
 
@@ -99,8 +99,8 @@ headline = concat(region, $" — ${total}")
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check report.wcl
 OK
 $ wcl get report.wcl services.web.cost
@@ -119,10 +119,10 @@ $ wcl get report.wcl any_over
 true
 $ wcl get report.wcl headline
 "us-east-1 — 56.25"
-TEXT
+CONSOLE
   }
 
-  p "Four of the sections below are already on that page. `self.replicas * self.cpu` multiplies a `u32` by an `f64` and answers an `f64` — that is [numeric promotion](#numeric-promotion). `self.budget ?? default_budget` supplies the missing budget for `db` without a conditional — that is [none-coalescing](#none-coalescing). `services.web.cost` walks a gather field, a label and a field — that is [member access](#member-access). `format(…)` and `concat(…)` build the strings, because `+` does not — that is [joining strings](#joining-strings). Keep the file; several later transcripts read it."
+  p "Four of the sections below are already on that page. `self.replicas * self.cpu` multiplies a `u32` by an `f64` and answers an `f64`. That is [numeric promotion](#numeric-promotion). `self.budget ?? default_budget` supplies the missing budget for `db` without a conditional. That is [none-coalescing](#none-coalescing). `services.web.cost` walks a gather field, a label and a field. That is [member access](#member-access). `format(…)` and `concat(…)` build the strings, because `+` does not. That is [joining strings](#joining-strings). Keep the file. Several later transcripts read it."
 
   h2 "Member access"
 
@@ -140,10 +140,10 @@ TEXT
       | "The document"          | "any top-level name"                   | "`parent.region`, from inside a block" |
   }
 
-  p "Chains mix the rows freely, and each step is resolved only when the whole path is forced. With `report.wcl` from above:"
+  p "Chains mix the rows freely, and each step resolves only when something forces the whole path. With `report.wcl` from above:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl repl report.wcl
 wcl> services.web.cost
 18.75
@@ -153,22 +153,22 @@ wcl> services.web.zone
 eval error: wcl::eval::unresolved_reference
 
   × unresolved reference 'services.web.zone'
-TEXT
+CONSOLE
   }
 
-  p "A dot is also how `self` and `parent` are useful: on their own they name a block, and the member is what you wanted from it. [Documents, fields and blocks](lang_documents#self-and-parent) covers both keywords."
+  p "A dot is also how `self` and `parent` are useful. On their own they name a block, and the member is what you wanted from it. [Documents, fields and blocks](lang_documents#self-and-parent) covers both keywords."
 
   callout "A label is not readable through the dot" {
     class = ["warning"]
-    body  = "`@inline(0) id: identifier` says which field a block's label _fills_, not that the label is readable back. `services.web.id` resolves to the field's declaration, not to `web`, and a sibling field cannot read it either. When an expression needs the value, declare an ordinary field and write it out — see [Documents, fields and blocks](lang_documents#blocks-and-labels)."
+    body  = "`@inline(0) id: identifier` says which field a block's label _fills_, not that the label is readable back. `services.web.id` resolves to the field's declaration, not to `web`, and a sibling field cannot read it either. When an expression needs the value, declare an ordinary field and write it out. See [Documents, fields and blocks](lang_documents#blocks-and-labels)."
   }
 
   h2 "There is no index operator"
 
   p "`[` opens a list literal, a tensor shape or a table row. It never indexes, and writing it after an expression is a parse error rather than a missing feature:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl repl
 wcl> [10, 20, 30][0]
 parse error: wcl::parse
@@ -179,7 +179,7 @@ parse error: wcl::parse
    ·             ┬
    ·             ╰── unexpected trailing token
    ╰────
-TEXT
+CONSOLE
   }
 
   p "Reaching into a list is a call. `at(xs, i)` is the direct one, and it errors on a negative or out-of-range index rather than answering `none`:"
@@ -204,7 +204,7 @@ TEXT
 
   h3 "Three notations that look like indexing"
 
-  p "The trap is that one of them _is_ a dot followed by a number, and it means something else entirely. A numeric segment after a dot is a **label match**, exactly like a named one — it finds the block whose first label reifies to those digits. Take this file:"
+  p "The trap is that one of them _is_ a dot followed by a number, and it means something else entirely. A numeric segment after a dot is a **label match**, exactly like a named one. It finds the block whose first label reifies to those digits. Take this file:"
 
   code wcl {
     filename = "steps.wcl"
@@ -228,8 +228,8 @@ step 2 { action = "build" }
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl repl steps.wcl
 wcl> steps.1.action
 "checkout"
@@ -244,35 +244,35 @@ wcl> ports.0
 eval error: wcl::eval::unresolved_reference
 
   × unresolved reference 'ports.0'
-TEXT
+CONSOLE
   }
 
-  p "`steps.1` is the step labelled `1`, which happens to be the first. `steps.0` is not the first step; it is a step that does not exist, because no block carries the label `0`. And `ports.0` fails outright: `ports` is a list value, not a list of blocks, so it has no members to name at all."
+  p "`steps.1` is the step labelled `1`, which happens to be the first. `steps.0` is not the first step. It is a step that does not exist, because no block carries the label `0`. And `ports.0` fails outright. `ports` is a list value, not a list of blocks, so it has no members to name at all."
 
   table {
     rows:
       | "Written"      | "Means"                                  | "Works on"                   | "Missing element" |
       | "`at(xs, 0)`"  | "the element at position 0"              | "a list or tensor value"     | "an error" |
       | "`steps.1`"    | "the block whose first label is `1`"     | "a `@children` gather field" | "unresolved reference" |
-      | "`ports.0`"    | "nothing — lists have no members"        | "—"                          | "unresolved reference" |
+      | "`ports.0`"    | "nothing, because lists have no members" | "—"                          | "unresolved reference" |
   }
 
   callout "Position and label are different questions" {
     class = ["note"]
-    body  = "A `@children` gather field holds blocks, and a block is addressed by its label, so `steps.1` reads the same whether the steps are written in order, out of order, or one per imported file. `at(steps, 0)` would ask a different question — _which one is written first_ — and the answer changes when someone reorders the file. Prefer the label."
+    body  = "A `@children` gather field holds blocks, and you address a block by its label, so `steps.1` reads the same whether the steps are written in order, out of order, or one per imported file. `at(steps, 0)` would ask a different question, _which one is written first_, and the answer changes when someone reorders the file. Prefer the label."
   }
 
   h2 "Calls"
 
-  p "Parentheses after an expression call it. When the callee is a bare name, three places are searched, in this order:"
+  p "Parentheses after an expression call it. When the callee is a bare name, the resolver searches three places, in this order:"
 
   list {
-    li "**A local name** — a function-valued `let` binding or a function parameter."
-    li "**A document name** — a `fn name(…)` item, or any field or `let` holding a function value. See [Functions](lang_functions)."
-    li "**A builtin** — `len`, `at`, `format`, `map`, `concat` and the rest of [Builtins](lang_builtins)."
+    li "**A local name.** A function-valued `let` binding or a function parameter."
+    li "**A document name.** A `fn name(…)` item, or any field or `let` holding a function value. See [Functions](lang_functions)."
+    li "**A builtin.** `len`, `at`, `format`, `map`, `concat` and the rest of [Builtins](lang_builtins)."
   }
 
-  p "Any other callee is evaluated first and must produce a function value: `r.f(2)` calls the function stored at `r.f`. That is worth saying plainly, because it is not a method call: **there are no methods**. `xs.len()` does not exist, because `len` is not a member of a list. `len(xs)` is the call, and `r.f(2)` works only because `r.f` really is a function value. Argument lists are positional, there are no named arguments and no defaults, so the arity must match:"
+  p "Any other callee evaluates first and must produce a function value: `r.f(2)` calls the function stored at `r.f`. That is not a method call, because **there are no methods**. `xs.len()` does not exist, because `len` is not a member of a list. `len(xs)` is the call, and `r.f(2)` works only because `r.f` really is a function value. Argument lists are positional, there are no named arguments and no defaults, so the arity must match:"
 
   code text {
     source = <<'TEXT'
@@ -290,18 +290,18 @@ TEXT
 
   callout "Arguments evaluate before the call, left to right" {
     class = ["warning"]
-    body  = "Fields are lazy; arguments are not. Every argument expression is evaluated in order and the values are handed to the callee, so an argument that the body never reads still runs — and still fails. With `fn first(x: i64, y: i64) -> i64 { x }` in scope, `first(1, 1 / 0)` reports `operator '/' cannot divide by zero` even though `y` is unused. The only expressions that skip an operand are `&&`, `||` and `??`, below."
+    body  = "Fields are lazy. Arguments are not. WCL evaluates every argument expression in order and hands the values to the callee, so an argument that the body never reads still runs, and still fails. With `fn first(x: i64, y: i64) -> i64 { x }` in scope, `first(1, 1 / 0)` reports `operator '/' cannot divide by zero` even though `y` is unused. The only expressions that skip an operand are `&&`, `||` and `??`, below."
   }
 
   h3 "Two things that look like calls"
 
-  p "`Scale::Small { replicas: 2u32 }` is **variant construction**, not a call. The `::` binds as tightly as a dot, the braces carry a record payload and the parenthesised form `Shape::Polygon(7)` carries a positional one. Records themselves have no constructor: a record value is the bare literal `{ width: 480.0 }`, typed by where it is used. [Types](lang_types) covers both."
+  p "`Scale::Small { replicas: 2u32 }` is **variant construction**, not a call. The `::` binds as tightly as a dot, the braces carry a record payload and the parenthesised form `Shape::Polygon(7)` carries a positional one. Records themselves have no constructor. A record value is the bare literal `{ width: 480.0 }`, typed by where it is used. [Types](lang_types) covers both."
 
-  p "A name in call position that is not a function is reported as a missing builtin, because the builtin registry is the last place the resolver looks. `box(1)`, where `box` is a record, answers `unknown built-in 'box'` rather than something about records — read that message as \"nothing callable is named `box`\"."
+  p "A name in call position that is not a function comes back as a missing builtin, because the builtin registry is the last place the resolver looks. `box(1)`, where `box` is a record, answers `unknown built-in 'box'` rather than something about records. Read that message as \"nothing callable is named `box`\"."
 
   h2 "Arithmetic"
 
-  p "Five infix operators — `+`, `-`, `*`, `/`, `%` — plus prefix `-`. They are defined for numbers and for nothing else. `+` does not join strings and does not concatenate lists:"
+  p "There are five infix arithmetic operators, `+`, `-`, `*`, `/` and `%`, plus prefix `-`. They are defined for numbers and for nothing else. `+` does not join strings and does not concatenate lists:"
 
   code text {
     source = <<'TEXT'
@@ -317,7 +317,7 @@ eval error: wcl::eval::type_mismatch
 TEXT
   }
 
-  p "Division and remainder follow the operand type. Between integers, `/` truncates toward zero and `%` takes the sign of the left operand; between floats, both are the IEEE operations:"
+  p "Division and remainder follow the operand type. Between integers, `/` truncates toward zero and `%` takes the sign of the left operand. Between floats, both are the IEEE operations:"
 
   code text {
     source = <<'TEXT'
@@ -336,7 +336,7 @@ wcl> 7.5 % 2.0
 TEXT
   }
 
-  h3 "Integers refuse to be wrong; floats do not"
+  h3 "Integers refuse to be wrong, but floats do not"
 
   p "This is the comparison to take away from the section. An integer operation with no representable answer is an **error**, not a wrapped value and not a debug-build panic. A float operation with no finite answer is `inf` or `NaN`, silently, because that is what IEEE arithmetic means."
 
@@ -364,14 +364,14 @@ NaN
 TEXT
   }
 
-  p "`2u32 - 3u32` is the one that catches people. The operands are both `u32`, the answer is −1, and `u32` has no −1, so the operation has no result. It does not widen to reach one — see the next section for why."
+  p "`2u32 - 3u32` is the one that catches people. The operands are both `u32`, the answer is −1, and `u32` has no −1, so the operation has no result. It does not widen to reach one. See the next section for why."
 
   h2 "Numeric promotion"
 
   p "Every arithmetic and comparison operator tries the operands' **own type first**, and promotes only when that fails. The rule is two lines:"
 
   list {
-    li "**Same variant, same answer.** `u8 + u8` is `u8` arithmetic and the result is a `u8`. Nothing widens, which is why `255u8 + 1u8` overflows instead of answering `256`."
+    li "**Same variant, same answer.** `u8 + u8` is `u8` arithmetic and the result is a `u8`. Nothing widens, so `255u8 + 1u8` overflows instead of answering `256`."
     li "**Mixed variants promote once.** If either side is a float, both become `f64`. Otherwise both become `i128`. The operator then runs on the promoted pair."
   }
 
@@ -388,20 +388,20 @@ wcl> 3u32 * 0.5
 TEXT
   }
 
-  p "Read `2u8 + 300u32` closely: the result is neither a `u8` nor a `u32`. The operands disagreed, both went to `i128`, and `i128` is what came back. The promotion ladder has exactly these two rungs — there is no `u8` → `u16` → `u32` staircase, and no unsigned result type is ever chosen for a mixed pair."
+  p "Read `2u8 + 300u32` closely: the result is neither a `u8` nor a `u32`. The operands disagreed, both went to `i128`, and `i128` is what came back. The promotion ladder has exactly these two rungs. There is no `u8` → `u16` → `u32` staircase, and a mixed pair never produces an unsigned result type."
 
-  p "`i128` is the top of the integer rung, so one mixed pair has nowhere to promote to: a `u128` larger than `i128::MAX` beside any other numeric type. That is reported as a type mismatch rather than an overflow, because the operator was never reached — `340282366920938463463374607431768211455u128 + 1u32` answers `operator '+' is not defined for u128 and u32`. Two `u128`s never promote at all, so they add, overflow and compare normally."
+  p "`i128` is the top of the integer rung, so one mixed pair has nowhere to promote to: a `u128` larger than `i128::MAX` beside any other numeric type. The message is a type mismatch rather than an overflow, because the operator was never reached. `340282366920938463463374607431768211455u128 + 1u32` answers `operator '+' is not defined for u128 and u32`. Two `u128`s never promote at all, so they add, overflow and compare normally."
 
-  p "A declared field type then converts the result on the way in, which is why `report.wcl` never mentions `i128` or `f64`. `cost: f64` accepts the `f64` the multiplication produced; a field declared `u32` accepts an `i128` result that fits and rejects one that does not. [Schemas](lang_schemas) covers the conversion, and [Values and primitives](lang_values) the numeric types themselves."
+  p "A declared field type then converts the result on the way in, so `report.wcl` never mentions `i128` or `f64`. `cost: f64` accepts the `f64` the multiplication produced. A field declared `u32` accepts an `i128` result that fits and rejects one that does not. [Schemas](lang_schemas) covers the conversion, and [Values and primitives](lang_values) covers the numeric types themselves."
 
   callout "A unit literal is not a number yet" {
     class = ["note"]
-    body  = "`512MiB` carries its unit until a declared type resolves it, so it is not an operand you can do arithmetic on in the REPL. Read the field instead — against the `inventory.wcl` of [Documents, fields and blocks](lang_documents), `wcl get inventory.wcl services.web.limits.memory` answers `536870912`, and that value is an ordinary integer. See [Values and primitives](lang_values)."
+    body  = "`512MiB` carries its unit until a declared type resolves it, so it is not an operand you can do arithmetic on in the REPL. Read the field instead. Against the `inventory.wcl` of [Documents, fields and blocks](lang_documents), `wcl get inventory.wcl services.web.limits.memory` answers `536870912`, and that value is an ordinary integer. See [Values and primitives](lang_values)."
   }
 
   h2 "Comparison"
 
-  p "`==` and `!=` compare **any** two values. Same-typed values compare structurally — lists element by element, records field by field — and numbers of different types promote first. Values of unrelated kinds are simply unequal; nothing errors:"
+  p "`==` and `!=` compare **any** two values. Same-typed values compare structurally: lists element by element, records field by field. Numbers of different types promote first. Values of unrelated kinds are unequal, and nothing errors:"
 
   code text {
     source = <<'TEXT'
@@ -437,7 +437,7 @@ eval error: wcl::eval::type_mismatch
 TEXT
   }
 
-  p "The message names the ordering family as `<>` rather than the operator you wrote; the two type names after it are the ones to read. Symbols are a set of names, not a scale — when the order matters, model it with a number."
+  p "The message names the ordering family as `<>` rather than the operator you wrote. The two type names after it are the ones to read. Symbols are a set of names, not a scale. When the order matters, model it with a number."
 
   h2 "Logic"
 
@@ -457,7 +457,7 @@ eval error: wcl::eval::type_mismatch
 TEXT
   }
 
-  p "Both binary operators **short-circuit**. `false && …` and `true || …` answer without touching the right operand, which is the one place besides `??` where an expression you wrote may never run:"
+  p "Both binary operators **short-circuit**. `false && …` and `true || …` answer without touching the right operand. Apart from `??`, these are the only operators that leave an expression you wrote unevaluated:"
 
   code text {
     source = <<'TEXT'
@@ -476,7 +476,7 @@ TEXT
 
   h2 "None-coalescing"
 
-  p "`a ?? b` is the left value **unless it is `none`**, in which case it is the right value. It is the operator for a default, and it is the only reason a document with optional fields rarely needs a conditional. The right side is evaluated only when it is needed:"
+  p "`a ?? b` is the left value **unless it is `none`**, in which case it is the right value. It is the operator for a default, and it is the only reason a document with optional fields rarely needs a conditional. The right side runs only when it is needed:"
 
   code text {
     source = <<'TEXT'
@@ -493,23 +493,23 @@ wcl> none ?? none ?? "last"
 TEXT
   }
 
-  p "`0` and `false` are values, so they win. Only `none` gives way — the absent optional field, the `else`-less `if` that did not fire, the field a schema declares as `T?` and the document never wrote. That last one is what `report.wcl` uses:"
+  p "`0` and `false` are values, so they win. Only `none` gives way: the absent optional field, the `else`-less `if` that did not fire, the field a schema declares as `T?` and the document never wrote. That last one is what `report.wcl` uses:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl get report.wcl services.db.budget
 none
 $ wcl get report.wcl services.db.over
 true
-TEXT
+CONSOLE
   }
 
   callout "?? is not a `try`" {
     class = ["warning"]
-    body  = "`??` reads a value and asks whether it is `none`. It does not catch a failure. `error(\"gone\") ?? 5` reports `error: gone`, and so does a `??` whose left side is a field that failed to evaluate or a path that does not resolve. Recovering from an error is `try body catch e => fallback` — see [Control flow](lang_control_flow)."
+    body  = "`??` reads a value and asks whether it is `none`. It does not catch a failure. `error(\"gone\") ?? 5` reports `error: gone`, and so does a `??` whose left side is a field that failed to evaluate or a path that does not resolve. Recovering from an error is `try body catch e => fallback`. See [Control flow](lang_control_flow)."
   }
 
-  p "`??` is the **loosest** operator in the language, which is a real trap when the default sits next to a comparison. `width ?? 480.0 > 100.0` is `width ?? (480.0 > 100.0)`: when `width` is set you get a number, and when it is `none` you get a boolean, out of one expression. Parenthesise the default:"
+  p "`??` is the **loosest** operator in the language. That looseness is a real trap when the default sits next to a comparison. `width ?? 480.0 > 100.0` is `width ?? (480.0 > 100.0)`. When `width` is set you get a number, and when it is `none` you get a boolean, out of one expression. Parenthesise the default:"
 
   code text {
     source = <<'TEXT'
@@ -552,7 +552,7 @@ eval error: wcl::eval::builtin_type
 TEXT
   }
 
-  p "Note what the last two lines show. `format` and `${…}` render a value's display form — `8080u32` becomes `8080`, with no type suffix — while `concat` and `join` demand strings and say so. Reach for the interpolated literal when the template is written out and for `format` when it is computed; the `$` prefix is what makes a string literal interpolating, and a plain `\"…\"` never substitutes. [Values and primitives](lang_values) covers the string forms, [Builtins](lang_builtins) the rest of the string functions."
+  p "The last two lines show the difference. `format` and `${…}` render a value's display form, so `8080u32` becomes `8080`, with no type suffix. `concat` and `join` demand strings and say so. Reach for the interpolated literal when the template is written out and for `format` when it is computed. The `$` prefix is what makes a string literal interpolating, and a plain `\"…\"` never substitutes. [Values and primitives](lang_values) covers the string forms, and [Builtins](lang_builtins) covers the rest of the string functions."
 
   h2 "Precedence and associativity"
 
@@ -583,19 +583,19 @@ wcl> "a" ?? "b" == "c"
 TEXT
   }
 
-  p "The first is ordering binding **tighter** than equality: `1 < 2 == true` is `(1 < 2) == true`, which is `true`. The second is `??` binding loosest: `\"a\" ?? \"b\" == \"c\"` is `\"a\" ?? (\"b\" == \"c\")`, and since the left side is not `none` it answers `\"a\"` — the comparison never runs. Both parse exactly as the table says; both read better with parentheses."
+  p "The first is ordering binding **tighter** than equality: `1 < 2 == true` is `(1 < 2) == true`, which is `true`. The second is `??` binding loosest: `\"a\" ?? \"b\" == \"c\"` is `\"a\" ?? (\"b\" == \"c\")`, and since the left side is not `none` it answers `\"a\"`. The comparison never runs. Both parse exactly as the table says, and both read better with parentheses."
 
   h2 "What is not an operator"
 
-  p "Seven spellings that other languages make operators, and what WCL does instead."
+  p "Other languages make these seven spellings operators. This table gives what WCL does instead."
 
   table {
     rows:
       | "Not this"     | "Write"                  | "Because" |
-      | "`2.0 ^ 10.0`" | "`pow(2.0, 10.0)`"       | "`^` is not a token at all — it is a lexer error" |
+      | "`2.0 ^ 10.0`" | "`pow(2.0, 10.0)`"       | "`^` is not a token at all. It is a lexer error" |
       | "`xs[0]`"      | "`at(xs, 0)`"            | "`[` opens a list literal, a tensor shape or a table row" |
-      | "`xs.len()`"   | "`len(xs)`"              | "There are no methods; `len` is a function, not a member" |
-      | "`a + b` (strings)" | "`concat(a, b)`"    | "`+` is arithmetic — see [Joining strings](#joining-strings)" |
+      | "`xs.len()`"   | "`len(xs)`"              | "There are no methods. `len` is a function, not a member" |
+      | "`a + b` (strings)" | "`concat(a, b)`"    | "`+` is arithmetic. See [Joining strings](#joining-strings)" |
       | "`&T`"         | "—"                      | "A reference **type**, in a declaration, not an operator on values" |
       | "`->`"         | "—"                      | "A function's return type, or a [connection statement](lang_connections)" |
       | "`=>`"         | "—"                      | "Separates a `match` arm or a `catch` binding from its body" |
@@ -618,15 +618,15 @@ wcl> pow(2.0, 10.0)
 TEXT
   }
 
-  p "`::` is the one that belongs in this chapter rather than on the list above. It really is postfix syntax — it constructs a union variant, and it also qualifies a namespaced name — and it binds at level 1, beside the dot. [Types](lang_types) covers variants and [Namespaces and imports](lang_namespaces) covers qualification."
+  p "`::` is the one that belongs in this chapter rather than on the list above. It really is postfix syntax. It constructs a union variant, it also qualifies a namespaced name, and it binds at level 1, beside the dot. [Types](lang_types) covers variants and [Namespaces and imports](lang_namespaces) covers qualification."
 
   h2 "Where to go next"
 
   list {
-    li "[Control flow](lang_control_flow) — `if`, `match`, `try`/`catch` and the block expression, all of which are expressions you can drop into any operand position."
-    li "[Functions](lang_functions) — `fn` items, function literals, parameters and what a function value captures."
-    li "[Builtins](lang_builtins) — the full catalogue behind `at`, `len`, `format`, `concat`, `map` and the rest."
-    li "[Values and primitives](lang_values) — the numeric types the promotion ladder walks, and the string forms interpolation builds."
-    li "[How a document evaluates](lang_evaluation) — when an expression actually runs, what caches it, and how a cycle is caught."
+    li "[Control flow](lang_control_flow). `if`, `match`, `try`/`catch` and the block expression, all of which are expressions you can drop into any operand position."
+    li "[Functions](lang_functions). `fn` items, function literals, parameters and what a function value captures."
+    li "[Builtins](lang_builtins). The full catalogue behind `at`, `len`, `format`, `concat`, `map` and the rest."
+    li "[Values and primitives](lang_values). The numeric types the promotion ladder walks, and the string forms interpolation builds."
+    li "[How a document evaluates](lang_evaluation). When an expression runs, what caches it, and how a cycle is caught."
   }
 }

@@ -1,4 +1,4 @@
-// Chapter 20 — Visibility.
+// Visibility.
 //
 // Written against #213, the wave-5 pass over the *stripped* crates. The
 // `backends` axis names three targets now: `:skill` went with the skill
@@ -13,7 +13,7 @@ page wdoc_visibility {
 
   h1 "Visibility"
 
-  p "One document renders to three outputs: a website, a PDF and a folder of Markdown. It can also declare several sites, and lay each one out with a different template. A block that belongs in one of those and not in another says so with a **decorator**, rather than with a duplicate document. `@only` includes it; `@except` excludes it."
+  p "One document renders to three outputs: a website, a PDF and a folder of Markdown. It can also declare several sites, and lay each one out with a different template. A block that belongs in one of those and not in another says so with a **decorator**, rather than with a duplicate document. `@only` includes it. `@except` excludes it."
 
   p "This chapter covers both decorators, their three axes, the rule that joins the axes, and the one place where visibility is not a preference but a requirement: waiving a native block on a target that cannot render it."
 
@@ -35,7 +35,7 @@ WCL
     rows:
       | "Axis"        | "Values"                                 | "The current value is" |
       | "`sites`"     | "the label on a `site` block"            | "the name of the site being rendered" |
-      | "`templates`" | "any template name — see below"          | "the site's `default_template` symbol" |
+      | "`templates`" | "any template name. See below"           | "the site's `default_template` symbol" |
       | "`backends`"  | "`:html`, `:pdf`, `:markdown`"           | "the output target this build produces" |
   }
 
@@ -67,11 +67,11 @@ TEXT
 
   h3 "An axis whose value is unknown never matches"
 
-  p "This is the one asymmetry to hold on to. A constrained axis with no current value fails to match rather than matching vacuously."
+  p "This is the one asymmetry to remember. A constrained axis with no current value fails to match rather than matching vacuously."
 
   p "It shows up in two places. A document with one unnamed `site` has no site name, so `@only(sites = [:anything])` hides the block everywhere. And a `site` that declares no `default_template` has no template kind, so `@only(templates = [:book])` hides the block there too."
 
-  p "The effect differs by decorator, and that follows from the rule rather than from a special case. On an `@only` an unknown axis **hides** the block, because `@only` failed to match. On an `@except` it **shows** the block, because `@except` failed to match either."
+  p "The effect differs by decorator, and the difference follows from the rule rather than from a special case. On an `@only` an unknown axis **hides** the block, because `@only` failed to match. On an `@except` it **shows** the block, because `@except` failed to match either."
 
   h2 "The backends axis"
 
@@ -106,34 +106,34 @@ WCL
 
   p "Build it twice and read the two outputs. The Markdown target keeps one paragraph:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _md --type markdown
 wrote 1 page
 $ cat _md/notes.md
 # Notes
 
 MARKDOWN-ONLY
-TEXT
+CONSOLE
   }
 
   p "The HTML target keeps the other two:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 wrote 1 page
 $ grep -o 'HTML-ONLY\|MARKDOWN-ONLY\|NOT-MD-NOT-PDF' _site/notes.html
 HTML-ONLY
 NOT-MD-NOT-PDF
-TEXT
+CONSOLE
   }
 
-  p "Note the third paragraph. `@except(backends = [:markdown, :pdf])` and `@only(backends = [:html])` select the same set today, because there are exactly three targets. They do not say the same thing, and a fourth target would separate them. Write `@only` when the block is _for_ that target, and `@except` when the block is _wrong on_ that one."
+  p "Look at the third paragraph. `@except(backends = [:markdown, :pdf])` and `@only(backends = [:html])` select the same set today, because there are exactly three targets. They do not say the same thing, and a fourth target would separate them. Write `@only` when the block is _for_ that target, and `@except` when the block is _wrong on_ that one."
 
   callout "Reach for @except when the reason is a limitation" {
     class = ["tip"]
-    body  = "A live search box, a pan-and-zoom control, an embedded player: each is an HTML idea, and each should carry `@except` naming the target it fails on rather than `@only(backends = [:html])`. The `@except` form keeps working when the block starts rendering somewhere new; the `@only` form silently keeps hiding it."
+    body  = "A live search box, a pan-and-zoom control, an embedded player: each is an HTML idea. Give each one `@except` naming the target it fails on, rather than `@only(backends = [:html])`. The `@except` form keeps working when the block starts rendering somewhere new. The `@only` form silently keeps hiding it."
   }
 
   h2 "The sites axis"
@@ -157,19 +157,19 @@ page notes {
 WCL
   }
 
-  p "There are two ways to keep content out of a site, and they work at different scales. A `page` names its sites with the ordinary `sites` **field** — a page belongs to sites, so that is data. `@only(sites = …)` scopes **one block inside a page** that several sites share. Reach for the field when the whole page is site-specific and for the decorator when one paragraph is."
+  p "There are two ways to keep content out of a site, and they work at different scales. A `page` names its sites with the ordinary `sites` **field**. A page belongs to sites, so that is data. `@only(sites = …)` scopes **one block inside a page** that several sites share. Reach for the field when the whole page is site-specific and for the decorator when one paragraph is."
 
   p "The styling blocks (`class`, `base`, `media`, `keyframes`, `font_face`) carry their own `sites` field for the same reason. [Themes and styling](wdoc_styling) covers that one."
 
   h2 "The templates axis"
 
-  p "`templates` scopes a block to the layout it renders into. Use it for content that only makes sense in one shape: a \"press Space for the next slide\" note in a deck, a \"use the sidebar\" note in a book."
+  p "`templates` scopes a block to the layout it renders into. Use it for content that makes sense only in one shape: a \"press Space for the next slide\" note in a deck, a \"use the sidebar\" note in a book."
 
-  p "The value is a **template name**, not a fixed vocabulary. Four templates ship — `:webpage`, `:book`, `:presentation` and `:website` — and a `template` block of your own is named here the same way. [Templates and layouts](wdoc_templates) covers writing one."
+  p "The value is a **template name**, not a fixed vocabulary. Four templates ship: `:webpage`, `:book`, `:presentation` and `:website`. You name a `template` block of your own here the same way. [Templates and layouts](wdoc_templates) covers writing one."
 
   callout "The axis reads the site, not the page" {
     class = ["warning"]
-    body  = "The current template kind is the **site's `default_template`**. A `page` that overrides its own layout with `template = :book` inside a `:webpage` site still matches `templates = [:webpage]`, because the axis never looks at the page. This is worth checking before you conclude a decorator is broken. Scope by `sites` when you meant the site, and by `templates` when you meant every site that uses one layout."
+    body  = "The current template kind is the **site's `default_template`**. A `page` that overrides its own layout with `template = :book` inside a `:webpage` site still matches `templates = [:webpage]`, because the axis never looks at the page. Check that before you conclude a decorator is broken. Scope by `sites` when you meant the site, and by `templates` when you meant every site that uses one layout."
   }
 
   h2 "Waiving a native block on a target that cannot render it"
@@ -182,8 +182,8 @@ WCL
 
   p "Put one on a page and build to PDF, and the build **refuses**:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _pdf --type pdf
 wcl::eval::user_error
 
@@ -197,7 +197,7 @@ wcl::eval::user_error
     ·                     ╰── error raised here
  13 │ }
     ╰────
-TEXT
+CONSOLE
   }
 
   p "It refuses rather than rendering nothing, and that is the whole design. A block that silently vanished from one of your three outputs is a bug you find months later, from a reader."
@@ -215,8 +215,8 @@ page dl {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _pdf --type pdf
 wrote 1 pdf
 $ wcl wdoc build main.wcl --out _md --type markdown
@@ -225,19 +225,19 @@ $ cat _md/dl.md
 # Downloads
 
 [the notes](_wdoc/notes.txt)
-TEXT
+CONSOLE
   }
 
-  callout "Capability says can't; intent says don't want to" {
+  callout "Capability says can't, intent says don't want to" {
     class = ["info"]
-    body  = "The block's declaration states what the renderers **can** do. `@except` states what you **want**. The build refuses until the two agree, which turns a silent hole in one output into an author's decision recorded in the source. The waiver is per instance on purpose: the next `file` block on the next page makes the same decision for itself."
+    body  = "The block's declaration states what the renderers **can** do. `@except` states what you **want**. The build refuses until the two agree. That refusal turns a silent hole in one output into an author's decision recorded in the source. The waiver is per instance on purpose: the next `file` block on the next page makes the same decision for itself."
   }
 
   h3 "Two targets have to cover the block"
 
-  p "A block is checked against two backends, because two are involved. One is the target the build is producing. The other is the renderer actually running, and those are not always the same: a `card` in a diagram draws its body as HTML in whichever target embeds the SVG."
+  p "The build checks a block against two backends, because two are involved. One is the target the build is producing. The other is the renderer actually running, and those are not always the same: a `card` in a diagram draws its body as HTML in whichever target embeds the SVG."
 
-  p "So a `file` inside a card must not reach a PDF just because the card body happens to render as HTML. And `markdown_source`, which taps the Markdown emitter from inside the HTML build, is a rendering question rather than an output one. On an ordinary page the two are the same backend, and this is one check that never surprises you. When they differ, the error says so."
+  p "So a `file` inside a card must not reach a PDF just because the card body happens to render as HTML. And `markdown_source`, which taps the Markdown emitter from inside the HTML build, is a rendering question rather than an output one. On an ordinary page the two are the same backend, and the check never surprises you. When they differ, the error says so."
 
   h2 "Where a decorator goes"
 
@@ -250,19 +250,19 @@ video "assets/tour.mp4" { poster = "assets/tour.jpg" }
 WCL
   }
 
-  p "They apply to **one instance**, and they take its whole subtree with it. Hide a `callout` and its body goes; hide a `diagram` and every shape inside it goes. There is no way to hide a field, and no way to hide a page. A page belongs to sites through its `sites` field, and a page you do not want built is a page you do not declare."
+  p "They apply to **one instance**, and they take its whole subtree with it. Hide a `callout` and its body goes. Hide a `diagram` and every shape inside it goes. There is no way to hide a field, and no way to hide a page. A page belongs to sites through its `sites` field, and a page you do not want built is a page you do not declare."
 
   p "One decorator of each kind per block, and that is a rule rather than a convention. A second `@except` on one instance is a schema violation:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
 wcl::eval::schema_violation
 
   × decorator '@except' may appear at most once on one node
 
 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "So put every axis in the one decorator, which is also where the AND rule can read them together."
@@ -270,10 +270,10 @@ TEXT
   h2 "Where to go next"
 
   list {
-    li "[Output targets](wdoc_outputs) — the three targets the `backends` axis names, and what each one can carry."
-    li "[Documents, pages and sites](wdoc_sites) — the `site` block, the `sites` field on a page, and multi-site output."
-    li "[Writing your own blocks](wdoc_extending) — what makes a block native, and how a block declares the targets it covers."
-    li "[Themes and styling](wdoc_styling) — the parallel `sites` field the styling blocks carry."
-    li "[Decorators](lang_decorators) — how a decorator is declared and read back, in the language rather than in wdoc."
+    li "[Output targets](wdoc_outputs). The three targets the `backends` axis names, and what each one can carry."
+    li "[Documents, pages and sites](wdoc_sites). The `site` block, the `sites` field on a page, and multi-site output."
+    li "[Writing your own blocks](wdoc_extending). What makes a block native, and how a block declares the targets it covers."
+    li "[Themes and styling](wdoc_styling). The parallel `sites` field the styling blocks carry."
+    li "[Decorators](lang_decorators). How a decorator is declared and read back, in the language rather than in wdoc."
   }
 }

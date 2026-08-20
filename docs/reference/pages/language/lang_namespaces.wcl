@@ -1,4 +1,4 @@
-// Chapter 8 — Namespaces and imports.
+// Namespaces and imports.
 //
 // Written against #166. Every file and every command in this chapter was
 // run against the `wcl` CLI before it was written down. The Rust snippet
@@ -11,7 +11,7 @@ page lang_namespaces {
 
   p "One file needs none of this chapter. The moment a second file joins in, three questions appear, and WCL answers each with its own keyword. **Which files take part?** `import`. **What are the declarations in them called?** `namespace`. **How do I write those names here?** `use`, plus the `::` qualifier for block kinds."
 
-  p "Keeping the three apart is the whole design. An import decides membership and nothing else — it does not rename anything, and it does not re-export. A namespace decides names and nothing else — it has no idea which files will import it. Everything left over is spelling, and that is what `use` and `::` are."
+  p "Keeping the three apart is the whole design. An import decides membership and nothing else. It does not rename anything, and it does not re-export. A namespace decides names and nothing else. It has no idea which files will import it. Everything left over is spelling, and that is what `use` and `::` are."
 
   p "Every file and every command below was run before it was written down. Type them and compare."
 
@@ -74,18 +74,18 @@ service db {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check platform.wcl
 OK
 $ wcl get platform.wcl owner
 "platform"
 $ wcl get platform.wcl services.db.tier
 :silver
-TEXT
+CONSOLE
   }
 
-  p "Three files, one document. Read what `platform.wcl` got for its single `import` line. It got `acme.net.Service`, from the file it named. It got `acme.base.Endpoint` and `acme.base.Tier` as well, because `lib/net.wcl` imported `lib/base.wcl` in turn — imports are transitive. It got the `service` block kind, because a `@block` decorator on an imported type declares that kind for the whole document. And it wrote `./lib/net.wcl` while `lib/net.wcl` wrote `./base.wcl`, because each path is resolved from the file it is **written in**, not from the root."
+  p "Three files, one document. Read what `platform.wcl` got for its single `import` line. It got `acme.net.Service`, from the file it named. It got `acme.base.Endpoint` and `acme.base.Tier` as well, because `lib/net.wcl` imported `lib/base.wcl` in turn. Imports are transitive. It got the `service` block kind, because a `@block` decorator on an imported type declares that kind for the whole document. And it wrote `./lib/net.wcl` while `lib/net.wcl` wrote `./base.wcl`, because WCL resolves each path from the file it is **written in**, not from the root."
 
   p "The rest of this chapter takes that paragraph apart."
 
@@ -93,10 +93,10 @@ TEXT
 
   p "A `namespace` declaration takes a dotted path and files every declaration in its file under it. In `lib/base.wcl` above, `type Endpoint` is really `acme.base.Endpoint`, and that longer name is what the rest of the document sees. A file with no `namespace` line declares into the root namespace, where the name you write is the whole name."
 
-  p "Two rules. The declaration must be **the first item in the file**, and there may be **at most one**. Comments and blank lines above it are trivia rather than items, so a file may still open with its header comment. Both rules are checked on the file you open:"
+  p "Two rules. The declaration must be **the first item in the file**, and there may be **at most one**. Comments and blank lines above it are trivia rather than items, so a file may still open with its header comment. WCL checks both rules on the file you open:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check late.wcl
 wcl::parse
 
@@ -120,19 +120,19 @@ wcl::parse
    ·         ╰── duplicate namespace
  4 │
    ╰────
-TEXT
+CONSOLE
   }
 
   p "A namespace is a property of the **file**, not of the folder it sits in. Two files in one folder may declare different namespaces. Two files in different folders may declare the same one and pool their declarations. Nothing about the directory layout leaks into the names."
 
-  callout "Both rules are checked on the entry file only" {
+  callout "WCL checks both rules on the entry file only" {
     class = ["warning"]
-    body  = "Placement and uniqueness are checked on the file you name on the command line, not on the files it imports. An imported file that declares its `namespace` late, or twice, passes today. Its **first** `namespace` still decides what the file's declarations are called, so the second is not applied — it is ignored. Write the declaration first and write it once. The tool will not catch a library that does not."
+    body  = "WCL checks placement and uniqueness on the file you name on the command line, not on the files it imports. An imported file that declares its `namespace` late, or twice, passes today. Its **first** `namespace` still decides what the file's declarations are called, so WCL ignores the second. Write the declaration first and write it once. The tool will not catch a library that does not."
   }
 
   h3 "Declaration names nest"
 
-  p "The other half of a name is the declaration's own. A dotted declaration name nests under the file namespace, so one file can carry several groups without one `namespace` line each. Inside the namespace, a relative path resolves; the fully-qualified path always resolves too."
+  p "The other half of a name is the declaration's own. A dotted declaration name nests under the file namespace, so one file can carry several groups without one `namespace` line each. Inside the namespace, a relative path resolves. The fully-qualified path always resolves too."
 
   code wcl {
     filename = "swatch.wcl"
@@ -156,11 +156,11 @@ swatch = {
 WCL
   }
 
-  p "`color.RGB` and `acme.graphics.color.RGB` name one type here, and `wcl check` prints `OK`. Both spellings are covered by [How a name resolves](#how-a-name-resolves) below — the first is step 1, the second is step 5."
+  p "`color.RGB` and `acme.graphics.color.RGB` name one type here, and `wcl check` prints `OK`. [How a name resolves](#how-a-name-resolves) below covers both spellings: the first is step 1, the second is step 5."
 
   h2 "Imports"
 
-  p "An `import` pulls another file's items into the current document. Two forms, told apart by how the path is written. A **quoted** path names a file on disk. An **angle-bracket** path names a file the host program supplies."
+  p "An `import` pulls another file's items into the current document. Two forms, told apart by how you write the path. A **quoted** path names a file on disk. An **angle-bracket** path names a file the host program supplies."
 
   code wcl {
     source = <<'WCL'
@@ -172,10 +172,10 @@ WCL
 
   h3 "Disk imports"
 
-  p "A quoted path is resolved against the directory of the file the `import` is written in, then canonicalised. A path that names nothing fails at open time, with the path it tried:"
+  p "WCL resolves a quoted path against the directory of the file the `import` sits in, then canonicalises it. A path that names nothing fails at open time, with the path it tried:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check stray.wcl
 wcl::parse
 
@@ -187,23 +187,23 @@ wcl::parse
    ·              ╰── cannot resolve import
  2 │
    ╰────
-TEXT
+CONSOLE
   }
 
   h3 "Importer-relative resolution"
 
   p "That failure is the rule worth stating on its own, because it is the one that surprises people. **Every path resolves from the file it is written in.** The library in the worked example writes `import \"./base.wcl\"`, and it works, because `base.wcl` sits beside `net.wcl`. Write the same line in `platform.wcl` one level up and it fails, exactly as above. The root's `./` is the root's folder."
 
-  p "So a library folder is movable. Every path inside `lib/` is written from `lib/`'s point of view. Move the folder and one line changes: the one in the file that imports it. The rule holds for system imports too — see the next section."
+  p "So a library folder is movable. You write every path inside `lib/` from `lib/`'s point of view. Move the folder and one line changes: the one in the file that imports it. The rule holds for system imports too. See the next section."
 
   callout "One directory, and no fallbacks" {
     class = ["note"]
-    body  = "A disk import resolves against exactly one directory: the importing file's own. Nothing else is tried — no list of roots, no environment variable, no project file that adds one. A relative path either names a file from where it is written, or it fails. An absolute path is legal and resolves as written. That makes it portable to exactly one machine."
+    body  = "A disk import resolves against exactly one directory: the importing file's own. WCL tries nothing else. There is no list of roots, no environment variable, and no project file that adds one. A relative path either names a file from where it is written, or it fails. An absolute path is legal and resolves as written. That makes it portable to exactly one machine."
   }
 
   h3 "System imports and the registry"
 
-  p "An angle-bracket path names a **system** import: a file the host program registered under that name before it opened the document. Nothing is read from disk, and the path is not a filename. This is how a tool ships a standard library — `wdoc`'s whole schema arrives on one line:"
+  p "An angle-bracket path names a **system** import: a file the host program registered under that name before it opened the document. WCL reads nothing from disk, and the path is not a filename. A tool ships its standard library this way. `wdoc`'s whole schema arrives on one line:"
 
   code wcl {
     filename = "site.wcl"
@@ -247,12 +247,12 @@ RUST
 
   p "A later registration under the same name wins. `Registry::extend` folds one registry into another by the same rule. That is how a tool built on `wdoc` layers its own library over `wdoc`'s, with neither side knowing about the other."
 
-  p "Registry names are importer-relative in their own namespace, exactly as disk paths are on disk. `wdoc.wcl` writes `import <wdoc/prelude.wcl>`, and that file — registered as `wdoc/prelude.wcl` — writes `import <core.wcl>` for its sibling, which resolves to `wdoc/core.wcl`. `..` works and means what it looks like: a part registered as `mylib/component/common.wcl` reaches the other library with `import <../../wdoc.wcl>`."
+  p "Registry names are importer-relative in their own namespace, exactly as disk paths are on disk. `wdoc.wcl` writes `import <wdoc/prelude.wcl>`, and that file, registered as `wdoc/prelude.wcl`, writes `import <core.wcl>` for its sibling, which resolves to `wdoc/core.wcl`. `..` works and means what it looks like: a part registered as `mylib/component/common.wcl` reaches the other library with `import <../../wdoc.wcl>`."
 
   p "A system import naming something unregistered fails at open time, and says so in the registry's own vocabulary rather than the filesystem's:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check nosuch.wcl
 wcl::parse
 
@@ -264,17 +264,17 @@ wcl::parse
    ·               ╰── io error
  2 │
    ╰────
-TEXT
+CONSOLE
   }
 
   h3 "What an import brings in"
 
-  p "An imported file's items join the document as full members. Its types, interfaces, unions, symbol sets, connection declarations, `let` bindings and functions are all usable from the importing file. Its `@block`, `@table` and `@document` decorators declare kinds and top-level fields for the document as a whole."
+  p "An imported file's items join the document as full members. Its types, interfaces, unions, symbol sets, connection declarations, `let` bindings, and functions are all usable from the importing file. Its `@block`, `@table`, and `@document` decorators declare kinds and top-level fields for the document as a whole."
 
   p "What an import does **not** do is rename anything. Declarations keep the namespace of the file that declared them, and that namespace is what you write. `lib/net.wcl` imported `acme.base.Endpoint`, but `Endpoint` did not become an `acme.net` name by passing through:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check badtarget.wcl
 wcl::parse
 
@@ -286,23 +286,23 @@ wcl::parse
    ·           ╰── not declared
  4 │
    ╰────
-TEXT
+CONSOLE
   }
 
-  p "There is one convenience on top of that. Importing a namespaced file adds its namespace to this file's bare-name search path, so `Service` resolves without a `use` line once `lib/net.wcl` is in. `use` is what you reach for when that is not enough — see [use declarations](#use-declarations)."
+  p "There is one convenience on top of that. Importing a namespaced file adds its namespace to this file's bare-name search path, so `Service` resolves without a `use` line once `lib/net.wcl` is in. `use` is what you reach for when that is not enough. See [use declarations](#use-declarations)."
 
   h3 "Loaded once"
 
-  p "Each file is loaded at most once per document, keyed by its resolved path. A diamond — two libraries that both import a third — loads the shared file once and splices it in once. So does a repeated `import <wdoc.wcl>` in several page files. Neither is an error, and neither duplicates a declaration."
+  p "The document loads each file at most once, keyed by its resolved path. A diamond, two libraries that both import a third, loads the shared file once and splices it in once. So does a repeated `import <wdoc.wcl>` in several page files. Neither is an error, and neither duplicates a declaration."
 
-  p "That is why a library may import whatever it needs without knowing what else the document imports. Redundancy is free; only a genuine loop is not."
+  p "That is why a library may import whatever it needs without knowing what else the document imports. Redundancy is free. Only a genuine loop is not."
 
   h3 "Import cycles"
 
-  p "A cycle is an import that re-enters a file already open further up the current chain. It is reported at open time, at the line that closed the loop, naming the file it would have re-entered:"
+  p "A cycle is an import that re-enters a file already open further up the current chain. WCL reports it at open time, at the line that closed the loop, and names the file the import would have re-entered:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check platform.wcl
 wcl::parse
 
@@ -313,21 +313,21 @@ wcl::parse
    ·        ─────┬─────
    ·             ╰── cycle
    ╰────
-TEXT
+CONSOLE
   }
 
-  p "Read the two paths together and the loop is in front of you. The arrow points at `lib/base.wcl` line 8; the message names `lib/net.wcl`. So `net` imports `base` imports `net`. A file that imports itself reports the same way, with one path in both slots."
+  p "Read the two paths together and the loop is in front of you. The arrow points at `lib/base.wcl` line 8. The message names `lib/net.wcl`. So `net` imports `base` imports `net`. A file that imports itself reports the same way, with one path in both slots."
 
   callout "A cycle is not the same as a diamond" {
     class = ["warning"]
-    body  = "The two look alike and are handled oppositely. A file **already loaded** somewhere else in the document is skipped — that is the diamond, and it is fine. A file **still being loaded**, an ancestor of the chain the loader is in right now, is a cycle and an error. The difference is not how many files point at it; it is whether it has finished."
+    body  = "The two look alike, and WCL handles them in opposite ways. The loader skips a file **already loaded** somewhere else in the document. That is the diamond, and it is fine. A file **still being loaded**, an ancestor of the chain the loader is in right now, is a cycle and an error. The difference is not how many files point at it. The difference is whether it has finished."
   }
 
   p "Cycles are almost always a sign that a shared name wants a file of its own. Split the part both files need into a third file and have each import that."
 
   h3 "Imports inside a block"
 
-  p "An `import` may also sit inside a block. Its items are spliced into the enclosing block as if they had been written there, which lets a long subtree live in its own file. Fields and child blocks both come across, and the children are checked against the parent's `@child` / `@children` slots like any literal child."
+  p "An `import` may also sit inside a block. WCL splices its items into the enclosing block as if you had written them there, so a long subtree can live in its own file. Fields and child blocks both come across, and WCL checks the children against the parent's `@child` and `@children` slots like any literal child."
 
   code wcl {
     filename = "tags.wcl"
@@ -359,8 +359,8 @@ service web {
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl parse tagged.wcl
 ...
 service web {
@@ -373,14 +373,14 @@ service web {
     value = "platform"
   }
 }
-TEXT
+CONSOLE
   }
 
-  p "A top-level import is eager: the document loads it when it opens. A block-scoped import is **lazy** — it is loaded the first time evaluation reaches into that block. [How a document evaluates](lang_evaluation) covers what that means for a file that turns out never to be needed."
+  p "A top-level import is eager: the document loads it when it opens. A block-scoped import is **lazy**. The document loads it the first time evaluation reaches into that block. [How a document evaluates](lang_evaluation) covers what that means for a file that turns out never to be needed."
 
   h2 "Order does not matter"
 
-  p "Nothing in this chapter is order-sensitive except the one rule that says so — `namespace` must come first. A `use` may stand above the `import` that brings its target in. An `import` may be the last line in the file. Resolution runs over the whole document once every file is loaded, so nothing here is a forward reference:"
+  p "Nothing in this chapter is order-sensitive except the one rule that says so: `namespace` must come first. A `use` may stand above the `import` that brings its target in. An `import` may be the last line in the file. Resolution runs over the whole document once every file is loaded, so nothing here is a forward reference:"
 
   code wcl {
     filename = "backwards.wcl"
@@ -396,25 +396,25 @@ import "./lib/net.wcl"             # and the import last of all
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check backwards.wcl
 OK
 $ wcl get backwards.wcl level
 :gold
-TEXT
+CONSOLE
   }
 
   p "Note what that file reached: `acme.base.Tier`, two imports deep, through a `use` written above the only `import` in the file. Order is for the reader. Put your imports at the top anyway."
 
   callout "Order-independent is not preference-free" {
     class = ["info"]
-    body  = "One thing _is_ decided by source order: the tie-break in [How a name resolves](#how-a-name-resolves). When two imported namespaces both declare a name and nothing disambiguates it, the earlier `import` wins. Read that as a reason to disambiguate, not a reason to sort your imports."
+    body  = "Source order _does_ decide one thing: the tie-break in [How a name resolves](#how-a-name-resolves). When two imported namespaces both declare a name and nothing disambiguates it, the earlier `import` wins. Read that as a reason to disambiguate, not a reason to sort your imports."
   }
 
   h2 "use declarations"
 
-  p "A `use` declaration binds a name. Write it at the top level of the document you open — inside a block it is a parse error, and [`use` belongs to the root document](#use-belongs-to-the-root-document) covers why an imported file should not carry one. Every form below is checked when the document opens, so an unknown target or a clashing alias fails before anything evaluates:"
+  p "A `use` declaration binds a name. Write it at the top level of the document you open. Inside a block it is a parse error, and [`use` belongs to the root document](#use-belongs-to-the-root-document) covers why an imported file should not carry one. WCL checks every form below when the document opens, so an unknown target or a clashing alias fails before anything evaluates:"
 
   code wcl {
     source = <<'WCL'
@@ -432,11 +432,11 @@ WCL
       | "`use ns.Name`"           | "`Name`"                                           | "The name is long and you write it often" |
       | "`use ns.Name as Alias`"  | "`Alias`"                                          | "Two namespaces offer the same name" |
       | "`use ns`"                | "Every member of `ns`, bare"                       | "One namespace should win the whole file" |
-      | "`use ns as Alias`"       | "`Alias.Name` — and `Alias::kind` for block kinds" | "You want the namespace visible at each use" |
+      | "`use ns as Alias`"       | "`Alias.Name`, and `Alias::kind` for block kinds" | "You want the namespace visible at each use" |
       | "`use ns.{A, B as C}`"    | "`A` and `C`"                                      | "Several names from one namespace" |
   }
 
-  p "The one form to read twice is the third. `use ns` binds no single name; it adds a whole namespace to the bare-name search path. The last two rows are the pair that trips people: `use acme.net` lets you write `Service`, while `use acme.net as N` does not — it gives you `N.Service`."
+  p "The one form to read twice is the third. `use ns` binds no single name. It adds a whole namespace to the bare-name search path. The last two rows are the pair that trips people: `use acme.net` lets you write `Service`, while `use acme.net as N` does not. It gives you `N.Service`."
 
   h3 "When you need one"
 
@@ -465,8 +465,8 @@ plan = :monthly
 WCL
   }
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check plans.wcl
 wcl::eval::schema_violation
 
@@ -474,50 +474,50 @@ wcl::eval::schema_violation
   │ its members
 
 plans.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
-  p "The document is not confused. It is decided, and it decided against you. `lib/net.wcl` is imported first, so its transitive `acme.base` outranks `acme.billing`. Bare `Tier` is therefore `acme.base.Tier`, whose members are `gold` and `silver`. Three ways to fix it, and any one will do:"
+  p "The document is not confused. It is decided, and it decided against you. `plans.wcl` imports `lib/net.wcl` first, so its transitive `acme.base` outranks `acme.billing`. Bare `Tier` is therefore `acme.base.Tier`, whose members are `gold` and `silver`. Three ways to fix it, and any one will do:"
 
   list {
-    li "`use acme.billing.Tier` — bind the leaf you meant. Says the most, in one place."
-    li "`use acme.billing` — put that whole namespace ahead of the imports' own order. Right when one library should win the file."
-    li "`plan: acme.billing.Tier` — write the name in full at the point of use. No declaration needed at all."
+    li "**`use acme.billing.Tier`.** Bind the leaf you meant. Says the most, in one place."
+    li "**`use acme.billing`.** Put that whole namespace ahead of the imports' own order. Right when one library should win the file."
+    li "**`plan: acme.billing.Tier`.** Write the name in full at the point of use. No declaration needed at all."
   }
 
   p "All three print `OK`, and `wcl get plans.wcl plan` answers `:monthly`. What none of them do is _remove_ the other `Tier`: the document still holds both, and both are still reachable in full. A `use` is a local spelling, not an edit to the model."
 
   h3 "How a name resolves"
 
-  p "A written name is tried against five candidates, in this order, and the first one that names a real declaration wins:"
+  p "WCL tries a written name against five candidates, in this order, and the first one that names a real declaration wins:"
 
   list {
     li "**The file's own namespace**, plus the name as written. Inside `namespace acme.graphics`, `color.RGB` is tried as `acme.graphics.color.RGB` first."
-    li "**An item alias**, for a single-segment name — anything a `use ns.Name` or a `use ns.{…}` bound."
-    li "**A namespace alias**, on the first segment of a dotted name — `N.Service` where `use acme.net as N`."
+    li "**An item alias**, for a single-segment name. Anything a `use ns.Name` or a `use ns.{…}` bound."
+    li "**A namespace alias**, on the first segment of a dotted name. `N.Service`, where `use acme.net as N`."
     li "**Each namespace on the search path**, in order: the `use ns` declarations first, in source order, then the imported files' namespaces, in import order."
-    li "**The name as already fully qualified.** This is why `acme.graphics.color.RGB` works from inside `acme.graphics`, even though step 1 tried it as `acme.graphics.acme.graphics.color.RGB` and found nothing."
+    li "**The name as already fully qualified.** Step 5 is why `acme.graphics.color.RGB` works from inside `acme.graphics`, even though step 1 tried it as `acme.graphics.acme.graphics.color.RGB` and found nothing."
   }
 
   p "Steps 2 and 3 are what a `use` adds, and both sit above every import. That is the mechanism behind the fix above. Stated plainly: **anything you declare explicitly outranks anything an import brought along.**"
 
   h3 "use belongs to the root document"
 
-  p "Only step 1 of that list is per-file. A name is always tried in its own declaring file's namespace first, which is why an imported library's bare references resolve at home. Steps 2, 3 and 4 are **the document's**, and today they come from the root document alone."
+  p "Only step 1 of that list is per-file. WCL always tries a name in its own declaring file's namespace first, so an imported library's bare references resolve at home. Steps 2, 3, and 4 are **the document's**, and today they come from the root document alone."
 
-  p "Two consequences, and they point opposite ways. A `use` in the file you open reaches _into_ every imported file: write `use acme.base.Tier as Level` in the root and a library declaring `level: Level` resolves. A `use` in an imported file reaches nowhere at all — it binds nothing, and its own unknown targets and duplicate aliases go unchecked."
+  p "Two consequences, and they point opposite ways. A `use` in the file you open reaches _into_ every imported file: write `use acme.base.Tier as Level` in the root and a library declaring `level: Level` resolves. A `use` in an imported file reaches nowhere at all. It binds nothing, and its own unknown targets and duplicate aliases go unchecked."
 
   callout "A library should not write use" {
     class = ["warning"]
-    body  = "A `use` line inside an imported file is inert today, and it fails quietly rather than loudly. The alias resolves to nothing, so a field declared through it is never checked at all. A library should write the names it means in full — `acme.base.Tier`, not an alias — or rely on step 1 and its own namespace. Keep `use` for the document you open, where it is checked and where it works."
+    body  = "A `use` line inside an imported file is inert today, and it fails quietly rather than loudly. The alias resolves to nothing, so a field declared through it is never checked at all. A library should write the names it means in full, `acme.base.Tier` rather than an alias, or rely on step 1 and its own namespace. Keep `use` for the document you open, where it is checked and where it works."
   }
 
   h3 "What a use refuses"
 
-  p "Three checks run at open time. An unknown target fails — including the case in [What an import brings in](#what-an-import-brings-in), where the namespace exists but does not own that name. Two bindings of one local name fail, whichever forms produced them:"
+  p "Three checks run at open time. An unknown target fails, including the case in [What an import brings in](#what-an-import-brings-in), where the namespace exists but does not own that name. Two bindings of one local name fail, whichever forms produced them:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check dupalias.wcl
 wcl::parse
 
@@ -529,13 +529,13 @@ wcl::parse
    ·           ╰── duplicate alias
  6 │
    ╰────
-TEXT
+CONSOLE
   }
 
-  p "And the brace-list form insists on a namespace to its left, so reaching into a type for its fields is refused rather than quietly ignored:"
+  p "And the brace-list form insists on a namespace to its left. Try to reach into a type for its fields and WCL refuses, rather than quietly ignoring the line:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check listtype.wcl
 wcl::parse
 
@@ -545,12 +545,12 @@ wcl::parse
    · ──────────────┬──────────────
    ·               ╰── not a namespace
    ╰────
-TEXT
+CONSOLE
   }
 
   h2 "Qualified kind names"
 
-  p "Everything so far has been about type names. Block kinds — the word before the brace — are namespaced too. They need their own spelling, because a kind is not a type reference: it is written where a type name cannot go. So a kind takes a `::` qualifier instead of a dot. `acme.net::service` names the `service` kind in the `acme.net` namespace, and `N::service` does the same through a namespace alias."
+  p "Everything so far has been about type names. Block kinds, the word before the brace, are namespaced too. They need their own spelling, because a kind is not a type reference: you write it where a type name cannot go. So a kind takes a `::` qualifier instead of a dot. `acme.net::service` names the `service` kind in the `acme.net` namespace, and `N::service` does the same through a namespace alias."
 
   p "The case that needs it is a local kind with the same name as a library's. Both stay usable in one file:"
 
@@ -582,17 +582,17 @@ acme.net::service web {           # the library's Service, named explicitly
 WCL
   }
 
-  p "`wcl check` prints `OK`. Now give the bare `service` a field only the library's schema declares — `service search { tier = :gold }` — and it does not. That is the proof that the qualifier selected a different schema rather than annotating the same one:"
+  p "`wcl check` prints `OK`. Now give the bare `service` a field only the library's schema declares, `service search { tier = :gold }`, and it does not. That is the proof that the qualifier selected a different schema rather than annotating the same one:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check staging-bad.wcl
 wcl::eval::schema_violation
 
   × field 'tier' is not declared by schema 'Stub'
 
 staging-bad.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
   p "A bare kind prefers a declaration in the referencing file's own namespace, then one the root document authored, then the first candidate found. The practical reading is the first clause: **your own `@block` shadows a library's, deterministically.** A library cannot capture a kind name out from under you by being imported."
@@ -601,8 +601,8 @@ TEXT
 
   p "A namespace is what makes the qualifier able to choose, so a kind must be unique within one. Two `@block(\"service\")` types in the same namespace are refused, and the message names the way out:"
 
-  code text {
-    source = <<'TEXT'
+  code console {
+    source = <<'CONSOLE'
 $ wcl check twokinds.wcl
 wcl::eval::schema_violation
 
@@ -618,22 +618,22 @@ wcl::eval::schema_violation
    ╰────
 
 twokinds.wcl: 1 schema violation
-TEXT
+CONSOLE
   }
 
-  p "The same kind name in two _different_ namespaces is fine — that is `staging.wcl` above. [Schemas](lang_schemas) covers `@block` and `@table` themselves; [Writing your own blocks](wdoc_extending) covers declaring a kind that a wdoc document can use."
+  p "The same kind name in two _different_ namespaces is fine. That is `staging.wcl` above. [Schemas](lang_schemas) covers `@block` and `@table` themselves. [Writing your own blocks](wdoc_extending) covers declaring a kind that a wdoc document can use."
 
   h2 "Four keywords, four questions"
 
-  p "This is the comparison the four mechanisms exist to make. Each answers a question the others cannot see, which is why they stayed four things rather than one."
+  p "The four mechanisms exist to make this comparison. Each answers a question the others cannot see, so they stayed four things rather than one."
 
   table {
     rows:
       | "Keyword"     | "Answers"                          | "Written in"                       | "Affects" | "Wrong tool when" |
-      | "`import`"    | "Which files are in the document?" | "Any file, top level or in a block" | "The whole document" | "You wanted to rename something — it never does" |
-      | "`namespace`" | "What are my declarations called?" | "The first line of a file"         | "Every declaration in that file, everywhere" | "You wanted a shorthand for one file — that is `use`" |
+      | "`import`"    | "Which files are in the document?" | "Any file, top level or in a block" | "The whole document" | "You wanted to rename something. An import never does" |
+      | "`namespace`" | "What are my declarations called?" | "The first line of a file"         | "Every declaration in that file, everywhere" | "You wanted a shorthand for one file. That is `use`" |
       | "`use`"       | "How do I write those names?"      | "The top level of the file you open" | "The whole document, imported files included" | "You wanted the declaration itself renamed" |
-      | "`::`"        | "Which namespace's block kind?"    | "One block instance"               | "That instance only" | "The name is a type — types take a dot" |
+      | "`::`"        | "Which namespace's block kind?"    | "One block instance"               | "That instance only" | "The name is a type. Types take a dot" |
   }
 
   p "One worked consequence to close on. In `staging.wcl` the local `@block(\"service\")` and the library's are both live. The import decided both files are here. The namespaces decided the two schemas have different owners. The bare kind picked the local one by the home-first rule, and the `::` qualifier reached past it for the one instance that wanted the other. No line of that overrode another: each answered its own question, and the answers composed."
@@ -641,10 +641,10 @@ TEXT
   h2 "Where to go next"
 
   list {
-    li "[Types](lang_types) — what a type reference may name, and how `&T` references and interfaces resolve."
-    li "[Schemas](lang_schemas) — `@document`, `@block`, `@table`, and how several `@document` types in one namespace merge."
-    li "[How a document evaluates](lang_evaluation) — laziness, caching and cycles, including what a block-scoped import defers."
-    li "[Documents, fields and blocks](lang_documents) — the thirteen item forms, three of which this chapter covered."
-    li "[Documents, pages and sites](wdoc_sites) — what `import <wdoc.wcl>` puts in scope."
+    li "[Types](lang_types). What a type reference may name, and how `&T` references and interfaces resolve."
+    li "[Schemas](lang_schemas). `@document`, `@block`, `@table`, and how several `@document` types in one namespace merge."
+    li "[How a document evaluates](lang_evaluation). Laziness, caching, and cycles, including what a block-scoped import defers."
+    li "[Documents, fields and blocks](lang_documents). The thirteen item forms, three of which this chapter covered."
+    li "[Documents, pages and sites](wdoc_sites). What `import <wdoc.wcl>` puts in scope."
   }
 }
