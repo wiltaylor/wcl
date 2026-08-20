@@ -10,6 +10,7 @@ description: >-
 
 # WCL and wdoc
 
+<overview>
 **WCL** is a typed configuration and schema language. A `.wcl` file carries the data and the
 schema that describes it. The schema gives you types with widths and encodings, unions,
 interfaces, and decorators that declare which blocks and fields are legal. A field holds an
@@ -22,6 +23,13 @@ path out of it.
 `wcl wdoc build` renders it to a static website. `wcl wdoc build --type markdown` renders it to a folder of
 `.md` files, and `wcl wdoc build --type pdf` to a paginated PDF. wdoc is not a second language — it is a
 schema written in WCL, and `wdoc` is a subcommand of the `wcl` CLI.
+</overview>
+
+<variables>
+- `${CLAUDE_SKILL_DIR}`: Path to this skill's directory.
+- `LANGUAGE`: `${CLAUDE_SKILL_DIR}/references/language/` — the WCL language chapters, listed below.
+- `WDOC`: `${CLAUDE_SKILL_DIR}/references/wdoc/` — the wdoc block chapters, listed below.
+</variables>
 
 ## How to use this skill
 
@@ -35,7 +43,7 @@ Read [`references/intro.md`](references/intro.md) first if you have not used WCL
 covers what WCL is, how it differs from JSON and YAML, and the install. It then walks a first
 document through `wcl check`, `wcl get` and `wcl wdoc build`.
 
-## The language — `references/language/`
+## The language — `LANGUAGE`
 
 - [`lang_documents.md`](references/language/lang_documents.md) — a `.wcl` file as a document: fields, blocks, labels, nesting, tables, `self` and `parent`, `let` items.
 - [`lang_values.md`](references/language/lang_values.md) — numbers and their suffixes, literal units, booleans, symbols, strings, interpolation, heredocs, `none`.
@@ -52,7 +60,7 @@ document through `wcl check`, `wcl get` and `wcl wdoc build`.
 - [`lang_builtins.md`](references/language/lang_builtins.md) — every builtin by category, with its signature, parameters, return value and an example.
 - [`lang_cli.md`](references/language/lang_cli.md) — every `wcl` subcommand, its flags and its exit codes.
 
-## wdoc — `references/wdoc/`
+## wdoc — `WDOC`
 
 Documents and presentation:
 
@@ -95,9 +103,29 @@ Extending:
 
 ## Routing hints
 
-- A syntax or type question about a `.wcl` file → `references/language/`, whatever the file is for.
-- A question about what a page renders as → `references/wdoc/`.
-- "Which builtin does X?" → `lang_builtins.md`. Do not guess a builtin; it is a closed list.
-- "Which flag does X?" → `lang_cli.md`. Same rule.
+- A syntax or type question about a `.wcl` file → `LANGUAGE`, whatever the file is for.
+- A question about what a page renders as → `WDOC`.
+- "Which builtin does X?" → `lang_builtins.md`.
+- "Which flag does X?" → `lang_cli.md`.
 - A block that draws → the diagram group, not `wdoc_formatting.md`.
 - Declaring a **new** block kind of your own → `wdoc_extending.md`, then `lang_schemas.md`.
+
+<boundaries>
+<always>
+- Give every top-level field a schema. A value with no `@document` type in scope is an error, not a default
+- Run `wcl check` on a `.wcl` file you wrote, and `wcl wdoc build` on a page, before reporting it done
+- Name the output target when a wdoc block behaves differently across html, markdown and pdf — `wdoc_outputs.md` says which do
+</always>
+
+<ask>
+- Which output targets a wdoc document must render on, when the request names a block that not every backend draws
+- Whether a new block kind is wanted, before writing a lowering: composing the existing vocabulary is usually the smaller change
+</ask>
+
+<never>
+- Guess a builtin, a decorator, a block kind or a CLI flag. Each is a closed list, and the reference for it names every member
+- Reach for a JSON, YAML or Markdown idiom on the assumption WCL has an equivalent
+- Keep reading reference files once the question is answered
+- Edit `docs/reference/` to match this skill, or this skill to match `docs/reference/`. The two trees are independent and both answer to `crates/`
+</never>
+</boundaries>

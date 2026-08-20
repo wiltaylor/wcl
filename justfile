@@ -52,6 +52,25 @@ cli-install: cli-build
 wdoc-test:
     cargo test -p wcl_wdoc
 
+[private]
+require-uv:
+    @command -v uv >/dev/null 2>&1 || { echo "uv is required — install it from https://docs.astral.sh/uv/" >&2; exit 1; }
+
+# Deliberately outside the merge bar: every test is at least one live model call,
+# so it is billed, non-deterministic and far slower than the rest of the gate.
+# Run it when the skill's wording changes, not on every commit.
+#
+# Depends on cli-build because three of the tests put what the agent wrote through
+# target/release/wcl, and a stale binary would grade against the wrong behaviour.
+#
+# ARGS reach pytest directly, with no `--` separator: `just skill-test -k connection`
+# narrows to one test. Passing `--` instead makes pytest read the rest as filenames.
+#
+# Run the .claude/skills/wcl skill tests against a real agent (billed model calls)
+[group('test')]
+skill-test *ARGS: require-uv cli-build
+    .claude/skills/wcl/test.py {{ARGS}}
+
 # Run one cargo-fuzz target (nightly + cargo-fuzz required); pass extra flags after --.
 # The explicit --target pins the REAL host triple: a prebuilt musl cargo-fuzz
 # binary (e.g. from taiki-e/install-action in CI) otherwise defaults to ITS OWN

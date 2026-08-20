@@ -1,0 +1,3 @@
+interface:
+  display_name: "WCL and wdoc"
+  short_description: "Read, write and debug .wcl files, wdoc pages and the wcl CLI"

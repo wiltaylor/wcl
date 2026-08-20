@@ -1,0 +1,58 @@
+{
+  "skill": "wcl",
+  "runs": {
+    "test_gives_every_top_level_field_a_schema[claude]": {
+      "harness": "claude",
+      "model": "claude-opus-5[1m]",
+      "judge": {
+        "passed": true,
+        "score": 5
+      },
+      "outcome": "passed",
+      "ran_at": "2026-08-20T04:08:24Z",
+      "duration_s": 22.8
+    },
+    "test_quotes_a_body_that_would_break_every_other_form[claude]": {
+      "harness": "claude",
+      "model": "claude-opus-5[1m]",
+      "outcome": "passed",
+      "ran_at": "2026-08-20T04:09:50Z",
+      "duration_s": 36.3
+    },
+    "test_routes_a_rendering_question_to_the_wdoc_tree[claude]": {
+      "harness": "claude",
+      "model": "claude-opus-5[1m]",
+      "outcome": "passed",
+      "ran_at": "2026-08-20T04:08:33Z",
+      "duration_s": 8.5
+    },
+    "test_takes_the_builtin_from_the_closed_list[claude]": {
+      "harness": "claude",
+      "model": "claude-opus-5[1m]",
+      "outcome": "passed",
+      "ran_at": "2026-08-20T04:07:51Z",
+      "duration_s": 13.9
+    },
+    "test_takes_the_cli_flag_from_the_closed_list[claude]": {
+      "harness": "claude",
+      "model": "claude-opus-5[1m]",
+      "outcome": "passed",
+      "ran_at": "2026-08-20T04:08:02Z",
+      "duration_s": 10.8
+    },
+    "test_writes_a_connection_graph_that_evaluates[claude]": {
+      "harness": "claude",
+      "model": "claude-opus-5[1m]",
+      "outcome": "passed",
+      "ran_at": "2026-08-20T04:08:53Z",
+      "duration_s": 19.7
+    },
+    "test_writes_a_wdoc_page_that_builds[claude]": {
+      "harness": "claude",
+      "model": "claude-opus-5[1m]",
+      "outcome": "passed",
+      "ran_at": "2026-08-20T04:09:14Z",
+      "duration_s": 21.4
+    }
+  }
+}
