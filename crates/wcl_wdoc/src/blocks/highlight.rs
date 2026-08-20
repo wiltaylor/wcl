@@ -20,6 +20,12 @@ use syntect::util::LinesWithEndings;
 /// WCL's own syntax definition, bundled because syntect ships none.
 const WCL_SYNTAX: &str = include_str!("../../assets/wcl.sublime-syntax");
 
+/// Shell-session highlighting for `code console` terminal transcripts.
+/// Bundled because no shell-*session* grammar ships: the `bash` / `sh` /
+/// `zsh` grammars are script grammars, and they colour a command's captured
+/// output as if it were source.
+const CONSOLE_SYNTAX: &str = include_str!("../../assets/console.sublime-syntax");
+
 /// Prefix of the token classes syntect mints — one per grammar scope, so
 /// the vocabulary is as open-ended as the grammars themselves. Named here
 /// because [`crate::css_lint`] exempts the family, and the exemption must
@@ -53,6 +59,12 @@ fn syntax_set() -> &'static SyntaxSet {
         // rather degrade to "no WCL highlighting" than panic the
         // whole build, so swallow the error and continue.
         if let Ok(def) = SyntaxDefinition::load_from_str(WCL_SYNTAX, true, Some("source.wcl")) {
+            builder.add(def);
+        }
+        // Same degrade-rather-than-panic rule as the WCL grammar above.
+        if let Ok(def) =
+            SyntaxDefinition::load_from_str(CONSOLE_SYNTAX, true, Some("source.console"))
+        {
             builder.add(def);
         }
         builder.build()

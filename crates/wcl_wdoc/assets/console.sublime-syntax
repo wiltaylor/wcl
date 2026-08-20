@@ -1,0 +1,88 @@
+%YAML 1.2
+---
+# Shell *session* highlighting: a transcript of prompts, commands and the
+# output they produced. This is deliberately not a shell-script grammar.
+#
+# A script grammar (bash / sh / zsh) tokenises every line as code, so the
+# captured output of a command gets coloured as if it were shell source —
+# an apostrophe in a diagnostic such as `field 'replicas' is below @min(0)`
+# opens a string literal and mis-colours the rest of the line. Here only a
+# prompt line is treated as code; every other line is left plain, which is
+# what a transcript wants.
+#
+# `highlight_html` re-highlights each line independently, so no context can
+# leak from a command line into the output beneath it.
+name: Shell Session
+file_extensions: [console]
+scope: source.console
+
+contexts:
+  main:
+    # A prompt line. Everything after the prompt marker is the command.
+    #
+    # Only `$`, and only with whitespace after it. `#` is deliberately not a
+    # prompt: a transcript's captured output uses it for comments far more
+    # often than anyone pastes a root shell. Requiring the space also keeps
+    # `$x^2$` — inline math, which these docs quote — off this path.
+    - match: '^\s*(\$)(\s+)'
+      captures:
+        1: punctuation.definition.prompt.console
+      push: command_name
+
+    # Anything else is captured output. No scope, so it renders plain.
+    - match: '^.*$\n?'
+
+  # The first word after the prompt is the program being run.
+  command_name:
+    - match: '$\n?'
+      pop: true
+    - match: '[\w./-]+'
+      scope: entity.name.function.console
+      set: command_args
+    - match: '\s+'
+
+  command_args:
+    - match: '$\n?'
+      pop: true
+
+    # Long and short options.
+    - match: '--?[A-Za-z0-9][\w-]*'
+      scope: variable.parameter.option.console
+
+    # Quoted arguments.
+    - match: "'"
+      scope: punctuation.definition.string.begin.console
+      push: single_quoted
+    - match: '"'
+      scope: punctuation.definition.string.begin.console
+      push: double_quoted
+
+    # Pipes, redirects and separators keep a session readable.
+    - match: '\|\||&&|[|<>;&]'
+      scope: keyword.operator.shell.console
+
+    # A second command after a pipe or separator is a program name again.
+    - match: '(?<=[|;&]\s)[\w./-]+'
+      scope: entity.name.function.console
+
+    - match: '\b\d+\b'
+      scope: constant.numeric.console
+
+    # Everything else in the command is a plain operand.
+    - match: '\S+'
+
+  single_quoted:
+    - meta_scope: string.quoted.single.console
+    - match: "'"
+      scope: punctuation.definition.string.end.console
+      pop: true
+    - match: '$\n?'
+      pop: true
+
+  double_quoted:
+    - meta_scope: string.quoted.double.console
+    - match: '"'
+      scope: punctuation.definition.string.end.console
+      pop: true
+    - match: '$\n?'
+      pop: true
