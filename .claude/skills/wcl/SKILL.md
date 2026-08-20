@@ -34,10 +34,7 @@ schema written in WCL, and `wdoc` is a subcommand of the `wcl` CLI.
 ## How to use this skill
 
 **This file is a router. It holds no reference material.** Find the one or two entries below
-that match the question. Open those files. Read nothing else. Each reference carries its own
-content: it will not send you to a sibling to understand the chapter you are on. Where one does
-point outward — `cargo doc` for exact Rust signatures, an upstream index for icon names — it is
-naming a lookup that would go stale if copied in, and the chapter still answers without it.
+that match the question. Open those files. Read nothing else.
 
 Read [`references/intro.md`](references/intro.md) first if you have not used WCL before. It
 covers what WCL is, how it differs from JSON and YAML, and the install. It then walks a first
