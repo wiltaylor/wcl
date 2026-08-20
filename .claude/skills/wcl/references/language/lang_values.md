@@ -48,8 +48,9 @@ j = -5              // unary minus
 | `…f32` `…f64` | Float width suffix |
 | any other suffix | A **literal unit** — see below |
 
-> **`2e3` is not scientific notation.** With no decimal point, `e3` lexes as a unit suffix and
-> resolves against the field's type, which almost always fails. Write `2.0e3`.
+> **Scientific notation needs a decimal point in the mantissa — write `2.0e3`.** In `2e3`, `e3`
+> lexes as a unit suffix instead and resolves against the field's type, which almost always
+> fails.
 
 ### Numeric promotion
 

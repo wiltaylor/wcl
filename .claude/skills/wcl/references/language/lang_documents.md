@@ -8,9 +8,6 @@ read a document in two ways, and the two ways never mix:
 - **For edit** — `wcl set`, `wcl fmt`, an editor. The syntax tree survives whole, comments
   included. This is what a tool that rewrites the file sees.
 
-This chapter covers the surface you write: the top-level forms, fields, blocks, labels,
-nesting, `table` items, `self` / `parent`, and `let` items.
-
 ## The top-level forms
 
 A document is a sequence of **items**. There are thirteen forms, and everything else in the
@@ -56,8 +53,8 @@ not survive: **`wcl fmt` rewrites every comment with a `#` prefix.** The prefix 
 preserved, so a formatted file has no `//` comments left. Two or more blank lines between
 items collapse to one.
 
-A comment is not documentation. To attach prose that a tool can read back, use the `@doc`
-decorator — see `lang_decorators.md`.
+To attach prose that a tool can read back, use the `@doc` decorator — see
+`lang_decorators.md`. A comment is not documentation.
 
 ## Fields
 
@@ -240,9 +237,9 @@ a = scale(3.0)    // 6.0
 That is the point: a `let` is scaffolding for the author, and a consumer never learns it
 existed. If a value must reach a consumer, it has to be a field.
 
-Do not confuse the `let` **item** with the `let … ;` **binding** inside a `{ … }` block
-expression. The item has no semicolon and lives at item scope; the binding has one and lives
-inside a single expression. See `lang_control_flow.md`.
+Two forms share the word `let`. The **item** has no semicolon and lives at item scope; the
+`let … ;` **binding** inside a `{ … }` block expression has one and lives inside a single
+expression. See `lang_control_flow.md`.
 
 ## Reading a document back
 

@@ -137,8 +137,8 @@ diagram {
 ```
 
 **A diagram holding a map is interactive on its own.** Wheel to zoom, drag to pan, plus `+` /
-`−` / `⟲` controls. You do **not** set `pan_zoom = true`; the map loads the bundled player
-itself. `zoom_max` on the enclosing diagram still raises the zoom ceiling (default `4.0`).
+`−` / `⟲` controls. The map loads the bundled player itself, so `pan_zoom = true` adds nothing.
+`zoom_max` on the enclosing diagram still raises the zoom ceiling (default `4.0`).
 
 | `map` field | Type | Required | Meaning |
 | --- | --- | --- | --- |

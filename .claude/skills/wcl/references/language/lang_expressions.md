@@ -35,7 +35,7 @@ Loosest first. Every binary operator is **left-associative**.
 | 9 | call `f(…)` |
 | 10 (tightest) | `.` and `::` |
 
-Two consequences worth remembering:
+Two consequences:
 
 ```wcl
 a = trim(raw) ?? "untitled"        // (trim(raw)) ?? "untitled" — the call binds tighter
@@ -60,7 +60,7 @@ Three shapes other languages spell with an operator are builtin calls here.
 
 The first two are parse errors, so you learn about them at once. **The third is not.** `wcl
 check` answers `OK` on `a = "x" + "y"`, and the mistake surfaces only when something reads the
-field. Watch for it.
+field.
 
 **String concatenation has no operator.** Use interpolation for anything with more than two
 parts (`$"${host}:${port}"`). Use `concat(a, b)` for exactly two, `format("{}:{}", host, port)`
@@ -150,7 +150,7 @@ So the fix for the failing cases above is always the same: **bind it, then read 
 
 ### Not off a call result
 
-`f(x).field` is an error — `expected a reference, got call`. Bind the result first:
+`f(x).field` is an error — `expected a reference, got call`. Bind it, then read it:
 
 ```wcl
 top = { let t = max_by(rows, fn(r: Row) -> i64 r.hits); t.name }

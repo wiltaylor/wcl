@@ -29,9 +29,8 @@ With neither field set, a page renders bare: its blocks go straight into `<body>
 | `:website` | A slot-driven marketing shell: sticky header, `banner`, `hero`, content plus `sidebar`, `footer`. | `menu` |
 | `:presentation` | A slide deck rendered as one `index.html`. | `deck` |
 
-All four are ordinary `template` blocks in the standard library. None of them is special.
-Each one is a composition of the public parts listed below, so you can call, extend or rebuild
-it.
+All four are ordinary `template` blocks in the standard library, each a composition of the
+public parts listed below, so you can call, extend or rebuild any of them.
 
 ## Page templates and collection templates
 
@@ -293,13 +292,13 @@ an id and attrs, a `Paragraph` with an id, a `Head`, a `Table`, a `Highlighted` 
 ## Gotchas
 
 - **Parts resolve by bare name.** The parts, the `el` family and `page_metadata` are plain
-  names reached through `import <wdoc.wcl>`. They are not `wdoc::`-qualified. Do not declare a
-  `let` of your own named `wdoc_part_*`, `wdoc_*_layout`, `el`, `ela`, `eli`, `raw`, `inl`,
-  `icon` or `para`. Yours would shadow the standard-library one.
+  names reached through `import <wdoc.wcl>`. They are not `wdoc::`-qualified. Name your own
+  `let`s clear of those families — a `let` called `wdoc_part_*`, `wdoc_*_layout`, `el`, `ela`,
+  `eli`, `raw`, `inl`, `icon` or `para` shadows the standard-library one.
 - A raw heredoc's closing delimiter must sit **alone on its line**. `HTML ) ],` on one line is
   an unterminated heredoc.
-- A template that declares a repeated slot becomes a collection template, which changes how the
-  whole site builds. Do not add `content*` to a page layout by accident.
+- Keep `content*` for a layout you mean to be a collection template. A repeated slot anywhere
+  else converts a page layout into one, which changes how the whole site builds.
 - `render` must return `list<Html>`, not `list<Content>`. The two vocabularies both declare a
   `Paragraph` and a `Table`; a template speaks the HTML one.
 

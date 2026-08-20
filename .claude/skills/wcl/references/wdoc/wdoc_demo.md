@@ -50,8 +50,6 @@ A `<div class="wdoc-demo">` holding, **in this order**:
 3. An `Example` label, then the children's formatted WCL source in a highlighted
    `<pre class="code-block"><code class="language-wcl">`.
 
-The preview comes **above** the source, not below it.
-
 The theme renderer emits the palette-scoped `.wdoc-theme-light` and `.wdoc-theme-dark`
 wrappers. CSS custom properties inherit, so each pane re-themes its own subtree. The reader's
 global theme toggle does not change either pane. That is the whole point: the page shows both

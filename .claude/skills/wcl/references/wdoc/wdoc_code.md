@@ -15,9 +15,9 @@ RS
 }
 ```
 
-Write `<<'TAG'` (quoted tag), not `<<TAG`. A plain heredoc interpolates `${…}`, which is
-exactly what a shell script or a WCL sample does not want. Use `$<<TAG` only when you
-deliberately want the interpolation.
+Write `<<'TAG'`, with the tag quoted. A plain `<<TAG` interpolates `${…}` and swallows the
+substitutions a shell script or a WCL sample means to show literally. Reach for `$<<TAG` only
+when the interpolation is the point.
 
 ## Fields
 
@@ -43,20 +43,26 @@ the binary. The tag is matched first as a **token** (an extension or the usual s
 then by grammar name. Reliable tags include:
 
 `wcl`, `rust`, `python`, `js`, `ts`, `json`, `yaml`, `toml`, `html`, `css`, `sh`, `bash`,
-`sql`, `c`, `cpp`, `go`, `java`, `ruby`, `php`, `xml`, `diff`, `makefile`, `dockerfile`,
+`sql`, `c`, `cpp`, `go`, `java`, `ruby`, `php`, `xml`, `diff`, `makefile`, `dockerfile`, `console`,
 `markdown`.
 
 **An unknown tag never fails the build.** It falls back to plain text: the listing still
 renders, escaped, with no token classes. So a wrong tag is a silent loss of colour, not an
 error you will be told about. If a listing renders grey, suspect the tag first.
 
-`console` is one of these plain-text tags — there is no shell-session grammar. It is still the
-right tag for a terminal transcript. It says what the listing is, and the Markdown fence
-carries it through. Only the colour is missing.
+`console` is a **session** grammar, bundled next to the WCL one because the syntax set ships
+none. Tag a terminal transcript `console`: it colours the prompt marker, the program name and
+its options, and leaves every output line without a token class, so output renders exactly as
+`text` would.
 
-The gutter is always on in HTML, and the highlighter then works one line at a time. A
-construct that spans lines — a block comment — restarts its scope on each line. Short listings
-are the supported case.
+Reach for `bash` / `sh` / `zsh` only for a shell *script*. On a transcript a script grammar
+tokenises the captured output as source, and an apostrophe in a diagnostic — `field 'replicas'
+is below @min(0)` — opens a string literal that mis-colours the rest of the line. Bare output
+with no `$` line is `text`.
+
+The gutter is always on in HTML, so the highlighter works one line at a time. A construct that
+spans lines — a block comment — restarts its scope on each line. Short listings are the
+supported case.
 
 ## `code` is not native — it lowers
 
@@ -70,10 +76,11 @@ draws its own chrome from that fixed payload:
 | Markdown | The filename as a `` `code` `` line above, then a plain fenced block tagged with the language. No card. |
 | PDF | The filename as a code-styled caption line, then the listing drawn as natively coloured runs. |
 
-Two consequences worth holding on to:
+Two consequences:
 
-- **The card is HTML chrome, not content.** Do not author window dots or a header bar
-  yourself; on the other three targets they would be literal junk.
+- **The card is HTML chrome, not content.** Author `source` and `filename`, and let HTML draw
+  the frame — hand-written window dots or a header bar arrive on the other targets as literal
+  junk.
 - The line-number gutter is pure CSS (`counter-increment` on `.code-line`). There is no
   `line_numbers` field to turn it off, and no start-line or highlight-line field.
 

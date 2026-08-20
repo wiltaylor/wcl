@@ -136,7 +136,7 @@ terminal {
 | `tui_checkbox` | the caption | `checked`, `accent` (`green`), `muted` (`bright_black`) |
 | `tui_radio` | the caption | `selected`, `accent` (`green`), `muted` (`bright_black`) |
 
-Notes worth knowing:
+Notes:
 
 - `tui_spinner` draws **one static frame**. A rendered document does not animate, so pick the
   frame you want with `frame`.
@@ -216,8 +216,8 @@ union TermFundamental {
 ## Gotchas
 
 - **Coordinates are 1-based.** `row = 0` is off the grid.
-- **A widget must not read its own `row` / `col`.** Emit at `(1, 1)` and let the renderer place
-  the result.
+- **A widget emits at `(1, 1)`.** Its own `row` / `col` are the renderer's to read; the renderer
+  offsets the runs it gets back.
 - **Colour, not chrome.** Box-drawing characters are glyphs on the same grid as everything else.
   There are no vector borders to style with CSS.
 - **The grid does not grow.** Content past `cols` / `rows` is clipped. Size the terminal for

@@ -78,9 +78,9 @@ site docs {
 | `accent` | `symbol?` | One of `:red :orange :yellow :green :cyan :blue :purple :pink`. |
 | `ui_theme`, `ui_accent`, `ui_mode` | `symbol?` | The theme for `wf_*` wireframe widgets — the look of the mocked application, separate from the document theme. Each one falls back to the document value. |
 
-Child blocks: `toc`, `menu`, `sidebar_footer`, `deck`. Each one is optional, and each
-one belongs to a template. Loose content blocks inside a `site` fill a collection template's
-site-level slots.
+Child blocks: `toc`, `menu`, `sidebar_footer` and `deck`, each optional and each read by one
+template (below). Loose content blocks inside a `site` fill a collection template's site-level
+slots.
 
 ## The `page` block
 

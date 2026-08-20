@@ -1,11 +1,9 @@
 # Builtins
 
 The builtin set is **closed**. The language ships 100 of them and you cannot add one from WCL —
-a host adds one in Rust. Do not guess a name: an unknown callee is `wcl::eval::unknown_builtin`,
-and a wrong argument count is `wcl::eval::builtin_arity`.
-
-Every builtin is listed below with its exact signature, grouped by what it works on. Under each
-group is a block of one-line worked examples; each shows the call and its result.
+a host adds one in Rust. All 100 are in the tables below, each with its exact signature and a
+worked example, so take every name and argument count from there: an unknown callee is
+`wcl::eval::unknown_builtin`, and a wrong argument count is `wcl::eval::builtin_arity`.
 
 The list is self-describing at runtime, which is how you check it in a version you do not have
 this page for:
@@ -305,7 +303,6 @@ panic("invariant violated")   // abort with an unrecoverable failure → (aborts
 - **`sort` and `sort_by` need all-numeric or all-string keys.** `sort_by` is stable.
 - **`keys` and `values` are sorted by key**, so they always agree with each other, and
   `values({ name: "Rex", age: 4 })` is `[4, "Rex"]` — `age` before `name`.
-- **`merge` lets the second record win** on a name clash.
 - **`format` uses `{}` placeholders**, and `{{` / `}}` are literal braces. It is not a printf
   format string. String interpolation (`$"…${x}…"`) is usually clearer.
 - **`error` and `panic` abort evaluation**; `assert` answers `none` when it passes. Because

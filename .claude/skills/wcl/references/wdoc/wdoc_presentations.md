@@ -45,8 +45,8 @@ $ wcl wdoc build main.wcl --out _site
 wrote 1 page
 ```
 
-The build writes `_site/index.html` and `_site/_wdoc/presentation.js`. "1 page" is the deck, not
-the slide count.
+The build writes `_site/index.html` and `_site/_wdoc/presentation.js`. A deck of any size
+reports "1 page": that is the deck file, not the slide count.
 
 ## The deck grid
 
@@ -141,8 +141,9 @@ Revealed on the first Space
 Mention the benchmark numbers.
 ```
 
-Note that the speaker notes are **visible** there. They are hidden only by the deck's own
-overlay. Do not put anything private in `notes` if you also ship the Markdown or the PDF.
+The speaker notes are **visible** there. The deck's own overlay is the only thing
+that hides them, so treat `notes` as published content on any site you also ship as Markdown
+or PDF.
 
 ## The `presentation` template
 
@@ -199,7 +200,6 @@ its player, exactly as it owns its CSS.
 
 ## Gotchas
 
-- The build reports `wrote 1 page` for a deck of any size. That is the deck file, not a bug.
 - The deck CSS sets `overflow: hidden` on the body. Long slide content scrolls inside its own
   slide.
 - `notes` outside a presentation site is a build error, not a silent no-op.

@@ -139,8 +139,7 @@ scope with no import.
 
 ## Declaring your own
 
-`@decorator("name")` makes a type the argument schema for `@name`. `@inline(N)` slots take
-positional arguments; every other slot is named-only.
+`@decorator("name")` makes a type the argument schema for `@name`.
 
 ```wcl
 @decorator("range")

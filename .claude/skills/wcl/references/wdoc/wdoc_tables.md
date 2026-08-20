@@ -93,6 +93,10 @@ table {
 **The two forms do not mix.** When a `rows` *field* is present the computed path wins and any
 pipe rows in the same block are ignored silently. Pick one per block.
 
+The type is named `TableBlock` rather than `Table` because `Table` is the reserved type name
+for the language's `@table` decorator. The *block kind* is still `table` — the rename never
+reaches what you write.
+
 ### Cells
 
 A `utf8` cell runs through the inline-pattern engine — bold, italic, `code`, links, icons and
@@ -112,10 +116,6 @@ a string literal.
   rule against it (see [`wdoc_styling.md`](wdoc_styling.md)).
 - **No caption field.** Put a `p` above or below the table.
 - No column widths, no spans, no sorting, no per-cell classes, no footer row.
-
-The type is named `TableBlock` rather than `Table` because `Table` is the reserved type name
-for the language's `@table` decorator. The *block kind* is still `table` — the rename never
-reaches what you write.
 
 ### Styling
 

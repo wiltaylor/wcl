@@ -101,7 +101,7 @@ The kind reaches the output as a `data-kind` attribute on the drawn path:
 <polyline points="…" stroke="currentColor" marker-end="url(#wdoc-arrow)" data-kind="flow" />
 ```
 
-Two consequences an author must know:
+Two consequences:
 
 - **`:default`, `:flow` and `:data` look identical out of the box.** No bundled theme styles
   them apart. They are a hook, not a built-in appearance. Style them yourself with a `base`
@@ -193,8 +193,9 @@ class "wdoc-edge-label" { css = "font-weight: 600;" }
 - Endpoint ids are bare identifiers in a `->` statement (`a -> b`) and **quoted strings** in an
   `edges` record (`source: "a"`).
 - `a -> a` draws a real self-loop: an elbow path out of one side of the shape and back into
-  another. One case defeats it. The shape may already carry two or more other edges
-  toward one side. Those edges then share one anchor, that anchor takes both ends of the loop,
-  and the loop collapses to a zero-length path. Nothing on the shape overrides it.
+  another. One case defeats it — where the shape already carries two or more other edges toward
+  one side, those edges share a single anchor, that anchor takes both ends of the loop, and the
+  loop collapses to a zero-length path. Nothing on the shape overrides it.
 - A dropped edge is a warning, not an error. Read the build output.
-- Kind styling is yours to write. Do not expect `:flow` to look different by itself.
+- Kind styling is yours to write: `:flow` draws exactly like `:default` until a rule of your own
+  says otherwise.

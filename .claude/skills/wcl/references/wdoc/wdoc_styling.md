@@ -307,8 +307,6 @@ carrying the class into an element.
   can affect at most its own rule.
 - A `theme` recolours what wdoc emits. It does not restyle raw HTML you inject with `raw(...)`.
   Paint that from `var(--wdoc-*)` yourself.
-- Setting `accent` on the `site` overrides the theme's own accent role. Omit it to keep the
-  theme's designed accent.
 - A palette role you omit emits **no** variable at all. It does not fall back to another
   theme's value; it falls through the CSS cascade to whatever declared it last.
 

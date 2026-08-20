@@ -1,8 +1,7 @@
 # Sequence and state diagrams
 
 `sequence_diagram` and `state_diagram` are **page-level blocks**, not `diagram` shapes. Write
-each one in a page body beside `p` and `code`. Neither takes an `x` / `y`, and neither belongs
-inside a `diagram { }`.
+each one in a page body beside `p` and `code`. Neither takes an `x` / `y`.
 
 Both are coordinate-free. You declare the parts and the renderer computes every position.
 
@@ -43,8 +42,8 @@ sequence_diagram {
 | `id` / `class` | — | HTML id and style classes on the SVG. |
 | `desc` | — | Accessible description. |
 
-Note that `width` here is an `f64` with a decimal default, unlike a `diagram`'s `i64` canvas.
-`width = 720` and `width = 720.0` both work.
+Here `width` is an `f64` with a decimal default, unlike a `diagram`'s `i64` canvas. `width = 720`
+and `width = 720.0` both work.
 
 ### participant
 
@@ -216,7 +215,7 @@ A `class` on a participant or a state **replaces** those defaults for that one s
 - The inline label is an **id**, not a display name. Set `name` for what the reader sees.
 - Ids are quoted strings here (`participant "web"`, `from = "web"`), unlike a diagram's bare
   identifiers.
-- You declare only `width`. Do not look for a `height`; the content decides it.
+- You declare only `width`; the content decides the height. There is no `height` field.
 - An unknown participant, message or state id stops the build. That is deliberate — an off-grid
   arrow would otherwise silently distort the drawing.
 - A state pins itself only when it sets **both** `x` and `y`.

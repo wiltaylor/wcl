@@ -112,9 +112,9 @@ wdoc has no swimlane block. You compose one from three parts. Draw each lane as 
 are ordinary shapes, so everything else keeps working — icons, decisions, boundaries, and edges
 that cross lanes.
 
-Composing lanes means placing by hand, so **do not set an auto-layout on a swimlane diagram**.
-Leave `layout` at its default. Keep `routing = :elbow`, which is what makes a lane-crossing
-arrow read as a right-angled hand-off.
+Composing lanes means placing by hand, so **leave `layout` at its default** — an auto-layout
+would move the nodes out of their bands. Keep `routing = :elbow`, which is what makes a
+lane-crossing arrow read as a right-angled hand-off.
 
 Use a translucent grey for the bands (`"#7f7f7f14"` and `"#7f7f7f2e"`), so they read on light
 and dark themes alike.
@@ -202,5 +202,5 @@ diagram { width = 400  height = 260  layout = :layered
   node an id.
 - Setting `x` / `y` under `:layered` does not pin a shape. The coordinates apply *inside* the
   cell the layout assigned, so the shape is displaced from its rank instead.
-- Do not mix a swimlane's hand-placed bands with an auto-layout.
+- Hand-placed swimlane bands need the default free layout to stay under their nodes.
 - Give the diagram a `desc`. A flowchart with no accessible name announces nothing.

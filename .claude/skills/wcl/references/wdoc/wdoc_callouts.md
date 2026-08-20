@@ -138,8 +138,8 @@ chapter_header "Documents, fields and blocks" {
 
 Whichever of `reading_time`, `updated` and `version` are set join into **one meta line, in
 that order, separated by ` · `**. That separator is a fact about the line, shared by all three
-backends — do not glue your own together with a different one. With none of the three set,
-there is no meta line at all.
+backends, so set the three fields separately and let wdoc join them. With none of the three
+set, there is no meta line at all.
 
 The three values are strings you write. wdoc does not count words for `reading_time`, does not
 read git for `updated`, and does not know its own `version` here.

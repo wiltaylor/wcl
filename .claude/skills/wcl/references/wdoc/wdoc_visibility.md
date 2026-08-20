@@ -218,7 +218,7 @@ A block is checked against two backends, because two are involved: the target th
 producing, and the renderer actually running. Those are not always the same — a `card` in a
 diagram draws its body as HTML in whichever target embeds the SVG.
 
-So a `file` inside a card must not reach a PDF just because the card body renders as HTML. And
+So a `file` inside a card stays out of a PDF even though the card body renders as HTML. And
 `markdown_source`, which taps the Markdown emitter from inside the HTML build, is a rendering
 question rather than an output one. On an ordinary page the two are the same backend and this
 is one check. When they differ, the error says so.

@@ -12,9 +12,9 @@ them too — `wcl wdoc serve` and the `markdown_source` block.
 
 ## One document, three renderers
 
-The three targets are not three exporters bolted onto an HTML generator. Each reads the same
-evaluated document and the same **content vocabulary**. Each then decides for itself what a
-heading, a code listing or a callout looks like.
+Each of the three targets reads the same evaluated document and the same **content
+vocabulary**, then decides for itself what a heading, a code listing or a callout looks like.
+None of them is an exporter bolted onto an HTML generator.
 
 A block reaches a backend by one of two routes. Most blocks **lower**. A WCL function on the
 block's type returns a node of the content vocabulary: a `Heading`, a `Paragraph`, a `Code`, a

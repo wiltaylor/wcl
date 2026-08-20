@@ -291,9 +291,9 @@ modified "service:web" {
 
 The output is itself WCL — a change set is a document, and `wcl parse` reads it back. There is
 no second output format: a consumer that wants the diff structurally parses WCL, which it
-already must do to have had two documents to compare. Note that a change set carries no schema
-of its own, so `wcl check` on one reports `modified` as an undeclared block kind; supply a
-schema for `modified` / `removed` / `added` / `field` if you want it validated.
+already must do to have had two documents to compare. A change set carries no schema of its
+own, so `wcl check` on one reports `modified` as an undeclared block kind; supply a schema for
+`modified` / `removed` / `added` / `field` if you want it validated.
 
 A formatting-only edit produces **no diff at all**. Neither does a comment edit, a reordering,
 or a rewrite that moves a field into an import.
@@ -323,8 +323,8 @@ now fills a field you never wrote, a computed value that moved because a builtin
 block that gathers somewhere else now. An empty diff after a library bump is a real result.
 
 The working order is three commands: bump the import; run `wcl check` and fix what no longer
-validates; run `wcl diff <old-rev>:main.wcl main.wcl` to see what moved silently. The third
-step is the one people skip.
+validates; run `wcl diff <old-rev>:main.wcl main.wcl` to see what moved silently. The upgrade is
+done when all three have run, not when `wcl check` passes.
 
 ## `wcl init`
 

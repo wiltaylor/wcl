@@ -12,11 +12,20 @@ WDOC is a dsl built on top of WCL that is designed for creating documents. It is
 to be more rich than markdown and allows generation of documents over data stored in wcl format.
 
 ## Directives:
-- IMPORTANT: When you make changes to the language you must do the following:
-    - UPDATE `docs/reference/pages/<area>/<stem>.wcl` — the chapter a human reads on wcl.dev.
-    - UPDATE `.claude/skills/wcl/references/<area>/<stem>.md` — the same material an agent reads.
+- IMPORTANT: A change to the language lands in three places, each written for its own reader:
+    - `crates/` — the behaviour itself.
+    - `docs/reference/` — the chapter a human reads on wcl.dev. A book: prose, worked
+      examples, read in order the first time.
+    - `.claude/skills/wcl/` — what an agent needs in order to *use* wcl. Syntax, the closed
+      lists (every builtin, every CLI flag), and the gotchas no config confesses. Shaped for
+      lookup, and reached through the router in `SKILL.md`.
 
-Failing to make these updates will confuse both human users and AI Agents.
+  The two documentation trees are **independent**. Each answers to the behaviour in `crates/`,
+  never to the other, so a chapter in one needs no counterpart in the other and neither is a
+  translation of its neighbour. Write each for its own reader and let them differ.
+
+  Verify a claim against the crate or the binary before writing it down. Both trees state that
+  their examples were run.
 
 ## Repo Layout
 

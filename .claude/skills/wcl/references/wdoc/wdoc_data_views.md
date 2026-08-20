@@ -34,8 +34,8 @@ metric_card { label = "Memory"  value = 88 }        // status defaults to "note"
 ```
 
 **Slot values reach text through `$"…${slot}…"` interpolated strings — note the `$` prefix.**
-A plain `"…"` is literal, and this is the single most common component mistake. A bare
-reference in a field position (`class = [status]`) needs no prefix.
+A plain `"…"` is literal. A bare reference in a field position (`class = [status]`) needs no
+prefix.
 
 ### Typed slots
 

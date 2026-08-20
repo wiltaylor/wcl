@@ -210,8 +210,7 @@ when the output is served, not when a page is opened directly from disk.
 - The block sizes are `f64` (`width = 560.0`); the diagram's are `i64` (`width = 560`).
 - `every` on a timeline and the whole dopesheet frame geometry are `i64`. A decimal there reads
   as absent, and the renderer falls back to its default without a word.
-- A timeline date that does not parse is not a date. Keep to `YYYY-MM-DD`, with an optional
-  `HH:MM` after a space or a `T`.
+- Keep every timeline date to `YYYY-MM-DD`, with an optional `HH:MM` after a space or a `T`.
 - `on` and `side` on a `card` mean something only inside a timeline. A plain diagram ignores
   them.
 - A dopesheet with a wrong sheet path fails the build at the asset copy, not at render time.

@@ -126,8 +126,8 @@ documentation, and every one of them resolves:
 | Documents | `book` `book-open` `bookmark` `list` `layout-grid` `star` `heart` `clock` `calendar` |
 
 For a name outside that set, browse the upstream index — Lucide at `lucide.dev/icons`,
-Bootstrap Icons at `icons.getbootstrap.com` — then render the page to confirm it. Confirming
-matters: a wrong name fails silently as literal `:name:` text.
+Bootstrap Icons at `icons.getbootstrap.com` — then render the page to confirm it, because the
+failure is silent.
 
 ## Output and styling
 

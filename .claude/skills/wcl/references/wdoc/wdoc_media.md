@@ -7,8 +7,7 @@ Three blocks that pull something from disk (or the web) into the output: `image`
 
 Every local `source` is resolved **relative to the build entry document's folder**, not
 relative to the `.wcl` file the block is written in. A page under `pages/guide.wcl` that is
-imported by `docs/main.wcl` still writes its paths from `docs/`. This trips up almost
-everyone once.
+imported by `docs/main.wcl` still writes its paths from `docs/`.
 
 A source is **external** — passed through verbatim, never copied — when it starts with
 `http://`, `https://`, `data:` or `/`. Anything else is a local file.

@@ -90,7 +90,7 @@ declared, so an existing document keeps validating. But `span "…" { class = ["
 paints nothing. Style the whole paragraph through `class` on the `text`. To format inside it,
 use the inline patterns below.
 
-Use `text` when you assemble a paragraph from computed pieces. Use `p` otherwise.
+Reach for `text` when you assemble a paragraph from computed pieces.
 
 ## Inline patterns
 
@@ -224,8 +224,8 @@ column {
 ```
 
 **`column` is HTML-only layout.** The Markdown and PDF targets render the children **stacked in
-source order**. The layout is lost; the content is not. Never put meaning in the arrangement
-alone.
+source order**. The layout is lost; the content is not. Carry the meaning in the children
+themselves, so the stacked reading says the same thing as the side-by-side one.
 
 ## Gotchas
 
@@ -233,7 +233,6 @@ alone.
   first. `li "one"  li "two"` renders one item, and `h2 "Agenda"  list { … }` fails with
   `block kind 'li' is not allowed inside 'h2'`.
 - `class` is a **list**: `class = ["lead"]`, not `class = "lead"`.
-- A `span`'s `id` and `class` render nowhere. Style the `text` instead.
 - A link's URL is a bare **page name**, not a path or a filename. `[docs](docs.html)` is wrong;
   `[docs](docs)` is right. A link to an unknown page fails the build.
 - A prose string with a literal `$`, `_`, `` ` `` or `**` may match a pattern. Check the

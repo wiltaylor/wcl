@@ -49,9 +49,8 @@ wcl::eval::user_error
 
 ### Validation skips a field that fails to evaluate
 
-**Validation does not force a field whose expression fails.** The schema check *skips* a field
-that errors during evaluation instead of reporting it. A computed field may legitimately refer
-to bindings that only exist once a host expands it. So:
+**The schema check *skips* a field that errors during evaluation, instead of reporting it.** A
+computed field may legitimately refer to bindings that only exist once a host expands it. So:
 
 ```console
 $ wcl check b.wcl
@@ -160,7 +159,7 @@ no such path: base
 A `let` **item** at file or block scope is not the same construct as a `let … ;` **binding**
 inside a `{ }` block expression. See [`lang_control_flow.md`](lang_control_flow.md).
 
-Two more things a path lookup will not do:
+Two more rules bind a path lookup:
 
 - **It must end at a leaf.** `wcl get config.wcl servers` fails with `not_a_leaf`, because a
   gathered block list is not a scalar.

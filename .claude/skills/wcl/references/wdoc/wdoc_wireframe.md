@@ -1,7 +1,7 @@
 # Wireframes
 
 The `wf_*` family mocks up a user interface: windows, device frames, panels, inputs and
-controls. The output is a static SVG drawing. Nothing is interactive.
+controls. The output is a static SVG drawing — nothing in the family is interactive.
 
 **A widget is a diagram shape, not a page block.** Every `wf_*` type extends the `Widget`
 interface, which extends `SvgBlock`. A widget is therefore a legal child of a `diagram` or a

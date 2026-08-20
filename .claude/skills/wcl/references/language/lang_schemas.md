@@ -242,7 +242,7 @@ root-authored one is preferred for type checks.
 
 ### How a gather field collides
 
-Read this one twice. It is the failure that costs the most time.
+This is the failure that costs the most time.
 
 Merged document schemas share **one flat space of field names**. Say your `@document` declares
 a gather field (`@child` / `@children`) under a name a library's `@document` already uses. The

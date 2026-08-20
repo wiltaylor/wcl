@@ -42,14 +42,14 @@ cargo install --git https://github.com/wiltaylor/wcl -p wcl --locked
 ```
 
 The script installs into `~/.local/bin` by default. The `--bin-dir <dir>` flag and the
-`WCL_INSTALL_DIR` variable both change that. Add the directory to `PATH` if it is not there
-already. Then confirm the install:
+`WCL_INSTALL_DIR` variable both change that. Put that directory on `PATH`, then confirm the
+install:
 
 ```console
 $ wcl --version
 ```
 
-The command prints the version you installed.
+Go on once that prints the version you installed.
 
 ## A first document
 
@@ -102,6 +102,8 @@ wcl::eval::schema_violation
 config.wcl: 1 schema violation
 ```
 
+Put `host = "localhost"` back before going on. `wcl check` prints `OK` again.
+
 ## Read values out
 
 `wcl eval` (aliased `wcl get`) resolves a dotted path from the document root. The path walks a
@@ -114,8 +116,9 @@ $ wcl get config.wcl servers.web.port
 8080
 ```
 
-`port` answers `8080` although the instance never sets it. The `@default` belongs to the
-evaluated view. A reader does not have to know about it. Add `--json` for machine output.
+`port` answers `8080` although the instance never sets it: the `@default` belongs to the
+evaluated view, so a reader gets the resolved value without knowing the default exists. Add
+`--json` for machine output.
 
 A path must end at a **leaf** value. `wcl get config.wcl servers` fails with `not_a_leaf`,
 because a gathered block list is not a scalar.
@@ -155,9 +158,8 @@ Two neighbours of `set`:
 
 ## The wdoc half
 
-wdoc is a document generator. Its vocabulary is ordinary WCL blocks. A document imports the
-embedded standard library. After that, `site`, `page`, `h1`, `p`, `code`, `table`, `diagram`
-and the rest are in scope.
+wdoc's vocabulary is ordinary WCL blocks. One import of the embedded standard library puts
+`site`, `page`, `h1`, `p`, `code`, `table`, `diagram` and the rest in scope.
 
 Save this as `site.wcl`:
 

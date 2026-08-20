@@ -50,9 +50,7 @@ Because it is a `let`, an `fn` item is a **composition helper, not data**. It ne
 the evaluated document, in `wcl get`, in JSON output, or in schema validation. See
 `lang_documents.md`.
 
-## The one constraint that shapes every WCL API
-
-**A parameter list is fixed at declaration.**
+## Parameter lists are fixed at declaration
 
 - No **default** arguments.
 - No **named** arguments — every argument is positional.
@@ -159,14 +157,13 @@ Two rules follow:
 - **A parameter shadows a capture of the same name.** Captures are bound first; parameters are
   bound over them.
 
-Calls are depth-limited, so a function that recurses without a base case reports a depth error
-rather than hanging.
-
 ## Evaluation
 
 Function values take part in the document's lazy, cached field evaluation. A field holding a
 call stays unevaluated until something reads it. A cycle between fields reports an error rather
-than looping. Each call evaluates the body in a fresh frame. See `lang_evaluation.md`.
+than looping, and calls are depth-limited, so a function that recurses without a base case
+reports a depth error rather than hanging. Each call evaluates the body in a fresh frame. See
+`lang_evaluation.md`.
 
 Arguments are ordinary expressions evaluated at the call. A bare record argument coerces to the
 parameter's declared union variant by shape — one of the three places that coercion runs; see
@@ -176,8 +173,8 @@ parameter's declared union variant by shape — one of the three places that coe
 
 A small pipeline built from an `fn` item, a captured binding and three higher-order builtins.
 
-Note that every parameter needs a **named** type. There is no anonymous record type: `fn(r: {
-name: utf8 })` is a parse error, so the row shape is declared once as `Row`.
+Every parameter needs a **named** type. There is no anonymous record type: `fn(r: { name:
+utf8 })` is a parse error, so the row shape is declared once as `Row`.
 
 ```wcl
 type Row {

@@ -131,7 +131,7 @@ diagram {
 | `width` | `f64` | Table width (default `200`). The **height is derived** from the rows. |
 | `title` | `utf8` | Header caption. Omit it for a header-less table. |
 | `header_height` | `f64` | Header height when `title` is set (default `28`). |
-| `row_height` | `f64` | Height of every row (default `30`). Fixed — see the gotchas. |
+| `row_height` | `f64` | Height of every row (default `30`). Fixed: the renderer cannot measure a row's content. |
 | `rows` | `@children("node_row")` | The rows, top to bottom. |
 
 `node_row` fields:

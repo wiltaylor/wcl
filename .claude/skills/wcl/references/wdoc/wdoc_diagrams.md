@@ -16,9 +16,8 @@ diagram {
 A `diagram` is a page block. Write it in a page body beside `p` and `code`. Its children are
 shapes, and a shape is any block that implements the `SvgBlock` interface.
 
-This page covers the canvas, the primitive shapes, `container`, `boundary`, the layout modes and
-shape styling. The other shape families sit inside a `diagram` in exactly the same way, and each
-has its own reference:
+The other shape families sit inside a `diagram` in exactly the same way, and each has its own
+reference:
 
 | Shapes | Reference |
 | --- | --- |
@@ -45,10 +44,10 @@ diagram {
 ```
 
 An `f64` field takes either form: `x = 20` and `x = 20.0` both work. An `i64` field takes the
-integer only. **Write `width = 320.0` on the diagram and the renderer reads no width at all**:
-it emits `<svg width="0">` and the diagram disappears. `wcl check` passes, and the build
-reports nothing. If a diagram renders blank, check for a decimal point on `width` or `height`
-first.
+integer only. **Keep the canvas integral — `width = 320`.** Given `width = 320.0` the renderer
+reads no width at all: it emits `<svg width="0">` and the diagram disappears. `wcl check`
+passes, and the build reports nothing. If a diagram renders blank, check for a decimal point on
+`width` or `height` first.
 
 The same rule holds for every other `i64` field: `columns`, `seed`, `iterations`, a timeline's
 `every`, a chart point's `category`, a dopesheet's frame geometry.
@@ -154,7 +153,7 @@ diagram { width = 200  height = 60
 The text is the inline label. `x` / `y` position it, `fill` colours it. Named `label`, not
 `text`, because `text` is the page-level prose block.
 
-Omit `font_size`. Give `fit_width` / `fit_height` instead. The renderer then picks a size that
+Give `fit_width` / `fit_height` in place of `font_size`. The renderer then picks a size that
 fits the text inside that region. Every stdlib shape labels itself this way, which is why
 a long label shrinks rather than overflowing.
 
@@ -397,8 +396,8 @@ diagram { width = 320  height = 100
 ```
 
 The target resolves like a prose link: a bare page name, or `site:page` across sites. An unknown
-page fails the build. HTML anchors cannot nest, so do not put `link` on a container whose
-children are also linked — link the container's title `label` instead.
+page fails the build. HTML anchors cannot nest, so where a container's children are already
+linked, put the container's own `link` on its title `label`.
 
 ## Pan and zoom
 

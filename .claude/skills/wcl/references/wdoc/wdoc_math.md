@@ -47,14 +47,15 @@ DOC
 standalone equation.
 
 The `$…$` pattern requires a non-space character at each delimiter, which is what keeps
-`$10 or $20` from being read as an equation. Currency in prose is safe.
+`$10 or $20` from being read as an equation.
 
 ## Colour
 
 Every glyph paints with `currentColor`, so an equation follows the surrounding text colour —
 theme, `class`, and the light/dark toggle all just work. The renderer rewrites only the
-*default* black; an explicit `\textcolor{…}` keeps its own colour. Do not add a blanket
-`path { fill: … }` rule, or you clobber that.
+*default* black; an explicit `\textcolor{…}` keeps its own colour. Recolour an equation
+through the surrounding text colour or `\textcolor` — a blanket `path { fill: … }` rule
+clobbers both.
 
 ## The supported subset
 

@@ -69,7 +69,7 @@ That renders:
 | --- | --- |
 | `slot n: content` | Required. |
 | `slot n: content?` | Optional. An unfilled slot renders nothing. |
-| `slot n: content*` | Repeated. This makes the template a **collection** template — the whole site renders to one page. Do not use it for a website layout. |
+| `slot n: content*` | Repeated. Declaring one silently makes the template a **collection** template — the whole site renders to one page. A website layout keeps every slot unrepeated. |
 | `slot n: content<Kind>` | Only blocks of `Kind` may fill the slot. |
 | `slot n: content = fn(c: SlotOwner) -> list<Html> …` | A fallback used when the slot is unfilled. |
 
@@ -231,10 +231,8 @@ $ wcl wdoc build my-site/main.wcl --out my-site/_site
   heredoc. Put the closing bracket on the next line.
 - Use the interpolating heredoc form `$<<TAG` when the fragment carries `${c.title}`. Plain
   `<<TAG` is literal.
-- `raw(...)` is **not** escaped. Never build one from untrusted input.
+- `raw(...)` is **not** escaped, so build one only from markup you author yourself.
 - A `Head` returned below the top level renders to nothing, with no warning.
-- Adding a `content*` slot silently converts the layout into a collection template. The site
-  then renders to a single `index.html`.
 
 ## See also
 

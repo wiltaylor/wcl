@@ -32,8 +32,8 @@ inferred from the contents.
 
 ### Indexing
 
-**There is no index operator.** `items[0]` is a parse error: `[` only ever opens a list
-literal, a tensor shape, or a table row. Read an element with the `at` builtin.
+**Read an element with the `at` builtin.** There is no index operator: `items[0]` is a parse
+error, because `[` only ever opens a list literal, a tensor shape, or a table row.
 
 ```wcl
 first  = at(items, 0)

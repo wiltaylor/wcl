@@ -33,7 +33,7 @@ Anywhere a type is expected you may write one of these forms:
 | `&T` | a **reference** to a document node satisfying interface `T` |
 | `T?` | optional — the value may be `none` |
 
-An **interface** name is not in that list on its own: it is legal only behind `&`.
+An **interface** name is legal only behind `&`, so it has no row of its own in that table.
 
 > **Type arguments on a named type are syntax only.** `content<SvgBlock>` parses, formats and
 > reads back as metadata. Nothing checks their arity and nothing substitutes them. A named type

@@ -149,7 +149,7 @@ the surrounding text. Its parts carry their own classes: `wdoc-axis`, `wdoc-grid
 `wdoc-axis-label`, `wdoc-chart-title`, `wdoc-legend`, `wdoc-line`, `wdoc-point-label`,
 `wdoc-annotation`.
 
-The ninth series reuses `wdoc-series-1`. Beyond eight series, the palette repeats.
+The palette repeats past eight: the ninth series reuses `wdoc-series-1`.
 
 ## Data-driven charts
 

@@ -9,8 +9,8 @@ Three separate questions, and they are easy to confuse:
 ## `namespace`
 
 A `namespace` declaration scopes every declaration in the file under a dotted path. It must be
-the **first item in the file** — anything before it is a parse error
-(`namespace declaration must be the first item in the file`).
+the **first item in the file** — not the first *declaration*, the first item. Anything before it
+is a parse error (`namespace declaration must be the first item in the file`).
 
 ```wcl
 namespace company.net
@@ -220,7 +220,6 @@ $ wcl get recipe.wcl recipes.cake.count
 
 ## Gotchas
 
-- `namespace` must be the first item. Not the first *declaration* — the first item.
 - A `use` target must already be declared, or be a real prefix of declarations. There is no
   forward declaration.
 - `use` binds names for **expressions and type references**. It does not rename block kinds;

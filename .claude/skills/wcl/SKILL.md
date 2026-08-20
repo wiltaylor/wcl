@@ -21,8 +21,10 @@ schema written in WCL, and `wdoc` is a subcommand of the `wcl` CLI.
 ## How to use this skill
 
 **This file is a router. It holds no reference material.** Find the one or two entries below
-that match the question. Open those files. Read nothing else. Each reference stands alone: it
-does not send you to a website, to this repository, or to another reference for its content.
+that match the question. Open those files. Read nothing else. Each reference carries its own
+content: it will not send you to a sibling to understand the chapter you are on. Where one does
+point outward — `cargo doc` for exact Rust signatures, an upstream index for icon names — it is
+naming a lookup that would go stale if copied in, and the chapter still answers without it.
 
 Read [`references/intro.md`](references/intro.md) first if you have not used WCL before. It
 covers what WCL is, how it differs from JSON and YAML, and the install. It then walks a first
@@ -62,9 +64,9 @@ Content blocks:
 - [`wdoc_formatting.md`](references/wdoc/wdoc_formatting.md) — headings, `p`, `text` and `span`, `column`, the inline pattern vocabulary.
 - [`wdoc_code.md`](references/wdoc/wdoc_code.md) — the `code` block, its language, filename and caption, and the chrome each backend draws.
 - [`wdoc_callouts.md`](references/wdoc/wdoc_callouts.md) — the `callout` kinds, `footnote` and `footnotes`, the `chapter_header` meta line.
-- [`wdoc_tables.md`](references/wdoc/wdoc_tables.md) — `list` and `li`, `table` in both authored forms, alignment and captions.
-- [`wdoc_media.md`](references/wdoc/wdoc_media.md) — `image` sources, sizing and crops, the `video` block, the `file` block, path resolution.
-- [`wdoc_icons.md`](references/wdoc/wdoc_icons.md) — the `icon` block, the bundled packs and their licensing, custom icon sets, and how to list a pack.
+- [`wdoc_tables.md`](references/wdoc/wdoc_tables.md) — `list` and `li`, `table` in both authored forms, and the CSS workarounds standing in for the absent alignment and caption fields.
+- [`wdoc_media.md`](references/wdoc/wdoc_media.md) — `image` sources and sizing, why there is no crop field, the `video` block, the `file` block, path resolution.
+- [`wdoc_icons.md`](references/wdoc/wdoc_icons.md) — the `icon` block, the bundled packs and their licensing, custom icon sets, and how to find an icon name.
 - [`wdoc_math.md`](references/wdoc/wdoc_math.md) — the `math` block, inline and display equations, the supported LaTeX subset.
 - [`wdoc_data_views.md`](references/wdoc/wdoc_data_views.md) — components and slots, repeaters, partials, the `body` and `project` pair, schema-reflected tables.
 - [`wdoc_demo.md`](references/wdoc/wdoc_demo.md) — the `demo` block: source and live preview side by side, and how it degrades.

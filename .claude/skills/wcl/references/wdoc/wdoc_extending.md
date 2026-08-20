@@ -12,9 +12,9 @@ interfaces, give it a `lower` function, and your kind renders like a built-in on
 | A WCL `lower` | `lower = fn(b: MyBlock) -> list<…>` | Anyone. This is how you extend wdoc. |
 | Rust dispatch | `@native` | wdoc's own blocks only. |
 
-Declaring **both** fails the build. Declaring **neither** fails the build. A stub `lower` that
-returns `[]` while Rust really draws the kind is what the check exists to prevent, so do not
-write one to satisfy a type.
+Declaring **both** fails the build. Declaring **neither** fails the build. The check exists to
+catch a stub `lower` that returns `[]` while Rust really draws the kind, so let the `lower` you
+write be the one that really draws your block.
 
 `lower` is declared *optional* on each interface, so a native block need not fake a function.
 The build check, not the type system, is what makes it exactly one.
@@ -274,8 +274,8 @@ the block needs computation — geometry, branching, or a shape the markup canno
 - **Return a list**, even for one node.
 - **Name the record fields** in `Content` and `Svg` literals. WCL checks arity, not types.
 - **`@native` is wdoc's, not yours.**
-- **Do not reuse a built-in kind name.** Your declaration would be silently ignored, so wdoc
-  refuses it instead.
+- **Pick a kind name no built-in already uses.** Your declaration would otherwise be silently
+  ignored, so wdoc refuses it instead.
 - **A custom kind reached by a wdoc container is not laid out by it.** A wireframe container, for
   example, arranges the built-in widgets only; your widget renders as a standalone shape.
 - **Recursion is capped at 32 levels.**
