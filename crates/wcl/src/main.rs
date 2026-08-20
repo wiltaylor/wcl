@@ -1,3 +1,27 @@
+//! The `wcl` command-line tool.
+//!
+//! A thin front end over `wcl_lang` (the language) and `wcl_wdoc` (the
+//! document generator). The subcommands are declared by the `Command` enum,
+//! whose doc comments are the `--help` text; this module holds what they
+//! share.
+//!
+//! Two things are shared deliberately. Every subcommand loads documents
+//! through [`cli_loader`] and evaluates them in [`cli_environment`], which
+//! layer wdoc's embedded schemas and builtins over the language's own — so
+//! `import <wdoc.wcl>` resolves under `wcl check` and `wcl repl` exactly as
+//! it does under `wcl wdoc build`, with no file on disk. And every
+//! subcommand reports through the same exit codes, [`EXIT_OK`] through
+//! [`EXIT_IO`], which are the tool's contract with the scripts that call it.
+//!
+//! # Map
+//!
+//! - [`dump`] — the `wcl parse` document-tree rendering, and the
+//!   `WCL_PROFILE` call-tree JSON.
+//! - [`diff`] and [`gitspec`] — `wcl diff`, and the `<rev>:<path>`
+//!   convention it accepts on either side.
+//! - [`scaffold`] — `wcl init`, the template-driven project generator.
+//! - [`serve`] — the watch-and-rebuild dev server behind `wcl wdoc serve`.
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
