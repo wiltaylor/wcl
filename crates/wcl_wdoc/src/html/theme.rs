@@ -21,7 +21,9 @@ use std::fmt::Write as _;
 
 use wcl_lang::{Block, Document};
 
-use crate::render::{DEFAULT_THEME, HUES, field_symbol, field_utf8, find_theme, label_string};
+use crate::render::{
+    DEFAULT_THEME, HUES, chain_field, chain_metric, chain_role, field_symbol, theme_chain,
+};
 
 use super::{RenderedCss, render_styles};
 
@@ -65,26 +67,33 @@ const ROLES: &[(&str, &str)] = &[
     ("pink", "pink"),
 ];
 
-/// Emit a palette as CSS custom properties.
-fn palette_vars(pal: &Block<'_>, out: &mut String) {
+/// Emit one mode's palette as CSS custom properties, sourcing each role
+/// from the nearest link of the theme's `extends` chain that states it.
+/// Returns whether anything was emitted, which is what tells a chain that
+/// contributes no colour at all from a healthy one.
+fn palette_vars(chain: &[Block<'_>], mode: &str, out: &mut String) -> bool {
+    let mut any = false;
     for (field, var) in ROLES {
-        if let Some(c) = field_utf8(pal, field) {
+        if let Some(c) = chain_role(chain, mode, field) {
             write!(out, "--wdoc-{var}:{c};").expect("write to String");
+            any = true;
         }
     }
+    any
 }
 
-/// Emit `:root{ --wdoc-font-*: … }` for the font stacks a `theme` sets.
+/// Emit `:root{ --wdoc-font-*: … }` for the font stacks a `theme` sets,
+/// each taken from the nearest link of its `extends` chain that states it.
 /// Mode-independent, so written once and placed after the `wdoc-fonts`
 /// lib defaults — a theme (e.g. `paper`) overrides them by source order.
-fn theme_font_vars(theme: &Block<'_>, out: &mut String) {
+fn theme_font_vars(chain: &[Block<'_>], out: &mut String) {
     let mut decl = String::new();
     for (field, var) in [
         ("font_head", "font-head"),
         ("font_body", "font-body"),
         ("font_mono", "font-mono"),
     ] {
-        if let Some(v) = field_utf8(theme, field) {
+        if let Some(v) = chain_field(chain, field) {
             write!(decl, "--wdoc-{var}:{v};").expect("write to String");
         }
     }
@@ -108,17 +117,16 @@ const METRICS: &[(&str, &str)] = &[
 ];
 
 /// Emit `:root{ --wdoc-body-size: … }` for the type metrics a `theme`
-/// sets. Mode-independent, like the font stacks. Nothing is emitted for an
-/// omitted field or a theme with no `metrics` child: the bundled rules read
-/// every metric as `var(--wdoc-…, <default>)`, so silence means the shipped
-/// constant rather than a broken declaration.
-fn theme_metric_vars(theme: &Block<'_>, out: &mut String) {
+/// sets, each taken from the nearest link of its `extends` chain that
+/// states it. Mode-independent, like the font stacks. Nothing is emitted
+/// for a metric no link states: the bundled rules read every metric as
+/// `var(--wdoc-…, <default>)`, so silence means the shipped constant
+/// rather than a broken declaration.
+fn theme_metric_vars(chain: &[Block<'_>], out: &mut String) {
     let mut decl = String::new();
-    for metrics in theme.blocks().filter(|b| b.kind() == "metrics") {
-        for (field, var) in METRICS {
-            if let Some(v) = field_utf8(&metrics, field) {
-                write!(decl, "--wdoc-{var}:{v};").expect("write to String");
-            }
+    for (field, var) in METRICS {
+        if let Some(v) = chain_metric(chain, field) {
+            write!(decl, "--wdoc-{var}:{v};").expect("write to String");
         }
     }
     if !decl.is_empty() {
@@ -148,18 +156,32 @@ pub(crate) fn site_theme_css(
         _ => "var(--wdoc-accent-pal)".to_string(),
     };
 
-    // Find the named `theme` block (built-in or user-declared), falling
-    // back to the built-in `forge` when the name doesn't resolve.
-    let theme = find_theme(doc, &name)?;
+    // The named `theme` block (built-in or user-declared) and everything it
+    // inherits from, nearest first — falling back to the built-in `forge`
+    // when the name doesn't resolve.
+    let chain = theme_chain(doc, &name);
+    if chain.is_empty() {
+        return None;
+    }
 
-    // Pull the `--wdoc-*` vars from its `dark` / `light` palette children.
+    // Pull the `--wdoc-*` vars for each mode, role by role along the chain.
     let mut dv = String::new();
     let mut lv = String::new();
-    for pal in theme.blocks().filter(|b| b.kind() == "palette") {
-        match label_string(&pal).as_deref() {
-            Some("dark") => palette_vars(&pal, &mut dv),
-            Some("light") => palette_vars(&pal, &mut lv),
-            _ => {}
+    let dark = palette_vars(&chain, "dark", &mut dv);
+    let light = palette_vars(&chain, "light", &mut lv);
+
+    // A mode with no colour at all is not a subtle defect: the bundled
+    // stylesheet reads most colour roles as a bare `var(--wdoc-…)` with no
+    // fallback, so the page renders as browser defaults — white on black,
+    // no accent — while the build reports success. Say so instead.
+    for (mode, ok) in [("dark", dark), ("light", light)] {
+        if !ok {
+            crate::render::record_render_warning(format!(
+                "theme \"{name}\" states no {mode} palette, directly or through \
+                 `extends`, so every `--wdoc-*` colour is undeclared and the page \
+                 renders unstyled — add a `palette {mode} {{ … }}`, or inherit one \
+                 with `extends = :{DEFAULT_THEME}`"
+            ));
         }
     }
 
@@ -193,8 +215,8 @@ pub(crate) fn site_theme_css(
     writeln!(out, ".wdoc-theme-light{{{lv}}}").expect("write to String");
     // Theme font stacks and type metrics (mode-independent), after the
     // palette blocks.
-    theme_font_vars(&theme, &mut out);
-    theme_metric_vars(&theme, &mut out);
+    theme_font_vars(&chain, &mut out);
+    theme_metric_vars(&chain, &mut out);
     // The accent selector is generated because its declaration comes from
     // site data. Every static authored rule lives in WCL below it.
     writeln!(out, ":root{{--wdoc-accent:{accent_expr};}}").expect("write to String");

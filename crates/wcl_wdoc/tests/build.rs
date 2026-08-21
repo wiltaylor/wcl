@@ -13519,3 +13519,202 @@ page index {
         "nested file-backed listing not resolved:\n{html}"
     );
 }
+
+/// A theme that states only `metrics` and inherits the rest keeps the
+/// palette of the theme it extends, so a one-field change stays one field.
+#[test]
+fn theme_extends_inherits_every_role_it_does_not_restate() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("narrow.wcl");
+    write_fixture(
+        &src,
+        r##"
+theme narrow {
+  extends = :forge
+  metrics { body_size = "15px"  measure = "46rem" }
+}
+
+page index { h1 "Chapter one"  p "Body copy." }
+
+site book {
+  default_template = :book
+  title            = "Manual"
+  theme            = :narrow
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // The metric it restates wins.
+    assert!(
+        html.contains("--wdoc-measure:46rem"),
+        "own metric not emitted:\n{html}"
+    );
+    // Forge's dark and light palettes both come through untouched.
+    assert!(
+        html.contains("--wdoc-bg:#0b0d10") && html.contains("--wdoc-bg:#fafafa"),
+        "inherited palette missing:\n{html}"
+    );
+    // As do the fonts and the metrics it left alone.
+    assert!(
+        html.contains("--wdoc-font-body:'IBM Plex Sans', system-ui, sans-serif"),
+        "inherited font missing:\n{html}"
+    );
+    assert!(
+        html.contains("--wdoc-line-height:1.7"),
+        "inherited metric missing:\n{html}"
+    );
+}
+
+/// Inheritance resolves per role, not per palette: restating one colour
+/// leaves the other thirty inherited.
+#[test]
+fn theme_extends_overrides_one_role_and_inherits_the_rest() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("tinted.wcl");
+    write_fixture(
+        &src,
+        r##"
+theme tinted {
+  extends = :forge
+  palette dark { bg = "#000000" }
+}
+
+page index { p "Body copy." }
+
+site book { default_template = :book  theme = :tinted }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("--wdoc-bg:#000000"),
+        "own role not emitted:\n{html}"
+    );
+    assert!(
+        !html.contains("--wdoc-bg:#0b0d10"),
+        "overridden role still emitted:\n{html}"
+    );
+    // A sibling role in the same palette, and the light palette it never
+    // mentioned, are both inherited whole.
+    assert!(
+        html.contains("--wdoc-fg:#b7bdc8") && html.contains("--wdoc-bg:#fafafa"),
+        "sibling roles not inherited:\n{html}"
+    );
+}
+
+/// A theme that states no palette and inherits none renders unstyled. The
+/// build still succeeds — nothing is malformed — so it says so out loud.
+#[test]
+fn theme_with_no_palette_warns_rather_than_reporting_silent_success() {
+    let _ = wcl_wdoc::take_render_warnings();
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("bare.wcl");
+    write_fixture(
+        &src,
+        r##"
+theme bare {
+  metrics { measure = "46rem" }
+}
+
+page index { p "Body copy." }
+
+site book { default_template = :book  theme = :bare }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let warnings = wcl_wdoc::take_render_warnings();
+    for mode in ["dark", "light"] {
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("bare") && w.contains(mode)),
+            "no warning for the missing {mode} palette: {warnings:?}"
+        );
+    }
+}
+
+/// A healthy theme says nothing. Guards the warning against firing on the
+/// built-ins, which every default document uses.
+#[test]
+fn built_in_theme_emits_no_palette_warning() {
+    let _ = wcl_wdoc::take_render_warnings();
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("plain.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index { p "Body copy." }
+site book { default_template = :book  theme = :nord }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let warnings = wcl_wdoc::take_render_warnings();
+    assert!(
+        !warnings.iter().any(|w| w.contains("palette")),
+        "built-in theme warned: {warnings:?}"
+    );
+}
+
+/// Two themes that extend each other terminate instead of looping, and the
+/// build still emits whatever the cycle collectively states.
+#[test]
+fn theme_extends_cycle_terminates() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("cycle.wcl");
+    write_fixture(
+        &src,
+        r##"
+theme ping { extends = :pong  palette dark { bg = "#111111" } }
+theme pong { extends = :ping  palette light { bg = "#eeeeee" } }
+
+page index { p "Body copy." }
+
+site book { default_template = :book  theme = :ping }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("--wdoc-bg:#111111") && html.contains("--wdoc-bg:#eeeeee"),
+        "cycle did not contribute both links:\n{html}"
+    );
+}
+
+/// An `extends` naming no theme ends the chain rather than splicing the
+/// default in behind it — the theme's own roles still stand.
+#[test]
+fn theme_extends_unknown_name_keeps_own_roles() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("orphan.wcl");
+    write_fixture(
+        &src,
+        r##"
+theme orphan {
+  extends = :no_such_theme
+  palette dark  { bg = "#123456" }
+  palette light { bg = "#654321" }
+}
+
+page index { p "Body copy." }
+
+site book { default_template = :book  theme = :orphan }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("--wdoc-bg:#123456") && html.contains("--wdoc-bg:#654321"),
+        "own roles lost:\n{html}"
+    );
+    assert!(
+        !html.contains("--wdoc-bg:#0b0d10"),
+        "unknown extends spliced the default in:\n{html}"
+    );
+}

@@ -63,8 +63,9 @@ choice.
 
 ## Writing a theme
 
-A `theme` block holds a `dark` palette, a `light` palette, three optional font stacks, and an
-optional `metrics` block carrying the type scale:
+A `theme` block holds a `dark` palette, a `light` palette, three optional font stacks, an
+optional `metrics` block carrying the type scale, and an optional `extends` naming a theme to
+inherit from:
 
 ```wcl
 theme sunset {
@@ -83,7 +84,42 @@ site docs { theme = :sunset  accent = :green }
 ```
 
 The `palette` label is `dark` or `light`. **Every role is optional.** An omitted role emits no
-variable, so a partial palette inherits the rest through the cascade.
+variable — unless the theme `extends` another, which is almost always what you want for a
+partial theme. See [Inheriting a theme](#inheriting-a-theme) below.
+
+### Inheriting a theme
+
+`extends = :<theme>` takes everything this theme does not restate from the named theme —
+fonts, individual metrics, individual palette roles, whole palettes. Anything it does state
+wins. So changing one number is a three-line theme, not a copy of 31 roles across two
+palettes:
+
+```wcl
+theme narrow {
+  extends = :forge
+  metrics { measure = "46rem" }
+}
+
+site book { theme = :narrow }
+```
+
+That renders exactly as `:forge` — all 31 roles, both palettes, all three fonts — with a
+46rem measure.
+
+Resolution is **per role, not per palette.** A theme that extends `forge` and declares
+`palette dark { bg = "#000" }` overrides `bg` and inherits the other 30 dark roles plus the
+entire light palette. The same holds for a single `metrics` field.
+
+Chains are followed to any depth, so a theme may extend a theme that extends a built-in.
+Two rules keep a chain terminating:
+
+- An `extends` naming **no** theme ends the chain. It does not fall back to `forge` — the
+  theme's own roles are all it gets.
+- A **cycle** ends the chain at the repeat. Each theme in the cycle still contributes what
+  it states.
+
+Unlike `site.theme`, an unknown `extends` is not silently redirected to the default. `site`
+falls back to `forge`; `extends` does not.
 
 ### The 31 colour roles
 
@@ -148,7 +184,9 @@ default metrics explicitly, which is why they render identically to each other.
 The measure is the one worth a second look: `60rem` less the book template's `3.5rem` of
 horizontal padding is about 53rem of text, roughly 130 characters per line at 17px.
 Conventional long-form measure is 60–75. `metrics { measure = "46rem" }` is the fix, and it
-is now one line rather than a `class "book-measure"` CSS override.
+is now one line rather than a `class "book-measure"` CSS override. Pair it with
+`extends = :forge` unless the theme also declares its own palettes — `metrics` lives inside a
+`theme`, and a theme with no palette and no `extends` renders colourless.
 
 `metrics` reaches the web output only. The PDF backend has its own print type scale, and
 reads a theme for colour but not for type.
@@ -352,8 +390,12 @@ carrying the class into an element.
   can affect at most its own rule.
 - A `theme` recolours what wdoc emits. It does not restyle raw HTML you inject with `raw(...)`.
   Paint that from `var(--wdoc-*)` yourself.
-- A palette role you omit emits **no** variable at all. It does not fall back to another
-  theme's value; it falls through the CSS cascade to whatever declared it last.
+- A palette role you omit emits **no** variable at all, unless the theme `extends` one that
+  states it. Without `extends` it falls through the CSS cascade to whatever declared it last.
+- A theme that states **no palette at all** and extends nothing emits no colour variables, and
+  most bundled rules read colour as a bare `var(--wdoc-…)` with no fallback — so the page
+  renders as browser defaults. The build warns per mode and still exits 0. Add `extends`, or a
+  `palette`.
 
 ## See also
 

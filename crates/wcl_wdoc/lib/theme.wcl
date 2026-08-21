@@ -33,6 +33,19 @@
 //     palette light { bg = "#fafafe"  fg = "#1b1b28"  … }
 //   }
 //   site "docs" { theme = :midnight }
+//
+// START FROM ONE: `extends` inherits every role you don't restate, so a
+// theme that only wants a narrower reading measure is three lines and
+// keeps the rest of `forge` — including changes to `forge` later:
+//
+//   theme narrow {
+//     extends = :forge
+//     metrics { measure = "46rem" }
+//   }
+//
+// A theme that declares no palette and extends nothing has no colour
+// roles to emit, and the page renders with browser defaults. The build
+// warns when that happens rather than reporting a silent success.
 
 // A full set of colour roles for one mode, labelled `dark` or `light`.
 // Generic on purpose — these roles cover page chrome, text hierarchy, a
@@ -117,9 +130,17 @@ type MetricsBlock {
 // JetBrains Mono), and an optional `metrics` block carrying the type
 // scale. Fonts and metrics are mode-independent, so a theme states them
 // once for both palettes.
+//
+// `extends` names another theme to inherit from, role by role: anything
+// this theme leaves unset — a font, a single metric, a single palette
+// role, a whole palette — is taken from the named theme, and anything it
+// does set wins. That makes a one-field change a one-field theme, rather
+// than a copy of all 31 colour roles across two palettes.
 @block("theme")
 type ThemeBlock {
   @inline(0) name: identifier
+  @doc("Inherit every unset font, metric and palette role from another theme, e.g. `extends = :forge`.")
+  extends: symbol?
   font_head: utf8?  font_body: utf8?  font_mono: utf8?
   @children("metrics") metrics: list<MetricsBlock>
   @children("palette") palettes: list<PaletteBlock>

@@ -155,7 +155,9 @@ WCL
       | "`accent_2`" | "`--wdoc-accent2`"   | "No hyphen before the digit" |
   }
 
-  p "A role you leave out emits no property at all. That matters more than it sounds: there is no second source of `--wdoc-*` in a themed site, so an omitted role is an **undefined** variable, not an inherited one. A rule that reads it becomes invalid at computed-value time and the property falls back to its initial or inherited value. That value is rarely the colour you wanted. Set every role you paint with, or start from a copy of a built-in palette and edit it."
+  p "A role you leave out emits no property at all. That matters more than it sounds: there is no second source of `--wdoc-*` in a themed site, so an omitted role is an **undefined** variable, not an inherited one. A rule that reads it becomes invalid at computed-value time and the property falls back to its initial or inherited value. That value is rarely the colour you wanted."
+
+  p "So a theme is normally all-or-nothing per role — unless it inherits. `extends` gives a theme a second source for every role it does not state, which is what makes a partial palette safe to write. See [Inheriting a theme](#inheriting-a-theme)."
 
   callout "One place an omitted role does fall back" {
     class = ["info"]
@@ -352,12 +354,66 @@ page colour {
 WCL
   }
 
-  p "Two habits turn that into a good theme. **Start from a built-in and edit it.** Copy the palette pair from `lib/theme.wcl` and change what you need, rather than starting from the six roles you happen to think of. And **fill the hue ring even if you draw no charts**, because callouts and diagram shape borders read it too."
+  p "Two habits turn that into a good theme. **Start from a built-in** — by extending it, as the next section shows — rather than from the six roles you happen to think of. And **fill the hue ring even if you draw no charts**, because callouts and diagram shape borders read it too."
 
   callout "A theme block is not per-site" {
     class = ["note"]
     body  = "Themes are document-level blocks and each `site` picks one by name, so a multi-site document may declare one theme and select it everywhere, or declare five and give each site its own. What is _not_ document-level is the emission: the build writes the palette into each site's stylesheet separately, so a theme nothing selects costs nothing."
   }
+
+  h2 "Inheriting a theme"
+
+  p "Most themes are not new designs. They are a shipped theme with one thing changed — a narrower measure, a different heading face, one corrected colour. Writing those from scratch means restating all thirty-one roles across two palettes to change one number, and that copy goes stale the day the theme it was copied from moves."
+
+  p "`extends` names a theme to inherit from:"
+
+  code wcl {
+    filename = "narrow.wcl"
+    source = <<'WCL'
+theme narrow {
+  extends = :forge
+  metrics { measure = "46rem" }
+}
+
+site handbook { theme = :narrow }
+WCL
+  }
+
+  p "That renders as `forge` in every respect — thirty-one roles, both palettes, all three font stacks, the whole type scale — with a 46rem reading column. Three lines, and it tracks `forge` when `forge` changes."
+
+  p "Inheritance is resolved **per role, not per palette**. A theme that extends `forge` and declares `palette dark { bg = \"#000000\" }` overrides that one colour and inherits the other thirty dark roles, the entire light palette, the fonts and the metrics. The same is true one metric at a time, and one font stack at a time. Anything the derived theme states wins; everything else falls through to the theme it extends."
+
+  p "A chain may be any depth — a house theme extends a built-in, a project theme extends the house theme — and each role resolves to the nearest link that states it. Two rules keep a chain finite:"
+
+  table {
+    rows:
+      | "Case" | "What happens" |
+      | "`extends` names no theme" | "The chain ends there. The theme keeps its own roles and inherits nothing" |
+      | "The chain loops back on itself" | "The chain ends at the repeat. Every theme in the loop still contributes what it states" |
+  }
+
+  callout "An unknown extends is not the same as an unknown site theme" {
+    kind = :warning
+    body  = "`site { theme = :nonexistent }` falls back to `forge`, because a site must render something. `extends = :nonexistent` does **not** — it ends the chain instead. Silently splicing `forge` into the middle of an inheritance chain would hand a theme colours nobody asked for, and hide the typo."
+  }
+
+  h3 "A theme with no colour at all"
+
+  p "`metrics` and the font stacks live inside a `theme` block, so wanting one of them means declaring a theme — and a theme that declares no `palette` and extends nothing has no colours to emit. Most bundled rules read colour as a bare `var(--wdoc-bg)` with no fallback, so the page renders with browser defaults: white background, black text, no accent. It looks like a stylesheet failed to load."
+
+  p "The build says so, once per mode, and still exits 0 — nothing is malformed, and the pages are written:"
+
+  code text {
+    source = <<'TXT'
+$ wcl wdoc build narrow.wcl --out _site
+warning: theme "narrow" states no dark palette, directly or through `extends`,
+  so every `--wdoc-*` colour is undeclared and the page renders unstyled —
+  add a `palette dark { … }`, or inherit one with `extends = :forge`
+wrote 1 page
+TXT
+  }
+
+  p "Either fix clears it: give the theme its own `palette dark` and `palette light`, or add `extends`."
 
   h2 "Fonts"
 
@@ -457,10 +513,17 @@ WCL
 
   p "`60rem` is the book template's reading column. Take off its `3.5rem` of horizontal padding on each side and about `53rem` of text is left, which at `17px` is roughly 130 characters a line. Conventional long-form measure is 60 to 75. The width suits a wide code listing and is generous for prose."
 
-  p "Whichever way you want it, it is now a field rather than a CSS override:"
+  p "Whichever way you want it, it is now a field rather than a CSS override — and if the measure is the only thing you are changing, extend a built-in and that is the whole theme:"
 
   code wcl {
     source = <<'WCL'
+// The only change from the shipped look.
+theme narrow {
+  extends = :forge
+  metrics { measure = "46rem" }
+}
+
+// Or, in a theme that brings its own colours.
 theme house {
   metrics { measure = "46rem" }
   palette dark  { bg = "#101014"  fg = "#e6e6ea" }

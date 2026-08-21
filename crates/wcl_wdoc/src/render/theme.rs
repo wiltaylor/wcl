@@ -22,14 +22,80 @@ pub(crate) const HUES: &[&str] = &[
     "red", "orange", "yellow", "green", "cyan", "blue", "purple", "pink",
 ];
 
+/// How many `extends` links a chain may follow before it is treated as
+/// malformed and truncated. A cycle is caught by name before this bites;
+/// the cap is the backstop for a chain nobody meant to write.
+const MAX_THEME_DEPTH: usize = 16;
+
+/// Find a `theme` block by its inline name, with no fallback.
+fn find_theme_exact<'a>(doc: &'a Document, name: &str) -> Option<Block<'a>> {
+    doc.blocks()
+        .find(|b| b.kind() == "theme" && label_string(b).as_deref() == Some(name))
+}
+
 /// Find a `theme` block by its inline name (built-in or user-declared),
 /// falling back to the built-in `forge` when the name doesn't resolve.
 pub(crate) fn find_theme<'a>(doc: &'a Document, name: &str) -> Option<Block<'a>> {
-    let is_theme =
-        |b: &Block<'_>, n: &str| b.kind() == "theme" && label_string(b).as_deref() == Some(n);
-    doc.blocks()
-        .find(|b| is_theme(b, name))
-        .or_else(|| doc.blocks().find(|b| is_theme(b, DEFAULT_THEME)))
+    find_theme_exact(doc, name).or_else(|| find_theme_exact(doc, DEFAULT_THEME))
+}
+
+/// The inheritance chain a theme name resolves to, nearest first: the named
+/// theme, then whatever its `extends` symbol names, and so on. Every lookup
+/// walks this list and takes the first link that states the thing, so a
+/// derived theme overrides role by role rather than wholesale.
+///
+/// The head resolves through [`find_theme`] (so an unknown site theme still
+/// lands on `forge`), but a link does not: an `extends` naming no theme ends
+/// the chain rather than silently splicing `forge` into the middle of it. A
+/// name already in the chain ends it too, so a cycle terminates.
+pub(crate) fn theme_chain<'a>(doc: &'a Document, name: &str) -> Vec<Block<'a>> {
+    let Some(head) = find_theme(doc, name) else {
+        return Vec::new();
+    };
+    let mut seen: Vec<String> = vec![label_string(&head).unwrap_or_default()];
+    let mut chain = vec![head];
+    while chain.len() < MAX_THEME_DEPTH {
+        let Some(parent) = chain.last().and_then(|b| field_symbol(b, "extends")) else {
+            break;
+        };
+        if seen.contains(&parent) {
+            break;
+        }
+        let Some(block) = find_theme_exact(doc, &parent) else {
+            break;
+        };
+        seen.push(parent);
+        chain.push(block);
+    }
+    chain
+}
+
+/// The first value a theme chain gives for a direct `theme` field
+/// (`font_head`, …), nearest link first.
+pub(crate) fn chain_field(chain: &[Block<'_>], field: &str) -> Option<String> {
+    chain.iter().find_map(|t| field_utf8(t, field))
+}
+
+/// The first value a theme chain gives for one `metrics` field, nearest
+/// link first. A link with no `metrics` child, or one that omits the field,
+/// defers to the next.
+pub(crate) fn chain_metric(chain: &[Block<'_>], field: &str) -> Option<String> {
+    chain.iter().find_map(|t| {
+        t.blocks()
+            .filter(|b| b.kind() == "metrics")
+            .find_map(|m| field_utf8(&m, field))
+    })
+}
+
+/// The first colour a theme chain gives for one palette role in one mode,
+/// nearest link first. Resolution is per role, not per palette: a derived
+/// theme that restates only `bg` inherits the other 30 roles.
+pub(crate) fn chain_role(chain: &[Block<'_>], mode: &str, role: &str) -> Option<String> {
+    chain.iter().find_map(|t| {
+        t.blocks()
+            .find(|b| b.kind() == "palette" && label_string(b).as_deref() == Some(mode))
+            .and_then(|p| field_utf8(&p, role))
+    })
 }
 
 /// Concrete colours for the theme roles the wireframe renderer bakes into
@@ -126,18 +192,16 @@ impl Hues {
 }
 
 /// Resolve a named theme's hue ring for one mode, or `None` when the name
-/// resolves to no `theme` block or that block has no palette for the mode.
-/// A role the palette omits is left out too, so the caller keeps its own
-/// default rather than inheriting an unrelated theme's colour.
+/// resolves to no `theme` block or the chain states no palette for the
+/// mode. A role no link in the chain states is left out too, so the caller
+/// keeps its own default rather than inheriting an unrelated theme's
+/// colour.
 pub(crate) fn resolve_hues(doc: &Document, theme: &str, mode: &str) -> Option<Hues> {
     let mode = if mode == "light" { "light" } else { "dark" };
-    let theme = find_theme(doc, theme)?;
-    let pal = theme
-        .blocks()
-        .find(|b| b.kind() == "palette" && label_string(b).as_deref() == Some(mode))?;
+    let chain = theme_chain(doc, theme);
     let mut hues: [String; 8] = Default::default();
     for (i, role) in HUES.iter().enumerate() {
-        hues[i] = field_utf8(&pal, role)?;
+        hues[i] = chain_role(&chain, mode, role)?;
     }
     Some(Hues { hues })
 }
@@ -172,9 +236,9 @@ pub(crate) fn resolve_ui_theme(site: Option<&Block<'_>>) -> UiTheme {
 }
 
 /// Resolve a `theme` name + `accent` hue + `mode` (`dark`/`light`) to concrete
-/// role colours: find the named `theme` block (fallback Forge), read the
-/// matching-mode `palette` child, and fill any missing role from the Forge
-/// palette of that mode. Unknown accent ⇒ blue; unknown mode ⇒ dark.
+/// role colours: walk the theme's `extends` chain (fallback Forge) for the
+/// matching-mode `palette` role, and fill any role no link states from the
+/// Forge palette of that mode. Unknown accent ⇒ blue; unknown mode ⇒ dark.
 pub(crate) fn resolve_roles(doc: &Document, theme: &str, accent: &str, mode: &str) -> ThemeRoles {
     let mode = if mode == "light" { "light" } else { "dark" };
     let accent_hue = if HUES.contains(&accent) {
@@ -183,22 +247,18 @@ pub(crate) fn resolve_roles(doc: &Document, theme: &str, accent: &str, mode: &st
         "blue"
     };
     let def = default_roles(mode);
-    let Some(theme) = find_theme(doc, theme) else {
+    let chain = theme_chain(doc, theme);
+    if chain.is_empty() {
         return def;
+    }
+    let role = |f: &str, fallback: &str| {
+        chain_role(&chain, mode, f).unwrap_or_else(|| fallback.to_string())
     };
-    let Some(pal) = theme
-        .blocks()
-        .find(|b| b.kind() == "palette" && label_string(b).as_deref() == Some(mode))
-    else {
-        return def;
-    };
-    let role =
-        |f: &str, fallback: &str| field_utf8(&pal, f).unwrap_or_else(|| fallback.to_string());
     ThemeRoles {
         // The wireframe panel sits on the reading surface (`book_bg`), not
         // the darker outer gutter (`bg`); fall back to `bg` then Forge.
-        bg: field_utf8(&pal, "book_bg")
-            .or_else(|| field_utf8(&pal, "bg"))
+        bg: chain_role(&chain, mode, "book_bg")
+            .or_else(|| chain_role(&chain, mode, "bg"))
             .unwrap_or_else(|| def.bg.clone()),
         bg_alt: role("bg_alt", &def.bg_alt),
         bg_inset: role("bg_inset", &def.bg_inset),
