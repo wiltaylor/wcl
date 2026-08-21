@@ -119,11 +119,16 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
             filename,
             id,
             class,
+            ..
         } => {
             // The book code-card: window dots + optional filename + the
             // language tag over the highlighted listing. Same markup the
             // `code` block's WCL lowering builds today.
             let language = language.clone().unwrap_or_default();
+            // Resolved by the include pass before any backend sees the
+            // node (`render::include`), so this is the listing text
+            // whether it was authored inline or read from a file.
+            let source = source.as_deref().unwrap_or_default();
             let name = filename
                 .as_ref()
                 .map(|f| format!("<span class=\"code-name\">{}</span>", escape_html(f)))

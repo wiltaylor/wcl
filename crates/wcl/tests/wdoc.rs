@@ -186,3 +186,51 @@ fn removed_wdoc_subcommands_are_rejected() {
             .failure();
     }
 }
+
+#[test]
+fn wdoc_build_fails_with_exit_3_when_a_code_listing_is_missing() {
+    // A file-backed listing is a promise the build keeps: if the file it
+    // names is gone, the build stops rather than shipping a page that
+    // quietly disagrees with the code. Exit 3 is the document-fault code,
+    // the same one a failed block lowering gives.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    std::fs::write(
+        &src,
+        "import <wdoc.wcl>\npage index {\n  code rust { source_file = \"gone.rs\" }\n}\n",
+    )
+    .expect("write doc");
+    let out = TempDir::new().expect("mkdir out");
+    wcl()
+        .arg("wdoc")
+        .arg("build")
+        .arg(&src)
+        .arg("--out")
+        .arg(out.path())
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("gone.rs"));
+}
+
+#[test]
+fn wdoc_build_reads_a_code_listing_from_a_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(tmp.path().join("lib.rs"), "pub const ANSWER: u8 = 42;\n").expect("write listing");
+    let src = tmp.path().join("doc.wcl");
+    std::fs::write(
+        &src,
+        "import <wdoc.wcl>\npage index {\n  code rust { source_file = \"lib.rs\" }\n}\n",
+    )
+    .expect("write doc");
+    let out = TempDir::new().expect("mkdir out");
+    wcl()
+        .arg("wdoc")
+        .arg("build")
+        .arg(&src)
+        .arg("--out")
+        .arg(out.path())
+        .assert()
+        .success();
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
+    assert!(html.contains("ANSWER"), "listing not rendered:\n{html}");
+}

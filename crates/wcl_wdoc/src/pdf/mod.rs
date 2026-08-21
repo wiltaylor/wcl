@@ -287,8 +287,11 @@ pub fn pdf(
     // Clear any routing error / render warnings / embed error stranded by
     // an earlier pass so stale messages can't leak into this one.
     let _ = crate::render::take_route_error();
+    let _ = crate::render::take_include_error();
     let _ = crate::render::take_render_warnings();
     let _ = svg_embed::take_embed_error();
+    // File-backed code listings resolve against the document's directory.
+    let _doc_dir = crate::render::DocDirGuard::set(base_dir.as_deref());
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, PdfError> {
         let mut written = 0;
         for spec in build_set {
@@ -415,6 +418,12 @@ pub fn pdf(
     // the HTML build.
     if let Some(msg) = crate::render::take_route_error() {
         return Err(PdfError::Render(msg));
+    }
+    // A listing that names an unreadable file is a fault in the document,
+    // not in the rendering — same failure, and same exit code, as the book
+    // and Markdown builds give it.
+    if let Some(msg) = crate::render::take_include_error() {
+        return Err(PdfError::BadDoc(msg));
     }
     // An SVG that failed to embed means a diagram is missing from the PDF
     // — data loss, not a degraded render — so it fails the build too.

@@ -20,9 +20,17 @@ namespace wdoc
 type Code extends ContentBlock {
   @doc("Language tag (the inline label slot). Picks the highlight grammar; an unknown tag falls back to plain text.")
   @inline(0) language: identifier
-  @doc("The code text — usually a raw heredoc (`<<'TAG'`).")
-  source: utf8
-  @doc("Optional filename shown in the code-card header bar.")
+  @doc("The code text — usually a raw heredoc (`<<'TAG'`). Give this or `source_file`, not both.")
+  source: utf8?
+  @doc("Read the listing from this file instead, resolved relative to the document that names it. Give this or `source`, not both.")
+  source_file: utf8?
+  @doc("Cut out the region between `ANCHOR: name` and `ANCHOR_END: name` marker comments in `source_file`. Not with `lines`.")
+  anchor: utf8?
+  @doc("Cut out a 1-based inclusive line range of `source_file` — `\"12-30\"`, `\"12-\"`, `\"-30\"` or `\"12\"`. Not with `anchor`.")
+  lines: utf8?
+  @doc("Strip the indentation the selected region shares, so a nested region reads flush left.")
+  dedent: bool?
+  @doc("Optional filename shown in the code-card header bar. Defaults to `source_file` when the listing comes from disk.")
   filename: utf8?
   @doc("Optional explicit HTML id.")
   id:     identifier?
@@ -31,8 +39,14 @@ type Code extends ContentBlock {
   lower = fn(c: Code) -> list<Content> [
     Content::Code {
       source: c.source,
+      source_file: c.source_file,
+      anchor: c.anchor,
+      lines: c.lines,
+      dedent: c.dedent,
       language: c.language,
-      filename: c.filename,
+      // A listing read from disk names itself, unless the author says
+      // otherwise. `filename` used to claim a file nothing opened.
+      filename: if c.filename == none { c.source_file } else { c.filename },
       id: c.id,
       class: c.class,
     },

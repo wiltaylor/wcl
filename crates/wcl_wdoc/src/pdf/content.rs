@@ -107,7 +107,8 @@ pub(crate) fn collect_content(
             }
             out.push(BlockNode::Code {
                 lines: crate::blocks::highlight::highlight_spans(
-                    source,
+                    // Filled by the include pass, inline or from a file.
+                    source.as_deref().unwrap_or_default(),
                     language.as_deref().unwrap_or_default(),
                 )
                 .into_iter()

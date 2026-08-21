@@ -39,6 +39,7 @@ fn build_ok(file: &Path, out: &Path) -> usize {
         Err(BuildError::BadTemplate(name)) => panic!("build bad-template error: {name}"),
         Err(BuildError::Tileset(m)) => panic!("build tileset error: {m}"),
         Err(BuildError::EdgeRouting(m)) => panic!("build edge-routing error: {m}"),
+        Err(BuildError::CodeInclude(m)) => panic!("build code-include error: {m}"),
     }
 }
 
@@ -2320,6 +2321,7 @@ page index {
         Err(BuildError::BadTemplate(name)) => panic!("expected Schema, got BadTemplate({name})"),
         Err(BuildError::Tileset(m)) => panic!("expected Schema, got Tileset({m})"),
         Err(BuildError::EdgeRouting(m)) => panic!("expected Schema, got EdgeRouting({m})"),
+        Err(BuildError::CodeInclude(m)) => panic!("expected Schema, got CodeInclude({m})"),
         Err(BuildError::DuplicatePage { site, name }) => {
             panic!("expected Schema, got DuplicatePage({site}: {name})")
         }
@@ -2437,6 +2439,7 @@ page index {
         }
         Err(BuildError::Tileset(m)) => panic!("expected DuplicateId, got Tileset({m})"),
         Err(BuildError::EdgeRouting(m)) => panic!("expected DuplicateId, got EdgeRouting({m})"),
+        Err(BuildError::CodeInclude(m)) => panic!("expected DuplicateId, got CodeInclude({m})"),
         Err(BuildError::DuplicatePage { site, name }) => {
             panic!("expected DuplicateId, got DuplicatePage({site}: {name})")
         }
@@ -4336,6 +4339,7 @@ page index {
         Err(BuildError::BadTemplate(name)) => panic!("expected BadLink, got BadTemplate({name})"),
         Err(BuildError::Tileset(m)) => panic!("expected BadLink, got Tileset({m})"),
         Err(BuildError::EdgeRouting(m)) => panic!("expected BadLink, got EdgeRouting({m})"),
+        Err(BuildError::CodeInclude(m)) => panic!("expected BadLink, got CodeInclude({m})"),
         Ok(n) => panic!("expected BadLink, got Ok({n})"),
     }
 }
@@ -4450,6 +4454,7 @@ page index {
         Err(BuildError::BadTemplate(name)) => panic!("expected BadLink, got BadTemplate({name})"),
         Err(BuildError::Tileset(m)) => panic!("expected BadLink, got Tileset({m})"),
         Err(BuildError::EdgeRouting(m)) => panic!("expected BadLink, got EdgeRouting({m})"),
+        Err(BuildError::CodeInclude(m)) => panic!("expected BadLink, got CodeInclude({m})"),
         Ok(n) => panic!("expected BadLink, got Ok({n})"),
     }
 }
@@ -12755,4 +12760,513 @@ fn a_line_comment_in_a_css_declaration_is_rejected() {
     );
     let out = TempDir::new().expect("mkdir out");
     build_ok(&file, out.path());
+}
+
+// ── File-backed code listings ──────────────────────────────────────
+//
+// A `code` block may take its listing from a file on disk instead of an
+// inline heredoc, so a manual's listings stay in step with the code they
+// document. `source_file` is resolved relative to the document; `anchor`
+// and `lines` cut a region out of it; a read that fails is a build
+// failure rather than a silently stale page.
+
+/// The text of every code listing on a rendered page, with the
+/// highlighter's markup stripped back off.
+///
+/// Assertions want the code, not the span soup syntect wraps it in — a
+/// listing reading `fn inner` reaches the HTML as a dozen nested spans, and
+/// a negative assertion against raw HTML would also match the page's own
+/// CSS (`none` contains `one`). Reading the `<pre>` bodies back keeps both
+/// directions honest.
+fn listings(html: &str) -> String {
+    let mut out = String::new();
+    let mut rest = html;
+    while let Some(start) = rest.find("<pre") {
+        let after = &rest[start..];
+        let (Some(open_end), Some(close)) = (after.find('>'), after.find("</pre>")) else {
+            break;
+        };
+        out.push_str(&strip_tags(&after[open_end + 1..close]));
+        out.push('\n');
+        rest = &after[close + "</pre>".len()..];
+    }
+    out
+}
+
+/// Drop every tag and unescape the entities the escaper put in.
+fn strip_tags(html: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0usize;
+    for ch in html.chars() {
+        match ch {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            c if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+}
+
+/// Write a plain (non-wdoc) file beside a fixture — the code being quoted.
+fn write_listing(path: impl AsRef<Path>, body: &str) {
+    if let Some(dir) = path.as_ref().parent() {
+        std::fs::create_dir_all(dir).expect("mkdir listing parent");
+    }
+    std::fs::write(path, body).expect("write listing");
+}
+
+#[test]
+fn code_block_reads_its_listing_from_a_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(
+        tmp.path().join("greet.rs"),
+        "fn greet() {\n    println!(\"from disk\");\n}\n",
+    );
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust {
+    source_file = "greet.rs"
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        listings(&html).contains("from disk"),
+        "file-backed listing not rendered:\n{html}"
+    );
+    // It is a real code listing, not raw text: it highlights like one.
+    assert!(
+        html.contains("<code class=\"language-rust\">"),
+        "file-backed listing lost its language:\n{html}"
+    );
+}
+
+#[test]
+fn code_block_source_file_names_the_listing_by_default() {
+    // `filename` used to claim a file the build never opened. When the
+    // listing does come from disk, the header names what was read.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(tmp.path().join("api.rs"), "pub fn call() {}\n");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust {
+    source_file = "api.rs"
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<span class=\"code-name\">api.rs</span>"),
+        "source_file did not name the listing:\n{html}"
+    );
+}
+
+#[test]
+fn code_block_filename_overrides_the_source_file_name() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(tmp.path().join("api.rs"), "pub fn call() {}\n");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust {
+    source_file = "api.rs"
+    filename = "src/api.rs"
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<span class=\"code-name\">src/api.rs</span>"),
+        "explicit filename should win:\n{html}"
+    );
+}
+
+#[test]
+fn code_block_source_file_resolves_relative_to_its_document() {
+    // A manual's code usually lives outside the doc tree — the path may
+    // climb out of it.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(tmp.path().join("code/lib.rs"), "pub const N: u8 = 7;\n");
+    std::fs::create_dir_all(tmp.path().join("docs")).expect("mkdir docs");
+    let src = tmp.path().join("docs/doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust {
+    source_file = "../code/lib.rs"
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        listings(&html).contains("pub const N"),
+        "sibling-directory listing not resolved:\n{html}"
+    );
+}
+
+#[test]
+fn code_block_cuts_an_anchored_region_out_of_a_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(
+        tmp.path().join("lib.rs"),
+        "use std::fmt;\n\
+         // ANCHOR: core\n\
+         pub fn kept() -> u8 {\n\
+         \x20   7\n\
+         }\n\
+         // ANCHOR_END: core\n\
+         fn dropped() {}\n",
+    );
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust {
+    source_file = "lib.rs"
+    anchor = "core"
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    let code = listings(&html);
+    assert!(code.contains("kept"), "anchored region missing:\n{code}");
+    assert!(
+        !code.contains("dropped"),
+        "text outside the anchor leaked in:\n{code}"
+    );
+    assert!(
+        !code.contains("use std::fmt"),
+        "text before the anchor leaked in:\n{code}"
+    );
+    // The marker comments delimit the region; they are not part of it.
+    assert!(
+        !code.contains("ANCHOR"),
+        "anchor markers should not be rendered:\n{code}"
+    );
+}
+
+#[test]
+fn code_block_cuts_a_line_range_out_of_a_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(
+        tmp.path().join("lines.txt"),
+        "one\ntwo\nthree\nfour\nfive\n",
+    );
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code text {
+    source_file = "lines.txt"
+    lines = "2-4"
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let code = listings(&html);
+    assert!(
+        code.contains("two"),
+        "line range dropped its start:\n{code}"
+    );
+    assert!(code.contains("four"), "line range dropped its end:\n{code}");
+    assert!(!code.contains("one"), "line range ran too early:\n{code}");
+    assert!(!code.contains("five"), "line range ran too late:\n{code}");
+}
+
+#[test]
+fn code_block_line_range_ends_are_optional() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(tmp.path().join("lines.txt"), "one\ntwo\nthree\n");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code text { source_file = "lines.txt"  lines = "2-" }
+  code text { source_file = "lines.txt"  lines = "-1" }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // "2-" keeps two and three; "-1" keeps one. Between them every line
+    // appears, and the open-ended forms parsed at all.
+    let code = listings(&html);
+    assert!(code.contains("three"), "open-ended range failed:\n{code}");
+    assert!(code.contains("one"), "leading range failed:\n{code}");
+}
+
+#[test]
+fn code_block_dedents_an_indented_region_on_request() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(
+        tmp.path().join("nested.rs"),
+        "impl T {\n\
+         \x20   // ANCHOR: body\n\
+         \x20   fn inner(&self) -> u8 {\n\
+         \x20       7\n\
+         \x20   }\n\
+         \x20   // ANCHOR_END: body\n\
+         }\n",
+    );
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust {
+    source_file = "nested.rs"
+    anchor = "body"
+    dedent = true
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let code = listings(&html);
+    assert!(
+        code.contains("fn inner"),
+        "dedented region missing:\n{code}"
+    );
+    assert!(
+        !code.contains("    fn inner"),
+        "common indent was not stripped:\n{code}"
+    );
+    // The indent *inside* the region survives; only what it shared went.
+    assert!(
+        code.contains("    7"),
+        "dedent flattened the region's own indent:\n{code}"
+    );
+}
+
+#[test]
+fn a_whole_file_listing_carries_no_anchor_markers() {
+    // The markers are addressed to wdoc. A listing that takes the whole
+    // file should not put them in front of a reader.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(
+        tmp.path().join("marked.rs"),
+        "// ANCHOR: a\nfn kept() {}\n// ANCHOR_END: a\n",
+    );
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust { source_file = "marked.rs" }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let code = listings(&std::fs::read_to_string(out.path().join("index.html")).expect("read"));
+    assert!(code.contains("fn kept"), "listing missing:\n{code}");
+    assert!(!code.contains("ANCHOR"), "markers leaked in:\n{code}");
+}
+
+#[test]
+fn code_block_missing_source_file_fails_the_build() {
+    // The whole point: a listing that has drifted out of existence stops
+    // the build rather than rendering a stale or empty card.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust { source_file = "nope.rs" }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("missing listing must fail the build");
+    let msg = err.render_plain();
+    assert!(
+        msg.contains("nope.rs"),
+        "error should name the unreadable file: {msg}"
+    );
+}
+
+#[test]
+fn code_block_unknown_anchor_fails_the_build() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(tmp.path().join("lib.rs"), "fn f() {}\n");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust { source_file = "lib.rs"  anchor = "ghost" }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("unknown anchor must fail the build");
+    let msg = err.render_plain();
+    assert!(
+        msg.contains("ghost"),
+        "error should name the missing anchor: {msg}"
+    );
+}
+
+#[test]
+fn code_block_line_range_past_the_end_fails_the_build() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(tmp.path().join("short.txt"), "one\ntwo\n");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code text { source_file = "short.txt"  lines = "5-9" }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build(&src, out.path(), None).expect_err("out-of-range lines must fail the build");
+}
+
+#[test]
+fn code_block_needs_exactly_one_of_source_and_source_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(tmp.path().join("lib.rs"), "fn f() {}\n");
+
+    // Neither: nothing to render.
+    let none = tmp.path().join("none.wcl");
+    write_fixture(&none, "page index {\n  code rust {}\n}\n");
+    let out = TempDir::new().expect("mkdir out");
+    build(&none, out.path(), None).expect_err("a code block with no listing must fail");
+
+    // Both: which one wins would be a guess.
+    let both = tmp.path().join("both.wcl");
+    write_fixture(
+        &both,
+        r#"
+page index {
+  code rust {
+    source = "fn inline() {}"
+    source_file = "lib.rs"
+  }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build(&both, out.path(), None).expect_err("two listings on one block must fail");
+}
+
+#[test]
+fn code_block_anchor_and_lines_are_mutually_exclusive() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(
+        tmp.path().join("lib.rs"),
+        "// ANCHOR: a\nfn f() {}\n// ANCHOR_END: a\n",
+    );
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust { source_file = "lib.rs"  anchor = "a"  lines = "1-2" }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build(&src, out.path(), None).expect_err("two region selectors must fail");
+}
+
+#[test]
+fn code_block_inline_source_still_works() {
+    // The inline form is unchanged — `source` stays the common case.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r#"
+page index {
+  code rust { source = "fn still_inline() {}" }
+}
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        listings(&html).contains("still_inline"),
+        "inline listing regressed:\n{html}"
+    );
+}
+
+#[test]
+fn code_block_reads_a_file_when_nested_inside_another_content_node() {
+    // Content nests: a `Callout` carries a list of content, so a listing
+    // can reach a backend without ever having come off a `code` block.
+    // Resolution has to follow the nesting, not just the top level.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    write_listing(tmp.path().join("nested.rs"), "fn deep_in_a_callout() {}\n");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r##"
+@block("noted_listing")
+type NotedListing extends ContentBlock {
+  path: utf8
+  lower = fn(n: NotedListing) -> list<Content> [
+    Content::Callout {
+      heading: "Heads up",
+      body: [ Content::Code { language: "rust", source_file: n.path } ],
+    }
+  ]
+}
+
+page index {
+  noted_listing { path = "nested.rs" }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        listings(&html).contains("deep_in_a_callout"),
+        "nested file-backed listing not resolved:\n{html}"
+    );
 }

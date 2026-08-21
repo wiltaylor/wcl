@@ -13,12 +13,15 @@
 //! - [`accessors`] — field / map / value readers + HTML escaping
 //! - [`expand`] — `wdoc_repeater` / `wdoc_component` body expansion, shared
 //!   by the HTML and SVG (diagram) paths
+//! - [`include`] — file-backed code listings, resolved into the content IR
+//!   before any backend sees it
 //! - [`lower`] — `lower`-function dispatch, the lowered-node classification
 //!   every backend walks, and the render-pass diagnostic sinks
 //! - [`theme`] — a `theme` block → concrete role colours
 
 mod accessors;
 mod expand;
+mod include;
 mod lower;
 mod theme;
 

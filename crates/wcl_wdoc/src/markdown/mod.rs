@@ -124,7 +124,10 @@ pub fn markdown(
     // Clear any routing error / render warnings stranded by an earlier
     // pass so stale messages can't leak into this one (mirrors `build`).
     let _ = crate::render::take_route_error();
+    let _ = crate::render::take_include_error();
     let _ = crate::render::take_render_warnings();
+    // File-backed code listings resolve against the document's directory.
+    let _doc_dir = crate::render::DocDirGuard::set(base_dir.as_deref());
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
         let mut count = 0;
         for spec in &build_set {
@@ -174,6 +177,11 @@ pub fn markdown(
     // HTML build — static diagrams render in Markdown output too.
     if let Some(msg) = crate::render::take_route_error() {
         return Err(BuildError::EdgeRouting(msg));
+    }
+    // As does a listing whose file could not be read — Markdown carries the
+    // same listings the book does.
+    if let Some(msg) = crate::render::take_include_error() {
+        return Err(BuildError::CodeInclude(msg));
     }
     result
 }

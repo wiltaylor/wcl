@@ -875,3 +875,48 @@ fn a_text_block_runs_its_spans_together_into_one_paragraph() {
         "one paragraph:\n{md}"
     );
 }
+
+#[test]
+fn code_block_reads_its_listing_from_a_file() {
+    // The include pass runs before any backend, so a file-backed listing
+    // is not an HTML-only trick — the same file reaches the fence here.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(
+        tmp.path().join("greet.rs"),
+        "fn greet() {\n    println!(\"from disk\");\n}\n",
+    )
+    .expect("write listing");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  code rust {\n    source_file = \"greet.rs\"\n  }\n}\n",
+    );
+    let out = tmp.path().join("out");
+    md_ok(&src, &out, None);
+
+    let md = read(&out, "index.md");
+    assert!(md.contains("```rust"), "listing lost its fence:\n{md}");
+    assert!(
+        md.contains("println!(\"from disk\")"),
+        "file-backed listing not rendered:\n{md}"
+    );
+    // The file names the listing, as it does in the book.
+    assert!(md.contains("`greet.rs`"), "listing not named:\n{md}");
+}
+
+#[test]
+fn code_block_missing_source_file_fails_the_markdown_build() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  code rust { source_file = \"nope.rs\" }\n}\n",
+    );
+    let out = tmp.path().join("out");
+    let err = markdown(&src, &out, None).expect_err("missing listing must fail the build");
+    assert!(
+        err.render_plain().contains("nope.rs"),
+        "error should name the file: {}",
+        err.render_plain()
+    );
+}

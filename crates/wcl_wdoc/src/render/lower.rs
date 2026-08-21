@@ -9,11 +9,13 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use miette::NamedSource;
 use wcl_lang::{Block, Document, EvalError, FnValue, Value};
 
 use crate::content::Content;
+use crate::render::include::resolve_content;
 
 /// A function that renders one block to markup — the signature every
 /// kind-specific renderer is registered under.
@@ -49,6 +51,90 @@ thread_local! {
     /// recording sites run once per pass per page or twice per diagram);
     /// see [`record_render_warning`].
     static RENDER_WARN: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+
+    /// First file-backed listing that could not be read during the current
+    /// render pass — a missing `source_file`, an anchor that isn't there, a
+    /// line range past the end. Like [`ROUTE_ERR`] the backend turns it into
+    /// a hard `BuildError`: a listing that names a file is a listing the
+    /// build is meant to keep honest, so a broken one stops the build rather
+    /// than rendering an empty card. First message wins; see
+    /// [`record_include_error`].
+    static INCLUDE_ERR: RefCell<Option<String>> = const { RefCell::new(None) };
+
+    /// The directory the document being rendered lives in, for the current
+    /// pass. A `source_file` is relative to the document that names it, and
+    /// the pass that resolves it ([`crate::render::include`]) runs deep
+    /// inside walkers that never carried a path — the HTML variant
+    /// recursion in particular. Pass-scoped, set by [`DocDirGuard`], which
+    /// restores whatever an outer pass had when it drops.
+    static DOC_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
+
+/// Record a listing that could not be read. First one wins; cleared by
+/// [`take_include_error`].
+pub(crate) fn record_include_error(msg: String) {
+    INCLUDE_ERR.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(msg);
+        }
+    });
+}
+
+/// Take and clear the first include failure recorded during this pass.
+pub(crate) fn take_include_error() -> Option<String> {
+    INCLUDE_ERR.with(|slot| slot.borrow_mut().take())
+}
+
+/// Sets the document directory that file-backed listings resolve against
+/// for as long as it is held, and puts back whatever an enclosing pass had
+/// when it is dropped — so a pass nested inside another (a deck collected
+/// during a site build, say) leaves the outer one intact.
+///
+/// A guard rather than a wrapper function because the passes that need it
+/// are whole backend entry points; taking their bodies into a closure
+/// would re-indent them for no gain.
+pub(crate) struct DocDirGuard(Option<PathBuf>);
+
+impl DocDirGuard {
+    /// Resolve listings against `dir` until the guard drops.
+    pub(crate) fn set(dir: Option<&Path>) -> Self {
+        Self(
+            DOC_DIR.with(|slot| {
+                std::mem::replace(&mut *slot.borrow_mut(), dir.map(Path::to_path_buf))
+            }),
+        )
+    }
+}
+
+impl Drop for DocDirGuard {
+    fn drop(&mut self) {
+        let previous = self.0.take();
+        DOC_DIR.with(|slot| *slot.borrow_mut() = previous);
+    }
+}
+
+/// Resolve every file-backed listing in `node`, recording a failure for
+/// the backend to surface. A node whose listing could not be read is
+/// still returned — the build is already failing, and dropping it would
+/// only cost the reader the context around the error.
+///
+/// `block` is the block the node was lowered from, when there is one: a
+/// listing on an authored `code` block gets a spanned diagnostic pointing
+/// at it, the same as any other authoring error. A node produced deeper
+/// in a lowering chain has no span to point at, so it goes to the
+/// pass-scoped sink instead. Either way the build stops, with the same
+/// message and the same exit code.
+fn resolve_includes(node: &mut Content, block: Option<&Block<'_>>) {
+    let dir = DOC_DIR.with(|slot| slot.borrow().clone());
+    let Err(e) = resolve_content(node, dir.as_deref()) else {
+        return;
+    };
+    let msg = e.into_message();
+    match block {
+        Some(b) => record_lower_error(b, EvalError::user_error(msg, b.span())),
+        None => record_include_error(msg),
+    }
 }
 
 /// Record a non-fatal render warning. Identical messages dedup; distinct
@@ -255,7 +341,10 @@ pub(crate) fn lower_block(doc: &Document, block: &Block<'_>, kind: &str) -> Opti
 /// [`lower_block`].
 pub(crate) fn recursed_content(value: &Value) -> Option<Content> {
     match crate::content::as_content(value)? {
-        Ok(node) => Some(node),
+        Ok(mut node) => {
+            resolve_includes(&mut node, None);
+            Some(node)
+        }
         Err(e) => {
             record_render_warning(format!(
                 "a lowering produced a malformed content node ({e}) — it renders as nothing"
@@ -274,7 +363,10 @@ pub(crate) fn recursed_content(value: &Value) -> Option<Content> {
 /// failed.
 fn classify(block: &Block<'_>, kind: &str, value: &Value) -> Option<Lowered> {
     match crate::content::as_content(value) {
-        Some(Ok(node)) => Some(Lowered::Content(node)),
+        Some(Ok(mut node)) => {
+            resolve_includes(&mut node, Some(block));
+            Some(Lowered::Content(node))
+        }
         Some(Err(e)) => {
             record_lower_error(
                 block,

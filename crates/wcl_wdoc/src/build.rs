@@ -217,6 +217,11 @@ pub enum BuildError {
     /// (the layout is too tightly packed). Carries a message naming the
     /// offending edge and a hint at how to fix it.
     EdgeRouting(String),
+    /// A file-backed code listing could not be read: a `source_file` that
+    /// isn't there, an `anchor` the file doesn't mark, a `lines` range past
+    /// its end. Carries a message naming the file, since a listing that has
+    /// drifted away from the code it quotes is the failure this is for.
+    CodeInclude(String),
 }
 
 impl BuildError {
@@ -243,6 +248,7 @@ impl BuildError {
             Self::BadTemplate(name) => eprintln!("unknown template \"{name}\""),
             Self::Tileset(msg) => eprintln!("{msg}"),
             Self::EdgeRouting(msg) => eprintln!("{msg}"),
+            Self::CodeInclude(msg) => eprintln!("{msg}"),
         }
     }
 
@@ -272,6 +278,7 @@ impl BuildError {
             Self::BadTemplate(name) => format!("unknown template \"{name}\""),
             Self::Tileset(msg) => msg.clone(),
             Self::EdgeRouting(msg) => msg.clone(),
+            Self::CodeInclude(msg) => msg.clone(),
         }
     }
 
@@ -711,6 +718,7 @@ fn build_inner(
     let targets = changed.and_then(|changed| affected_pages(&doc, file, changed));
     if let Some(targets) = targets {
         let _ = crate::render::take_route_error();
+        let _ = crate::render::take_include_error();
         let _ = crate::render::take_render_warnings();
         // A targeted re-render rewrites some pages of one site; the class
         // lint needs every page of every site, so this scan is discarded.
@@ -774,6 +782,9 @@ fn build_inner(
         if let Some(msg) = crate::render::take_route_error() {
             return Err(BuildError::EdgeRouting(msg));
         }
+        if let Some(msg) = crate::render::take_include_error() {
+            return Err(BuildError::CodeInclude(msg));
+        }
         if let Some(rendered) = result? {
             return Ok((BuildOutcome::Targeted(rendered), doc.profile()));
         }
@@ -785,6 +796,7 @@ fn build_inner(
     // into this one. Render warnings are left in the sink after a successful
     // build for the caller to drain via [`take_render_warnings`].
     let _ = crate::render::take_route_error();
+    let _ = crate::render::take_include_error();
     let _ = crate::render::take_render_warnings();
     let _ = crate::css_lint::take_structural_uses();
     let scan = ClassScan::default();
@@ -852,6 +864,11 @@ fn build_inner(
     // block has otherwise evaluated and laid out.
     if let Some(msg) = crate::render::take_route_error() {
         return Err(BuildError::EdgeRouting(msg));
+    }
+    // A listing that names a file the build cannot read fails it here, for
+    // the same reason: the node rendered, but against nothing.
+    if let Some(msg) = crate::render::take_include_error() {
+        return Err(BuildError::CodeInclude(msg));
     }
     let count = result?;
     // The class lint reads the pages this build just wrote against the
@@ -1378,6 +1395,10 @@ fn build_site(
     target: Option<&HashSet<String>>,
     scan: &ClassScan,
 ) -> Result<SiteBuild, BuildError> {
+    // File-backed code listings resolve against the directory of the
+    // document being built, for as long as this site is rendering.
+    let _doc_dir = crate::render::DocDirGuard::set(base_dir);
+
     // A targeted incremental render reuses the prior full build's aggregate
     // site-wide assets (player scripts, default favicon, copied `assets/`
     // folders, the search index and icon sprite) rather than rewriting them.

@@ -133,8 +133,11 @@ union Content {
   List      { items: list<ContentListItem> style: ListStyle? start: u32? id: identifier? class: list<utf8>? }
   @doc("A data table: an optional heading row plus body rows of cell prose.")
   Table     { rows: list<list<utf8>> header: list<utf8>? caption: utf8? id: identifier? class: list<utf8>? }
-  @doc("A code listing. Highlighting is the backend's job; `filename` is the header a listing may carry.")
-  Code      { source: utf8 language: identifier? filename: utf8? id: identifier? class: list<utf8>? }
+  @doc("A code listing. Highlighting is the backend's job; `filename` is the header a listing may carry. Exactly one of `source` (the text) and `source_file` (a path read at build time, optionally narrowed by `anchor` or `lines`) is authored; the include pass resolves the file into `source` before any backend sees the node.")
+  Code      {
+    source: utf8? source_file: utf8? anchor: utf8? lines: utf8? dedent: bool?
+    language: identifier? filename: utf8? id: identifier? class: list<utf8>?
+  }
   @doc("An admonition: a typed accent, a heading, and nested body content.")
   Callout   { kind: CalloutKind? heading: utf8 body: list<Content> icon: utf8? id: identifier? class: list<utf8>? }
   @doc("Side-by-side content columns; each column is its own content list.")

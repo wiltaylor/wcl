@@ -67,7 +67,10 @@ impl Emitter<'_> {
                 if let Some(filename) = filename {
                     out.push(format!("`{filename}`"));
                 }
-                out.push(fence(language.as_deref().unwrap_or_default(), source));
+                out.push(fence(
+                    language.as_deref().unwrap_or_default(),
+                    source.as_deref().unwrap_or_default(),
+                ));
             }
             Content::Callout {
                 kind,
