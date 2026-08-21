@@ -3783,6 +3783,97 @@ page index {
 }
 
 #[test]
+fn build_elbow_edges_attach_to_circle_boundary() {
+    // An elbow edge into a round shape must reach the drawn circle, not
+    // the bounding box side. A `node` inscribes its circle in its box
+    // (r = min(w,h)/2), so a 100x48 node approached from the west has its
+    // outline 26px inside the box side. The terminal leg runs on along
+    // its own axis: box side x=250, center x=300, r=24, so x=276.
+    //
+    // The 48x48 node is the control — its box side *is* its outline, and
+    // the corrected path must leave it exactly where it was.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("elbow-boundary.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 420
+    height = 160
+    process "src" { id = a  x = 20.0   y = 55.0  width = 90.0   height = 44.0 }
+    node    "web" { id = b  x = 250.0  y = 40.0  width = 100.0  height = 48.0 }
+    a -> b
+  }
+  diagram {
+    width  = 420
+    height = 160
+    process "src" { id = c  x = 20.0   y = 55.0  width = 90.0  height = 44.0 }
+    node    "web" { id = d  x = 250.0  y = 40.0  width = 48.0  height = 48.0 }
+    c -> d
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("<polyline points=\"110,77 230,77 230,64 276,64\""),
+        "elbow edge stopped at the box side instead of the circle:\n{html}"
+    );
+    assert!(
+        html.contains("<polyline points=\"110,77 230,77 230,64 250,64\""),
+        "square node's already-correct endpoint moved:\n{html}"
+    );
+}
+
+#[test]
+fn build_elbow_arrivals_spread_on_a_round_shape_reach_its_boundary() {
+    // Several edges arriving on one side are spread into slots 12px
+    // apart. On a round shape those offset slots miss the circle even
+    // when the box is square, so the correction has to follow the chord
+    // rather than assume the side midpoint: center (324,142) r=24, a leg
+    // at y=130 is 12 off-axis, so it crosses at x = 324 - sqrt(24^2-12^2)
+    // = 303.215..., while the on-axis middle arrival stays at x=300.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("elbow-spread.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 420
+    height = 300
+    process "s1" { id = a  x = 20.0  y = 20.0   width = 90.0  height = 44.0 }
+    process "s2" { id = b  x = 20.0  y = 120.0  width = 90.0  height = 44.0 }
+    process "s3" { id = c  x = 20.0  y = 220.0  width = 90.0  height = 44.0 }
+    node    "hub" { id = h  x = 300.0  y = 118.0  width = 48.0  height = 48.0 }
+    a -> h
+    b -> h
+    c -> h
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("280,130 303.2153903091735,130"),
+        "spread arrival above the axis missed the circle:\n{html}"
+    );
+    assert!(
+        html.contains("280,154 303.2153903091735,154"),
+        "spread arrival below the axis missed the circle:\n{html}"
+    );
+    assert!(
+        html.contains("<polyline points=\"110,142 300,142\""),
+        "on-axis arrival should already sit on the boundary:\n{html}"
+    );
+}
+
+#[test]
 fn build_renders_site_menu_with_nested_dropdowns() {
     // A site menu with a top link (the current page), a dropdown parent
     // holding two sub-items, and an external href. The webpage nav

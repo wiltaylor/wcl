@@ -138,7 +138,10 @@ rect { id = db  x = 40.0  y = 40.0  width = 90.0  height = 40.0
   `:top` / `:bottom`. Those names are wrong. A shape given them keeps no anchors at all, and
   behaves like an empty list.
 - A round shape (`circle`, and the `node` graph shape) ignores the side midpoints and attaches
-  on the circle boundary, along the centre-to-centre line.
+  on the circle boundary, under both routing modes. The circle is inscribed in the box, so
+  `r = min(width, height) / 2` — a non-square `node` has blank space on its wider axis, and the
+  edge crosses it to reach the outline. `:straight` attaches along the centre-to-centre line;
+  `:elbow` keeps its final leg axis-aligned and stops where that axis crosses the circle.
 - A `node_table` exposes a port per row. A row's default is `[:west, :east]`, so a foreign-key
   edge can target one row rather than the whole table.
 

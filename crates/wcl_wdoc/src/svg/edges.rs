@@ -500,7 +500,7 @@ pub(crate) fn plan_edge(
                 h: m.bbox.3,
             })
             .collect();
-        let Some(points) = routing::route_elbow(
+        let Some(mut points) = routing::route_elbow(
             (sx, sy),
             src_side,
             (dx, dy),
@@ -521,6 +521,24 @@ pub(crate) fn plan_edge(
             ));
             return None;
         };
+        // A round shape's circle is inscribed in its box, so a leg that
+        // stops at the box side stops short of the drawn outline whenever
+        // the box isn't square — and an arrival slot spread along that
+        // side misses it even when it is. Straight routing corrects this
+        // radially; an elbow's terminal leg is axis-aligned, so it runs on
+        // to where its own axis crosses the circle instead, which keeps
+        // the leg orthogonal. Self-loops keep the anchor behaviour, as in
+        // the straight branch.
+        if !is_self_loop && points.len() >= 2 {
+            let last = points.len() - 1;
+            let (first_neighbor, last_neighbor) = (points[1], points[last - 1]);
+            if src.round {
+                points[0] = leg_circle_crossing(&src.bbox, first_neighbor, points[0]);
+            }
+            if dst.round {
+                points[last] = leg_circle_crossing(&dst.bbox, last_neighbor, points[last]);
+            }
+        }
         points
     };
     Some((EdgePath { points }, style))
@@ -635,6 +653,70 @@ pub(crate) fn round_boundary_point(bbox: &(f64, f64, f64, f64), target: (f64, f6
         return (cx, cy);
     }
     (cx + dx / dist * r, cy + dy / dist * r)
+}
+
+/// Slide the endpoint of an axis-aligned terminal leg onto a round
+/// shape's circle boundary. `end` is the leg's endpoint at the shape,
+/// `neighbor` the other end of that same leg.
+///
+/// The circle is inscribed in `bbox` (`r = min(w, h) / 2`), so an
+/// endpoint left on a box side sits `half-extent - r` short of the
+/// outline on the approach axis — zero only when that axis is the box's
+/// smaller dimension, which is why a square shape hides the gap. An
+/// arrival slot spread along the side (`build_shared_anchors`) misses
+/// the outline by the chord as well, square or not. Moving along the
+/// leg's own axis fixes both while keeping the leg orthogonal, which
+/// the radial point straight routing uses would not.
+///
+/// The endpoint only ever moves *into* its own box, away from
+/// `neighbor`, so the leg can lengthen but never invert.
+///
+/// Returns `end` unchanged when the leg is degenerate, or when its axis
+/// misses the circle entirely (an arrival spread wider than the
+/// radius) — no correction beats one that can't land on the outline.
+pub(crate) fn leg_circle_crossing(
+    bbox: &(f64, f64, f64, f64),
+    neighbor: (f64, f64),
+    end: (f64, f64),
+) -> (f64, f64) {
+    let (cx, cy) = bbox_center(bbox);
+    let r = bbox.2.min(bbox.3) / 2.0;
+    let (dx, dy) = (end.0 - neighbor.0, end.1 - neighbor.1);
+    if r <= 0.0 || (dx.abs() <= f64::EPSILON && dy.abs() <= f64::EPSILON) {
+        return end;
+    }
+    // The leg runs along whichever axis it spans; `snap_endpoints`
+    // guarantees a terminal leg is axis-aligned, so the other delta is
+    // zero and this is a straight read of the direction.
+    let horizontal = dx.abs() >= dy.abs();
+    // `off` is the leg's perpendicular distance from the center, `along`
+    // the endpoint's own side of it.
+    let (off, along) = if horizontal {
+        (end.1 - cy, end.0 - cx)
+    } else {
+        (end.0 - cx, end.1 - cy)
+    };
+    if off.abs() >= r {
+        return end;
+    }
+    // Half-chord: where this leg's axis crosses the circle.
+    let half = (r * r - off * off).sqrt();
+    // Stay on the side the leg approaches from — the endpoint's own side
+    // of the center, falling back to the neighbor's when the endpoint
+    // sits exactly on the center axis.
+    let side = match (along, horizontal) {
+        (a, _) if a != 0.0 => a.signum(),
+        (_, true) => (neighbor.0 - cx).signum(),
+        (_, false) => (neighbor.1 - cy).signum(),
+    };
+    if side == 0.0 {
+        return end;
+    }
+    if horizontal {
+        (cx + side * half, end.1)
+    } else {
+        (end.0, cy + side * half)
+    }
 }
 
 /// The midpoint of one side of a bounding box.

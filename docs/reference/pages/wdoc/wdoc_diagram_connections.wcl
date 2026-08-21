@@ -230,7 +230,9 @@ WCL
 
   p "Two shape families override the four-anchor default."
 
-  p "A `circle` and a flowchart `node` are round. Under straight routing they attach on the **circle boundary**, along the line joining the two centres. The arrow then points radially at the shape and touches its outline, instead of reaching for a corner-ish cardinal point."
+  p "A `circle` and a flowchart `node` are round. They attach on the **circle boundary**, not on a bounding-box side, so the arrow touches the outline you can see instead of stopping in the blank corner space around it. This matters most when the box is not square: a round shape inscribes its circle in its box, giving it a radius of half the box's *smaller* dimension, so a `node` widened to fit its label leaves that much empty space on the wide axis."
+
+  p "The two routing modes reach the boundary differently, because each keeps the shape its edges already have. A straight edge attaches along the line joining the two centres, so it points radially at the shape. An elbow's final leg is axis-aligned and stays that way — it runs on to where its own axis crosses the circle, which is the centre for an edge arriving head-on and a little short of it for one arriving on an offset arrival slot."
 
   p "A `node_table` exposes an anchor per **row**, not per table. Each `node_row` defaults to `:west` and `:east` only, the sides that face a table beside it. Per-row anchors are what make a foreign key drawable: the edge connects two rows, not two boxes."
 
