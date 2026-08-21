@@ -215,7 +215,8 @@ fn wdoc_build_fails_with_exit_3_when_a_code_listing_is_missing() {
 #[test]
 fn wdoc_build_reads_a_code_listing_from_a_file() {
     let tmp = TempDir::new().expect("mkdir tempdir");
-    std::fs::write(tmp.path().join("lib.rs"), "pub const ANSWER: u8 = 42;\n").expect("write listing");
+    std::fs::write(tmp.path().join("lib.rs"), "pub const ANSWER: u8 = 42;\n")
+        .expect("write listing");
     let src = tmp.path().join("doc.wcl");
     std::fs::write(
         &src,

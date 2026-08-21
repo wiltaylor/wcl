@@ -289,7 +289,7 @@ CONSOLE
       | "Prose"          | "`Paragraph`"    | "`text` (inline patterns apply)" |
       | "Prose"          | "`List`"         | "`items`, each with its own nested `blocks`" |
       | "Prose"          | "`Table`"        | "`rows`, optional `header` and `caption`" |
-      | "Prose"          | "`Code`"         | "`source`, optional `language` and `filename`" |
+      | "Prose"          | "`Code`"         | "`language`, then either `source` or a `source_file` to read (with `anchor` / `lines` / `dedent`), and an optional `filename`" |
       | "Prose"          | "`Callout`"      | "`kind`, `heading`, `body: list<Content>`" |
       | "Prose"          | "`Columns`"      | "`columns`, each its own content list" |
       | "Media"          | "`Image`"        | "`source`, `alt`, `caption`, size" |

@@ -97,7 +97,7 @@ The variants:
 
 | Group | Variants |
 | --- | --- |
-| Prose | `Heading { level text id class }`, `Paragraph { text id class }`, `List { items style start id class }`, `Table { rows header caption id class }`, `Code { source language filename id class }`, `Callout { kind heading body icon id class }`, `Columns { columns id class }` |
+| Prose | `Heading { level text id class }`, `Paragraph { text id class }`, `List { items style start id class }`, `Table { rows header caption id class }`, `Code { source source_file anchor lines dedent language filename id class }`, `Callout { kind heading body icon id class }`, `Columns { columns id class }` |
 | Media | `Image { source alt caption width height id class }`, `Video { source poster title width height caption id class }`, `File { path label id class }`, `Math { latex display id class }`, `Drawing { shapes width height caption desc id class }`, `Terminal { lines title id class }` |
 | Apparatus | `Toc { entries title id class }`, `Footnotes { notes title id class }`, `ChapterHeader { title kicker subtitle reading_time updated version id class }` |
 | Presentation | `Fragment { body id class }`, `SpeakerNotes { body id }` |

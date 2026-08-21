@@ -72,7 +72,7 @@ Documents and presentation:
 Content blocks:
 
 - [`wdoc_formatting.md`](references/wdoc/wdoc_formatting.md) — headings, `p`, `text` and `span`, `column`, the inline pattern vocabulary.
-- [`wdoc_code.md`](references/wdoc/wdoc_code.md) — the `code` block, its language, filename and caption, and the chrome each backend draws.
+- [`wdoc_code.md`](references/wdoc/wdoc_code.md) — the `code` block, its language, filename and caption, reading a listing from a file (`source_file`, anchors, line ranges), and the chrome each backend draws.
 - [`wdoc_callouts.md`](references/wdoc/wdoc_callouts.md) — the `callout` kinds, `footnote` and `footnotes`, the `chapter_header` meta line.
 - [`wdoc_tables.md`](references/wdoc/wdoc_tables.md) — `list` and `li`, `table` in both authored forms, and the CSS workarounds standing in for the absent alignment and caption fields.
 - [`wdoc_media.md`](references/wdoc/wdoc_media.md) — `image` sources and sizing, why there is no crop field, the `video` block, the `file` block, path resolution.

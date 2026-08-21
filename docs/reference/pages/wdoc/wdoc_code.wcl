@@ -2,18 +2,22 @@
 //
 // Written against the sources (#178): `crates/wcl_wdoc/lib/code.wcl`,
 // `src/highlight.rs`, `src/render/content_html.rs`,
-// `src/markdown/content.rs` and `src/pdf/content.rs`. Every listing, tag
-// and command below was built and read back before it was written down —
-// including the language-tag table, which was probed against the loaded
-// syntax set rather than copied from the older reference page.
+// `src/render/include.rs`, `src/markdown/content.rs` and
+// `src/pdf/content.rs`. Every listing, tag and command below was built and
+// read back before it was written down — including the language-tag table,
+// which was probed against the loaded syntax set rather than copied from
+// the older reference page, and the file-backed listings, which were built
+// against real files on disk.
 page wdoc_code {
   title = "Code"
 
   h1 "Code"
 
-  p "A `code` block is a source listing: a language tag, a lump of text, and an optional filename. It is the block a technical document uses most, and it is deliberately thin. It measures nothing, draws no chrome, and knows nothing about the page around it. It hands the renderer a listing and the language it is written in, and each output target draws that listing the way its own medium wants."
+  p "A `code` block is a source listing: a language tag, some text, and an optional filename. It is the block a technical document uses most, and it is deliberately thin. It measures nothing, draws no chrome, and knows nothing about the page around it. It hands the renderer a listing and the language it is written in, and each output target draws that listing the way its own medium wants."
 
-  p "This chapter covers the block and its five fields, the language tags that resolve to a grammar, and what HTML, Markdown and PDF each make of one listing. Every example below was built and read back before it was written down."
+  p "The text comes from one of two places. Write it into the document with `source`, or name a file with `source_file` and let the build read it. The second is what keeps a manual honest about code that lives somewhere else."
+
+  p "This chapter covers the block and its fields, reading a listing from a file, the language tags that resolve to a grammar, and what HTML, Markdown and PDF each make of one listing. Every example below was built and read back before it was written down."
 
   h2 "One listing, three outputs"
 
@@ -92,23 +96,29 @@ CONSOLE
 
   h2 "The fields"
 
-  p "`Code` declares five fields and no more. There is no width, no theme, no line range, no highlight-these-lines list."
+  p "`Code` declares nine fields and no more. There is no width, no theme, and no highlight-these-lines list."
 
   table {
     rows:
       | "Field"     | "Type"        | "Written as"                     | "What it does" |
       | "`language`" | "`identifier`" | "the inline label, `code bash {`"  | "Picks the highlight grammar and labels the listing" |
-      | "`source`"  | "`utf8`"      | "`source = <<'SH' … SH`"          | "The listing text, verbatim" |
+      | "`source`"  | "`utf8?`"     | "`source = <<'SH' … SH`"          | "The listing text, verbatim" |
+      | "`source_file`" | "`utf8?`" | "`source_file = \"install.sh\"`"   | "Read the listing from this file instead. See [Reading a listing from a file](#reading-a-listing-from-a-file)" |
+      | "`anchor`"  | "`utf8?`"     | "`anchor = \"setup\"`"            | "Take only the marked region of `source_file`" |
+      | "`lines`"   | "`utf8?`"     | "`lines = \"12-30\"`"             | "Take only that line range of `source_file`" |
+      | "`dedent`"  | "`bool?`"     | "`dedent = true`"                 | "Strip the indentation the selected region shares" |
       | "`filename`" | "`utf8?`"    | "`filename = \"install.sh\"`"      | "Names the listing. See [Filename and caption](#filename-and-caption)" |
       | "`id`"      | "`identifier?`" | "`id = \"install\"`"             | "HTML only: the `id` attribute on the `<pre>`" |
       | "`class`"   | "`list<utf8>?`" | "`class = [\"wide\"]`"           | "HTML only: added beside `code-block` on the `<pre>`" |
   }
 
+  p "`source` and `source_file` are both optional in the schema, and **exactly one of them must be set**. Neither leaves nothing to render; both would make the build choose a winner, and the wrong guess is a listing that silently disagrees with the file beside it. Either way the build stops and says so."
+
   p "`id` and `class` are HTML-shaped, and they behave that way: the Markdown and PDF backends read the same lowered listing and drop both. Reach for them when a stylesheet or a link needs to address one listing on a page, not when you want the listing to look different everywhere."
 
   h3 "Writing the source"
 
-  p "`source` is an ordinary `utf8` field, so any string expression fills it. In practice it is always a raw heredoc, for one reason: a listing is full of the characters a plain string treats as syntax."
+  p "`source` is an ordinary `utf8?` field, so any string expression fills it. When a listing is written into the document rather than read from a file, it is almost always a raw heredoc, for one reason: a listing is full of the characters a plain string treats as syntax."
 
   code wcl {
     source = <<'WCL'
@@ -129,6 +139,159 @@ WCL
   }
 
   p "Nothing in `source` runs through the inline-pattern engine either. A listing containing `**stars**` or `[brackets](x)` keeps them exactly as typed. The patterns apply to prose, not to code. See [Text and formatting](wdoc_formatting)."
+
+  h2 "Reading a listing from a file"
+
+  p "A listing written into the document is a copy of code that lives somewhere else. Nothing keeps the two in step, and nothing notices when they drift apart. A manual with two hundred listings has two hundred places where the page can quietly stop being true."
+
+  p "`source_file` names the file instead, and the build reads it:"
+
+  code wcl {
+    source = <<'WCL'
+code rust {
+  source_file = "../src/retry.rs"
+}
+WCL
+  }
+
+  p "The path is resolved against the directory of the document that names it — not the entry document, and not the working directory. A relative path may climb out of the doc tree, which is the ordinary case: the code a manual quotes usually lives beside the manual rather than under it. An absolute path is taken as given."
+
+  h3 "Taking part of a file"
+
+  p "A whole file is rarely the listing you want. Narrow it two ways."
+
+  p "**`anchor`** takes the region between two marker comments in the quoted file:"
+
+  code rust {
+    filename = "src/retry.rs"
+    source = <<'RS'
+use std::time::Duration;
+
+// ANCHOR: backoff
+pub fn backoff(attempt: u32) -> Duration {
+    Duration::from_secs(2u64.pow(attempt))
+}
+// ANCHOR_END: backoff
+RS
+  }
+
+  code wcl {
+    source = <<'WCL'
+code rust {
+  source_file = "../src/retry.rs"
+  anchor      = "backoff"
+}
+WCL
+  }
+
+  p "The match is on the text `ANCHOR: name`, anywhere on the line, so the marker sits in whatever comment syntax the quoted file uses. `// ANCHOR: x`, `# ANCHOR: x` and `<!-- ANCHOR: x -->` all work, and wdoc never needs to know the language to find them."
+
+  p "**`lines`** takes a 1-based inclusive range. Write it four ways: `\"12-30\"`, `\"12-\"` to the end, `\"-30\"` from the start, or `\"12\"` for a single line."
+
+  code wcl {
+    source = <<'WCL'
+code rust {
+  source_file = "../src/retry.rs"
+  lines       = "3-7"
+}
+WCL
+  }
+
+  p "Prefer anchors. A line range is addressed by position, so it silently means something different the moment anyone inserts a line above it — which is the drift this feature exists to stop. An anchor moves with the code it marks. Setting both `anchor` and `lines` on one block fails the build rather than picking a precedence rule nobody would remember."
+
+  callout "Markers never reach the page" {
+    class = ["note"]
+    body  = "An `ANCHOR:` comment is bookkeeping addressed to wdoc, so it is dropped from every listing — anchored, line-ranged, or whole-file. Anchors may nest, and an inner one's markers vanish from the outer region too. The listing above, which *shows* the markers, is written inline with `source` for exactly that reason."
+  }
+
+  h3 "Indentation"
+
+  p "A region lifted out of a nested scope arrives with the indentation of where it used to live. Anchor a method inside an `impl` block and every line starts four columns in:"
+
+  code rust {
+    filename = "src/retry.rs"
+    source = <<'RS'
+impl Policy {
+    // ANCHOR: inner
+    pub fn should_retry(&self, attempt: u32) -> bool {
+        attempt < self.max_attempts
+    }
+    // ANCHOR_END: inner
+}
+RS
+  }
+
+  p "`dedent` strips the indentation every non-blank line shares, and leaves the structure inside it alone:"
+
+  code wcl {
+    source = <<'WCL'
+code rust {
+  source_file = "../src/retry.rs"
+  anchor      = "inner"
+  dedent      = true
+}
+WCL
+  }
+
+  p "The four shared columns go; the four inside the method body stay:"
+
+  code rust {
+    source = <<'RS'
+pub fn should_retry(&self, attempt: u32) -> bool {
+    attempt < self.max_attempts
+}
+RS
+  }
+
+  h3 "What names the listing"
+
+  p "`filename` defaults to `source_file` when the listing comes from disk, so the card header names the file that was actually read. Set `filename` explicitly to label it something else — the repository-relative path, say, rather than the path the document had to walk to reach it:"
+
+  code wcl {
+    source = <<'WCL'
+code rust {
+  source_file = "../../crates/retry/src/lib.rs"
+  filename    = "crates/retry/src/lib.rs"
+}
+WCL
+  }
+
+  h3 "When the file is not there"
+
+  p "A read that fails **fails the build**. A missing file, an anchor the file does not mark, a line range past its end: each stops the build with a message naming the file, and exits 3."
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl wdoc build listing.wcl --out _site
+wcl::eval::user_error
+
+  × error: code block cannot read `source_file` "../src/gone.rs"
+  │ (/home/me/docs/../src/gone.rs): No such file or directory (os error 2)
+   ╭─[/home/me/docs/listing.wcl:2:14]
+ 1 │ import <wdoc.wcl>
+ 2 │ page index { code rust { source_file = "../src/gone.rs" } }
+   ·              ──────────────────────┬─────────────────────
+   ·                                    ╰── error raised here
+   ╰────
+
+$ echo $?
+3
+CONSOLE
+  }
+
+  p "The diagnostic points at the block, names the path as you wrote it, and gives the path it resolved to — which is the one to read when a relative path went somewhere you did not expect."
+
+  p "That is the whole point of naming a file rather than copying it. Rendering an empty card, or last build's text, would put back exactly the silent drift the field exists to catch. A listing that names a file is a listing the build is promising to keep true."
+
+  callout "`wcl check` does not catch it" {
+    class = ["warning"]
+    body  = "`check` parses and validates against the schema; it never renders, and the file is read at render time. A `source_file` pointing at nothing passes `wcl check` and fails `wcl wdoc build`. Put the build in CI, not just the check."
+  }
+
+  callout "`wdoc serve` does not watch the file" {
+    class = ["note"]
+    body  = "The dev server's watcher tracks `.wcl` sources only, so editing the quoted code does not add to its pending-changes note. Rebuilds are manual anyway — press Enter — and a full rebuild re-reads every file-backed listing, so the change does land. It just is not what prompts you to ask for it."
+  }
 
   h2 "The language tag"
 
@@ -257,6 +420,8 @@ WCL
 
   p "Leave it out and each target drops that part: the HTML header bar keeps its window dots and language label, and Markdown and PDF start at the listing. A filename is worth writing whenever the reader is meant to save the listing somewhere. In a document that teaches, that is most of the time."
 
+  p "A listing read from a file names itself. When `source_file` is set and `filename` is not, the path becomes the caption — see [What names the listing](#what-names-the-listing)."
+
   h2 "`code` is not a native block"
 
   p "Most of the heavyweight blocks in wdoc are **native**: a terminal, a tilemap, a tree, a table. wdoc intercepts a native block in Rust because its output is not expressible in WCL: measured widget layout, calendar arithmetic, an ANSI grid. See [Writing your own blocks](wdoc_extending) for what that means and what it costs."
@@ -269,24 +434,32 @@ WCL
 @block("code")
 type Code extends ContentBlock {
   @inline(0) language: identifier
-  source:   utf8
-  filename: utf8?
-  id:       identifier?
-  class:    list<utf8>?
+  source:      utf8?
+  source_file: utf8?
+  anchor:      utf8?
+  lines:       utf8?
+  dedent:      bool?
+  filename:    utf8?
+  id:          identifier?
+  class:       list<utf8>?
   lower = fn(c: Code) -> list<Content> [
     Content::Code {
-      source:   c.source,
-      language: c.language,
-      filename: c.filename,
-      id:       c.id,
-      class:    c.class,
+      source:      c.source,
+      source_file: c.source_file,
+      anchor:      c.anchor,
+      lines:       c.lines,
+      dedent:      c.dedent,
+      language:    c.language,
+      filename: if c.filename == none { c.source_file } else { c.filename },
+      id:          c.id,
+      class:       c.class,
     },
   ]
 }
 WCL
   }
 
-  p "`Content::Code` is a node of the semantic content IR: the closed, target-neutral union every backend matches exhaustively. The lowering carries five fields across and stops. It does not build a card. It does not pick a colour. It does not know which target is running."
+  p "`Content::Code` is a node of the semantic content IR: the closed, target-neutral union every backend matches exhaustively. The lowering carries the fields across and stops. It does not build a card. It does not pick a colour. It does not know which target is running. It does not read the file either — that happens once, later, to the node."
 
   p "The alternative is worth picturing, because it is the shape this block deliberately does not have. Build the card in the lowering and the header bar becomes HTML markup. A second target that wants a filename then has to reach past the lowering and re-read the block's own fields to get one. One payload and three readings of it is what keeps a field from meaning something on one target and nothing on the next. [Output targets](wdoc_outputs) covers the union and the backends in full."
 

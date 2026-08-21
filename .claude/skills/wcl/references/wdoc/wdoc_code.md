@@ -1,8 +1,10 @@
 # Code
 
 The `code` block is a syntax-highlighted source listing. The language tag is the block's
-label; the source is a field, and is almost always a **raw heredoc** so that backslashes,
-quotes and `${…}` survive verbatim.
+label. The listing itself comes from one of two fields — `source` for inline text, almost
+always a **raw heredoc** so that backslashes, quotes and `${…}` survive verbatim, or
+`source_file` to read it off disk at build time. Give exactly one; both, or neither, fails
+the build.
 
 ```wcl
 code rust {
@@ -25,10 +27,17 @@ which does both, only when the interpolation is the point. `$<<'TAG'` does not p
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `language` | `identifier` | yes | The label slot. Picks the highlight grammar. |
-| `source` | `utf8` | yes | The code text. |
-| `filename` | `utf8?` | no | Shown in the HTML card header; a caption line elsewhere. |
+| `source` | `utf8?` | one of | The code text, inline. |
+| `source_file` | `utf8?` | one of | Path to read the listing from, relative to the document. |
+| `anchor` | `utf8?` | no | Region between `ANCHOR: name` / `ANCHOR_END: name` in `source_file`. |
+| `lines` | `utf8?` | no | 1-based inclusive range of `source_file`: `"12-30"`, `"12-"`, `"-30"`, `"12"`. |
+| `dedent` | `bool?` | no | Strip the indentation the selected region shares. Default `false`. |
+| `filename` | `utf8?` | no | Shown in the HTML card header; a caption line elsewhere. Defaults to `source_file`. |
 | `id` | `identifier?` | no | Explicit HTML id. |
 | `class` | `list<utf8>?` | no | Extra classes, added to `code-block`. |
+
+`anchor` and `lines` are two ways to say the same thing — setting both fails the build. Both
+apply only to `source_file`.
 
 The label is an `identifier`, so it is bare: `code rust { … }`, never `code "rust" { … }`.
 A one-liner still needs the braces, because `source` is a named field:
@@ -36,6 +45,53 @@ A one-liner still needs the braces, because `source` is a named field:
 ```wcl
 code console { source = "$ wcl check config.wcl" }
 ```
+
+## Reading a listing from a file
+
+`source_file` resolves against the directory of the document that names it, so a path may
+climb out of the doc tree — which is the usual case, since the code being documented rarely
+lives under the manual.
+
+```wcl
+code rust { source_file = "../src/retry.rs" }
+```
+
+Narrow it with `anchor` (robust — survives edits above it) or `lines` (brittle — renumbers
+whenever the file grows):
+
+```wcl
+code rust {
+  source_file = "../src/retry.rs"
+  anchor      = "backoff"
+  dedent      = true
+}
+```
+
+The markers go in the quoted file, in whatever comment syntax it uses — the match is on the
+text `ANCHOR: name`, so `// ANCHOR: x`, `# ANCHOR: x` and `<!-- ANCHOR: x -->` all work:
+
+```rust
+// ANCHOR: backoff
+pub fn backoff(attempt: u32) -> Duration { … }
+// ANCHOR_END: backoff
+```
+
+**Marker lines never reach the output**, in any mode — anchored, line-ranged or whole-file.
+Anchors may nest; an inner anchor's markers vanish from an outer region too. A page that
+needs to *show* a marker writes that listing inline with `source`.
+
+**A read that fails fails the build**, exit 3, with a message naming the file: a missing
+`source_file`, an `anchor` the file does not mark, a `lines` range past its end. That is the
+point of the field — an inline copy goes stale silently, a file-backed one cannot.
+
+Two limits worth knowing:
+
+- `wcl check` does **not** catch a broken listing. It parses and schema-validates; it never
+  renders, and the read happens at render time. Only `wcl wdoc build` (or a `serve` rebuild)
+  reports it.
+- `wcl wdoc serve` does not watch the quoted file. Its watcher only tracks `.wcl`, and
+  rebuilds are manual anyway (press Enter). A **full** rebuild re-reads the file, so editing
+  the code and pressing Enter does pick the change up; it is just not what tells you to.
 
 ## The language tag
 
@@ -68,7 +124,10 @@ supported case.
 ## `code` is not native — it lowers
 
 `code` lowers to `Content::Code`, one node of the semantic content IR carrying
-`{ source, language, filename, id, class }`. No backend re-reads the block's fields. Each one
+`{ source, source_file, anchor, lines, dedent, language, filename, id, class }`. A file-backed
+listing is read by one pass over that IR before any backend runs, so all three targets render
+one read rather than three that could disagree, and a backend only ever sees `source` filled
+in. No backend re-reads the block's fields. Each one
 draws its own chrome from that fixed payload:
 
 | Target | What it draws |
@@ -83,7 +142,9 @@ Two consequences:
   the frame — hand-written window dots or a header bar arrive on the other targets as literal
   junk.
 - The line-number gutter is pure CSS (`counter-increment` on `.code-line`). There is no
-  `line_numbers` field to turn it off, and no start-line or highlight-line field.
+  `line_numbers` field to turn it off, no start-line field, and no highlight-line field.
+  (`lines` chooses which lines are *included* from a `source_file`; it does not number or
+  emphasise them.)
 
 ## Styling
 
@@ -102,4 +163,5 @@ block lands on the `<pre>`, beside `code-block`.
 - `markdown_source` renders a page's own generated Markdown into a `code markdown` block —
   see [`wdoc_outputs.md`](wdoc_outputs.md).
 - A `file` block ships a real file into the output instead of quoting it into the page — see
-  [`wdoc_media.md`](wdoc_media.md).
+  [`wdoc_media.md`](wdoc_media.md). `source_file` here does the opposite: it reads a file
+  *into* the page and copies nothing.
