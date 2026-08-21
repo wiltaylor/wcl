@@ -110,7 +110,7 @@ HTML
   code wcl {
     source = <<'WCL'
 callout "Check the queue depth" {
-  class = ["warning"]
+  kind  = :warning
   body  = "A **backed-up** queue means the drain will not finish."
   icon  = "lucide.siren"     # optional — overrides the per-kind default
   id    = queue_depth        # optional — an explicit HTML id
@@ -122,62 +122,87 @@ WCL
 
   h3 "The six kinds"
 
-  p "There are six built-in kinds, and you select one by putting its name in `class`:"
+  p "There are six built-in kinds, and you select one with the `kind` field:"
 
   demo {
     callout "Note" {
-      class = ["note"]
-      body  = "Background the reader should keep in mind."
+      kind = :note
+      body = "Background the reader should keep in mind."
     }
     callout "Info" {
-      class = ["info"]
-      body  = "Neutral information worth surfacing."
+      kind = :info
+      body = "Neutral information worth surfacing."
     }
     callout "Tip" {
-      class = ["tip"]
-      body  = "A shortcut or a better way round."
+      kind = :tip
+      body = "A shortcut or a better way round."
     }
     callout "Warning" {
-      class = ["warning"]
-      body  = "Something to be careful about."
+      kind = :warning
+      body = "Something to be careful about."
     }
     callout "Error" {
-      class = ["error"]
-      body  = "A failure, or a hard constraint."
+      kind = :error
+      body = "A failure, or a hard constraint."
     }
     callout "Success" {
-      class = ["success"]
-      body  = "Confirm that an action completed."
+      kind = :success
+      body = "Confirm that an action completed."
     }
   }
 
-  p "The class name is read **once**, in the block's own lowering, and carried on from there as a `CalloutKind` symbol: `:note`, `:info`, `:tip`, `:warning`, `:error`, `:success`. Each backend maps that symbol to its own vocabulary. None of them matches a class name, so the six kinds mean the same thing in every output:"
+  p "`kind` is typed `CalloutKind?`, a **closed symbol set**: `:note`, `:info`, `:tip`, `:warning`, `:error`, `:success` and nothing else. Write `:dagner` and the build stops with a schema violation naming the field. That matters more than it sounds, and the next section is about why."
+
+  p "The symbol is what travels. Each backend maps it to its own vocabulary — a hue, a glyph, an alert keyword — and none of them matches a class name. The six kinds mean the same thing in every output, and no two of them look alike in any of the three:"
 
   table {
     rows:
-      | "`class`"      | "Symbol"     | "Default icon"            | "Themed hue"      | "Unthemed accent" | "Print accent" | "Markdown alert" |
-      | "`note`"       | "`:note`"    | "`lucide.info`"           | "`--wdoc-blue`"   | "`#5e81ac`"       | "`#5e81ac`"    | "`> [!NOTE]`" |
-      | "`info`"       | "`:info`"    | "`lucide.info`"           | "`--wdoc-cyan`"   | "`#5e81ac`"       | "`#5e81ac`"    | "`> [!NOTE]`" |
-      | "`tip`"        | "`:tip`"     | "`lucide.lightbulb`"      | "`--wdoc-green`"  | "`#88c0d0`"       | "`#88c0d0`"    | "`> [!TIP]`" |
-      | "`warning`"    | "`:warning`" | "`lucide.triangle-alert`" | "`--wdoc-yellow`" | "`#d08770`"       | "`#d08770`"    | "`> [!WARNING]`" |
-      | "`error`"      | "`:error`"   | "`lucide.circle-x`"       | "`--wdoc-red`"    | "`#bf616a`"       | "`#bf616a`"    | "`> [!CAUTION]`" |
-      | "`success`"    | "`:success`" | "`lucide.circle-check`"   | "`--wdoc-green`"  | "`#a3be8c`"       | "`#a3be8c`"    | "`> [!TIP]`" |
-      | "none of them" | "no symbol"  | "no icon"                 | "not re-pointed"  | "`#888`"          | "`#888`"       | "`> [!NOTE]`" |
+      | "`kind`"       | "Default icon"            | "Themed hue"      | "Unthemed accent" | "Markdown alert" |
+      | "`:note`"      | "`lucide.pencil`"         | "`--wdoc-blue`"   | "`#5e81ac`"       | "`> [!NOTE]`" |
+      | "`:info`"      | "`lucide.info`"           | "`--wdoc-cyan`"   | "`#88c0d0`"       | "`> [!IMPORTANT]`" |
+      | "`:tip`"       | "`lucide.lightbulb`"      | "`--wdoc-purple`" | "`#b48ead`"       | "`> [!TIP]`" |
+      | "`:warning`"   | "`lucide.triangle-alert`" | "`--wdoc-yellow`" | "`#d08770`"       | "`> [!WARNING]`" |
+      | "`:error`"     | "`lucide.circle-x`"       | "`--wdoc-red`"    | "`#bf616a`"       | "`> [!CAUTION]`" |
+      | "`:success`"   | "`lucide.circle-check`"   | "`--wdoc-green`"  | "`#a3be8c`"       | "`> [!TIP]`" |
+      | "unset"        | "no icon"                 | "not re-pointed"  | "`#888`"          | "`> [!NOTE]`" |
 
   }
 
-  p "GitHub offers five alert keywords, so the mapping is not one-to-one at that end: `success` shares `TIP`, the closest positive admonition GitHub has, and `info` shares `NOTE`. The icons come from the bundled Lucide pack, so a callout draws one with no `iconset` declared. [Icons](wdoc_icons) covers the packs."
+  p "One hue per kind, and one glyph per kind. There used to be neither: `note` and `info` shared a blue and shared `lucide.info`, and `tip` borrowed the cyan that `info` now owns. `tip` moved to purple so `success` could keep green, which is what \"it worked\" means everywhere."
 
-  p "The two colour columns are the same fact in two places, and they part company on a themed site. Every accent rides one CSS custom property, `--callout-accent`. `lib/callout.wcl` gives each kind an unthemed default. Those are the hex values above, and they are what a site with no `theme` renders. A site that **does** declare a theme re-points each kind at its palette's hue ring instead, so the browser colour follows the theme rather than the table. This book is `theme = :nord`, so its warnings are the Nord yellow, and `tip` and `success` share one green. Print has no theme to follow: the six RGB triples in the PDF backend are the unthemed values, fixed."
+  p "The icons come from the bundled Lucide pack, so a callout draws one with no `iconset` declared — in print as well as on the web. [Icons](wdoc_icons) covers the packs."
+
+  h3 "Six kinds through a five-keyword syntax"
+
+  p "GitHub has five alert keywords and wdoc has six kinds, so the Markdown target cannot label all six. All five keywords are used and `success` shares `TIP` with `tip`, the closest positive admonition GitHub offers."
+
+  p "The kind is not lost to that. Every kinded callout also emits an HTML comment under the keyword, which GitHub renders as nothing and anything reading the Markdown as data can pick up:"
+
+  code markdown {
+    source = <<'MD'
+> [!TIP]
+> <!-- wdoc-callout: success -->
+> **Migration complete**
+> Every row moved.
+MD
+  }
+
+  p "So a reader sees five distinct labels where they used to see four, and a program sees all six. A callout with no kind gets no marker, because there is nothing to record."
+
+  h3 "Colour, and where print gets it"
+
+  p "Every accent rides one CSS custom property, `--callout-accent`. `lib/callout.wcl` gives each kind an unthemed default — the hex column above, and what a site with no `theme` renders. A site that **does** declare a theme re-points each kind at its palette's hue ring instead, so the colour follows the theme rather than the table."
+
+  p "Print follows the theme too, and reads its **light** palette, because a PDF page is a light medium. That is the same rule the diagram card fill already used. A document with no `site` theme prints the unthemed hex values, so print and unthemed web agree."
 
   callout "The demo above is themed and the hex column is not" {
-    class = ["info"]
-    body  = "Hold the six previews next to the `Unthemed accent` column and they will not match, and that is the mechanism working. Build the same six callouts in a `site` with no `theme` field and you get the hex values exactly. [Themes and styling](wdoc_styling) covers the hue ring."
+    kind = :info
+    body = "Hold the six previews next to the `Unthemed accent` column and they will not match, and that is the mechanism working. Build the same six callouts in a `site` with no `theme` field and you get the hex values exactly. [Themes and styling](wdoc_styling) covers the hue ring."
   }
 
-  h3 "One class picks the kind"
+  h3 "The older way: one class picks the kind"
 
-  p "`class` is a list, and it is a **style hook that happens to carry the kind**, not a kind field. A callout may hold several classes. Exactly one kind comes out of them. The lowering tests them in a fixed order and takes the first hit:"
+  p "Before `kind` existed, the kind was read off `class`, and it still is when `kind` is unset. Nothing written the old way has to change. `class` is a list, and it is a **style hook that happens to carry the kind**. A callout may hold several classes; exactly one kind comes out of them. The lowering tests them in a fixed order and takes the first hit:"
 
   list {
     li "`warning`"
@@ -188,11 +213,13 @@ WCL
     li "`note`"
   }
 
-  p "So `class = [\"tip\", \"warning\"]` is a warning, whichever order you wrote them in. The HTML keeps both names, the kind first and then whatever you supplied that is not already there, and renders `<div class=\"callout warning tip\">`. A class the list does not name leaves the callout **kind-less**: no accent class, no icon, the neutral grey accent, and `> [!NOTE]` in Markdown."
+  p "So `class = [\"tip\", \"warning\"]` is a warning, whichever order you wrote them in. The HTML keeps both names, the kind first and then whatever you supplied that is not already there, and renders `<div class=\"callout warning tip\">`. An explicit `kind` wins over the whole list."
+
+  p "The reason to prefer `kind` is what happens to a **typo**. A class the list does not name leaves the callout kind-less: no accent class, no icon, the neutral grey accent, and `> [!NOTE]` in Markdown. The build finishes. All you get is a class-lint warning about a name nothing styles, which is easy to miss in a long build and says nothing about callouts. `kind = :dagner` cannot do that — the vocabulary is closed and the build stops."
 
   callout "Write one kind per callout" {
-    class = ["warning"]
-    body  = "Two kind names in one `class` list is not an error and will not warn. It silently resolves to whichever is higher in the list above. Put the kind first and keep your own class names distinct from the six."
+    kind = :warning
+    body = "Two kind names in one `class` list is not an error and will not warn. It silently resolves to whichever is higher in the list above. Use `kind` and the question does not arise."
   }
 
   h3 "A callout of your own"

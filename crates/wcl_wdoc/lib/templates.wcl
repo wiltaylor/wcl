@@ -698,7 +698,9 @@ style "book_css" {
   }
   class "book-content" { css = "margin-left: 16rem; margin-right: 15rem; min-height: 100vh; box-sizing: border-box;" }
   class "book-content" {
-    nest ".book-measure" { css = "max-width: 60rem; margin: 0 auto; padding: 2.5rem 3.5rem 6rem; background: var(--wdoc-book-bg); min-height: 100vh; box-sizing: border-box; font-family: var(--wdoc-font-body);" }
+    // The reading column's width comes from the theme's `metrics.measure`
+    // (see `theme.wcl`); the fallback is the 60rem the book has always used.
+    nest ".book-measure" { css = "max-width: var(--wdoc-measure, 60rem); margin: 0 auto; padding: 2.5rem 3.5rem 6rem; background: var(--wdoc-book-bg); min-height: 100vh; box-sizing: border-box; font-family: var(--wdoc-font-body);" }
   }
   class "theme-toggle" { css = "display: block; margin: 0 0 0.75rem; padding: 0.25rem 0.7rem; cursor: pointer; background: var(--wdoc-bg-alt); border: 1px solid var(--wdoc-border-strong); border-radius: 999px; color: inherit; font: inherit; font-family: var(--wdoc-font-head); font-size: 0.8rem;" }
   class "book-pagenav" { css = "display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 3.5rem;" }

@@ -25,19 +25,23 @@ type Callout extends ContentBlock {
   body:  utf8
   @doc("Optional explicit HTML id.")
   id:    identifier?
-  @doc("Selects the type: `[\"note\"]` / `[\"tip\"]` / etc. May also carry user classes.")
+  @doc("The admonition's type, from the closed `CalloutKind` set. Preferred over `class`: a misspelling is a schema violation, where a stray class name only warns.")
+  kind:  CalloutKind?
+  @doc("Legacy type selection: `[\"note\"]` / `[\"tip\"]` / etc. May also carry user classes. `kind` wins when both are set.")
   class: list<utf8>?
   @doc("Override the default icon (any `pack.name` from a built-in or declared iconset).")
   icon:  utf8?
 
   lower = fn(c: Callout) -> list<Content> {
     let cls = if c.class == none { [] } else { c.class };
-    // The built-in type, read off `class` once and carried as a symbol
-    // from the declared vocabulary. Each backend maps it to its own
-    // accent / icon / alert keyword — none of them matches a class name
-    // by hand any more.
+    // The built-in type, as a symbol from the declared vocabulary. An
+    // explicit `kind` wins; otherwise it is read off `class`, which is
+    // how every callout selected its type before `kind` existed. Each
+    // backend maps the symbol to its own accent / icon / alert keyword —
+    // none of them matches a class name by hand.
     let kind =
-      if list_contains(cls, "warning") { :warning }
+      if c.kind != none { c.kind }
+      else if list_contains(cls, "warning") { :warning }
       else if list_contains(cls, "error") { :error }
       else if list_contains(cls, "success") { :success }
       else if list_contains(cls, "tip") { :tip }
@@ -83,9 +87,19 @@ class "callout-body" {
 class "callout-body" {
   nest "> :last-child" { css = "margin-bottom: 0;" }
 }
-base ".callout.note, .callout.info" { css = "--callout-accent: #5e81ac;" }
+// One hue per kind, all six distinct. `note` and `info` used to share a
+// blue and `tip` used to borrow the cyan `info` now owns; `tip` moved to
+// purple so `success` can keep the green that "it worked" means
+// everywhere. These are the *unthemed* defaults — a selected theme
+// repoints each to its own hue ring in `theme-rules.wcl`.
 class "callout" {
-  nest "&.tip" { css = "--callout-accent: #88c0d0;" }
+  nest "&.note" { css = "--callout-accent: #5e81ac;" }
+}
+class "callout" {
+  nest "&.info" { css = "--callout-accent: #88c0d0;" }
+}
+class "callout" {
+  nest "&.tip" { css = "--callout-accent: #b48ead;" }
 }
 class "callout" {
   nest "&.warning" { css = "--callout-accent: #d08770;" }

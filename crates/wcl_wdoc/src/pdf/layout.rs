@@ -342,12 +342,14 @@ fn place_blocks(
         }
         if let BlockNode::Callout {
             accent,
+            icon,
             heading,
             body,
         } = block
         {
             place_callout(
                 *accent,
+                icon.as_deref(),
                 heading,
                 body,
                 book,
@@ -780,6 +782,7 @@ fn place_list(
 #[allow(clippy::too_many_arguments)]
 fn place_callout(
     accent: (u8, u8, u8),
+    icon: Option<&str>,
     heading: &[crate::pdf::ir::InlineRun],
     body: &[crate::pdf::ir::InlineRun],
     book: &mut FontBook,
@@ -796,13 +799,34 @@ fn place_callout(
     const PAD: f32 = 8.0;
     const GAP: f32 = 3.0;
     const BG: (u8, u8, u8) = (247, 247, 248);
+    /// The glyph beside the heading, sized like the web's `1.15em`.
+    const ICON: f32 = BODY_SIZE * 1.15;
+    /// Space between that glyph and the heading text.
+    const ICON_GAP: f32 = 4.0;
 
     if !*at_page_top {
         *cy += SPACE_AROUND_SVG;
     }
     let inner_x = left + BORDER_W + PAD;
     let inner_w = (content_w - BORDER_W - 2.0 * PAD).max(40.0);
-    let head = book.shape_paragraph(heading, inner_w, BODY_SIZE, BODY_LINE_HEIGHT, embedder);
+    // The glyph sits on the heading line and indents only that line, the
+    // way `.callout-heading` lays it out on the web. A glyph that fails to
+    // parse is dropped rather than reserving empty space.
+    let icon_tree = icon
+        .and_then(|svg| embedder.embed(svg))
+        .map(|(tree, _)| tree);
+    let head_indent = if icon_tree.is_some() {
+        ICON + ICON_GAP
+    } else {
+        0.0
+    };
+    let head = book.shape_paragraph(
+        heading,
+        (inner_w - head_indent).max(20.0),
+        BODY_SIZE,
+        BODY_LINE_HEIGHT,
+        embedder,
+    );
     let bod = book.shape_paragraph(body, inner_w, BODY_SIZE, BODY_LINE_HEIGHT, embedder);
     let mut placed = vec![false; bod.objects.len()];
     let head_h: f32 = head.lines.iter().map(|l| l.height).sum();
@@ -836,13 +860,25 @@ fn place_callout(
     });
 
     let mut yy = PAD;
+    // The glyph is centred on the first heading line, so it reads as part
+    // of the heading rather than floating above it.
+    if let Some(tree) = icon_tree {
+        let line_h = head.lines.first().map_or(ICON, |l| l.height);
+        page.svgs.push(PlacedSvg {
+            tree,
+            x: inner_x,
+            y: box_top + yy + (line_h - ICON) / 2.0,
+            w: ICON,
+            h: ICON,
+        });
+    }
     for wl in &head.lines {
         let baseline = box_top + yy + wl.ascent;
         for g in &wl.glyphs {
             page.glyphs.push(PlacedGlyph {
                 font: g.font.clone(),
                 glyph_id: g.glyph_id,
-                x: inner_x + g.x,
+                x: inner_x + head_indent + g.x,
                 y: baseline + g.dy,
                 size: BODY_SIZE,
                 color: accent,
@@ -1481,6 +1517,7 @@ mod tests {
             let body = "callout body text that wraps across many short lines ".repeat(10);
             let blocks = vec![BlockNode::Callout {
                 accent: (200, 60, 60),
+                icon: None,
                 heading: vec![text_run("Note")],
                 body: vec![text_run(&body)],
             }];

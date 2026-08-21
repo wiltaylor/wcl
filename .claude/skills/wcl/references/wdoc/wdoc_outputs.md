@@ -222,10 +222,15 @@ becomes a GitHub alert, keyed on the callout's kind:
 
 ```markdown
 > [!NOTE]
+> <!-- wdoc-callout: note -->
 > **One source**
 >
 > Every target reads the same document.
 ```
+
+GitHub has five alert keywords and wdoc has six kinds, so `tip` and `success` both take
+`TIP`. The comment carries the kind through anyway — invisible on GitHub, readable as data.
+See [`wdoc_callouts.md`](wdoc_callouts.md) for the full mapping.
 
 Diagrams, terminals and wireframes render as **plain SVG** rather than as an approximation in
 text, which is why a zoomable diagram survives the trip. Equations stay LaTeX for the same

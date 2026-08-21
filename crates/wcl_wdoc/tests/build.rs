@@ -1449,9 +1449,12 @@ fn build_renders_component_slots_defaults_and_content() {
         r#"
 wdoc_component badge {
   wdoc_slot label
-  wdoc_slot kind { default = "note" }
+  // Named `tone`, not `kind`: a bare identifier in a field expression
+  // resolves against the block's own fields first, and `callout` has a
+  // `kind` field of its own.
+  wdoc_slot tone { default = "note" }
   wdoc_body {
-    callout $"${label}" { class = [kind]  body = "x" }
+    callout $"${label}" { class = [tone]  body = "x" }
   }
 }
 
@@ -1463,7 +1466,7 @@ wdoc_component panel {
   }
 }
 page index {
-  badge { label = "Alpha" kind = "warning" }
+  badge { label = "Alpha" tone = "warning" }
   badge { label = "Beta" }
   panel { title = "Logs"
     p "line one"
@@ -1481,7 +1484,7 @@ page index {
         html.contains("<div class=\"callout warning\">") && html.contains("<span>Alpha</span>"),
         "first badge: slot label + class:\n{html}"
     );
-    // Default applies when the slot is omitted (`kind` → "note").
+    // Default applies when the slot is omitted (`tone` → "note").
     assert!(
         html.contains("<div class=\"callout note\">") && html.contains("<span>Beta</span>"),
         "second badge: default slot:\n{html}"
@@ -6541,10 +6544,11 @@ page syntax {
     assert!(html.contains(".heading-1 { color:#88c0d0; }"), "{html}");
     assert!(html.contains(".heading-2 { color:#8fbcbb; }"), "{html}");
     // Default heading sizing now rides a bundled `class "heading-1"`
-    // (emitted before the user's colour override below).
+    // (emitted before the user's colour override below), whose size reads
+    // through the theme metric with the shipped size as its fallback.
     assert!(
         html.contains(
-            ".heading-1 { font-weight:700;font-size:2.6rem;line-height:1.1;letter-spacing:-0.02em;margin:1.6rem 0 0.7rem; }"
+            ".heading-1 { font-weight:700;font-size:var(--wdoc-h1, 2.6rem);line-height:1.1;letter-spacing:-0.02em;margin:1.6rem 0 0.7rem; }"
         ),
         "default heading sizing missing:\n{html}"
     );
@@ -7804,6 +7808,87 @@ fn build_renders_callout_with_builtin_icon() {
             .expect("sprite written")
             .contains("lucide-triangle-alert"),
         "sprite missing the built-in callout icon"
+    );
+}
+
+#[test]
+fn each_callout_kind_gets_its_own_icon() {
+    // Six kinds, six glyphs. `note` and `info` used to share `lucide.info`,
+    // so the two were indistinguishable in HTML once the accent matched.
+    let src = "page index {\n  \
+        callout \"N\" { kind = :note    body = \"n\" }\n  \
+        callout \"I\" { kind = :info    body = \"i\" }\n  \
+        callout \"T\" { kind = :tip     body = \"t\" }\n  \
+        callout \"S\" { kind = :success body = \"s\" }\n  \
+        callout \"W\" { kind = :warning body = \"w\" }\n  \
+        callout \"E\" { kind = :error   body = \"e\" }\n}\n";
+    let (index, _) = build_icons(src);
+    let glyphs = [
+        "lucide-pencil",
+        "lucide-info",
+        "lucide-lightbulb",
+        "lucide-circle-check",
+        "lucide-triangle-alert",
+        "lucide-circle-x",
+    ];
+    for glyph in glyphs {
+        assert!(
+            index.contains(&format!("#{glyph}\"")),
+            "kind glyph {glyph} missing:\n{index}"
+        );
+    }
+}
+
+#[test]
+fn each_callout_kind_gets_its_own_accent_hue() {
+    // The themed rules map each kind onto a distinct hue of the ring, so
+    // no two kinds paint the same colour. `tip` and `success` used to
+    // share green.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("hues.wcl");
+    write_fixture(
+        &src,
+        "site s { theme = :nord }\npage index {\n  callout \"N\" { kind = :note body = \"n\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let hues = [
+        ("note", "blue"),
+        ("info", "cyan"),
+        ("tip", "purple"),
+        ("success", "green"),
+        ("warning", "yellow"),
+        ("error", "red"),
+    ];
+    for (kind, hue) in hues {
+        assert!(
+            html.contains(&format!(
+                ".callout.{kind} {{ --callout-accent:var(--wdoc-{hue}); }}"
+            )),
+            "kind {kind} should take the {hue} hue:\n{html}"
+        );
+    }
+}
+
+#[test]
+fn an_unknown_callout_kind_fails_the_build() {
+    // `kind` is a closed symbol set, so a misspelling is a schema
+    // violation rather than a callout that silently loses its accent.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("bad-kind.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  callout \"Danger\" { kind = :danger body = \"x\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let Err(err) = build(&src, out.path(), None) else {
+        panic!("unknown kind must fail the build");
+    };
+    assert!(
+        matches!(err, BuildError::Schema(_)),
+        "expected a schema violation, got: {}",
+        err.render_plain()
     );
 }
 
@@ -9322,6 +9407,170 @@ page index { text { span "Hi" {} } }
         html.matches(".tok-comment {").count(),
         1,
         "syntax-token rules should have one source of truth:\n{html}"
+    );
+}
+
+/// The `--wdoc-<role>:<value>;` declarations of one custom-property block,
+/// as a lookup. `start` is the selector text the block opens with.
+fn root_vars(html: &str, start: &str) -> std::collections::HashMap<String, String> {
+    let from = html
+        .find(start)
+        .unwrap_or_else(|| panic!("no {start} in:\n{html}"));
+    let rest = &html[from + start.len()..];
+    let end = rest.find('}').expect("closed block");
+    rest[..end]
+        .split(';')
+        .filter_map(|d| d.split_once(':'))
+        .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
+        .collect()
+}
+
+#[test]
+fn every_shipped_theme_gives_the_six_callout_kinds_six_colours() {
+    // Each kind takes one hue of the ring. A ring that points two of those
+    // six at the same colour makes two kinds indistinguishable on a themed
+    // page — which is the whole thing the kinds exist to avoid. Chart
+    // series read the same ring, so a collision is a defect there too.
+    let kind_hues = ["blue", "cyan", "purple", "green", "yellow", "red"];
+    for theme in [
+        "forge",
+        "nord",
+        "tokyonight",
+        "gruvbox",
+        "catppuccin",
+        "rose",
+        "paper",
+    ] {
+        let tmp = TempDir::new().expect("mkdir tempdir");
+        let src = tmp.path().join("t.wcl");
+        write_fixture(
+            &src,
+            format!(
+                "site {{ default_template = :webpage  theme = :{theme} }}\npage index {{ h1 \"H\" {{}} }}\n"
+            ),
+        );
+        let out = TempDir::new().expect("mkdir out");
+        build_ok(&src, out.path());
+        let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+        for (mode, start) in [
+            ("dark", ":root{"),
+            ("light", "@media (prefers-color-scheme: light){:root{"),
+        ] {
+            let vars = root_vars(&html, start);
+            let mut seen: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+            for hue in kind_hues {
+                let key = format!("--wdoc-{hue}");
+                let colour = vars
+                    .get(&key)
+                    .unwrap_or_else(|| panic!("{theme} {mode} has no {key}"));
+                if let Some(other) = seen.insert(colour.as_str(), hue) {
+                    panic!(
+                        "theme {theme} ({mode}): callout hues {other} and {hue} are both \
+                         {colour}, so two kinds paint the same colour"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_theme_metrics_block_emits_typography_custom_properties() {
+    // Typography is part of a theme, not a constant in the stdlib CSS: a
+    // `metrics` child sets the body size, the leading, the reading measure
+    // and the six heading steps, all as `--wdoc-*` custom properties.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("metrics.wcl");
+    write_fixture(
+        &src,
+        r##"
+theme tight {
+  metrics {
+    body_size   = "15px"
+    line_height = "1.5"
+    measure     = "46rem"
+    h1 = "2rem"  h2 = "1.6rem"  h3 = "1.3rem"
+    h4 = "1.1rem"  h5 = "1rem"  h6 = "0.8rem"
+  }
+  palette dark  { bg = "#000000"  fg = "#ffffff" }
+  palette light { bg = "#ffffff"  fg = "#000000" }
+}
+site { default_template = :webpage  theme = :tight }
+page index { text { span "Hi" {} } }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    for (var, value) in [
+        ("body-size", "15px"),
+        ("line-height", "1.5"),
+        ("measure", "46rem"),
+        ("h1", "2rem"),
+        ("h2", "1.6rem"),
+        ("h3", "1.3rem"),
+        ("h4", "1.1rem"),
+        ("h5", "1rem"),
+        ("h6", "0.8rem"),
+    ] {
+        assert!(
+            html.contains(&format!("--wdoc-{var}:{value};")),
+            "metric --wdoc-{var} missing:\n{html}"
+        );
+    }
+}
+
+#[test]
+fn typography_falls_back_to_the_shipped_constants() {
+    // The stdlib reads every type metric through `var(…, <default>)`, and
+    // the defaults are exactly today's constants — so a theme that
+    // declares no `metrics` renders identically to before.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("nometrics.wcl");
+    write_fixture(
+        &src,
+        "site { default_template = :book }\npage index { h1 \"H\" {} }\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+
+    assert!(
+        html.contains("font-size:var(--wdoc-body-size, 17px);"),
+        "body size falls back to 17px:\n{html}"
+    );
+    assert!(
+        html.contains("line-height:var(--wdoc-line-height, 1.7);"),
+        "leading falls back to 1.7:\n{html}"
+    );
+    assert!(
+        html.contains("font-size:var(--wdoc-h1, 2.6rem);"),
+        "heading-1 falls back to 2.6rem:\n{html}"
+    );
+    assert!(
+        html.contains("max-width: var(--wdoc-measure, 60rem);"),
+        "measure falls back to 60rem:\n{html}"
+    );
+}
+
+#[test]
+fn a_shipped_theme_carries_its_typography() {
+    // The seven bundled themes are complete designs: each declares its
+    // own `metrics`, so selecting one sets the type as well as the colour.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("shipped.wcl");
+    write_fixture(
+        &src,
+        "site { default_template = :webpage  theme = :paper }\npage index { h1 \"H\" {} }\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(
+        html.contains("--wdoc-body-size:17px;") && html.contains("--wdoc-measure:60rem;"),
+        "a shipped theme should state its own metrics:\n{html}"
     );
 }
 

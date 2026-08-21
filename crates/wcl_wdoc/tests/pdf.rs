@@ -210,6 +210,62 @@ fn renders_callouts() {
     assert!(String::from_utf8_lossy(&bytes).contains("NotoSerif-Bold"));
 }
 
+/// Render one callout document under `site` and return the PDF bytes.
+fn callout_pdf(site: &str, callout: &str) -> Vec<u8> {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("c.wcl");
+    write_fixture(&src, &format!("{site}\npage c {{\n  {callout}\n}}\n"));
+    let out = TempDir::new().expect("mkdir out");
+    pdf_ok(&src, out.path(), PageSize::A4);
+    // A document with a `site` writes one PDF per site, named for it; a
+    // bare one is named for the source file. Either way there is exactly
+    // one, so take it rather than guessing the name.
+    let file = std::fs::read_dir(out.path())
+        .expect("read out dir")
+        .filter_map(Result::ok)
+        .find(|e| e.path().extension().is_some_and(|x| x == "pdf"))
+        .expect("one pdf written");
+    std::fs::read(file.path()).expect("read pdf")
+}
+
+#[test]
+fn callout_accents_follow_the_site_theme_in_pdf() {
+    // PDF used to paint every callout in hard-coded Nord regardless of the
+    // theme the site declared. The same document under two themes must now
+    // produce two different files.
+    let nord = callout_pdf(
+        "site s { theme = :nord }",
+        "callout \"Heads up\" { kind = :warning body = \"Mind the gap.\" }",
+    );
+    let gruvbox = callout_pdf(
+        "site s { theme = :gruvbox }",
+        "callout \"Heads up\" { kind = :warning body = \"Mind the gap.\" }",
+    );
+    assert_ne!(
+        nord, gruvbox,
+        "the callout accent should differ between two themes"
+    );
+}
+
+#[test]
+fn callout_icons_reach_the_pdf() {
+    // The PDF backend had no icon path at all, so a kind rendered as a bare
+    // coloured bar. A kinded callout now carries its glyph, which a kindless
+    // one still does not.
+    let with_kind = callout_pdf(
+        "",
+        "callout \"Heads up\" { kind = :warning body = \"Mind the gap.\" }",
+    );
+    let without = callout_pdf("", "callout \"Heads up\" { body = \"Mind the gap.\" }");
+    assert!(
+        with_kind.len() > without.len(),
+        "a kinded callout should embed an icon the kindless one lacks \
+         ({} vs {} bytes)",
+        with_kind.len(),
+        without.len()
+    );
+}
+
 #[test]
 fn inline_math_embeds_as_svg() {
     let tmp = TempDir::new().expect("mkdir tempdir");

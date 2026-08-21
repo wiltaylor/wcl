@@ -93,6 +93,39 @@ fn theme_font_vars(theme: &Block<'_>, out: &mut String) {
     }
 }
 
+/// The `metrics` fields, paired with their CSS custom-property suffix.
+/// Emission order is fixed so output is deterministic.
+const METRICS: &[(&str, &str)] = &[
+    ("body_size", "body-size"),
+    ("line_height", "line-height"),
+    ("measure", "measure"),
+    ("h1", "h1"),
+    ("h2", "h2"),
+    ("h3", "h3"),
+    ("h4", "h4"),
+    ("h5", "h5"),
+    ("h6", "h6"),
+];
+
+/// Emit `:root{ --wdoc-body-size: … }` for the type metrics a `theme`
+/// sets. Mode-independent, like the font stacks. Nothing is emitted for an
+/// omitted field or a theme with no `metrics` child: the bundled rules read
+/// every metric as `var(--wdoc-…, <default>)`, so silence means the shipped
+/// constant rather than a broken declaration.
+fn theme_metric_vars(theme: &Block<'_>, out: &mut String) {
+    let mut decl = String::new();
+    for metrics in theme.blocks().filter(|b| b.kind() == "metrics") {
+        for (field, var) in METRICS {
+            if let Some(v) = field_utf8(&metrics, field) {
+                write!(decl, "--wdoc-{var}:{v};").expect("write to String");
+            }
+        }
+    }
+    if !decl.is_empty() {
+        writeln!(out, ":root{{{decl}}}").expect("write to String");
+    }
+}
+
 /// The themed `<style>` content for one site, or `None` when there is no
 /// `site` block (bare documents stay unthemed) or no `theme` block can be
 /// resolved. A `site` without an explicit `theme` defaults to `forge`; an
@@ -158,8 +191,10 @@ pub(crate) fn site_theme_css(
     // global toggle. Custom properties inherit, so a closer ancestor wins.
     writeln!(out, ".wdoc-theme-dark{{{dv}}}").expect("write to String");
     writeln!(out, ".wdoc-theme-light{{{lv}}}").expect("write to String");
-    // Theme font stacks (mode-independent), after the palette blocks.
+    // Theme font stacks and type metrics (mode-independent), after the
+    // palette blocks.
     theme_font_vars(&theme, &mut out);
+    theme_metric_vars(&theme, &mut out);
     // The accent selector is generated because its declaration comes from
     // site data. Every static authored rule lives in WCL below it.
     writeln!(out, ":root{{--wdoc-accent:{accent_expr};}}").expect("write to String");

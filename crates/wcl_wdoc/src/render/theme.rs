@@ -108,6 +108,40 @@ fn default_roles(mode: &str) -> ThemeRoles {
     }
 }
 
+/// A theme's eight-hue ring, resolved for one mode. The hue-driven systems
+/// — chart series, callout accents, diagram shapes — read from this, so a
+/// backend with no stylesheet paints the same colours the CSS would.
+pub(crate) struct Hues {
+    /// The eight ring roles, in `HUES` order.
+    hues: [String; 8],
+}
+
+impl Hues {
+    /// The colour for one ring role (`"red"`, `"blue"`, …), or `None` when
+    /// the name is not a hue.
+    pub(crate) fn get(&self, name: &str) -> Option<&str> {
+        let i = HUES.iter().position(|h| *h == name)?;
+        Some(&self.hues[i])
+    }
+}
+
+/// Resolve a named theme's hue ring for one mode, or `None` when the name
+/// resolves to no `theme` block or that block has no palette for the mode.
+/// A role the palette omits is left out too, so the caller keeps its own
+/// default rather than inheriting an unrelated theme's colour.
+pub(crate) fn resolve_hues(doc: &Document, theme: &str, mode: &str) -> Option<Hues> {
+    let mode = if mode == "light" { "light" } else { "dark" };
+    let theme = find_theme(doc, theme)?;
+    let pal = theme
+        .blocks()
+        .find(|b| b.kind() == "palette" && label_string(b).as_deref() == Some(mode))?;
+    let mut hues: [String; 8] = Default::default();
+    for (i, role) in HUES.iter().enumerate() {
+        hues[i] = field_utf8(&pal, role)?;
+    }
+    Some(Hues { hues })
+}
+
 /// Read the UI theme a `site` selects: its `ui_theme`/`ui_accent`/`ui_mode`
 /// fields, falling back to the document `theme`/`accent` (mode `dark`). A
 /// site-less document gets the Forge-dark default.

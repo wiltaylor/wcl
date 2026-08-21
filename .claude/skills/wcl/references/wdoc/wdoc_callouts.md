@@ -10,8 +10,8 @@ An admonition: a coloured heading with an icon, over a body.
 
 ```wcl
 callout "Rollback is automatic" {
-  class = ["warning"]
-  body  = "A `wcl set` that violates the schema is **rolled back**. Check the exit code."
+  kind = :warning
+  body = "A `wcl set` that violates the schema is **rolled back**. Check the exit code."
 }
 ```
 
@@ -19,29 +19,50 @@ callout "Rollback is automatic" {
 | --- | --- | --- | --- |
 | `heading` | `utf8` | yes | The label slot — the coloured heading. |
 | `body` | `utf8` | yes | The prose. Runs through the inline-pattern engine. |
-| `class` | `list<utf8>?` | no | Picks the kind, and carries any user classes. |
+| `kind` | `CalloutKind?` | no | The admonition's type, from a closed symbol set. |
+| `class` | `list<utf8>?` | no | Legacy kind selection, and any user classes. |
 | `icon` | `utf8?` | no | Override the per-kind default icon (`pack.name`). |
 | `id` | `identifier?` | no | Explicit HTML id. |
 
-**The kind is selected by `class`, not by a field.** Six names are recognised, in this
-precedence order when several are present: `warning`, `error`, `success`, `tip`, `info`,
-`note`. Anything else in `class` is an ordinary style class.
+**Prefer `kind` over `class`.** `kind` is the closed set
+`note info tip warning error success`, so `kind = :dagner` is a schema violation that stops
+the build. A misspelt `class = ["dagner"]` only warns, and the callout renders on with no
+accent and no icon — a downgrade that is easy to miss.
 
-| Kind | Use it for | Default icon | Default accent | Markdown alert |
-| --- | --- | --- | --- | --- |
-| `note` | Background the reader should remember | `lucide.info` | `#5e81ac` | `> [!NOTE]` |
-| `info` | Neutral information worth surfacing | `lucide.info` | `#5e81ac` | `> [!NOTE]` |
-| `tip` | A shortcut or a better way | `lucide.lightbulb` | `#88c0d0` | `> [!TIP]` |
-| `warning` | Something to be careful about | `lucide.triangle-alert` | `#d08770` | `> [!WARNING]` |
-| `error` | A failure or a hard constraint | `lucide.circle-x` | `#bf616a` | `> [!CAUTION]` |
-| `success` | Confirm something completed | `lucide.circle-check` | `#a3be8c` | `> [!TIP]` |
+`class` selection still works, so nothing written before `kind` existed has to change. When
+several recognised names are present the precedence is `warning`, `error`, `success`, `tip`,
+`info`, `note`; anything else in `class` is an ordinary style class. `kind` wins when both
+are set.
 
-A callout with no recognised class has no kind. It gets a grey accent, no icon, and `[!NOTE]`
-in Markdown.
+| Kind | Use it for | Default icon | Default accent | Themed hue | Markdown alert |
+| --- | --- | --- | --- | --- | --- |
+| `note` | Background the reader should remember | `lucide.pencil` | `#5e81ac` | `blue` | `> [!NOTE]` |
+| `info` | Neutral information worth surfacing | `lucide.info` | `#88c0d0` | `cyan` | `> [!IMPORTANT]` |
+| `tip` | A shortcut or a better way | `lucide.lightbulb` | `#b48ead` | `purple` | `> [!TIP]` |
+| `warning` | Something to be careful about | `lucide.triangle-alert` | `#d08770` | `yellow` | `> [!WARNING]` |
+| `error` | A failure or a hard constraint | `lucide.circle-x` | `#bf616a` | `red` | `> [!CAUTION]` |
+| `success` | Confirm something completed | `lucide.circle-check` | `#a3be8c` | `green` | `> [!TIP]` |
+
+**All six kinds are distinct on every backend.** Six icons, six hues, and — where GFM runs
+out of keywords — a marker that carries the kind anyway. A callout with no kind has no icon,
+a grey accent, and `[!NOTE]` in Markdown.
+
+GitHub has five alert keywords and wdoc has six kinds, so `tip` and `success` share `TIP`.
+The kind is not lost: every kinded callout emits an HTML comment under the keyword, which
+renders as nothing on GitHub and keeps the vocabulary readable as data.
+
+```markdown
+> [!TIP]
+> <!-- wdoc-callout: success -->
+> **Migration complete**
+> Every row moved.
+```
 
 The accent colours the heading, the left border and the icon — never the body text. Each one
 rides a **CSS custom property, `--callout-accent`**. A site theme's apply rules override the
-defaults above from its own hue ring, so treat those hex values as the unthemed fallback.
+defaults above from its own hue ring (the "Themed hue" column), so treat those hex values as
+the unthemed fallback. PDF resolves the theme's **light** hue ring, because a page is a light
+medium.
 
 The kind survives lowering as a **symbol**, and each backend maps that symbol to its own
 accent, icon and alert keyword. No backend matches a class name. A custom class therefore
@@ -65,9 +86,12 @@ Gotchas:
 - `body` is one string field, so a callout holds prose — not a list, a code block or a
   diagram. For a framed container of arbitrary blocks, use a `wdoc_component` with a
   `wdoc_content` slot ([`wdoc_data_views.md`](wdoc_data_views.md)).
-- The default icons come from the bundled Lucide pack and need no `iconset` declaration.
+- The default icons come from the bundled Lucide pack and need no `iconset` declaration, on
+  the web and in PDF alike.
 - In PDF the box paints one shaped heading over one shaped body, so prose flattens into it.
   Anything richer lands *beneath* the box rather than disappearing.
+- A bare identifier in a field expression resolves against the block's own fields first, so a
+  `wdoc_slot kind` is now shadowed inside a `callout`. Name the slot something else.
 
 ## `footnote` and `footnotes`
 

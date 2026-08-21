@@ -108,12 +108,16 @@ class "current"      { css = "font-weight:bold;" }
 // these give each level its weight and descending scale. Now bare single-class
 // rules (with declarations carried by `css`), so a user `class "heading-1"`
 // overrides them by cascade — same as every other bundled class.
-class "heading-1" { css = "font-weight:700;font-size:2.6rem;line-height:1.1;letter-spacing:-0.02em;margin:1.6rem 0 0.7rem;" }
-class "heading-2" { css = "font-weight:600;font-size:1.85rem;line-height:1.2;letter-spacing:-0.015em;margin:1.5rem 0 0.6rem;" }
-class "heading-3" { css = "font-weight:600;font-size:1.35rem;line-height:1.3;letter-spacing:-0.01em;margin:1.2rem 0 0.4rem;" }
-class "heading-4" { css = "font-weight:600;font-size:1.12rem;margin:1rem 0 0.3rem;" }
-class "heading-5" { css = "font-weight:600;font-size:1rem;margin:0.9rem 0 0.3rem;" }
-class "heading-6" { css = "font-weight:700;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.06em;margin:0.9rem 0 0.3rem;" }
+// The size of each step reads through `--wdoc-h1`..`--wdoc-h6`, which a
+// theme's `metrics` block sets (see `theme.wcl`). The fallback in each
+// `var()` is the size wdoc has always shipped, so a theme that declares no
+// metrics renders exactly as before.
+class "heading-1" { css = "font-weight:700;font-size:var(--wdoc-h1, 2.6rem);line-height:1.1;letter-spacing:-0.02em;margin:1.6rem 0 0.7rem;" }
+class "heading-2" { css = "font-weight:600;font-size:var(--wdoc-h2, 1.85rem);line-height:1.2;letter-spacing:-0.015em;margin:1.5rem 0 0.6rem;" }
+class "heading-3" { css = "font-weight:600;font-size:var(--wdoc-h3, 1.35rem);line-height:1.3;letter-spacing:-0.01em;margin:1.2rem 0 0.4rem;" }
+class "heading-4" { css = "font-weight:600;font-size:var(--wdoc-h4, 1.12rem);margin:1rem 0 0.3rem;" }
+class "heading-5" { css = "font-weight:600;font-size:var(--wdoc-h5, 1rem);margin:0.9rem 0 0.3rem;" }
+class "heading-6" { css = "font-weight:700;font-size:var(--wdoc-h6, 0.85rem);text-transform:uppercase;letter-spacing:0.06em;margin:0.9rem 0 0.3rem;" }
 
 // Built-in inline emphasis. The `**bold**` / `_italic_` / `` `code` ``
 // patterns lower to `<span class="bold|italic|code">`; these are their

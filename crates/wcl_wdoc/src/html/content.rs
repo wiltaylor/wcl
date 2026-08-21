@@ -167,7 +167,7 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
             }
             let icon_html = icon
                 .clone()
-                .or_else(|| kind.map(|k| default_icon(k).to_string()))
+                .or_else(|| kind.map(|k| callout_icon_name(k).to_string()))
                 .filter(|name| !name.is_empty())
                 .and_then(|name| {
                     patterns
@@ -471,10 +471,16 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
 
 /// The built-in glyph for a callout kind, used when the node carries no
 /// explicit `icon`. Lucide names, resolved from the compiled-in pack, so a
-/// callout renders its icon with no `iconset` declared.
-fn default_icon(kind: CalloutKind) -> &'static str {
+/// callout renders its icon with no `iconset` declared. One glyph per kind
+/// — `note` and `info` once shared this one, which left them
+/// indistinguishable wherever their accents matched.
+///
+/// Shared with the PDF backend, so an admonition prints the same glyph it
+/// renders on the web.
+pub(crate) fn callout_icon_name(kind: CalloutKind) -> &'static str {
     match kind {
-        CalloutKind::Note | CalloutKind::Info => "lucide.info",
+        CalloutKind::Note => "lucide.pencil",
+        CalloutKind::Info => "lucide.info",
         CalloutKind::Tip => "lucide.lightbulb",
         CalloutKind::Warning => "lucide.triangle-alert",
         CalloutKind::Error => "lucide.circle-x",

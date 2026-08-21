@@ -92,6 +92,9 @@ impl Emitter<'_> {
                 }
                 inner.extend(body_blocks);
                 let mut lines = vec![format!("> [!{}]", alert(*kind))];
+                if let Some(marker) = kind_marker(*kind) {
+                    lines.push(format!("> {marker}"));
+                }
                 for line in inner.join("\n\n").split('\n') {
                     lines.push(if line.is_empty() {
                         ">".to_string()
@@ -303,13 +306,26 @@ impl Emitter<'_> {
     }
 }
 
-/// Map a callout kind to a GitHub alert keyword. GitHub has five, so
-/// `success` shares `TIP` — the closest positive admonition it offers.
+/// Map a callout kind to a GitHub alert keyword. GitHub has five keywords
+/// and wdoc has six kinds, so all five are used and only `success` shares
+/// one — `TIP`, the closest positive admonition GFM offers. The kind
+/// itself is not lost: [`kind_marker`] writes it into the blockquote.
 fn alert(kind: Option<CalloutKind>) -> &'static str {
     match kind {
-        Some(CalloutKind::Note) | Some(CalloutKind::Info) | None => "NOTE",
+        Some(CalloutKind::Note) | None => "NOTE",
+        Some(CalloutKind::Info) => "IMPORTANT",
         Some(CalloutKind::Tip) | Some(CalloutKind::Success) => "TIP",
         Some(CalloutKind::Warning) => "WARNING",
         Some(CalloutKind::Error) => "CAUTION",
     }
+}
+
+/// The wdoc kind, as an HTML comment placed under the alert keyword.
+///
+/// GFM cannot label six kinds, so the keyword alone is lossy. The comment
+/// renders as nothing on GitHub and keeps the authored vocabulary intact
+/// for anything reading the Markdown as data. A callout with no kind gets
+/// no marker — there is nothing to record.
+fn kind_marker(kind: Option<CalloutKind>) -> Option<String> {
+    kind.map(|k| format!("<!-- wdoc-callout: {} -->", k.as_wcl()))
 }

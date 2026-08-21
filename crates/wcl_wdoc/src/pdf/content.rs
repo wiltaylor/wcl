@@ -125,6 +125,7 @@ pub(crate) fn collect_content(
             kind,
             heading,
             body,
+            icon,
             ..
         } => {
             // The callout box paints one shaped heading over one shaped
@@ -151,8 +152,10 @@ pub(crate) fn collect_content(
                     other => collect_content(doc, other, patterns, base_dir, &mut beneath),
                 }
             }
+            let accent = accent(doc, *kind);
             out.push(BlockNode::Callout {
-                accent: accent(*kind),
+                accent,
+                icon: callout_icon(patterns, *kind, icon, accent),
                 heading: patterns
                     .render_runs(doc, heading)
                     .into_iter()
@@ -428,17 +431,83 @@ pub(crate) fn collect_content(
     }
 }
 
-/// The accent colour for a callout kind (mirrors the `--callout-accent`
-/// values in `lib/callout.wcl`).
-fn accent(kind: Option<CalloutKind>) -> (u8, u8, u8) {
+/// The hue of the theme ring each callout kind paints with — the same
+/// mapping the themed CSS applies in `lib/theme-rules.wcl`. One hue per
+/// kind, so no two kinds share a colour.
+fn kind_hue(kind: CalloutKind) -> &'static str {
     match kind {
-        Some(CalloutKind::Note) | Some(CalloutKind::Info) => (94, 129, 172),
-        Some(CalloutKind::Tip) => (136, 192, 208),
+        CalloutKind::Note => "blue",
+        CalloutKind::Info => "cyan",
+        CalloutKind::Tip => "purple",
+        CalloutKind::Success => "green",
+        CalloutKind::Warning => "yellow",
+        CalloutKind::Error => "red",
+    }
+}
+
+/// The unthemed accent for a callout kind — the hex values in
+/// `lib/callout.wcl`, so a document with no `site` theme prints the
+/// colours its HTML would show.
+fn default_accent(kind: Option<CalloutKind>) -> (u8, u8, u8) {
+    match kind {
+        Some(CalloutKind::Note) => (94, 129, 172),
+        Some(CalloutKind::Info) => (136, 192, 208),
+        Some(CalloutKind::Tip) => (180, 142, 173),
         Some(CalloutKind::Warning) => (208, 135, 112),
         Some(CalloutKind::Error) => (191, 97, 106),
         Some(CalloutKind::Success) => (163, 190, 140),
         None => (136, 136, 136),
     }
+}
+
+/// The accent colour for a callout kind. A site that selects a theme gets
+/// that theme's hue ring — the *light* palette, because a PDF page is a
+/// light medium (the diagram card fill resolves the same way). A document
+/// with no theme, or a palette missing the hue, keeps the unthemed default.
+fn accent(doc: &Document, kind: Option<CalloutKind>) -> (u8, u8, u8) {
+    let fallback = default_accent(kind);
+    let Some(kind) = kind else {
+        return fallback;
+    };
+    let Some(site) = doc.blocks().find(|b| b.kind() == "site") else {
+        return fallback;
+    };
+    let name = crate::render::field_symbol(&site, "theme")
+        .unwrap_or_else(|| crate::render::DEFAULT_THEME.to_string());
+    crate::render::resolve_hues(doc, &name, "light")
+        .and_then(|hues| hues.get(kind_hue(kind)).and_then(parse_hex))
+        .unwrap_or(fallback)
+}
+
+/// `#rrggbb` to an RGB triple. Anything else is `None`, so the caller
+/// keeps its default rather than painting a callout black.
+fn parse_hex(hex: &str) -> Option<(u8, u8, u8)> {
+    let h = hex.strip_prefix('#')?;
+    if h.len() != 6 {
+        return None;
+    }
+    let c = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
+    Some((c(0)?, c(2)?, c(4)?))
+}
+
+/// The callout's glyph as a standalone `<svg>`, already recoloured to the
+/// accent. The HTML backend picks the same default per kind and lets
+/// `icon` override it; this mirrors that so the two backends print the
+/// same admonition. `currentColor` is substituted here rather than left to
+/// the embedder, which would resolve it to the body foreground.
+fn callout_icon(
+    patterns: &InlinePatterns,
+    kind: Option<CalloutKind>,
+    icon: &Option<String>,
+    accent: (u8, u8, u8),
+) -> Option<String> {
+    let name = icon
+        .clone()
+        .or_else(|| kind.map(|k| crate::html::callout_icon_name(k).to_string()))
+        .filter(|n| !n.is_empty())?;
+    let svg = patterns.icons().standalone(&name)?;
+    let (r, g, b) = accent;
+    Some(svg.replace("currentColor", &format!("#{r:02x}{g:02x}{b:02x}")))
 }
 
 /// Flatten list items into indented marked lines, recursing through each

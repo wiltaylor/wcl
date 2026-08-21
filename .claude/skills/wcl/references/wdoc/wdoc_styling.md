@@ -63,11 +63,13 @@ choice.
 
 ## Writing a theme
 
-A `theme` block holds a `dark` palette, a `light` palette, and three optional font stacks:
+A `theme` block holds a `dark` palette, a `light` palette, three optional font stacks, and an
+optional `metrics` block carrying the type scale:
 
 ```wcl
 theme sunset {
   font_head = "'IBM Plex Sans', system-ui, sans-serif"
+  metrics { body_size = "16px"  measure = "46rem" }
   palette dark {
     bg = "#1a1a2e"  fg = "#e0e0e0"
     blue = "#5e81ac"  green = "#a3be8c"
@@ -96,7 +98,8 @@ variable, so a partial palette inherits the rest through the cascade.
 
 The hue ring does double duty. It supplies chart series 1–8 in that order, the six callout
 accents, and the default diagram-shape strokes. The built-in themes derive it from their own
-semantic colours: red is danger, yellow is warn, green is tip, cyan is info, blue is note.
+semantic colours. The callout mapping is one hue per kind, all six distinct: `blue` is note,
+`cyan` is info, `purple` is tip, `green` is success, `yellow` is warn, `red` is error.
 
 ### Fonts
 
@@ -107,6 +110,48 @@ semantic colours: red is danger, yellow is warn, green is tip, cyan is info, blu
 | `font_mono` | `--wdoc-font-mono` — code | `'JetBrains Mono', ui-monospace, monospace` |
 
 wdoc ships all three faces in `_wdoc/`, so a site needs no web-font request.
+
+### Typography
+
+A `metrics` block is `palette`'s counterpart for everything about type that is a number
+rather than a font name. One per theme, mode-independent, every field optional.
+
+| Field | Drives | Default |
+| --- | --- | --- |
+| `body_size` | `--wdoc-body-size` — body copy size | `17px` |
+| `line_height` | `--wdoc-line-height` — body leading, unitless | `1.7` |
+| `measure` | `--wdoc-measure` — the book template's reading-column width | `60rem` |
+| `h1` … `h6` | `--wdoc-h1` … `--wdoc-h6` — the six heading steps | `2.6rem` `1.85rem` `1.35rem` `1.12rem` `1rem` `0.85rem` |
+
+```wcl
+theme narrow {
+  metrics {
+    body_size   = "16px"
+    line_height = "1.65"
+    measure     = "46rem"
+    h1 = "2.2rem"  h2 = "1.7rem"  h3 = "1.3rem"
+    h4 = "1.1rem"  h5 = "1rem"    h6 = "0.85rem"
+  }
+  palette dark  { bg = "#101014"  fg = "#e6e6ea" }
+  palette light { bg = "#fbfbfd"  fg = "#16161a" }
+}
+```
+
+The scale is **six explicit sizes, not a base plus a ratio.** The shipped scale is not
+modular (the steps run 1.41, 1.37, 1.21, 1.12, 1.18), so no single ratio reproduces it.
+
+Every bundled rule reads its metric as `var(--wdoc-…, <default>)`, and the fallback is the
+constant wdoc has always shipped. So an omitted field, or a theme with no `metrics` block at
+all, renders exactly as before — nothing reflows. All seven built-in themes declare the
+default metrics explicitly, which is why they render identically to each other.
+
+The measure is the one worth a second look: `60rem` less the book template's `3.5rem` of
+horizontal padding is about 53rem of text, roughly 130 characters per line at 17px.
+Conventional long-form measure is 60–75. `metrics { measure = "46rem" }` is the fix, and it
+is now one line rather than a `class "book-measure"` CSS override.
+
+`metrics` reaches the web output only. The PDF backend has its own print type scale, and
+reads a theme for colour but not for type.
 
 ### How a theme reaches the page
 

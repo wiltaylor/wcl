@@ -171,8 +171,17 @@ impl IconRegistry {
     /// name.
     pub(crate) fn standalone(&self, raw: &str) -> Option<String> {
         let (set_hint, icon) = split_set(raw);
-        let (_set, pack) = self.find(set_hint, icon)?;
-        pack_lookup(&pack, icon).map(str::to_string)
+        if let Some((_set, pack)) = self.find(set_hint, icon)
+            && let Some(svg) = pack_lookup(&pack, icon)
+        {
+            return Some(svg.to_string());
+        }
+        // No declared `iconset` provides it — fall back to the compiled-in
+        // pack the name points at, the same way `resolve_html_icon` does.
+        // The built-in callout glyphs have to reach the PDF with no icon
+        // configuration at all.
+        let pack = set_hint?;
+        pack_lookup(pack, icon).map(str::to_string)
     }
 
     /// Resolve an `Html::Icon` (e.g. a `callout`'s built-in

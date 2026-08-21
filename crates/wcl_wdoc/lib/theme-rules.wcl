@@ -5,7 +5,7 @@ style "wdoc-theme-font-defaults" {
 }
 
 style "wdoc-theme-apply" {
-  base "body,.wdoc-body" { css = "background:var(--wdoc-bg);color:var(--wdoc-fg);font-family:var(--wdoc-font-body);font-size:17px;line-height:1.7;" }
+  base "body,.wdoc-body" { css = "background:var(--wdoc-bg);color:var(--wdoc-fg);font-family:var(--wdoc-font-body);font-size:var(--wdoc-body-size, 17px);line-height:var(--wdoc-line-height, 1.7);" }
   base "::selection" { css = "background:color-mix(in srgb, var(--wdoc-selection) 28%, transparent);" }
   base "a,.link" { css = "color:var(--wdoc-link);text-decoration:none;border-bottom:1px solid color-mix(in srgb, var(--wdoc-link) 35%, transparent);" }
   base "a:hover,.link:hover" { css = "border-bottom-color:var(--wdoc-link);" }
@@ -75,7 +75,7 @@ style "wdoc-theme-apply" {
     nest "&.info" { css = "--callout-accent:var(--wdoc-cyan);" }
   }
   class "callout" {
-    nest "&.tip" { css = "--callout-accent:var(--wdoc-green);" }
+    nest "&.tip" { css = "--callout-accent:var(--wdoc-purple);" }
   }
   class "callout" {
     nest "&.warning" { css = "--callout-accent:var(--wdoc-yellow);" }

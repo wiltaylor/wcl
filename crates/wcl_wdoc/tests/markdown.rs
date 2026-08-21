@@ -506,6 +506,64 @@ fn callout_error_class_maps_to_caution_alert() {
 }
 
 #[test]
+fn callout_info_maps_to_the_important_alert() {
+    // GitHub has five alert keywords and wdoc has six kinds. `info` takes
+    // IMPORTANT rather than sharing NOTE with `note`, so five of the six
+    // reach a GitHub reader as distinct labels.
+    let (_t, out) = build(
+        "page p {\n  callout \"By the way\" {\n    class = [\"info\"]\n    body = \"Worth knowing.\"\n  }\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(md.contains("> [!IMPORTANT]"), "info → IMPORTANT: {md}");
+    assert!(
+        !md.contains("> [!NOTE]"),
+        "info no longer shares NOTE: {md}"
+    );
+}
+
+#[test]
+fn every_callout_kind_survives_markdown_as_a_distinct_marker() {
+    // GFM cannot label six kinds — `tip` and `success` both have to render
+    // as TIP. The kind is emitted alongside the keyword as an HTML comment
+    // (invisible on GitHub) so no kind is lost to a machine reader.
+    let (_t, out) = build(
+        "page p {\n\
+         \x20 callout \"N\" { kind = :note    body = \"n\" }\n\
+         \x20 callout \"I\" { kind = :info    body = \"i\" }\n\
+         \x20 callout \"T\" { kind = :tip     body = \"t\" }\n\
+         \x20 callout \"S\" { kind = :success body = \"s\" }\n\
+         \x20 callout \"W\" { kind = :warning body = \"w\" }\n\
+         \x20 callout \"E\" { kind = :error   body = \"e\" }\n\
+         }\n",
+    );
+    let md = read(&out, "p.md");
+    for kind in ["note", "info", "tip", "success", "warning", "error"] {
+        assert!(
+            md.contains(&format!("> <!-- wdoc-callout: {kind} -->")),
+            "kind {kind} is recoverable from the markdown:\n{md}"
+        );
+    }
+    // And the visible keywords still use all five GFM slots.
+    for keyword in ["NOTE", "IMPORTANT", "TIP", "WARNING", "CAUTION"] {
+        assert!(
+            md.contains(&format!("> [!{keyword}]")),
+            "GFM keyword {keyword} used:\n{md}"
+        );
+    }
+}
+
+#[test]
+fn a_callout_kind_field_selects_the_kind_without_a_class() {
+    // `kind` is the closed vocabulary; `class` selection stays supported
+    // but is no longer the only way in.
+    let (_t, out) = build(
+        "page p {\n  callout \"Stop\" {\n    kind = :error\n    body = \"It broke.\"\n  }\n}\n",
+    );
+    let md = read(&out, "p.md");
+    assert!(md.contains("> [!CAUTION]"), "kind = :error → CAUTION: {md}");
+}
+
+#[test]
 fn only_html_block_is_excluded_from_markdown() {
     // `@only(backends=[:html])` scopes a block out of the :markdown backend,
     // while `@only(backends=[:markdown])` keeps it in.

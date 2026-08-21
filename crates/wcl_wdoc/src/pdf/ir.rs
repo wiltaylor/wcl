@@ -171,10 +171,14 @@ pub(crate) enum BlockNode {
         /// The contents entries, in reading order.
         entries: Vec<TocLine>,
     },
-    /// A callout (admonition): an accent colour, a bold heading, and body text.
+    /// A callout (admonition): an accent colour, an optional glyph, a bold
+    /// heading, and body text.
     Callout {
         /// The callout's accent colour, as RGB.
         accent: (u8, u8, u8),
+        /// The kind's glyph as a standalone `<svg>`, already recoloured to
+        /// `accent`. `None` for a callout with no kind and no `icon`.
+        icon: Option<String>,
         /// The bold heading line.
         heading: Vec<InlineRun>,
         /// The callout body.

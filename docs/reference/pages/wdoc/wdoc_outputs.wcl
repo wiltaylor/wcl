@@ -212,11 +212,14 @@ MD
   code markdown {
     source = <<'MD'
 > [!NOTE]
+> <!-- wdoc-callout: note -->
 > **One source**
 >
 > Every target reads the same document.
 MD
   }
+
+  p "The comment on the second line is there because GitHub has five alert keywords and wdoc has six kinds. All five keywords are used, `tip` and `success` share `TIP`, and the marker carries the authored kind through regardless — GitHub renders it as nothing, and anything reading the Markdown as data can recover all six. [Callouts](wdoc_callouts) has the mapping."
 
   p "Diagrams, terminals and wireframes render as **plain SVG** rather than as an approximation in text, so a zoomable diagram survives the trip. Equations stay LaTeX for the same reason: converting either to ASCII would lose the thing worth keeping."
 

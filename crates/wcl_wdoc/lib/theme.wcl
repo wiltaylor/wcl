@@ -76,15 +76,52 @@ type PaletteBlock {
   cyan: utf8?  blue: utf8?  purple: utf8?  pink: utf8?
 }
 
+// The type metrics for a theme: how big body copy is, how far apart the
+// lines sit, how wide the reading column runs, and the six heading steps.
+// Colour has `palette`; this is its counterpart for everything about type
+// that is a number rather than a font name — the half of a design that
+// used to be a constant in the stdlib CSS, reachable only by overriding a
+// `class` with raw CSS.
+//
+// Every field is optional and every one is emitted as a `--wdoc-*` custom
+// property that the bundled rules read through `var(…, <default>)`. So an
+// omitted field — or a theme with no `metrics` block at all — keeps
+// exactly the value wdoc has always shipped, and a document that declares
+// nothing does not reflow.
+//
+//   body_size    body copy size          (default 17px)
+//   line_height  body leading, unitless  (default 1.7)
+//   measure      reading-column width    (default 60rem)
+//   h1 … h6      the six heading steps   (2.6rem 1.85rem 1.35rem 1.12rem 1rem 0.85rem)
+//
+// The scale is six explicit sizes rather than a base plus a ratio: the
+// shipped scale is not modular (the steps run 1.41, 1.37, 1.21, 1.12,
+// 1.18), so no single ratio reproduces it, and a ratio would have forced
+// every existing book to reflow the day this landed.
+@block("metrics")
+type MetricsBlock {
+  @doc("Body copy size, e.g. `\"17px\"`.")
+  body_size: utf8?
+  @doc("Body leading, unitless, e.g. `\"1.7\"`.")
+  line_height: utf8?
+  @doc("Reading-column width — the book template's measure, e.g. `\"60rem\"`.")
+  measure: utf8?
+  @doc("The six heading steps, largest first.")
+  h1: utf8?  h2: utf8?  h3: utf8?  h4: utf8?  h5: utf8?  h6: utf8?
+}
+
 // A named theme: a `dark` palette (the default mode) and a `light` one
-// (system `prefers-color-scheme: light`, or the explicit toggle), plus
-// the three font stacks the book reads through `--wdoc-font-head/-body/
-// -mono` (omitted ⇒ the `wdoc-fonts` defaults: IBM Plex Sans / Source
-// Serif 4 / JetBrains Mono).
+// (system `prefers-color-scheme: light`, or the explicit toggle), the
+// three font stacks the book reads through `--wdoc-font-head/-body/-mono`
+// (omitted ⇒ the `wdoc-fonts` defaults: IBM Plex Sans / Source Serif 4 /
+// JetBrains Mono), and an optional `metrics` block carrying the type
+// scale. Fonts and metrics are mode-independent, so a theme states them
+// once for both palettes.
 @block("theme")
 type ThemeBlock {
   @inline(0) name: identifier
   font_head: utf8?  font_body: utf8?  font_mono: utf8?
+  @children("metrics") metrics: list<MetricsBlock>
   @children("palette") palettes: list<PaletteBlock>
 }
 
@@ -106,6 +143,11 @@ theme forge {
   font_head = "'IBM Plex Sans', system-ui, sans-serif"
   font_body = "'IBM Plex Sans', system-ui, sans-serif"
   font_mono = "'JetBrains Mono', ui-monospace, monospace"
+  metrics {
+    body_size = "17px"  line_height = "1.7"  measure = "60rem"
+    h1 = "2.6rem"  h2 = "1.85rem"  h3 = "1.35rem"
+    h4 = "1.12rem"  h5 = "1rem"  h6 = "0.85rem"
+  }
   palette dark {
     bg = "#0b0d10"  book_bg = "#11141a"  bg_alt = "#171b22"  bg_inset = "#171b22"  overlay = "#1e232c"
     border = "#262c36"  border_strong = "#3a4250"
@@ -130,6 +172,11 @@ theme forge {
 
 // Nord — cool blue-grey.
 theme nord {
+  metrics {
+    body_size = "17px"  line_height = "1.7"  measure = "60rem"
+    h1 = "2.6rem"  h2 = "1.85rem"  h3 = "1.35rem"
+    h4 = "1.12rem"  h5 = "1rem"  h6 = "0.85rem"
+  }
   palette dark {
     bg = "#242933"  book_bg = "#2e3440"  bg_alt = "#3b4252"  bg_inset = "#3b4252"  overlay = "#434c5e"
     border = "#3b4252"  border_strong = "#4c566a"
@@ -137,8 +184,8 @@ theme nord {
     accent = "#88c0d0"  accent_2 = "#81a1c1"  link = "#8fbcbb"  on_accent = "#2e3440"
     syn_kw = "#81a1c1"  syn_str = "#a3be8c"  syn_num = "#b48ead"  syn_fn = "#88c0d0"
     syn_type = "#8fbcbb"  syn_comment = "#616e88"  syn_punct = "#eceff4"
-    red = "#bf616a"  orange = "#b48ead"  yellow = "#ebcb8b"  green = "#a3be8c"
-    cyan = "#81a1c1"  blue = "#81a1c1"  purple = "#81a1c1"  pink = "#81a1c1"
+    red = "#bf616a"  orange = "#d08770"  yellow = "#ebcb8b"  green = "#a3be8c"
+    cyan = "#88c0d0"  blue = "#81a1c1"  purple = "#b48ead"  pink = "#8fbcbb"
   }
   palette light {
     bg = "#d8dee9"  book_bg = "#eceff4"  bg_alt = "#e5e9f0"  bg_inset = "#e5e9f0"  overlay = "#d8dee9"
@@ -147,13 +194,18 @@ theme nord {
     accent = "#5e81ac"  accent_2 = "#81a1c1"  link = "#5e81ac"  on_accent = "#eceff4"
     syn_kw = "#5e81ac"  syn_str = "#4f7a3e"  syn_num = "#94618c"  syn_fn = "#2f7a86"
     syn_type = "#3d7a86"  syn_comment = "#8a95a8"  syn_punct = "#3b4252"
-    red = "#a84b54"  orange = "#94618c"  yellow = "#9a7411"  green = "#4f7a3e"
-    cyan = "#5e81ac"  blue = "#5e81ac"  purple = "#5e81ac"  pink = "#81a1c1"
+    red = "#a84b54"  orange = "#a55a37"  yellow = "#9a7411"  green = "#4f7a3e"
+    cyan = "#2f7a86"  blue = "#5e81ac"  purple = "#94618c"  pink = "#81a1c1"
   }
 }
 
 // Tokyo Night — vivid night palette.
 theme tokyonight {
+  metrics {
+    body_size = "17px"  line_height = "1.7"  measure = "60rem"
+    h1 = "2.6rem"  h2 = "1.85rem"  h3 = "1.35rem"
+    h4 = "1.12rem"  h5 = "1rem"  h6 = "0.85rem"
+  }
   palette dark {
     bg = "#16161e"  book_bg = "#1a1b26"  bg_alt = "#1f2335"  bg_inset = "#1f2335"  overlay = "#24283b"
     border = "#2a2e42"  border_strong = "#3b4261"
@@ -178,6 +230,11 @@ theme tokyonight {
 
 // Gruvbox — warm retro.
 theme gruvbox {
+  metrics {
+    body_size = "17px"  line_height = "1.7"  measure = "60rem"
+    h1 = "2.6rem"  h2 = "1.85rem"  h3 = "1.35rem"
+    h4 = "1.12rem"  h5 = "1rem"  h6 = "0.85rem"
+  }
   palette dark {
     bg = "#1d2021"  book_bg = "#282828"  bg_alt = "#32302f"  bg_inset = "#32302f"  overlay = "#3c3836"
     border = "#3c3836"  border_strong = "#504945"
@@ -185,8 +242,8 @@ theme gruvbox {
     accent = "#fe8019"  accent_2 = "#83a598"  link = "#83a598"  on_accent = "#282828"
     syn_kw = "#fb4934"  syn_str = "#b8bb26"  syn_num = "#d3869b"  syn_fn = "#8ec07c"
     syn_type = "#fabd2f"  syn_comment = "#928374"  syn_punct = "#fe8019"
-    red = "#fb4934"  orange = "#d3869b"  yellow = "#fabd2f"  green = "#b8bb26"
-    cyan = "#8ec07c"  blue = "#83a598"  purple = "#fb4934"  pink = "#83a598"
+    red = "#fb4934"  orange = "#fe8019"  yellow = "#fabd2f"  green = "#b8bb26"
+    cyan = "#8ec07c"  blue = "#83a598"  purple = "#d3869b"  pink = "#d3869b"
   }
   palette light {
     bg = "#ece0bf"  book_bg = "#fbf1c7"  bg_alt = "#f2e5bc"  bg_inset = "#f2e5bc"  overlay = "#ebdbb2"
@@ -195,13 +252,18 @@ theme gruvbox {
     accent = "#af3a03"  accent_2 = "#076678"  link = "#076678"  on_accent = "#fbf1c7"
     syn_kw = "#9d0006"  syn_str = "#79740e"  syn_num = "#8f3f71"  syn_fn = "#427b58"
     syn_type = "#b57614"  syn_comment = "#a89984"  syn_punct = "#af3a03"
-    red = "#9d0006"  orange = "#8f3f71"  yellow = "#b57614"  green = "#79740e"
-    cyan = "#427b58"  blue = "#076678"  purple = "#9d0006"  pink = "#076678"
+    red = "#9d0006"  orange = "#af3a03"  yellow = "#b57614"  green = "#79740e"
+    cyan = "#427b58"  blue = "#076678"  purple = "#8f3f71"  pink = "#8f3f71"
   }
 }
 
 // Catppuccin — soft pastel (Mocha = dark, Latte = light).
 theme catppuccin {
+  metrics {
+    body_size = "17px"  line_height = "1.7"  measure = "60rem"
+    h1 = "2.6rem"  h2 = "1.85rem"  h3 = "1.35rem"
+    h4 = "1.12rem"  h5 = "1rem"  h6 = "0.85rem"
+  }
   palette dark {
     bg = "#181825"  book_bg = "#1e1e2e"  bg_alt = "#313244"  bg_inset = "#313244"  overlay = "#45475a"
     border = "#313244"  border_strong = "#45475a"
@@ -226,6 +288,11 @@ theme catppuccin {
 
 // Rosé Pine — muted rose (Main = dark, Dawn = light).
 theme rose {
+  metrics {
+    body_size = "17px"  line_height = "1.7"  measure = "60rem"
+    h1 = "2.6rem"  h2 = "1.85rem"  h3 = "1.35rem"
+    h4 = "1.12rem"  h5 = "1rem"  h6 = "0.85rem"
+  }
   palette dark {
     bg = "#191724"  book_bg = "#1f1d2e"  bg_alt = "#26233a"  bg_inset = "#26233a"  overlay = "#2a273f"
     border = "#26233a"  border_strong = "#403d52"
@@ -233,8 +300,10 @@ theme rose {
     accent = "#c4a7e7"  accent_2 = "#ebbcba"  link = "#9ccfd8"  on_accent = "#1f1d2e"
     syn_kw = "#c4a7e7"  syn_str = "#f6c177"  syn_num = "#ebbcba"  syn_fn = "#ebbcba"
     syn_type = "#9ccfd8"  syn_comment = "#6e6a86"  syn_punct = "#908caa"
-    red = "#eb6f92"  orange = "#ebbcba"  yellow = "#f6c177"  green = "#9ccfd8"
-    cyan = "#31748f"  blue = "#31748f"  purple = "#c4a7e7"  pink = "#ebbcba"
+    // `foam` is Rosé Pine's cyan, so it takes the cyan slot; the palette
+    // has no green at all, and `success` needs one that is not `info`.
+    red = "#eb6f92"  orange = "#ebbcba"  yellow = "#f6c177"  green = "#7fb08c"
+    cyan = "#9ccfd8"  blue = "#31748f"  purple = "#c4a7e7"  pink = "#ebbcba"
   }
   palette light {
     bg = "#f4ede8"  book_bg = "#fffaf3"  bg_alt = "#f2e9e1"  bg_inset = "#f2e9e1"  overlay = "#fdf0e9"
@@ -243,14 +312,19 @@ theme rose {
     accent = "#907aa9"  accent_2 = "#d7827e"  link = "#286983"  on_accent = "#fffaf3"
     syn_kw = "#907aa9"  syn_str = "#ea9d34"  syn_num = "#d7827e"  syn_fn = "#d7827e"
     syn_type = "#56949f"  syn_comment = "#9893a5"  syn_punct = "#797593"
-    red = "#b4637a"  orange = "#d7827e"  yellow = "#ea9d34"  green = "#56949f"
-    cyan = "#286983"  blue = "#286983"  purple = "#907aa9"  pink = "#d7827e"
+    red = "#b4637a"  orange = "#d7827e"  yellow = "#ea9d34"  green = "#5e8a63"
+    cyan = "#56949f"  blue = "#286983"  purple = "#907aa9"  pink = "#d7827e"
   }
 }
 
 // Paper — warm print look with serif headings.
 theme paper {
   font_head = "'Source Serif 4', Georgia, serif"
+  metrics {
+    body_size = "17px"  line_height = "1.7"  measure = "60rem"
+    h1 = "2.6rem"  h2 = "1.85rem"  h3 = "1.35rem"
+    h4 = "1.12rem"  h5 = "1rem"  h6 = "0.85rem"
+  }
   palette dark {
     bg = "#171513"  book_bg = "#211e1b"  bg_alt = "#2a2622"  bg_inset = "#2a2622"  overlay = "#322d28"
     border = "#322d28"  border_strong = "#443d35"
@@ -258,8 +332,8 @@ theme paper {
     accent = "#d98b8b"  accent_2 = "#8fb0cf"  link = "#d98b8b"  on_accent = "#211e1b"
     syn_kw = "#d98b8b"  syn_str = "#9bbd86"  syn_num = "#c7a0d9"  syn_fn = "#8fb0cf"
     syn_type = "#d9b779"  syn_comment = "#756c5d"  syn_punct = "#d2c8b6"
-    red = "#d98b8b"  orange = "#c7a0d9"  yellow = "#d9b779"  green = "#9bbd86"
-    cyan = "#8fb0cf"  blue = "#8fb0cf"  purple = "#d98b8b"  pink = "#8fb0cf"
+    red = "#d98b8b"  orange = "#d9a06f"  yellow = "#d9b779"  green = "#9bbd86"
+    cyan = "#7fc0c0"  blue = "#8fb0cf"  purple = "#c7a0d9"  pink = "#cf8fae"
   }
   palette light {
     bg = "#e7e3da"  book_bg = "#fcfbf7"  bg_alt = "#f4f1ea"  bg_inset = "#f4f1ea"  overlay = "#ebe7dd"
@@ -268,7 +342,7 @@ theme paper {
     accent = "#8a1c1c"  accent_2 = "#2c4a6e"  link = "#8a1c1c"  on_accent = "#fcfbf7"
     syn_kw = "#8a1c1c"  syn_str = "#3a5f2e"  syn_num = "#6a4a8a"  syn_fn = "#2c4a6e"
     syn_type = "#8a5a12"  syn_comment = "#9a9082"  syn_punct = "#3a352e"
-    red = "#8a1c1c"  orange = "#6a4a8a"  yellow = "#8a5a12"  green = "#3a5f2e"
-    cyan = "#2c4a6e"  blue = "#2c4a6e"  purple = "#8a1c1c"  pink = "#2c4a6e"
+    red = "#8a1c1c"  orange = "#9a4a10"  yellow = "#8a5a12"  green = "#3a5f2e"
+    cyan = "#1c6a6a"  blue = "#2c4a6e"  purple = "#6a4a8a"  pink = "#8a3a5a"
   }
 }

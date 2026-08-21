@@ -105,7 +105,7 @@ CSS
 
   h2 "What a theme is"
 
-  p "A `theme` block is a name, up to three font stacks, and a `palette` child per mode:"
+  p "A `theme` block is a name, up to three font stacks, an optional `metrics` child holding the type scale, and a `palette` child per mode:"
 
   code wcl {
     source = <<'WCL'
@@ -114,6 +114,8 @@ theme midnight {
   font_body = "'Inter', system-ui, sans-serif"
   font_mono = "'JetBrains Mono', ui-monospace, monospace"
 
+  metrics { body_size = "16px"  measure = "46rem" }
+
   palette dark  { bg = "#0b0b14"  fg = "#e6e6f0"  blue = "#8be9fd" }
   palette light { bg = "#fafafe"  fg = "#1b1b28"  blue = "#0060a0" }
 }
@@ -121,6 +123,8 @@ WCL
   }
 
   p "The `palette` label is the mode, and only two labels mean anything: `dark` and `light`. A palette labelled anything else is ignored, not rejected. Every colour role on a palette is optional."
+
+  p "`metrics` has no mode, because type does not change between light and dark. It is covered under [Typography](#typography), below the fonts."
 
   h3 "The thirty-one palette roles"
 
@@ -136,7 +140,9 @@ WCL
       | "Hue ring" | "`red`, `orange`, `yellow`, `green`, `cyan`, `blue`, `purple`, `pink`" | "Chart series 1–8, callout accents, diagram shape borders, timeline phases" |
   }
 
-  p "The hue ring is the one to understand, because three separate systems read it and they must agree. Chart series 1 through 8 are blue, green, yellow, red, purple, cyan, orange, pink in that order. Callouts key on it too: `note` takes blue, `info` cyan, `tip` and `success` green, `warning` yellow, `error` red. Flowchart shapes take blue for `process`, orange for `decision`, green for `terminator`. Move a theme's `green` and every one of those follows."
+  p "The hue ring is the one to understand, because three separate systems read it and they must agree. Chart series 1 through 8 are blue, green, yellow, red, purple, cyan, orange, pink in that order. Callouts key on it too, one hue per kind: `note` takes blue, `info` cyan, `tip` purple, `success` green, `warning` yellow, `error` red. Flowchart shapes take blue for `process`, orange for `decision`, green for `terminator`. Move a theme's `green` and every one of those follows."
+
+  p "Because the six callout kinds take six hues, **a ring that repeats a colour makes two kinds look alike**. All seven built-in themes keep those six distinct in both modes, and a test in the build asserts it. Fill the ring the same way in a theme of your own: eight distinct colours, or two admonitions that mean different things will paint the same."
 
   h3 "From role to custom property"
 
@@ -251,11 +257,11 @@ WCL
 
   h3 "forge"
 
-  p "The default, and the one a `site` gets when it names no theme or names one that does not resolve. A compact, high-contrast palette whose colours are hex equivalents of the Forge design system's OKLCH tokens, so they survive the SVG and PDF renderers that cannot evaluate OKLCH. It is the only built-in that sets all three font stacks, and the only one whose eight hues are all distinct in both modes. Distinct hues make it the safest choice for an eight-series chart."
+  p "The default, and the one a `site` gets when it names no theme or names one that does not resolve. A compact, high-contrast palette whose colours are hex equivalents of the Forge design system's OKLCH tokens, so they survive the SVG and PDF renderers that cannot evaluate OKLCH. It is the only built-in that sets all three font stacks, and all eight of its hues are distinct in both modes, which makes it a safe choice for an eight-series chart."
 
   h3 "nord"
 
-  p "Cool blue-grey, the classic Nord palette. Dark reads on `#2e3440`, light on `#eceff4`. Its hue ring is deliberately narrow: in dark mode `cyan`, `blue`, `purple` and `pink` are all `#81a1c1`, so only five of the eight hues differ. This book is set in nord, so its charts repeat a colour past four series."
+  p "Cool blue-grey, the classic Nord palette. Dark reads on `#2e3440`, light on `#eceff4`. Its ring spends the full Nord frost and aurora range — `#88c0d0` for cyan, `#81a1c1` for blue, `#b48ead` for purple — so all eight hues differ in both modes. This book is set in nord."
 
   h3 "tokyonight"
 
@@ -263,7 +269,7 @@ WCL
 
   h3 "gruvbox"
 
-  p "Warm retro. Dark is `#282828` under muted earth tones, light is the cream `#fbf1c7` that gives it its character, the warmest light surface of the seven. It is also the one built-in that sets an orange palette accent, so a gruvbox site that names no `accent` reads warm throughout. Six distinct hues per mode."
+  p "Warm retro. Dark is `#282828` under muted earth tones, light is the cream `#fbf1c7` that gives it its character, the warmest light surface of the seven. It is also the one built-in that sets an orange palette accent, so a gruvbox site that names no `accent` reads warm throughout. Seven distinct hues per mode: `purple` and `pink` share Gruvbox's one mauve."
 
   h3 "catppuccin"
 
@@ -271,11 +277,11 @@ WCL
 
   h3 "rose"
 
-  p "Rosé Pine: muted rose, Main for dark and Dawn for light. Its Dawn surface is a near-white with a warm cast, `#fffaf3`, and its accent is a mauve paired with a teal link. That pairing is unusual, and it is the reason the theme reads calmer than its saturation suggests. Six distinct hues per mode."
+  p "Rosé Pine: muted rose, Main for dark and Dawn for light. Its Dawn surface is a near-white with a warm cast, `#fffaf3`, and its accent is a mauve paired with a teal link. That pairing is unusual, and it is the reason the theme reads calmer than its saturation suggests. Seven distinct hues per mode: `orange` and `pink` share Rosé Pine's `rose`. The palette has no green of its own, so `green` is a muted sage picked to sit with `foam` without matching it."
 
   h3 "paper"
 
-  p "A warm print look. It is the only built-in that overrides just one font stack: `font_head` becomes `'Source Serif 4', Georgia, serif`, leaving body and mono at the defaults, so headings are serif over a serif body. Its light mode is near-white `#fcfbf7`. Its dark mode is a warm near-black. Five distinct hues in each mode makes it the narrowest ring of the seven: a poor fit for a chart-heavy site and a good one for prose."
+  p "A warm print look. It is the only built-in that overrides just one font stack: `font_head` becomes `'Source Serif 4', Georgia, serif`, leaving body and mono at the defaults, so headings are serif over a serif body. Its light mode is near-white `#fcfbf7`, its dark mode a warm near-black, and all eight hues differ in both — muted enough for prose without collapsing a chart or a callout."
 
   h3 "Comparing them"
 
@@ -285,13 +291,15 @@ WCL
     rows:
       | "Theme" | "Dark surface" | "Light surface" | "Palette accent (dark / light)" | "Distinct hues (dark / light)" | "Fonts" |
       | "`forge`" | "`#11141a`" | "`#ffffff`" | "`#2389e2` / `#0069ca`" | "8 / 8" | "Sans headings **and** body" |
-      | "`nord`" | "`#2e3440`" | "`#eceff4`" | "`#88c0d0` / `#5e81ac`" | "5 / 6" | "Defaults" |
+      | "`nord`" | "`#2e3440`" | "`#eceff4`" | "`#88c0d0` / `#5e81ac`" | "8 / 8" | "Defaults" |
       | "`tokyonight`" | "`#1a1b26`" | "`#e1e2e7`" | "`#7aa2f7` / `#2e7de9`" | "7 / 7" | "Defaults" |
-      | "`gruvbox`" | "`#282828`" | "`#fbf1c7`" | "`#fe8019` / `#af3a03`" | "6 / 6" | "Defaults" |
+      | "`gruvbox`" | "`#282828`" | "`#fbf1c7`" | "`#fe8019` / `#af3a03`" | "7 / 7" | "Defaults" |
       | "`catppuccin`" | "`#1e1e2e`" | "`#eff1f5`" | "`#cba6f7` / `#8839ef`" | "7 / 7" | "Defaults" |
-      | "`rose`" | "`#1f1d2e`" | "`#fffaf3`" | "`#c4a7e7` / `#907aa9`" | "6 / 6" | "Defaults" |
-      | "`paper`" | "`#211e1b`" | "`#fcfbf7`" | "`#d98b8b` / `#8a1c1c`" | "5 / 5" | "Serif headings" |
+      | "`rose`" | "`#1f1d2e`" | "`#fffaf3`" | "`#c4a7e7` / `#907aa9`" | "7 / 7" | "Defaults" |
+      | "`paper`" | "`#211e1b`" | "`#fcfbf7`" | "`#d98b8b` / `#8a1c1c`" | "8 / 8" | "Serif headings" |
   }
+
+  p "No theme repeats a hue among the six the callout kinds use. Where a count is 7 rather than 8, the repeat is between `orange` and `pink`, which only an eight-series chart notices."
 
   p "\"Defaults\" means IBM Plex Sans for headings, Source Serif 4 for body copy and JetBrains Mono for code. See [Fonts](#fonts)."
 
@@ -406,8 +414,64 @@ WCL
   p "That emits `@font-face { font-family: 'Inter'; font-weight: 400; font-style: normal; font-display: swap; src: url('fonts/Inter-Regular.woff2') format('woff2'); }` and copies `fonts/` next to the pages. For a hosted font service, skip steps 1 and 2 and put the stylesheet URL in the site's `fonts` list. Each entry becomes a `<link rel=\"stylesheet\">` in every page head."
 
   callout "The family label is not quoted for you" {
-    class = ["warning"]
-    body  = "`font_face` writes its label into `font-family:` exactly as given. `font_face \"Inter\"` emits `font-family: Inter;`, which is valid CSS for a single-word family and invalid for `Source Serif 4`. wdoc declares the bundled faces as `font_face \"'Source Serif 4'\"`, with quotes inside the string, for that reason. Do the same and it is always right."
+    kind = :warning
+    body = "`font_face` writes its label into `font-family:` exactly as given. `font_face \"Inter\"` emits `font-family: Inter;`, which is valid CSS for a single-word family and invalid for `Source Serif 4`. wdoc declares the bundled faces as `font_face \"'Source Serif 4'\"`, with quotes inside the string, for that reason. Do the same and it is always right."
+  }
+
+  h2 "Typography" { id = typography }
+
+  p "A font stack says which letterforms. It says nothing about how big they are, how far apart the lines sit, or how wide the column runs — and those decide whether a page is comfortable to read far more than the choice of face does. A `metrics` block holds them."
+
+  code wcl {
+    source = <<'WCL'
+theme narrow {
+  metrics {
+    body_size   = "16px"
+    line_height = "1.65"
+    measure     = "46rem"
+    h1 = "2.2rem"  h2 = "1.7rem"  h3 = "1.3rem"
+    h4 = "1.1rem"  h5 = "1rem"    h6 = "0.85rem"
+  }
+  palette dark  { bg = "#101014"  fg = "#e6e6ea" }
+  palette light { bg = "#fbfbfd"  fg = "#16161a" }
+}
+WCL
+  }
+
+  p "One `metrics` per theme, no mode label, every field optional."
+
+  table {
+    rows:
+      | "Field" | "Custom property" | "What it sets" | "Default" |
+      | "`body_size`" | "`--wdoc-body-size`" | "Body copy size" | "`17px`" |
+      | "`line_height`" | "`--wdoc-line-height`" | "Body leading, unitless" | "`1.7`" |
+      | "`measure`" | "`--wdoc-measure`" | "The book template's reading column" | "`60rem`" |
+      | "`h1` … `h6`" | "`--wdoc-h1` … `--wdoc-h6`" | "The six heading steps" | "`2.6rem`, `1.85rem`, `1.35rem`, `1.12rem`, `1rem`, `0.85rem`" |
+  }
+
+  p "The scale is six explicit sizes rather than a base size and a ratio. A modular scale is fewer numbers and harder to get visually wrong, and it was the tempting choice — but the scale wdoc already shipped is not modular. Its steps run 1.41, 1.37, 1.21, 1.12 and 1.18, so no single ratio reproduces it, and adopting one would have reflowed every book written before this existed."
+
+  p "Nothing reflows as it is. Every bundled rule reads its metric through `var()` with the shipped constant as the fallback — `font-size: var(--wdoc-h1, 2.6rem)` — so an omitted field, or a theme with no `metrics` block at all, renders exactly as it did. The seven built-ins all declare the defaults explicitly, which is why they set the same type as each other."
+
+  h3 "The measure is the one to look at"
+
+  p "`60rem` is the book template's reading column. Take off its `3.5rem` of horizontal padding on each side and about `53rem` of text is left, which at `17px` is roughly 130 characters a line. Conventional long-form measure is 60 to 75. The width suits a wide code listing and is generous for prose."
+
+  p "Whichever way you want it, it is now a field rather than a CSS override:"
+
+  code wcl {
+    source = <<'WCL'
+theme house {
+  metrics { measure = "46rem" }
+  palette dark  { bg = "#101014"  fg = "#e6e6ea" }
+  palette light { bg = "#fbfbfd"  fg = "#16161a" }
+}
+WCL
+  }
+
+  callout "Metrics reach the web output only" {
+    kind = :note
+    body = "The PDF backend lays out with its own print type scale and does not read `metrics`. It reads a theme for **colour** — see [Callouts](wdoc_callouts) — but a page size, a printed body size and a printed measure are print decisions, and print owns them."
   }
 
   h2 "Classes"
