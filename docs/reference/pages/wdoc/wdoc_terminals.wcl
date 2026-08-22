@@ -34,7 +34,12 @@ type Spark extends TermPrimitive {
 page wdoc_terminals {
   title = "Terminals and TUI"
 
-  h1 "Terminals and TUI"
+  chapter_header "Terminals and TUI" {
+    kicker       = "wdoc · reference"
+    reading_time = "18 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A `terminal` block draws a monospace character grid as inline SVG, with a bundled JetBrains Mono Nerd Font so box-drawing characters, powerline separators and Nerd Font icons all land on the grid. It is not a screenshot and it is not a code block. It is a `cols` × `rows` array of cells. Each cell holds one character, a foreground colour, a background colour and eight ANSI style bits. Everything in this chapter exists to fill cells."
 
@@ -83,7 +88,7 @@ WCL
   }
 
   callout "Off-grid writes are dropped, not reported" {
-    class = ["warning"]
+    kind = :warning
     body  = "The grid discards a cell outside `cols` × `rows`, silently. `term_text \"hello\" { row = 40  col = 1 }` in a 24-row terminal draws nothing, and `wcl check` says `OK`. The coordinates are legal values, and the grid is what refuses them. When a widget you placed does not appear, count rows before you suspect the widget."
   }
 
@@ -138,7 +143,7 @@ WCL
   }
 
   callout "You cannot type an escape sequence" {
-    class = ["warning"]
+    kind = :warning
     body  = "The virtual terminal interprets ANSI escapes, but a WCL string literal cannot carry one. The escape table is exactly `\\\"`, `\\\\`, `\\n`, `\\t`, `\\r`, plus `\\$` inside an interpolating form. There is no `\\e`, no `\\x1b` and no `\\u`, and an unknown escape is a **parse** error: `text = \"\\e[31mred\"` fails with `invalid escape '\\e'` before evaluation ever starts. So the `text` path is for layout, not for colour. Colour authored text with `term_text` and its `fg` / `bg` fields, and colour recorded text with a `.cast` file, which carries real escape bytes."
   }
 
@@ -396,7 +401,7 @@ WCL
   p "Follow one checkbox out to the screen. `linux` sits at row 1 of the group, the group sits at row 1 of the panel's content area, and the panel's content area starts at row 2 of the panel. The panel sits at row 1 of the terminal. The offsets add up: the checkbox lands on terminal row 3, under the group's `Targets` heading on row 2. That is the whole layout model. There is no other one."
 
   callout "A container does not clip its children" {
-    class = ["note"]
+    kind = :note
     body  = "`width` and `height` size the border a panel draws, and nothing more. A child placed past the bottom edge draws over the border and out into the terminal. Only the terminal's own `cols` × `rows` discards anything. Size a panel to its contents by counting, the way you size everything else here."
   }
 
@@ -517,7 +522,7 @@ WCL
   p "`Text` is a run of characters. `Children` is a hole: it marks where the renderer draws the block's own child blocks, and it is the only reason a container can exist. `tui_panel` returns its border as `Text` runs plus a single `Children { row: 2, col: 2 }`, and that one value is the whole of \"children sit inside the border\"."
 
   callout "A widget never reads its own row and col" {
-    class = ["note"]
+    kind = :note
     body  = "A `lower` lays its output out from **its own** top-left, `(1, 1)`. The renderer adds the widget's `row` / `col` and the origin of every container above it. That is what lets the same `tui_progress` sit loose in a terminal, inside a panel, or inside a group inside a panel, with no code in the widget for any of the three. Read `p.row` inside a `lower` and you will double the offset."
   }
 
@@ -646,7 +651,7 @@ WCL
 
   p "The grid fixes a terminal's pixel size, not the page. `font_size` defaults to `14` and `line_height` to `1.2`. Each cell is `round(font_size × 0.6)` wide and `round(font_size × line_height)` tall. Around the grid sits a `round(font_size × 0.45)` pad, and above it a `round(font_size × 1.7)` title bar when `chrome` is on. A 40 × 6 terminal at the defaults is therefore 332 × 138 pixels. The SVG carries `max-width: 100%`, so a terminal wider than its column shrinks to fit rather than overflowing. Drop `font_size` when you would rather it stayed sharp."
 
-  p "Colours come from three layers. The default is a dark terminal on the classic Tango sixteen. `palette = :light` flips the defaults to the site theme's light foreground and background. The named colours keep working, and naming them is the whole point. `fg` and `bg` override the defaults outright, and a `class` list themes the wrapping element the way it themes any wdoc block. See [Themes and styling](wdoc_styling). A plain, default-coloured cell deliberately carries no colour of its own in the SVG, so it inherits from the element. That is how a class-themed terminal works at all."
+  p "Colours come from three layers. The default is a dark terminal on the classic Tango sixteen. `palette = :light` flips the defaults to the site theme's light foreground and background. The named colours keep working, and naming them is the whole point. `fg` and `bg` override the defaults outright, and a `class` list themes the wrapping element the way it themes any wdoc block. See [Themes](wdoc_styling). A plain, default-coloured cell deliberately carries no colour of its own in the SVG, so it inherits from the element. That is how a class-themed terminal works at all."
 
   p "On the static targets a terminal is an image of itself. The PDF backend paints a self-contained SVG with the palette baked in, and the Markdown backend writes the SVG to a file under `_wdoc/` and references it. For the alt text it uses the terminal's `title`, then its `id`, then the word `terminal`. So **set a `title` on any terminal that matters**. A replay terminal has no player on either target, and the build snapshots it at its last frame. If that is not the frame you want a reader of the PDF to see, `@except(backends = [:pdf])` the replay and place a still terminal beside it. [Visibility](wdoc_visibility) and [Output targets](wdoc_outputs) cover the axis and the three targets."
 
@@ -655,7 +660,8 @@ WCL
   list {
     li "[Wireframes](wdoc_wireframe). The other widget family, measured and laid out for you."
     li "[Writing your own blocks](wdoc_extending). `lower`, `@native` and the exactly-one-of rule across all three block families."
-    li "[Themes and styling](wdoc_styling). `class`, `theme`, and how a palette reaches a block."
+    li "[Themes](wdoc_styling). The site palette `palette = :light` falls back to."
+    li "[Styling rules](wdoc_css). The `class` block a terminal colour is overridden through."
     li "[Output targets](wdoc_outputs). What HTML, PDF and Markdown builds each do with a native block."
     li "[Images, videos and file assets](wdoc_media). When a real screenshot beats a drawn one."
     li "[Functions](lang_functions). The `fn` literals, parameter narrowing and closures a `lower` is written with."

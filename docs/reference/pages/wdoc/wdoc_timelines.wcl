@@ -7,7 +7,12 @@
 page wdoc_timelines {
   title = "Timelines and dopesheets"
 
-  h1 "Timelines and dopesheets"
+  chapter_header "Timelines and dopesheets" {
+    kicker       = "wdoc · reference"
+    reading_time = "16 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Two blocks in this chapter draw time, and they draw different time. `timeline` draws **calendar time**: the 20th of February, the Mondays in March, the leap day in 2024. `dopesheet` draws **animation time**: frame 0, then frame 1, then frame 2, twelve of them a second. One is a dated axis computed by the build. The other is a window sliding over a sprite sheet in the reader's browser. They share a chapter because the question they answer looks the same and their answers have nothing in common, and because both are `@native`, for two different reasons. [Two kinds of time](#two-kinds-of-time) at the end of this chapter is that comparison."
 
@@ -88,7 +93,7 @@ CONSOLE
   p "Everything after this section refines that one picture."
 
   callout "A timeline does not fill its diagram" {
-    class = ["warning"]
+    kind = :warning
     body  = "`width` and `height` are the timeline's own, and they default to `480.0` × `200.0` whatever the enclosing `diagram` measures. A `timeline` with no size inside a 900 × 300 diagram draws 480 × 200, and the diagram's viewBox shrinks around it. The axis is not clipped, but it is not the diagram either. Write the diagram's numbers twice, as every example here does. The types differ: a `diagram` takes integers, and a `timeline` takes floats."
   }
 
@@ -108,7 +113,7 @@ CONSOLE
   p "Zero-padding is not required: `\"2026-3-1\"` parses as 1 March. There is no timezone and no offset. A timeline places instants on one unbroken scale, and reads every date on it the same way. [Values and primitives](lang_values) covers the string forms themselves."
 
   callout "An unreadable date is dropped, not reported" {
-    class = ["warning"]
+    kind = :warning
     body  = "A date the parser cannot read yields nothing at all: the timeline skips the item, the phase boundary, or the card, the build prints no warning, and the page renders without it. `\"15/03/2026\"` and `\"March 15\"` both vanish this way. The same silence covers `start` and `end`. An unparseable `end` falls back to the fitted scale, so the axis becomes an auto-fitted one. If a milestone is missing from a drawing, check its date string first."
   }
 
@@ -219,7 +224,7 @@ CONSOLE
   }
 
   callout "The walk stops after 256 ticks" {
-    class = ["note"]
+    kind = :note
     body  = "A tick loop that walked a calendar for ever would hang a build, so it stops at 256 boundaries and the rest of the spine stays bare. Two things get you there, and both involve overriding an automatic choice. An `every` far too fine for the span: `unit = :years` with `every = 1` across 1600–2200 labels 1600 to 1855 and stops. And a `unit` far too fine for the span, because each ladder has a coarsest rung: `unit = :months` over the same 600 years exhausts its ladder at 12 months and stops at `Jan 1855` too. An axis that chooses both for itself will not reach the cap. Coarsen the `unit`, or widen `every`, rather than shortening the axis."
   }
 
@@ -305,10 +310,10 @@ CONSOLE
 
   p "The timeline draws a phase as **two boundary dividers and a heading**, not as a filled band. The dividers stand perpendicular to the axis at `from` and at `to`, and the label sits centred between them. Four back-to-back phases like the ones above share their boundaries, so the drawing reads as one divided ruler rather than four separate bars."
 
-  p "Each phase takes the next colour from the `wdoc-series-1` … `wdoc-series-8` palette, by its position in the list, wrapping after eight. Those are the same series classes the charts use, so a site `theme` recolours a timeline and a chart together. See [Themes and styling](wdoc_styling). The rest of the drawing carries `wdoc-axis` and `wdoc-axis-label` on the spine and ticks, `wdoc-timeline-divider` and `wdoc-timeline-phase-label` on the phases, and `wdoc-timeline-marker`, `wdoc-timeline-connector`, and `wdoc-timeline-label` on the items. The title carries `wdoc-chart-title`, the chart's class, shared. A `class` block naming any of them restyles every timeline on the site."
+  p "Each phase takes the next colour from the `wdoc-series-1` … `wdoc-series-8` palette, by its position in the list, wrapping after eight. Those are the same series classes the charts use, so a site `theme` recolours a timeline and a chart together. See [Themes](wdoc_styling). The rest of the drawing carries `wdoc-axis` and `wdoc-axis-label` on the spine and ticks, `wdoc-timeline-divider` and `wdoc-timeline-phase-label` on the phases, and `wdoc-timeline-marker`, `wdoc-timeline-connector`, and `wdoc-timeline-label` on the items. The title carries `wdoc-chart-title`, the chart's class, shared. A `class` block naming any of them restyles every timeline on the site."
 
   callout "A timeline's own class and id go nowhere" {
-    class = ["warning"]
+    kind = :warning
     body  = "`class` and `id` are declared on `Timeline`, and the field table below lists them, but the renderer emits neither. `timeline { class = [\"mine\"]  id = roadmap }` produces no `mine` class and no `id` attribute anywhere in the SVG, and there is no error to tell you so. Style through the `wdoc-*` classes above, and reach for the site `theme` when a whole book needs one palette. The `class` a `card` child carries **is** emitted. Only the timeline itself drops them."
   }
 
@@ -395,7 +400,7 @@ CONSOLE
   p "An inline label names the sheet, the way an `image` block names its source, and the path is relative to the **build entry file**, not to the page that declares it. That is why the snippet above reads `../assets/pixel-coin.png`: this book's entry sits one folder below the assets it shares, and the page's own location has nothing to do with it. [Images, videos and file assets](wdoc_media) covers the rule. The build copies the file into the output's `_wdoc/` folder and references it by URL, so the frames appear when the output is served and not when you open a page directly from disk."
 
   callout "A dopesheet with no frame size draws nothing" {
-    class = ["warning"]
+    kind = :warning
     body  = "`frame_width` and `frame_height` have no defaults, and a dopesheet missing either, or carrying an empty source, renders as nothing at all. No error, no placeholder, no gap in the diagram. That is the same best-effort silence a failed shape lowering has. A missing sprite-sheet _file_ is different: that one fails the build when the copy step reaches it."
   }
 
@@ -442,7 +447,7 @@ TEXT
   p "So a 4-column sheet plays 0, 1, 2, 3 across the top row and then wraps to 4 at the start of the second. That arithmetic runs twice: once in the build, which windows the group on the `from` frame, and once in the player script, which advances it. Both read the same numbers, because the build stamps them onto the rendered group as `data-dope-*` attributes and the player reads them back."
 
   callout "columns is a claim, not a measurement" {
-    class = ["warning"]
+    kind = :warning
     body  = "The build trusts an explicit `columns`. Write `columns = 10` for the six-frame coin sheet and the play range runs to frame 9, whose window lies past the right edge of the image and draws blank. Give `columns` when the build cannot measure the sheet, as with an `http(s)://` source or a format whose header it cannot read. Otherwise let the build compute it."
   }
 
@@ -485,7 +490,7 @@ TEXT
   p "The glyph is `▶` while a dopesheet is paused and `↻` once a non-looping one has finished, and it disappears while the animation runs. The browser scales pixel art with nearest neighbour by default, which is what `smooth = false` means. Set `smooth = true` for a sheet of photographs or smooth vector frames, where hard pixel edges would be an artefact rather than the style."
 
   callout "controls = false hides the glyph, not the click" {
-    class = ["note"]
+    kind = :note
     body  = "The whole dopesheet group listens for a click, and `controls = false` only hides the play glyph. A reader can still pause a dopesheet that shows no control, and will then have no way of telling that it is paused. Reach for `controls = false` when a dopesheet is decorative and loops for ever, not when you want it uninterruptible."
   }
 
@@ -526,7 +531,7 @@ TEXT
   p "The two reasons are worth keeping apart, because they generalise differently. A block is native when what it needs is **knowledge the language does not have**: a calendar, a font metric, the bytes of a file. It is also native when what it produces is **not a shape**: a script, an HTML fragment, a copied asset. `timeline` is the first kind and `dopesheet` is mostly the second. A block of your own that fits neither description should lower in WCL instead."
 
   callout "Native does not mean HTML-only" {
-    class = ["info"]
+    kind = :info
     body  = "Both kinds declare coverage on all three backends, so neither needs an `@except` to survive a Markdown or PDF build. A timeline renders the same static drawing everywhere. A dopesheet renders its `from` frame and stops. The geometry is still stamped on the group, but no player runs beside a `.md` file or inside a PDF. [Output targets](wdoc_outputs) covers what each backend does with a diagram."
   }
 

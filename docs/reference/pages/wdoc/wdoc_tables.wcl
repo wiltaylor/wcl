@@ -16,7 +16,12 @@ class "wdoc-ch25-right" {
 page wdoc_tables {
   title = "Lists and tables"
 
-  h1 "Lists and tables"
+  chapter_header "Lists and tables" {
+    kicker       = "wdoc · reference"
+    reading_time = "12 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Two blocks put a sequence of things on a page. A `list` puts them one under another. A `table` puts them on a grid. Neither renders through the semantic content IR. Both are `@native`, and [Why both are native](#why-both-are-native) explains why being native follows from how you _write_ them rather than from an omission."
 
@@ -197,7 +202,7 @@ WCL
   p "The schema behind that is one interface. `Li.children` is declared `@children(ListNode)`, and `ListNode` is the interface both `Li` and `ListBlock` extend. An `li` therefore admits further `li`s, further `list`s, or a mix, and nothing else. Nesting is unbounded in depth."
 
   callout "A sublist is inside its item, not after it" {
-    class = ["note"]
+    kind = :note
     body  = "The nested `<ul>` / `<ol>` sits _inside_ the parent `<li>`, before its closing tag. That is what makes it a sublist rather than a second list. As [Why both are native](#why-both-are-native) explains, it is also why an `li` cannot be a block that lowers on its own."
   }
 
@@ -367,7 +372,7 @@ WCL
   }
 
   callout "Quote your cells" {
-    class = ["warning"]
+    kind = :warning
     body  = "A table is prose laid out on a grid, not a typed record. Nothing checks a cell's type, and there is no declaration to check it against. Write every cell you care about as a string literal and the three targets agree. Leave a unit-carrying or symbol value bare and they do not. `\"512MiB\"` is a cell. `512MiB` is a value that happens to be sitting in one."
   }
 
@@ -425,7 +430,7 @@ WCL
       | "db"      | "us-east-1" | "5432" |
   }
 
-  p "Two consequences worth stating plainly. The selector picks the column **by position**, so if you insert a column, the alignment moves with the index rather than with the data. And alignment is CSS, so it exists in the HTML build and nowhere else. The Markdown backend writes `| --- |` separators with no alignment colons, and the PDF backend lays every cell out left-aligned. [Themes and styling](wdoc_styling) covers `class`, `base` and `nest` in full."
+  p "Two consequences worth stating plainly. The selector picks the column **by position**, so if you insert a column, the alignment moves with the index rather than with the data. And alignment is CSS, so it exists in the HTML build and nowhere else. The Markdown backend writes `| --- |` separators with no alignment colons, and the PDF backend lays every cell out left-aligned. [Styling rules](wdoc_css) covers `class`, `base` and `nest` in full."
 
   h3 "Captions"
 
@@ -468,7 +473,7 @@ WCL
   }
 
   callout "TableBlock, not Table" {
-    class = ["info"]
+    kind = :info
     body  = "The type behind the block is named `TableBlock`, because `Table` is the reserved type name the `@table` decorator claims. See [Schemas](lang_schemas). The block kind you write is still `table`."
   }
 
@@ -503,7 +508,7 @@ WCL
   p "So the reason is the same shape in both cases, and it is not about HTML. What you write is a structure the language holds in the block tree, and a lowering receives a value. The `Content::List` and `Content::Table` variants still exist, and as [Captions](#captions) showed, a block of yours may lower to either. What `@native` says is that these two blocks, as authored, cannot."
 
   callout "Native is a coverage claim, not an exemption" {
-    class = ["note"]
+    kind = :note
     body  = "`@native` names the targets that implement the kind, and the build cross-checks it both ways against the Rust dispatch table. A target claimed but not implemented, or implemented but not claimed, fails the build. `list` and `table` both claim HTML, PDF and Markdown, so no build has to waive either one. See [Output targets](wdoc_outputs)."
   }
 
@@ -511,7 +516,7 @@ WCL
 
   list {
     li "[Text and formatting](wdoc_formatting). The inline patterns that run inside every `li` and every string cell."
-    li "[Themes and styling](wdoc_styling). `class`, `base`, `nest`, and the cascade the alignment recipe leans on."
+    li "[Styling rules](wdoc_css). `class`, `base`, `nest`, and the cascade the alignment recipe leans on."
     li "[Data views](wdoc_data_views). Components, repeaters and the slots that feed a computed table's `rows`."
     li "[Output targets](wdoc_outputs). What HTML, PDF and Markdown builds each do with the same page."
     li "[Writing your own blocks](wdoc_extending). `lower`, the `Content` union, and `@native`."

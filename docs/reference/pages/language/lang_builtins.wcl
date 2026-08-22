@@ -9,7 +9,12 @@
 page lang_builtins {
   title = "Builtins"
 
-  h1 "Builtins"
+  chapter_header "Builtins" {
+    kicker       = "The WCL language · reference"
+    reading_time = "26 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A **builtin** is a function the language already knows. You do not import it, declare it or define it. You call it. There are exactly one hundred, and the `wcl` CLI adds two more of wdoc's own, for the 102 this chapter counts."
 
@@ -31,7 +36,7 @@ page lang_builtins {
   p "The one exception to fixed arity is `format`, which takes a template plus as many arguments as the template has `{}` slots."
 
   callout "Builtins are the last place the resolver looks" {
-    class = ["note"]
+    kind = :note
     body  = "The resolver checks a name in call position against the document first: `let` bindings, `fn` items and fields. Only then does it check the builtin registry. So a `fn len(xs: list<utf8>) -> u32 { … }` of your own **shadows** the builtin inside its scope. The flip side is the error message. A name that resolves to nothing callable is reported as `unknown built-in 'box'`, because the registry is where the search ended, not where it began."
   }
 
@@ -167,6 +172,41 @@ CONSOLE
   }
 
   p "One pair deserves its own sentence. `error` and `panic` are the **same function under two names**. They have identical implementations and identical `error: <msg>` output, and `try`/`catch` catches both. Nothing about `panic` is more final than `error`. Choose between them for the reader, not for the runtime."
+
+  h2 "Every builtin, A to Z"
+
+  p "All 102 of them, alphabetically, each linked to its entry. The sections after this one group by what a builtin operates on, which is the right order to read the chapter in and the wrong one to look a name up in."
+
+  table {
+    rows:
+      | "A – D" | "E – L" | "L – S" | "S – Z" |
+      | "[`abs`](#abs)" | "[`e`](#e)" | "[`log10`](#log10)" | "[`sort`](#sort)" |
+      | "[`acos`](#acos)" | "[`ends_with`](#ends-with)" | "[`log2`](#log2)" | "[`sort_by`](#sort-by)" |
+      | "[`all`](#all)" | "[`enumerate`](#enumerate)" | "[`map`](#map)" | "[`sort_connected`](#sort-connected)" |
+      | "[`any`](#any)" | "[`error`](#error)" | "[`map_values`](#map-values)" | "[`split`](#split)" |
+      | "[`asin`](#asin)" | "[`eval`](#eval)" | "[`max`](#max)" | "[`sqrt`](#sqrt)" |
+      | "[`assert`](#assert)" | "[`exp`](#exp)" | "[`max_by`](#max-by)" | "[`starts_with`](#starts-with)" |
+      | "[`ast_string`](#ast-string)" | "[`filter`](#filter)" | "[`merge`](#merge)" | "[`sum`](#sum)" |
+      | "[`at`](#at)" | "[`find`](#find)" | "[`min`](#min)" | "[`tail`](#tail)" |
+      | "[`atan`](#atan)" | "[`flatten`](#flatten)" | "[`min_by`](#min-by)" | "[`take`](#take)" |
+      | "[`atan2`](#atan2)" | "[`floor`](#floor)" | "[`namespace_decls`](#namespace-decls)" | "[`tan`](#tan)" |
+      | "[`builtin_names`](#builtin-names)" | "[`fn_signature`](#fn-signature)" | "[`pad_end`](#pad-end)" | "[`tau`](#tau)" |
+      | "[`cbrt`](#cbrt)" | "[`fold`](#fold)" | "[`pad_start`](#pad-start)" | "[`tensor`](#tensor)" |
+      | "[`ceil`](#ceil)" | "[`format`](#format)" | "[`page_metadata`](#page-metadata)" | "[`tensor_data`](#tensor-data)" |
+      | "[`chars`](#chars)" | "[`format_unit`](#format-unit)" | "[`panic`](#panic)" | "[`tensor_reshape`](#tensor-reshape)" |
+      | "[`child_types`](#child-types)" | "[`format_unit_value`](#format-unit-value)" | "[`path_contains`](#path-contains)" | "[`tensor_shape`](#tensor-shape)" |
+      | "[`clamp`](#clamp)" | "[`glob_match`](#glob-match)" | "[`pi`](#pi)" | "[`to_lower`](#to-lower)" |
+      | "[`concat`](#concat)" | "[`glob_overlaps`](#glob-overlaps)" | "[`pow`](#pow)" | "[`to_upper`](#to-upper)" |
+      | "[`contains`](#contains)" | "[`group_by`](#group-by)" | "[`radians`](#radians)" | "[`trim`](#trim)" |
+      | "[`cos`](#cos)" | "[`head`](#head)" | "[`range`](#range)" | "[`trunc`](#trunc)" |
+      | "[`decl_info`](#decl-info)" | "[`hypot`](#hypot)" | "[`repeat`](#repeat)" | "[`type_fields`](#type-fields)" |
+      | "[`decorator_arg`](#decorator-arg)" | "[`index_of`](#index-of)" | "[`replace`](#replace)" | "[`unique`](#unique)" |
+      | "[`decorator_names`](#decorator-names)" | "[`join`](#join)" | "[`reverse`](#reverse)" | "[`values`](#values)" |
+      | "[`decorators_for_kind`](#decorators-for-kind)" | "[`keys`](#keys)" | "[`round`](#round)" | "[`__wdoc_slot`](#wdoc-slot)" |
+      | "[`degrees`](#degrees)" | "[`len`](#len)" | "[`sign`](#sign)" | "[`zip`](#zip)" |
+      | "[`doc_comment`](#doc-comment)" | "[`list_contains`](#list-contains)" | "[`sin`](#sin)" | "" |
+      | "[`drop`](#drop)" | "[`ln`](#ln)" | "[`slice`](#slice)" | "" |
+  }
 
   h2 "How to read an entry"
 

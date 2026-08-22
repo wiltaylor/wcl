@@ -6,7 +6,12 @@
 page wdoc_extending {
   title = "Writing your own blocks"
 
-  h1 "Writing your own blocks"
+  chapter_header "Writing your own blocks" {
+    kicker       = "wdoc · explanation"
+    reading_time = "18 min read"
+    updated      = "2026-08-21"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Forty chapters of this book describe blocks somebody else wrote. This one describes how to write your own. A wdoc block is not a plugin and not a macro. It is an ordinary WCL `@block` type that extends one of three interfaces. It carries a function that turns an instance into output, and the renderer calls that function. Nothing else about the block is special."
 
@@ -131,7 +136,7 @@ CONSOLE
   p "Note what the lowering returns: two `Content` nodes, not markup. `Content::Heading` carries `level: 3` as a **number**. The `class=\"heading-3\"` in the HTML above is what the HTML backend derives from that number, and the Markdown backend derives `###` from the same number. Neither reads the other's output."
 
   callout "Give your kinds a prefix" {
-    class = ["warning"]
+    kind = :warning
     body  = "A page block whose kind matches a **template slot name** fills that slot instead of rendering as content. The built-in `website` layout declares the slots `content`, `banner`, `hero`, `sidebar` and `footer`. So a block kind named `hero` never reaches its lowering. On a bare page, with no layout at all, it renders nothing and reports nothing. The stdlib's own landing components carry an `lp_` prefix to avoid that collision. Prefix your kinds. [Templates and layouts](wdoc_templates) covers slots."
   }
 
@@ -312,7 +317,7 @@ CONSOLE
   p "**Every backend matches the union exhaustively.** Three walkers read it: HTML, PDF and Markdown. Not one of them has a catch-all arm. Add a variant to the union and you get a compile error in three places, rather than silence in three outputs. That is the mechanism, not a convention someone remembers to follow."
 
   callout "What the closed union costs you" {
-    class = ["note"]
+    kind = :note
     body  = "You give up bespoke page **markup**. You keep bespoke **drawings**: a `Content::Drawing` carries a `list<Svg>`, so a block that wants a picture nobody has drawn before still has the whole shape vocabulary. The escape hatch that is missing is the one that would let a backend receive something it cannot understand."
   }
 
@@ -622,7 +627,7 @@ TEXT
   p "An unfilled defaultless slot is a missing required field. An undeclared slot is an unknown field. Both are the ordinary schema violations of [Schemas](lang_schemas). There is no component vocabulary inside the language, only a decorator that tells the schema where to look. [Data views](wdoc_data_views) covers components and `wdoc_repeater` from the authoring side."
 
   callout "A derived schema is not a declaration" {
-    class = ["info"]
+    kind = :info
     body  = "The language derives the schema for `endpoint` lazily, from the component instance. It is deliberately absent from the document's list of type declarations, because it is not one. Anything that introspects your document by walking declarations, such as a generated reference page or an editor palette, will not find it. Such a tool must ask for the block schema by kind instead."
   }
 

@@ -107,6 +107,14 @@ docs-serve *ARGS:
 docs-serve-ref *ARGS:
     cargo run -p wcl -- wdoc serve docs/reference/main.wcl --addr 127.0.0.1:8138 {{ARGS}}
 
+# Check the reference book documents every builtin, subcommand and wdoc block
+# kind. The surface comes out of the binary and the stdlib rather than a list,
+# so adding a builtin and forgetting the chapter fails here.
+[group('dev')]
+docs-coverage:
+    cargo run -p wcl -- --version >/dev/null
+    uv run docs/reference/coverage.py --check
+
 # Render the reference book to Markdown under docs/_md/ (gitignored) —
 # smoke-tests `wcl wdoc build --type markdown` (folder of .md + standalone .svg diagrams)
 [group('dev')]

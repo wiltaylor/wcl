@@ -17,7 +17,12 @@ class "deploy" { accent = "#b48ead" }
 page wdoc_callouts {
   title = "Callouts, footnotes and chapter headers"
 
-  h1 "Callouts, footnotes and chapter headers"
+  chapter_header "Callouts, footnotes and chapter headers" {
+    kicker       = "wdoc · reference"
+    reading_time = "14 min read"
+    updated      = "2026-08-21"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Three blocks in this chapter are **apparatus**: they mark a page up rather than being its prose. A `callout` lifts one paragraph out of the flow and gives it a type. A `footnotes` section collects the notes that the `[^id]` markers in your prose point at. A `chapter_header` opens a page with a kicker, a title and a meta line."
 
@@ -197,7 +202,7 @@ MD
 
   callout "The demo above is themed and the hex column is not" {
     kind = :info
-    body = "Hold the six previews next to the `Unthemed accent` column and they will not match, and that is the mechanism working. Build the same six callouts in a `site` with no `theme` field and you get the hex values exactly. [Themes and styling](wdoc_styling) covers the hue ring."
+    body = "Hold the six previews next to the `Unthemed accent` column and they will not match, and that is the mechanism working. Build the same six callouts in a `site` with no `theme` field and you get the hex values exactly. [Themes](wdoc_styling) covers the hue ring."
   }
 
   h3 "The older way: one class picks the kind"
@@ -244,10 +249,10 @@ WCL
     }
   }
 
-  p "That purple is the colour you asked for, on a themed page, and the six built-in kinds cannot promise that. The theme's re-pointing rules name the six kinds one by one. `deploy` is not among them, so nothing overrides your accent. [Themes and styling](wdoc_styling) covers `class`, `accent` and the rest of the styling vocabulary."
+  p "That purple is the colour you asked for, on a themed page, and the six built-in kinds cannot promise that. The theme's re-pointing rules name the six kinds one by one. `deploy` is not among them, so nothing overrides your accent. [Themes](wdoc_styling) covers `class`, `accent` and the rest of the styling vocabulary."
 
   callout "A custom type is an HTML-only type" {
-    class = ["note"]
+    kind = :note
     body  = "`deploy` is not a `CalloutKind`, so the node carries no kind at all. In HTML that is fine: your class paints it. In Markdown it becomes `> [!NOTE]`, and in print it takes the neutral grey accent. Neither target has any way to learn your colour. If a callout has to read as a warning everywhere, give it `class = [\"warning\", \"deploy\"]` and let `deploy` do the extra painting."
   }
 
@@ -325,14 +330,14 @@ HTML
   p "The rewrite touches only ids with a definition. That is what lets a regex character class survive in a code sample: `[^abc]` is left alone because no footnote is called `abc`. But understand _why_ it survives, because the rule is narrower than it looks."
 
   callout "The rewrite is a string replacement over the whole page" {
-    class = ["warning"]
+    kind = :warning
     body  = "It runs after the page is rendered, over the finished HTML, code samples included. It does not know what a code block is. Define a footnote called `1` and every literal `[^1]` on that page becomes a footnote link, inside your `code` block as much as in your prose. Name your footnotes after what they say (`drain`, `grace`, `retry-budget`), never after something that could appear in a listing."
   }
 
   p "This chapter takes its own advice. Its two live footnotes are called `ir` and `sep`, because `drain` and `grace` appear in the code samples above and would have been rewritten inside them."
 
   callout "Footnote links need a template" {
-    class = ["note"]
+    kind = :note
     body  = "The rewrite pass runs when a page renders **through a template**. That covers every book, website and deck. A site with no `default_template` and no per-page template renders the definitions correctly and leaves every `[^id]` in the prose as literal text. The same is true of the heading anchor ids, for the same reason. See [Templates and layouts](wdoc_templates)."
   }
 
@@ -379,7 +384,7 @@ WCL
   p "The practical rule follows: **use `chapter_header` instead of `h1`, not as well as it.** Writing both gives the page two level-one headings, two anchor ids and two entries in every outline that reads them."
 
   callout "The CSS knows about a subtitle but the block does not" {
-    class = ["note"]
+    kind = :note
     body  = "The stylesheet carries a `.chapter-subtitle` rule and the content node carries a `subtitle` field, but `chapter_header` declares no such field. Writing one fails the build with `field 'subtitle' is not declared by schema 'ChapterHeader'`. The field is reachable only from a block of your own that lowers to `Content::ChapterHeader`. See [Writing your own blocks](wdoc_extending)."
   }
 
@@ -463,7 +468,7 @@ CONSOLE
   list {
     li "[Text and formatting](wdoc_formatting). The inline-pattern engine a callout heading, a callout body and a footnote's text all run through."
     li "[Icons](wdoc_icons). The packs behind a callout's default glyph, and the `pack.name` an `icon` field takes."
-    li "[Themes and styling](wdoc_styling). `class`, `accent`, and where a custom callout type gets its colour."
+    li "[Styling rules](wdoc_css). `class`, `accent`, and where a custom callout type gets its colour."
     li "[Templates and layouts](wdoc_templates). The pass that plants footnote links and heading anchors runs here."
     li "[Output targets](wdoc_outputs). The three backends this chapter kept comparing."
     li "[Writing your own blocks](wdoc_extending). Lowering a block of your own to `Content::Callout` or `Content::ChapterHeader`."

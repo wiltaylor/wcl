@@ -7,7 +7,12 @@
 page wdoc_intro {
   title = "Introduction to wdoc"
 
-  h1 "Introduction to wdoc"
+  chapter_header "Introduction to wdoc" {
+    kicker       = "wdoc · explanation"
+    reading_time = "3 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "**wdoc** is a document generator written in WCL. You declare pages and sites as blocks, and `wcl wdoc` renders them to a static website, a Markdown tree or a PDF. The book you are reading is a wdoc site, and its source is one `main.wcl` that declares the site and its table of contents, plus one `.wcl` file per chapter."
 
@@ -16,7 +21,7 @@ page wdoc_intro {
   p "That symmetry is why the two halves share one book. A wdoc page is a WCL document, so everything in Part I applies to it: a page body can compute a heading from a `let`, a site can `import` its data from another file, and a repeater can project a list of typed records into one rendered section per record."
 
   callout "wdoc is not a second language" {
-    class = ["note"]
+    kind = :note
     body  = "There is no wdoc parser, no wdoc file extension and no wdoc syntax. A `.wcl` file becomes a document the moment it imports the wdoc standard library, and stops being one if you delete that line. Anything you can do to a WCL document — `wcl check`, `wcl get`, `wcl fmt`, `wcl diff` — you can do to a wdoc page, because it is the same object."
   }
 

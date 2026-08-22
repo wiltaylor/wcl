@@ -11,7 +11,12 @@
 page lang_cli {
   title = "The CLI"
 
-  h1 "The CLI"
+  chapter_header "The CLI" {
+    kicker       = "The WCL language · reference"
+    reading_time = "15 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "`wcl` is one binary with eleven commands. Nine read or rewrite a document: `parse`, `check`, `eval` (aliased `get`), `set`, `fmt`, `diff`, `init`, `repl` and `lsp`. Two sit under `wcl wdoc`: `build` renders a document to a website, a PDF or a folder of Markdown depending on `--type`, and `serve` runs a dev server. This chapter covers all of them: what each one takes, every flag it accepts, and what it prints."
 
@@ -24,7 +29,7 @@ page lang_cli {
   p "Every command that opens a document opens it the same way. Disk imports resolve relative to the importing file, and system imports (`import <wdoc.wcl>`) resolve against the embedded wdoc standard library. That is why `wcl check` validates a wdoc document as thoroughly as `wcl wdoc build` does. The schemas are in scope for both."
 
   callout "The wdoc library is always in scope" {
-    class = ["note"]
+    kind = :note
     body  = "The CLI does not read a document's imports to decide whether it is \"a wdoc document\". Every document it opens carries the wdoc registry and the wdoc environment. The cost is that wdoc's own builtins (`page_metadata`, `__wdoc_slot`) resolve in any file. The benefit is that a wdoc page's schema violations surface under plain `wcl check`."
   }
 
@@ -164,7 +169,7 @@ CONSOLE
   p "`offset` and `length` are byte positions into the file. An editor needs them to underline the span. A clean file gives `\"ok\": true` and two empty lists."
 
   callout "check is the whole gate" {
-    class = ["info"]
+    kind = :info
     body  = "`wcl check` runs the parser **and** the schema validator, not only the parser. Run it in a pre-commit hook, in CI, and any time you want to know a file is good without printing it. It also takes `-` in place of a path, so `cat generated.wcl | wcl check -` validates a document that was never written to disk."
   }
 
@@ -248,7 +253,7 @@ CONSOLE
   p "Note what JSON drops: the `u32` suffix, and the unit on a value such as `512MiB` (which was already the number 536870912 by then). JSON has one number type. When the type matters to the consumer, read the WCL form. When only the number matters, read the JSON."
 
   callout "Inspecting a document you did not write" {
-    class = ["tip"]
+    kind = :tip
     body  = "Three commands answer three different questions. `wcl check` asks _is this file valid?_ `wcl parse` asks _what is in it?_ `wcl get` asks _what is this one value?_ Start with `parse` piped through a pager to find the path you want, then use `get` for the value. `WCL_PROFILE=1` in the environment answers a fourth question, _why is it slow?_ It makes `wcl` print the evaluation call tree as JSON on stderr. It is a debug switch for `wcl` itself rather than a flag, so it stays out of `--help`. `1` and `true` turn it on. `0`, `false` and an unset variable turn it off. Any other value is an error."
   }
 
@@ -375,7 +380,7 @@ CONSOLE
   p "Pair `fmt` with `wcl check` in the same job. `fmt` says the file is _tidy_. `check` says it is _valid_. Neither implies the other: a badly formatted file can be valid, and a beautifully formatted one can violate every constraint its schema declares."
 
   callout "Formatting is not validation" {
-    class = ["warning"]
+    kind = :warning
     body  = "`wcl fmt` parses. It does not evaluate and it does not run the schema, so it formats a document whose fields cannot resolve. A gate that runs only `fmt` proves nothing about the data. Run `check` too."
   }
 
@@ -520,7 +525,7 @@ CONSOLE
   p "A template is itself a WCL document. It opts in with `import <scaffold.wcl>`, then declares `property` blocks for the questions and `file` and `folder` blocks for what to generate. The angle brackets name an embedded library, not a file on disk. [Namespaces and imports](lang_namespaces) covers that import form."
 
   callout "Two rules that catch every template author" {
-    class = ["warning"]
+    kind = :warning
     body  = "A generated file's content must use the **interpolating** heredoc, `$<<TAG`. A plain `<<TAG` is literal, so `${answer(\"name\")}` lands in the output word for word. And a `property` instance sets its fields with `=` (`prompt = \"Project name\"`), because it is a block instance and not a `type` declaration."
   }
 

@@ -7,7 +7,12 @@
 page lang_evaluation {
   title = "How a document evaluates"
 
-  h1 "How a document evaluates"
+  chapter_header "How a document evaluates" {
+    kicker       = "The WCL language · explanation"
+    reading_time = "23 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A WCL document does not run. It answers questions. Nothing on the right of an `=` computes until something demands that field, and once a field has been demanded it never computes again. This chapter is about that machinery: the two ways to open a file, the order things really happen in, how a name finds its value, what the document model shows a consumer and what it keeps back, and the three families of error you can get out of a file."
 
@@ -124,7 +129,7 @@ CONSOLE
   p "A `Document` memoises. The first read of a field stores its result and every later read returns the stored one. That is what makes a document cheap to consult from a template that touches the same value fifty times. It is also what makes an in-place edit unsound: change the expression behind a field that has already been forced and the document keeps serving the old answer, with nothing to notice the divergence. Rather than police that, the API removes the option. Pick a door per parse."
 
   callout "Editing means reopening" {
-    class = ["note"]
+    kind = :note
     body  = "After you write an edited tree back to disk, the way to see the new values is to open the file again. There is no refresh, no invalidate, no partial recompute. A `Document` describes one snapshot of one file, and a new snapshot is a new `Document`."
   }
 
@@ -170,7 +175,7 @@ CONSOLE
   p "Two consequences follow, and [Documents, fields and blocks](lang_documents) leans on both. **Item order does not matter**: a field may read a `let` declared fifty lines below it, because neither exists until one of them is demanded. And **a broken field is local**: `budget` failing did not stop `owner` from answering, and `wcl parse` printed the whole tree with the failure inlined rather than aborting."
 
   callout "Only what you walk" {
-    class = ["note"]
+    kind = :note
     body  = "`wcl get` resolves a dotted path one segment at a time and forces only the cells on that path. `wcl get estate.wcl owner` never looks inside `service web` at all. The cost scales the way you would hope: in a document that gathers a thousand blocks, a one-field query still evaluates one field."
   }
 
@@ -278,7 +283,7 @@ CONSOLE
   p "Both fields report `'a'`. `b` never re-entered itself. It returned what `a` handed it, and cached that. So the cycle error is not a per-field verdict. It is one error value, raised where the loop closed and memoised at every stop on the way back out."
 
   callout "A cycle is a value, not a crash" {
-    class = ["note"]
+    kind = :note
     body  = "There is no unwinding and no abort. The cycle becomes the field's cached result, the surrounding evaluation carries on, and `wcl parse` exits 0 with the error printed in place. Only a command that was asked for the cycling field itself, `wcl get`, reports a failing exit code."
   }
 
@@ -379,7 +384,7 @@ CONSOLE
   }
 
   callout "Skipped, not forced" {
-    class = ["warning"]
+    kind = :warning
     body  = "The skipped candidate is set aside without being evaluated. That matters: forcing it to \"check\" would fill its cell with a cycle error, and, because cells are permanent, that error would stick even though the outward walk went on to resolve the name perfectly well. The check has to be a look, not a read."
   }
 
@@ -486,7 +491,7 @@ CONSOLE
   p "The last one is a distinction the rest of this chapter depends on. `apis.public` resolves. The path is good and the block is there, but a block is not a value. `get` prints values, so it stops with `not_a_leaf` rather than inventing a serialization for a subtree. What a host reads instead is the `Block` view, and from it the block's own fields, blocks, labels and tables."
 
   callout "The `...` in every parse dump" {
-    class = ["note"]
+    kind = :note
     body  = "`wcl parse` prints the declarations before the data, and the first stretch of them is the same in every file, around a hundred and sixty lines of it: the schemas for `@block`, `@children`, `@inline` and the rest, the `std.ByteSize` / `std.Distance` / `std.Duration` unit types, and the `DecoratorPosition` symbol set. Those are synthetic types the host environment injects into every document, and `type_decls` enumerates them alongside your own. They are elided as `...` throughout this book."
   }
 
@@ -554,12 +559,12 @@ WCL
   p "Two values have no honest JSON form and say so differently. A function serializes as `null`, so a structure containing one survives. A unit literal that never met a declared type is an error rather than a number, because writing the magnitude out would silently drop the unit. [Values and primitives](lang_values) covers that case."
 
   callout "One direction only" {
-    class = ["warning"]
+    kind = :warning
     body  = "Values serialize. They do not deserialize. Reading `8080` back gives no way to know it was a `u32` rather than a `u64` or an `i32`, and the evaluator relies on that variant being right. So there is no JSON-to-`Value` path, and no round trip: `wcl get --json` is an output format for a consumer, not an exchange format. A host that needs to write a value back writes WCL. See [the editing door](#two-doors-into-one-file)."
   }
 
   callout "There is no whole-document JSON" {
-    class = ["note"]
+    kind = :note
     body  = "`--json` serializes one **value**, and `wcl get` requires a path, so there is no way to ask for the file as a whole. A path naming a block answers `not_a_leaf` rather than an object. To emit a whole document as JSON, walk the blocks and fields through a host program and build the shape you want."
   }
 

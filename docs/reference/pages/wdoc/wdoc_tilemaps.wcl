@@ -28,7 +28,12 @@ class "map-marker" {
 page wdoc_tilemaps {
   title = "Tilemaps and maps"
 
-  h1 "Tilemaps and maps"
+  chapter_header "Tilemaps and maps" {
+    kicker       = "wdoc · reference"
+    reading_time = "16 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Two blocks in this chapter draw pictures that have **coordinates**. A `tilemap` paints a grid of small tiles cut out of one shared spritesheet, so a level, a floor plan or a board is a few lines of text rather than an image file. A `map` shows one large picture the reader can pan and zoom, with clickable `pin` markers that open cards of ordinary wdoc content."
 
@@ -85,7 +90,7 @@ TEXT
   }
 
   callout "The build reads the sheet's dimensions for you" {
-    class = ["note"]
+    kind = :note
     body  = "wdoc reads the pixel size straight out of the file header, and it understands PNG, GIF and JPEG. It decodes nothing, and reads a few bytes off the front of the file. For any other format, WebP for instance, the header reader returns nothing and the build fails with `could not read image dimensions … — set image_width / image_height`. Supply **both** overrides or neither. wdoc ignores one alone and runs the reader anyway. When you supply both and the header disagrees with them, the build warns rather than failing, because the tiles will render distorted and a silent stretch is worse than a message."
   }
 
@@ -238,12 +243,12 @@ TEXT
   }
 
   callout "Pixel art is the default, and it is deliberate" {
-    class = ["note"]
+    kind = :note
     body  = "A tilemap renders `image-rendering: pixelated`, so a 64-pixel tile blown up stays crisp instead of turning to mush. `smooth = true` opts back into the browser's own smoothing for photographic sheets. Two more things happen for you at every tile edge. Each cell's destination edges snap to whole pixels, so a fractional `scale` cannot open a hairline gap between neighbours. And the renderer samples each tile half a source pixel inside its own boundary, so a brown crate beside a water tile cannot bleed a brown line into it."
   }
 
   callout "A tilemap that cannot draw draws nothing" {
-    class = ["warning"]
+    kind = :warning
     body  = "A `set` naming no declared tileset, a grid with no rows, or a legend that maps none of your glyphs, all draw nothing rather than raising an error. The build stays green and the diagram comes out blank. When a tilemap does not appear, check the spelling of `set` first. That is the failure this silence hides. A **tileset** is stricter, and wdoc checks it whether or not you draw from it: a missing `source`, a non-positive `tile_width`, or a sheet whose dimensions cannot be resolved all fail the build by name."
   }
 
@@ -268,7 +273,7 @@ TEXT
         class = ["map-marker"]
         title = "New York"
         text { span "Financial capital of the US east coast." {} }
-        callout "Cards hold anything" { class = ["tip"]  body = "A card's body is ordinary wdoc content — text, lists, callouts, code, images." }
+        callout "Cards hold anything" { kind = :tip  body = "A card's body is ordinary wdoc content — text, lists, callouts, code, images." }
       }
 
       pin "london" {
@@ -307,7 +312,7 @@ diagram {
       class = ["map-marker"]
       title = "New York"
       text { span "Financial capital of the US east coast." {} }
-      callout "Cards hold anything" { class = ["tip"]  body = "A card's body is ordinary wdoc content — text, lists, callouts, code, images." }
+      callout "Cards hold anything" { kind = :tip  body = "A card's body is ordinary wdoc content — text, lists, callouts, code, images." }
     }
 
     pin "london" {
@@ -379,7 +384,7 @@ WCL
   p "A pin's child blocks become its **card**: a floating panel anchored to the marker. A click opens it. The `✕`, a click outside it, or a second click on the same marker closes it. The card follows its marker as the reader pans and zooms. A pin with neither a `title` nor a single child block gets no card at all and is a bare marker."
 
   callout "A card is HTML laid over the drawing" {
-    class = ["note"]
+    kind = :note
     body  = "That is why a card holds arbitrary wdoc content: wdoc renders it through the ordinary page path instead of drawing it into the SVG. It is also why the cards need a browser. On a static target the map still draws its image and its markers, and the cards do not travel. Press-and-drag on a marker never pans the map, and a press that moves more than a few pixels is a drag rather than a click, so a card cannot open by accident mid-pan."
   }
 
@@ -498,7 +503,7 @@ pin "newyork" {
 WCL
   }
 
-  p "That is the class the gold markers on this page carry. A `class` block is a root-level declaration like the tileset, and it is document-global. See [Themes and styling](wdoc_styling) for the whole system."
+  p "That is the class the gold markers on this page carry. A `class` block is a root-level declaration like the tileset, and it is document-global. See [Styling rules](wdoc_css) for the whole system."
 
   p "Three fields, three scopes: a pin's `class` themes its marker, its `card_class` themes its card, and the map's own `class` themes the whole group. The one-off `color` field is sugar for a marker colour when a reusable class would be overkill. The `dragons` pin on the first map and the `sahara` pin on the second both use it. The built-in look ships as bare-class defaults, so your classes win without `!important` and a site `theme` styles maps without any per-map CSS."
 
@@ -530,7 +535,7 @@ WCL
   p "One more distinction that is easy to blur: a tilemap and a map can both hold a grid of image files, and they are not the same grid. A tilemap's grid is **content**: every cell is a tile you chose by index. A map's tiled layer is **delivery**: every tile is a fragment of one picture, and which fragments the reader gets is the player's business, not yours."
 
   callout "Running these examples yourself" {
-    class = ["note"]
+    kind = :note
     body  = "Nothing here depends on the sample files. Point the `tileset` at any spritesheet of equal-sized tiles, set `tile_width` / `tile_height` to that sheet's tile size, and re-index the legend against it. The grids and the prose stay as they are. A map works with any image: set `width` / `height` to its pixel dimensions and the pin coordinates become pixels you can read off it. The samples used above are Kenney's \"Platformer Pack\" (64×64 tiles), released under CC0, and NASA's \"Blue Marble 2002\" (image by Reto Stöckli, NASA Goddard Space Flight Center), public domain. Browse Kenney's packs at [kenney.nl/assets](https://kenney.nl/assets)."
   }
 
@@ -541,7 +546,7 @@ WCL
     li "[Images, videos and file assets](wdoc_media). The `image` block, and how a file gets from your tree into the output."
     li "[Icons](wdoc_icons). The `iconset` registry a map pin resolves its marker through."
     li "[Timelines and dopesheets](wdoc_timelines). The other block that slices a spritesheet, one frame at a time."
-    li "[Themes and styling](wdoc_styling). The `class` system behind pin, card and map theming."
+    li "[Styling rules](wdoc_css). The `class` system behind pin, card and map theming."
     li "[Output targets](wdoc_outputs). What a native block does on HTML, PDF and Markdown builds."
   }
 }

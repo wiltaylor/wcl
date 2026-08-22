@@ -8,7 +8,12 @@
 page lang_functions {
   title = "Functions"
 
-  h1 "Functions"
+  chapter_header "Functions" {
+    kicker       = "The WCL language · reference"
+    reading_time = "15 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A function in WCL is a **value**, the same way a number or a list is a value. You write one with `fn`, bind it to a name or hand it straight to another function, and call it with parentheses. There is one calling convention and it is deliberately small: one parameter list, filled left to right, every time. No default arguments, no named arguments, no overloading."
 
@@ -68,7 +73,7 @@ WCL
   }
 
   callout "Both annotations are mandatory" {
-    class = ["note"]
+    kind = :note
     body  = "WCL infers neither end of a signature. `fn(x) -> i64 x` fails with `expected ':' after parameter name, found ')'`, and `fn(x: i64) x` fails with `expected '->' before return type`. Every parameter carries a type and every function states its return type, in a literal and in an item alike."
   }
 
@@ -297,7 +302,7 @@ CONSOLE
   }
 
   callout "A function value is not serializable data" {
-    class = ["warning"]
+    kind = :warning
     body  = "The check above is a shape check, and it is where the guarantees stop. A function value has no JSON form: `wcl get --json steps.wcl steps.scale.apply` prints `null`, not an error. Declare a `fn` field when a **host**, or a later expression in the same document, will call it. Do not declare one on data you expect to round-trip through JSON."
   }
 
@@ -378,7 +383,7 @@ CONSOLE
   }
 
   callout "A builtin is not a value" {
-    class = ["warning"]
+    kind = :warning
     body  = "`map(xs, slug)` works because `slug` is a `fn` item, and a `fn` item is a binding that holds a function value. A **builtin** is not a binding: `map([\"x\", \"y\"], to_upper)` fails with `unresolved reference 'to_upper'`. Builtins are callable by name, not passable by name. Wrap one in a literal to pass it: `map([\"x\", \"y\"], fn(s: utf8) -> utf8 to_upper(s))`."
   }
 
@@ -442,7 +447,7 @@ CONSOLE
   }
 
   callout "Close over what you use" {
-    class = ["warning"]
+    kind = :warning
     body  = "A **free name** is one the function neither captured nor took as a parameter. The call site resolves it, not the place you wrote the function. A function whose body names `ghost` picks up whatever `ghost` the **caller** holds in a local binding. At the next call site, which has none, it fails. Nothing warns you. Write functions that use their parameters, their captures, and document-scope names. Treat anything else as a bug you have not hit yet."
   }
 

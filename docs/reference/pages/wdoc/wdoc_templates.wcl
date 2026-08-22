@@ -6,7 +6,12 @@
 page wdoc_templates {
   title = "Templates and layouts"
 
-  h1 "Templates and layouts"
+  chapter_header "Templates and layouts" {
+    kicker       = "wdoc · reference"
+    reading_time = "16 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A page holds content. A **template** holds everything around it: the sidebar, the navbar, the footer, the previous and next links. wdoc ships four, and none of them is special. A template is a WCL function from a context record to a list of HTML fundamentals, and a site selects yours exactly the way it selects `book`."
 
@@ -56,7 +61,7 @@ HTML
   p "So a template is not decoration. It is the thing that decides what a page's blocks become and what surrounds them."
 
   callout "A template is a function, not a file" {
-    class = ["note"]
+    kind = :note
     body  = "There is no template directory, no include path and no inheritance. A template is a `template` block in an ordinary `.wcl` file, with a `render` field holding `fn(c: TemplateCtx) -> list<Html>`. The four built-ins live in the embedded stdlib (`import <wdoc.wcl>`), and exactly the same lookup that finds yours finds them by name."
   }
 
@@ -154,7 +159,7 @@ CONSOLE
   p "[Websites](wdoc_websites) covers the rest of what a slot declaration can do: extra named slots, `?` for optional, `*` for repeated, and a `default` fallback. Two functions are worth carrying here. `slot(c, :name)` returns `list<Html>` ready to place. `slot_blocks(c, :name)` returns the raw handles, so a template can ask whether a slot is filled before it emits a wrapper for it."
 
   callout "Handles, not HTML" {
-    class = ["note"]
+    kind = :note
     body  = "`c.content` and `slot_blocks(...)` hand you read-only `BlockHandle`s, not rendered markup. A template may inspect a handle's `kind`, read its concrete `block` fields and walk its `children`. It may also reorder or filter the list. Nothing renders until the renderer walks the returned tree, and that happens after `render` has finished. A template therefore never forces a page body it decided not to place. `wdoc_blocks(handles)` places a list of handles you assembled yourself."
   }
 
@@ -318,12 +323,12 @@ HTML
   }
 
   callout "`headings` is the content slot only" {
-    class = ["warning"]
+    kind = :warning
     body  = "The numbering spans every slot. `m.headings` does not. The builtin reads `c.content` and nothing else, so a heading the page wrote into a named slot never reaches the list. It still gets its number and its anchor. Take the `sidebar` of rule three: its heading numbers after the content headings, and the rail still shows only the content ones. Build your own list from `slot_blocks(c, :name)` when a named slot has to appear in a rail."
   }
 
   callout "Bind the record instead of chaining off the call" {
-    class = ["warning"]
+    kind = :warning
     body  = "Member access needs a reference on its left, not a call. `wcl check` passes `len(page_metadata(c).reading_order)`, and the build then fails with `expected a reference, got call`. Bind the record first: `let m = page_metadata(c);` inside a `{ … }` block expression, as `outlined` does above. Then read `m.reading_order`. The rule governs every expression, not just this builtin. See [Expressions and operators](lang_expressions)."
   }
 
@@ -410,7 +415,7 @@ WCL
   }
 
   callout "Parts resolve by bare name" {
-    class = ["warning"]
+    kind = :warning
     body  = "Every part, every layout and every member of the `el` family is a plain `let` binding brought in by `import <wdoc.wcl>`. You reach them by bare name, and there is no namespace to hide behind. A `let` of your own named `el`, `raw`, `wdoc_part_sidebar` or `wdoc_book_layout` **shadows the stdlib one** for the rest of that scope. Prefix your own helpers."
   }
 
@@ -647,7 +652,7 @@ HTML
   p "Three chapters, not four: the `toc` has four entries, and `Practices` is a grouping heading with no `page`, so it never reaches the reading order. `page_metadata` did that, not the footer."
 
   callout "Watch the line breaks" {
-    class = ["warning"]
+    kind = :warning
     body  = "Write one block per line inside a page. `h1 \"Hello\"  p \"World.\"` on a single line is **one** block, not two: the parser reads `p` and `\"World.\"` as two more labels on the `h1`. `wcl check` prints `OK`, `wcl fmt` prints the line back unchanged, and the paragraph is absent from the built page."
   }
 
@@ -657,7 +662,8 @@ HTML
     li "[Documents, pages and sites](wdoc_sites). The `site` block, `page` blocks, `toc` and `menu`, and the output tree the templates write into."
     li "[Websites](wdoc_websites). Named slots, slot defaults and fallbacks, `<head>` assets, and the `website` template in full."
     li "[Presentations](wdoc_presentations). The `deck` grid, collection templates and repeated slots."
-    li "[Themes and styling](wdoc_styling). `style` blocks, `class` rules and the `--wdoc-*` variables the built-in layouts consume."
+    li "[Themes](wdoc_styling). The `--wdoc-*` variables the built-in layouts consume."
+    li "[Styling rules](wdoc_css). `style` bundles and the `css_style` constructor that places one."
     li "[Writing your own blocks](wdoc_extending). The other half of the `Html` vocabulary: a block's `lower`, and when a block is `@native` instead."
     li "[Functions](lang_functions). The `fn` literals, block expressions and `let` bindings a `render` is built from."
   }

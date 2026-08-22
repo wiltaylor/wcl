@@ -6,7 +6,12 @@
 page lang_collections {
   title = "Lists, tensors and records"
 
-  h1 "Lists, tensors and records"
+  chapter_header "Lists, tensors and records" {
+    kicker       = "The WCL language · reference"
+    reading_time = "16 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A field holds one value. Three of those values hold others. A **list** is an ordered sequence of one type. A **tensor** is a flat run of elements that carries the shape it is read under. A **record** is a fixed set of named fields. This chapter covers all three, and the builtins that read them. It ends on the rule that ties records to the type system: a bare record becomes a union variant by its shape."
 
@@ -130,7 +135,7 @@ CONSOLE
   p "Lists are also what the rest of the language hands you. A `@children(\"kind\")` gather field is a `list<T>`, and a `@table` header fills one row per line. So do the builtins: `range`, `split`, `keys` and `enumerate` all return one. See [Documents, fields and blocks](lang_documents#tables) for the first two and [Builtins](lang_builtins) for the rest."
 
   callout "A none element is always legal" {
-    class = ["note"]
+    kind = :note
     body  = "`x = [\"a\", none]` passes against `list<utf8>`, even though a `none` satisfies no concrete type on its own. The exception exists for the else-less conditional: `[\"base\", if e.current { \"current\" }]` contributes a `none` on the untaken branch, and consumers drop it. The rule that a `none` never satisfies a concrete type bounds a field's own value. It does not bound what a list may hold on the way to being filtered."
   }
 
@@ -197,7 +202,7 @@ CONSOLE
   p "`take`, `drop`, `tail`, `len`, `list_contains`, `reverse`, `sort` and `unique` round out the readers. `map`, `filter`, `fold`, `any`, `all`, `find` and `group_by` cover what you would otherwise write a loop for. [Builtins](lang_builtins) lists every one with its signature."
 
   callout "A dotted path does not index" {
-    class = ["warning"]
+    kind = :warning
     body  = "`wcl get fleet.wcl regions.0` answers `no such path: regions.0`. A dotted path walks fields, blocks and block labels. A list position is none of the three. Read the whole list, or compute the element inside the document and read the field that holds it. The same is true of a table row, for the same reason: see [Documents, fields and blocks](lang_documents#tables)."
   }
 
@@ -275,7 +280,7 @@ CONSOLE
   p "\"When the value is forced\" is exact, and it is why the command above is `wcl get` rather than `wcl check`. Fields evaluate lazily and `wcl check` reports schema violations, not evaluation failures. It prints `OK` for that file. [How a document evaluates](lang_evaluation) covers the split. [The CLI](lang_cli) covers which command forces what."
 
   callout "A declared shape is not a checked shape" {
-    class = ["warning"]
+    kind = :warning
     body  = "The dimensions in `tensor<f64, [2, 3]>` describe the field. They are not compared against the tensor that lands in it. A field declared `tensor<f64, [2, 3]>` holding `tensor([0.4, 0.6], [1, 2])` passes `wcl check`, and `wcl get` answers `tensor[1x2](0.4, 0.6)`. Only the constructor's own product rule is enforced. Write the shape you mean. The tool checks that the data fits the shape you passed to `tensor(…)`, not that either matches the declaration."
   }
 
@@ -390,7 +395,7 @@ WCL
   p "The third is the one you will write most. A record that reaches you through `map`, `filter` or `find` is already bound to the closure's parameter, so `d.name` reads normally."
 
   callout "A record literal is not checked against a plain type" {
-    class = ["warning"]
+    kind = :warning
     body  = "A bare record carries no declared type of its own, so nothing compares it to the type the field declares. Against `resident: Dog`, the value `{ nickname: \"Rex\", colour: \"brown\" }` passes `wcl check`: wrong field names, missing fields, and no complaint. A **union**-typed field is the exception. The [next section](#bare-records-become-union-variants) explains why it has to be: to name a variant, dispatch has no choice but to match the field set. When you want a shape the tool enforces, declare a block kind and write a block ([Documents, fields and blocks](lang_documents)), or declare a union."
   }
 

@@ -12,7 +12,12 @@
 page wdoc_outputs {
   title = "Output targets"
 
-  h1 "Output targets"
+  chapter_header "Output targets" {
+    kicker       = "wdoc · reference"
+    reading_time = "9 min read"
+    updated      = "2026-08-21"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "One document, three outputs, one command. `wcl wdoc build --type html` renders a website, `--type pdf` a paginated PDF, and `--type markdown` a folder of `.md` files (`md` is an alias). `html` is the default, so a bare `wcl wdoc build` is the website. `wcl wdoc serve` is that first target with a watcher and a browser attached, not a fourth thing."
 
@@ -29,7 +34,7 @@ page wdoc_outputs {
   p "The consequence for this chapter is the useful one. A block that lowers reaches all three targets by construction. The only blocks that can be missing from a target are the natives that say so. [Visibility](wdoc_visibility) covers what the build does about that."
 
   callout "A new content node is a compile error in three places" {
-    class = ["info"]
+    kind = :info
     body  = "The content vocabulary is a closed union with no generic container and no raw-markup escape hatch. Every backend matches it **exhaustively**: no catch-all arm in the HTML walker, the PDF walker or the Markdown walker. So a variant added to the union does not silently render as nothing in two of three outputs. It fails to compile until all three say what to do with it. That is the mechanism, not a convention someone remembers to follow."
   }
 
@@ -63,7 +68,7 @@ TEXT
   p "When the output has to match the document exactly, delete the directory yourself. [Documents, pages and sites](wdoc_sites#a-build-never-wipes-its-output) works that consequence through with a rename."
 
   callout "Everything the site needs is served, not read from disk" {
-    class = ["warning"]
+    kind = :warning
     body  = "Search fetches its index over HTTP, and so do the player scripts. The site works when a host serves it, or when `wcl wdoc serve` does. Opening a page directly from disk gives you the prose and loses the search box."
   }
 
@@ -124,7 +129,7 @@ TEXT
   p "The fallback is deliberately eager, because the failure mode of being clever here is a stale page that looks right. Seven kinds of change force a full build: an imported library, the page set, the CSS, an asset declaration, a repeater, one that pulls in an icon the sprite does not have yet, and a file holding a `site` block. That is why editing your entry document usually rebuilds everything."
 
   callout "Scoping is by file, not by block" {
-    class = ["note"]
+    kind = :note
     body  = "Two pages in one `pages.wcl` are one unit: edit either and both re-render. That is not a limitation worth working around by splitting files. The saving is in skipping the *other* fifty pages and the aggregate writes, and the parse happens either way because imports force it."
   }
 

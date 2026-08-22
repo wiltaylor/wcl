@@ -30,7 +30,12 @@ let document_columns = [
 page wdoc_tree {
   title = "Trees, node tables and cards"
 
-  h1 "Trees, node tables and cards"
+  chapter_header "Trees, node tables and cards" {
+    kicker       = "wdoc · reference"
+    reading_time = "12 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Three diagram shapes hold **content** rather than geometry. A `tree` draws an indented file-explorer view of nested nodes. A `node_table` draws a titled box of rows, and each row is a connection target of its own. A `card` draws one box whose body is arbitrary wdoc content. This chapter covers all three together. One question separates them: what does the renderer measure? No single shape shows you the answer."
 
@@ -147,8 +152,8 @@ WCL
   p "A node's `color` is any CSS colour and paints **that node's** label and icon. It is not inherited: in the tree above, `site/` is blue and its children are not. Colour every node you want coloured."
 
   callout "Two class fields, two targets" {
-    class = ["note"]
-    body  = "`class` on the `tree` reaches **every** node's label. `class` on a `tree_node` reaches that node's label only. Both stack on top of the built-in `wdoc-tree-label` class, so your rules win by ordinary CSS specificity. The connector guides carry `wdoc-tree-guide` and take no user classes at all. [Themes and styling](wdoc_styling) covers declaring the rules."
+    kind = :note
+    body  = "`class` on the `tree` reaches **every** node's label. `class` on a `tree_node` reaches that node's label only. Both stack on top of the built-in `wdoc-tree-label` class, so your rules win by ordinary CSS specificity. The connector guides carry `wdoc-tree-guide` and take no user classes at all. [Styling rules](wdoc_css) covers declaring the rules."
   }
 
   h3 "Connecting to a node"
@@ -276,7 +281,7 @@ WCL
   p "Height works as it does for a tree, with one extra term. A table is `header_height` (28, counted only when a `title` is set) plus one `row_height` (30) per row. The `document` table above is 28 + 2 × 30 = 88 units tall. Omit `title`, and the header vanishes along with its 28 units. A header-less table is the shape you want for a plain list of connectable rows."
 
   callout "A row with no content draws no box" {
-    class = ["warning"]
+    kind = :warning
     body  = "The renderer draws a row's body first and skips an empty result: `node_row { id = spacer }` emits no content box at all. Its **ports still appear**, and an edge aimed at it still resolves. An accidentally-empty row therefore reads as a gap in the table, with dots floating beside it. If a row is meant to be blank, say so with `p \" \"` rather than leaving the body out."
   }
 
@@ -354,7 +359,7 @@ WCL
         li "lists, like this one"
       }
       callout "Even a callout" {
-        class = ["note"]
+        kind = :note
         body  = "Nested content, inside a diagram shape."
       }
     }
@@ -384,7 +389,7 @@ WCL
   p "`title` is **plain text**, not a content block. It renders as a bold line above the body and takes no inline markup. Put anything richer in the body as an ordinary heading or paragraph."
 
   callout "An empty card renders nothing" {
-    class = ["warning"]
+    kind = :warning
     body  = "A card with neither a `title` nor a body that produces output emits no SVG at all, not an empty box. `card { x = 0.0  y = 0.0 }` is invisible. The card still counts for the diagram's viewBox fit, so the symptom is a diagram with unexplained empty space rather than a build error."
   }
 
@@ -492,7 +497,7 @@ CONSOLE
   p "PDF is where the two shapes part company. The PDF backend cannot draw a `<foreignObject>` at all. It replaces every one with a plain rounded box, then re-collects each **card**'s title and body and paints them natively on top. Nothing does that for a `node_table`, so its rows and its title come out blank."
 
   callout "Mixing a card with another content shape can cost you the card too" {
-    class = ["warning"]
+    kind = :warning
     body  = "The PDF card overlay pairs boxes with cards by position, and proceeds only when the counts match exactly. A diagram holding a `card` **and** a `node_table` carries more boxes than cards. The pass gives up, embeds the plain SVG, and the card body goes blank beside the table's rows. A card in a `diagram` of its own keeps its body. The table loses its rows either way. That is the row above, not this warning."
   }
 

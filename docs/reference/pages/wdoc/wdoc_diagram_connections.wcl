@@ -7,7 +7,12 @@
 page wdoc_diagram_connections {
   title = "Connections and routing"
 
-  h1 "Connections and routing"
+  chapter_header "Connections and routing" {
+    kicker       = "wdoc · reference"
+    reading_time = "14 min read"
+    updated      = "2026-08-22"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A `diagram` places shapes. An **edge** wires two of them together, and this chapter is about the wire: how you declare it, where it attaches, how it crosses the canvas, and what it may say on the way. [The diagram canvas](wdoc_diagrams) covers the shapes and the layouts that position them. Everything here starts after the shapes are placed."
 
@@ -125,7 +130,7 @@ WCL
   p "The last row is the real division. A `->` statement is written out, one per line, by a person looking at a diagram. An `edges` field is an expression. It may be a `map` over a data table, a `filter` over a list of relationships, or anything else [Data views](wdoc_data_views) can build. That is why the record form carries the presentation fields: a generated edge has nobody to hand-write a label for it."
 
   callout "Endpoint strings, not identifiers" {
-    class = ["warning"]
+    kind = :warning
     body  = "In the record form an endpoint is a **string**. `{ source: \"a\" }` works. `{ source: a }` does not, because a bare `a` is a reference expression, not an id. It is not an error either. The edge is silently absent from the render. If a computed edge does not appear, check the quotes first."
   }
 
@@ -150,7 +155,7 @@ WCL
   }
 
   callout "An id is unique across the page, not the diagram" {
-    class = ["warning"]
+    kind = :warning
     body  = "Two diagrams on one page may not both hold a shape with `id = a`. The build refuses it with `page \"…\": duplicate id \"a\"`, because a page's ids are one namespace. Give each diagram's shapes their own names, or drop the `id` from shapes that no edge connects."
   }
 
@@ -269,7 +274,7 @@ WCL
   p "[Trees, node tables and cards](wdoc_tree) covers the `node_table` shape itself."
 
   callout "An empty connect_points is not \"attach anywhere\"" {
-    class = ["warning"]
+    kind = :warning
     body  = "`connect_points = []` removes every anchor, and the two routing modes then part company. Straight routing falls back to the bounding-box centres, so the line runs under both shapes and you see only the middle of it. Elbow routing has no direction to leave in, so it **drops the edge with no warning at all**. Omit the field to get all four sides. Never write it empty."
   }
 
@@ -315,7 +320,7 @@ WCL
   p "Two differences are worth naming. The diagonals now cross the gaps directly, a shorter path and often a clearer one. And `worker -> queue` and `queue -> worker` lie **on top of each other**. A straight line between two anchor pairs has no room to differ. Straight routing skips the source-convergence pass for the same reason. Convergence is what elbow routing wants. Under straight routing it would make every spoke leave through one side and cut across its own shape."
 
   callout "There is no curved routing" {
-    class = ["note"]
+    kind = :note
     body  = "`:elbow` and `:straight` are the whole set: the `EdgeRouting` symbol set has two members and the renderer has two branches. Nor is there a curve to fall back on: the diagram vocabulary draws rectangles, circles, lines, polylines, polygons and text, and no arcs or Bézier segments anywhere. An edge in wdoc is always straight segments. If you want a swept connector, draw it yourself as a shape. See [Writing your own blocks](wdoc_extending)."
   }
 
@@ -341,7 +346,7 @@ CONSOLE
   p "That is a hard failure with a non-zero exit, unlike the missing-endpoint warning above. The distinction is worth stating plainly. An endpoint you misspelled is your mistake, and the page is still worth building. An edge the renderer cannot draw would leave a picture that silently lies about your architecture. Take the message at face value: the fixes it names are the fixes."
 
   callout "A diagram can also be too big to route" {
-    class = ["note"]
+    kind = :note
     body  = "The routing grid is capped at four million cells. Coordinates in the tens of thousands of units exceed it. Such a diagram reports `diagram is too large to route edges` instead of the packing message. Same remedy: smaller coordinates, or `routing = :straight`, which needs no grid at all."
   }
 
@@ -424,8 +429,8 @@ WCL
   p "`:yes` and `:no` are the only two kinds that label themselves. Every other kind is silent. [Flowcharts and swimlanes](wdoc_flowcharts) covers the `decision` and `process` shapes above."
 
   callout "One label per edge, and no styling hook of its own" {
-    class = ["note"]
-    body  = "A record's `label` overrides a labelling kind, so `{ kind: :yes, label: \"cache hit\" }` renders `cache hit`. There is no second label, no start or end label, and no per-edge control over placement. Restyle every edge label at once through the `wdoc-edge-label` class. See [Themes and styling](wdoc_styling)."
+    kind = :note
+    body  = "A record's `label` overrides a labelling kind, so `{ kind: :yes, label: \"cache hit\" }` renders `cache hit`. There is no second label, no start or end label, and no per-edge control over placement. Restyle every edge label at once through the `wdoc-edge-label` class. See [Styling rules](wdoc_css)."
   }
 
   h2 "Edge kinds"
@@ -445,7 +450,7 @@ WCL
   p "The \"nothing extra\" column is the correction this chapter owes you. A kind does not carry a built-in look. It emits a `data-kind` attribute on the edge element, and the shipped themes style none of them. Out of the box, `:flow` and `:data` draw exactly like `:default`."
 
   callout "A kind is a hook, not a style" {
-    class = ["warning"]
+    kind = :warning
     body  = "Tagging an edge `:data` changes nothing you can see until you write a rule for it. Do not tag edges expecting a picture to change. Tag them so that one rule can change all of them at once."
   }
 
@@ -463,7 +468,7 @@ base "[data-kind=\"flow\"]" {
 WCL
   }
 
-  p "A `base` block sits at the top level of the document, beside your pages. It applies to every site in that document unless you narrow it with `sites`. [Themes and styling](wdoc_styling) covers `base`, `class` and the rest of the styling system."
+  p "A `base` block sits at the top level of the document, beside your pages. It applies to every site in that document unless you narrow it with `sites`. [Styling rules](wdoc_css) covers `base`, `class` and the rest of the styling system."
 
   p "Three tools hold the same idea at three scales. A `dash` on a record edge styles **one** edge, and travels with the data that produced it. A `class` on a shape styles that shape. A `base` rule on `data-kind` styles **every** edge of a kind across the whole book. Reach for the last one when the kind means something: when `:data` is a claim about your architecture rather than a shade of grey."
 
@@ -475,6 +480,7 @@ WCL
     li "[Trees, node tables and cards](wdoc_tree). `node_table` and its per-row ports."
     li "[Data views](wdoc_data_views). Repeaters and components, the source of the generated ids a `@dynamic` endpoint may name."
     li "[Connections](lang_connections). The `connection` declaration and the `->` statement as language forms, including `@dynamic`."
-    li "[Themes and styling](wdoc_styling). `class`, `base`, and the theme variables an edge's colour comes from."
+    li "[Themes](wdoc_styling). The variables an edge's colour comes from."
+    li "[Styling rules](wdoc_css). `class` and `base`, and which of the two an edge selector wants."
   }
 }

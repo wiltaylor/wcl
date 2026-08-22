@@ -6,7 +6,12 @@
 page lang_documents {
   title = "Documents, fields and blocks"
 
-  h1 "Documents, fields and blocks"
+  chapter_header "Documents, fields and blocks" {
+    kicker       = "The WCL language · explanation"
+    reading_time = "14 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A `.wcl` file is a **document**. It is not a stream of settings. It is a tree of _items_, and a schema describes the shape of that tree. This chapter covers the four item forms you write most: fields, blocks, tables and `let` bindings. It names the nine others, so you know where the rest of the book goes. It also covers comments, and the two keywords that navigate the tree from inside it."
 
@@ -110,7 +115,7 @@ CONSOLE
   p "Read the path `services.web.limits.memory` from the left. `services` is the field the `@document` schema declares to gather every `service` block. `web` picks one of them by its label. `limits` is the nested block. `memory` is a field on it. `512MiB` has already become the number 536870912: a unit is part of the value, not part of the text. [Values and primitives](lang_values) covers units. [Schemas](lang_schemas) covers `@document`, `@block`, `@child` and `@children`."
 
   callout "There is no schema-free document" {
-    class = ["note"]
+    kind = :note
     body  = "Data needs a schema to stand on. A top-level field that no `@document` type declares fails with `top-level field 'owner' has no @document schema`. A block kind that no `@block` or `@table` type declares fails the same way. A file that declares nothing but types, `let` bindings and functions is fine. It is a library, not data. Every complete example in this chapter therefore carries its schema."
   }
 
@@ -346,7 +351,7 @@ WCL
   p "A kind may also be namespace-qualified. `wdoc::process { … }` names the `process` kind in the `wdoc` namespace, and `foo.bar::process` names a deeper one. See [Namespaces and imports](lang_namespaces)."
 
   callout "A label is not a readable field" {
-    class = ["warning"]
+    kind = :warning
     body  = "`@inline(n)` tells the schema which field a label _fills_. The document model reads labels through the block's label list. The decorator does not make the label resolvable by that name from an expression: inside the block above, `self.verb` does not evaluate to `\"GET\"`. When a sibling field has to read the value, declare it as an ordinary field and write it out."
   }
 
@@ -429,7 +434,7 @@ WCL
   p "The trailing pipe is optional, and a header with no rows at all is legal. The row count is checked against the parent field: `@children(\"route\", max = 1)` with two rows fails with `field 'routes' allows at most 1 'route' children, found 2`."
 
   callout "A pipe row is not validated cell by cell" {
-    class = ["warning"]
+    kind = :warning
     body  = "The arity and cell-type rules above are the contract, not a check `wcl check` currently runs. A short row, a long row and a wrongly-typed cell all pass today. The same row written out as a block _is_ checked. Against a `@table` type, `route \"GET\" { path = \"/users\" }` reports `table row for 'route' has 1 values, expected 3`. Write your rows correctly. The tool will not catch you."
   }
 
@@ -457,7 +462,7 @@ WCL
   p "Both are keywords only in expression position, so a field or type named `self` or `parent` keeps working everywhere else. At the top level of a file `self` is the document itself, and `parent` is an error. There is no scope above the root. One level in, `parent` is the document."
 
   callout "Navigators, not copies" {
-    class = ["note"]
+    kind = :note
     body  = "`self` and `parent` resolve lazily through the lexical scope chain, exactly as a `&T` reference field does. They read the value at the moment the field is forced, not when the block is parsed."
   }
 
@@ -494,7 +499,7 @@ CONSOLE
   p "Use a `let` for the intermediate value that keeps the real fields readable: a base port, a shared prefix, a list you map over twice. Use a field for anything a consumer of the document is meant to read."
 
   callout "Two lets, one keyword" {
-    class = ["info"]
+    kind = :info
     body  = "The `let` **item** described here sits at file or block scope and takes no semicolon. There is also an expression-level `let name = expr;` that lives inside a `{ … }` block expression and is scoped to it. They share a keyword and nothing else. See [Expressions and operators](lang_expressions)."
   }
 

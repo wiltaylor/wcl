@@ -8,7 +8,12 @@
 page wdoc_demo {
   title = "Demo blocks"
 
-  h1 "Demo blocks"
+  chapter_header "Demo blocks" {
+    kicker       = "wdoc · reference"
+    reading_time = "9 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Documentation about a block has to answer two questions at once: what do I write, and what do I get? Answer them separately and you write the component twice, once in a `code` block and once for real. The two copies drift the moment you edit one. A `demo` removes the second copy. You author the component once, as the demo's children. wdoc renders those children live and prints their source beside them, so the listing cannot disagree with the picture."
 
@@ -59,7 +64,7 @@ CONSOLE
   demo {
     title = "A tip, both ways"
     callout "Tip" {
-      class = ["tip"]
+      kind = :tip
       body  = "Author once, see both."
     }
   }
@@ -75,7 +80,7 @@ CONSOLE
   }
 
   callout "Preview first, then example" {
-    class = ["note"]
+    kind = :note
     body  = "The rendered panes come **above** the listing in HTML. The Markdown backend puts them the other way round, source fence first and render after. No field on the block controls the order. Each backend chose its own. If your prose says \"the code below\", it is wrong in one of the two outputs."
   }
 
@@ -111,7 +116,7 @@ CONSOLE
 
   p "Neither pane is a screenshot and neither is an iframe. Both are ordinary HTML in the same page, and what makes them differ is one CSS rule per palette."
 
-  p "A themed site emits its `--wdoc-*` custom properties four ways: at `:root` for the default mode, under `prefers-color-scheme`, under the `data-theme` attribute the toggle sets, and on two bare classes, `.wdoc-theme-light` and `.wdoc-theme-dark`. The last of the four is the one a demo needs. Custom properties inherit, and the closest ancestor that defines one wins. `.wdoc-theme-light` on a wrapper therefore re-themes everything inside that wrapper, whatever the reader has set globally. That is the whole mechanism. [Themes and styling](wdoc_styling) covers where those properties come from."
+  p "A themed site emits its `--wdoc-*` custom properties four ways: at `:root` for the default mode, under `prefers-color-scheme`, under the `data-theme` attribute the toggle sets, and on two bare classes, `.wdoc-theme-light` and `.wdoc-theme-dark`. The last of the four is the one a demo needs. Custom properties inherit, and the closest ancestor that defines one wins. `.wdoc-theme-light` on a wrapper therefore re-themes everything inside that wrapper, whatever the reader has set globally. That is the whole mechanism. [Themes](wdoc_styling) covers where those properties come from."
 
   p "Two things follow. A demo shows both palettes **at once** rather than one and then the other, so the reader compares instead of remembering. And a document with no `site` block has no scoped palette rules to emit, so both panes fall back to the neutral `.wdoc-preview` defaults and look identical. The demo still works. It just has nothing to contrast."
 
@@ -126,7 +131,7 @@ CONSOLE
   p "The cost of a second pass is the renderer's side effects, not the markup. Images, icons and videos register themselves as they render, and those registries are keyed by source, so the second pass adds nothing. A demo containing one `callout \"Tip\"` renders two lightbulb icons and the site's `_wdoc/icons.svg` sprite sheet still holds exactly one `lucide-lightbulb` symbol."
 
   callout "Read the panes as siblings, not as a before and after" {
-    class = ["info"]
+    kind = :info
     body  = "The two passes see the same document, the same children and the same base directory. Only the UI theme mode differs. A block whose output depends on anything else, such as a counter, a random value, or an ordering that accumulates across a page, would render two different things into the two panes. The demo would then be showing you a bug rather than a palette."
   }
 
@@ -152,7 +157,7 @@ CONSOLE
   p "The flag changes the CSS class on the preview row, and nothing else. `wdoc-preview-diagram` makes each pane a centring flex container and caps its diagram viewport and any `svg` at `max-width: 100%`, so a compact drawing sits in the middle of its pane and a wide one shrinks to fit instead of scrolling."
 
   callout "diagram = true does not stack the panes" {
-    class = ["warning"]
+    kind = :warning
     body  = "The row stays a two-column grid either way, and the flag only centres and fits the contents. The viewport is what stacks the panes. Below `48rem` the grid collapses to one column for every demo, flagged or not. To see a wide diagram at full size, that narrow-viewport layout is the only thing that gives it to you."
   }
 
@@ -235,7 +240,7 @@ MD
   }
 
   callout "A demo is invisible in a PDF" {
-    class = ["warning"]
+    kind = :warning
     body  = "The PDF backend collects the demo's children in place and returns: no caption, no listing, no wrapper. The children appear as though you had written them directly on the page, and a reader of the PDF has no way to tell a demo was there. If the source listing is the point of a passage, write a separate [`code`](wdoc_code) block for the PDF and hide the demo from it. [Visibility](wdoc_visibility) covers the `backends` axis. [Output targets](wdoc_outputs) covers what each target can do."
   }
 
@@ -258,7 +263,7 @@ MD
   h2 "Where to go next"
 
   list {
-    li "[Themes and styling](wdoc_styling). The `--wdoc-*` custom properties, the light and dark palettes, and the toggle the demo's panes ignore."
+    li "[Themes](wdoc_styling). The `--wdoc-*` custom properties, the light and dark palettes, and the toggle the demo's panes ignore."
     li "[Code](wdoc_code). The `code` block the example listing is highlighted like."
     li "[Output targets](wdoc_outputs). What HTML, Markdown and PDF can each carry."
     li "[Visibility](wdoc_visibility). `@only` and `@except`, for hiding a demo from a target or a site."

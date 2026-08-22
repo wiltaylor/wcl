@@ -7,7 +7,12 @@
 page wdoc_math {
   title = "Math"
 
-  h1 "Math"
+  chapter_header "Math" {
+    kicker       = "wdoc · reference"
+    reading_time = "8 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "There are three ways to put an equation on a page, and all three carry LaTeX. The `math` block is a centred equation on a line of its own. The inline patterns `$…$` and `$$…$$` put one inside a sentence. All three end at the same node, a `Content::Math` holding the LaTeX, and each output target typesets it from there."
 
@@ -91,7 +96,7 @@ math "e^{i\\pi} + 1 = 0" {
 WCL
   }
 
-  p "The block renders as a `<div class=\"wdoc-math …\">` holding one self-contained `<svg>`. The stdlib gives that wrapper its centring, its vertical margin and a horizontal scrollbar for an equation wider than the column. The build adds anything you pass in `class` to that same element, after `wdoc-math`. See [Themes and styling](wdoc_styling) for declaring one."
+  p "The block renders as a `<div class=\"wdoc-math …\">` holding one self-contained `<svg>`. The stdlib gives that wrapper its centring, its vertical margin and a horizontal scrollbar for an equation wider than the column. The build adds anything you pass in `class` to that same element, after `wdoc-math`. See [Styling rules](wdoc_css) for declaring one."
 
   h3 "Quote it or heredoc it"
 
@@ -124,7 +129,7 @@ WCL
 TEX
 
   callout "The quotes on the heredoc tag are not decoration" {
-    class = ["warning"]
+    kind = :warning
     body  = "`<<'TEX'` is the raw form and is verbatim. Plain `<<TEX` still reads escapes, exactly as a quoted WCL string does, so `\\frac` fails the parse outright with `invalid escape '\\f'`. That happens before any of this chapter's machinery runs. Always quote the tag for LaTeX. [Values and primitives](lang_values) covers the two heredoc forms."
   }
 
@@ -161,7 +166,7 @@ WCL
   p "`$$…$$` has no such guard. Nothing in prose opens with two dollar signs by accident, so `$$ x^2 $$` is an equation, spaces and all."
 
   callout "There is no backslash escape for a dollar sign" {
-    class = ["warning"]
+    kind = :warning
     body  = "`\\$10-\\$20` does not help. The backslash is prose, the pattern still matches, and you get an error marker where the price was. Two things do work. Put the text in a code span, because `$10-$20` between backticks is verbatim and nothing re-tokenizes it. Or keep a space after the dollar sign. Read the rule as a guard against the common case, not as a promise."
   }
 
@@ -221,7 +226,7 @@ WCL
   p "The same marker replaces an inline equation, so a `$10-$20` that matched by accident shows up as red monospace in the middle of the sentence rather than as a build failure. The layout stage has the same guard. A panic inside the layout engine on pathological input becomes the marker `math layout panicked`, not a crashed build."
 
   callout "Markdown does not typeset, so it does not check" {
-    class = ["note"]
+    kind = :note
     body  = "The error marker comes from typesetting. The Markdown target passes the LaTeX through as text instead, so a broken equation reaches the reader untouched and unremarked. Build the HTML at least once before you trust a page of equations."
   }
 
@@ -281,7 +286,7 @@ WCL
   list {
     li "[Text and formatting](wdoc_formatting). The inline pattern system `$…$` belongs to, and the rest of it."
     li "[Code](wdoc_code). The other block that carries a fixed payload for each backend to render its own way."
-    li "[Themes and styling](wdoc_styling). Declaring the `class` an equation reaches for."
+    li "[Styling rules](wdoc_css). Declaring the `class` an equation reaches for."
     li "[Output targets](wdoc_outputs). What HTML, PDF and Markdown each do with a page."
     li "[Writing your own blocks](wdoc_extending). `lower`, `@native`, and why `math` is the first and not the second."
   }

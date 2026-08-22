@@ -7,7 +7,12 @@
 page lang_namespaces {
   title = "Namespaces and imports"
 
-  h1 "Namespaces and imports"
+  chapter_header "Namespaces and imports" {
+    kicker       = "The WCL language · explanation"
+    reading_time = "18 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "One file needs none of this chapter. The moment a second file joins in, three questions appear, and WCL answers each with its own keyword. **Which files take part?** `import`. **What are the declarations in them called?** `namespace`. **How do I write those names here?** `use`, plus the `::` qualifier for block kinds."
 
@@ -126,7 +131,7 @@ CONSOLE
   p "A namespace is a property of the **file**, not of the folder it sits in. Two files in one folder may declare different namespaces. Two files in different folders may declare the same one and pool their declarations. Nothing about the directory layout leaks into the names."
 
   callout "WCL checks both rules on the entry file only" {
-    class = ["warning"]
+    kind = :warning
     body  = "WCL checks placement and uniqueness on the file you name on the command line, not on the files it imports. An imported file that declares its `namespace` late, or twice, passes today. Its **first** `namespace` still decides what the file's declarations are called, so WCL ignores the second. Write the declaration first and write it once. The tool will not catch a library that does not."
   }
 
@@ -197,7 +202,7 @@ CONSOLE
   p "So a library folder is movable. You write every path inside `lib/` from `lib/`'s point of view. Move the folder and one line changes: the one in the file that imports it. The rule holds for system imports too. See the next section."
 
   callout "One directory, and no fallbacks" {
-    class = ["note"]
+    kind = :note
     body  = "A disk import resolves against exactly one directory: the importing file's own. WCL tries nothing else. There is no list of roots, no environment variable, and no project file that adds one. A relative path either names a file from where it is written, or it fails. An absolute path is legal and resolves as written. That makes it portable to exactly one machine."
   }
 
@@ -319,7 +324,7 @@ CONSOLE
   p "Read the two paths together and the loop is in front of you. The arrow points at `lib/base.wcl` line 8. The message names `lib/net.wcl`. So `net` imports `base` imports `net`. A file that imports itself reports the same way, with one path in both slots."
 
   callout "A cycle is not the same as a diamond" {
-    class = ["warning"]
+    kind = :warning
     body  = "The two look alike, and WCL handles them in opposite ways. The loader skips a file **already loaded** somewhere else in the document. That is the diamond, and it is fine. A file **still being loaded**, an ancestor of the chain the loader is in right now, is a cycle and an error. The difference is not how many files point at it. The difference is whether it has finished."
   }
 
@@ -408,7 +413,7 @@ CONSOLE
   p "Note what that file reached: `acme.base.Tier`, two imports deep, through a `use` written above the only `import` in the file. Order is for the reader. Put your imports at the top anyway."
 
   callout "Order-independent is not preference-free" {
-    class = ["info"]
+    kind = :info
     body  = "Source order _does_ decide one thing: the tie-break in [How a name resolves](#how-a-name-resolves). When two imported namespaces both declare a name and nothing disambiguates it, the earlier `import` wins. Read that as a reason to disambiguate, not a reason to sort your imports."
   }
 
@@ -508,7 +513,7 @@ CONSOLE
   p "Two consequences, and they point opposite ways. A `use` in the file you open reaches _into_ every imported file: write `use acme.base.Tier as Level` in the root and a library declaring `level: Level` resolves. A `use` in an imported file reaches nowhere at all. It binds nothing, and its own unknown targets and duplicate aliases go unchecked."
 
   callout "A library should not write use" {
-    class = ["warning"]
+    kind = :warning
     body  = "A `use` line inside an imported file is inert today, and it fails quietly rather than loudly. The alias resolves to nothing, so a field declared through it is never checked at all. A library should write the names it means in full, `acme.base.Tier` rather than an alias, or rely on step 1 and its own namespace. Keep `use` for the document you open, where it is checked and where it works."
   }
 

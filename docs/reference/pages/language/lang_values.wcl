@@ -6,7 +6,12 @@
 page lang_values {
   title = "Values and primitives"
 
-  h1 "Values and primitives"
+  chapter_header "Values and primitives" {
+    kicker       = "The WCL language · reference"
+    reading_time = "17 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "[Documents, fields and blocks](lang_documents) covered the shapes a document is made of. This chapter covers what goes _inside_ them: the scalar values that may sit on the right of an `=`, in a block label, or in a table cell. There are seven ways to write one: numbers, unit literals, booleans, identifiers, symbols, strings and `none`. The whole chapter is those seven, in that order. Everything composite (lists, tensors, records, variants) is [Lists, tensors and records](lang_collections)."
 
@@ -319,7 +324,7 @@ CONSOLE
   }
 
   callout "A unit resolves when it is read, not when it is checked" {
-    class = ["warning"]
+    kind = :warning
     body  = "Unit resolution happens during evaluation, and fields evaluate lazily, so `wcl check` prints `OK` on the file above. `wcl get`, `wcl eval` and `wcl parse` all force the field and report it. That behaviour is the general shape of laziness rather than anything about units. [How a document evaluates](lang_evaluation) covers which errors surface when."
   }
 
@@ -398,7 +403,7 @@ WCL
   p "That is the whole list. `type`, `interface`, `union`, `symbol_set`, `let`, `fn`, `import`, `use`, `namespace`, `connection`, `extends` and `as` are recognised only in declaration position, so `type = 1` is a legal field. It reads badly. The language will not stop you."
 
   callout "Conventions, not rules" {
-    class = ["note"]
+    kind = :note
     body  = "The standard library uses `snake_case` for fields, `let` bindings, block kinds and symbols, and `PascalCase` for types, interfaces, unions, variants and symbol sets. Nothing enforces this. Pick a style and hold it."
   }
 
@@ -481,7 +486,7 @@ WCL
   }
 
   callout "The four do not mix" {
-    class = ["warning"]
+    kind = :warning
     body  = "A `utf8` field will not take an `ascii` literal, and an `ascii` field will not take a plain one: `field 'a' declared as utf8 but value is ascii`. Two strings that print the same are still two types. Convert at the host layer, or declare the field as the encoding you are going to write."
   }
 
@@ -604,7 +609,7 @@ CONSOLE
   p "`??` is the none-coalescing operator: it evaluates its left side, and only if that is `none` does it evaluate its right. It short-circuits, so the fallback costs nothing when it is not needed."
 
   callout "Written none and absent are not the same thing" {
-    class = ["note"]
+    kind = :note
     body  = "`region = none` is a field that holds `none`. Leaving the line out entirely is a field that does not exist: `wcl check` still passes, because the type is optional, but `wcl get` answers `no such path: region` rather than `none`. Both are legal. Only the first is addressable."
   }
 

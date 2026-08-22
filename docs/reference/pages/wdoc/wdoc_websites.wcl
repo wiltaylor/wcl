@@ -7,7 +7,12 @@
 page wdoc_websites {
   title = "Websites"
 
-  h1 "Websites"
+  chapter_header "Websites" {
+    kicker       = "wdoc · reference"
+    reading_time = "17 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A **website** is the third thing wdoc builds. A book renders a chapter tree into a sidebar. A presentation renders pages into a slide deck. A website renders _your_ HTML and CSS, with wdoc-rendered content dropped into holes you cut in it. You bring the design: a Figma export, a Claude artifact, a hand-built theme, a Vite bundle. wdoc brings the words."
 
@@ -181,7 +186,7 @@ CONSOLE
   }
 
   callout "Two things called a slot" {
-    class = ["note"]
+    kind = :note
     body  = "The same `slot name: Type` syntax declares the parameters and content holes of a `wdoc_component`. It is one language feature with two hosts: a template's slots are filled by a _page_, a component's by an _instance_. Everything below is the template half. See [Data views](wdoc_data_views) for the component half."
   }
 
@@ -308,7 +313,7 @@ CONSOLE
   }
 
   callout "The stdlib layouts are in scope too" {
-    class = ["warning"]
+    kind = :warning
     body  = "`import <wdoc.wcl>` brings in the built-in `webpage`, `book`, `presentation` and `website` templates. Their slot names `content`, `banner`, `hero`, `sidebar` and `footer` count as declared as far as the language is concerned. So a stray `hero { … }` beside your own layout never produces the schema violation above. It produces one of the two \"fills slot `hero`, but …\" contract errors instead, which is the more useful answer anyway."
   }
 
@@ -380,7 +385,7 @@ WCL
   p "The site's head assets come first in the `<head>`, then the layout's, in the order the layout returned them. wdoc deduplicates nothing: name the same stylesheet in both places and the page links it twice."
 
   callout "Top level only" {
-    class = ["warning"]
+    kind = :warning
     body  = "A `Head` is hoisted into `<head>` only when it is an element of the list `render` returned. A `Head` nested inside an element's `children` renders to **nothing**. It does not leak into the `<body>`, and it does not warn. If a head helper had no effect, check that it is not sitting inside an `el(…)` call."
   }
 
@@ -425,7 +430,7 @@ CONSOLE
       | "The assets folder"      | "`assets = [\"dist\"]`"                 | "copied into the output tree, and nothing is linked"  | "the whole site build"           | "another tool already built the files" |
   }
 
-  p "The last row is the one that catches people, because it is the only one that links nothing. `assets` puts bytes in the output directory and stops there. Copying a stylesheet and referencing it are two decisions. That is why the worked example names `assets/site.css` twice: once under `assets` to ship the folder, once under `stylesheets` to link the file. Rows one and two belong to [Themes and styling](wdoc_styling), which covers them properly."
+  p "The last row is the one that catches people, because it is the only one that links nothing. `assets` puts bytes in the output directory and stops there. Copying a stylesheet and referencing it are two decisions. That is why the worked example names `assets/site.css` twice: once under `assets` to ship the folder, once under `stylesheets` to link the file. Rows one and two belong to [Styling rules](wdoc_css), which covers them properly."
 
   h2 "The built-in website layout"
 
@@ -540,7 +545,8 @@ CONSOLE
   list {
     li "[Templates and layouts](wdoc_templates). `template`, `TemplateCtx`, the stdlib parts and the `el` constructor family this chapter builds on."
     li "[Documents, pages and sites](wdoc_sites). The `site` block in full, `menu`, `root`, and the shape of the output tree."
-    li "[Themes and styling](wdoc_styling). `theme`, `accent`, and the structured `class` and `style` blocks the comparison table names."
+    li "[Themes](wdoc_styling). `theme` and `accent`."
+    li "[Styling rules](wdoc_css). The structured `class` and `style` blocks the comparison table names."
     li "[Presentations](wdoc_presentations). Repeated slots, written `content*`, and the collection templates they turn on."
     li "[Data views](wdoc_data_views). `wdoc_component`, its own `slot` declarations, and repeaters."
     li "[Output targets](wdoc_outputs). What a website build shares with the Markdown and PDF targets, and what it keeps to itself."

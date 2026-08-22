@@ -7,11 +7,25 @@
 page quickstart {
   title = "Quick start"
 
-  h1 "Quick start"
+  chapter_header "Quick start" {
+    kicker       = "WCL Reference · tutorial"
+    reading_time = "10 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "This is the shortest complete path through WCL. You install the tool, write one file, watch the tool refuse it, give it a schema, read the document back, and then tighten the schema until it catches the mistakes a data format would have waved through. It closes by building a small wdoc site with the same binary."
 
   p "Every file and every command below was run before it was written down. Type them and compare. [Introduction](intro) covers what WCL is for and how it compares with JSON, YAML and TOML."
+
+  h2 "Before you start"
+
+  list {
+    li "**A terminal and a text editor.** Nothing else. WCL is one static binary with no runtime and no project scaffolding, and every command below is typed at a shell prompt."
+    li "**About twenty minutes**, if you type the files rather than copy them."
+    li "**Linux on x86_64** for the prebuilt binary. On anything else — macOS included — the [Install](#install) section builds from source instead, which needs a [Rust toolchain](https://rustup.rs)."
+    li "**No prior WCL.** This chapter assumes you have read none of the rest of the book. Every term it uses, it introduces."
+  }
 
   h2 "Install"
 
@@ -76,7 +90,7 @@ CONSOLE
   }
 
   callout "There is no schema-free document" {
-    class = ["note"]
+    kind = :note
     body  = "That refusal is the first rule of the language, and it is worth meeting head-on. Data needs a schema to stand on: a top-level field that no `@document` type declares is an error, and so is a block kind that no `@block` or `@table` type declares. A file that holds nothing but types, `let` bindings and functions is fine. That is a library, not data. Every complete example in this book therefore carries its schema, and so will yours."
   }
 
@@ -251,7 +265,7 @@ CONSOLE
   p "None of this stops you reading the file. `wcl eval app.wcl envs.prod.replicas` still answers `-1`, and still exits `0`. Resolving a path asks what a value is, never whether it is allowed, so a field can be out of range and readable at the same time. Validation is `wcl check`'s job alone. That is the command to put in the pre-commit hook."
 
   callout "Not everything waits for wcl check" {
-    class = ["warning"]
+    kind = :warning
     body  = "Fields evaluate lazily, so an error inside an expression surfaces when something asks for the value rather than when `wcl check` runs. `debug = no` passes `wcl check`, because `no` is a name and the schema does not resolve names. It then fails on `wcl eval` with `unresolved reference 'no'`. [How a document evaluates](lang_evaluation) covers which errors land where, and why."
   }
 

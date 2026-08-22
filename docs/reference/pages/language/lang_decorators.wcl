@@ -6,7 +6,12 @@
 page lang_decorators {
   title = "Decorators"
 
-  h1 "Decorators"
+  chapter_header "Decorators" {
+    kicker       = "The WCL language · reference"
+    reading_time = "18 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A **decorator** is an annotation written above a declaration: `@block(\"service\")`, `@doc(\"the edge tier\")`, `@inline(0)`. It attaches structured data to the thing below it, and it does nothing on its own. Something else reads it."
 
@@ -238,7 +243,7 @@ TEXT
   }
 
   callout "A bad declaration is reported once" {
-    class = ["note"]
+    kind = :note
     body  = "When `@applies_to` names a block kind that does not exist, the decorator's every _use_ site stops being checked against `kinds`. That is deliberate. A misspelt kind is one declaration error, and repeating it at forty otherwise-correct call sites would bury the line that needs fixing."
   }
 
@@ -313,7 +318,7 @@ WCL
   }
 
   callout "The comparison that matters: describe or change" {
-    class = ["info"]
+    kind = :info
     body  = "Split the twenty-two by what the language does with one. Most of them **describe a shape**: `@block`, `@child`, `@children`, `@inline`, `@default`, `@table`, `@document`, `@ref`, `@min`, `@max`, `@non_empty`, `@unit`. The language reads every one, and what it reads is a fact about the declaration it sits on. Five of them **change how the language handles the node**: `@schemaless` turns validation off, `@by_ref` changes what reification produces, `@contextual` changes where a block may sit and where its children come from, `@block_slot` changes what a `slot` derives to, and `@declares_kind` makes an instance declare kinds. Writing one of those is not annotating a declaration. It is changing how every instance of it is placed, checked or reified. And exactly one built-in is **read by nobody**: `@doc`. The language declares it and never looks at it, so documentation metadata has one agreed spelling. A library vocabulary takes that shape too. wdoc declares `@only`, `@except` and `@wdoc.file`, and wdoc, not the language, reads them."
   }
 
@@ -498,7 +503,7 @@ CONSOLE
   p "Placement is only half. `@contextual` also marks the block as one whose children are **generated**, and the language does not know how. It cannot: \"iterate `each`, bind each element to the symbol named by `as`\" is behaviour, and behaviour belongs to whoever defined the vocabulary. So the host registers an **expander**, a Rust callback on the `Environment`, and the language consults it when it projects a `@children(\"card\")` slot, so the generated cards land in the slot exactly like the authored one."
 
   callout "A decorator declares that, never how" {
-    class = ["note"]
+    kind = :note
     body  = "Demanding a `@contextual` block's generated children from a document opened with no registered expander is a hard error naming the kind. The language declines to guess. Parsing and formatting never demand them, so `deck.wcl` above checks green with no host in sight: `wcl check`, `wcl parse` and `wcl fmt` never ask what the `repeat` expands to. Anything that evaluates the expansion must open the document with the host's environment."
   }
 
@@ -585,7 +590,7 @@ TEXT
   p "Both messages name `metric_card` as the schema, and neither the message nor the code that produced it knows the word \"component\". That is the whole point. The host contributed a vocabulary, and the language's generic checks apply to it."
 
   callout "Membership, not types" {
-    class = ["warning"]
+    kind = :warning
     body  = "An instance of a declared kind gets exactly two checks: every field it writes is a declared param, and every required param is written. The value in a param is **not** type-checked. `slot count: u32` filled with `count = \"three\"` passes `wcl check`. The declared type is preserved on the derived schema so a host can read it. Deciding what a param may hold is that host's business, because it is the host that binds it."
   }
 
@@ -704,7 +709,7 @@ CONSOLE
   p "`decorator_arg` reads the **resolved** slot, not the syntax: `@block(\"service\")` answers `\"service\"` for the `name` slot whether it was written positionally or as `name = \"service\"`, and an absent slot with a declared default answers the default. [Builtins](lang_builtins) documents all four in full, and `doc_comment` beside them."
 
   callout "These builtins take a reference, not a value" {
-    class = ["warning"]
+    kind = :warning
     body  = "`decorator_names(Service)` works. `decorator_names(services.web)` does not. A block reached through a gather field has already reified to a record, and the call fails with `expected data path (e.g. a type or block reference), found record`. Nor does a member access chain directly off one of these calls: bind the result to a `let` first, then read the field."
   }
 

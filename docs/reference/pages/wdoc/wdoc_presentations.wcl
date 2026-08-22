@@ -8,7 +8,12 @@
 page wdoc_presentations {
   title = "Presentations"
 
-  h1 "Presentations"
+  chapter_header "Presentations" {
+    kicker       = "wdoc · reference"
+    reading_time = "15 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A **presentation** is the third site shape. A `webpage` site renders one HTML file per page, and a `book` site does the same with a sidebar. A presentation site renders **the whole site into one `index.html`** and hands it to a keyboard-driven player. The pages become slides. A `deck` block on the site arranges them into a grid, `fragment` reveals content a step at a time, and `notes` carries what only the presenter sees."
 
@@ -180,7 +185,7 @@ CONSOLE
   p "A third mistake is not an error, and it is the one that will catch you."
 
   callout "One slide per line" {
-    class = ["warning"]
+    kind = :warning
     body  = "A `slide` has no body, and a body-less block keeps eating bare identifiers as labels. So `slide one  slide two` on one line parses as a **single** slide with the labels `one`, `slide` and `two`. Only the first label is read. You lose the second slide, `wcl check` prints `OK`, and the build succeeds with one slide fewer than you wrote. `wcl parse` shows you the truth: `slide one slide two { }`. Write one `slide` per line, always."
   }
 
@@ -199,7 +204,7 @@ CONSOLE
   p "The default deck ignores the page `title`. It sets no heading and no browser title. The `<title>` of a built deck is the **site** title, `Shipping WCL`. Give each slide its own `h1` or `h2`, as `talk.wcl` does. A page `title` is still worth setting when a template of your own reads it. See [The presentation template](#the-presentation-template)."
 
   callout "A section title renders nowhere" {
-    class = ["note"]
+    kind = :note
     body  = "`section \"Intro\"` looks like a heading, and the default layout never draws it. The label groups slides into a column and gives the section a name your own template can read from `TemplateCtx.deck`. The built deck contains neither the word `Intro` nor the word `Detail`. When you want a part title on screen, write it as a slide."
   }
 
@@ -277,7 +282,7 @@ WCL
   }
 
   callout "Notes are hidden, not private" {
-    class = ["warning"]
+    kind = :warning
     body  = "The overlay is hidden with CSS, so the text is in `index.html` and anyone can read the source. And on the static targets it is not even hidden. See [One deck, three targets](#one-deck-three-targets). Write notes as prompts for yourself, never as something the audience must not read."
   }
 
@@ -359,13 +364,13 @@ WCL
   }
 
   callout "Do not link into a deck with site:page" {
-    class = ["warning"]
+    kind = :warning
     body  = "A cross-site link like `[the talk](talk:title)` resolves to `talk/title.html`, and the link checker accepts it because `title` really is a page of the `talk` site. But a deck writes no per-slide files, so the built link is dead. Link to `./talk/` for the deck, or `./talk/index.html#/0/1` for one slide."
   }
 
   callout "The deck layout has no chrome to configure" {
-    class = ["note"]
-    body  = "`theme` and `accent` work. The deck reads the same `--wdoc-*` variables as every other template, so a themed deck is one field. `theme_toggle = true` and `search = true` do not: neither the toggle button nor the search widget is part of the presentation layout, so the first renders nothing and the second ships an empty index. See [Themes and styling](wdoc_styling)."
+    kind = :note
+    body  = "`theme` and `accent` work. The deck reads the same `--wdoc-*` variables as every other template, so a themed deck is one field. `theme_toggle = true` and `search = true` do not: neither the toggle button nor the search widget is part of the presentation layout, so the first renders nothing and the second ships an empty index. See [Themes](wdoc_styling)."
   }
 
   h2 "One deck, three targets"
@@ -408,7 +413,7 @@ CONSOLE
   p "The PDF target agrees with Markdown and differs from both. It writes one PDF per site, `pdf/talk.pdf` here, named after the site. The PDF opens on a title page carrying the site title, then gives one physical page per slide. Each of those pages runs the site title as a header and numbers itself `1/3`, `2/3`, `3/3`. It puts the note in the body too. And it orders the pages by the **source**, not by the `deck`: move a section and the deck reorders while the PDF does not."
 
   callout "A deck is not a handout" {
-    class = ["warning"]
+    kind = :warning
     body  = "`wcl wdoc build talk.wcl --type pdf` produces a valid PDF, and it is not the deck you presented: the order is the file's, the reveals are gone, and every speaker note is printed. Nothing warns you. When you need a handout, write it as a `book` site over the same content and build the two separately. [Output targets](wdoc_outputs) covers the three targets, and [Visibility](wdoc_visibility) covers keeping a block out of one of them."
   }
 
@@ -496,7 +501,7 @@ CONSOLE
     li "[Documents, pages and sites](wdoc_sites). `site`, `page`, the `sites` array, and how several sites share one document."
     li "[Templates and layouts](wdoc_templates). Slots, slot arity, collection templates and the whole of `TemplateCtx`."
     li "[Websites](wdoc_websites). The `webpage` template, its named slots, and the `menu` that orders a site."
-    li "[Themes and styling](wdoc_styling). `theme`, `accent` and the `--wdoc-*` variables the deck stylesheet consumes."
+    li "[Themes](wdoc_styling). `theme`, `accent` and the `--wdoc-*` variables the deck stylesheet consumes."
     li "[Output targets](wdoc_outputs). What `build`, `pdf` and `markdown` each produce, in full."
     li "[Visibility](wdoc_visibility). `@only` and `@except`, for keeping a block out of one target."
     li "[Data views](wdoc_data_views). `wdoc_repeater`, and generating slides from data."

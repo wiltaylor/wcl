@@ -11,7 +11,12 @@
 page wdoc_visibility {
   title = "Visibility"
 
-  h1 "Visibility"
+  chapter_header "Visibility" {
+    kicker       = "wdoc · explanation"
+    reading_time = "8 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "One document renders to three outputs: a website, a PDF and a folder of Markdown. It can also declare several sites, and lay each one out with a different template. A block that belongs in one of those and not in another says so with a **decorator**, rather than with a duplicate document. `@only` includes it. `@except` excludes it."
 
@@ -132,7 +137,7 @@ CONSOLE
   p "Look at the third paragraph. `@except(backends = [:markdown, :pdf])` and `@only(backends = [:html])` select the same set today, because there are exactly three targets. They do not say the same thing, and a fourth target would separate them. Write `@only` when the block is _for_ that target, and `@except` when the block is _wrong on_ that one."
 
   callout "Reach for @except when the reason is a limitation" {
-    class = ["tip"]
+    kind = :tip
     body  = "A live search box, a pan-and-zoom control, an embedded player: each is an HTML idea. Give each one `@except` naming the target it fails on, rather than `@only(backends = [:html])`. The `@except` form keeps working when the block starts rendering somewhere new. The `@only` form silently keeps hiding it."
   }
 
@@ -159,7 +164,7 @@ WCL
 
   p "There are two ways to keep content out of a site, and they work at different scales. A `page` names its sites with the ordinary `sites` **field**. A page belongs to sites, so that is data. `@only(sites = …)` scopes **one block inside a page** that several sites share. Reach for the field when the whole page is site-specific and for the decorator when one paragraph is."
 
-  p "The styling blocks (`class`, `base`, `media`, `keyframes`, `font_face`) carry their own `sites` field for the same reason. [Themes and styling](wdoc_styling) covers that one."
+  p "The styling blocks (`class`, `base`, `media`, `keyframes`, `font_face`) carry their own `sites` field for the same reason. [Styling rules](wdoc_css) covers that one."
 
   h2 "The templates axis"
 
@@ -168,7 +173,7 @@ WCL
   p "The value is a **template name**, not a fixed vocabulary. Four templates ship: `:webpage`, `:book`, `:presentation` and `:website`. You name a `template` block of your own here the same way. [Templates and layouts](wdoc_templates) covers writing one."
 
   callout "The axis reads the site, not the page" {
-    class = ["warning"]
+    kind = :warning
     body  = "The current template kind is the **site's `default_template`**. A `page` that overrides its own layout with `template = :book` inside a `:webpage` site still matches `templates = [:webpage]`, because the axis never looks at the page. Check that before you conclude a decorator is broken. Scope by `sites` when you meant the site, and by `templates` when you meant every site that uses one layout."
   }
 
@@ -229,7 +234,7 @@ CONSOLE
   }
 
   callout "Capability says can't, intent says don't want to" {
-    class = ["info"]
+    kind = :info
     body  = "The block's declaration states what the renderers **can** do. `@except` states what you **want**. The build refuses until the two agree. That refusal turns a silent hole in one output into an author's decision recorded in the source. The waiver is per instance on purpose: the next `file` block on the next page makes the same decision for itself."
   }
 
@@ -273,7 +278,7 @@ CONSOLE
     li "[Output targets](wdoc_outputs). The three targets the `backends` axis names, and what each one can carry."
     li "[Documents, pages and sites](wdoc_sites). The `site` block, the `sites` field on a page, and multi-site output."
     li "[Writing your own blocks](wdoc_extending). What makes a block native, and how a block declares the targets it covers."
-    li "[Themes and styling](wdoc_styling). The parallel `sites` field the styling blocks carry."
+    li "[Styling rules](wdoc_css). The parallel `sites` field the styling blocks carry."
     li "[Decorators](lang_decorators). How a decorator is declared and read back, in the language rather than in wdoc."
   }
 }

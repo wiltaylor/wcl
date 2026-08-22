@@ -45,7 +45,12 @@ type Ch29Server {
 page wdoc_data_views {
   title = "Data views"
 
-  h1 "Data views"
+  chapter_header "Data views" {
+    kicker       = "wdoc · reference"
+    reading_time = "20 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A **data view** is document content computed from data rather than typed out block by block. You declare the data once, as a `let` list or as blocks a `@document` schema gathers. Every card, table, chart, diagram and page then derives from that one declaration. Change the data and every view moves with it."
 
@@ -227,7 +232,7 @@ CONSOLE
   p "There is no component vocabulary inside the language, and no hand-rolled slot checker. An unfilled slot is a missing required field. A misspelt slot is an unknown field. See [Schemas](lang_schemas) for the two errors in their ordinary setting."
 
   callout "A slot's declared type is not checked" {
-    class = ["warning"]
+    kind = :warning
     body  = "Membership and required-ness are the whole of the check on a component instance. The derived schema stops there. `value = \"twelve\"` against `slot value: f64` passes `wcl check` today. The same value in an ordinary `cpu: f64` field fails with `field 'cpu' declared as f64 but value is utf8`. Annotate your slots anyway. The type says what the slot is for, and it is what makes `?` mean optional. Do not expect the tool to hold you to it."
   }
 
@@ -451,7 +456,7 @@ WCL
   }
 
   callout "A generated route is a slug" {
-    class = ["note"]
+    kind = :note
     body  = "The page's interpolated label becomes its route, so it must be non-empty, hold only `A-Za-z0-9_-`, and be unique within its site. A colliding or space-bearing route fails the build. Build one from prose with `to_lower(replace(name, \" \", \"-\"))`. Links to a generated page resolve normally, because the pages exist before the link checker runs. A link whose target is computed from the same data works."
   }
 
@@ -503,14 +508,14 @@ WCL
 
   p "Two `partial ch29_aside` deposits sit in this page's source immediately below this paragraph, and neither of them renders there. The `collect` that follows them picks up both:"
 
-  partial ch29_aside { callout "From the first deposit" { class = ["note"]  body = "Written where the prose needed it." } }
+  partial ch29_aside { callout "From the first deposit" { kind = :note  body = "Written where the prose needed it." } }
 
-  partial ch29_aside { callout "From the second deposit" { class = ["tip"]  body = "Written somewhere else entirely." } }
+  partial ch29_aside { callout "From the second deposit" { kind = :tip  body = "Written somewhere else entirely." } }
 
   collect ch29_aside
 
   callout "What a collect reaches" {
-    class = ["note"]
+    kind = :note
     body  = "Collection is **document-global**, not page-local. A `collect` gathers matching deposits from the root document and every file a top-level `import` pulls in, whichever page each one sits on. Tag distinctly, or one page's sidebars turn up in another's appendix. Four limits follow. A `collect` does not reach a file brought in by a block-scoped (lazy) `import`. A `partial` nested inside another partial's body belongs to that body, and no `collect` gathers it separately. Do not put `id`s in a collected body, because per-page id checks run before collection. Finally, a `collect` whose gathered content holds a `collect` of the same tag renders nothing for the inner one. wdoc breaks the cycle rather than following it."
   }
 
@@ -576,7 +581,7 @@ WCL
   p "Records carrying a body nest to any depth, and a numeric `@inline(0)` label is fine. Read that path as [Documents, fields and blocks](lang_documents) reads any other: `tutorials` is the root gather field, `deploy` and `1` are labels, `steps` is a nested gather field, `detail` is the body slot."
 
   callout "steps.1 is a label, not an index" {
-    class = ["warning"]
+    kind = :warning
     body  = "`steps.1` matches the step **labelled** `1`. It is not the first element of the list. Relabel the steps `10`, `20`, `30` and `steps.1` resolves to nothing, while `steps.10` resolves to the first one. Path segments address blocks by label everywhere in WCL. A body slot is no exception."
   }
 
@@ -674,7 +679,7 @@ WCL
   }
 
   callout "A union or interface slot documents as one name" {
-    class = ["note"]
+    kind = :note
     body  = "`child_types` resolves a slot to its declared element type. A slot that accepts a union or an interface resolves to that type's name. `type_table` documents a single concrete type, so it does not expand such a slot into a table per member. Document the members individually."
   }
 

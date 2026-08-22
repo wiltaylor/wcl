@@ -11,7 +11,12 @@
 page wdoc_code {
   title = "Code"
 
-  h1 "Code"
+  chapter_header "Code" {
+    kicker       = "wdoc · reference"
+    reading_time = "16 min read"
+    updated      = "2026-08-21"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A `code` block is a source listing: a language tag, some text, and an optional filename. It is the block a technical document uses most, and it is deliberately thin. It measures nothing, draws no chrome, and knows nothing about the page around it. It hands the renderer a listing and the language it is written in, and each output target draws that listing the way its own medium wants."
 
@@ -200,7 +205,7 @@ WCL
   p "Prefer anchors. A line range is addressed by position, so it silently means something different the moment anyone inserts a line above it — which is the drift this feature exists to stop. An anchor moves with the code it marks. Setting both `anchor` and `lines` on one block fails the build rather than picking a precedence rule nobody would remember."
 
   callout "Markers never reach the page" {
-    class = ["note"]
+    kind = :note
     body  = "An `ANCHOR:` comment is bookkeeping addressed to wdoc, so it is dropped from every listing — anchored, line-ranged, or whole-file. Anchors may nest, and an inner one's markers vanish from the outer region too. The listing above, which *shows* the markers, is written inline with `source` for exactly that reason."
   }
 
@@ -284,12 +289,12 @@ CONSOLE
   p "That is the whole point of naming a file rather than copying it. Rendering an empty card, or last build's text, would put back exactly the silent drift the field exists to catch. A listing that names a file is a listing the build is promising to keep true."
 
   callout "`wcl check` does not catch it" {
-    class = ["warning"]
+    kind = :warning
     body  = "`check` parses and validates against the schema; it never renders, and the file is read at render time. A `source_file` pointing at nothing passes `wcl check` and fails `wcl wdoc build`. Put the build in CI, not just the check."
   }
 
   callout "`wdoc serve` does not watch the file" {
-    class = ["note"]
+    kind = :note
     body  = "The dev server's watcher tracks `.wcl` sources only, so editing the quoted code does not add to its pending-changes note. Rebuilds are manual anyway — press Enter — and a full rebuild re-reads every file-backed listing, so the change does land. It just is not what prompts you to ask for it."
   }
 
@@ -385,12 +390,12 @@ CONSOLE
   p "The prompt, the program name and its options carry token classes. The four output lines carry none, so they render exactly as `text` would have. Tag a session `console`, a shell _script_ `bash`, and bare output with no `$` line `text`."
 
   callout "A tag with punctuation must be quoted" {
-    class = ["note"]
+    kind = :note
     body  = "The tag is an `identifier`, and `c++`, `c#`, and `f#` are not valid bare identifiers. Quote them, `code \"c#\" { … }`, exactly as you would quote any other block label. The quotes are about the text, not the declared type. See [Documents, fields and blocks](lang_documents)."
   }
 
   callout "A missing tag is not caught" {
-    class = ["warning"]
+    kind = :warning
     body  = "The schema declares `language` as a required field, but nothing currently refuses a block with no label at all: `code { source = \"…\" }` passes `wcl check`, renders as plain text, and emits an empty language label and a bare `class=\"language-\"`. That is a gap, not a feature. Always write a tag. Write `text` when there is no language."
   }
 
@@ -505,7 +510,7 @@ HTML
   p "Three things in there are worth knowing about. The `<span class=\"code-lang\">` holds the tag exactly as you wrote it, `bash` and not `BASH`. The upper-casing is a CSS rule on the class, so a theme may drop it. Every source line is wrapped in its own `<span class=\"code-line\">`, and the gutter numbers are a CSS counter on that wrapper rather than text in the markup. That is why copying a listing out of the page copies the code and not the numbers. And the gutter is not optional: HTML listings always carry line numbers."
 
   callout "Per-line highlighting restarts the grammar" {
-    class = ["warning"]
+    kind = :warning
     body  = "Wrapping each line separately is what makes the gutter work, and it has a real cost: the HTML highlighter starts each line from scratch. A construct that spans lines loses its scope after the first one. Give it a Rust block comment and line 1 is comment-coloured, while `spanning lines */` on line 2 comes back as ordinary source with `*` and `/` read as operators. Short listings, the kind a document carries, are unaffected. The PDF backend has no gutter and carries grammar state across lines, so the same listing prints correctly there. When a listing needs a long block comment, prefer line comments."
   }
 
@@ -585,7 +590,7 @@ site manual {
 WCL
   }
 
-  p "Some scopes have no bundled rule, and the card chrome has none either. For anything the roles do not reach, declare a `class` block against the `tok-` selector or against `code-card`, `code-filename`, `code-name`, `code-lang` and `code-block`. [Themes and styling](wdoc_styling) covers palettes, roles and `class` blocks in full."
+  p "Some scopes have no bundled rule, and the card chrome has none either. For anything the roles do not reach, declare a `class` block against the `tok-` selector or against `code-card`, `code-filename`, `code-name`, `code-lang` and `code-block`. [Styling rules](wdoc_css) covers palettes, roles and `class` blocks in full."
 
   h2 "Where to go next"
 
@@ -593,7 +598,8 @@ WCL
     li "[Text and formatting](wdoc_formatting). Prose, headings, and the backtick inline pattern, which is a different thing from this block."
     li "[Demo blocks](wdoc_demo). Show a snippet and its rendered result side by side. A demo is a `code` block plus a live rendering."
     li "[Output targets](wdoc_outputs). The content IR, the three backends, and what each one can and cannot express."
-    li "[Themes and styling](wdoc_styling). Palettes, the syntax roles, and `class` blocks."
+    li "[Themes](wdoc_styling). The seven `syn_*` roles a palette declares for code."
+    li "[Styling rules](wdoc_css). The `class` block a `tok-` scope or a card element is restyled through."
     li "[Visibility](wdoc_visibility). `@only` and `@except`, for the listing that should reach one target and not another."
     li "[Writing your own blocks](wdoc_extending). `lower`, `@native`, and how a block of yours can produce a listing."
     li "[Values and primitives](lang_values). Heredocs, raw and interpolating, in full."

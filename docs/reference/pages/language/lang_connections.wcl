@@ -6,7 +6,12 @@
 page lang_connections {
   title = "Connections"
 
-  h1 "Connections"
+  chapter_header "Connections" {
+    kicker       = "The WCL language · reference"
+    reading_time = "17 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Most of a document is a tree. A **connection** is the language's answer to the part that is not: an edge from one block to another, declared once as a schema and written as an arrow. `web -> db :uses` is a whole item, the thirteenth of the thirteen [item forms](lang_documents#the-thirteen-item-forms), and a field declared `@connections(DependsOn)` reads every such arrow back as a list of records."
 
@@ -218,7 +223,7 @@ CONSOLE
   p "Two blocks each declare a `web`, and neither region's edge list mentions the other's. That is scoping doing its job, and it is the subject of the next section."
 
   callout "One schema, many fields" {
-    class = ["note"]
+    kind = :note
     body  = "Nothing stops two fields from naming the same connection schema, at different levels or in different types. The wdoc standard library does exactly that: `diagram` and `container` both declare `@connections(Edge) edges: list<Edge>`, so a nested container gathers its own child edges while the diagram gathers the top-level ones. The declaration says what an edge _is_. Each field says whose edges it collects."
   }
 
@@ -272,7 +277,7 @@ CONSOLE
   }
 
   callout "The document index is first-match, and it is flat" {
-    class = ["warning"]
+    kind = :warning
     body  = "Two blocks in different parts of the tree may answer to one name, and the document-wide fallback keeps only the first it walks into. `gateway -> db` reaches `east.db` because that is the `db` the walk met first. There is no path syntax to say which one you meant, and no error when there is more than one. Scope is the tool for that: write the arrow inside the block whose `db` you mean, and the innermost-out search settles it before the index is asked."
   }
 
@@ -467,7 +472,7 @@ CONSOLE
   p "Two connections over the same pair of types is a modelling decision rather than a slip, and the fix is a modelling one: separate the endpoint types, or fold the two relationships into one and let the kind symbol tell them apart."
 
   callout "An ambiguous arrow still projects into both lists" {
-    class = ["warning"]
+    kind = :warning
     body  = "`check` refuses the document above, but projection is a separate mechanism and it does not arbitrate. Ask for either field and the arrow is in it: `wcl get ambiguous.wcl deps` answers `[DependsOn { destination: db, kind: :uses, source: web }]` and `wcl get ambiguous.wcl calls` answers `[TalksTo { destination: db, kind: :uses, source: web }]`. One edge, counted twice. Fix the ambiguity. Do not build on a document that only `get` will read."
   }
 
@@ -641,7 +646,7 @@ CONSOLE
   p "What the checks catch also differs in strength. `&T` checks the most: the target's whole type, not its spelling. It is also checked latest. A connection is next, and `check` is what catches it: both ends must exist, and their types must fit a declared schema. `@ref` is the weakest: a kind and an id, matched as strings. Reach down that list only when the stronger form does not fit what you are modelling."
 
   callout "wdoc's `connection` chapter is about drawing, not declaring" {
-    class = ["note"]
+    kind = :note
     body  = "[Connections and routing](wdoc_diagram_connections) covers how wdoc _draws_ an edge: the route it takes, where it anchors on each shape, how it is labelled. Its subject is the rendering of the `Edge` schema above. This chapter's subject is the language mechanism that any host, wdoc included, builds on. The arrow you type is the same one."
   }
 

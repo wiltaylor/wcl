@@ -7,7 +7,12 @@
 page lang_control_flow {
   title = "Control flow"
 
-  h1 "Control flow"
+  chapter_header "Control flow" {
+    kicker       = "The WCL language · reference"
+    reading_time = "15 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "WCL has no statements, no loops, and no early return. It has **expressions**, and an expression always produces exactly one value. Control flow is therefore not a way to _do_ something conditionally. It is a way to _choose_ a value."
 
@@ -161,7 +166,7 @@ CONSOLE
   }
 
   callout "WCL does not check the branches against each other" {
-    class = ["warning"]
+    kind = :warning
     body  = "`if cond { 1 } else { \"x\" }` is legal. Only the branch that runs produces a value, and only that value meets the field's declared type. With `cond` false the field gets `\"x\"` and `wcl check` prints `OK`. Flip `cond` to true and the same file fails with `field 'a' declared as utf8 but value is i64`. A branch you never take is a branch nothing checks. Write both branches at one type yourself."
   }
 
@@ -323,7 +328,7 @@ CONSOLE
   p "The rule costs one arm and buys a guarantee: **a `match` always produces a value.** There is no \"no arm matched\" outcome you can reach from source, so no `match` needs a fallback around it."
 
   callout "Cheap, not clever" {
-    class = ["note"]
+    kind = :note
     body  = "The trade is deliberate. A type-directed exhaustiveness check would let you drop `_ => …` once you cover every variant of a union. It would then have to re-check every `match` in every importing document each time that union grew. The parser alone decides the structural rule, so it costs nothing and never changes its mind. The price is a `_` arm you may know is unreachable."
   }
 
@@ -415,7 +420,7 @@ WCL
   p "An ordinary reference needs no parentheses. `match cache { … }` and `match self.rollout { … }` are unambiguous, and the rest of this chapter never wraps one."
 
   callout "A record pattern ignores what it does not name" {
-    class = ["warning"]
+    kind = :warning
     body  = "`Shape::Rect { w }` matches a `Rect` that also carries an `h`, and it does so whether or not you write the `..`. The matcher checks the fields the pattern lists and nothing else. Write the `..` anyway: it is the only mark in the source that says the omission was on purpose, and a reader who has to guess will guess wrong."
   }
 
@@ -440,7 +445,7 @@ WCL
   }
 
   callout "The required else is a known gap" {
-    class = ["warning"]
+    kind = :warning
     body  = "A plain `if` may drop its `else`. An `if let` may not. `a = if let S::Circle(r) = s { \"c\" }` fails to parse with `'if let' requires an 'else' branch`. The gap is scope, not a semantic obstacle. The evaluator would answer `none` on a no-match, exactly as a branchless `if` does. Until the restriction is lifted, write `else { none }` yourself, and give the field an optional type."
   }
 
@@ -545,7 +550,7 @@ WCL
   }
 
   callout "A block never starts with a field name and a colon" {
-    class = ["note"]
+    kind = :note
     body  = "`{ … }` in expression position is also the syntax for a bare record literal. The parser decides by lookahead, and the test is exact: an opening brace followed by an identifier and a `:` opens a **record**. Anything else opens a **block**. `{ let x = 1; x }` is a block. `{ name: \"web\" }` is a record. See [Lists, tensors and records](lang_collections)."
   }
 
@@ -677,7 +682,7 @@ CONSOLE
   }
 
   callout "A fallback, not a silencer" {
-    class = ["warning"]
+    kind = :warning
     body  = "`try` makes any evaluation failure recoverable, cycles and upstream field errors included. That reach is the point, and it is also the risk: a `try` wrapped around a whole calculation turns a real mistake into a plausible default that nothing complains about. Wrap the smallest expression that can fail, and only where the fallback means something. It is a division that may divide by zero, not a document that may be wrong."
   }
 

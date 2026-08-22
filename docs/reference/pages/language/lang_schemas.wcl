@@ -6,7 +6,12 @@
 page lang_schemas {
   title = "Schemas"
 
-  h1 "Schemas"
+  chapter_header "Schemas" {
+    kicker       = "The WCL language · reference"
+    reading_time = "20 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A schema says what a document may contain. It is not a separate file format, and it is not a comment convention. A schema is ordinary WCL: `type` declarations carrying decorators. `@document` names the type that governs the root. `@block` and `@table` register block kinds. `@inline`, `@child`, `@children` and `@default` say how each block is written. `@schemaless` is the way out when the shape is genuinely open."
 
@@ -105,7 +110,7 @@ CONSOLE
   p "Four more decorators constrain a _value_ rather than a shape: `@min`, `@max`, `@non_empty` and `@ref`. They belong to [Decorators](lang_decorators), which also covers declaring decorators of your own with `@decorator`."
 
   callout "A schema is data too" {
-    class = ["note"]
+    kind = :note
     body  = "Decorators are values, not syntax. `@children(\"step\", min = 1)` is a call with one positional argument and one named one, and `wcl check` validates those arguments against the decorator's own declared schema. Misspell it as `minimum = 1` and you get `argument 'minimum' is not declared by decorator schema 'Children'` rather than silence. That is also why a decorator you invent needs an `@decorator` declaration before you may use it. See [Decorators](lang_decorators)."
   }
 
@@ -179,7 +184,7 @@ CONSOLE
   }
 
   callout "Two ways to be refused, and they read differently" {
-    class = ["note"]
+    kind = :note
     body  = "`has no @block or @table declaration` means the kind does not exist. `is not allowed inside 'x'` means it exists but has nowhere to land here. See [the next section](#child-and-children-where-a-nested-block-lands). Inside a block body the second message wins, even for an entirely unknown kind. A typo'd `task` inside a `stage` reports `block kind 'task' is not allowed inside 'stage'`. At the document root you get the first message instead."
   }
 
@@ -281,7 +286,7 @@ CONSOLE
   p "Rename that field to `name` and the same file checks green. The label is still the label, but the language no longer treats it as an identity, so repeats are allowed. Reach for `id` when other parts of the document point at the block. Reach for `name` when the label is a parameter that may repeat."
 
   callout "Labels are not counted or typed" {
-    class = ["warning"]
+    kind = :warning
     body  = "`@inline` says which field a label fills. It does not make `wcl check` verify how many labels an instance wrote, or what type they hold. Against the `Artifact` above, both `artifact \"binary\" \"a\" \"b\" { … }` and `artifact 42 { … }` print `OK`. Only a `@table` row has its values counted. See [that section](#table-a-kind-whose-instances-are-rows). Write your labels correctly. The tool will not catch you."
   }
 
@@ -476,7 +481,7 @@ CONSOLE
   }
 
   callout "required_fields is literal" {
-    class = ["warning"]
+    kind = :warning
     body  = "The check asks one question: did this instance write a field of that name? A field with a `@default` still counts as missing when it is listed, so listing a defaulted field defeats its default. And a name in the list that the type never declares is reported against every instance: `required_fields = [\"nope\"]` yields `block 'service' is missing required field 'nope'` forever. Spell the names as the type does."
   }
 
@@ -623,7 +628,7 @@ CONSOLE
   p "Validation of a `@table` block stops at that count. A row nests nothing, so the checker never looks inside one. A block written in a row disappears. Keep a row to its cells."
 
   callout "Every declared field is a column" {
-    class = ["warning"]
+    kind = :warning
     body  = "The count above is the type's whole field list, `@child` and `@children` slots included. Give a `@table` type a `@children(\"note\", min = 1) notes: list<Note>` and you have not opened it to nested blocks. You have added a third column. A two-cell row now fails with `table row for 'route' has 2 values, expected 3`, a third cell satisfies it, and the `min = 1` never runs. Declare child slots on `@block` types only."
   }
 
@@ -891,7 +896,7 @@ CONSOLE
   p "`OK` is not a mistake. The warning is advisory. It goes to standard error, and the exit code stays zero, because nothing here is a schema violation. The document is well-formed and means something other than what its author meant."
 
   callout "This is a build-time failure, one layer up" {
-    class = ["warning"]
+    kind = :warning
     body  = "The damage lands where the field is _iterated_. A wdoc template writing `each = services` renders the wrong blocks, or fails at build time with `unresolved reference`. That is long after `wcl check` said `OK`, and the build error names no collision. So a schema built to compose with a large library names its gathers away from the obvious word: `sw_components`, not `components`. A library gather field and a document gather field sharing a name is a rename, not a debugging session. Heed the warning."
   }
 

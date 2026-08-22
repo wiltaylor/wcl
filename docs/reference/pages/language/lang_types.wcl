@@ -7,7 +7,12 @@
 page lang_types {
   title = "Types"
 
-  h1 "Types"
+  chapter_header "Types" {
+    kicker       = "The WCL language · reference"
+    reading_time = "19 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A schema says what a document may contain. A **type** says what one value may be. Four keywords introduce a type: `type`, `interface`, `union` and `symbol_set`. A small grammar of _type references_ then names those types on the right of a colon. This chapter covers both halves."
 
@@ -240,7 +245,7 @@ CONSOLE
   }
 
   callout "A constraint bounds a value, not an absence" {
-    class = ["note"]
+    kind = :note
     body  = "`@min(1) retries: Positive?` is not a contradiction. An optional field has no value to bound when you write it as `none` or leave it out. `wcl check` skips the constraint and prints `OK`. Supply a number and the bound bites. The same reading explains `@non_empty` on a list. A list of nothing but `none` elements counts as empty, because every consumer drops those elements."
   }
 
@@ -285,7 +290,7 @@ CONSOLE
   }
 
   callout "Omitting a required field is not the same error" {
-    class = ["warning"]
+    kind = :warning
     body  = "`profile carol { }` does not trip the check above, and on an ordinary `@block` type it does not trip anything at all. `wcl check` prints `OK`. A field being _required_ by its type is not what makes it mandatory in an instance. `@block(\"kind\", required_fields = [...])` is. See [Schemas](lang_schemas). The `?` suffix governs whether `none` is an acceptable value, and that is all it governs."
   }
 
@@ -336,7 +341,7 @@ CONSOLE
   p "[Values and primitives](lang_values) covers the `:symbol` literal itself, including the symbols that belong to no declared set."
 
   callout "Membership is checked where the set is the declared type" {
-    class = ["warning"]
+    kind = :warning
     body  = "`wcl check` checks `hue: Palette` on a block field, as above. The same name reached indirectly escapes the check. `hue: Palette` inside a _union variant body_ accepts `:neon` and reads back as `Fill::Solid { hue: :neon }`. The variant dispatcher matches the value against the payload field's declared type. That match is deliberately permissive for a symbol against a named type. When you want the tool to hold you to a vocabulary, declare it on the block field."
   }
 
@@ -479,7 +484,7 @@ CONSOLE
   p "Reach for the bare record when you are writing data. The shape is the point, and a list of them reads cleanly. Reach for the explicit form in three cases. Use it to omit a variant's optional fields. Use it when two shapes are close enough that you would rather say which you mean. Use it where there is no union-typed slot to infer from."
 
   callout "VariantNoMatch is a late error more often than not" {
-    class = ["warning"]
+    kind = :warning
     body  = "Every transcript above uses `wcl get`, not `wcl check`. That is not an accident. Variant dispatch runs when something forces a field's value. `check` forces most fields, but it does not report what their evaluation raised. One case is the exception, and it is the one that matters most for authored data: a **literal list whose element type is a union**, written inside a block. `check` dispatches that list and reports a bad element. Two cases are not that one: a scalar union field, and a list at the document's top level. There the error waits for `wcl get`, `wcl parse`, or the build."
   }
 
@@ -539,7 +544,7 @@ CONSOLE
   p "The language consumes an interface in exactly two places: an [interface-reference variant body](#the-four-variant-bodies), and the reference fields of the next section."
 
   callout "extends on a record type is not inheritance of fields" {
-    class = ["warning"]
+    kind = :warning
     body  = "`type Marker extends Positioned { … }` does two things. It adds `Positioned`'s fields to the _effective_ field list, which interface conformance and the editor tooling read. And it makes `Marker` a descendant of `Positioned` for the reference check below. It does **not** widen what an instance of `marker` may write. Instance validation reads the type's own fields only. A `marker` block that writes the inherited `x` gets `field 'x' is not declared by schema 'Marker'`. To write the field, redeclare it."
   }
 
@@ -633,7 +638,7 @@ CONSOLE
   p "A reference field lets a schema stay open without becoming untyped. A renderer that consumes `&Drawable` accepts any shape a user declares later, as long as the contract holds. A field that consumes `&Positioned` accepts only the family you sanctioned."
 
   callout "Reference errors surface when the reference is read" {
-    class = ["warning"]
+    kind = :warning
     body  = "`wcl check` prints `OK` for `scene.wcl` above. Both readings run when the navigator is built, not during the schema pass. `wcl parse` builds it, and so does a host that walks the document. Related: `&T` is a property of a **field's own** declared type. `members: list<&Drawable>` parses, and the elements resolve, but the ordinary value-versus-type check refuses the list (`field 'members' declared as list<&Drawable> but value is list`). Declare one reference per field."
   }
 
@@ -699,7 +704,7 @@ CONSOLE
   }
 
   callout "The declared shape is not enforced" {
-    class = ["note"]
+    kind = :note
     body  = "A field declared `tensor<f64, [2, 3]>` accepts a tensor of any element type and any shape. Change the shape to `[3, 2]` and `wcl check` still prints `OK`. The value check asks whether the value is a tensor, and stops there. Declare the dimensions for the reader and for the host that consumes them. Do not expect `wcl check` to hold you to them."
   }
 
@@ -770,7 +775,7 @@ CONSOLE
   p "So `Label<Nonsense>` resolves through the alias to `utf8` and is checked as `utf8`. Assign it `5` and the message is `field 'a' declared as Label<Nonsense> but value is i64`. The message prints the arguments back and ignores them. The only shape the parser refuses is the empty list: `Label<>` is `type argument list cannot be empty`, because there would be nothing to print and `wcl fmt` would silently delete the brackets."
 
   callout "What the argument list is for today" {
-    class = ["note"]
+    kind = :note
     body  = "One thing: slot derivation. A `@declares_kind` component declares a slot as `content<SvgBlock>`. The language emits both a typed field and a `@children(SvgBlock)` decorator. The _decorator_ then does the child-kind checking. That is enough for the job and is why nothing more was built. Full generics need a declaration form, arity checking and substitution. That is a separate effort. Until then, read `Foo<Bar>` as `Foo` with a comment attached, and put anything you need enforced somewhere the language checks."
   }
 

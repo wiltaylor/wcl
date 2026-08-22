@@ -11,7 +11,12 @@
 page wdoc_media {
   title = "Images, videos and file assets"
 
-  h1 "Images, videos and file assets"
+  chapter_header "Images, videos and file assets" {
+    kicker       = "wdoc · reference"
+    reading_time = "17 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Three blocks put something that is not text into a document. `image` places a raster picture, either on a page or inside a diagram as a placeable shape. `video` embeds a clip on a page. `file` ships an arbitrary file into the build output and, when you ask it to, links to the copy. This chapter covers all three, the one rule they share about where a path points, and the consequence of that rule that surprises everyone: a built page is a set of references, and the references resolve only when something serves them."
 
@@ -74,7 +79,7 @@ WCL
   p "One entry, one base folder, however deep the page files nest under it. The exception is an `include`d sub-site. That is a build entry in its own right, so it brings its own base folder with it. See [Documents, pages and sites](wdoc_sites)."
 
   callout "Move the entry, move every path" {
-    class = ["warning"]
+    kind = :warning
     body  = "Because the base folder is the entry's, move `main.wcl` up or down one directory and every asset path in every page of the document silently re-points. The pages themselves did not move. A local source that no longer exists fails the build loudly (see [When the file is not there](#when-the-file-is-not-there)), so you hear about it. An external source does not notice at all."
   }
 
@@ -83,7 +88,7 @@ WCL
   p "A copied asset lands in the output's `_wdoc/` folder and the page refers to it by a **relative URL**. That is the whole mechanism, and it has one consequence worth stating on its own:"
 
   callout "A built page needs a server" {
-    class = ["note"]
+    kind = :note
     body  = "The page references images, videos, copied files, icons and tilemaps by relative URL into `_wdoc/`. Those URLs resolve when the output folder is **served**: `wcl wdoc serve`, a static host, any local web server. They do not reliably resolve when you double-click `index.html` and open the page directly from disk, because a browser applies different origin rules to a page it did not load over a connection. If a built page looks right but its pictures are missing, serve the folder before you go looking for a bug."
   }
 
@@ -121,7 +126,7 @@ WCL
 TEXT
   }
 
-  p "`class` adds names beside the built-in `wdoc-image` for your own rules to hook onto. [Themes and styling](wdoc_styling) covers where those rules go. `id` sets an explicit HTML id, so a link elsewhere in the document can point at the picture."
+  p "`class` adds names beside the built-in `wdoc-image` for your own rules to hook onto. [Styling rules](wdoc_css) covers where those rules go. `id` sets an explicit HTML id, so a link elsewhere in the document can point at the picture."
 
   h3 "The copied filename"
 
@@ -138,7 +143,7 @@ TEXT
   p "Two rules cover almost every case. If the picture carries information the surrounding prose does not, `alt` says what that information is, not what the picture looks like. If the picture is decoration, and the page reads correctly with it removed, write `alt = \"\"`. An empty `alt` tells a screen reader to skip the element. Skipping is exactly right for decoration, and it is not the same as omitting the field."
 
   callout "Omitted is not empty" {
-    class = ["warning"]
+    kind = :warning
     body  = "Leave `alt` out and the `<img>` carries no `alt` attribute at all. A screen reader falls back to announcing the filename, the generated `image-hero-8572175c.png`. That name is noise for a decorative picture and useless for an informative one. Write the text, or write `alt = \"\"` on purpose."
   }
 
@@ -159,7 +164,7 @@ TEXT
   p "Inside a diagram the same two fields are user units on the drawing surface, and there is a third: `scale` multiplies whatever size the box ends up with. Omit `width` and `height` there and wdoc reads the file's own pixel dimensions out of its header. That is a real read of a real file, and it can come up empty."
 
   callout "Three formats have readable headers" {
-    class = ["note"]
+    kind = :note
     body  = "The natural-size read understands PNG, GIF and JPEG. An SVG, a WebP, a corrupt file or any external URL yields no dimensions at all. In a diagram that leaves the box at 0×0 and the image invisible, so the build warns rather than drawing nothing quietly. On a page nothing depends on the read and nothing warns. The browser sizes the picture itself, and an SVG is perfectly fine there."
   }
 
@@ -232,7 +237,7 @@ WCL
   p "The emitted shape is an SVG `<image>` at that box, and the diagram's viewBox grows to fit it as it does for any other shape. [The diagram canvas](wdoc_diagrams) covers placement, anchors and sizing in full. [Connections and routing](wdoc_diagram_connections) covers attaching edges."
 
   callout "Aspect ratio is not preserved in a diagram" {
-    class = ["note"]
+    kind = :note
     body  = "A diagram `image` is emitted with `preserveAspectRatio=\"none\"`, so it stretches to exactly the box you gave it. That is deliberate, because a shape occupies the rectangle you place it in. But a `width` / `height` pair that does not match the file's proportions distorts the picture. On a page the opposite holds. The shipped `height: auto` rule keeps the proportions for you."
   }
 
@@ -309,7 +314,7 @@ WCL
   }
 
   callout "Always give a local video a poster" {
-    class = ["tip"]
+    kind = :tip
     body  = "wdoc never decodes a video file, so it cannot pull a frame out of one to make a thumbnail. A local video with no `poster` shows the plain placeholder in HTML and prints as a bare italic line in PDF. The same `poster` does three jobs: the HTML facade, the PDF still, and the fallback link text's companion. That is one field's worth of effort for the whole set of targets. A YouTube embed is the one case that can skip it."
   }
 

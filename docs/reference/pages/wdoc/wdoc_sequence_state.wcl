@@ -7,7 +7,12 @@
 page wdoc_sequence_state {
   title = "Sequence and state diagrams"
 
-  h1 "Sequence and state diagrams"
+  chapter_header "Sequence and state diagrams" {
+    kicker       = "wdoc · reference"
+    reading_time = "16 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Two blocks in this book draw a system's behaviour rather than its parts. A `sequence_diagram` draws **one run**: who spoke to whom, in what order. A `state_diagram` draws **every run**: the states a thing can be in, and what moves it between them. This chapter covers both, the child blocks each takes, and the thing they share with no other block in the standard library: neither of them is drawn in Rust. They are the two page-level blocks whose WCL lowering computes the whole geometry and hands one `Content::Drawing` to every backend."
 
@@ -101,7 +106,7 @@ CONSOLE
       | "`:external`" | "A dashed outline"                        | "A third party you call but do not own" |
   }
 
-  p "Two more fields tune the column. `link` wraps the head in an in-site link, written the way you write a link target anywhere else: a bare page name, or `site:page`. `class` **replaces** the theme's classes on the head shapes rather than adding to them, so a head you style yourself is a head you style completely. Read [Themes and styling](wdoc_styling) first."
+  p "Two more fields tune the column. `link` wraps the head in an in-site link, written the way you write a link target anywhere else: a bare page name, or `site:page`. `class` **replaces** the theme's classes on the head shapes rather than adding to them, so a head you style yourself is a head you style completely. Read [Styling rules](wdoc_css) first."
 
   h2 "Messages"
 
@@ -207,7 +212,7 @@ CONSOLE
   p "One `viewBox`, two rendered boxes. The default 760 asks for a figure nearly three times the size its content needs, so the height goes with it and a two-message exchange fills half a screen. Set `width` near the figure's natural size. There is nothing to crop and nothing to letterbox."
 
   callout "The height is never yours to set" {
-    class = ["note"]
+    kind = :note
     body  = "`sequence_diagram` and `state_diagram` declare `width` and no `height`. The content IR's `Drawing` node does carry an optional height, and these two blocks never fill it in. The aspect ratio of the fitted content decides, always. If a figure is too tall, it has too much in it, or `width` is too large."
   }
 
@@ -307,7 +312,7 @@ WCL
   p "That draws `approved [two sign-offs]`. A transition with no `guard` draws the trigger alone. A transition with neither draws an unlabelled arrow. `from` and `to` naming the same state draws a self-loop against the side of the box. The loop sits on the box's east side under `:top_to_bottom` flow and on its north side under `:left_to_right`, in both cases the side the outgoing edges do not already use."
 
   callout "Why not a connection statement?" {
-    class = ["info"]
+    kind = :info
     body  = "WCL has a `connection` form, `review -> published :approved`, and [Connections](lang_connections) covers it. It is the wrong tool here. A connection joins two endpoints under one symbol from a declared vocabulary. A transition needs two free strings that reach the renderer as text, and a stable id for anything else to point at. Written as a block, `trigger` and `guard` are ordinary declared fields the lowering reads like any other."
   }
 
@@ -455,7 +460,7 @@ CONSOLE
   p "Two things follow from the geometry being WCL rather than Rust. The first is that `desc` earns its keep: it becomes the `<svg>`'s `role=\"img\"` accessible name and its `<title>`, and in Markdown it becomes the image's alt text. Omit it and the figure is described as `sequence diagram` or `state diagram`. The second is that an empty figure is not a crash. With no participants, or no states, nothing carries geometry, so the fitter falls back to a strip 40 units tall rather than a full-width square of nothing."
 
   callout "Nothing here is private" {
-    class = ["info"]
+    kind = :info
     body  = "Everything the two lowerings use is available to a block you declare yourself: `extends ContentBlock`, `@children` slots, the `Svg` vocabulary, and `Content::Drawing`. A block of your own that computes shapes and returns a `Drawing` reaches every backend the same way, and needs no Rust at all. Pick it a name of its own, though: the built-in kind names are reserved, and re-declaring `sequence_diagram` is a build error. [Writing your own blocks](wdoc_extending) walks that path end to end."
   }
 
@@ -520,6 +525,6 @@ WCL
     li "[Flowcharts and swimlanes](wdoc_flowcharts). The third behaviour diagram: a process, rather than an interaction or a lifecycle."
     li "[Writing your own blocks](wdoc_extending). `extends ContentBlock`, `lower`, and returning a `Content::Drawing` of your own."
     li "[Output targets](wdoc_outputs). How one drawing becomes HTML, PDF and Markdown."
-    li "[Themes and styling](wdoc_styling). The theme classes the heads, lifelines, boxes, and edge labels carry."
+    li "[Styling rules](wdoc_css). The classes the heads, lifelines, boxes and edge labels carry."
   }
 }

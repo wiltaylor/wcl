@@ -6,7 +6,12 @@
 page wdoc_flowcharts {
   title = "Flowcharts and swimlanes"
 
-  h1 "Flowcharts and swimlanes"
+  chapter_header "Flowcharts and swimlanes" {
+    kicker       = "wdoc · reference"
+    reading_time = "12 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "There is no `flowchart` block. A flowchart is a [diagram](wdoc_diagrams) holding four shapes and a list of [connections](wdoc_diagram_connections). Two things make it worth drawing in WCL rather than in a drawing program: the `:layered` layout, which places the shapes for you from the connection graph, and the swim-lane, which is a **technique** rather than a block kind. This chapter is about both."
 
@@ -65,14 +70,14 @@ WCL
       | "`x` / `y`"        | "`f64` (default 0)"  | "Top-left corner. Omit under an auto-layout. See [the warning below](#layered-auto-layout)." |
       | "`width` / `height`"| "`f64`"             | "The figure's box. A layout solver reserves exactly this." |
       | "`fill` / `stroke`"| "`utf8?`"            | "Explicit colours, which opt the shape out of theming." |
-      | "`class`"          | "`list<utf8>?`"      | "Style classes. See [Themes and styling](wdoc_styling)." |
+      | "`class`"          | "`list<utf8>?`"      | "Style classes. See [Styling rules](wdoc_css)." |
       | "`connect_points`" | "`list<AnchorSide>?`"| "Which sides (`:north` / `:east` / `:south` / `:west`) edges may attach to. Default: all four." |
       | "`icon`"           | "`utf8?`"            | "An icon badge inside the figure. See [Icons](wdoc_icons). `icon_size`, `icon_pos` and `icon_class` tune it." |
       | "`link`"           | "`utf8?`"            | "Makes the figure a link to an in-site page. An unknown page fails the build." |
   }
 
   callout "Leave fill unset" {
-    class = ["note"]
+    kind = :note
     body  = "An unstyled shape, with no `fill`, no `stroke` and no `class`, gets a theme class named after its kind (`wdoc-process`, `wdoc-decision`, `wdoc-terminator`, `wdoc-node`). That is why the four figures above have different coloured outlines with no colour anywhere in the source. Those classes follow the site's light and dark mode. Set `fill` and you have opted out of that for good. The colour you wrote is the colour every reader gets, in both modes and in the PDF. Reach for `class` instead when you want a shape to stand out."
   }
 
@@ -95,7 +100,7 @@ WCL
   p "That is the whole labelling story for a `->` statement, and it is a short one: the grammar carries a kind and nothing else, so a decision names its answers through the kind. `:yes` and `:no` exist because those two answers are the ones a flowchart asks for over and over. An edge that needs any other word has to come from a computed `edges` list. [Connections and routing](wdoc_diagram_connections) covers that path."
 
   callout "An endpoint that names nothing is dropped" {
-    class = ["warning"]
+    kind = :warning
     body  = "`Edge` is declared `@dynamic`, because a diagram's endpoints may name ids that a repeater generated rather than ids you typed. The price of that is that a misspelled endpoint is not an error. The build warns, drops the edge, and renders the diagram without it. If an arrow you wrote is missing, check the spelling of both ids before you suspect the router."
   }
 
@@ -187,7 +192,7 @@ CONSOLE
   }
 
   callout "x and y are not ignored under a layout" {
-    class = ["warning"]
+    kind = :warning
     body  = "The solver positions each shape by wrapping it in a transform, and the shape then draws itself at its own `x` / `y` inside that wrapper. The two **add up**. A left-over `x = 200.0` on a `:layered` shape neither overrides the layout nor raises an error. It silently shifts that one figure 200 units off its rank, arrows and all. When you switch a hand-placed diagram to `:layered`, delete the coordinates."
   }
 
@@ -244,7 +249,7 @@ WCL
   p "`packed` and `backordered` share one rank, and `delivered` sits past both of them rather than beside `backordered`, because a rank is one past the **deepest** predecessor. Read the two branch labels. Each sits at the midpoint of its own arrow, and that is why the direction matters here more than it looks."
 
   callout "Two branch labels on a top-to-bottom decision collide" {
-    class = ["warning"]
+    kind = :warning
     body  = "The renderer draws a label at the arc-length midpoint of its path. In a top-to-bottom layout both branches leave the diamond's south side, run down the same trunk, and only part near the bottom. Both midpoints land on that shared trunk, so `yes` prints over `no`. Widening `node_gap` does not fix it. It only makes the trunk longer. Two things do. Run the flow `:left_to_right`, as above, so the branches split vertically. Or keep it top-to-bottom and give the diamond `connect_points = [:east, :west, :north]`, which forces the answers out of its sides and takes their labels with them."
   }
 
@@ -359,7 +364,7 @@ WCL
   p "Three numbers do the work, and writing them down once keeps the picture straight. A **band pitch**, 92 here, is the distance from one lane's top edge to the next one's. A **band height**, 84, leaves an 8-unit gutter between bands. A **shape inset**, 22, is the distance from a band's top edge to the top of the shapes in it. Every lane after the first is the one before it plus the pitch, so a shape 40 units high sits at `y = 22.0`, `114.0` or `206.0`. The diamond is 60 high, so it sits at `104.0` to stay centred in its band."
 
   callout "Why the layout has to stay free" {
-    class = ["warning"]
+    kind = :warning
     body  = "Only a `label`, a `line` and a `boundary` are exempt from a layout solver. A `rect` is an ordinary flow node, so under `:layered` the solver ranks your three lane bands like any other shape: they land on rank 0 side by side, 620 units wide each, and shove the flowchart off to the right of them. There is no error and no warning, only a picture that makes no sense. Swim-lanes and auto-layout are alternatives, not a combination."
   }
 
@@ -456,7 +461,8 @@ WCL
     li "[The diagram canvas](wdoc_diagrams). The `diagram` block itself, the other layout modes, `container`, `boundary`, and the primitive shapes a lane band is made of."
     li "[Connections and routing](wdoc_diagram_connections). Edges in depth: `connect_points`, routing, computed edge lists, and edge labels beyond `yes` / `no`."
     li "[Sequence and state diagrams](wdoc_sequence_state). The two other diagram families, both of which draw their own layout."
-    li "[Themes and styling](wdoc_styling). The class system behind `wdoc-process` and its siblings, and how to give a lane band a themed colour."
+    li "[Themes](wdoc_styling). The hue ring `process`, `decision` and `terminator` read their borders from."
+    li "[Styling rules](wdoc_css). The `class` system behind `wdoc-process` and its siblings, and how to give a lane band a themed colour."
     li "[Writing your own blocks](wdoc_extending). How `process` lowers to a `Rect` plus a `Label`, and how to declare a figure of your own the same way."
   }
 }

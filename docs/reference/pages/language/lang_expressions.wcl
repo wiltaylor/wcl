@@ -7,7 +7,12 @@
 page lang_expressions {
   title = "Expressions and operators"
 
-  h1 "Expressions and operators"
+  chapter_header "Expressions and operators" {
+    kicker       = "The WCL language · reference"
+    reading_time = "15 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Everything to the right of an `=` is an **expression**, and so is every call argument, every `let` initialiser, every table cell and every `${…}` slot in an interpolated string. This chapter is the grammar of that right-hand side: the four ways expressions combine, the fourteen binary operators and two prefix ones, the precedence that orders them, and what each does to the values it is handed."
 
@@ -159,7 +164,7 @@ CONSOLE
   p "A dot is also how `self` and `parent` are useful. On their own they name a block, and the member is what you wanted from it. [Documents, fields and blocks](lang_documents#self-and-parent) covers both keywords."
 
   callout "A label is not readable through the dot" {
-    class = ["warning"]
+    kind = :warning
     body  = "`@inline(0) id: identifier` says which field a block's label _fills_, not that the label is readable back. `services.web.id` resolves to the field's declaration, not to `web`, and a sibling field cannot read it either. When an expression needs the value, declare an ordinary field and write it out. See [Documents, fields and blocks](lang_documents#blocks-and-labels)."
   }
 
@@ -258,7 +263,7 @@ CONSOLE
   }
 
   callout "Position and label are different questions" {
-    class = ["note"]
+    kind = :note
     body  = "A `@children` gather field holds blocks, and you address a block by its label, so `steps.1` reads the same whether the steps are written in order, out of order, or one per imported file. `at(steps, 0)` would ask a different question, _which one is written first_, and the answer changes when someone reorders the file. Prefer the label."
   }
 
@@ -289,7 +294,7 @@ TEXT
   }
 
   callout "Arguments evaluate before the call, left to right" {
-    class = ["warning"]
+    kind = :warning
     body  = "Fields are lazy. Arguments are not. WCL evaluates every argument expression in order and hands the values to the callee, so an argument that the body never reads still runs, and still fails. With `fn first(x: i64, y: i64) -> i64 { x }` in scope, `first(1, 1 / 0)` reports `operator '/' cannot divide by zero` even though `y` is unused. The only expressions that skip an operand are `&&`, `||` and `??`, below."
   }
 
@@ -395,7 +400,7 @@ TEXT
   p "A declared field type then converts the result on the way in, so `report.wcl` never mentions `i128` or `f64`. `cost: f64` accepts the `f64` the multiplication produced. A field declared `u32` accepts an `i128` result that fits and rejects one that does not. [Schemas](lang_schemas) covers the conversion, and [Values and primitives](lang_values) covers the numeric types themselves."
 
   callout "A unit literal is not a number yet" {
-    class = ["note"]
+    kind = :note
     body  = "`512MiB` carries its unit until a declared type resolves it, so it is not an operand you can do arithmetic on in the REPL. Read the field instead. Against the `inventory.wcl` of [Documents, fields and blocks](lang_documents), `wcl get inventory.wcl services.web.limits.memory` answers `536870912`, and that value is an ordinary integer. See [Values and primitives](lang_values)."
   }
 
@@ -505,7 +510,7 @@ CONSOLE
   }
 
   callout "?? is not a `try`" {
-    class = ["warning"]
+    kind = :warning
     body  = "`??` reads a value and asks whether it is `none`. It does not catch a failure. `error(\"gone\") ?? 5` reports `error: gone`, and so does a `??` whose left side is a field that failed to evaluate or a path that does not resolve. Recovering from an error is `try body catch e => fallback`. See [Control flow](lang_control_flow)."
   }
 

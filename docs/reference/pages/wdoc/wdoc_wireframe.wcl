@@ -13,7 +13,12 @@ class wf_danger { fill = "#c0392b"  stroke = "#922b21" }
 page wdoc_wireframe {
   title = "Wireframes"
 
-  h1 "Wireframes"
+  chapter_header "Wireframes" {
+    kicker       = "wdoc · reference"
+    reading_time = "13 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A **wireframe** is a mock-up of an interface: a window, a phone screen, a row of buttons. wdoc draws one from eighteen `wf_*` blocks. There are four frames, four layout containers, seven controls, and a three-block node graph. The result is static SVG. It renders in the book, in a PDF and in a slide deck, and it costs you no screenshot to keep up to date."
 
@@ -145,7 +150,7 @@ CONSOLE
   p "`width` and `height` are fields of the `diagram`, and a wireframe diagram must set both. They are the size the renderer draws the `<svg>` element at. Leave them out and the element is `width=\"0\" height=\"0\"`: the build succeeds, `wcl check` prints `OK`, and the mock-up is invisible."
 
   callout "Nothing warns you about a sizeless canvas" {
-    class = ["warning"]
+    kind = :warning
     body  = "A missing required field is not something `wcl check` reports today, so `diagram { wf_button \"Lost\" }` is a clean build and a blank page. If a wireframe does not appear, check the diagram's `width` and `height` first."
   }
 
@@ -189,7 +194,7 @@ CONSOLE
   }
 
   callout "Only the built-in widgets nest" {
-    class = ["warning"]
+    kind = :warning
     body  = "A container lays out the sixteen built-in widgets and drops anything else. A widget of your own, say a `@block(\"wf_gauge\") type ... extends Widget` with its own `lower`, renders perfectly well as a top-level shape in the `diagram`, and renders as **nothing** inside a `wf_window`. The container drops it silently and reports nothing. See [Writing your own widget](#writing-your-own-widget)."
   }
 
@@ -389,7 +394,7 @@ CONSOLE
   }
 
   callout "An empty container keeps its footprint" {
-    class = ["note"]
+    kind = :note
     body  = "A `wf_row`, `wf_column` or `wf_grid` with no children does not collapse to nothing. Each measures as placeholder cells of 72 × 34: two side by side for a row, two stacked for a column, and two rows of `columns` cells for a grid. The editor can then see the container, select it, and drop a widget into it. A published build shows the blank space."
   }
 
@@ -443,7 +448,7 @@ CONSOLE
   }
 
   callout "The icon field draws nothing today" {
-    class = ["warning"]
+    kind = :warning
     body  = "`wf_button` declares an `icon` field, and the renderer never reads it. A glyph would need the icon sprite. The sprite does not survive the baked-colour path that makes a wireframe render identically in HTML and PDF, so the caption is centred instead. `wf_button \"Save\" { icon = \"lucide.check\" }` builds without complaint and renders as a plain `Save` button."
   }
 
@@ -566,7 +571,7 @@ CONSOLE
   }
 
   callout "An unresolvable link disappears" {
-    class = ["warning"]
+    kind = :warning
     body  = "The graph drops a link when its endpoint names an unknown node, or a port that a multi-port node does not have. The build says nothing. The usual cause is a missing `id`: nothing can address a `wf_node` without one, so every link touching it silently vanishes while the node itself still draws."
   }
 
@@ -588,13 +593,13 @@ CONSOLE
   }
 
   callout "Anchor an edge, and declare a size with it" {
-    class = ["warning"]
+    kind = :warning
     body  = "The anchors are pixel insets. They resolve from the **declared** `width` / `height`, not from the measured content. That is the one place the advisory size still matters. `anchor_left = 20.0` puts the left edge 20px in, as expected. `anchor_right = 20.0` computes `parent − 20 − width`, and `width` is 0 unless you declared it. The widget's left edge therefore lands 20px short of the right edge, and its body hangs off the canvas. Anchor from the left and the top, or declare an approximate `width` and `height` beside the right and bottom anchors."
   }
 
   h3 "Theming"
 
-  p "A wireframe paints itself from the resolved **UI theme**: the site's `ui_theme`, `ui_accent` and `ui_mode`, which fall back to the document theme. The renderer bakes those colours into the SVG as literal hex rather than leaving them to CSS. That is why a wireframe looks the same in the book, in a PDF and in a slide deck. [Themes and styling](wdoc_styling) covers the palettes."
+  p "A wireframe paints itself from the resolved **UI theme**: the site's `ui_theme`, `ui_accent` and `ui_mode`, which fall back to the document theme. The renderer bakes those colours into the SVG as literal hex rather than leaving them to CSS. That is why a wireframe looks the same in the book, in a PDF and in a slide deck. [Themes](wdoc_styling) covers the palettes."
 
   p "Override the theme per mock-up with `theme`, `accent` or `mode` on the **outermost** widget. Every widget declares the three fields. The renderer reads only the one the diagram places, so a `mode = :light` on a nested button changes nothing."
 
@@ -706,7 +711,8 @@ WCL
     li "[The diagram canvas](wdoc_diagrams). The `diagram` block itself, its layouts, and the other shapes a widget may share a canvas with."
     li "[Connections and routing](wdoc_diagram_connections). Edges, anchors and the router that draws around your widgets."
     li "[Terminals and TUI](wdoc_terminals). The other interface mock-up family, for command lines and text UIs."
-    li "[Themes and styling](wdoc_styling). The palettes a wireframe bakes in, and the `class` blocks that override them."
+    li "[Themes](wdoc_styling). The palettes a wireframe resolves and bakes into its SVG."
+    li "[Styling rules](wdoc_css). The `class` blocks that override what it baked in."
     li "[Writing your own blocks](wdoc_extending). `lower`, the `Svg` fundamentals, and what `@native` means."
   }
 }

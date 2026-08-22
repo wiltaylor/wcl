@@ -20,10 +20,22 @@
 // Chapters arrive one issue at a time and replace their stub in place.
 import <wdoc.wcl>
 
+// `nord` in every respect but the reading column. The book template's
+// `.book-measure` takes 3.5rem of padding off each side, so the shipped
+// 60rem leaves a 53rem text column: at 17px body copy that is around a
+// hundred characters a line, well past the 45–75 a reader scans without
+// losing the return sweep. 52rem lands near ninety and costs nothing
+// else — code blocks scroll (`pre.code-block` is `overflow-x: auto`) and
+// diagrams carry their own widths.
+theme reference_book {
+  extends = :nord
+  metrics { measure = "52rem" }
+}
+
 site reference {
   default_template = :book
   title            = "WCL Reference"
-  theme            = :nord
+  theme            = :reference_book
   accent           = :cyan
   theme_toggle     = true
   search           = true
@@ -57,7 +69,8 @@ site reference {
       chapter "Templates and layouts"                          { page = wdoc_templates }
       chapter "Websites"                                       { page = wdoc_websites }
       chapter "Presentations"                                  { page = wdoc_presentations }
-      chapter "Themes and styling"                             { page = wdoc_styling }
+      chapter "Themes"                                         { page = wdoc_styling }
+      chapter "Styling rules"                                  { page = wdoc_css }
       chapter "Visibility"                                     { page = wdoc_visibility }
       chapter "Output targets"                                 { page = wdoc_outputs }
       chapter "Text and formatting"                            { page = wdoc_formatting }
@@ -66,6 +79,7 @@ site reference {
       chapter "Lists and tables"                               { page = wdoc_tables }
       chapter "Images, videos and file assets"                 { page = wdoc_media }
       chapter "Icons"                                          { page = wdoc_icons }
+      chapter "Icon galleries"                                 { page = wdoc_icon_gallery }
       chapter "Math"                                           { page = wdoc_math }
       chapter "Data views"                                     { page = wdoc_data_views }
       chapter "Demo blocks"                                    { page = wdoc_demo }
@@ -111,6 +125,7 @@ import "./pages/wdoc/wdoc_templates.wcl"
 import "./pages/wdoc/wdoc_websites.wcl"
 import "./pages/wdoc/wdoc_presentations.wcl"
 import "./pages/wdoc/wdoc_styling.wcl"
+import "./pages/wdoc/wdoc_css.wcl"
 import "./pages/wdoc/wdoc_visibility.wcl"
 import "./pages/wdoc/wdoc_outputs.wcl"
 import "./pages/wdoc/wdoc_formatting.wcl"
@@ -119,6 +134,7 @@ import "./pages/wdoc/wdoc_callouts.wcl"
 import "./pages/wdoc/wdoc_tables.wcl"
 import "./pages/wdoc/wdoc_media.wcl"
 import "./pages/wdoc/wdoc_icons.wcl"
+import "./pages/wdoc/wdoc_icon_gallery.wcl"
 import "./pages/wdoc/wdoc_math.wcl"
 import "./pages/wdoc/wdoc_data_views.wcl"
 import "./pages/wdoc/wdoc_demo.wcl"

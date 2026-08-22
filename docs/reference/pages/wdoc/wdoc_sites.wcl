@@ -8,7 +8,12 @@
 page wdoc_sites {
   title = "Documents, pages and sites"
 
-  h1 "Documents, pages and sites"
+  chapter_header "Documents, pages and sites" {
+    kicker       = "wdoc · reference"
+    reading_time = "17 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "wdoc renders a WCL document into something a reader opens: a website, a folder of Markdown, a PDF. This chapter is about the HTML build, because that is the one whose structure the other targets follow. The document itself is not a special file format. It is the same tree of fields and blocks that [Documents, fields and blocks](lang_documents) describes, read by the same parser and checked by the same schema engine. One import is what makes it a wdoc document."
 
@@ -96,7 +101,7 @@ CONSOLE
   p "Note what the two imported files do **not** carry. No import of their own, no site name, no template. A `page` block is legal in `pages/operations.wcl` only because `main.wcl` imported the wdoc schema, and the pages join the `handbook` site without saying so because the document declares exactly one. Splitting a document across files is a filing decision, not a structural one. See [Namespaces and imports](lang_namespaces)."
 
   callout "One import, or nothing parses" {
-    class = ["warning"]
+    kind = :warning
     body  = "Drop the `import <wdoc.wcl>` line and the failure is not a missing feature, it is a schema violation: `block kind 'page' has no @block or @table declaration`. Nothing declares `page`, so the document has no root schema to stand on. That is the same rule [Documents, fields and blocks](lang_documents) states: there is no schema-free document, and a wdoc document gets its schema from the standard library."
   }
 
@@ -149,7 +154,7 @@ CONSOLE
   p "Links between pages are ordinary markdown-style links in prose, and the target is a page name rather than a path. Add `#anchor` to land on a heading. The anchor is the heading text lowercased, with every run of other characters collapsed to a single hyphen. So `\"The two-minute rollback\"` becomes `the-two-minute-rollback`. Write `site_name:page_name` to cross into another site of the same document. [Text and formatting](wdoc_formatting) covers the inline patterns in full."
 
   callout "A page name is checked, but an anchor is not" {
-    class = ["warning"]
+    kind = :warning
     body  = "A link whose page name matches nothing fails the build with `link to unknown page 'deployment'`, so renaming a page cannot quietly break navigation. The build passes the `#fragment` half through untouched. A link to a heading that no longer exists still builds, and still lands the reader at the top of the right page."
   }
 
@@ -248,7 +253,7 @@ WCL
       | "`root`"             | "Render this site at the output root instead of a subdirectory."      | "[One document, several sites](#one-document-several-sites)" |
       | "`default_template`" | "`:book`, `:webpage`, `:presentation`, or your own."                  | "[Templates and layouts](wdoc_templates)" |
       | "`title`"            | "The site title, shown in the chrome and in every page's `<title>`."  | "This chapter" |
-      | "`theme` / `accent` / `theme_toggle`" | "Colour scheme, accent hue, light and dark toggle."      | "[Themes and styling](wdoc_styling)" |
+      | "`theme` / `accent` / `theme_toggle`" | "Colour scheme, accent hue, light and dark toggle."      | "[Themes](wdoc_styling)" |
       | "`search`"           | "Client-side full-text search over this site's pages."                | "[Templates and layouts](wdoc_templates)" |
       | "`icon`"             | "A favicon path, resolved relative to the document and copied into the output." | "This chapter" |
       | "`assets`"           | "Folders copied verbatim into the site's output."                     | "[The assets folder](#the-assets-folder)" |
@@ -452,7 +457,7 @@ WCL
   p "Neither is required, and the fallback is genuinely usable for a small site. Reach for the explicit block when source order stops being the reading order, when a heading has to group pages without having a page of its own, or when navigation has to point somewhere the document does not own."
 
   callout "Both blocks live in the site, and describe only that site" {
-    class = ["note"]
+    kind = :note
     body  = "A `toc` and a `menu` are children of a `site` block, so a multi-site document writes one of each per site and each names only its own pages. A `chapter` or an `item` naming a page that belongs to another site fails, even though the page exists in the document. From this site's point of view it is not there. Cross-site navigation is a link, either `site:page` in prose or an `href` in a menu item."
   }
 
@@ -510,7 +515,7 @@ WCL
   p "Each entry is a path relative to the entry document, and it keeps its name in the output: `brand/` beside `main.wcl` becomes `_site/brand/`. Nothing rewrites what is inside, so reference a copied file by the output path it landed at. That is what `stylesheets = [\"brand/extra.css\"]` does above, adding a verbatim `<link rel=\"stylesheet\" href=\"brand/extra.css\">` to every page of the site."
 
   callout "assets is not how you use an image" {
-    class = ["note"]
+    kind = :note
     body  = "An `image` block resolves its own path and copies the file into `_wdoc/` for you, with the `<img>` pointed at the copy. Reach for `assets` for the files no block references: the bundle, the archive, the `robots.txt`. See [Images, videos and file assets](wdoc_media)."
   }
 
@@ -541,7 +546,7 @@ CONSOLE
   p "`rolling_back.html` is still there. It is a stale copy of a page that no longer exists, it is still linkable, and no later build will remove it. A deleted page behaves the same way."
 
   callout "Wipe it yourself when it must be exact" {
-    class = ["warning"]
+    kind = :warning
     body  = "Where the output has to match the document exactly, in a publish step or a link-checked CI job, delete the directory yourself before you build. One `rm -rf` in the recipe, above the `wcl wdoc build` line, is the whole fix. A dev-server rebuild does not need it: a stale page is only a page nothing links to."
   }
 
@@ -550,7 +555,7 @@ CONSOLE
   list {
     li "[Templates and layouts](wdoc_templates). The `:book`, `:webpage` and `:presentation` built-ins, what a template is handed, and how to write your own."
     li "[Websites](wdoc_websites). The website template, its named slots and its `<head>` assets."
-    li "[Themes and styling](wdoc_styling). `theme`, `accent`, and the `class` system behind them."
+    li "[Themes](wdoc_styling). `theme`, `accent`, `theme_toggle`, and the palettes behind them."
     li "[Output targets](wdoc_outputs). One document, three targets: HTML, Markdown and PDF."
     li "[Text and formatting](wdoc_formatting). The inline patterns behind `[a link](page)`, emphasis and inline code."
     li "[Visibility](wdoc_visibility). Keeping a block out of one site, or one target."

@@ -1,0 +1,102 @@
+# Agent-facing project settings. Each skill owns exactly one top-level key.
+
+technical-book:
+  path: docs/reference
+  entry: main.wcl
+  site: reference
+  topology: in-product
+  tutorial_assurance: advisory
+
+  # Deliberately null. `docs/reference/coverage.py` is this book's coverage
+  # check and it verifies more than the audit's rule can: the audit matches
+  # `h2` section titles in a `reference`-keyed part, and this book documents a
+  # builtin as an `h3` under a semantic group and a wdoc block kind in prose
+  # under a topic heading. Both read better than a heading per symbol, and
+  # both are invisible to that rule — wiring the script here would print a
+  # percentage far below the truth every run. Run `just docs-coverage`, which
+  # exits 1 on a gap.
+  extractor: null
+
+  # The reference is a two-part language book, not a product manual. The
+  # shipped standard's Guide / Reference / Commands / Appendices split
+  # describes a tool with an API surface and a CLI beside a conceptual
+  # guide; WCL's reference instead runs the language end to end and then
+  # wdoc end to end, and the reference material sits inside those parts
+  # rather than beside them.
+  absent:
+    guide: >-
+      the conceptual guide is not a separate part — every chapter of The WCL
+      language and wdoc is explanation-first and carries its own reference
+      material, so a fourth grouping would split each subject in half
+    reference:
+      the API reference is the Builtins chapter inside The WCL language,
+      and the block reference is the wdoc chapters from Text and formatting
+      onwards
+    commands: >-
+      the command reference is the The CLI chapter inside The WCL language;
+      wcl ships one binary with a flat flag surface, so a chapter per
+      command would be one page of prose repeated fourteen times
+    appendices: >-
+      no troubleshooting or glossary chapter yet — tracked, not declined
+
+  parts:
+    getting-started:
+      title: Quick start
+      titles: [Quick start, Getting started, Get started]
+      modes: [tutorial]
+      min_chapters: 1
+      # The standard's `install` and `first-task` chapters are `h2` sections
+      # of the one Quick start chapter, which is 2,200 words end to end.
+      # `required_chapters` is a mapping, and a mapping merges rather than
+      # replaces, so the two are dismissed in the report instead.
+      severity: error
+    language:
+      title: The WCL language
+      titles: [The WCL language, WCL language]
+      modes: [explanation, reference, how-to]
+      min_chapters: 10
+      required_chapters: {}
+      severity: error
+    wdoc:
+      title: wdoc
+      titles: [wdoc]
+      modes: [explanation, reference, how-to]
+      min_chapters: 20
+      required_chapters: {}
+      severity: error
+
+  display:
+    theme:
+      # The book runs the shipped `nord` theme with one metric restated.
+      # `forge` is the standard's house theme, not this project's brand.
+      extends: nord
+      metrics:
+        # `measure` is the one metric the book restates; everything else is
+        # inherited through `extends`, which is the three-line idiom
+        # `theme.wcl` documents. `null` here means "the theme must not pin
+        # this", so a metric copied in by hand still trips the check.
+        measure: 52rem
+        body_size: null
+        line_height: null
+        h1: null
+        h2: null
+        h3: null
+        h4: null
+        h5: null
+        h6: null
+      severity: error
+
+  callouts:
+    # The standard's 4 is calibrated for a manual where a callout marks an
+    # exception. In a language reference the recurring move is "here is what
+    # `wcl check` does not catch", and cataloguing those is the chapter's job
+    # rather than a failure of its prose. 8 still catches a chapter that has
+    # started shouting; 4 flagged 27 chapters that were working as intended.
+    max_per_chapter: 8
+
+  diagrams:
+    # This book teaches the diagram canvas, and the chapters that do it
+    # place shapes by hand on purpose: a reader learning `x` / `y` has to
+    # see `x` / `y`. The rule is right for a manual that uses diagrams and
+    # wrong for one that documents them.
+    severity: "off"

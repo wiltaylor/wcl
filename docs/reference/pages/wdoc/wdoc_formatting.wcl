@@ -6,7 +6,12 @@
 page wdoc_formatting {
   title = "Text and formatting"
 
-  h1 "Text and formatting"
+  chapter_header "Text and formatting" {
+    kicker       = "wdoc · reference"
+    reading_time = "15 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "Most of a document is prose. The vocabulary for it is small: six heading blocks, two paragraph blocks, one grid, and a regex engine that turns markers such as `**bold**` into styled runs. This chapter covers all four, along with the anchors and section numbers a heading gains on its way to HTML. It also covers how to declare a marker of your own, and the one thing a `span` used to do and no longer does."
 
@@ -118,7 +123,7 @@ h6 "Trivia"
 WCL
   }
 
-  p "The level is a **number** carried on the lowered node, not a class the backend reads back. The HTML backend then emits both: a real `<h3>` tag, plus a `heading-3` class as a style hook derived from that number. The bundled theme sizes each level through `class \"heading-3\" { … }`. Declare your own class of that name and it overrides the bundled one by cascade. See [Themes and styling](wdoc_styling)."
+  p "The level is a **number** carried on the lowered node, not a class the backend reads back. The HTML backend then emits both: a real `<h3>` tag, plus a `heading-3` class as a style hook derived from that number. The bundled theme sizes each level through `class \"heading-3\" { … }`. Declare your own class of that name and it overrides the bundled one by cascade. See [Styling rules](wdoc_css)."
 
   p "Inline patterns run in a heading like anywhere else, so `h2 \"Fixing **fast**\"` renders the emphasis. The page's own `title` field is _not_ prose. It is metadata for the `<title>` tag and the navigation, and markers in it stay literal."
 
@@ -146,7 +151,7 @@ WCL
   }
 
   callout "The build checks the page name, not the fragment" {
-    class = ["warning"]
+    kind = :warning
     body  = "A link whose target names no page in the site fails the build. `wcl wdoc build` prints `link to unknown page 'nowhere'` and exits non-zero. That check stops at the `#`. `[x](wdoc_code#no-such-heading)` builds without error and lands the reader at the top of the right page. When you link to an anchor, open the target chapter and read the heading you are pointing at."
   }
 
@@ -159,7 +164,7 @@ WCL
   p "**Only `h2` and `h3` are numbered, and only they appear in the book template's \"on this page\" outline.** The omission is not a styling accident: `h1` is the page's own title and the sidebar already names it, and `h4` through `h6` are detail below the granularity a reader navigates by. They still render, still get anchors, and still take links. They are not part of the outline. Structure a chapter with `h2` and `h3`. Reach for `h4` when you need a fourth level, and know that it will not show up in the nav."
 
   callout "Anchors are an HTML finish" {
-    class = ["note"]
+    kind = :note
     body  = "The Markdown backend writes `## Highlights` with no id, because Markdown has none. The PDF backend renders a heading as **one styled run**. The consequence is sharper: it does not interpret inline markers inside a heading, so `h2 \"Fixing **fast**\"` prints its asterisks in the PDF while rendering bold in HTML. Keep markers out of headings in a document you also ship as PDF. See [Output targets](wdoc_outputs)."
   }
 
@@ -209,7 +214,7 @@ HTML
   p "Read that output carefully, because it is the whole behaviour. The label and the spans **concatenate into one paragraph**, in source order, with nothing between them. The trailing spaces in the source above are what separate the sentences. There is no wrapper element per span. And the paragraph carries the `id` and `class` of the `text`, not of any span."
 
   callout "A span's own id and class no longer render" {
-    class = ["warning"]
+    kind = :warning
     body  = "`span \"…\" { class = [\"accent\"] }` used to paint, and does not any more. Blocks lower to a **semantic content IR**, and its prose node carries a string, not a list of styled runs. There is nowhere for a per-span `id` or `class` to go, so lowering drops them. Outside HTML, the change made no difference. The Markdown and PDF walkers already flattened a `text` to its concatenated child text. In a book, though, a styled span stopped painting. The fields stay **declared**, so existing documents keep validating rather than failing on a field that no longer does anything. Carrying them back needs an inline-run concept in the IR, a separate piece of work. Until then, style the whole paragraph with `class` on the `text`, and style _within_ it with the inline patterns below. `**bold**` and friends emit their own `<span>` and are unaffected."
   }
 
@@ -274,7 +279,7 @@ CONSOLE
 
   p "The first three are this chapter's. [Links](#links) below covers the four link forms. [Icons](wdoc_icons) and [Math](wdoc_math) cover the last three."
 
-  p "The three emphasis markers produce nothing but a `<span>` with a class. The class is where the styling lives: the bundled `class \"bold\"`, `class \"italic\"` and `class \"code\"` carry the weight, slant, and monospace family, and the selected theme adds the colour. Declare a class of the same name to override either. [Themes and styling](wdoc_styling) covers it."
+  p "The three emphasis markers produce nothing but a `<span>` with a class. The class is where the styling lives: the bundled `class \"bold\"`, `class \"italic\"` and `class \"code\"` carry the weight, slant, and monospace family, and the selected theme adds the colour. Declare a class of the same name to override either. [Styling rules](wdoc_css) covers it."
 
   h3 "Where the engine runs"
 
@@ -375,7 +380,7 @@ WCL
   p "`boundary = true` skips a match that touches a letter, digit, or underscore on either side. The built-in `italic` uses it, so `safe_mode_password` keeps its underscores while `a _word_ here` formats. Turn it on for any marker built from characters that also occur inside identifiers."
 
   callout "A pattern that re-emits its own trigger nests eight deep" {
-    class = ["warning"]
+    kind = :warning
     body  = "Because a returned span's `text` is fed back through the engine, a pattern whose output contains the syntax that produced it matches itself. Return `at(g, 0)` from the `#([0-9]+)` pattern above and `#177` renders as eight nested `<a>` tags. The depth cap is the only thing that stops it, and the page is silently wrong rather than broken. Return text the pattern cannot match: `at(g, 1)` (just the digits), or a rewrite like `$\"issue ${at(g, 1)}\"`. The built-in bare-URL pattern works this way. It drops the `https://` from its own display text."
   }
 
@@ -424,7 +429,7 @@ WCL
   p "Children may be any wdoc content: paragraphs, headings, callouts, code, diagrams, another `column`."
 
   callout "The layout is HTML-only" {
-    class = ["note"]
+    kind = :note
     body  = "`column` is a native block on every target, and only the HTML backend draws the grid. Markdown and PDF render the children **stacked in source order**: the layout is lost, the content is not. Do not use a column to carry meaning that the reading order does not. A left-hand column that only makes sense beside its right-hand neighbour becomes two consecutive paragraphs in the PDF."
   }
 
@@ -434,7 +439,7 @@ WCL
     li "[Code](wdoc_code). `code` blocks, the language tags, and why their source is the one prose the engine leaves alone."
     li "[Callouts, footnotes and chapter headers](wdoc_callouts). The `footnotes` block behind `[^id]`, and the admonitions this chapter kept using."
     li "[Lists and tables](wdoc_tables). `list` / `li` and `table`, both of which run every cell through the inline engine."
-    li "[Themes and styling](wdoc_styling). The `class` block behind `bold`, `italic`, `code` and `heading-N`."
+    li "[Styling rules](wdoc_css). The `class` block behind `bold`, `italic`, `code` and `heading-N`."
     li "[Icons](wdoc_icons) and [Math](wdoc_math). The two built-in patterns this chapter only named."
     li "[Output targets](wdoc_outputs). What the HTML, Markdown and PDF backends each make of the blocks above."
     li "[Writing your own blocks](wdoc_extending). When a pattern is not enough and you want a block of your own."

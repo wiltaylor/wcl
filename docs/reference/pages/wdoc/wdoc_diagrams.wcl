@@ -6,7 +6,12 @@
 page wdoc_diagrams {
   title = "The diagram canvas"
 
-  h1 "The diagram canvas"
+  chapter_header "The diagram canvas" {
+    kicker       = "wdoc · reference"
+    reading_time = "18 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "A `diagram` is a page block that draws SVG. You give it a canvas with a `width` and a `height`, then fill it with **shapes**: boxes, circles, lines, text, and the grouping shapes that hold them. A shape carries an id, and an id is what an edge connects. Most of what wdoc draws is a shape on this canvas. Flowcharts, charts, trees, wireframes and maps are all diagram children, so the rules in this chapter are their rules too."
 
@@ -109,14 +114,14 @@ HTML
   p "The consequence is that a diagram never clips. The renderer scales content to fit the declared box, preserving aspect ratio, so shrinking `width` shrinks the picture rather than cropping it. What `width` and `height` really control is **how big the drawing is on the page, and what shape the frame is**. Give a tall drawing a wide frame and the renderer letterboxes it rather than cutting it."
 
   callout "Only a shape's box joins the fit" {
-    class = ["note"]
+    kind = :note
     body  = "A `label` contributes a zero-sized box at its anchor point, because the renderer places text without measuring it against the canvas. The word `wide` above sits at (170, 140) and adds exactly that point to the fit. The glyphs either side of it are outside the computation. A long label near an edge of the drawing can therefore render past the `viewBox`. Give the drawing headroom with a shape, or place the label further in."
   }
 
   p "Three more fields describe the canvas rather than its contents. `desc` is the accessible name: it becomes both an `aria-label` and the SVG's first-child `<title>`, which is what a screen reader announces. Write one for any diagram carrying meaning. `id` and `class` behave as they do on any block. `class` reaches the `<svg>` element itself, not the shapes inside it."
 
   callout "A canvas with no size is invisible" {
-    class = ["warning"]
+    kind = :warning
     body  = "Two mistakes produce the same result, and neither is caught. Omit `width` and the build writes `width=\"0\"`. Write it as `width = 320.0` and the renderer reads a float where it wanted an `i64`, and writes `width=\"0\"` again. `wcl check` prints `OK` for both. The diagram renders, occupies nothing, and shows nothing. If a diagram has vanished from a page, look at its two numbers first. The reverse is harmless: the renderer reads `x = 20` on a shape's `f64` field as 20."
   }
 
@@ -139,7 +144,7 @@ HTML
   p "Coordinates run the SVG way: x rightward, y **downward** from the top-left corner. A polygon's `points` are absolute canvas coordinates, not offsets from an `x` / `y` the block does not have."
 
   callout "Every geometry field defaults to zero" {
-    class = ["warning"]
+    kind = :warning
     body  = "`width`, `height`, `r` and the rest are all optional, and an omitted one is `0`. A `rect` that names only a fill is legal, checks clean, and draws a box of no size. Nothing warns you. This bites hardest under an auto-layout, where the solver reserves a cell for the shape by a different rule than the one that draws it. See [The layout modes](#the-layout-modes)."
   }
 
@@ -217,12 +222,12 @@ rect { class = ["tile"]  x = 20.0  y = 20.0  width = 80.0  height = 40.0 }
 WCL
   }
 
-  p "The four painting fields a `class` (and its `dark {}` / `light {}` blocks) may set are `fill`, `stroke`, `stroke_width` and `opacity`. Other CSS goes in the block's `css` field, as a declaration string. The stdlib ships ready-made shape classes that read the theme palette: `wdoc-node`, `wdoc-process`, `wdoc-decision`, `wdoc-terminator` for shape bodies and `wdoc-shape-text` for their captions. A shape therefore needs no colours of its own to look like it belongs. [Themes and styling](wdoc_styling) covers the class system as a whole."
+  p "The four painting fields a `class` (and its `dark {}` / `light {}` blocks) may set are `fill`, `stroke`, `stroke_width` and `opacity`. Other CSS goes in the block's `css` field, as a declaration string. The stdlib ships ready-made shape classes that read the theme palette: `wdoc-node`, `wdoc-process`, `wdoc-decision`, `wdoc-terminator` for shape bodies and `wdoc-shape-text` for their captions. A shape therefore needs no colours of its own to look like it belongs. [Styling rules](wdoc_css) covers the class system as a whole."
 
   p "**Opacity is class-only.** No shape declares an `opacity` field. The union of every paint field on `rect` is `fill` and `stroke`. If you want a translucent shape, it gets a class."
 
   callout "A class beats a fill attribute" {
-    class = ["warning"]
+    kind = :warning
     body  = "`fill` and `stroke` on a shape emit presentation attributes, and any CSS rule outranks a presentation attribute. Put a class carrying `fill` on a shape that also sets `fill = \"#88c0d0\"` and the class wins. It wins silently, and in the opposite direction from the usual more-specific-wins intuition. Style a shape one way or the other, not both."
   }
 
@@ -260,7 +265,7 @@ WCL
   p "Those three rects render at x = 20, x = 220 and x = 100. The second is `300 − 20 − 60`: an anchor on the far side positions the shape's far edge, keeping its declared size. The third sets no `width` at all and gets one, `300 − 100 − 100` = 100, because naming both sides of an axis pins both edges and **stretches** the shape between them. The same rule runs on the vertical axis with `anchor_top` and `anchor_bottom`."
 
   callout "An anchor is an inset, not a fraction" {
-    class = ["warning"]
+    kind = :warning
     body  = "Anchor values are distances in canvas units from the parent box's edge. Some of the stdlib's own field documentation still describes them as fractional 0–1 values. That text is stale, and the renderer has never read them that way. `anchor_left = 0.5` puts the shape half a pixel in from the left, not halfway across."
   }
 
@@ -282,7 +287,7 @@ WCL
 
   p "[Choosing a layout](#choosing-a-layout) at the end of the chapter is the other half of this table: which mode suits which picture."
 
-  p "Two rules apply to the automatic modes. First, they assign **positions only**. A shape's size is still its own `width` and `height`. (A `:grid` cell additionally becomes the child's parent box, so the cell can size an anchored child.) Second, under the three graph solvers a shape that declares neither size gets an 80×40 cell from the solver. The zero defaults on the primitives set a trap here:"
+  p "Two rules apply to the automatic modes. First, they assign **positions only**. A shape's size is still its own `width` and `height`. (A `:grid` cell also becomes the child's parent box, so the cell can size an anchored child.) Second, under the three graph solvers a shape that declares neither size gets an 80×40 cell from the solver. The zero defaults on the primitives set a trap here:"
 
   code wcl {
     source = <<'WCL'
@@ -302,7 +307,7 @@ WCL
   p "The solver places the three shapes at y = 0, y = 80 and y = 160, so it did reserve a full cell for `c`. The rendered element is `<rect width=\"0\" height=\"0\">`. The layout is right and the picture has a hole in it. Under an auto-layout, give every primitive an explicit size."
 
   callout "An unknown layout means manual" {
-    class = ["warning"]
+    kind = :warning
     body  = "`layout` is declared as a bare `symbol?`, so no schema check constrains its value. A typo, `layout = :layerd`, is not an error. It falls through to manual placement, and since an auto-laid-out diagram usually declares no coordinates, every shape lands on top of the others at the origin."
   }
 
@@ -439,7 +444,7 @@ WCL
   p "`a` lands at (0, 25), with `b` at (100, 0) and `c` at (100, 50). The rank spacing is the 80-wide box plus `layer_gap`, and the two shapes in the second rank are `node_gap` apart. `a` is offset by 25 because the solver centres its rank against the taller one beside it."
 
   callout "layered wants a DAG" {
-    class = ["note"]
+    kind = :note
     body  = "A cycle has no topological order, and the solver does not invent one: every shape it could not rank goes into a single rank of its own, in source order. Three shapes wired `a -> b -> c -> a` come out as one row, 120 apart, with the closing edge routed back around them. That is not a failure. It renders, and the edges are correct. But if your ranks have collapsed into a row, look for the cycle. `:force` is the mode for that graph."
   }
 
@@ -502,10 +507,7 @@ WCL
 
   p "`node_gap` is one field with two defaults: 24 here, 40 under `:layered`. Radial pairs well with `routing = :straight`, since a spoke has no reason to bend."
 
-  callout "Labels and lines are annotations, not nodes" {
-    class = ["note"]
-    body  = "The solvers skip `label`, `line` and `boundary`. They contribute no cell, shove nothing aside, and sit at the layout's origin with the whole laid-out content as their parent box. Their own `x` / `y` and anchors therefore position them over the finished picture. That is what lets you caption an auto-laid-out diagram: a `label` anchored to the bottom-right lands in the bottom-right of the result, whatever the solver did."
-  }
+  p "Three block kinds sit outside all of that. The solvers skip `label`, `line` and `boundary`: they contribute no cell, shove nothing aside, and sit at the layout's origin with the whole laid-out content as their parent box. Their own `x` / `y` and anchors therefore position them over the finished picture rather than within it. That is what lets you caption an auto-laid-out diagram — a `label` anchored to the bottom-right lands in the bottom-right of the result, whatever the solver did."
 
   h2 "container: grouping that lays out"
 
@@ -513,10 +515,7 @@ WCL
 
   p "Set `stroke` or `fill` and the container gains **chrome**: a background rect covering its whole box, which is what makes the grouping visible. `padding` insets the children from that chrome. The renderer auto-fits the box to the laid-out contents, with a declared `width` / `height` acting as a minimum rather than a ceiling. The three-cell grid above produces a `196 × 116` chrome rect: two 80-wide cells plus the 12 gap plus 12 of padding on each side."
 
-  callout "Chrome is not an obstacle" {
-    class = ["note"]
-    body  = "The renderer draws the chrome rect directly rather than declaring it as a shape, so the edge router never sees it. An edge from inside a container to a shape outside it crosses the border cleanly instead of routing around the group. That is deliberate. [Connections and routing](wdoc_diagram_connections) covers what the router does treat as an obstacle."
-  }
+  p "The chrome is drawn, not declared. The renderer emits that rect directly rather than adding a shape to the diagram, so the edge router never sees it: an edge from inside a container to a shape outside crosses the border cleanly instead of routing around the group. That is deliberate. [Connections and routing](wdoc_diagram_connections) covers what the router does treat as an obstacle."
 
   h2 "boundary: grouping that draws"
 
@@ -559,7 +558,7 @@ WCL
   }
 
   callout "A member that names nothing is a warning" {
-    class = ["note"]
+    kind = :note
     body  = "The build reports and skips a `members` entry that matches no shape id. A boundary whose members all fail to resolve draws nothing and says so. Neither fails the build, so read the build output. A shape `id`, by contrast, must be unique across the whole **page**. Two diagrams on one page cannot both call a shape `a`, and the build stops with `page \"…\": duplicate id \"a\"`."
   }
 
@@ -583,7 +582,8 @@ WCL
   list {
     li "[Connections and routing](wdoc_diagram_connections). `a -> b` edges, the `:elbow` and `:straight` routers, anchor sides and edge labels."
     li "[Flowcharts and swimlanes](wdoc_flowcharts). The labelled shapes (`process`, `decision`, `terminator`) that `:layered` was built for."
-    li "[Themes and styling](wdoc_styling). The `class` system these shapes paint through, and the theme palettes behind `wdoc-node` and friends."
+    li "[Themes](wdoc_styling). The palettes behind `wdoc-node` and its siblings."
+    li "[Styling rules](wdoc_css). The `class` system these shapes paint through, and its four SVG shorthands."
     li "[Writing your own blocks](wdoc_extending). Declaring a shape of your own, and the `Svg` fundamentals a `lower` returns."
     li "[Trees, node tables and cards](wdoc_tree) and [Wireframes](wdoc_wireframe). Bigger shapes that live on this same canvas."
   }

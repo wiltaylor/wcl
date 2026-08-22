@@ -9,7 +9,12 @@ page intro {
 
   title = "Introduction"
 
-  h1 "Introduction"
+  chapter_header "Introduction" {
+    kicker       = "WCL Reference · explanation"
+    reading_time = "6 min read"
+    updated      = "2026-08-20"
+    version      = "wcl 0.33.2-alpha"
+  }
 
   p "WCL is a typed configuration and schema language. A `.wcl` file carries the data: the ports, the replica counts, the URLs. It also carries the shape that data has to fit. One command, `wcl check`, holds the shape against the data, and it does so before the program that needs the configuration has started."
 
@@ -107,7 +112,7 @@ WCL
   p "The last row is the one that compounds. A configuration format without composition grows by copying, and a file that grew by copying is a file where two of the copies disagree. [Namespaces and imports](lang_namespaces) covers how to split a document across files. [Expressions and operators](lang_expressions) covers how to compute one field from another."
 
   callout "WCL is not a general-purpose language" {
-    class = ["note"]
+    kind = :note
     body  = "There is no I/O, no mutation, no loops that can fail to terminate. Every expression evaluates to a value, and evaluation is lazy and cached. See [How a document evaluates](lang_evaluation). What WCL adds over a data format is types, composition and checking, not a runtime."
   }
 
