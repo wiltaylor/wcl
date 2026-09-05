@@ -40,7 +40,7 @@ impl Document {
     /// An instance-declared kind is unqualified — it is declared by a
     /// block, not by a namespaced type — so only a bare lookup falls
     /// back to the derivation.
-    pub(crate) fn block_schema_in(
+    pub fn block_schema_in(
         &self,
         qualifier: &[String],
         kind: &str,

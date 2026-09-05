@@ -711,7 +711,10 @@ fn parse_dotted_decorator() {
         t.decorators[0].name,
         vec!["ui".to_string(), "color".to_string()]
     );
-    assert_eq!(t.decorators[0].positional, vec![Expr::Symbol("red".into())]);
+    assert_eq!(
+        t.decorators[0].positional,
+        vec![Expr::Symbol("red".into(), Span::new(10, 14))]
+    );
 }
 
 #[test]
@@ -916,7 +919,10 @@ fn parse_dotted_symbol_set_name() {
 #[test]
 fn parse_symbol_value() {
     let s = parse("tag = :wide");
-    assert_eq!(field(&s.items, "tag").expr, Expr::Symbol("wide".into()));
+    assert_eq!(
+        field(&s.items, "tag").expr,
+        Expr::Symbol("wide".into(), Span::new(6, 11))
+    );
 }
 
 #[test]

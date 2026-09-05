@@ -465,7 +465,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let offset = position_to_offset(&source, params.text_document_position.position);
-        let root_path = self.root_path();
+        let root_path = self.root_path().or_else(|| uri.to_file_path().ok());
         let root_doc = root_path.as_ref().and_then(|path| {
             let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlays.clone()));
             Document::from_file_with_loader(path, &root_environment(), loader).ok()

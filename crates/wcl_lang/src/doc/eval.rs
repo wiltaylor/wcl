@@ -370,7 +370,7 @@ impl Document {
             E::Ascii(s) => Value::Ascii(s.clone()),
             E::Utf16(v) => Value::Utf16(v.clone()),
             E::Utf32(v) => Value::Utf32(v.clone()),
-            E::Symbol(s) => Value::Symbol(s.clone()),
+            E::Symbol(s, _) => Value::Symbol(s.clone()),
             E::None => Value::None,
             // A literal unit evaluates to a transient `PendingUnit`; the
             // declared type resolves it (multiplying by its `@unit` factor)
@@ -610,7 +610,7 @@ impl Document {
             | E::Ascii(_)
             | E::Utf16(_)
             | E::Utf32(_)
-            | E::Symbol(_)
+            | E::Symbol(..)
             | E::None
             | E::UnitLiteral { .. } => unreachable!("handled by eval_value_literal"),
         })

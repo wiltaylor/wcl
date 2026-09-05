@@ -107,6 +107,9 @@ pub(crate) fn references(
         paths.sort();
         paths.dedup();
         for path in paths {
+            if path.starts_with(wcl_lang::SYSTEM_IMPORT_ROOT) {
+                continue;
+            }
             let file_uri = Url::from_file_path(&path).ok()?;
             if file_uri == uri {
                 continue;
@@ -165,44 +168,80 @@ pub(crate) fn rename(
         .iter()
         .find(|o| o.span.start <= offset && offset < o.span.end)
         .or_else(|| occurrences.iter().find(|o| o.span.end == offset));
-    if let Some(selected) = selected
-        && occurrences
-            .iter()
-            .any(|o| o.identity == selected.identity && !o.rename_supported)
-    {
-        return Err("Rename is not available for shorthand pattern bindings".into());
-    }
-    if let Some(crate::occurrences::Occurrence {
-        identity: crate::occurrences::Identity::Global(fqn),
-        ..
-    }) = selected
-    {
-        // These names also occur in schema strings or context-inferred variants.
-        // Until those uses carry identities, no partial rename is safe.
-        if fqn.starts_with("block:")
-            || fqn.starts_with("decorator:")
-            || doc.find_symbol(fqn).is_some_and(|hit| {
-                matches!(
-                    hit.record.kind,
-                    wcl_lang::SymbolKind::UnionVariant { .. }
-                        | wcl_lang::SymbolKind::SymbolEntry { .. }
-                )
-            })
-        {
-            return Err(
-                "Rename is not available for schema kind names or context-inferred variants".into(),
-            );
-        }
-    }
-    let Some(locations) = references(uri, source, offset, true, root_doc, root_path, overlays)
-    else {
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let identity = selected.identity.clone();
+    let Some(locations) = references(
+        uri.clone(),
+        source,
+        offset,
+        true,
+        root_doc,
+        root_path,
+        overlays,
+    ) else {
         return Ok(None);
     };
     let mut changes: std::collections::HashMap<Url, Vec<tower_lsp::lsp_types::TextEdit>> =
         std::collections::HashMap::new();
     let mut seen: std::collections::HashSet<(Url, u32, u32, u32, u32)> =
         std::collections::HashSet::new();
+    let mut snapshots =
+        std::collections::HashMap::from([(uri.clone(), (source.to_string(), occurrences))]);
+    for path in doc.imported_paths().into_iter().chain(root_path) {
+        if path.starts_with(wcl_lang::SYSTEM_IMPORT_ROOT) {
+            continue;
+        }
+        let target = Url::from_file_path(path).map_err(|_| "Rename target is not a local file")?;
+        if snapshots.contains_key(&target) {
+            continue;
+        }
+        let text = overlays
+            .get(path)
+            .cloned()
+            .or_else(|| std::fs::read_to_string(path).ok())
+            .ok_or("Cannot read rename target")?;
+        let occurrences =
+            crate::occurrences::collect(&text, &target, doc).ok_or("Cannot parse rename target")?;
+        snapshots.insert(target, (text, occurrences));
+    }
+    if let crate::occurrences::Identity::Global(name) = &identity
+        && let Some((category, _)) = name.split_once(':')
+        && snapshots.values().any(|(_, occurrences)| occurrences.iter().any(|o| matches!(&o.identity, crate::occurrences::Identity::Unresolved(c) if c == category)))
+    {
+        return Err("A computed semantic name prevents a complete rename; use a literal name first".into());
+    }
     for loc in locations {
+        if !snapshots.contains_key(&loc.uri) {
+            let path = loc
+                .uri
+                .to_file_path()
+                .map_err(|_| "Rename target is not a local file")?;
+            let text = overlays
+                .get(&path)
+                .cloned()
+                .or_else(|| std::fs::read_to_string(path).ok())
+                .ok_or("Cannot read rename target")?;
+            let occurrences = crate::occurrences::collect(&text, &loc.uri, doc)
+                .ok_or("Cannot parse rename target")?;
+            snapshots.insert(loc.uri.clone(), (text, occurrences));
+        }
+        let (text, occurrences) = &snapshots[&loc.uri];
+        let occurrence = occurrences
+            .iter()
+            .find(|o| o.identity == identity && span_to_range(text, o.span) == loc.range)
+            .ok_or("Rename target changed")?;
+        if occurrences
+            .iter()
+            .any(|o| o.span == occurrence.span && o.identity != identity)
+        {
+            return Err("Rename target is used with more than one declaration identity".into());
+        }
+        let new_text = format!(
+            "{}{new_name}{}",
+            occurrence.replacement_prefix, occurrence.replacement_suffix
+        );
         let key = (
             loc.uri.clone(),
             loc.range.start.line,
@@ -216,8 +255,62 @@ pub(crate) fn rename(
                 .or_default()
                 .push(tower_lsp::lsp_types::TextEdit {
                     range: loc.range,
-                    new_text: new_name.to_string(),
+                    new_text,
                 });
+        }
+    }
+    if !snapshots.values().any(|(_, occurrences)| {
+        occurrences
+            .iter()
+            .any(|o| o.identity == identity && o.declaration)
+    }) {
+        return Err("The selected name has no editable authored declaration".into());
+    }
+    if doc.schema_errors().is_empty() {
+        let mut updated = overlays.clone();
+        updated.insert(
+            uri.to_file_path()
+                .map_err(|_| "Rename target is not a local file")?,
+            source.to_string(),
+        );
+        for (target, edits) in &changes {
+            let original = &snapshots[target].0;
+            let mut text = original.clone();
+            let mut ordered: Vec<_> = edits.iter().collect();
+            ordered.sort_by_key(|e| std::cmp::Reverse(e.range.start));
+            for edit in ordered {
+                let start = crate::convert::position_to_offset(original, edit.range.start);
+                let end = crate::convert::position_to_offset(original, edit.range.end);
+                text.replace_range(start..end, &edit.new_text);
+            }
+            updated.insert(
+                target
+                    .to_file_path()
+                    .map_err(|_| "Rename target is not a local file")?,
+                text,
+            );
+        }
+        let checked = if let Some(root) = root_path {
+            Document::from_file_with_loader(
+                root,
+                doc.environment(),
+                wcl_wdoc::schema_registry().loader(wcl_lang::overlay_loader(updated)),
+            )
+        } else {
+            let path = uri
+                .to_file_path()
+                .map_err(|_| "Rename target is not a local file")?;
+            Document::open_at_with_loader(
+                updated.get(&path).map(String::as_str).unwrap_or(source),
+                uri.as_str(),
+                path.parent().map(std::path::Path::to_path_buf),
+                doc.environment(),
+                wcl_wdoc::schema_registry().loader(wcl_lang::overlay_loader(updated.clone())),
+            )
+        }
+        .map_err(|error| format!("Rename would invalidate the document: {error}"))?;
+        if let Some(error) = checked.schema_errors().first() {
+            return Err(format!("Rename has unresolved contextual uses: {error}"));
         }
     }
     Ok(Some(tower_lsp::lsp_types::WorkspaceEdit {
@@ -341,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    fn rename_rejects_names_with_unresolved_contextual_uses() {
+    fn rename_accepts_contextual_categories() {
         let cases = [
             (
                 "@block(\"config\") type Config {}\nconfig {}\n",
@@ -371,8 +464,293 @@ mod tests {
                 None,
                 &Default::default(),
             );
-            assert!(result.is_err(), "{cursor}: {result:?}");
+            assert!(matches!(result, Ok(Some(_))), "{cursor}: {result:?}");
         }
+    }
+
+    fn apply_rename(source: &str, needle: &str, name: &str) -> String {
+        let before = Document::open(source, "before.wcl").expect(source);
+        assert!(
+            before.schema_errors().is_empty(),
+            "{:?}",
+            before.schema_errors()
+        );
+        let edit = rename(
+            url(),
+            source,
+            source.find(needle).unwrap(),
+            name,
+            None,
+            None,
+            &Default::default(),
+        )
+        .unwrap()
+        .unwrap();
+        let mut edits = edit.changes.unwrap().remove(&url()).unwrap();
+        edits.sort_by_key(|e| std::cmp::Reverse(e.range.start));
+        let mut updated = source.to_string();
+        for edit in edits {
+            let start = crate::convert::position_to_offset(source, edit.range.start);
+            let end = crate::convert::position_to_offset(source, edit.range.end);
+            updated.replace_range(start..end, &edit.new_text);
+        }
+        let document = Document::open(&updated, "renamed.wcl").unwrap();
+        assert!(
+            document.schema_errors().is_empty(),
+            "{updated}\n{:?}",
+            document.schema_errors()
+        );
+        updated
+    }
+
+    #[test]
+    fn rename_kind_updates_schema_metadata_and_reflection_only() {
+        let source = r#"@block("leaf") type Leaf { @inline(0) id: identifier }
+@block("tree", required_children = ["leaf"]) type Tree {
+  @children("leaf") leaves: list<Leaf>
+  @ref("leaf") selected: identifier?
+}
+@decorator("note") @applies_to(on = [:block], kinds = ["leaf"]) type Note {}
+@document type Root { @children("tree") trees: list<Tree> }
+tree { @note leaf first {} selected = first }
+@schemaless text = "leaf"
+@schemaless reflect = decorators_for_kind("leaf")
+"#;
+        let updated = apply_rename(source, "leaf\") type", "twig");
+        assert!(updated.contains("required_children = [\"twig\"]"));
+        assert!(updated.contains("@children(\"twig\")"));
+        assert!(updated.contains("@ref(\"twig\")"));
+        assert!(updated.contains("kinds = [\"twig\"]"));
+        assert!(updated.contains("@note twig first"));
+        assert!(updated.contains("text = \"leaf\""));
+        assert!(updated.contains("decorators_for_kind(\"twig\")"));
+    }
+
+    #[test]
+    fn rename_decorator_updates_reflective_name() {
+        let source = "@decorator(\"note\") type Note { label: utf8 }\n@note(label = \"note\") type T {}\n@schemaless result = decorator_arg(T, \"note\", \"label\")\n";
+        let updated = apply_rename(source, "note\") type", "annotation");
+        assert!(updated.contains("@annotation(label = \"note\")"));
+        assert!(updated.contains("decorator_arg(T, \"annotation\", \"label\")"));
+        assert_eq!(
+            Document::open(&updated, "test.wcl")
+                .unwrap()
+                .field("result")
+                .unwrap()
+                .value()
+                .unwrap(),
+            &wcl_lang::Value::Utf8("note".into())
+        );
+    }
+
+    #[test]
+    fn rename_inferred_variants_and_shorthand_preserves_evaluation() {
+        let source = "union Shape { Circle { radius: i64 } }\nunion Other { Circle none }\n@document type Root { shape: Shape result: i64 }\nshape = Shape::Circle { radius: 7 }\nresult = match shape { Circle { radius, .. } => radius, _ => 0 }\n";
+        let renamed = apply_rename(source, "Circle { radius:", "Round");
+        assert!(renamed.contains("Shape::Round"));
+        assert!(renamed.contains("match shape { Round"));
+        assert!(renamed.contains("union Other { Circle none }"));
+        let updated = apply_rename(&renamed, "radius, ..", "r");
+        assert!(updated.contains("Round { radius: r, .. } => r"));
+        assert_eq!(
+            Document::open(&updated, "test.wcl")
+                .unwrap()
+                .field("result")
+                .unwrap()
+                .value()
+                .unwrap(),
+            &wcl_lang::Value::I64(7)
+        );
+    }
+
+    #[test]
+    fn rename_symbols_uses_schema_function_and_pattern_contexts() {
+        let source = "symbol_set Color { red blue }\nsymbol_set Other { red blue }\ntype Hue = Color\ntype Paint { color: Hue }\n@block(\"swatch\") type Swatch { @inline(0) color: Hue }\n@document type Root { paint: Paint colors: list<Color> other: Other selected: Color result: i64 @children(\"swatch\") swatches: list<Swatch> }\npaint = { color: :red }\ncolors = [:red, :blue]\nother = :red\nfn pick(c: Hue) -> Color { c }\nselected = pick(:red)\nresult = match selected { :red => 7, _ => 0 }\nswatch :red {}\n";
+        let updated = apply_rename(source, "red blue }", "scarlet");
+        assert!(updated.contains("symbol_set Other { red blue }"));
+        assert!(updated.contains("other = :red"));
+        assert!(updated.contains("color: :scarlet"));
+        assert!(updated.contains("colors = [:scarlet, :blue]"));
+        assert!(updated.contains("pick(:scarlet)"));
+        assert!(updated.contains("{ :scarlet => 7"));
+        assert!(updated.contains("swatch :scarlet"));
+        assert_eq!(
+            Document::open(&updated, "test.wcl")
+                .unwrap()
+                .field("result")
+                .unwrap()
+                .value()
+                .unwrap(),
+            &wcl_lang::Value::I64(7)
+        );
+    }
+
+    #[test]
+    fn rename_symbol_defaults_and_function_returns() {
+        let source = "symbol_set Color { red blue }\n@block(\"swatch\") type Swatch { @default(:red) first: Color second = fn() -> Color { :red } }\n@document type Root { @children(\"swatch\") swatches: list<Swatch> color: Color }\nswatch {}\nfn pick() -> Color { :red }\ncolor = pick()\n";
+        let updated = apply_rename(source, "red blue", "scarlet");
+        assert!(updated.contains("@default(:scarlet)"));
+        assert!(updated.contains("second = fn() -> Color { :scarlet }"));
+        assert!(updated.contains("-> Color { :scarlet }"));
+        assert_eq!(
+            Document::open(&updated, "test.wcl")
+                .unwrap()
+                .field("color")
+                .unwrap()
+                .value()
+                .unwrap(),
+            &wcl_lang::Value::Symbol("scarlet".into())
+        );
+    }
+
+    #[test]
+    fn rename_preserves_comments_before_shorthand_bindings() {
+        let source = "union Shape { Circle { radius: i64 } }\n@schemaless result = match Shape::Circle { radius: 7 } { Circle { // radius\n radius } => radius, _ => 0 }\n";
+        let updated = apply_rename(source, "radius } =>", "r");
+        assert!(updated.contains("// radius\n radius: r } => r"));
+        assert_eq!(
+            Document::open(&updated, "test.wcl")
+                .unwrap()
+                .field("result")
+                .unwrap()
+                .value()
+                .unwrap(),
+            &wcl_lang::Value::I64(7)
+        );
+    }
+
+    #[test]
+    fn rename_never_returns_partial_edits_for_uneditable_or_ambiguous_names() {
+        for (source, needle) in [
+            ("@document type Root {}\n", "document"),
+            (
+                "symbol_set Color { red }\nfn helper() -> symbol { :red }\n@document type Root { color: Color }\ncolor = helper()\n",
+                "red }",
+            ),
+            (
+                "@block(\"leaf\") type Leaf {}\n@block(\"tree\", required_children = [concat(\"le\", \"af\")]) type Tree { @children(\"leaf\") leaves: list<Leaf> }\n@document type Root { @children(\"tree\") trees: list<Tree> }\ntree { leaf {} }\n",
+                "leaf\") type",
+            ),
+        ] {
+            assert!(
+                rename(
+                    url(),
+                    source,
+                    source.find(needle).unwrap(),
+                    "renamed",
+                    None,
+                    None,
+                    &Default::default()
+                )
+                .is_err(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn rename_variant_and_symbols_across_unsaved_imports() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.wcl");
+        let shared = dir.path().join("shared.wcl");
+        let library = "\n\nnamespace lib\nsymbol_set Color { red blue }\nunion Base { Circle { radius: i64 } }\nunion Shape extends Base { Empty none }\n";
+        let source = "import \"./shared.wcl\"\nuse lib.Shape as Form\nuse lib.Color as Hue\n@document type Root { shape: lib.Shape color: Hue result: i64 }\nshape = lib.Shape::Circle { radius: 7 }\ncolor = :red\nresult = match shape { Circle { radius } => radius, _ => 0 }\n";
+        std::fs::write(&main, source).unwrap();
+        std::fs::write(&shared, library.trim_start()).unwrap();
+        for (needle, new_name, declaration) in [
+            ("Circle { radius:", "Round", "Round { radius:"),
+            ("red\n", "scarlet", "scarlet blue"),
+        ] {
+            let mut overlays =
+                std::collections::HashMap::from([(shared.clone(), library.to_string())]);
+            let doc = Document::from_file_with_loader(
+                &main,
+                &wcl_lang::Environment::new(),
+                wcl_lang::overlay_loader(overlays.clone()),
+            )
+            .unwrap();
+            let edit = rename(
+                Url::from_file_path(&main).unwrap(),
+                source,
+                source.find(needle).unwrap(),
+                new_name,
+                Some(&doc),
+                Some(&main),
+                &overlays,
+            )
+            .unwrap()
+            .unwrap();
+            overlays.insert(main.clone(), source.to_string());
+            for (uri, mut edits) in edit.changes.unwrap() {
+                let path = uri.to_file_path().unwrap();
+                let original = overlays[&path].clone();
+                let text = overlays.get_mut(&path).unwrap();
+                edits.sort_by_key(|e| std::cmp::Reverse(e.range.start));
+                for edit in edits {
+                    let start = crate::convert::position_to_offset(&original, edit.range.start);
+                    let end = crate::convert::position_to_offset(&original, edit.range.end);
+                    text.replace_range(start..end, &edit.new_text);
+                }
+            }
+            assert!(overlays[&shared].starts_with("\n\nnamespace lib"));
+            assert!(overlays[&shared].contains(declaration));
+            assert!(overlays[&main].contains("use lib.Shape as Form"));
+            let after = Document::from_file_with_loader(
+                &main,
+                &wcl_lang::Environment::new(),
+                wcl_lang::overlay_loader(overlays),
+            )
+            .unwrap();
+            assert!(
+                after.schema_errors().is_empty(),
+                "{:?}",
+                after.schema_errors()
+            );
+            assert_eq!(
+                after.field("result").unwrap().value().unwrap(),
+                &wcl_lang::Value::I64(7)
+            );
+        }
+    }
+
+    #[test]
+    fn rename_with_standard_import_preserves_environment() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.wcl");
+        let source = "import <wdoc.wcl>\nlet greeting = \"Hello\"\npage index { title = greeting h1 greeting }\n";
+        std::fs::write(&main, source).unwrap();
+        let doc = Document::from_file_with_loader(
+            &main,
+            &wcl_wdoc::wdoc_environment(),
+            wcl_wdoc::schema_registry().loader(wcl_lang::disk_loader()),
+        )
+        .unwrap();
+        assert!(doc.schema_errors().is_empty());
+        let edit = rename(
+            Url::from_file_path(&main).unwrap(),
+            source,
+            source.find("greeting =").unwrap(),
+            "salutation",
+            Some(&doc),
+            Some(&main),
+            &Default::default(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            edit.changes.unwrap().values().map(Vec::len).sum::<usize>(),
+            3
+        );
+    }
+
+    #[test]
+    fn rename_symbols_in_table_rows_and_connections() {
+        let source = "symbol_set Color { red blue }\n@table(\"paint\") type Paint { color: Color }\n@document type Root { paints: list<Paint> }\npaints:\n  | :red |\n";
+        let updated = apply_rename(source, "red blue", "scarlet");
+        assert!(updated.contains("| :scarlet |"));
+        let source = "symbol_set EdgeKind { uses depends_on }\nconnection DependsOn: Service -> Service : EdgeKind\n@block(\"service\") type Service { @inline(0) id: identifier }\n@document type Root { @children(\"service\") services: list<Service> @connections(DependsOn) edges: list<DependsOn> }\nservice web {}\nservice db {}\nweb -> db :uses\n";
+        let updated = apply_rename(source, "uses depends_on", "calls");
+        assert!(updated.contains("web -> db :calls"));
     }
 
     #[test]

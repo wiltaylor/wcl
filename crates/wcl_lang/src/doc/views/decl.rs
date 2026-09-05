@@ -119,6 +119,11 @@ impl<'a> UnionDecl<'a> {
                 file_ns: self.file_ns,
             })
     }
+
+    /// Parent union paths, resolved in this declaration's namespace.
+    pub fn extends(&self) -> &'a [Vec<String>] {
+        &self.ast.extends
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -972,6 +977,11 @@ impl<'a> TypeDecl<'a> {
     /// once: the *latest* (child-most) definition wins.
     pub fn effective_fields(&self) -> Vec<TypeField<'a>> {
         build_effective_fields(self.doc, &self.ast.extends, self.file_ns, self.fields())
+    }
+
+    /// The target of a transparent type alias, if this declaration is one.
+    pub fn alias_type(&self) -> Option<&'a TypeRef> {
+        self.ast.alias.as_ref()
     }
 
     /// Each field's decorators merged with those of any same-named field

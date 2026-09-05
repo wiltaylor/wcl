@@ -61,7 +61,7 @@ pub(super) fn infer_type_from_expr(expr: &Expr) -> Option<TypeRef> {
         Expr::F64(_) => Some(TypeRef::Builtin(BuiltinType::F64)),
         Expr::Utf8(_) => Some(TypeRef::Builtin(BuiltinType::Utf8)),
         Expr::Ascii(_) => Some(TypeRef::Builtin(BuiltinType::Ascii)),
-        Expr::Symbol(_) => Some(TypeRef::Builtin(BuiltinType::Symbol)),
+        Expr::Symbol(..) => Some(TypeRef::Builtin(BuiltinType::Symbol)),
         Expr::Function(lit) => Some(TypeRef::Function {
             params: lit.params.iter().map(|p| p.ty.clone()).collect(),
             return_ty: Box::new(lit.return_ty.clone()),

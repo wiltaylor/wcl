@@ -92,7 +92,7 @@ pub enum Expr {
     /// A bare name, resolved against the enclosing scopes at evaluation.
     Identifier(String, Span),
     /// A symbol literal (`:gold`), matched against a `symbol_set`.
-    Symbol(String),
+    Symbol(String, Span),
     /// The `none` literal — the absent value.
     None,
 

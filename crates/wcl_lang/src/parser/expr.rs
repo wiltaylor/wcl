@@ -30,7 +30,7 @@ impl<'a> Parser<'a> {
             TokenKind::Str(s) => self.string_lit_to_expr(s, span)?,
             TokenKind::Bool(b) => Expr::Bool(b),
             TokenKind::Ident(s) => Expr::Identifier(s, span),
-            TokenKind::Symbol(s) => Expr::Symbol(s),
+            TokenKind::Symbol(s) => Expr::Symbol(s, span),
             TokenKind::None => Expr::None,
             other => {
                 return Err(self.err(

@@ -817,7 +817,7 @@ fn span_of(expr: &ast::Expr) -> Span {
         | E::Ascii(_)
         | E::Utf16(_)
         | E::Utf32(_)
-        | E::Symbol(_)
+        | E::Symbol(..)
         | E::None => Span::new(0, 0),
         E::Identifier(_, span) => *span,
         E::Function(f) => f.span,

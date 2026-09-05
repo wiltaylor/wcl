@@ -29,7 +29,7 @@ impl Printer {
             Expr::Bool(b) => self.push(if *b { "true" } else { "false" }),
             Expr::None => self.push("none"),
             Expr::Identifier(name, _) => self.push(name),
-            Expr::Symbol(name) => {
+            Expr::Symbol(name, _) => {
                 self.push(":");
                 self.push(name);
             }

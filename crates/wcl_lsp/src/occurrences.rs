@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use tower_lsp::lsp_types::Url;
-use wcl_lang::{Document, Lexer, Span, TokenKind, ast::*};
+use wcl_lang::{DeclName, Document, Lexer, ResolvedType, Span, TokenKind, ast::*};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 /// A workspace declaration or a binding whose identity is local to one source.
@@ -12,6 +12,8 @@ pub(crate) enum Identity {
     Global(String),
     /// The declaring source and name span of a lexical binding.
     Local(Url, Span),
+    /// A semantic name is computed, so its declaration cannot be edited safely.
+    Unresolved(String),
 }
 
 /// One authored declaration or reference with its exact edit range.
@@ -22,8 +24,18 @@ pub(crate) struct Occurrence {
     pub span: Span,
     /// Whether this occurrence introduces the name.
     pub declaration: bool,
-    /// False when replacing the name would also change a selector.
-    pub rename_supported: bool,
+    /// Selector preserved when a shorthand binding becomes explicit.
+    pub replacement_prefix: String,
+    pub replacement_suffix: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum ContextType {
+    Named(String),
+    List(Box<ContextType>),
+    Function(Vec<ContextType>, Box<ContextType>),
+    Record(Vec<(String, ContextType)>),
+    Unknown,
 }
 
 /// Walk a parsed source using the workspace index and local lexical scopes.
@@ -45,6 +57,9 @@ pub(crate) fn collect(source: &str, uri: &Url, doc: &Document) -> Option<Vec<Occ
         aliases: HashMap::new(),
         bindings: Vec::new(),
         item_scopes: Vec::new(),
+        binding_types: Vec::new(),
+        initializers: Vec::new(),
+        visiting: Vec::new(),
         out: Vec::new(),
     };
     for item in &ast.items {
@@ -66,7 +81,7 @@ pub(crate) fn collect(source: &str, uri: &Url, doc: &Document) -> Option<Vec<Occ
             }
         }
     }
-    collector.items(&ast.items, true);
+    collector.items(&ast.items, true, None);
     Some(collector.out)
 }
 
@@ -86,6 +101,9 @@ struct Collector<'a> {
     bindings: Vec<(String, Identity)>,
     /// Item scopes used by explicit self and parent member accesses.
     item_scopes: Vec<HashMap<String, Identity>>,
+    binding_types: Vec<(Identity, ContextType)>,
+    initializers: Vec<(Identity, Expr)>,
+    visiting: Vec<Identity>,
     /// Collected authored occurrences.
     out: Vec<Occurrence>,
 }
@@ -97,8 +115,320 @@ impl Collector<'_> {
             identity,
             span,
             declaration,
-            rename_supported: true,
+            replacement_prefix: String::new(),
+            replacement_suffix: String::new(),
         });
+    }
+
+    fn namespace_parts(&self) -> Vec<String> {
+        self.namespace
+            .split('.')
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn resolved_type(&self, ty: ResolvedType<'_>, depth: usize) -> ContextType {
+        if depth == 0 {
+            return ContextType::Unknown;
+        }
+        match ty {
+            ResolvedType::Named(d) => match d.alias_type() {
+                Some(t) => self.resolved_type(self.doc.resolve_in(t, d.file_ns()), depth - 1),
+                None => ContextType::Named(d.full_name()),
+            },
+            ResolvedType::Union(d) => ContextType::Named(d.full_name()),
+            ResolvedType::SymbolSet(d) => ContextType::Named(d.full_name()),
+            ResolvedType::Interface(d) => ContextType::Named(d.full_name()),
+            ResolvedType::Reference(t) => self.resolved_type(*t, depth - 1),
+            ResolvedType::List(t) => ContextType::List(Box::new(self.resolved_type(*t, depth - 1))),
+            ResolvedType::Tensor { element, .. } => {
+                ContextType::List(Box::new(self.resolved_type(*element, depth - 1)))
+            }
+            ResolvedType::Function { params, return_ty } => ContextType::Function(
+                params
+                    .into_iter()
+                    .map(|t| self.resolved_type(t, depth - 1))
+                    .collect(),
+                Box::new(self.resolved_type(*return_ty, depth - 1)),
+            ),
+            _ => ContextType::Unknown,
+        }
+    }
+
+    fn type_context(&self, ty: &TypeRef) -> ContextType {
+        self.resolved_type(self.doc.resolve_in(ty, &self.namespace_parts()), 32)
+    }
+
+    fn field_context(&self, owner: &ContextType, name: &str) -> ContextType {
+        match owner {
+            ContextType::Named(owner) => self
+                .doc
+                .type_decl(owner)
+                .and_then(|d| d.effective_fields().into_iter().find(|f| f.name() == name))
+                .map(|f| self.resolved_type(f.resolved_type(), 32))
+                .unwrap_or(ContextType::Unknown),
+            ContextType::Record(fields) => fields
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, t)| t.clone())
+                .unwrap_or(ContextType::Unknown),
+            _ => ContextType::Unknown,
+        }
+    }
+
+    fn root_field_context(&self, name: &str) -> ContextType {
+        self.doc
+            .type_decls()
+            .filter(|d| d.decorators().any(|a| a.full_name() == "document"))
+            .filter(|d| d.file_ns() == self.namespace_parts() || d.is_imported())
+            .filter_map(|d| d.effective_fields().into_iter().find(|f| f.name() == name))
+            .next()
+            .map(|f| self.resolved_type(f.resolved_type(), 32))
+            .unwrap_or(ContextType::Unknown)
+    }
+
+    fn binding_type(&self, id: &Identity) -> ContextType {
+        self.binding_types
+            .iter()
+            .rev()
+            .find(|(i, _)| i == id)
+            .map(|(_, t)| t.clone())
+            .unwrap_or(ContextType::Unknown)
+    }
+
+    fn infer(&self, expr: &Expr) -> ContextType {
+        match expr {
+            Expr::Identifier(n, _) => self
+                .bindings
+                .iter()
+                .rev()
+                .find(|(name, _)| name == n)
+                .map(|(_, id)| self.binding_type(id))
+                .unwrap_or_else(|| self.root_field_context(n)),
+            Expr::Variant { type_path, .. } => self
+                .resolve(&type_path.join("."))
+                .map(ContextType::Named)
+                .unwrap_or(ContextType::Unknown),
+            Expr::Function(f) => ContextType::Function(
+                f.params.iter().map(|p| self.type_context(&p.ty)).collect(),
+                Box::new(self.type_context(&f.return_ty)),
+            ),
+            Expr::Call { callee, .. } => match self.infer(callee) {
+                ContextType::Function(_, t) => *t,
+                _ => ContextType::Unknown,
+            },
+            Expr::Member { recv, name, .. } => self.field_context(&self.infer(recv), name),
+            Expr::Paren { inner, .. } => self.infer(inner),
+            Expr::Record { fields, .. } => ContextType::Record(
+                fields
+                    .iter()
+                    .map(|f| (f.name.clone(), self.infer(&f.value)))
+                    .collect(),
+            ),
+            Expr::ListLit { elements, .. } => ContextType::List(Box::new(
+                elements
+                    .first()
+                    .map(|e| self.infer(e))
+                    .unwrap_or(ContextType::Unknown),
+            )),
+            Expr::If { then_block, .. } => self.infer(then_block),
+            Expr::Block { tail, .. } => self.infer(tail),
+            _ => ContextType::Unknown,
+        }
+    }
+
+    fn variant_owner(&self, owner: &str, name: &str, depth: usize) -> Option<String> {
+        if depth == 0 {
+            return None;
+        }
+        let union = self.doc.union_decl(owner)?;
+        if union.variant(name).is_some() {
+            return Some(owner.to_string());
+        }
+        union.extends().iter().find_map(|path| {
+            let ty = TypeRef::named(path.clone());
+            let ContextType::Named(parent) =
+                self.resolved_type(self.doc.resolve_in(&ty, union.file_ns()), 32)
+            else {
+                return None;
+            };
+            self.variant_owner(&parent, name, depth - 1)
+        })
+    }
+
+    fn symbol(&mut self, name: &str, span: Span, expected: &ContextType) {
+        if let ContextType::Named(owner) = expected
+            && self
+                .doc
+                .symbol_set(owner)
+                .is_some_and(|s| s.symbols().any(|s| s.name() == name))
+        {
+            self.push(
+                Identity::Global(format!("{owner}.{name}")),
+                Span::new(span.start + 1, span.end),
+                false,
+            );
+        }
+    }
+
+    fn kind_strings(&mut self, expr: &Expr, span: Span, category: &str, owner: Option<&str>) {
+        if let Expr::ListLit { elements, span, .. } = expr {
+            let spans = self.argument_spans(*span);
+            for (element, span) in elements.iter().zip(spans) {
+                self.kind_strings(element, span, category, owner);
+            }
+            return;
+        }
+        if !matches!(expr, Expr::Utf8(_) | Expr::Ascii(_)) {
+            self.push(Identity::Unresolved(category.into()), span, false);
+            return;
+        }
+        let Some(text) = self.source.get(span.start..span.end) else {
+            return;
+        };
+        let mut lexer = Lexer::new(text);
+        while let Ok(token) = lexer.next_token() {
+            if matches!(token.kind, TokenKind::Eof) {
+                break;
+            }
+            let TokenKind::Str(
+                wcl_lang::StringLit::Utf8(value) | wcl_lang::StringLit::Ascii(value),
+            ) = token.kind
+            else {
+                continue;
+            };
+            let parts: Vec<String> = value
+                .split(['.', ':'])
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect();
+            let Some((name, qualifier)) = parts.split_last() else {
+                continue;
+            };
+            let target = owner.map(str::to_string).or_else(|| {
+                let schema = if category == "block" {
+                    self.doc
+                        .block_schema_in(qualifier, name, &self.namespace_parts())
+                } else {
+                    self.doc
+                        .decorator_schema_in(qualifier, name, &self.namespace_parts())
+                };
+                schema.map(|d| d.full_name())
+            });
+            if let Some(target) = target {
+                let start = span.start + token.span.start;
+                let end = span.start + token.span.end;
+                let prefix = &value[..value.len() - name.len()];
+                let authored = &self.source[start..end];
+                if authored.ends_with(&format!("{value}\"")) {
+                    self.push(
+                        Identity::Global(format!("{category}:{target}")),
+                        Span::new(end - 1 - name.len(), end - 1),
+                        owner.is_some(),
+                    );
+                } else {
+                    self.push(
+                        Identity::Global(format!("{category}:{target}")),
+                        Span::new(start, end),
+                        owner.is_some(),
+                    );
+                    let occurrence = self.out.last_mut().unwrap();
+                    occurrence.replacement_prefix = format!("\"{prefix}");
+                    occurrence.replacement_suffix = "\"".into();
+                }
+            }
+        }
+    }
+
+    fn shorthand(&self, span: Span) -> bool {
+        let mut lexer = Lexer::new(&self.source[..span.start]);
+        let mut previous = TokenKind::Eof;
+        while let Ok(token) = lexer.next_token() {
+            if matches!(token.kind, TokenKind::Eof) {
+                break;
+            }
+            previous = token.kind;
+        }
+        matches!(previous, TokenKind::LBrace | TokenKind::Comma)
+    }
+
+    fn argument_spans(&self, span: Span) -> Vec<Span> {
+        let mut spans = Vec::new();
+        let mut lexer = Lexer::new(&self.source[span.start..span.end]);
+        let mut depth = 0usize;
+        let mut start = span.start;
+        while let Ok(token) = lexer.next_token() {
+            match token.kind {
+                TokenKind::Eof => break,
+                TokenKind::LParen | TokenKind::LBrace | TokenKind::LBracket => {
+                    depth += 1;
+                    if depth == 1 {
+                        start = span.start + token.span.end;
+                    }
+                }
+                TokenKind::RParen | TokenKind::RBrace | TokenKind::RBracket => {
+                    if depth == 1 {
+                        spans.push(Span::new(start, span.start + token.span.start));
+                        break;
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                TokenKind::Comma if depth == 1 => {
+                    spans.push(Span::new(start, span.start + token.span.start));
+                    start = span.start + token.span.end;
+                }
+                _ => {}
+            }
+        }
+        spans
+    }
+
+    fn reflective_kind_string(&mut self, expr: &Expr, span: Span, category: &str) {
+        let wanted = usize::from(category == "decorator");
+        let mut lexer = Lexer::new(&self.source[span.start..span.end]);
+        let mut depth = 0usize;
+        let mut index = 0usize;
+        let mut start = None;
+        while let Ok(token) = lexer.next_token() {
+            if matches!(token.kind, TokenKind::Eof) {
+                break;
+            }
+            match token.kind {
+                TokenKind::LParen | TokenKind::LBrace | TokenKind::LBracket => {
+                    depth += 1;
+                    if depth == 1 {
+                        start = Some(span.start + token.span.end);
+                    }
+                }
+                TokenKind::RParen | TokenKind::RBrace | TokenKind::RBracket => {
+                    if depth == 1 && index == wanted {
+                        self.kind_strings(
+                            expr,
+                            Span::new(start.unwrap(), span.start + token.span.start),
+                            category,
+                            None,
+                        );
+                        break;
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                TokenKind::Comma if depth == 1 => {
+                    if index == wanted {
+                        self.kind_strings(
+                            expr,
+                            Span::new(start.unwrap(), span.start + token.span.start),
+                            category,
+                            None,
+                        );
+                        break;
+                    }
+                    index += 1;
+                    start = Some(span.start + token.span.end);
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Prefix a declaration with this source's namespace.
@@ -209,6 +539,7 @@ impl Collector<'_> {
     /// Visit decorator names, literal registrations, and argument expressions.
     fn decorators(&mut self, decorators: &[Decorator], owner: Option<&str>) {
         for d in decorators {
+            let mut schema = None;
             if let Some((name, qualifier)) = d.name.split_last() {
                 let namespace: Vec<_> = self
                     .namespace
@@ -216,36 +547,55 @@ impl Collector<'_> {
                     .filter(|n| !n.is_empty())
                     .map(str::to_string)
                     .collect();
-                if let Some(schema) = self.doc.decorator_schema_in(qualifier, name, &namespace) {
-                    use wcl_lang::DeclName;
-                    if let Some(span) = self.name_span(d.name_span, name) {
-                        self.push(
-                            Identity::Global(format!("decorator:{}", schema.full_name())),
-                            span,
-                            false,
-                        );
-                    }
-                }
-                if let Some(owner) = owner
-                    && qualifier.is_empty()
-                    && matches!(name.as_str(), "block" | "decorator")
-                    && let Some(Expr::Utf8(value)) = d.positional.first()
-                    && let Some(span) = d.positional_spans.first()
-                    && self.source.get(span.start..span.end)
-                        == Some(format!("\"{value}\"").as_str())
+                schema = self.doc.decorator_schema_in(qualifier, name, &namespace);
+                if let Some(schema) = schema
+                    && let Some((_, span)) = self.tokens(d.name_span).last()
                 {
                     self.push(
-                        Identity::Global(format!("{name}:{owner}")),
-                        Span::new(span.start + 1, span.end - 1),
-                        true,
+                        Identity::Global(format!("decorator:{}", schema.full_name())),
+                        *span,
+                        false,
                     );
                 }
             }
-            for e in &d.positional {
-                self.expr(e);
+            let builtin = schema.map(|s| s.full_name()).unwrap_or_default();
+            if let Some((expr, span)) = d.positional.first().zip(d.positional_spans.first()) {
+                match builtin.as_str() {
+                    "Block" | "Table" if owner.is_some() => {
+                        self.kind_strings(expr, *span, "block", owner)
+                    }
+                    "Decorator" if owner.is_some() => {
+                        self.kind_strings(expr, *span, "decorator", owner)
+                    }
+                    "Child" | "Children" if matches!(expr, Expr::Utf8(_) | Expr::Ascii(_)) => {
+                        self.kind_strings(expr, *span, "block", None)
+                    }
+                    "RefDecorator" => self.kind_strings(expr, *span, "block", None),
+                    _ => {}
+                }
+            }
+            for (i, e) in d.positional.iter().enumerate() {
+                let expected = schema
+                    .and_then(|s| {
+                        s.effective_fields()
+                            .into_iter()
+                            .find(|f| f.inline_slot() == Some(i as u64))
+                    })
+                    .map(|f| self.resolved_type(f.resolved_type(), 32))
+                    .unwrap_or(ContextType::Unknown);
+                self.expr_with(e, &expected);
             }
             for arg in &d.named {
-                self.expr(&arg.value);
+                if (builtin == "Block" && arg.name == "required_children")
+                    || (builtin == "AppliesTo" && arg.name == "kinds")
+                {
+                    self.kind_strings(&arg.value, arg.span, "block", None);
+                }
+                let expected = schema
+                    .and_then(|s| s.field(&arg.name))
+                    .map(|f| self.resolved_type(f.resolved_type(), 32))
+                    .unwrap_or(ContextType::Unknown);
+                self.expr_with(&arg.value, &expected);
             }
         }
     }
@@ -254,9 +604,20 @@ impl Collector<'_> {
     fn fields(&mut self, fields: &[TypeField]) {
         for f in fields {
             self.decorators(&f.decorators, None);
+            for d in &f.decorators {
+                if d.name == ["default"]
+                    && self
+                        .doc
+                        .decorator_schema_in(&[], "default", &self.namespace_parts())
+                        .is_some_and(|d| d.full_name() == "Default")
+                    && let Some(e) = d.positional.first()
+                {
+                    self.expr_with(e, &self.type_context(&f.ty));
+                }
+            }
             self.type_refs(f.ty_span);
             if let Some(e) = &f.default_expr {
-                self.expr(e);
+                self.expr_with(e, &self.type_context(&f.ty));
             }
         }
     }
@@ -273,7 +634,7 @@ impl Collector<'_> {
     }
 
     /// Walk an item scope with all sibling bindings visible.
-    fn items(&mut self, items: &[Item], global: bool) {
+    fn items(&mut self, items: &[Item], global: bool, owner: Option<&ContextType>) {
         let depth = self.bindings.len();
         // Item bindings are visible to sibling and descendant expressions.
         for item in items {
@@ -290,6 +651,26 @@ impl Collector<'_> {
                     .unwrap_or(span.start);
                 if let Some(s) = self.name_span(Span::new(start, span.end), name) {
                     self.bind(name, s, global);
+                    let id = self.bindings.last().unwrap().1.clone();
+                    let expr = match item {
+                        Item::Field(f) => &f.expr,
+                        Item::Let(l) => &l.value,
+                        _ => unreachable!(),
+                    };
+                    let ty = if matches!(item, Item::Field(_)) {
+                        owner
+                            .map(|o| self.field_context(o, name))
+                            .unwrap_or_else(|| self.root_field_context(name))
+                    } else {
+                        self.infer(expr)
+                    };
+                    let ty = if ty == ContextType::Unknown {
+                        self.infer(expr)
+                    } else {
+                        ty
+                    };
+                    self.binding_types.push((id.clone(), ty));
+                    self.initializers.push((id, expr.clone()));
                 }
             }
         }
@@ -332,6 +713,28 @@ impl Collector<'_> {
                 }
                 Item::SymbolSetDecl(d) => {
                     self.declaration(&d.name, d.span, &d.decorators);
+                    for entry in &d.symbols {
+                        self.decorators(&entry.decorators, None);
+                        let start = entry
+                            .decorators
+                            .iter()
+                            .map(|d| d.span.end)
+                            .max()
+                            .unwrap_or(entry.span.start);
+                        if let Some(span) =
+                            self.name_span(Span::new(start, entry.span.end), &entry.name)
+                        {
+                            self.push(
+                                Identity::Global(format!(
+                                    "{}.{}",
+                                    self.qualified(&d.name.join(".")),
+                                    entry.name
+                                )),
+                                span,
+                                true,
+                            );
+                        }
+                    }
                 }
                 Item::ConnectionDecl(d) => {
                     self.declaration(&d.name, d.span, &d.decorators);
@@ -341,7 +744,14 @@ impl Collector<'_> {
                 }
                 Item::Field(f) => {
                     self.decorators(&f.decorators, None);
-                    self.expr(&f.expr);
+                    let expected = self
+                        .bindings
+                        .iter()
+                        .rev()
+                        .find(|(n, _)| n == &f.name)
+                        .map(|(_, id)| self.binding_type(id))
+                        .unwrap_or(ContextType::Unknown);
+                    self.expr_with(&f.expr, &expected);
                 }
                 Item::Let(l) => {
                     self.decorators(&l.decorators, None);
@@ -349,7 +759,10 @@ impl Collector<'_> {
                 }
                 Item::Block(b) => {
                     self.decorators(&b.decorators, None);
-                    if let Some(schema) = self.doc.block_schema(&b.kind) {
+                    let schema =
+                        self.doc
+                            .block_schema_in(&b.kind_ns, &b.kind, &self.namespace_parts());
+                    if let Some(schema) = schema {
                         use wcl_lang::DeclName;
                         let start = b
                             .decorators
@@ -357,10 +770,13 @@ impl Collector<'_> {
                             .map(|d| d.span.end)
                             .max()
                             .unwrap_or(b.span.start);
-                        if let Some(span) = self.name_span(Span::new(start, b.span.end), &b.kind) {
+                        if let Some((_, span)) = self
+                            .tokens(Span::new(start, b.span.end))
+                            .get(b.kind_ns.len())
+                        {
                             self.push(
                                 Identity::Global(format!("block:{}", schema.full_name())),
-                                span,
+                                *span,
                                 false,
                             );
                         }
@@ -368,15 +784,104 @@ impl Collector<'_> {
                     if let Some(slot) = &b.slot_decl {
                         self.type_refs(slot.ty_span);
                     }
-                    for label in &b.labels {
-                        self.expr(label);
+                    for (i, label) in b.labels.iter().enumerate() {
+                        let expected = schema
+                            .and_then(|s| {
+                                s.effective_fields()
+                                    .into_iter()
+                                    .find(|f| f.inline_slot() == Some(i as u64))
+                            })
+                            .map(|f| self.resolved_type(f.resolved_type(), 32))
+                            .unwrap_or(ContextType::Unknown);
+                        self.expr_with(label, &expected);
                     }
-                    self.items(&b.items, false);
+                    self.items(
+                        &b.items,
+                        false,
+                        schema.map(|s| ContextType::Named(s.full_name())).as_ref(),
+                    );
                 }
                 Item::Table(t) => {
+                    let expected = owner
+                        .map(|o| self.field_context(o, &t.field_name))
+                        .unwrap_or_else(|| self.root_field_context(&t.field_name));
+                    let columns = match expected {
+                        ContextType::List(inner) => match *inner {
+                            ContextType::Named(n) => self
+                                .doc
+                                .type_decl(&n)
+                                .map(|s| s.effective_fields())
+                                .unwrap_or_default(),
+                            _ => Vec::new(),
+                        },
+                        _ => Vec::new(),
+                    };
                     for row in &t.rows {
-                        for value in &row.values {
-                            self.expr(value);
+                        for (i, value) in row.values.iter().enumerate() {
+                            let expected = columns
+                                .get(i)
+                                .map(|f| self.resolved_type(f.resolved_type(), 32))
+                                .unwrap_or(ContextType::Unknown);
+                            self.expr_with(value, &expected);
+                        }
+                    }
+                }
+                Item::Connection(c) => {
+                    if let Some((name, span)) = c.kind.as_ref().zip(c.kind_span) {
+                        let schemas: Vec<_> = match owner {
+                            Some(ContextType::Named(n)) => {
+                                self.doc.type_decl(n).into_iter().collect()
+                            }
+                            None => self
+                                .doc
+                                .type_decls()
+                                .filter(|d| d.decorators().any(|a| a.full_name() == "document"))
+                                .filter(|d| {
+                                    d.file_ns() == self.namespace_parts() || d.is_imported()
+                                })
+                                .collect(),
+                            _ => Vec::new(),
+                        };
+                        let endpoint_type = |id: &str| {
+                            items.iter().find_map(|item| match item {
+                            Item::Block(b) if matches!(b.labels.first(), Some(Expr::Identifier(n, _) | Expr::Utf8(n)) if n == id) => {
+                                self.doc.block_schema_in(&b.kind_ns, &b.kind, &self.namespace_parts()).map(|s| ContextType::Named(s.full_name()))
+                            }
+                            _ => None,
+                        })
+                        };
+                        let source = endpoint_type(&c.lhs);
+                        let destination = endpoint_type(&c.rhs);
+                        for schema in schemas {
+                            for field in schema.effective_fields() {
+                                if let Some(connection) = field.connection_schema() {
+                                    let from = self.resolved_type(
+                                        self.doc.resolve_in(
+                                            connection.source_type(),
+                                            connection.file_ns(),
+                                        ),
+                                        32,
+                                    );
+                                    let to = self.resolved_type(
+                                        self.doc.resolve_in(
+                                            connection.destination_type(),
+                                            connection.file_ns(),
+                                        ),
+                                        32,
+                                    );
+                                    if source.as_ref().is_some_and(|s| s != &from)
+                                        || destination.as_ref().is_some_and(|s| s != &to)
+                                    {
+                                        continue;
+                                    }
+                                    let ty = TypeRef::named(connection.kind_set_path().to_vec());
+                                    let expected = self.resolved_type(
+                                        self.doc.resolve_in(&ty, connection.file_ns()),
+                                        32,
+                                    );
+                                    self.symbol(name, span, &expected);
+                                }
+                            }
                         }
                     }
                 }
@@ -400,7 +905,7 @@ impl Collector<'_> {
                         }
                     }
                 },
-                Item::NamespaceDecl(_) | Item::Import(_) | Item::Connection(_) => {}
+                Item::NamespaceDecl(_) | Item::Import(_) => {}
             }
         }
         self.item_scopes.pop();
@@ -419,30 +924,51 @@ impl Collector<'_> {
     }
 
     /// Record the explicit type and variant parts of a constructor or pattern.
-    fn variant(&mut self, path: &[String], variant: &str, span: Span) {
-        if let Some(fqn) = self.resolve(&path.join(".")) {
+    fn variant(
+        &mut self,
+        path: &[String],
+        variant: &str,
+        span: Span,
+        expected: &ContextType,
+    ) -> Option<String> {
+        let target = if path.is_empty() {
+            match expected {
+                ContextType::Named(n) => Some(n.clone()),
+                _ => None,
+            }
+        } else {
+            self.resolve(&path.join("."))
+        };
+        if let Some(fqn) = target {
             let tokens = self.tokens(span);
-            if let Some((_, s)) = tokens.get(path.len().saturating_sub(1))
+            if !path.is_empty()
+                && let Some((_, s)) = tokens.get(path.len() - 1)
                 && (!self.aliases.contains_key(&path.join("."))
                     || path.last().map(String::as_str) == fqn.rsplit('.').next())
             {
                 self.push(Identity::Global(fqn.clone()), *s, false);
             }
-            if let Some((_, s)) = tokens.get(path.len()) {
-                self.push(Identity::Global(format!("{fqn}.{variant}")), *s, false);
+            if let Some(owner) = self.variant_owner(&fqn, variant, 32) {
+                if let Some((_, s)) = tokens.get(path.len()) {
+                    self.push(Identity::Global(format!("{owner}.{variant}")), *s, false);
+                }
+                return Some(owner);
             }
         }
+        None
     }
 
     /// Introduce pattern bindings and visit explicit variant types.
-    fn pattern(&mut self, pattern: &Pattern) {
+    fn pattern(&mut self, pattern: &Pattern, expected: &ContextType) {
         match pattern {
             Pattern::Binding { name, span } | Pattern::At { name, span, .. } => {
                 if let Some(s) = self.name_span(*span, name) {
                     self.bind(name, s, false);
+                    self.binding_types
+                        .push((self.bindings.last().unwrap().1.clone(), expected.clone()));
                 }
                 if let Pattern::At { inner, .. } = pattern {
-                    self.pattern(inner);
+                    self.pattern(inner, expected);
                 }
             }
             Pattern::Variant {
@@ -451,20 +977,44 @@ impl Collector<'_> {
                 args,
                 span,
             } => {
-                self.variant(type_path, variant, *span);
+                let owner = self.variant(type_path, variant, *span, expected);
+                let declaration = owner
+                    .as_ref()
+                    .and_then(|o| self.doc.union_decl(o))
+                    .and_then(|u| u.variant(variant));
                 match args {
-                    VariantPatArgs::Positional(p) => self.pattern(p),
+                    VariantPatArgs::Positional(p) => {
+                        let expected = declaration
+                            .and_then(|v| match v.body() {
+                                wcl_lang::VariantBodyView::TypeRef(t) => Some(
+                                    self.doc.resolve_in(
+                                        t,
+                                        self.doc
+                                            .union_decl(owner.as_ref().unwrap())
+                                            .unwrap()
+                                            .file_ns(),
+                                    ),
+                                ),
+                                _ => None,
+                            })
+                            .map(|t| self.resolved_type(t, 32))
+                            .unwrap_or(ContextType::Unknown);
+                        self.pattern(p, &expected);
+                    }
                     VariantPatArgs::Record { fields, .. } => {
                         for (field, p) in fields {
                             let start = self.out.len();
-                            self.pattern(p);
+                            let expected = declaration
+                                .and_then(|v| v.field(field))
+                                .map(|f| self.resolved_type(f.resolved_type(), 32))
+                                .unwrap_or(ContextType::Unknown);
+                            self.pattern(p, &expected);
                             if let Pattern::Binding { name, span } = p
                                 && field == name
-                                && self.source[..span.start].trim_end().ends_with(['{', ','])
+                                && self.shorthand(*span)
                             {
-                                // Renaming shorthand also changes its field selector.
                                 for occurrence in &mut self.out[start..] {
-                                    occurrence.rename_supported = false;
+                                    occurrence.replacement_prefix = format!("{field}: ");
                                 }
                             }
                         }
@@ -472,39 +1022,65 @@ impl Collector<'_> {
                     VariantPatArgs::Unit => {}
                 }
             }
+            Pattern::LiteralSymbol(name, span) => self.symbol(name, *span, expected),
             Pattern::Wildcard(_)
             | Pattern::LiteralBool(..)
             | Pattern::LiteralNumber { .. }
             | Pattern::LiteralUtf8(..)
             | Pattern::LiteralAscii(..)
-            | Pattern::LiteralSymbol(..)
             | Pattern::LiteralNone(_) => {}
         }
     }
 
     /// Visit every expression child while retaining lexical shadowing.
     fn expr(&mut self, expr: &Expr) {
+        self.expr_with(expr, &ContextType::Unknown);
+    }
+
+    fn expr_with(&mut self, expr: &Expr, expected: &ContextType) {
         let depth = self.bindings.len();
         match expr {
-            Expr::Identifier(name, span) => self.identifier(name, *span),
+            Expr::Identifier(name, span) => {
+                self.identifier(name, *span);
+                if *expected != ContextType::Unknown
+                    && let Some((_, id)) =
+                        self.bindings.iter().rev().find(|(n, _)| n == name).cloned()
+                    && !self.visiting.contains(&id)
+                    && let Some((_, initializer)) =
+                        self.initializers.iter().find(|(i, _)| i == &id).cloned()
+                {
+                    self.visiting.push(id.clone());
+                    self.binding_types.push((id, expected.clone()));
+                    self.expr_with(&initializer, expected);
+                    self.visiting.pop();
+                }
+            }
+            Expr::Symbol(name, span) => self.symbol(name, *span, expected),
             Expr::Block { lets, tail, .. } => {
                 for l in lets {
                     self.expr(&l.value);
                     if let Some(span) = self.name_span(l.span, &l.name) {
                         self.bind(&l.name, span, false);
+                        let id = self.bindings.last().unwrap().1.clone();
+                        self.binding_types.push((id.clone(), self.infer(&l.value)));
+                        self.initializers.push((id, l.value.clone()));
                     }
                 }
-                self.expr(tail);
+                self.expr_with(tail, expected);
             }
             Expr::Function(f) => {
                 for p in &f.params {
                     self.type_refs(p.ty_span);
                     if let Some(span) = self.name_span(p.span, &p.name) {
                         self.bind(&p.name, span, false);
+                        self.binding_types.push((
+                            self.bindings.last().unwrap().1.clone(),
+                            self.type_context(&p.ty),
+                        ));
                     }
                 }
                 self.type_refs(f.return_ty_span);
-                self.expr(&f.body);
+                self.expr_with(&f.body, &self.type_context(&f.return_ty));
             }
             Expr::Member { recv, name, span } => {
                 let scope = match recv.as_ref() {
@@ -547,21 +1123,60 @@ impl Collector<'_> {
                     self.expr(recv);
                 }
             }
-            Expr::Call { callee, args, .. } => {
+            Expr::Call {
+                callee, args, span, ..
+            } => {
+                let params = match self.infer(callee) {
+                    ContextType::Function(params, _) => params,
+                    _ => Vec::new(),
+                };
+                if let Expr::Identifier(name, _) = callee.as_ref()
+                    && !self.bindings.iter().any(|(n, _)| n == name)
+                    && matches!(name.as_str(), "decorators_for_kind" | "decorator_arg")
+                {
+                    let index = usize::from(name == "decorator_arg");
+                    if let Some(arg) = args.get(index) {
+                        self.reflective_kind_string(
+                            arg,
+                            *span,
+                            if index == 0 { "block" } else { "decorator" },
+                        );
+                    }
+                }
                 self.expr(callee);
-                for a in args {
-                    self.expr(a);
+                for (i, a) in args.iter().enumerate() {
+                    self.expr_with(a, params.get(i).unwrap_or(&ContextType::Unknown));
                 }
             }
             Expr::Binary { lhs, rhs, .. } => {
-                self.expr(lhs);
-                self.expr(rhs);
+                let left = self.infer(lhs);
+                let right = self.infer(rhs);
+                self.expr_with(
+                    lhs,
+                    if right == ContextType::Unknown {
+                        expected
+                    } else {
+                        &right
+                    },
+                );
+                self.expr_with(
+                    rhs,
+                    if left == ContextType::Unknown {
+                        expected
+                    } else {
+                        &left
+                    },
+                );
             }
             Expr::Unary { operand, .. } => self.expr(operand),
-            Expr::Paren { inner, .. } => self.expr(inner),
+            Expr::Paren { inner, .. } => self.expr_with(inner, expected),
             Expr::ListLit { elements, .. } => {
                 for e in elements {
-                    self.expr(e);
+                    let inner = match expected {
+                        ContextType::List(t) => t.as_ref(),
+                        _ => &ContextType::Unknown,
+                    };
+                    self.expr_with(e, inner);
                 }
             }
             Expr::If {
@@ -571,9 +1186,9 @@ impl Collector<'_> {
                 ..
             } => {
                 self.expr(cond);
-                self.expr(then_block);
+                self.expr_with(then_block, expected);
                 if let Some(e) = else_block {
-                    self.expr(e);
+                    self.expr_with(e, expected);
                 }
             }
             Expr::IfLet {
@@ -584,21 +1199,21 @@ impl Collector<'_> {
                 ..
             } => {
                 self.expr(scrut);
-                self.pattern(pattern);
-                self.expr(then_block);
+                self.pattern(pattern, &self.infer(scrut));
+                self.expr_with(then_block, expected);
                 self.bindings.truncate(depth);
-                self.expr(else_block);
+                self.expr_with(else_block, expected);
             }
             Expr::Match { scrut, arms, .. } => {
                 self.expr(scrut);
                 for arm in arms {
                     for p in &arm.patterns {
-                        self.pattern(p);
+                        self.pattern(p, &self.infer(scrut));
                     }
                     if let Some(g) = &arm.guard {
                         self.expr(g);
                     }
-                    self.expr(&arm.body);
+                    self.expr_with(&arm.body, expected);
                     self.bindings.truncate(depth);
                 }
             }
@@ -609,9 +1224,9 @@ impl Collector<'_> {
                 handler,
                 ..
             } => {
-                self.expr(body);
+                self.expr_with(body, expected);
                 self.bind(binder, *binder_span, false);
-                self.expr(handler);
+                self.expr_with(handler, expected);
             }
             Expr::Variant {
                 type_path,
@@ -619,20 +1234,66 @@ impl Collector<'_> {
                 args,
                 span,
             } => {
-                self.variant(type_path, variant, *span);
+                let owner = self.variant(type_path, variant, *span, expected);
+                let declaration = owner
+                    .as_ref()
+                    .and_then(|o| self.doc.union_decl(o))
+                    .and_then(|u| u.variant(variant));
                 match args {
-                    VariantArgs::Positional(e) => self.expr(e),
+                    VariantArgs::Positional(e) => {
+                        let expected = declaration
+                            .and_then(|v| match v.body() {
+                                wcl_lang::VariantBodyView::TypeRef(t) => Some(
+                                    self.doc.resolve_in(
+                                        t,
+                                        self.doc
+                                            .union_decl(owner.as_ref().unwrap())
+                                            .unwrap()
+                                            .file_ns(),
+                                    ),
+                                ),
+                                _ => None,
+                            })
+                            .map(|t| self.resolved_type(t, 32))
+                            .unwrap_or(ContextType::Unknown);
+                        self.expr_with(e, &expected);
+                    }
                     VariantArgs::Record { fields, .. } => {
                         for f in fields {
-                            self.expr(&f.value);
+                            let expected = declaration
+                                .and_then(|v| v.field(&f.name))
+                                .map(|f| self.resolved_type(f.resolved_type(), 32))
+                                .unwrap_or(ContextType::Unknown);
+                            self.expr_with(&f.value, &expected);
                         }
                     }
                     VariantArgs::Unit => {}
                 }
             }
             Expr::Record { fields, .. } => {
+                let union = match expected {
+                    ContextType::Named(n) => self.doc.union_decl(n),
+                    _ => None,
+                };
+                let variants: Vec<_> = union
+                    .into_iter()
+                    .flat_map(|u| u.variants().collect::<Vec<_>>())
+                    .filter(|v| {
+                        let names: Vec<_> = v.fields().map(|f| f.name()).collect();
+                        names.len() == fields.len()
+                            && fields.iter().all(|f| names.contains(&f.name.as_str()))
+                    })
+                    .collect();
                 for f in fields {
-                    self.expr(&f.value);
+                    let expected = if variants.len() == 1 {
+                        variants[0]
+                            .field(&f.name)
+                            .map(|f| self.resolved_type(f.resolved_type(), 32))
+                            .unwrap_or(ContextType::Unknown)
+                    } else {
+                        self.field_context(expected, &f.name)
+                    };
+                    self.expr_with(&f.value, &expected);
                 }
             }
             Expr::InterpolatedString { parts, .. } => {
@@ -662,7 +1323,6 @@ impl Collector<'_> {
             | Expr::Ascii(_)
             | Expr::Utf16(_)
             | Expr::Utf32(_)
-            | Expr::Symbol(_)
             | Expr::None
             | Expr::SelfKw(_)
             | Expr::ParentKw(_) => {}

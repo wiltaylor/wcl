@@ -31,12 +31,15 @@ can't disambiguate (e.g., distinguishing user-defined types from fields).
 ## Rename
 
 Rename uses declaration identities and lexical scope, including unsaved imported
-files. Comments, string text, and unrelated names are left unchanged.
+files. It supports block and decorator kind names, union variants, shorthand
+pattern bindings, and typed symbol-set entries. Renaming a shorthand binding
+expands it to preserve the field selector.
 
-The server rejects renames of block and decorator kind names, union variants,
-and shorthand pattern bindings. Those forms need additional
-reference information or syntax changes before the server can rename them safely.
-Symbol-set entries do not offer rename.
+Kind renames also update matching literal names in schema metadata and reflection
+calls. Comments, ordinary string text, and unrelated names are left unchanged.
+The server rejects ambiguous targets, computed semantic names, and names without
+an editable declaration. For documents that pass schema validation, it also checks
+that the proposed edits preserve that validation before returning them.
 
 ## Status
 

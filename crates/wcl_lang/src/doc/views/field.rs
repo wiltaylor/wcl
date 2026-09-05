@@ -306,7 +306,7 @@ impl<'a> Field<'a> {
     /// return `None`; hosts use this to avoid false-positive static checks.
     pub fn literal_symbol(&self) -> Option<&'a str> {
         match &self.ast.expr {
-            ast::Expr::Symbol(name) => Some(name.as_str()),
+            ast::Expr::Symbol(name, _) => Some(name.as_str()),
             _ => None,
         }
     }

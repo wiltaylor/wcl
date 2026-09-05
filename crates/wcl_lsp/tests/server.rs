@@ -631,6 +631,62 @@ async fn rename_rewrites_every_reference_in_one_file() {
 }
 
 #[tokio::test]
+async fn rename_without_configured_root_preserves_embedded_imports() {
+    use tower_lsp::lsp_types::RenameParams;
+    let svc = service();
+    let backend = svc.inner();
+    let uri = Url::parse("file:///embedded-rename.wcl").unwrap();
+    let source = "import <wdoc.wcl>\nlet value = 7\n@schemaless result = value\n";
+    open(backend, &uri, source).await;
+    let edit = backend
+        .rename(RenameParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: Position {
+                    line: 1,
+                    character: 5,
+                },
+            },
+            new_name: "amount".into(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        })
+        .await
+        .expect("rename with embedded schema")
+        .expect("workspace edit");
+    let changes = edit.changes.unwrap();
+    assert_eq!(changes.len(), 1);
+    let mut edits = changes[&uri].clone();
+    assert_eq!(edits.len(), 2);
+    edits.sort_by_key(|edit| std::cmp::Reverse(edit.range.start));
+    let mut updated = source.to_string();
+    for edit in edits {
+        let offset = |position: Position| {
+            source
+                .split_inclusive('\n')
+                .take(position.line as usize)
+                .map(str::len)
+                .sum::<usize>()
+                + position.character as usize
+        };
+        let start = offset(edit.range.start);
+        let end = offset(edit.range.end);
+        updated.replace_range(start..end, &edit.new_text);
+    }
+    let path = uri.to_file_path().unwrap();
+    let loader = wcl_wdoc::schema_registry().loader(wcl_lang::overlay_loader(
+        std::collections::HashMap::from([(path.clone(), updated)]),
+    ));
+    let doc =
+        wcl_lang::Document::from_file_with_loader(&path, &wcl_wdoc::wdoc_environment(), loader)
+            .unwrap();
+    assert!(doc.schema_errors().is_empty());
+    assert_eq!(
+        doc.field("result").unwrap().value().unwrap(),
+        &wcl_lang::Value::I64(7)
+    );
+}
+
+#[tokio::test]
 async fn rename_rejects_an_invalid_identifier() {
     use tower_lsp::lsp_types::RenameParams;
     let svc = service();
