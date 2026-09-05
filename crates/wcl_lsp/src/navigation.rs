@@ -1,13 +1,13 @@
 //! `textDocument/definition` + `textDocument/references` request
 //! handlers. Both run the same identifier resolver and then either
-//! return the declaration span or scan the source for every textual
-//! occurrence of the resolved identifier.
+//! return the declaration span or collect AST occurrences with the
+//! same declaration identity.
 
-use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Range, Url};
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
 use wcl_lang::Document;
 
 use crate::convert::span_to_range;
-use crate::resolve::{self, LocatedSymbol};
+use crate::resolve;
 
 /// Go-to-definition for `(uri, offset)`. Returns `None` when the
 /// cursor isn't on an identifier we can resolve, or when the symbol
@@ -72,11 +72,7 @@ pub(crate) fn goto_definition(
     }))
 }
 
-/// Find every occurrence of the identifier under the cursor across
-/// the request document and every imported source. The match is
-/// whole-word on raw source bytes — good enough for the kinds of
-/// identifiers we resolve. Local-scope bindings stay single-file
-/// (their scope can't escape one document).
+/// Find occurrences of the selected declaration in the current source snapshot.
 pub(crate) fn references(
     uri: Url,
     source: &str,
@@ -84,154 +80,64 @@ pub(crate) fn references(
     include_declaration: bool,
     root_doc: Option<&Document>,
     root_path: Option<&std::path::Path>,
+    overlays: &std::collections::HashMap<std::path::PathBuf, String>,
 ) -> Option<Vec<Location>> {
-    let (sym, _, local_doc) = resolve::locate_at(source, uri.as_str(), offset, root_doc)?;
-    let needle = search_needle(&sym);
-    // Use root doc for cross-file enumeration when present — its
-    // `imported_paths` enumerates every transitively-loaded file.
+    let local_doc = if root_doc.is_none() {
+        Document::open(source, uri.as_str()).ok()
+    } else {
+        None
+    };
     let doc = root_doc.or(local_doc.as_ref())?;
-    let local_decl_span = resolve::declaration_span(doc, &sym);
-    let cross_file = !matches!(sym, LocatedSymbol::Local { .. });
-    let mut out = Vec::new();
-
-    // Request document first: span-aware decl tracking only applies
-    // here, because SymbolRecord.span lives in this file's coords.
-    let mut decl_seen = false;
-    for (start, end) in whole_word_matches(source, &needle) {
-        let inside_decl = local_decl_span.is_some_and(|s| start >= s.start && end <= s.end);
-        let is_decl = inside_decl && !decl_seen;
-        if is_decl {
-            decl_seen = true;
-            if !include_declaration {
+    let current = crate::occurrences::collect(source, &uri, doc)?;
+    let selected = current
+        .iter()
+        .find(|o| o.span.start <= offset && offset < o.span.end)
+        .or_else(|| current.iter().find(|o| o.span.end == offset))?;
+    let identity = selected.identity.clone();
+    let mut sources = vec![(uri.clone(), source.to_string(), current)];
+    if !matches!(identity, crate::occurrences::Identity::Local(..)) {
+        let mut paths: Vec<_> = doc
+            .imported_paths()
+            .into_iter()
+            .map(std::path::Path::to_path_buf)
+            .collect();
+        if let Some(root) = root_path {
+            paths.push(root.to_path_buf());
+        }
+        paths.sort();
+        paths.dedup();
+        for path in paths {
+            let file_uri = Url::from_file_path(&path).ok()?;
+            if file_uri == uri {
                 continue;
             }
+            let text = overlays
+                .get(&path)
+                .cloned()
+                .or_else(|| std::fs::read_to_string(&path).ok())?;
+            let occurrences = crate::occurrences::collect(&text, &file_uri, doc)?;
+            sources.push((file_uri, text, occurrences));
         }
-        out.push(Location {
-            uri: uri.clone(),
-            range: Range {
-                start: crate::convert::offset_to_position(source, start),
-                end: crate::convert::offset_to_position(source, end),
-            },
-        });
     }
-
-    // Imported documents: re-read each file and scan for the same
-    // identifier. The declaration of an FQN-bearing symbol may live
-    // in one of these files; include or exclude per `include_declaration`.
-    if cross_file {
-        let decl_path = match sym.simple_fqn() {
-            Some(fqn) => doc.find_symbol(fqn).map(|hit| {
-                let p = hit
-                    .source_path
-                    .map(std::path::Path::to_path_buf)
-                    .or_else(|| root_path.map(std::path::Path::to_path_buf));
-                (p, hit.record.span)
-            }),
-            None => None,
-        };
-        let request_path = uri.to_file_path().ok();
-        // Build the list of cross-file paths to scan: every imported
-        // file plus the root file itself (which `imported_paths`
-        // doesn't include, since the root *is* the document the
-        // imports hang off of).
-        let mut scan_paths: Vec<&std::path::Path> = doc.imported_paths().into_iter().collect();
-        if let Some(rp) = root_path
-            && !scan_paths.contains(&rp)
-        {
-            scan_paths.push(rp);
-        }
-        for path in scan_paths {
-            // Skip the request file itself — already covered above
-            // using its in-memory (possibly unsaved) buffer.
-            if request_path.as_deref() == Some(path) {
-                continue;
-            }
-            let Ok(text) = std::fs::read_to_string(path) else {
-                continue;
-            };
-            let Ok(file_url) = Url::from_file_path(path) else {
-                continue;
-            };
-            let decl_span_here = decl_path.as_ref().and_then(|(p, span)| {
-                if p.as_deref() == Some(path) {
-                    Some(*span)
-                } else {
-                    None
-                }
-            });
-            let mut decl_seen_here = false;
-            for (start, end) in whole_word_matches(&text, &needle) {
-                let inside_decl = decl_span_here.is_some_and(|s| start >= s.start && end <= s.end);
-                let is_decl = inside_decl && !decl_seen_here;
-                if is_decl {
-                    decl_seen_here = true;
-                    if !include_declaration {
-                        continue;
-                    }
-                }
+    let mut out = Vec::new();
+    for (file_uri, text, occurrences) in sources {
+        for occurrence in occurrences {
+            if occurrence.identity == identity && (include_declaration || !occurrence.declaration) {
                 out.push(Location {
-                    uri: file_url.clone(),
-                    range: Range {
-                        start: crate::convert::offset_to_position(&text, start),
-                        end: crate::convert::offset_to_position(&text, end),
-                    },
+                    uri: file_uri.clone(),
+                    range: span_to_range(&text, occurrence.span),
                 });
             }
         }
     }
-
     Some(out)
-}
-
-/// The identifier as it appears in source for a given symbol — the
-/// whole-word search needle. For dotted FQNs we take the last segment,
-/// which is what's actually typed at use sites. (Distinct from
-/// `LocatedSymbol::display_name`, which keeps the full dotted form.)
-fn search_needle(sym: &LocatedSymbol) -> String {
-    let fqn = match sym {
-        LocatedSymbol::Type(f)
-        | LocatedSymbol::Decorator(f)
-        | LocatedSymbol::BlockKind(f)
-        | LocatedSymbol::Field(f) => f.as_str(),
-        LocatedSymbol::UnionVariant { variant, .. } => variant.as_str(),
-        LocatedSymbol::SymbolEntry { entry, .. } => entry.as_str(),
-        LocatedSymbol::Local { name, .. } => name.as_str(),
-    };
-    fqn.rsplit('.').next().unwrap_or(fqn).to_string()
-}
-
-/// Return `(start, end)` byte spans of every whole-word match of
-/// `needle` in `source`. A "whole word" is bordered by either a
-/// non-identifier byte or the document boundary.
-fn whole_word_matches(source: &str, needle: &str) -> Vec<(usize, usize)> {
-    if needle.is_empty() {
-        return Vec::new();
-    }
-    let bytes = source.as_bytes();
-    let nbytes = needle.as_bytes();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i + nbytes.len() <= bytes.len() {
-        if &bytes[i..i + nbytes.len()] == nbytes {
-            let before_ok = i == 0 || !crate::scan::is_ident_byte(bytes[i - 1]);
-            let after_ok = i + nbytes.len() == bytes.len()
-                || !crate::scan::is_ident_byte(bytes[i + nbytes.len()]);
-            if before_ok && after_ok {
-                out.push((i, i + nbytes.len()));
-                i += nbytes.len();
-                continue;
-            }
-        }
-        i += 1;
-    }
-    out
 }
 
 /// `textDocument/rename`: every reference to the symbol under the
 /// cursor (declaration included) becomes a text edit replacing it
-/// with `new_name`. Exactly as precise as find-references — whole-word
-/// matches across the request document and every imported source.
-/// `Err` carries a user-facing message for an invalid new name.
+/// with `new_name`, using declaration identities across source snapshots.
+/// `Err` explains an invalid new name or a target with unsupported contextual uses.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn rename(
     uri: Url,
     source: &str,
@@ -239,11 +145,57 @@ pub(crate) fn rename(
     new_name: &str,
     root_doc: Option<&Document>,
     root_path: Option<&std::path::Path>,
+    overlays: &std::collections::HashMap<std::path::PathBuf, String>,
 ) -> Result<Option<tower_lsp::lsp_types::WorkspaceEdit>, String> {
     if !is_valid_identifier(new_name) {
         return Err(format!("'{new_name}' is not a valid WCL identifier"));
     }
-    let Some(locations) = references(uri, source, offset, true, root_doc, root_path) else {
+    let local_doc = if root_doc.is_none() {
+        Document::open(source, uri.as_str()).ok()
+    } else {
+        None
+    };
+    let Some(doc) = root_doc.or(local_doc.as_ref()) else {
+        return Ok(None);
+    };
+    let Some(occurrences) = crate::occurrences::collect(source, &uri, doc) else {
+        return Ok(None);
+    };
+    let selected = occurrences
+        .iter()
+        .find(|o| o.span.start <= offset && offset < o.span.end)
+        .or_else(|| occurrences.iter().find(|o| o.span.end == offset));
+    if let Some(selected) = selected
+        && occurrences
+            .iter()
+            .any(|o| o.identity == selected.identity && !o.rename_supported)
+    {
+        return Err("Rename is not available for shorthand pattern bindings".into());
+    }
+    if let Some(crate::occurrences::Occurrence {
+        identity: crate::occurrences::Identity::Global(fqn),
+        ..
+    }) = selected
+    {
+        // These names also occur in schema strings or context-inferred variants.
+        // Until those uses carry identities, no partial rename is safe.
+        if fqn.starts_with("block:")
+            || fqn.starts_with("decorator:")
+            || doc.find_symbol(fqn).is_some_and(|hit| {
+                matches!(
+                    hit.record.kind,
+                    wcl_lang::SymbolKind::UnionVariant { .. }
+                        | wcl_lang::SymbolKind::SymbolEntry { .. }
+                )
+            })
+        {
+            return Err(
+                "Rename is not available for schema kind names or context-inferred variants".into(),
+            );
+        }
+    }
+    let Some(locations) = references(uri, source, offset, true, root_doc, root_path, overlays)
+    else {
         return Ok(None);
     };
     let mut changes: std::collections::HashMap<Url, Vec<tower_lsp::lsp_types::TextEdit>> =
@@ -290,8 +242,160 @@ fn is_valid_identifier(s: &str) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn rename_preserves_evaluation_with_indexing_interpolation_and_shadowing() {
+        let source = "@schemaless values = [2, 3]\n@schemaless result = $\"values: ${at(values, 0) + (fn(values: i64) -> i64 { values })(4)}\"\n";
+        let edit = rename(
+            url(),
+            source,
+            source.find("values").unwrap(),
+            "numbers",
+            None,
+            None,
+            &Default::default(),
+        )
+        .unwrap()
+        .unwrap();
+        let mut edits = edit.changes.unwrap().remove(&url()).unwrap();
+        assert_eq!(edits.len(), 2);
+        edits.sort_by_key(|e| std::cmp::Reverse(e.range.start));
+        let mut updated = source.to_string();
+        for edit in edits {
+            let start = crate::convert::position_to_offset(source, edit.range.start);
+            let end = crate::convert::position_to_offset(source, edit.range.end);
+            updated.replace_range(start..end, &edit.new_text);
+        }
+        let before = Document::open(source, "before.wcl").unwrap();
+        let after = Document::open(&updated, "after.wcl").unwrap();
+        assert_eq!(
+            before.field("result").unwrap().value().unwrap(),
+            after.field("result").unwrap().value().unwrap()
+        );
+        assert!(updated.contains("fn(values: i64) -> i64 { values }"));
+    }
+
+    #[test]
+    fn references_use_unsaved_cross_file_coordinates() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.wcl");
+        let shared = dir.path().join("shared.wcl");
+        let source = "import \"./shared.wcl\"\ntype Root { color: shared.Color }\n";
+        std::fs::write(&main, source).unwrap();
+        std::fs::write(&shared, "namespace shared\ntype Color { name: utf8 }\n").unwrap();
+        let changed = "\n\n\nnamespace shared\ntype Color { name: utf8 }\n".to_string();
+        let overlays = std::collections::HashMap::from([(shared.clone(), changed)]);
+        let doc = Document::from_file_with_loader(
+            &main,
+            &wcl_lang::Environment::new(),
+            wcl_lang::overlay_loader(overlays.clone()),
+        )
+        .unwrap();
+        let refs = references(
+            Url::from_file_path(&main).unwrap(),
+            source,
+            source.find("Color").unwrap(),
+            true,
+            Some(&doc),
+            Some(&main),
+            &overlays,
+        )
+        .unwrap();
+        let declaration = refs
+            .iter()
+            .find(|r| r.uri == Url::from_file_path(&shared).unwrap())
+            .unwrap();
+        assert_eq!(declaration.range.start.line, 4);
+        assert_eq!(declaration.range.start.character, 5);
+        assert_eq!(refs.len(), 2);
+    }
+
+    #[test]
+    fn rename_type_preserves_explicit_use_alias_in_variant_constructor() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.wcl");
+        let shared = dir.path().join("shared.wcl");
+        let source =
+            "import \"./shared.wcl\"\nuse ns.Foo as Alias\n@schemaless value = Alias::One\n";
+        std::fs::write(&main, source).unwrap();
+        std::fs::write(&shared, "namespace ns\nunion Foo { One none }\n").unwrap();
+        let doc = Document::from_file(&main).unwrap();
+        let edit = rename(
+            Url::from_file_path(&main).unwrap(),
+            source,
+            source.find("Foo").unwrap(),
+            "Bar",
+            Some(&doc),
+            Some(&main),
+            &Default::default(),
+        )
+        .unwrap()
+        .unwrap();
+        let changes = edit.changes.unwrap();
+        let local = changes.get(&Url::from_file_path(&main).unwrap()).unwrap();
+        assert_eq!(local.len(), 1);
+        assert_eq!(local[0].range.start.line, 1);
+    }
+
     fn url() -> Url {
         Url::parse("file:///test.wcl").unwrap()
+    }
+
+    #[test]
+    fn rename_rejects_names_with_unresolved_contextual_uses() {
+        let cases = [
+            (
+                "@block(\"config\") type Config {}\nconfig {}\n",
+                "config {}",
+            ),
+            (
+                "@decorator(\"note\") type Note {}\n@note type T {}\n",
+                "note type",
+            ),
+            (
+                "union Shape { Circle none }\n@schemaless x = Shape::Circle\n",
+                "Circle none",
+            ),
+            (
+                "@schemaless x = match c1 {\n Shape::Circle { radius, .. } => radius,\n _ => 0,\n}\n",
+                "radius,",
+            ),
+        ];
+        for (source, cursor) in cases {
+            Document::open(source, "test.wcl").expect("valid rename fixture");
+            let result = rename(
+                url(),
+                source,
+                source.find(cursor).unwrap(),
+                "replacement",
+                None,
+                None,
+                &Default::default(),
+            );
+            assert!(result.is_err(), "{cursor}: {result:?}");
+        }
+    }
+
+    #[test]
+    fn rename_ignores_a_cursor_in_comments_or_strings() {
+        let source = "type Foo {}\n// Foo\n@schemaless text = \"Foo\"\n";
+        for cursor in [
+            source.find("// Foo").unwrap() + 3,
+            source.find("\"Foo\"").unwrap() + 1,
+        ] {
+            assert!(
+                rename(
+                    url(),
+                    source,
+                    cursor,
+                    "Bar",
+                    None,
+                    None,
+                    &Default::default()
+                )
+                .unwrap()
+                .is_none()
+            );
+        }
     }
 
     #[test]
@@ -316,7 +420,8 @@ mod tests {
         let src = "@document\ntype Root {\n  v: Foo\n}\n@block(\"foo\")\ntype Foo {\n  x: utf8\n}\nfoo {\n  x = \"a\"\n}\nfoo {\n  x = \"b\"\n}\n";
         // Cursor on the type-ref "Foo" in `v: Foo`.
         let cursor = src.find("v: Foo").unwrap() + 3;
-        let locs = references(url(), src, cursor, true, None, None).expect("some refs");
+        let locs = references(url(), src, cursor, true, None, None, &Default::default())
+            .expect("some refs");
         // Should include the declaration "type Foo" and the "v: Foo" use,
         // but not the lowercase block kind "foo".
         assert_eq!(locs.len(), 2, "found: {locs:#?}");
@@ -327,8 +432,10 @@ mod tests {
         let src =
             "@document\ntype Root {\n  v: Foo\n}\n@block(\"foo\")\ntype Foo {\n  x: utf8\n}\n";
         let cursor = src.find("v: Foo").unwrap() + 3;
-        let with_decl = references(url(), src, cursor, true, None, None).unwrap();
-        let no_decl = references(url(), src, cursor, false, None, None).unwrap();
+        let with_decl =
+            references(url(), src, cursor, true, None, None, &Default::default()).unwrap();
+        let no_decl =
+            references(url(), src, cursor, false, None, None, &Default::default()).unwrap();
         assert_eq!(with_decl.len(), no_decl.len() + 1);
     }
 
@@ -352,8 +459,16 @@ mod tests {
         // shared.wcl. References should find occurrences inside the
         // imported file even though the main file has none.
         let cursor = main_src.find("shared.wcl").unwrap() + 2;
-        let locs =
-            references(main_url.clone(), &main_src, cursor, true, None, None).unwrap_or_default();
+        let locs = references(
+            main_url.clone(),
+            &main_src,
+            cursor,
+            true,
+            None,
+            None,
+            &Default::default(),
+        )
+        .unwrap_or_default();
         let shared_url = Url::from_file_path(&shared).unwrap();
         let has_imported = locs.iter().any(|l| l.uri == shared_url);
         // The plumbing should fire even if the symbol resolves to

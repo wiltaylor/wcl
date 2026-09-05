@@ -95,6 +95,123 @@ fn list_sort_numeric_and_string() {
 }
 
 #[test]
+fn numeric_ordering_preserves_large_integers() {
+    for (ty, lo, hi) in [
+        ("i64", "9007199254740992", "9007199254740993"),
+        ("u64", "18446744073709551614", "18446744073709551615"),
+        (
+            "i128",
+            "170141183460469231731687303715884105726",
+            "170141183460469231731687303715884105727",
+        ),
+        (
+            "u128",
+            "340282366920938463463374607431768211454",
+            "340282366920938463463374607431768211455",
+        ),
+    ] {
+        let low = format!("{lo}{ty}");
+        let high = format!("{hi}{ty}");
+        let identity = format!("fn (x: {ty}) -> {ty} {{ x }}");
+        let expected = eval(&format!("@schemaless result = [{low}, {high}]"));
+        for expression in [
+            format!("sort([{high}, {low}])"),
+            format!("sort_by([{high}, {low}], {identity})"),
+        ] {
+            assert_eq!(
+                eval(&format!("@schemaless result = {expression}")),
+                expected
+            );
+        }
+        for (op, values, expected) in [
+            ("min_by", format!("[{high}, {low}]"), &low),
+            ("max_by", format!("[{low}, {high}]"), &high),
+        ] {
+            assert_eq!(
+                eval(&format!("@schemaless result = {op}({values}, {identity})")),
+                eval(&format!("@schemaless result = {expected}")),
+            );
+        }
+    }
+}
+
+#[test]
+fn numeric_sort_compares_mixed_types_exactly() {
+    for (input, expected) in [
+        (
+            "9007199254740993, 9007199254740992.0",
+            "9007199254740992.0, 9007199254740993",
+        ),
+        (
+            "-9007199254740992.0, -9007199254740993",
+            "-9007199254740993, -9007199254740992.0",
+        ),
+        (
+            "340282366920938463463374607431768211455u128, -1i128, 0u64",
+            "-1i128, 0u64, 340282366920938463463374607431768211455u128",
+        ),
+        (
+            "340282366920938463463374607431768211456.0, 340282366920938463463374607431768211455u128",
+            "340282366920938463463374607431768211455u128, 340282366920938463463374607431768211456.0",
+        ),
+        ("0.5, 0u128, -0.5, -1i128", "-1i128, -0.5, 0u128, 0.5"),
+        ("1.0 / 0.0, 0, -1.0 / 0.0", "-1.0 / 0.0, 0, 1.0 / 0.0"),
+        ("0.0, -0.0, 0", "0.0, -0.0, 0"),
+        ("16777217i64, 16777216.0f32", "16777216.0f32, 16777217i64"),
+        (
+            "-170141183460469231731687303715884105727i128, -170141183460469231731687303715884105728.0, -170141183460469231731687303715884105727i128 - 1i128",
+            "-170141183460469231731687303715884105728.0, -170141183460469231731687303715884105727i128 - 1i128, -170141183460469231731687303715884105727i128",
+        ),
+    ] {
+        assert_eq!(
+            eval(&format!("@schemaless result = sort([{input}])")),
+            eval(&format!("@schemaless result = [{expected}]")),
+            "{input}",
+        );
+    }
+}
+
+#[test]
+fn numeric_ordering_rejects_nan() {
+    for expression in [
+        "sort([sqrt(-1)])".to_string(),
+        "sort([1.0, sqrt(-1), 0.0])".to_string(),
+        "sort_by([1], fn (x: i64) -> f64 { sqrt(-1) })".to_string(),
+        "min_by([1], fn (x: i64) -> f64 { sqrt(-1) })".to_string(),
+        "max_by([1], fn (x: i64) -> f64 { sqrt(-1) })".to_string(),
+    ] {
+        let error = eval_err(&format!("@schemaless result = {expression}"));
+        assert!(error.contains("must not be NaN"), "{error}");
+    }
+}
+
+#[test]
+fn repeat_rejects_oversized_output_without_panicking() {
+    for expression in [
+        "repeat(\"abc\", 9223372036854775807)",
+        "repeat(\"a\", 67108865)",
+        "repeat(\"é\", 33554433)",
+    ] {
+        let error = eval_err(&format!("@schemaless result = {expression}"));
+        assert!(error.contains("64 MiB limit"), "{error}");
+    }
+    for expression in [
+        "repeat(\"\", 9223372036854775807)",
+        "repeat(\"abc\", 0)",
+        "repeat(\"abc\", -1)",
+    ] {
+        assert_eq!(
+            eval(&format!("@schemaless result = {expression}")),
+            Value::Utf8(String::new())
+        );
+    }
+    assert_eq!(
+        eval("@schemaless result = repeat(\"é\", 3)"),
+        Value::Utf8("ééé".into())
+    );
+}
+
+#[test]
 fn list_index_of_take_drop_contains() {
     assert_eq!(
         eval("@schemaless result = index_of([10, 20, 30], 20)\n"),

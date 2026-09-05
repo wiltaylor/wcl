@@ -1622,8 +1622,7 @@ fn build_site(
                 Some(dir) => dir.join(&entry),
                 None => PathBuf::from(&entry),
             };
-            let dest = out_dir.join(&entry);
-            copy_dir_all(&src, &dest)
+            copy_dir_all(&src, out_dir, Path::new(&entry))
                 .map_err(|e| BuildError::Io(e, format!("copy assets folder {entry}")))?;
         }
     }
@@ -2880,32 +2879,66 @@ fn site_head_extra(site: Option<&Block<'_>>) -> String {
     out
 }
 
-/// Recursively copy the directory tree at `src` into `dest`, creating
-/// `dest` (and parents) as needed. Used to ship a site's `assets` folders
-/// (an externally-built `dist/`, etc.) verbatim into the output.
-fn copy_dir_all(src: &Path, dest: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dest)?;
+/// Recursively copy `src` below `out_dir` at `relative`, validating each
+/// destination before creating directories or copying files.
+fn copy_dir_all(src: &Path, out_dir: &Path, relative: &Path) -> std::io::Result<()> {
+    let dest = asset_destination(out_dir, relative)?;
+    fs::create_dir_all(&dest)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let from = entry.path();
-        let to = dest.join(entry.file_name());
+        let child = relative.join(entry.file_name());
         if entry.file_type()?.is_dir() {
-            copy_dir_all(&from, &to)?;
+            copy_dir_all(&from, out_dir, &child)?;
         } else {
+            let to = asset_destination(out_dir, &child)?;
             fs::copy(&from, &to)?;
         }
     }
     Ok(())
 }
 
+/// Resolve an asset destination below the output root without following symlinks.
+pub(crate) fn asset_destination(out_dir: &Path, relative: &Path) -> std::io::Result<PathBuf> {
+    let invalid = || {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "asset destination must stay inside the output directory: {}",
+                relative.display()
+            ),
+        )
+    };
+    if relative.as_os_str().is_empty()
+        || relative
+            .components()
+            .any(|part| !matches!(part, std::path::Component::Normal(_)))
+    {
+        return Err(invalid());
+    }
+    let mut dest = out_dir.to_path_buf();
+    for part in relative.components() {
+        dest.push(part);
+        match fs::symlink_metadata(&dest) {
+            Ok(metadata) if metadata.file_type().is_symlink() => return Err(invalid()),
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(dest)
+}
+
 /// Write one bundled asset `bytes` to `<out>/_wdoc/<name>`, creating the
 /// `_wdoc/` directory if needed. The single create-dir + write + error-map
 /// path every bundled-asset writer shares (players, fonts, favicon, sprite).
 fn write_asset(out_dir: &Path, name: &str, bytes: impl AsRef<[u8]>) -> Result<(), BuildError> {
-    let dir = out_dir.join(crate::blocks::terminal::ASSET_DIR);
-    fs::create_dir_all(&dir)
+    let relative = Path::new(crate::blocks::terminal::ASSET_DIR).join(name);
+    let path = asset_destination(out_dir, &relative)
+        .map_err(|e| BuildError::Io(e, format!("asset destination {}", relative.display())))?;
+    let dir = path.parent().expect("asset has a parent directory");
+    fs::create_dir_all(dir)
         .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", dir.display())))?;
-    let path = dir.join(name);
     fs::write(&path, bytes).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))?;
     Ok(())
 }

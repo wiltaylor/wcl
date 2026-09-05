@@ -2211,6 +2211,26 @@ fn heredoc_non_ascii_fixture_reports_error() {
 // ---- interpolation ---------------------------------------------------
 
 #[test]
+fn interpolation_identifier_spans_match_outer_source() {
+    use wcl_lang::ast::{Expr, Item, TemplatePart};
+    let source = "name = \"Ada\"\ngreeting = $\"Hello ${name}\"\n";
+    let ast = wcl_lang::parse_for_edit(source, "interpolation.wcl").unwrap();
+    let Item::Field(field) = &ast.items[1] else {
+        panic!("field");
+    };
+    let Expr::InterpolatedString { parts, .. } = &field.expr else {
+        panic!("interpolation");
+    };
+    let TemplatePart::Expr(expr) = &parts[1] else {
+        panic!("slot");
+    };
+    let Expr::Identifier(name, span) = expr.as_ref() else {
+        panic!("identifier");
+    };
+    assert_eq!(&source[span.start..span.end], name);
+}
+
+#[test]
 fn interpolation_fixture_evaluates_each_form() {
     let doc =
         Document::from_file(&examples_dir().join("interpolation.wcl")).expect("interpolation.wcl");

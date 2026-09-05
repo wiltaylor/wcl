@@ -1119,15 +1119,18 @@ fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
 
 /// Write `contents` to `target` via a same-directory temp file +
 /// rename. Avoids leaving a partial file on disk if the host gets
-/// interrupted mid-write.
+/// interrupted mid-write. Follow symlinks and preserve the target's permissions.
 fn write_atomic(target: &Path, contents: &str) -> std::io::Result<()> {
+    let target = std::fs::canonicalize(target)?;
+    let permissions = std::fs::metadata(&target)?.permissions();
     let dir = target.parent().unwrap_or_else(|| Path::new("."));
     let mut tmp = tempfile::Builder::new()
         .prefix(".wcl-fmt-")
         .tempfile_in(dir)?;
     use std::io::Write as _;
     tmp.write_all(contents.as_bytes())?;
-    tmp.persist(target)
+    tmp.as_file().set_permissions(permissions)?;
+    tmp.persist(&target)
         .map_err(|e| std::io::Error::other(format!("rename to target failed: {e}")))?;
     Ok(())
 }

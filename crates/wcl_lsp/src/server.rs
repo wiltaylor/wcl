@@ -427,13 +427,21 @@ impl LanguageServer for Backend {
 
     async fn references(&self, params: ReferenceParams) -> RpcResult<Option<Vec<Location>>> {
         let uri = params.text_document_position.text_document.uri;
-        let Some((source, offset)) =
-            self.source_and_offset(&uri, params.text_document_position.position)
-        else {
+        let overlays = self.overlay_snapshot();
+        let source = uri
+            .to_file_path()
+            .ok()
+            .and_then(|p| overlays.get(&p).cloned())
+            .or_else(|| self.document_text(&uri));
+        let Some(source) = source else {
             return Ok(None);
         };
-        let root_doc = self.root_document();
+        let offset = position_to_offset(&source, params.text_document_position.position);
         let root_path = self.root_path();
+        let root_doc = root_path.as_ref().and_then(|path| {
+            let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlays.clone()));
+            Document::from_file_with_loader(path, &root_environment(), loader).ok()
+        });
         Ok(navigation::references(
             uri,
             &source,
@@ -441,18 +449,27 @@ impl LanguageServer for Backend {
             params.context.include_declaration,
             root_doc.as_ref(),
             root_path.as_deref(),
+            &overlays,
         ))
     }
 
     async fn rename(&self, params: RenameParams) -> RpcResult<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri;
-        let Some((source, offset)) =
-            self.source_and_offset(&uri, params.text_document_position.position)
-        else {
+        let overlays = self.overlay_snapshot();
+        let source = uri
+            .to_file_path()
+            .ok()
+            .and_then(|p| overlays.get(&p).cloned())
+            .or_else(|| self.document_text(&uri));
+        let Some(source) = source else {
             return Ok(None);
         };
-        let root_doc = self.root_document();
+        let offset = position_to_offset(&source, params.text_document_position.position);
         let root_path = self.root_path();
+        let root_doc = root_path.as_ref().and_then(|path| {
+            let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlays.clone()));
+            Document::from_file_with_loader(path, &root_environment(), loader).ok()
+        });
         navigation::rename(
             uri,
             &source,
@@ -460,6 +477,7 @@ impl LanguageServer for Backend {
             &params.new_name,
             root_doc.as_ref(),
             root_path.as_deref(),
+            &overlays,
         )
         .map_err(tower_lsp::jsonrpc::Error::invalid_params)
     }

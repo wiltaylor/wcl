@@ -400,6 +400,78 @@ fn fmt_reports_parse_error_via_exit_code() {
         .stderr(predicate::str::contains("expected value"));
 }
 
+#[cfg(unix)]
+#[test]
+fn file_edits_preserve_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    for command in ["fmt", "set"] {
+        let file = tmp.path().join(format!("{command}.wcl"));
+        std::fs::write(&file, "@schemaless x  =   1\n").expect("write fixture");
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o640))
+            .expect("set permissions");
+        let mut cmd = wcl();
+        cmd.arg(command).arg(&file);
+        if command == "fmt" {
+            cmd.arg("--in-place");
+        } else {
+            cmd.args(["x", "2"]);
+        }
+        cmd.assert().success();
+        let permissions = std::fs::metadata(&file)
+            .expect("file metadata")
+            .permissions();
+        assert_eq!(permissions.mode() & 0o777, 0o640, "{command}");
+        let expected = if command == "fmt" { "1" } else { "2" };
+        wcl()
+            .arg("get")
+            .arg(&file)
+            .arg("x")
+            .assert()
+            .success()
+            .stdout(format!("{expected}\n"));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn file_edits_follow_symlinks_without_replacing_them() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    for command in ["fmt", "set"] {
+        let dir = tmp.path().join(command);
+        std::fs::create_dir(&dir).expect("mkdir fixture");
+        let target = dir.join("target.wcl");
+        let link = dir.join("link.wcl");
+        std::fs::write(&target, "@schemaless x  =   1\n").expect("write fixture");
+        symlink("target.wcl", dir.join("middle.wcl")).expect("symlink target");
+        symlink("middle.wcl", &link).expect("symlink middle");
+        let mut cmd = wcl();
+        cmd.arg(command).arg(&link);
+        if command == "fmt" {
+            cmd.arg("--in-place");
+        } else {
+            cmd.args(["x", "2"]);
+        }
+        cmd.assert().success();
+        assert_eq!(
+            std::fs::read_link(&link).unwrap(),
+            std::path::Path::new("middle.wcl")
+        );
+        assert_eq!(
+            std::fs::read_link(dir.join("middle.wcl")).unwrap(),
+            std::path::Path::new("target.wcl")
+        );
+        let expected = if command == "fmt" { "1" } else { "2" };
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            format!("@schemaless x = {expected}\n")
+        );
+    }
+}
+
 #[test]
 fn get_is_an_alias_of_eval() {
     let eval_out = wcl()
@@ -619,6 +691,20 @@ fn repl_piped_eval_error_sets_exit_code() {
         .assert()
         .code(3)
         .stderr(predicate::str::contains("eval error:"));
+}
+
+#[test]
+fn repl_recovers_from_oversized_repeat() {
+    wcl()
+        .arg("repl")
+        .write_stdin("repeat(\"abc\", 9223372036854775807)\nrepeat(\"abc\", 3)\n")
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains(
+            "repeat: output exceeds the 64 MiB limit",
+        ))
+        .stderr(predicate::str::contains("panicked").not())
+        .stdout("\"abcabcabc\"\n");
 }
 
 #[test]

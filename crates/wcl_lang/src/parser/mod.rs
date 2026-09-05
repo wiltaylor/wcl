@@ -792,7 +792,7 @@ impl<'a> Parser<'a> {
     fn sub_parse_slot(&self, text: &str, slot_span: Span) -> Result<Expr, ParseError> {
         // Pad the slot text with spaces so the sub-parser's byte
         // offsets line up with the outer source.
-        let padded = format!("{}{}", " ".repeat(slot_span.start), text);
+        let padded = format!("{}{}", " ".repeat(slot_span.start + 2), text);
         let mut sub = Parser::new(&padded, self.file.clone());
         // Skip the padding via the lexer's whitespace handling: the
         // first peek/bump will land on the first real byte of the

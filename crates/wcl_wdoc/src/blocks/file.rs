@@ -67,7 +67,7 @@ impl FileRegistry {
         let dir = if dir.is_empty() {
             default_dir().to_string()
         } else {
-            dir.trim_matches('/').to_string()
+            dir.to_string()
         };
         let key = (dir.clone(), source.to_string());
         if let Some(e) = self.entries.borrow().get(&key) {
@@ -126,7 +126,8 @@ impl FileRegistry {
                 )));
             }
             seen.insert(out_rel.as_str(), src.as_path());
-            let dest = out_dir.join(out_rel);
+            let dest = crate::build::asset_destination(out_dir, Path::new(out_rel))
+                .map_err(|e| BuildError::Io(e, format!("asset destination {out_rel}")))?;
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| {
                     BuildError::Io(e, format!("create_dir_all {}", parent.display()))

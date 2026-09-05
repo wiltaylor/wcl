@@ -111,8 +111,8 @@ pub(super) fn register(env: &mut Environment) {
     );
     env.add_builtin(
         "repeat",
-        from_fn(|s: String, n: i64| -> String { s.repeat(n.max(0) as usize) })
-            .doc("A string repeated `n` times (empty for `n <= 0`).")
+        from_fn(repeat_pure)
+            .doc("A string repeated `n` times (empty for `n <= 0`); output is limited to 64 MiB.")
             .param("s", "utf8", "The string to repeat.")
             .param("n", "i64", "How many copies to concatenate.")
             .returns("utf8", "`n` copies of `s`."),
@@ -231,6 +231,29 @@ fn format_hof(_caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String>
         ));
     }
     Ok(Value::Utf8(out))
+}
+
+/// Repeat a string with checked sizing and fallible allocation.
+/// Empty strings and nonpositive counts return an empty string without allocating.
+fn repeat_pure(s: String, n: i64) -> Result<String, String> {
+    /// Per-call output limit in bytes; this does not bound total document memory.
+    const MAX_REPEAT_BYTES: usize = 64 * 1024 * 1024;
+    if n <= 0 || s.is_empty() {
+        return Ok(String::new());
+    }
+    let size_error = || "repeat: output exceeds the 64 MiB limit".to_string();
+    let count = usize::try_from(n).map_err(|_| size_error())?;
+    let size = s.len().checked_mul(count).ok_or_else(size_error)?;
+    if size > MAX_REPEAT_BYTES {
+        return Err(size_error());
+    }
+    let mut out = String::new();
+    out.try_reserve_exact(size)
+        .map_err(|e| format!("repeat: cannot allocate output: {e}"))?;
+    for _ in 0..count {
+        out.push_str(&s);
+    }
+    Ok(out)
 }
 
 /// Render a `Value` for inclusion in a `format` substitution. Stays

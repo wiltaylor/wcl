@@ -13,6 +13,7 @@ mod diagnostics;
 mod folding;
 mod hover;
 mod navigation;
+mod occurrences;
 mod resolve;
 mod scan;
 mod semtokens;
