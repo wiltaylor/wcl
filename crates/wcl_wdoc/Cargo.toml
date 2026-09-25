@@ -42,7 +42,7 @@ cosmic-text = { version = "0.19", default-features = false, features = ["std"] }
 # krilla-svg does not re-export usvg, so it is a direct dependency. We parse
 # our SVG output into a `usvg::Tree` and hand it to `Surface::draw_svg`, so
 # this must stay the same usvg krilla-svg embeds (0.47) — bump them together.
-usvg = "0.47"
+usvg = "0.48"
 # The `serve` feature: the `wcl wdoc serve` dev server. axum + a notify file
 # watcher, driven on a tokio runtime (extra `fs` for the static handler,
 # `signal` for Ctrl-C, `time` for rebuild debouncing and the live-reload
