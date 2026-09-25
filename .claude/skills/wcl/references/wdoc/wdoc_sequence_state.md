@@ -71,7 +71,10 @@ The inline label is the id a `note` anchors to. Order of declaration is row orde
 `from` equal to `to` draws the standard self-message loop out of and back into the one lifeline.
 
 **A typo in `from` or `to` is a build error**, not a stray arrow. The lowering raises
-`sequence message 'm2' references unknown participant 'wbe'` and the build stops.
+`sequence message 'm2' references unknown participant 'wbe'` and the build stops. The report
+labels your `sequence_diagram` block (``in this `sequence_diagram` ``), then attaches the
+`<wcl-system>/wdoc/sequence.wcl` line that raised it as a second, related report. Edit your block;
+the library line only shows which check failed.
 
 ### note
 
