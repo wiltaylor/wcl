@@ -71,25 +71,29 @@ pub struct At {
 }
 
 /// Why a [`Value`] could not be read as a content node.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum ContentError {
     /// The value wasn't a record-payload variant of the expected union.
+    #[error("expected a `{owner}` variant value")]
     NotAVariant {
         /// The union that was expected.
         owner: &'static str,
     },
     /// The value wasn't a record, so its fields can't be read by name.
+    #[error("expected a `{owner}` record value")]
     NotARecord {
         /// The record type that was expected.
         owner: &'static str,
     },
     /// The value wasn't a symbol.
+    #[error("expected a `{owner}` symbol")]
     NotASymbol {
         /// The symbol set that was expected.
         owner: &'static str,
     },
     /// The union declares no such variant.
+    #[error("`{owner}` declares no variant `{variant}`")]
     UnknownVariant {
         /// The union that was read.
         owner: &'static str,
@@ -97,6 +101,7 @@ pub enum ContentError {
         variant: String,
     },
     /// The symbol set declares no such member.
+    #[error("`{owner}` declares no symbol `:{symbol}`")]
     UnknownSymbol {
         /// The symbol set that was read.
         owner: &'static str,
@@ -104,11 +109,13 @@ pub enum ContentError {
         symbol: String,
     },
     /// A required field was absent (or `none`).
+    #[error("`{}` is missing required field `{}`", .at.owner, .at.field)]
     MissingField {
         /// The field that was missing.
         at: At,
     },
     /// A field held a value of the wrong shape for its declared type.
+    #[error("`{}`'s field `{}` is not a {expected}", .at.owner, .at.field)]
     FieldType {
         /// The field that was read.
         at: At,
@@ -116,34 +123,6 @@ pub enum ContentError {
         expected: &'static str,
     },
 }
-
-impl std::fmt::Display for ContentError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ContentError::NotAVariant { owner } => {
-                write!(f, "expected a `{owner}` variant value")
-            }
-            ContentError::NotARecord { owner } => write!(f, "expected a `{owner}` record value"),
-            ContentError::NotASymbol { owner } => write!(f, "expected a `{owner}` symbol"),
-            ContentError::UnknownVariant { owner, variant } => {
-                write!(f, "`{owner}` declares no variant `{variant}`")
-            }
-            ContentError::UnknownSymbol { owner, symbol } => {
-                write!(f, "`{owner}` declares no symbol `:{symbol}`")
-            }
-            ContentError::MissingField { at } => {
-                write!(f, "`{}` is missing required field `{}`", at.owner, at.field)
-            }
-            ContentError::FieldType { at, expected } => write!(
-                f,
-                "`{}`'s field `{}` is not a {expected}",
-                at.owner, at.field
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ContentError {}
 
 /// The [`Value`] readers the generated conversions are written in terms
 /// of. Which ones a build uses follows from the declaration: the emitter

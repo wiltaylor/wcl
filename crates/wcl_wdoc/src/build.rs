@@ -175,26 +175,39 @@ pub fn wdoc_environment() -> Environment {
 
 /// Why a site build failed. Each variant maps to a distinct CLI exit
 /// code, so the failure stays classifiable all the way out.
-#[derive(Debug)]
+///
+/// `Display` is the one-line (or, for [`BadLink`](Self::BadLink),
+/// one-line-per-link) message. The two variants that carry a miette
+/// [`Report`] are [`Diagnostic`](miette::Diagnostic)-transparent, so
+/// rendering the error through miette shows the source snippet.
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
 #[non_exhaustive]
 pub enum BuildError {
     /// A filesystem operation failed. The `String` names what was being
     /// read or written, which the `io::Error` alone does not say.
-    Io(std::io::Error, String),
+    #[error("{1}: {0}")]
+    Io(#[source] std::io::Error, String),
     /// The entry document, or something it imports, did not parse.
+    #[error("{0}")]
+    #[diagnostic(transparent)]
     Parse(Report),
     /// The document violated its schema. Carries the violation count;
     /// the diagnostics themselves were already rendered.
+    #[error("{0} schema violation{s}", s = if *.0 == 1 { "" } else { "s" })]
     Schema(usize),
     /// A block expression failed to evaluate during rendering (e.g. an
     /// unresolved name in a page block). Carries a pre-built miette report
     /// with the source snippet attached.
+    #[error("{0}")]
+    #[diagnostic(transparent)]
     Eval(Report),
     /// A `page` block is malformed — a missing name, or a body wdoc
     /// cannot render.
+    #[error("{0}")]
     BadPage(String),
     /// Two elements on one page claim the same `id`, so a link to it
     /// would be ambiguous.
+    #[error("page \"{page}\": duplicate id \"{id}\"")]
     DuplicateId {
         /// Page the collision occurred on.
         page: String,
@@ -204,6 +217,7 @@ pub enum BuildError {
     /// Two pages in the same site resolve to the same route/name (e.g. a
     /// `wdoc_repeater` whose interpolated page labels collide). Carries the
     /// site name (or "default" for an unnamed single site) and the route.
+    #[error("site \"{site}\": duplicate page \"{name}\"")]
     DuplicatePage {
         /// Site the collision occurred in, or `default` for an unnamed
         /// single site.
@@ -213,20 +227,26 @@ pub enum BuildError {
     },
     /// One or more internal links point at a page or anchor that does
     /// not exist. Carries every broken target, so one build reports them
-    /// all rather than one per run.
+    /// all rather than one per run. Displays one broken link per line.
+    #[error("{}", .0.join("\n"))]
     BadLink(Vec<String>),
-    /// A template is malformed, or fills a slot it does not declare.
+    /// A template is malformed, names a template that does not exist, or
+    /// fills a slot it does not declare. Carries the whole message.
+    #[error("{0}")]
     BadTemplate(String),
     /// A tileset could not be loaded or does not match the map using it.
+    #[error("{0}")]
     Tileset(String),
     /// A diagram edge could not be routed around the intervening shapes
     /// (the layout is too tightly packed). Carries a message naming the
     /// offending edge and a hint at how to fix it.
+    #[error("{0}")]
     EdgeRouting(String),
     /// A file-backed code listing could not be read: a `source_file` that
     /// isn't there, an `anchor` the file doesn't mark, a `lines` range past
     /// its end. Carries a message naming the file, since a listing that has
     /// drifted away from the code it quotes is the failure this is for.
+    #[error("{0}")]
     CodeInclude(String),
 }
 
@@ -235,57 +255,17 @@ impl BuildError {
     /// where the variant carries one.
     pub fn report(&self) {
         match self {
-            Self::Io(e, ctx) => eprintln!("{ctx}: {e}"),
-            Self::Parse(r) => eprintln!("{r:?}"),
-            Self::Schema(n) => eprintln!("{n} schema violation{}", if *n == 1 { "" } else { "s" }),
-            Self::Eval(r) => eprintln!("{r:?}"),
-            Self::BadPage(msg) => eprintln!("{msg}"),
-            Self::DuplicateId { page, id } => {
-                eprintln!("page \"{page}\": duplicate id \"{id}\"");
-            }
-            Self::DuplicatePage { site, name } => {
-                eprintln!("site \"{site}\": duplicate page \"{name}\"");
-            }
-            Self::BadLink(msgs) => {
-                for m in msgs {
-                    eprintln!("{m}");
-                }
-            }
-            Self::BadTemplate(name) => eprintln!("unknown template \"{name}\""),
-            Self::Tileset(msg) => eprintln!("{msg}"),
-            Self::EdgeRouting(msg) => eprintln!("{msg}"),
-            Self::CodeInclude(msg) => eprintln!("{msg}"),
+            Self::Parse(r) | Self::Eval(r) => eprintln!("{r:?}"),
+            other => eprintln!("{other}"),
         }
     }
 
     /// Render this error to a plain string (no ANSI escapes), suitable
     /// for embedding outside a terminal — e.g. the dev server's
-    /// build-failure page. `report()` keeps its colored stderr output.
+    /// build-failure page. Draws the error as its [`Diagnostic`](miette::Diagnostic),
+    /// so a parse or evaluation failure keeps its source snippet.
     pub fn render_plain(&self) -> String {
-        match self {
-            Self::Parse(r) | Self::Eval(r) => {
-                let mut s = String::new();
-                let handler = miette::GraphicalReportHandler::new_themed(
-                    miette::GraphicalTheme::unicode_nocolor(),
-                );
-                if handler.render_report(&mut s, r.as_ref()).is_err() {
-                    s = format!("{r}");
-                }
-                s
-            }
-            Self::Io(e, ctx) => format!("{ctx}: {e}"),
-            Self::Schema(n) => format!("{n} schema violation{}", if *n == 1 { "" } else { "s" }),
-            Self::BadPage(msg) => msg.clone(),
-            Self::DuplicateId { page, id } => format!("page \"{page}\": duplicate id \"{id}\""),
-            Self::DuplicatePage { site, name } => {
-                format!("site \"{site}\": duplicate page \"{name}\"")
-            }
-            Self::BadLink(msgs) => msgs.join("\n"),
-            Self::BadTemplate(name) => format!("unknown template \"{name}\""),
-            Self::Tileset(msg) => msg.clone(),
-            Self::EdgeRouting(msg) => msg.clone(),
-            Self::CodeInclude(msg) => msg.clone(),
-        }
+        render_plain_diagnostic(self)
     }
 
     /// Wrap a render-time evaluation failure into a `BuildError::Eval`,
@@ -296,6 +276,20 @@ impl BuildError {
         let report = Report::new(err).with_source_code(src);
         Self::Eval(report)
     }
+}
+
+/// Draw `diagnostic` with miette's graphical handler and a no-colour
+/// theme: the multi-line, escape-free form [`BuildError::render_plain`]
+/// and [`crate::PdfError::render_plain`] return. Falls back to the
+/// `Display` form if the handler fails.
+pub(crate) fn render_plain_diagnostic(diagnostic: &dyn miette::Diagnostic) -> String {
+    let mut s = String::new();
+    let handler =
+        miette::GraphicalReportHandler::new_themed(miette::GraphicalTheme::unicode_nocolor());
+    if handler.render_report(&mut s, diagnostic).is_err() {
+        s = diagnostic.to_string();
+    }
+    s
 }
 
 /// Block kinds the renderers dispatch **in Rust**, ignoring any
@@ -2740,7 +2734,9 @@ fn build_normal_page(
     let mut rendered = match template_name {
         Some(name) => {
             let Some(tmpl) = find_template(ctx.doc, &name) else {
-                return Err(BuildError::BadTemplate(name));
+                return Err(BuildError::BadTemplate(format!(
+                    "unknown template \"{name}\""
+                )));
             };
             let title = ctx
                 .site_title

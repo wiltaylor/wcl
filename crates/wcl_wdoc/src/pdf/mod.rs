@@ -103,22 +103,32 @@ impl Geometry {
 }
 
 /// Errors from PDF generation. Mirrors `build::BuildError`'s shape so the CLI
-/// maps them to the same exit codes.
-#[derive(Debug)]
+/// maps them to the same exit codes, and like it is a
+/// [`Diagnostic`](miette::Diagnostic) whose report-carrying variants are
+/// transparent.
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
 #[non_exhaustive]
 pub enum PdfError {
     /// A filesystem operation failed; the `String` names the target.
-    Io(std::io::Error, String),
+    #[error("{1}: {0}")]
+    Io(#[source] std::io::Error, String),
     /// The entry document did not parse.
+    #[error("{0}")]
+    #[diagnostic(transparent)]
     Parse(Report),
     /// The document violated its schema; carries the violation count.
+    #[error("{0} schema violation{s}", s = if *.0 == 1 { "" } else { "s" })]
     Schema(usize),
     /// A block expression failed to evaluate during rendering. Carries a
     /// pre-built miette report with the source snippet attached.
+    #[error("{0}")]
+    #[diagnostic(transparent)]
     Eval(Report),
     /// The document is structurally unsuitable for PDF output.
+    #[error("{0}")]
     BadDoc(String),
     /// The PDF writer failed while producing output.
+    #[error("pdf render failed: {0}")]
     Render(String),
 }
 
@@ -127,13 +137,16 @@ impl PdfError {
     /// variant carries one.
     pub fn report(&self) {
         match self {
-            Self::Io(e, ctx) => eprintln!("{ctx}: {e}"),
-            Self::Parse(r) => eprintln!("{r:?}"),
-            Self::Schema(n) => eprintln!("{n} schema violation{}", if *n == 1 { "" } else { "s" }),
-            Self::Eval(r) => eprintln!("{r:?}"),
-            Self::BadDoc(msg) => eprintln!("{msg}"),
-            Self::Render(msg) => eprintln!("pdf render failed: {msg}"),
+            Self::Parse(r) | Self::Eval(r) => eprintln!("{r:?}"),
+            other => eprintln!("{other}"),
         }
+    }
+
+    /// Render this error to a plain string (no ANSI escapes), drawn as
+    /// its [`Diagnostic`](miette::Diagnostic) so a parse or evaluation
+    /// failure keeps its source snippet.
+    pub fn render_plain(&self) -> String {
+        crate::build::render_plain_diagnostic(self)
     }
 
     /// Wrap a render-time evaluation failure into a `PdfError::Eval`,

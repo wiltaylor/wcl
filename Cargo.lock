@@ -3161,6 +3161,7 @@ dependencies = [
  "serde_json",
  "syntect",
  "tempfile",
+ "thiserror 2.0.19",
  "time",
  "tokio",
  "tower",

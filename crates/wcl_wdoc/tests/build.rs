@@ -6469,7 +6469,7 @@ page index { h1 "x" {} }
 
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
-        Err(BuildError::BadTemplate(name)) => assert_eq!(name, "nope"),
+        Err(BuildError::BadTemplate(msg)) => assert_eq!(msg, "unknown template \"nope\""),
         Err(_) => panic!("expected BadTemplate, got a different BuildError"),
         Ok(_) => panic!("expected BadTemplate, got Ok"),
     }
