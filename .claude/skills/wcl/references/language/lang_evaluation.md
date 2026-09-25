@@ -75,6 +75,14 @@ $ wcl check c.wcl
 wcl::eval::schema_violation
 
   × field 's' declared as utf8 but value is i64
+   ╭─[c.wcl:3:1]
+ 2 │
+ 3 │ s = 1
+   · ──┬──
+   ·   ╰── schema violation
+   ╰────
+
+c.wcl: 1 schema violation
 ```
 
 — but a value it *cannot* evaluate is not an error. There is one exception. A literal list whose

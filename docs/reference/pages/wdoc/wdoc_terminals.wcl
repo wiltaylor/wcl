@@ -579,11 +579,29 @@ $ wcl check page-with-p-inside-terminal.wcl
 wcl::eval::schema_violation
 
   × block kind 'p' is not allowed inside 'terminal'
+    ╭─[page-with-p-inside-terminal.wcl:9:5]
+  8 │     cols = 20  rows = 4
+  9 │     p "Not a terminal primitive."
+    ·     ──────────────┬──────────────
+    ·                   ╰── schema violation
+ 10 │   }
+    ╰────
+
+page-with-p-inside-terminal.wcl: 1 schema violation
 
 $ wcl check page-with-loose-term-text.wcl
 wcl::eval::schema_violation
 
   × block kind 'term_text' is not allowed inside 'page'
+   ╭─[page-with-loose-term-text.wcl:7:3]
+ 6 │   title = "One"
+ 7 │   term_text "loose" { row = 1  col = 1 }
+   ·   ───────────────────┬──────────────────
+   ·                      ╰── schema violation
+ 8 │ }
+   ╰────
+
+page-with-loose-term-text.wcl: 1 schema violation
 CONSOLE
   }
 

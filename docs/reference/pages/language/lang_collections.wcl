@@ -123,6 +123,13 @@ $ wcl check lists.wcl
 wcl::eval::schema_violation
 
   × field 'ports' declared as list<u32> but value is list
+    ╭─[lists.wcl:9:1]
+  8 │
+  9 │ ports = [8080u32, "8443"]
+    · ────────────┬────────────
+    ·             ╰── schema violation
+ 10 │ names = ["alice", "bob"]
+    ╰────
 
 lists.wcl: 1 schema violation
 CONSOLE
@@ -507,6 +514,12 @@ $ wcl get optional.wcl bare
 wcl::eval::schema_violation
 
   × no variant of 'Capacity' matches the supplied shape
+    ╭─[optional.wcl:10:1]
+  9 │ named = Capacity::Fixed { units: 3u32 }    # fine — `note` defaults to none
+ 10 │ bare  = { units: 3u32 }                    # no match — `note` is missing
+    · ───────────┬───────────
+    ·            ╰── schema violation
+    ╰────
 CONSOLE
   }
 
@@ -525,6 +538,13 @@ $ wcl get capacity.wcl one
 wcl::eval::schema_violation
 
   × no variant of 'Capacity' matches the supplied shape
+    ╭─[capacity.wcl:20:1]
+ 19 │
+ 20 │ one   = { size: 3u32 }
+    · ───────────┬──────────
+    ·            ╰── schema violation
+ 21 │ many  = [{ units: 1u32 }, { min: 2u32, max: 4u32 }]
+    ╰────
 CONSOLE
   }
 
@@ -537,6 +557,13 @@ $ wcl get capacity.wcl one
 wcl::eval::schema_violation
 
   × field 'units' of variant Capacity::Fixed expects Builtin(U32), got utf8
+    ╭─[capacity.wcl:20:1]
+ 19 │
+ 20 │ one   = { units: "three" }
+    · ─────────────┬────────────
+    ·              ╰── schema violation
+ 21 │ many  = [{ units: 1u32 }, { min: 2u32, max: 4u32 }]
+    ╰────
 CONSOLE
   }
 

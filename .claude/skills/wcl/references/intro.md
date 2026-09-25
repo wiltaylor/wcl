@@ -102,6 +102,13 @@ $ wcl check config.wcl
 wcl::eval::schema_violation
 
   × field 'host' declared as utf8 but value is i64
+    ╭─[config.wcl:12:3]
+ 11 │ server web {
+ 12 │   host = 3
+    ·   ────┬───
+    ·       ╰── schema violation
+ 13 │ }
+    ╰────
 
 config.wcl: 1 schema violation
 ```

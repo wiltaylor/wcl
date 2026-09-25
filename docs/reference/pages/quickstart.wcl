@@ -80,10 +80,24 @@ $ wcl check app.wcl
 wcl::eval::schema_violation
 
   × top-level field 'service' has no @document schema
+   ╭─[app.wcl:1:1]
+ 1 │ service = "checkout"
+   · ──────────┬─────────
+   ·           ╰── schema violation
+ 2 │
+   ╰────
 
 wcl::eval::schema_violation
 
   × block kind 'env' has no @block or @table declaration
+   ╭─[app.wcl:3:1]
+ 2 │
+ 3 │ ╭─▶ env staging {
+ 4 │ │     url      = "https://staging.example.com"
+ 5 │ │     replicas = 1
+ 6 │ ├─▶ }
+   · ╰──── schema violation
+   ╰────
 
 app.wcl: 2 schema violations
 CONSOLE
@@ -200,7 +214,7 @@ CONSOLE
 
   h2 "Making the schema stricter"
 
-  p "So far the schema says `replicas` is a `u32`. That is thinner than it looks: it does not fix a sensible range, it does not say that an environment belongs to a billing tier, that `debug` defaults to off, or that `url` is not optional. Each of those is one more line. Replace the type declarations. The data below them does not change:"
+  p "So far the schema says `replicas` is a `u32`. That is thinner than it looks: it does not fix a sensible range, it does not say that an environment belongs to a billing tier, that `debug` defaults to off, or that `url` is not optional. Each of those is one more line. Replace the type declarations:"
 
   code wcl {
     filename = "app.wcl"
@@ -230,10 +244,19 @@ WCL
 
   p "Four ideas, in order. A `symbol_set` is a closed vocabulary: `tier` may be `:free`, `:pro` or `:enterprise` and nothing else. A **type alias** with `@min` / `@max` narrows a primitive and gets a name that says what it is for. `required_fields` lists the fields a block may not leave out. `@default(false)` supplies a value when a field is absent, so `debug` can stay off that list. The label `name` is off it too, because you do not write a label as a field at all."
 
-  p "Now give it an environment that breaks the schema in two places at once:"
+  p "Every environment now needs a `tier`, so the data below the types changes too. Give `staging` one, and make `prod` break the schema in two places at once:"
 
   code wcl {
     source = <<'WCL'
+service = "checkout"
+
+env staging {
+  url      = "https://staging.example.com"
+  replicas = 1
+  tier     = :pro
+  debug    = true
+}
+
 env prod {
   url      = "https://example.com"
   replicas = -1
@@ -247,16 +270,32 @@ WCL
 $ wcl check app.wcl
 wcl::eval::schema_violation
 
-  × field 'replicas': value -1 is below @min(0)
+  × field 'replicas' declared as Replicas but value -1 is out of range for u32
+    ╭─[app.wcl:33:3]
+ 32 │   url      = "https://example.com"
+ 33 │   replicas = -1
+    ·   ──────┬──────
+    ·         ╰── schema violation
+ 34 │   tier     = :platinum
+    ╰────
 
 wcl::eval::schema_violation
 
   × field 'tier' declared as symbol_set 'Tier' but ':platinum' is not one of
   │ its members
+    ╭─[app.wcl:34:3]
+ 33 │   replicas = -1
+ 34 │   tier     = :platinum
+    ·   ──────────┬─────────
+    ·             ╰── schema violation
+ 35 │ }
+    ╰────
 
 app.wcl: 2 schema violations
 CONSOLE
   }
+
+  p "The `replicas` message names the type before the bound. `-1` does not fit a `u32` at all, so the value is refused before `@min(0)` is consulted. Write `replicas = 1001` instead and the alias's bound answers: `field 'replicas': value 1001 is above @max(1000)`."
 
   p "Delete the `url` line as well and a third violation joins them: `block 'env' is missing required field 'url'`. Each of these is the class of mistake a data format hands to the program at startup, and a command that never ran the program caught every one of them. `wcl check` exits non-zero, so a pre-commit hook or a CI step is one line."
 

@@ -216,6 +216,12 @@ $ wcl check title.wcl
 wcl::eval::schema_violation
 
   × field 'title' declared as utf8 but value is none
+   ╭─[title.wcl:3:1]
+ 2 │ type Cfg { title: utf8 }
+ 3 │ title = if false { "yes" }
+   · ─────────────┬────────────
+   ·              ╰── schema violation
+   ╰────
 
 title.wcl: 1 schema violation
 CONSOLE
@@ -676,6 +682,12 @@ $ wcl check wrong.wcl
 wcl::eval::schema_violation
 
   × field 'a' declared as u32 but value is utf8
+   ╭─[wrong.wcl:3:1]
+ 2 │ type Cfg { a: u32 }
+ 3 │ a = try "not a number" catch e => 0u32
+   · ───────────────────┬──────────────────
+   ·                    ╰── schema violation
+   ╰────
 
 wrong.wcl: 1 schema violation
 CONSOLE

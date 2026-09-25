@@ -497,6 +497,16 @@ $ wcl check deck.wcl
 wcl::eval::schema_violation
 
   × block kind 'repeat' is not allowed inside 'deck'
+    ╭─[deck.wcl:26:3]
+ 25 │       card literal { title = "authored" }
+ 26 │ ╭─▶   repeat { each = ["one", "two"]  as = :m
+ 27 │ │       card $"g_${m}" { title = $"generated ${m}" }
+ 28 │ ├─▶   }
+    · ╰──── schema violation
+ 29 │     }
+    ╰────
+
+deck.wcl: 1 schema violation
 CONSOLE
   }
 
@@ -663,6 +673,18 @@ wcl::eval::schema_violation
 
   × block 'component' declares the kind 'metric_card', which collides with the
   │ @block/@table kind "metric_card" declared by type 'MetricCard' — rename it
+    ╭─[components.wcl:35:1]
+ 34 │     # The declaration...
+ 35 │ ╭─▶ component metric_card {
+ 36 │ │     slot label
+ 37 │ │     slot status { default = "ok" }
+ 38 │ │     body { text = "a card" }
+ 39 │ ├─▶ }
+    · ╰──── schema violation
+ 40 │
+    ╰────
+
+components.wcl: 1 schema violation
 CONSOLE
   }
 

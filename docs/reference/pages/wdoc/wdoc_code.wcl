@@ -378,16 +378,22 @@ WCL
 
   code console {
     source = <<'CONSOLE'
-$ wcl check app.wcl --json
+$ wcl check app.wcl
 wcl::eval::schema_violation
 
   × field 'replicas': value -1 is below @min(0)
+   ╭─[app.wcl:6:1]
+ 5 │
+ 6 │ replicas = -1
+   · ──────┬──────
+   ·       ╰── schema violation
+   ╰────
 
 app.wcl: 1 schema violation
 CONSOLE
   }
 
-  p "The prompt, the program name and its options carry token classes. The four output lines carry none, so they render exactly as `text` would have. Tag a session `console`, a shell _script_ `bash`, and bare output with no `$` line `text`."
+  p "The prompt and the command you ran carry token classes. The output lines carry none, the source snippet included, so they render exactly as `text` would have. Tag a session `console`, a shell _script_ `bash`, and bare output with no `$` line `text`."
 
   callout "A tag with punctuation must be quoted" {
     kind = :note

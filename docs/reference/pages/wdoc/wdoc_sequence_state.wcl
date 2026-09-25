@@ -406,6 +406,31 @@ $ wcl wdoc build signup.wcl --out _site        # the figure wrapped in a diagram
 wcl::eval::schema_violation
 
   × block kind 'sequence_diagram' is not allowed inside 'diagram'
+    ╭─[signup.wcl:15:5]
+ 14 │       diagram {
+ 15 │ ╭─▶     sequence_diagram {
+ 16 │ │         width = 700
+ 17 │ │         desc  = "sign-up with email verification"
+ 18 │ │
+ 19 │ │         participant "visitor"  { name = "Visitor"  kind = :actor }
+ 20 │ │         participant "web"      { name = "Web App" }
+ 21 │ │         participant "accounts" { name = "Accounts" }
+ 22 │ │         participant "postmark" { name = "Postmark" kind = :external }
+ 23 │ │
+ 24 │ │         message "m1" { from = "visitor"  to = "web"      text = "Fill in the form" }
+ 25 │ │         message "m2" { from = "web"      to = "accounts" text = "POST /accounts" }
+ 26 │ │         message "m3" { from = "accounts" to = "accounts" text = "mint verify token" }
+ 27 │ │         message "m4" { from = "accounts" to = "postmark" text = "Send verify mail"  kind = :async }
+ 28 │ │         message "m5" { from = "accounts" to = "web"      text = "202 Accepted"      kind = :reply }
+ 29 │ │         message "m6" { from = "web"      to = "visitor"  text = "Check your inbox"  kind = :reply }
+ 30 │ │
+ 31 │ │         note "n1" { at = "m4"  text = "Queued, never awaited." }
+ 32 │ ├─▶     }
+    · ╰──── schema violation
+ 33 │       }
+    ╰────
+
+1 schema violation
 CONSOLE
   }
 

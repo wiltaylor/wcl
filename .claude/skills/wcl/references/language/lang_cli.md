@@ -112,6 +112,12 @@ $ wcl check sch.wcl
 wcl::eval::schema_violation
 
   × top-level field 'zone' is not declared by @document schema 'C'
+   ╭─[sch.wcl:7:1]
+ 6 │ owner = "ops"
+ 7 │ zone = "eu"
+   · ─────┬─────
+   ·      ╰── schema violation
+   ╰────
 
 sch.wcl: 1 schema violation
 $ echo $?

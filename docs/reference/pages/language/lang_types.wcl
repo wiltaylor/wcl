@@ -213,6 +213,13 @@ $ wcl check canvas.wcl
 wcl::eval::schema_violation
 
   × field 'width': value 0 is below @min(1)
+    ╭─[canvas.wcl:59:3]
+ 58 │ canvas main {
+ 59 │   width  = 0u32
+    ·   ──────┬──────
+    ·         ╰── schema violation
+ 60 │   height = 600u32
+    ╰────
 
 canvas.wcl: 1 schema violation
 CONSOLE
@@ -226,6 +233,12 @@ $ wcl check sprites.wcl
 wcl::eval::schema_violation
 
   × field 'layer': value 99 is above @max(10)
+    ╭─[sprites.wcl:10:15]
+  9 │
+ 10 │ sprite hero { layer = 99 }
+    ·               ─────┬────
+    ·                    ╰── schema violation
+    ╰────
 
 sprites.wcl: 1 schema violation
 CONSOLE
@@ -239,6 +252,13 @@ $ wcl check canvas.wcl
 wcl::eval::schema_violation
 
   × field 'title': value is empty but the type is @non_empty
+    ╭─[canvas.wcl:51:3]
+ 50 │ circle dot {
+ 51 │   title  = ""
+    ·   ─────┬─────
+    ·        ╰── schema violation
+ 52 │   x      = 10.0
+    ╰────
 
 canvas.wcl: 1 schema violation
 CONSOLE
@@ -284,6 +304,12 @@ $ wcl check profiles.wcl
 wcl::eval::schema_violation
 
   × field 'name' declared as utf8 but value is none
+    ╭─[profiles.wcl:13:17]
+ 12 │ profile alice { name = "Alice"  bio = "Author." }
+ 13 │ profile bob   { name = none }
+    ·                 ─────┬─────
+    ·                      ╰── schema violation
+    ╰────
 
 profiles.wcl: 1 schema violation
 CONSOLE
@@ -318,11 +344,14 @@ type Stroke {
   hue: Palette
 }
 
+@document
+type Doc { @children("stroke") strokes: list<Stroke> }
+
 stroke outline { hue = :accent }
 WCL
   }
 
-  p "The membership check is real. The error names the symbol and the set:"
+  p "The membership check is real. Write `hue = :neon` and the error names the symbol and the set:"
 
   code console {
     source = <<'CONSOLE'
@@ -331,6 +360,12 @@ wcl::eval::schema_violation
 
   × field 'hue' declared as symbol_set 'Palette' but ':neon' is not one of its
   │ members
+    ╭─[strokes.wcl:16:18]
+ 15 │
+ 16 │ stroke outline { hue = :neon }
+    ·                  ─────┬─────
+    ·                       ╰── schema violation
+    ╰────
 
 strokes.wcl: 1 schema violation
 CONSOLE
@@ -434,6 +469,13 @@ $ wcl get canvas.wcl circles.dot.fill
 wcl::eval::schema_violation
 
   × no variant of 'Fill' matches the supplied shape
+    ╭─[canvas.wcl:55:3]
+ 54 │   radius = 5.0
+ 55 │   fill   = { from: :ink }
+    ·   ───────────┬───────────
+    ·              ╰── schema violation
+ 56 │ }
+    ╰────
 CONSOLE
   }
 
@@ -446,6 +488,13 @@ wcl::eval::schema_violation
 
   × field 'to' of variant Fill::Gradient expects Named { path: ["Palette"],
   │ args: [] }, got utf8
+    ╭─[canvas.wcl:55:3]
+ 54 │   radius = 5.0
+ 55 │   fill   = { from: :ink, to: "paper" }
+    ·   ──────────────────┬─────────────────
+    ·                     ╰── schema violation
+ 56 │ }
+    ╰────
 CONSOLE
   }
 
@@ -476,6 +525,12 @@ $ wcl get opt.wcl c          # c = { radius: 5.0 }
 wcl::eval::schema_violation
 
   × no variant of 'Outline' matches the supplied shape
+   ╭─[opt.wcl:7:1]
+ 6 │ a = Outline::Circle { radius: 5.0 }
+ 7 │ c = { radius: 5.0 }
+   · ─────────┬─────────
+   ·          ╰── schema violation
+   ╰────
 CONSOLE
   }
 
@@ -718,6 +773,13 @@ $ wcl check model.wcl
 wcl::eval::schema_violation
 
   × field 'scale' declared as fn(f64) -> f64 but value is f64
+    ╭─[model.wcl:15:3]
+ 14 │   weights = tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [2, 3])
+ 15 │   scale   = 2.0
+    ·   ──────┬──────
+    ·         ╰── schema violation
+ 16 │ }
+    ╰────
 
 model.wcl: 1 schema violation
 CONSOLE

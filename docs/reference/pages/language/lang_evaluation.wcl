@@ -613,6 +613,13 @@ $ wcl check zone.wcl
 wcl::eval::schema_violation
 
   × field 'zone' is not declared by schema 'Service'
+    ╭─[zone.wcl:14:3]
+ 13 │   port = 8080u32
+ 14 │   zone = "a"
+    ·   ─────┬────
+    ·        ╰── schema violation
+ 15 │ }
+    ╰────
 
 zone.wcl: 1 schema violation
 $ echo $?
@@ -621,7 +628,13 @@ $ wcl get zone.wcl services.web.zone
 wcl::eval::schema_violation
 
   × field 'zone' is not declared by schema 'Service'
-
+    ╭─[zone.wcl:14:3]
+ 13 │   port = 8080u32
+ 14 │   zone = "a"
+    ·   ─────┬────
+    ·        ╰── schema violation
+ 15 │ }
+    ╰────
 $ echo $?
 3
 CONSOLE
@@ -776,10 +789,24 @@ $ wcl check wrong.wcl
 wcl::eval::schema_violation
 
   × field 'count': value 0 is below @min(1)
+   ╭─[wrong.wcl:8:1]
+ 7 │
+ 8 │ count  = 0u32
+   · ──────┬──────
+   ·       ╰── schema violation
+ 9 │ label  = 42u32
+   ╰────
 
 wcl::eval::schema_violation
 
   × field 'label' declared as utf8 but value is u32
+    ╭─[wrong.wcl:9:1]
+  8 │ count  = 0u32
+  9 │ label  = 42u32
+    · ───────┬──────
+    ·        ╰── schema violation
+ 10 │ budget = 1u32 / 0u32
+    ╰────
 
 wrong.wcl: 2 schema violations
 CONSOLE

@@ -9,6 +9,15 @@ $ wcl check c.wcl
 wcl::eval::schema_violation
 
   × decorator 'nope' has no @decorator declaration
+   ╭─[c.wcl:3:2]
+ 2 │
+ 3 │ @nope
+   ·  ──┬─
+   ·    ╰── schema violation
+ 4 │ title = "hi"
+   ╰────
+
+c.wcl: 1 schema violation
 ```
 
 ## Where decorators come from
@@ -164,6 +173,15 @@ $ wcl check b.wcl
 wcl::eval::schema_violation
 
   × decorator '@range' is not applicable in the 'type' position
+   ╭─[b.wcl:8:2]
+ 7 │
+ 8 │ @range(0, 100)
+   ·  ──┬──
+   ·    ╰── schema violation
+ 9 │ @block("field") type Field {
+   ╰────
+
+b.wcl: 1 schema violation
 ```
 
 `@decorator("tag", repeatable = true)` allows more than one occurrence per node.
@@ -225,10 +243,26 @@ $ wcl check e.wcl
 wcl::eval::schema_violation
 
   × field 'labl' is not declared by schema 'metric_card'
+    ╭─[e.wcl:28:17]
+ 27 │ panel dash {
+ 28 │   metric_card { labl = "CPU" }
+    ·                 ──────┬─────
+    ·                       ╰── schema violation
+ 29 │ }
+    ╰────
 
 wcl::eval::schema_violation
 
   × block 'metric_card' is missing required field 'label'
+    ╭─[e.wcl:28:3]
+ 27 │ panel dash {
+ 28 │   metric_card { labl = "CPU" }
+    ·   ──────────────┬─────────────
+    ·                 ╰── schema violation
+ 29 │ }
+    ╰────
+
+e.wcl: 2 schema violations
 ```
 
 Four consequences to respect:

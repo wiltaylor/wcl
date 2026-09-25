@@ -382,6 +382,13 @@ $ wcl check inventory.wcl
 wcl::eval::schema_violation
 
   × field 'zone' is not declared by schema 'Service'
+    ╭─[inventory.wcl:31:3]
+ 30 │   region = "us-east-1"
+ 31 │   zone   = "a"
+    ·   ──────┬─────
+    ·         ╰── schema violation
+ 32 │
+    ╰────
 
 inventory.wcl: 1 schema violation
 CONSOLE
