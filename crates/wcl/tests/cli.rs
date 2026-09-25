@@ -842,7 +842,7 @@ fn repl_recovers_from_oversized_repeat() {
         .assert()
         .code(3)
         .stderr(predicate::str::contains(
-            "repeat: output exceeds the 64 MiB limit",
+            "'repeat': output exceeds the 64 MiB limit",
         ))
         .stderr(predicate::str::contains("panicked").not())
         .stdout("\"abcabcabc\"\n");

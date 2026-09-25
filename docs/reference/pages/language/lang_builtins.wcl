@@ -121,7 +121,7 @@ WCL
   code console {
     source = <<'CONSOLE'
 $ wcl get catalogue.wcl count
-102
+102usize
 $ wcl get catalogue.wcl first
 ["__wdoc_slot", "abs", "acos"]
 $ wcl get catalogue.wcl sig
@@ -312,7 +312,7 @@ at([10, 20, 30], 1)   # → 20
 SRC
   }
 
-  p "Out of range is a **failure**, not a `none`: `at([1, 2], 5)` reports `'at': at: index 5 out of bounds`. When the index may not be there, reach for [`head`](#head) or a guarded [`slice`](#slice). Also accepts a tensor, indexing its flat data."
+  p "Out of range is a **failure**, not a `none`: `at([1, 2], 5)` reports `'at': index 5 out of bounds`. When the index may not be there, reach for [`head`](#head) or a guarded [`slice`](#slice). Also accepts a tensor, indexing its flat data."
 
   h3 "drop"
 
@@ -716,28 +716,30 @@ SRC
 
   code text {
     source = <<'SRC'
-fn(xs: utf8 | [T], start: i64, end: i64) -> utf8 | [T]
+fn(xs: utf8 | ascii | [T], start: i64, end: i64) -> utf8 | ascii | [T]
 SRC
   }
 
-  p "The half-open range `[start, end)` of a string's characters or a list's elements (bounds are clamped)."
+  p "The half-open range `[start, end)` of a string's characters or a list's elements. A negative index counts from the end; bounds are then clamped."
 
   table {
     rows:
       | "Parameter" | "Type" | "Meaning" |
-      | "`xs`" | "`utf8 | [T]`" | "The string or list to slice." |
-      | "`start`" | "`i64`" | "Inclusive start index (clamped to the length)." |
-      | "`end`" | "`i64`" | "Exclusive end index (clamped to the length)." |
-      | "**Returns**" | "`utf8 | [T]`" | "The sub-string / sub-list." |
+      | "`xs`" | "`utf8 | ascii | [T]`" | "The string or list to slice." |
+      | "`start`" | "`i64`" | "Inclusive start index; negative counts from the end (clamped to the length)." |
+      | "`end`" | "`i64`" | "Exclusive end index; negative counts from the end (clamped to the length)." |
+      | "**Returns**" | "`utf8 | ascii | [T]`" | "The sub-string / sub-list; a string keeps its type." |
   }
 
   code wcl {
     source = <<'SRC'
-slice([10, 20, 30, 40], 1, 3)   # → [20, 30]
+slice([10, 20, 30, 40], 1, 3)     # → [20, 30]
+slice([10, 20, 30, 40], -3, -1)   # → [20, 30]
+slice("hello", -3, 99)            # → "llo"
 SRC
   }
 
-  p "The one slicer that reads a string as well as a list. Both bounds are clamped, so `slice([1, 2, 3], 0, 99)` is the whole list rather than an error."
+  p "The one slicer that reads a string as well as a list. A negative index counts back from the end, so `-1` is the last position and `slice(xs, -2, len(xs))` is the last two elements. After that, both bounds are clamped, so `slice([1, 2, 3], 0, 99)` is the whole list rather than an error, and an `end` at or before `start` is empty. A string keeps its encoding: `slice(ascii\"hello\", 1, 3)` is `ascii\"el\"`."
 
   h3 "sort"
 
@@ -838,7 +840,7 @@ sum([1, 2, 3, 4])   # → 10
 SRC
   }
 
-  p "An empty list is a failure, because there is no zero to return without knowing the element type. `sum([])` reports `'sum': sum: empty list`. Also accepts a tensor."
+  p "An empty list is a failure, because there is no zero to return without knowing the element type. `sum([])` reports `'sum': empty list`. Also accepts a tensor."
 
   h3 "tail"
 
@@ -2432,7 +2434,7 @@ SRC
   code console {
     source = <<'CONSOLE'
 $ wcl get schema.wcl builtins
-102
+102usize
 CONSOLE
   }
 
@@ -2586,7 +2588,7 @@ SRC
   code console {
     source = <<'CONSOLE'
 $ wcl get schema.wcl legal_on
-22
+22usize
 CONSOLE
   }
 

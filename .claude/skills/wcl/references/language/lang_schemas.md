@@ -125,6 +125,16 @@ that kind may not share it (`DuplicateBlockId`). A label of any other type — `
 
 - If the field's element type is a **union**, each instance is dispatched to the matching
   variant by record shape. See [`lang_types.md`](lang_types.md).
+- A schema may hold a string-kind slot and a union slot side by side. A nested block whose kind
+  a string-kind slot names belongs to that slot and never reaches union dispatch. Every other
+  nested block is dispatched:
+
+  ```wcl
+  @block("mixed") type Mixed {
+    @child("config")  cfg:    ConfigSpec      // takes `config { … }`
+    @children(Shape)  shapes: list<Shape>     // takes `circle { … }`, `square { … }`
+  }
+  ```
 
 ## `@default(expr)`
 
@@ -290,6 +300,8 @@ The messages you will meet most often:
 | `field 'f' requires at least N 'k' children, found M` | `@children(min = N)`. |
 | `block 'b' contains N children (max allowed: M)` | `@block(max_children = M)`. |
 | `field 'f' declared as T but value is U` | Value-versus-type mismatch. |
+| `field 'f' declared as u8 but value 300 is out of range for u8` | A number that does not fit its numeric type. |
+| `field 'f' declared as u8 but value 2.5 is not a whole number, so it cannot be u8` | A fraction for an integer type. |
 | `block kind 'k' has no @block or @table declaration` | Unregistered kind — usually a missing import. |
 
 `wcl check --json` emits the same errors plus the warnings as structured data.
@@ -304,6 +316,9 @@ The messages you will meet most often:
 - `max_children` counts **every** nested block, not the members of one slot.
 - A gather field named like a library's silently loses blocks. It is a warning, and warnings do
   not fail the build.
+- A number that does not fit its declared numeric type (`300` for `u8`) fails `wcl check`, but
+  `wcl get` on the field returns it unconverted and without an error. See
+  [`lang_types.md`](lang_types.md#a-number-must-fit-its-numeric-type).
 - A field whose expression *fails to evaluate* is skipped by validation rather than reported.
   `wcl check` says `OK` for `n = error("boom")`. See
   [`lang_evaluation.md`](lang_evaluation.md).

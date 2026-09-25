@@ -247,6 +247,22 @@ pub enum EvalError {
         span: SourceSpan,
     },
 
+    #[error("operator '{op}' is not defined for {operand_type}")]
+    #[diagnostic(code(wcl::eval::type_mismatch))]
+    /// An operator that reads one operand at a time — prefix `-` and `!`,
+    /// or an operand of `&&` / `||` that is not a `bool` — was applied to
+    /// a type it is not defined for. Shares the `type_mismatch` code with
+    /// [`EvalError::TypeMismatch`], its two-operand counterpart.
+    UnaryTypeMismatch {
+        /// The operator that was applied.
+        op: String,
+        /// Type of the offending operand, as WCL spells it.
+        operand_type: String,
+        #[label("incompatible operand")]
+        /// Source span the diagnostic points at.
+        span: SourceSpan,
+    },
+
     #[error("operator '{op}' cannot {fault}")]
     #[diagnostic(code(wcl::eval::arithmetic))]
     /// The operator was defined for the operands but could not
@@ -534,14 +550,27 @@ impl EvalError {
     }
 
     /// Build an [`EvalError::BuiltinTypeMismatch`].
+    ///
+    /// The rendered error already leads with `'{name}': `, so a message
+    /// that opens with its own `name: ` (the convention builtin bodies
+    /// follow, since they report through a bare `String`) has that prefix
+    /// dropped rather than printed twice.
     pub(crate) fn builtin_type(
         name: impl Into<String>,
         message: impl Into<String>,
         span: crate::ast::Span,
     ) -> Self {
+        let name = name.into();
+        let mut message = message.into();
+        if let Some(rest) = message
+            .strip_prefix(name.as_str())
+            .and_then(|rest| rest.strip_prefix(": "))
+        {
+            message = rest.to_string();
+        }
         Self::BuiltinTypeMismatch {
-            name: name.into(),
-            message: message.into(),
+            name,
+            message,
             span: span_to_miette(span),
         }
     }
@@ -673,6 +702,19 @@ impl EvalError {
             op: op.into(),
             lhs_type: lhs_type.into(),
             rhs_type: rhs_type.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    /// Build an [`EvalError::UnaryTypeMismatch`].
+    pub(crate) fn unary_type_mismatch(
+        op: impl Into<String>,
+        operand_type: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::UnaryTypeMismatch {
+            op: op.into(),
+            operand_type: operand_type.into(),
             span: span_to_miette(span),
         }
     }

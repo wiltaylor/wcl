@@ -497,7 +497,7 @@ impl std::fmt::Display for Value {
             // every other numeric form keeps its suffix so the dump
             // round-trips through the parser.
             Value::I64(n) => write!(f, "{n}"),
-            Value::F64(n) => f.write_str(&format_float_lit(*n)),
+            Value::F64(n) => f.write_str(&format_float_lit(n, "")),
 
             Value::I8(n) => write!(f, "{n}i8"),
             Value::I16(n) => write!(f, "{n}i16"),
@@ -512,7 +512,7 @@ impl std::fmt::Display for Value {
             Value::U128(n) => write!(f, "{n}u128"),
             Value::Usize(n) => write!(f, "{n}usize"),
 
-            Value::F32(n) => write!(f, "{}f32", format_float_lit(*n as f64)),
+            Value::F32(n) => f.write_str(&format_float_lit(n, "f32")),
 
             Value::Utf8(s) => write!(f, "\"{}\"", EscapeString(s)),
             Value::Ascii(s) => write!(f, "ascii\"{}\"", EscapeString(s)),
@@ -600,14 +600,84 @@ impl std::fmt::Display for Value {
     }
 }
 
-/// Render a float so it re-parses as a float: an integral value
-/// still prints a `.0`, which bare `Display` would drop.
-fn format_float_lit(n: f64) -> String {
-    let s = format!("{n}");
-    if s.contains('.') || s.contains('e') || s.contains('E') || !n.is_finite() {
-        s
+/// Render a float so it re-parses as the same float.
+///
+/// - An integral value still prints a `.0` (`3.0`), which bare `Display`
+///   would drop — `3` would re-parse as an integer.
+/// - A magnitude of `1e16` or more, or below `1e-5`, prints in exponent
+///   form with a fraction in the mantissa (`1.0e300`, `2.5e-7`): the lexer
+///   only reads an exponent after a fraction, and plain `Display` would
+///   spell `1e300` out as 301 digits.
+/// - WCL has no literal for NaN or the infinities, so they print as the
+///   division that produces them — `(0.0 / 0.0)`, `(1.0 / 0.0)`,
+///   `(-1.0 / 0.0)` — an expression that evaluates back to the same
+///   value wherever a dump is re-read. `suffix` (`""` or `"f32"`) is
+///   applied to both operands so the result keeps its width.
+///
+/// Every finite value uses Rust's shortest round-trip digits for the
+/// type it was stored as (`f32` values are not widened first, which would
+/// print `0.1f32` as `0.10000000149011612f32`).
+fn format_float_lit(digits: &dyn FloatDigits, suffix: &str) -> String {
+    let n = digits.as_f64();
+    if n.is_nan() {
+        return format!("(0.0{suffix} / 0.0{suffix})");
+    }
+    if n.is_infinite() {
+        let sign = if n < 0.0 { "-" } else { "" };
+        return format!("({sign}1.0{suffix} / 0.0{suffix})");
+    }
+    let magnitude = n.abs();
+    let body = if magnitude != 0.0 && !(1e-5..1e16).contains(&magnitude) {
+        let exp = digits.exponent_form();
+        match exp.split_once('e') {
+            Some((mantissa, exponent)) if !mantissa.contains('.') => {
+                format!("{mantissa}.0e{exponent}")
+            }
+            _ => exp,
+        }
     } else {
-        format!("{s}.0")
+        let plain = digits.plain_form();
+        if plain.contains('.') {
+            plain
+        } else {
+            format!("{plain}.0")
+        }
+    };
+    format!("{body}{suffix}")
+}
+
+/// The two float widths, seen through the shortest-digit renderings
+/// [`format_float_lit`] chooses between.
+trait FloatDigits {
+    /// The value widened to `f64`, for classification only.
+    fn as_f64(&self) -> f64;
+    /// Shortest round-trip digits in positional form (`Display`).
+    fn plain_form(&self) -> String;
+    /// Shortest round-trip digits in exponent form (`LowerExp`).
+    fn exponent_form(&self) -> String;
+}
+
+impl FloatDigits for f64 {
+    fn as_f64(&self) -> f64 {
+        *self
+    }
+    fn plain_form(&self) -> String {
+        format!("{self}")
+    }
+    fn exponent_form(&self) -> String {
+        format!("{self:e}")
+    }
+}
+
+impl FloatDigits for f32 {
+    fn as_f64(&self) -> f64 {
+        f64::from(*self)
+    }
+    fn plain_form(&self) -> String {
+        format!("{self}")
+    }
+    fn exponent_form(&self) -> String {
+        format!("{self:e}")
     }
 }
 

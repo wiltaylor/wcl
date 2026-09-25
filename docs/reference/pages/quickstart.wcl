@@ -183,12 +183,12 @@ declarations every document gets for free, then the data ...
 service = "checkout"
 env staging {
   url = "https://staging.example.com"
-  replicas = 1
+  replicas = 1u32
   debug = true
 }
 env prod {
   url = "https://example.com"
-  replicas = 6
+  replicas = 6u32
   debug = false
 }
 CONSOLE

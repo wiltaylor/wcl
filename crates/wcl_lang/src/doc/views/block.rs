@@ -828,9 +828,22 @@ impl<'a> Block<'a> {
         DataRef::from_variant_value_list(out)
     }
 
+    /// The nested-block kinds a string-kind slot of this block's schema
+    /// (`@child("config")`, `@children("svc")`) claims. A block of one of
+    /// these kinds belongs to that slot, so union dispatch never sees it:
+    /// in a schema with both `@child("config") cfg: ConfigSpec` and
+    /// `@children(Shape) shapes: list<Shape>`, a `config { … }` block is
+    /// the config, not a shape that failed to match.
+    fn kind_slot_claims(&self) -> Vec<String> {
+        self.schema()
+            .map(|schema| schema.allowed_child_kinds())
+            .unwrap_or_default()
+    }
+
     /// Iterate the nested-block + synth-row sources for a union-typed
     /// `@children(SomeUnion)` field. Each entry comes back with a
-    /// tag identifying which dispatcher should consume it.
+    /// tag identifying which dispatcher should consume it. Nested blocks
+    /// a string-kind slot claims are left out (see `kind_slot_claims`).
     pub(crate) fn union_children_blocks(
         &self,
         field_name: &str,
@@ -843,8 +856,10 @@ impl<'a> Block<'a> {
         };
         let mut out: Vec<(UnionChildKind, Block<'a>)> = Vec::new();
         let child_scope = self.child_scope();
+        let claimed = self.kind_slot_claims();
         for (item, cells) in self.ast.items.iter().zip(items_cells.iter()) {
             match item {
+                ast::Item::Block(b) if claimed.contains(&b.kind) => {}
                 ast::Item::Block(b) => {
                     out.push((
                         UnionChildKind::Nested,
@@ -884,7 +899,9 @@ impl<'a> Block<'a> {
         // each matches by shape.
         for src in self.imported_slices() {
             for (item, cells) in src.items.iter().zip(src.cells.iter()) {
-                if let ast::Item::Block(b) = item {
+                if let ast::Item::Block(b) = item
+                    && !claimed.contains(&b.kind)
+                {
                     out.push((
                         UnionChildKind::Nested,
                         Block {
@@ -912,8 +929,11 @@ impl<'a> Block<'a> {
             _ => unreachable!("Block view wraps a Block cell"),
         };
         let child_scope = self.child_scope();
+        let claimed = self.kind_slot_claims();
         for (item, cells) in self.ast.items.iter().zip(items_cells.iter()) {
-            if let ast::Item::Block(b) = item {
+            if let ast::Item::Block(b) = item
+                && !claimed.contains(&b.kind)
+            {
                 let blk = Block {
                     ast: b,
                     cells,
@@ -931,7 +951,9 @@ impl<'a> Block<'a> {
         // that matches a variant wins.
         for src in self.imported_slices() {
             for (item, cells) in src.items.iter().zip(src.cells.iter()) {
-                if let ast::Item::Block(b) = item {
+                if let ast::Item::Block(b) = item
+                    && !claimed.contains(&b.kind)
+                {
                     let blk = Block {
                         ast: b,
                         cells,

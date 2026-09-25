@@ -52,7 +52,7 @@ this page for:
 | `min_by(xs: [T], key: fn (T) -> K) -> T` | The element with the smallest key, or `none` for an empty list. |
 | `range(start: i64, end: i64) -> [i64]` | The half-open integer range `[start, end)` as a list. |
 | `reverse(xs: [T]) -> [T]` | Reverse the order of a list's elements. |
-| `slice(xs: utf8 \| [T], start: i64, end: i64) -> utf8 \| [T]` | The half-open range `[start, end)` of a string's characters or a list's elements (bounds are clamped). |
+| `slice(xs: utf8 \| ascii \| [T], start: i64, end: i64) -> utf8 \| ascii \| [T]` | The half-open range `[start, end)` of a string's characters or a list's elements. A negative index counts from the end; bounds are then clamped. A string keeps its type. |
 | `sort(xs: [T]) -> [T]` | Sort a list — numerically for all-numeric lists, lexicographically for all-string lists. |
 | `sort_by(xs: [T], key: fn (T) -> K) -> [T]` | Sort a list by a key function (stable). Keys must be all numeric or all strings. |
 | `sort_connected(items: [T], edges: [{source, destination, ...}]) -> [T]` | Reorder a list so that items joined by edges cluster together (recursing into `children`). |
@@ -83,6 +83,7 @@ min_by(["abc", "a", "ab"], fn(s: utf8) -> i64 { len(s) })   // element with the 
 range(0, 4)   // integers from 0 up to (not incl.) 4 → [0, 1, 2, 3]
 reverse([1, 2, 3])   // reverse the order → [3, 2, 1]
 slice("hello", 0, 2)   // characters from index 0 up to (not incl.) 2 → "he"
+slice([1, 2, 3, 4], -2, 4)   // a negative index counts from the end → [3, 4]
 sort([3, 1, 2])   // sort numerically → [1, 2, 3]
 sort_by(["abc", "a", "ab"], fn(s: utf8) -> i64 { len(s) })   // sort by length → ["a", "ab", "abc"]
 sort_connected([{ id: "a" }, { id: "b" }, { id: "c" }], [{ source: "a", destination: "c" }])   // pull "c" up beside "a" → [{ id: "a" }, { id: "c" }, { id: "b" }]
@@ -296,7 +297,8 @@ panic("invariant violated")   // abort with an unrecoverable failure → (aborts
 ## Notes on the sharp edges
 
 - **`len` counts characters, not bytes**, for a string.
-- **`at` errors on an out-of-range or negative index.** `slice` clamps its bounds instead.
+- **`at` errors on an out-of-range or negative index.** `slice` reads a negative index from the
+  end (`-1` is the last element), then clamps its bounds instead of erroring.
   `head` / `find` / `min_by` / `max_by` answer `none` on an empty list.
 - **`index_of` answers `-1`** when the value is absent, not `none`.
 - **`sum` needs a non-empty, homogeneous numeric list.** Mixed widths are not summed for you.

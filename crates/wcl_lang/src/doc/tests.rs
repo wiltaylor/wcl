@@ -1575,7 +1575,8 @@ fn eval_user_function_call_returns_body_value() {
         y = f(3)
         "#,
     );
-    assert_eq!(*doc.field("y").unwrap().value().unwrap(), Value::I64(3));
+    // The argument takes the parameter's declared type on the way in.
+    assert_eq!(*doc.field("y").unwrap().value().unwrap(), Value::I32(3));
 }
 
 #[test]
@@ -2757,7 +2758,8 @@ fn self_inside_block_returns_current_block_dataref() {
     let target = echo.reference().unwrap().unwrap();
     // self → enclosing svc block; reading port through it.
     let port = target.child("port").unwrap().value().unwrap();
-    assert_eq!(port, Value::I64(8080));
+    // `port: u32` — the literal takes its declared type.
+    assert_eq!(port, Value::U32(8080));
 }
 
 #[test]

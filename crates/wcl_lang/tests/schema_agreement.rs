@@ -406,6 +406,133 @@ fn nested_blocks_two_levels_deep_agree_on_unknown_field() {
     assert_eq!(flagged.len(), 1, "exactly `sneaky` must be flagged");
 }
 
+/// The lazy membership error a field's `value()` reports, rendered.
+fn lazy_membership_message(field: &Field<'_>) -> Option<String> {
+    match field.value() {
+        Err(e @ EvalError::SchemaViolation { kind, .. }) if is_membership_kind(*kind) => {
+            Some(e.to_string())
+        }
+        _ => None,
+    }
+}
+
+#[test]
+fn membership_errors_are_worded_identically_on_both_paths() {
+    // Both paths build the error through one helper, so the message a
+    // host sees from `value()` is the one `wcl check` prints.
+    for src in [
+        "rogue = 1\n",
+        "@document type Cfg { name: utf8 }\nrogue = 1\n",
+        r#"
+        @document type Cfg { @children("svc") svcs: list<Svc> }
+        @block("svc") type Svc { region: utf8 }
+        svc web { rogue = 1 }
+        "#,
+    ] {
+        let doc = open(src);
+        let lazy: Vec<String> = collect_fields(&doc)
+            .iter()
+            .filter_map(lazy_membership_message)
+            .collect();
+        let strict: Vec<String> = doc
+            .schema_errors()
+            .iter()
+            .filter(|e| {
+                matches!(e, EvalError::SchemaViolation { kind, .. } if is_membership_kind(*kind))
+            })
+            .map(ToString::to_string)
+            .filter(|m| m.contains("'rogue'"))
+            .collect();
+        assert_eq!(lazy.len(), 1, "{src}: {lazy:?}");
+        assert_eq!(lazy, strict, "{src}");
+    }
+}
+
+#[test]
+fn numeric_misfits_are_strict_type_errors_and_membership_still_agrees() {
+    // A number that does not fit its declared type is a FieldTypeMismatch
+    // on the strict path. It is a *type* verdict, so the lazy path reads
+    // the value as written (it does not run type checks) — and neither
+    // path reports a membership violation.
+    let src = r#"
+        @document type Cfg { port: u16  ratio: u8  @children("svc") svcs: list<Svc> }
+        @block("svc") type Svc { weight: u8 }
+        port = 70000
+        ratio = 2.5
+        svc web { weight = 256 }
+    "#;
+    let flagged = assert_agreement(src);
+    assert!(flagged.is_empty(), "no membership flags: {flagged:?}");
+
+    let doc = open(src);
+    let mismatches = doc
+        .schema_errors()
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: SchemaViolationKind::FieldTypeMismatch,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(mismatches, 3, "{:#?}", doc.schema_errors());
+    assert_eq!(
+        doc.get("port").unwrap().value().unwrap(),
+        wcl_lang::Value::I64(70000)
+    );
+}
+
+#[test]
+fn fitting_numbers_read_back_as_the_declared_type_on_both_paths() {
+    let src = r#"
+        @document type Cfg { port: u16  @children("svc") svcs: list<Svc> }
+        @block("svc") type Svc { weight: u8 }
+        port = 8080
+        svc web { weight = 3 }
+    "#;
+    let flagged = assert_agreement(src);
+    assert!(flagged.is_empty());
+    let doc = open(src);
+    assert!(doc.schema_errors().is_empty(), "{:#?}", doc.schema_errors());
+    assert_eq!(
+        doc.get("port").unwrap().value().unwrap(),
+        wcl_lang::Value::U16(8080)
+    );
+    let web = doc.blocks().next().expect("svc web");
+    assert_eq!(
+        web.field("weight").unwrap().value().unwrap(),
+        &wcl_lang::Value::U8(3)
+    );
+}
+
+#[test]
+fn string_kind_slot_claims_its_blocks_before_union_dispatch() {
+    // Regression: a schema with both `@child("config")` and
+    // `@children(Shape)` sent the `config` block to union dispatch too,
+    // which reported "no variant of 'Shape' matches". The string-kind
+    // slot claims it; only the other blocks are dispatched.
+    let src = r#"
+        union Shape { Circle { radius: f64 } Square { side: f64 } }
+        @document type Root { @children("mixed") mixes: list<Mixed> }
+        @block("config") type ConfigSpec { name: utf8 }
+        @block("mixed") type Mixed {
+          @child("config") cfg: ConfigSpec
+          @children(Shape) shapes: list<Shape>
+        }
+        mixed "demo" {
+          config { name = "alpha" }
+          circle { radius = 3.0 }
+        }
+    "#;
+    let flagged = assert_agreement(src);
+    assert!(flagged.is_empty());
+    let doc = open(src);
+    assert!(doc.schema_errors().is_empty(), "{:#?}", doc.schema_errors());
+}
+
 // ---------------------------------------------------------------------------
 // Fixture corpus
 // ---------------------------------------------------------------------------

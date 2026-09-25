@@ -324,7 +324,7 @@ WCL
       | "`categories`"          | "What happens" |
       | "Omitted"               | "The slot count comes from the first series. Labels are `1`, `2`, `3`, …" |
       | "Fewer than the values" | "The chart draws that many slots and drops the extra values without a word." |
-      | "More than the values"  | "The build fails: `'at': at: index 2 out of bounds`" |
+      | "More than the values"  | "The build fails: `'at': index 2 out of bounds`" |
   }
 
   p "The failure is the friendlier of the two. A list that is one label short costs you a bar and says nothing, so when you build a chart from one place and label it from another, derive both from the same list. Again, see [Charts from document data](#charts-from-document-data)."

@@ -128,7 +128,7 @@ fn string_arg_or_err(
         Value::Utf8(s) | Value::Ascii(s) => Ok(s.clone()),
         other => Err(EvalError::builtin_type(
             name.to_string(),
-            format!("{name}: {expected}, got {}", other.type_name()),
+            format!("{expected}, got {}", other.type_name()),
             span,
         )),
     }
@@ -734,9 +734,8 @@ impl Document {
         // than going through the registered (stub) builtin body.
         if name == "eval" && evald.len() == 1 {
             let code = string_arg_or_err(name, &evald[0], span, "expected utf8 string")?;
-            let expr = crate::parse_expr(&code, "<eval>").map_err(|e| {
-                EvalError::builtin_type(name.to_string(), format!("eval: {e}"), span)
-            })?;
+            let expr = crate::parse_expr(&code, "<eval>")
+                .map_err(|e| EvalError::builtin_type(name.to_string(), e.to_string(), span))?;
             return self.eval_in(&expr, ctx);
         }
         match &builtin.kind {

@@ -48,8 +48,8 @@ use super::Document;
 use super::views::{ConnectionDecl, InterfaceDecl, SymbolSetDecl, TypeDecl, UnionDecl};
 
 pub(super) use inhabit::{
-    coerce_value_to_type, symbol_set_membership_error_in, value_matches_declared,
-    value_matches_type_ref,
+    coerce_value_to_type, describe_type_mismatch, symbol_set_membership_error_in,
+    value_matches_declared, value_matches_type_ref,
 };
 pub(super) use inherit::{
     build_effective_fields, build_merged_decorators, is_descendant_of_walk, lookup_effective_field,
