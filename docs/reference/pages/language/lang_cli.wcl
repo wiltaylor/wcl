@@ -161,6 +161,12 @@ $ wcl parse split.wcl >/dev/null
 wcl::eval::arithmetic
 
   × operator '/' cannot divide by zero
+    ╭─[split.wcl:10:8]
+  9 │ parts = 0u32
+ 10 │ each = total / parts
+    ·        ──────┬──────
+    ·              ╰── no result for these operands
+    ╰────
 
 split.wcl: 1 evaluation error
 $ echo $?

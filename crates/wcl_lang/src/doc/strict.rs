@@ -154,7 +154,7 @@ impl Document {
                         anchor_field.span(),
                     );
                     out.push(match &decl_sources[anchor_idx] {
-                        Some(source) => warning.with_schema_source(source),
+                        Some(source) => warning.with_origin(source),
                         None => warning,
                     });
                 }
@@ -180,7 +180,7 @@ impl Document {
     /// Strict-mode validation, each error paired with the source its span
     /// indexes into: the root document or the imported file the
     /// offending text lives in. For a schema violation the pair repeats
-    /// [`EvalError::schema_source`]. `None` only for an error against a
+    /// [`EvalError::origin`]. `None` only for an error against a
     /// declaration the library synthesised, which has no file; a host
     /// renders that one without a snippet.
     pub fn schema_diagnostics(&self) -> Vec<(EvalError, Option<NamedSource<std::sync::Arc<str>>>)> {
@@ -711,7 +711,7 @@ fn sourced(
     error: EvalError,
     source: &NamedSource<Arc<str>>,
 ) -> (EvalError, Option<NamedSource<Arc<str>>>) {
-    let error = error.with_schema_source(source);
-    let source = error.schema_source().unwrap_or_else(|| source.clone());
+    let error = error.with_origin(source);
+    let source = error.origin().unwrap_or_else(|| source.clone());
     (error, Some(source))
 }

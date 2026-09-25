@@ -50,7 +50,11 @@ j = -5              // unary minus
 
 > **Scientific notation needs a decimal point in the mantissa — write `2.0e3`.** In `2e3`, `e3`
 > lexes as a unit suffix instead and resolves against the field's type, which almost always
-> fails.
+> fails (`wcl::eval::unit_no_match`, which `wcl check` also reports). `2e-3` / `2E+3` is worse:
+> the unit literal `2e`, an operator, then `3`, so it fails as arithmetic
+> (`wcl::eval::type_mismatch`, `operator '-' is not defined for pending_unit and i64`) and
+> `wcl check` skips it as an evaluation failure. Both errors carry the fix as help:
+> `scientific notation needs a decimal point: write 2.0e-3`.
 
 ### Numeric promotion
 
@@ -146,7 +150,8 @@ Rules worth knowing:
 | --- | --- |
 | `5MiB` on a `std.ByteSize` field | `5242880` |
 | A float magnitude whose product is whole (`1.5MiB`) | `1572864` |
-| A unit the type does not declare (`5km` on a `ByteSize`) | Error |
+| A unit the type does not declare (`5km` on a `ByteSize`) | Error `wcl::eval::unit_no_match` — on a read *and* from `wcl check` (exit 2) |
+| A product that is fractional on an integer type (`1.3B`) or out of range | Error `schema_violation` — on a read and from `wcl check` |
 | A unit literal with no type in context (`let x = 5MiB`) | Error |
 
 `format_unit(value, type_name, unit)` renders a stored base-unit value back in a chosen unit —

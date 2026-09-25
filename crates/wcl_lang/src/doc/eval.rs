@@ -600,7 +600,10 @@ impl Document {
         }
         let l = self.eval_in(lhs, ctx)?;
         let r = self.eval_in(rhs, ctx)?;
-        apply_binary(op, l, r, span)
+        apply_binary(op, l, r, span).map_err(|error| match exponent_split(op, lhs, rhs, span) {
+            Some(help) => error.with_type_mismatch_help(help),
+            None => error,
+        })
     }
 
     /// `E::ListLit` arm.
@@ -808,7 +811,14 @@ impl Document {
             let code = string_arg_or_err(name, &evald[0], span, "expected utf8 string")?;
             let expr = crate::parse_expr(&code, "<eval>")
                 .map_err(|e| EvalError::builtin_type(name.to_string(), e.to_string(), span))?;
-            return self.eval_in(&expr, ctx);
+            // Spans inside the result count into `code`, not into any
+            // file of the document.
+            return self.eval_in(&expr, ctx).map_err(|error| {
+                error.with_origin(&miette::NamedSource::new(
+                    "<eval>",
+                    std::sync::Arc::<str>::from(code),
+                ))
+            });
         }
         match &builtin.kind {
             crate::functions::BuiltinKind::Pure(body) => {
@@ -948,7 +958,23 @@ impl Document {
         let caller_locals = std::mem::replace(&mut ctx.locals, locals);
         let result = self.eval_in(&f.body, ctx);
         ctx.locals = caller_locals;
-        result
+        // The body may live in another file than the call: name that
+        // file, unless something deeper in the body already did.
+        result.map_err(|error| self.with_body_origin(error, &f.body))
+    }
+
+    /// Tag `error`, raised while evaluating the function body `body`,
+    /// with the file the body was written in. Leaves an error that
+    /// already names its file, or one from a body no source holds, as
+    /// it is.
+    fn with_body_origin(&self, error: EvalError, body: &std::sync::Arc<ast::Expr>) -> EvalError {
+        if error.origin().is_some() {
+            return error;
+        }
+        match self.source_of_expr_node(std::sync::Arc::as_ptr(body) as usize) {
+            Some(source) => error.with_origin(&source),
+            None => error,
+        }
     }
 
     /// Construct a [`Value::Variant`] from a parsed `Type::Variant`
@@ -1416,4 +1442,39 @@ fn bound_data_path_segments(expr: &ast::Expr, ctx: &EvalCtx<'_>) -> Option<Vec<S
         ast::Expr::Paren { inner, .. } => bound_data_path_segments(inner, ctx),
         _ => None,
     }
+}
+
+/// The help for `2e-3` or `1E+5`: an integer, then `e`/`E`, a sign and
+/// digits, written with no space between them. WCL reads an exponent
+/// only after a decimal point, so that text lexes as the unit literal
+/// `2e`, an operator, and the integer `3` — and fails as arithmetic on a
+/// unit literal. `None` for any other operation.
+fn exponent_split(op: ast::BinOp, lhs: &ast::Expr, rhs: &ast::Expr, span: Span) -> Option<String> {
+    let sign = match op {
+        ast::BinOp::Add => '+',
+        ast::BinOp::Sub => '-',
+        _ => return None,
+    };
+    let ast::Expr::UnitLiteral {
+        value,
+        unit,
+        span: literal,
+    } = lhs
+    else {
+        return None;
+    };
+    if unit != "e" && unit != "E" {
+        return None;
+    }
+    let digits = match rhs {
+        ast::Expr::I64(v) if *v >= 0 => v.to_string(),
+        _ => return None,
+    };
+    // The sign and the digits follow the literal directly: `2e - 3` is
+    // spaced like the subtraction it is.
+    if span.end != literal.end + 1 + digits.len() {
+        return None;
+    }
+    let magnitude = match_pat::number_lit_to_value(value);
+    crate::diagnostics::scientific_notation_help(&magnitude, &format!("{unit}{sign}{digits}"))
 }

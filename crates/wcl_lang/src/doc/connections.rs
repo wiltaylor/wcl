@@ -173,10 +173,35 @@ impl Document {
     /// Project sibling `Item::Connection` statements through a
     /// `@connections(SchemaName)` decorator: gather every statement
     /// whose `(lhs_type, rhs_type)` matches the schema and produce a
-    /// `Value::Record` per match. Fails only when an operand's
-    /// resolution is caught in a cycle — see
-    /// [`Self::resolve_connection_operand`].
+    /// `Value::Record` per match.
+    ///
+    /// Fails when an operand's resolution is caught in a cycle — see
+    /// [`Self::resolve_connection_operand`] — and when any statement in
+    /// `items` breaks the connection schemas: an endpoint that names no
+    /// block, a pair no schema (or more than one) accepts, or a kind
+    /// outside the schema's symbol set. That is the first violation the
+    /// strict check reports for the same statements, so a read fails
+    /// rather than returning edges with a bad one dropped or kept. The
+    /// error names no file; the caller knows which one `items` came from.
     pub(crate) fn project_connections(
+        &self,
+        items: &[ast::Item],
+        schema: ConnectionDecl<'_>,
+        scope: &Scope<'_>,
+    ) -> Result<Vec<Value>, EvalError> {
+        let projected = self.project_connection_records(items, schema, scope)?;
+        match super::schema_check::validate_connection_stmts(self, items, scope)
+            .into_iter()
+            .next()
+        {
+            Some(violation) => Err(violation),
+            None => Ok(projected),
+        }
+    }
+
+    /// The records half of [`Self::project_connections`], run first so an
+    /// operand caught in a cycle reports the cycle.
+    fn project_connection_records(
         &self,
         items: &[ast::Item],
         schema: ConnectionDecl<'_>,

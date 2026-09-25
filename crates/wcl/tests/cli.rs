@@ -1796,3 +1796,112 @@ fn check_json_names_the_file_of_each_error() {
         );
     }
 }
+
+/// A unit the field's type does not declare fails `check` (exit 2), with
+/// the read's own code — at the top level and in a nested block alike.
+#[test]
+fn check_rejects_a_unit_the_type_does_not_declare() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("units.wcl");
+    std::fs::write(
+        &src,
+        "@block(\"t\") type T { @inline(0) id: identifier\n a: u32 }\n\
+         @document type D { b: u32\n big: f64\n @children(\"t\") ts: list<T> }\n\
+         b = 5km\nbig = 1e39\nt x { a = 5km }\n",
+    )
+    .expect("write fixture");
+    wcl()
+        .arg("check")
+        .arg(&src)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("wcl::eval::unit_no_match"))
+        .stderr(predicate::str::contains("'km' is not a unit of type 'u32'"))
+        .stderr(predicate::str::contains(
+            "scientific notation needs a decimal point: write 1.0e39",
+        ))
+        .stderr(predicate::str::contains("3 schema violations"));
+}
+
+/// Connection statements an in-block `import` splices in are reported
+/// against the fragment, in `--json` too, and reading the projection fails
+/// with the same violation instead of returning the edges.
+#[test]
+fn in_block_imported_connections_are_checked_against_the_fragment() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = tmp.path().join("main.wcl");
+    std::fs::write(
+        &main,
+        "symbol_set EdgeKind { uses  depends_on }\n\
+         connection DependsOn: Service -> Service : EdgeKind\n\
+         @block(\"service\") type Service { @inline(0) id: identifier }\n\
+         @block(\"graph\") type Graph {\n  @inline(0) id: identifier\n  \
+         @children(\"service\") services: list<Service>\n  \
+         @connections(DependsOn) edges: list<DependsOn>\n}\n\
+         @document type Config { @children(\"graph\") graphs: list<Graph> }\n\
+         graph g {\n  service web {}\n  service db {}\n  import \"./frag.wcl\"\n}\n",
+    )
+    .expect("write main fixture");
+    std::fs::write(
+        tmp.path().join("frag.wcl"),
+        "// fragment\nservice cache {}\nweb -> db :bogus\nweb -> nowhere :uses\n",
+    )
+    .expect("write fragment fixture");
+
+    let out = wcl()
+        .args(["check", "--json"])
+        .arg(&main)
+        .assert()
+        .code(2)
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&out).expect("check --json prints JSON");
+    let errors = report["errors"].as_array().expect("errors array");
+    assert_eq!(errors.len(), 2, "{report:#}");
+    for error in errors {
+        let file = error["file"].as_str().expect("each error names its file");
+        assert!(file.ends_with("frag.wcl"), "{report:#}");
+    }
+
+    wcl()
+        .arg("get")
+        .arg(&main)
+        .arg("graphs.g.edges")
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains(
+            "connection kind ':bogus' is not a member of 'EdgeKind'",
+        ))
+        .stderr(predicate::str::contains("frag.wcl:3:11]"));
+}
+
+/// An error raised inside a function imported from another file is drawn
+/// from that file, not from the caller.
+#[test]
+fn an_error_in_an_imported_function_renders_against_its_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = tmp.path().join("main.wcl");
+    std::fs::write(
+        &main,
+        "import \"./lib.wcl\"\n@document type D { a: i64 }\na = check(-1)\n",
+    )
+    .expect("write main fixture");
+    std::fs::write(
+        tmp.path().join("lib.wcl"),
+        "// padding\n// padding\nlet check = fn(x: i64) -> i64 if x < 0 { error(\"negative!\") } else { x }\n",
+    )
+    .expect("write lib fixture");
+    for command in ["get", "parse"] {
+        let mut cmd = wcl();
+        cmd.arg(command).arg(&main);
+        if command == "get" {
+            cmd.arg("a");
+        }
+        cmd.assert()
+            .code(3)
+            .stderr(predicate::str::contains("error: negative!"))
+            .stderr(predicate::str::contains("lib.wcl:3:"))
+            .stderr(predicate::str::contains("error raised here"));
+    }
+}

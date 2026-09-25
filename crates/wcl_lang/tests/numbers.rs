@@ -187,7 +187,7 @@ fn reading_a_misfit_fails_as_the_schema_check_does() {
     // The read tags the violation with the file the field was written in,
     // as every other schema violation a read raises.
     assert_eq!(
-        error.schema_source().map(|s| s.name().to_string()),
+        error.origin().map(|s| s.name().to_string()),
         Some("test".into())
     );
     // The strict walk reports each once, with the same wording.

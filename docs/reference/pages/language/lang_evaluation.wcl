@@ -167,6 +167,13 @@ $ wcl get estate.wcl services.web.budget
 wcl::eval::arithmetic
 
   × operator '/' cannot divide by zero
+    ╭─[estate.wcl:25:12]
+ 24 │   region = "eu-west-1"
+ 25 │   budget = 100u32 / 0u32
+    ·            ──────┬──────
+    ·                  ╰── no result for these operands
+ 26 │ }
+    ╰────
 CONSOLE
   }
 
@@ -822,6 +829,12 @@ $ wcl get wrong.wcl budget
 wcl::eval::arithmetic
 
   × operator '/' cannot divide by zero
+    ╭─[wrong.wcl:10:10]
+  9 │ label  = 42u32
+ 10 │ budget = 1u32 / 0u32
+    ·          ─────┬─────
+    ·               ╰── no result for these operands
+    ╰────
 CONSOLE
   }
 
@@ -908,7 +921,7 @@ CONSOLE
 
   p "Every error that names a place in a file carries a span: a byte offset and a length. That is every `SyntaxError` and every `EvalError` variant. The one exception is the I/O half of `ParseError`. A file that could not be read has no position to point at, and it carries the `std::io::Error` and nothing else. Diagnostics are `miette` types, so the code, the message, the span and its label are all structured. With a source attached, `miette` draws the pointer-under-the-line snippets above."
 
-  p "Whether you _get_ a snippet depends on whether the error knows which source its span belongs to. A document is a root file plus its imports, and an offset alone does not say which of them it counts into. A parse error carries its own source, so it always renders one. So does every schema violation. The check that raises it records the file the offending text was written in, whether that is the root, an imported file, or a file an in-block `import` spliced into a block. Any other evaluation error carries only the span, and the caller has to supply the text. Here is a second root `@document` in one namespace:"
+  p "Whether you _get_ a snippet depends on whether the error knows which source its span belongs to. A document is a root file plus its imports, and an offset alone does not say which of them it counts into. A parse error carries its own source, so it always renders one. An evaluation error records the file the offending text was written in, whether that is the root, an imported file, or a file an in-block `import` spliced into a block. A schema violation records the file of the declaration or statement it is about. Any other failure records the file of the innermost thing that failed: the function body it was raised in, else the `let` or field being read. Code handed to `eval()` as a string counts as a file of its own, named `<eval>`. Only an error against a declaration the library synthesised carries the span alone, and the caller has to supply the text. Here is a second root `@document` in one namespace:"
 
   code wcl {
     filename = "twodocs.wcl"
@@ -988,6 +1001,48 @@ CONSOLE
   }
 
   p "That is the form an editor consumes: `offset` and `length` are byte positions in the error's own `file`, `code` is the stable identifier, and errors and warnings are separate arrays so an editor can style them apart. An error from a declaration the library synthesised has no file, and it has no `file` key. `--json` does not change the exit code. The language server places diagnostics the same way. It publishes each one to the file that holds its text, so a mistake in an imported file shows up in that file even when only the root is open."
+
+  p "The same holds for an error a function raises. The file is the one the function body was written in, not the one that called it. Put a guard in a library:"
+
+  code wcl {
+    filename = "guards.wcl"
+    source = <<'WCL'
+// guards.wcl — shared checks.
+
+fn positive(n: i64) -> i64 if n > 0 { n } else { error("expected a positive number") }
+WCL
+  }
+
+  code wcl {
+    filename = "sizes.wcl"
+    source = <<'WCL'
+import "./guards.wcl"
+
+@document
+type Sizes {
+  replicas: i64
+}
+
+replicas = positive(0)
+WCL
+  }
+
+  p "Reading `replicas` fails inside `positive`, so the snippet is drawn from `guards.wcl`:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get sizes.wcl replicas
+wcl::eval::user_error
+
+  × error: expected a positive number
+   ╭─[guards.wcl:3:50]
+ 2 │
+ 3 │ fn positive(n: i64) -> i64 if n > 0 { n } else { error("expected a positive number") }
+   ·                                                  ─────────────────┬─────────────────
+   ·                                                                   ╰── error raised here
+   ╰────
+CONSOLE
+  }
 
   h2 "Which command forces what"
 

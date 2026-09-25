@@ -20,6 +20,7 @@ use crate::diagnostics::EvalError;
 use crate::value::Value;
 
 use super::cells::ItemCellKind;
+use super::provenance::import_named_source;
 use super::{Block, BuiltinDecorator, DeclName, Document, TypeField};
 
 /// Report a decorator argument whose value does not fit the slot its
@@ -706,7 +707,7 @@ fn validate_own_fields(block: &Block<'_>, schema: &crate::doc::TypeDecl<'_>) -> 
             let error = unknown_field_error(f.name(), schema.name(), f.span());
             // The field may have come in through an in-block `import`.
             errs.push(match block.doc.source_of_field(f.ast) {
-                Some(source) => error.with_schema_source(&source),
+                Some(source) => error.with_origin(&source),
                 None => error,
             });
         }
@@ -730,7 +731,7 @@ fn validate_own_fields(block: &Block<'_>, schema: &crate::doc::TypeDecl<'_>) -> 
 /// Tag each violation that does not yet know its file with `source`.
 fn attach_source(errors: &mut [EvalError], source: &NamedSource<Arc<str>>) {
     for error in errors {
-        error.attach_schema_source(source);
+        error.attach_origin(source);
     }
 }
 
@@ -795,7 +796,12 @@ fn block_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     // by an in-block `import`, so imported connections are checked just
     // like inline ones.
     for src in block.realize_and_sources() {
-        errs.extend(validate_connection_stmts(block.doc, src.items, &scope));
+        let mut stmt_errors = validate_connection_stmts(block.doc, src.items, &scope);
+        // A statement spliced in by an import is written in that file.
+        if let Some(import) = src.import {
+            attach_source(&mut stmt_errors, &import_named_source(import));
+        }
+        errs.extend(stmt_errors);
     }
 
     let Some(schema) = block.schema() else {

@@ -99,6 +99,7 @@ impl Refused {
         match self {
             Refused::Cycle => EvalError::Cycle {
                 field: name.to_string(),
+                origin: None,
                 span: super::span_to_miette(span),
             },
             Refused::TooDeep => EvalError::eval_depth_exceeded(MAX_EVAL_DEPTH, span),

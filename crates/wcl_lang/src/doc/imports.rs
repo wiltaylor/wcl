@@ -44,6 +44,10 @@ pub(super) struct BlockSlice<'a> {
     /// By-name index over `items`, owned by whatever owns the cells and
     /// built on the first lookup that needs it.
     pub(super) index: &'a OnceLock<NameIndex>,
+    /// The imported file the items come from, or `None` for a block's
+    /// own items. A diagnostic raised against the items renders against
+    /// this file's text.
+    pub(super) import: Option<&'a LoadedImport>,
 }
 
 /// Cross-file import bookkeeping threaded down the eager-expansion
@@ -83,6 +87,7 @@ pub(super) fn push_loaded_imports<'a>(cells: &'a [ItemCells], out: &mut Vec<Bloc
                 cells: &li.cells,
                 file_ns: &li.file_ns,
                 index: &li.name_index,
+                import: Some(li),
             });
             push_eager_imports(&li.eager_imports, out);
         }
@@ -98,6 +103,7 @@ pub(super) fn push_eager_imports<'a>(imps: &'a [LoadedImport], out: &mut Vec<Blo
             cells: &imp.cells,
             file_ns: &imp.file_ns,
             index: &imp.name_index,
+            import: Some(imp),
         });
         push_eager_imports(&imp.eager_imports, out);
     }

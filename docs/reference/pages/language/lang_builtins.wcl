@@ -1598,6 +1598,13 @@ $ wcl get guard.wcl services.web.checked
 wcl::eval::user_error
 
   × error: port must be above 1024
+    ╭─[guard.wcl:15:57]
+ 14 │   port    = 80u32
+ 15 │   checked = if self.port > 1024u32 { self.port } else { error("port must be above 1024") }
+    ·                                                         ────────────────┬───────────────
+    ·                                                                         ╰── error raised here
+ 16 │ }
+    ╰────
 CONSOLE
   }
 

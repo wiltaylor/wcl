@@ -125,6 +125,7 @@ impl Document {
             document_schema_locs: std::sync::OnceLock::new(),
             root_let_index: std::sync::OnceLock::new(),
             node_source_index: std::sync::OnceLock::new(),
+            expr_source_index: std::sync::OnceLock::new(),
             root_conn_memo: std::sync::RwLock::new(HashMap::new()),
             root_children_memo: std::sync::RwLock::new(HashMap::new()),
             shadow_names: std::sync::OnceLock::new(),

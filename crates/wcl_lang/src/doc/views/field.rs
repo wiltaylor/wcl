@@ -498,31 +498,48 @@ impl<'a> Field<'a> {
     }
 
     /// Whether `error`, returned by [`value`](Self::value), is this field's
-    /// own type violation (a number that does not fit its declared type)
-    /// rather than a failure to evaluate it. The strict walk reports that
-    /// one as the field's schema violation; any other error it leaves to
-    /// the read.
+    /// own type violation rather than a failure to evaluate it: a number
+    /// that does not fit its declared type, a unit its type does not
+    /// declare, or a unit product that is fractional or out of range for
+    /// it. The strict walk reports that one as the field's schema
+    /// violation; any other error it leaves to the read.
+    ///
+    /// Each is raised against this field's own span. The same error read
+    /// through from another field points at that field instead, so it
+    /// stays with its own field.
     pub(in crate::doc) fn is_own_type_violation(&self, error: &EvalError) -> bool {
-        matches!(
-            error,
+        use crate::diagnostics::SchemaViolationKind::FieldTypeMismatch;
+        let own_span = |span: &miette::SourceSpan| span.offset() == self.ast.span.start;
+        match error {
             EvalError::SchemaViolation {
-                kind: crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
+                kind: FieldTypeMismatch,
                 detail: Some(name),
                 span,
                 ..
-            } if name == self.name() && span.offset() == self.ast.span.start
-        )
+            } => name == self.name() && own_span(span),
+            // A unit product that does not fit (`1.3B` on an integer
+            // type) names no field: the literal carries the unit.
+            EvalError::SchemaViolation {
+                kind: FieldTypeMismatch,
+                detail: None,
+                span,
+                ..
+            }
+            | EvalError::UnitNoMatch { span, .. } => own_span(span),
+            _ => false,
+        }
     }
 
-    /// Tag a schema violation raised while reading this field with the
-    /// file the field was written in, unless it already names one (an
-    /// error read through from another field keeps that field's file).
+    /// Tag an error raised while reading this field with the file the
+    /// field was written in, unless it already names one (an error read
+    /// through from another field keeps that field's file, one raised in
+    /// an imported function's body keeps the body's).
     fn sourced(&self, error: EvalError) -> EvalError {
-        if !matches!(error, EvalError::SchemaViolation { origin: None, .. }) {
+        if error.origin().is_some() {
             return error;
         }
         match self.doc.source_of_field(self.ast) {
-            Some(source) => error.with_schema_source(&source),
+            Some(source) => error.with_origin(&source),
             None => error,
         }
     }
@@ -750,6 +767,20 @@ impl<'a> LetView<'a> {
             }
         };
         let result = self.doc.eval_in_scope(&self.ast.value, &self.scope);
+        // A let read from another file's field or function reports
+        // against the file the let was written in.
+        let result = result.map_err(|error| {
+            if error.origin().is_some() {
+                return error;
+            }
+            match self
+                .doc
+                .source_of_expr_node(std::ptr::from_ref(self.ast) as usize)
+            {
+                Some(source) => error.with_origin(&source),
+                None => error,
+            }
+        });
         cell.value.get_or_init(|| result).clone()
     }
 }

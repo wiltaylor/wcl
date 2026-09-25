@@ -56,6 +56,12 @@ $ wcl get b.wcl bad
 wcl::eval::user_error
 
   × error: boom
+   ╭─[b.wcl:7:8]
+ 6 │ good = 1
+ 7 │ bad  = error("boom")
+   ·        ──────┬──────
+   ·              ╰── error raised here
+   ╰────
 ```
 
 ### Validation skips a field that fails to evaluate
@@ -85,9 +91,20 @@ wcl::eval::schema_violation
 c.wcl: 1 schema violation
 ```
 
-— but a value it *cannot* evaluate is not an error. There is one exception. A literal list whose
-element type is a union is static authored data, so a failure to infer one of its record
-variants is reported.
+— but a value it *cannot* evaluate is not an error. The exceptions are failures that are about
+the field's own declared type, not about running an expression, and each is reported at the
+field that holds the literal:
+
+- A number that does not fit (`300` in a `u8`, `2.5` in an integer, a list element out of
+  range) — `schema_violation`.
+- A unit the type does not declare (`5km` in a `u32`, `1e39` in an `f64`), in the field or in a
+  list element — `wcl::eval::unit_no_match`, same code as the read.
+- A unit product that does not fit (`1.3B` in a `std.ByteSize`, fractional) — `schema_violation`.
+- A literal list whose element type is a union is static authored data, so a failure to infer
+  one of its record variants is reported.
+
+A field that merely *reads* a failing one (`label = format_unit(buffer, …)`) fails its read but
+is not reported a second time.
 
 Practical rule: `wcl check` proves the shape, not that every expression runs. Render or consume
 the document to prove that.
@@ -293,14 +310,20 @@ names helps you read a message and search for its cause:
 - Advisory: `DocumentFieldShadow` — a **warning**, never an error. It is the only one, and
   [`lang_schemas.md`](lang_schemas.md) carries the transcript and the fix.
 
-**Which file a span counts into.** A `ParseError` carries its source. So does every
-`schema_violation`, strict (`schema_errors` / `schema_diagnostics`) or lazy (a field read): the
-file holding the offending text — root, imported file, or a file an in-block `import` spliced
-in. `EvalError::schema_source()` returns it, and `miette::Report::new(err)` renders the snippet
-against it with no source attached by the host. `schema_diagnostics()` pairs each error with the
-same source (`None` only for a library-synthesised declaration). Every *other* `EvalError`
-carries a span only; the host supplies the text. `wcl check --json` exposes the file per error
-(see [`lang_cli.md`](lang_cli.md)).
+**Which file a span counts into.** A `ParseError` carries its source. So does every `EvalError`
+variant, strict (`schema_errors` / `schema_diagnostics`) or lazy (a field read): the file holding
+the offending text — root, imported file, or a file an in-block `import` spliced in. The
+innermost place wins: an error raised inside a function body names the body's file (a helper
+imported from `lib.wcl` reports against `lib.wcl`, not the caller), else the `let` or field being
+read names its own. Code run through `eval("…")` is its own source, named `<eval>`.
+`EvalError::origin()` returns it (it was `schema_source()`, schema violations only), and
+`miette::Report::new(err)` renders the snippet against it with no source attached by the host;
+a source the host attaches with `with_source_code` is only a fallback. `schema_diagnostics()`
+pairs each error with the same source. `None` means the library could not place it (an error
+against a library-synthesised declaration, or an `EvalError` a host built with `user_error`), and
+only then does the host supply the text. `wcl get` / `wcl parse` print the snippet for every
+evaluation error, and `wcl check --json` exposes the file per error (see
+[`lang_cli.md`](lang_cli.md)).
 
 **Matching these in Rust.** `EvalError`, `ParseError`, `SchemaViolationKind`, `EditError`, and
 the enums that grow with the language (`Value`, the AST's `Item` / `Expr` / `Pattern` /

@@ -140,6 +140,37 @@ impl Document {
         })
     }
 
+    /// The `NamedSource` of the file that holds the `let` item or the
+    /// function body at `address` — a `LetItem`, or the `Expr` inside a
+    /// function literal's shared body. `None` for one no source holds: a
+    /// body parsed by `eval()`, or AST the library synthesised.
+    ///
+    /// For the error path only: the first call walks every expression
+    /// of the root source and its eager imports to build the index, and
+    /// a miss walks the forced in-block imports.
+    pub(crate) fn source_of_expr_node(&self, address: usize) -> Option<NamedSource<Arc<str>>> {
+        let sources = self.all_sources();
+        let index = self.expr_source_index.get_or_init(|| {
+            let mut map = HashMap::new();
+            for (ordinal, src) in sources.iter().enumerate() {
+                visit_expr_nodes(src.items, &mut |node| {
+                    map.entry(node).or_insert(ordinal);
+                });
+            }
+            map
+        });
+        if let Some(&ordinal) = index.get(&address) {
+            return Some(self.named_source_for_view(sources[ordinal]));
+        }
+        lazy_import_holding_expr(&self.ast.items, &self.cells.items, address)
+            .or_else(|| {
+                self.eager_imports
+                    .iter()
+                    .find_map(|imp| lazy_import_holding_expr(&imp.items, &imp.cells, address))
+            })
+            .map(import_named_source)
+    }
+
     /// miette source (name + text) for the root document.
     pub(super) fn root_named_source(&self) -> NamedSource<Arc<str>> {
         self.src.clone()
@@ -412,6 +443,215 @@ fn index_node_addresses(items: &[ast::Item], ordinal: usize, map: &mut HashMap<u
     }
 }
 
+/// Report the address of every `let` item and function-literal body in
+/// `items`, nested blocks and every expression included — the nodes
+/// [`Document::source_of_expr_node`] looks up.
+fn visit_expr_nodes(items: &[ast::Item], visit: &mut impl FnMut(usize)) {
+    for item in items {
+        match item {
+            ast::Item::Field(field) => {
+                visit_decorators(&field.decorators, visit);
+                visit_expr(&field.expr, visit);
+            }
+            ast::Item::Let(binding) => {
+                visit(std::ptr::from_ref(binding) as usize);
+                visit_decorators(&binding.decorators, visit);
+                visit_expr(&binding.value, visit);
+            }
+            ast::Item::Block(block) => {
+                visit_decorators(&block.decorators, visit);
+                block
+                    .labels
+                    .iter()
+                    .for_each(|label| visit_expr(label, visit));
+                visit_expr_nodes(&block.items, visit);
+            }
+            ast::Item::Table(table) => {
+                for row in &table.rows {
+                    row.values.iter().for_each(|value| visit_expr(value, visit));
+                }
+            }
+            ast::Item::TypeDecl(declaration) => {
+                visit_decorators(&declaration.decorators, visit);
+                visit_type_fields(&declaration.fields, visit);
+            }
+            ast::Item::InterfaceDecl(declaration) => {
+                visit_decorators(&declaration.decorators, visit);
+                visit_type_fields(&declaration.fields, visit);
+            }
+            ast::Item::UnionDecl(declaration) => {
+                visit_decorators(&declaration.decorators, visit);
+                for variant in &declaration.variants {
+                    visit_decorators(&variant.decorators, visit);
+                    if let ast::VariantBody::Record { fields, .. } = &variant.body {
+                        visit_type_fields(fields, visit);
+                    }
+                }
+            }
+            ast::Item::SymbolSetDecl(declaration) => {
+                visit_decorators(&declaration.decorators, visit);
+            }
+            ast::Item::ConnectionDecl(declaration) => {
+                visit_decorators(&declaration.decorators, visit);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// [`visit_expr_nodes`] over declared fields: their decorators and
+/// inline defaults.
+fn visit_type_fields(fields: &[ast::TypeField], visit: &mut impl FnMut(usize)) {
+    for field in fields {
+        visit_decorators(&field.decorators, visit);
+        if let Some(default) = &field.default_expr {
+            visit_expr(default, visit);
+        }
+    }
+}
+
+/// [`visit_expr_nodes`] over decorator arguments.
+fn visit_decorators(decorators: &[ast::Decorator], visit: &mut impl FnMut(usize)) {
+    for decorator in decorators {
+        decorator
+            .positional
+            .iter()
+            .for_each(|arg| visit_expr(arg, visit));
+        decorator
+            .named
+            .iter()
+            .for_each(|arg| visit_expr(&arg.value, visit));
+    }
+}
+
+/// [`visit_expr_nodes`] within one expression: the body of every
+/// function literal it contains, at any depth.
+fn visit_expr(expr: &ast::Expr, visit: &mut impl FnMut(usize)) {
+    use ast::Expr as E;
+    match expr {
+        E::Function(function) => {
+            visit(std::sync::Arc::as_ptr(&function.body) as usize);
+            visit_expr(&function.body, visit);
+        }
+        E::InterpolatedString { parts, .. } => {
+            for part in parts {
+                if let ast::TemplatePart::Expr(inner) = part {
+                    visit_expr(inner, visit);
+                }
+            }
+        }
+        E::Call { callee, args, .. } => {
+            visit_expr(callee, visit);
+            args.iter().for_each(|arg| visit_expr(arg, visit));
+        }
+        E::Binary { lhs, rhs, .. } => {
+            visit_expr(lhs, visit);
+            visit_expr(rhs, visit);
+        }
+        E::Unary { operand: inner, .. }
+        | E::Paren { inner, .. }
+        | E::Member { recv: inner, .. } => visit_expr(inner, visit),
+        E::Block { lets, tail, .. } => {
+            lets.iter()
+                .for_each(|binding| visit_expr(&binding.value, visit));
+            visit_expr(tail, visit);
+        }
+        E::ListLit { elements, .. } => elements.iter().for_each(|e| visit_expr(e, visit)),
+        E::If {
+            cond,
+            then_block,
+            else_block,
+            ..
+        } => {
+            visit_expr(cond, visit);
+            visit_expr(then_block, visit);
+            if let Some(else_block) = else_block {
+                visit_expr(else_block, visit);
+            }
+        }
+        E::IfLet {
+            scrut,
+            then_block,
+            else_block,
+            ..
+        } => {
+            visit_expr(scrut, visit);
+            visit_expr(then_block, visit);
+            visit_expr(else_block, visit);
+        }
+        E::Match { scrut, arms, .. } => {
+            visit_expr(scrut, visit);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    visit_expr(guard, visit);
+                }
+                visit_expr(&arm.body, visit);
+            }
+        }
+        E::Variant { args, .. } => match args {
+            ast::VariantArgs::Positional(inner) => visit_expr(inner, visit),
+            ast::VariantArgs::Record { fields, .. } => {
+                fields.iter().for_each(|arg| visit_expr(&arg.value, visit));
+            }
+            ast::VariantArgs::Unit => {}
+        },
+        E::Try { body, handler, .. } => {
+            visit_expr(body, visit);
+            visit_expr(handler, visit);
+        }
+        E::Record { fields, .. } => fields.iter().for_each(|arg| visit_expr(&arg.value, visit)),
+        _ => {}
+    }
+}
+
+/// The forced in-block import (reached through `items`, at any depth,
+/// through the imports it pulls in too) whose text holds the `let` item
+/// or function body at `address`.
+fn lazy_import_holding_expr<'a>(
+    items: &'a [ast::Item],
+    cells: &'a [ItemCells],
+    address: usize,
+) -> Option<&'a cells::LoadedImport> {
+    for (item, cell) in items.iter().zip(cells) {
+        match (item, &cell.kind) {
+            (ast::Item::Block(block), ItemCellKind::Block { items, .. }) => {
+                if let Some(import) = lazy_import_holding_expr(&block.items, items, address) {
+                    return Some(import);
+                }
+            }
+            (ast::Item::Import(_), ItemCellKind::Import { loaded, .. }) => {
+                let Some(Ok(import)) = loaded.get() else {
+                    continue;
+                };
+                if let Some(holder) = import_holding_expr(import, address) {
+                    return Some(holder);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// `import` itself when its own text holds `address`, else the import
+/// below it that does.
+fn import_holding_expr(
+    import: &cells::LoadedImport,
+    address: usize,
+) -> Option<&cells::LoadedImport> {
+    let mut held = false;
+    visit_expr_nodes(&import.items, &mut |node| held |= node == address);
+    if held {
+        return Some(import);
+    }
+    lazy_import_holding_expr(&import.items, &import.cells, address).or_else(|| {
+        import
+            .eager_imports
+            .iter()
+            .find_map(|child| import_holding_expr(child, address))
+    })
+}
+
 /// Whether `target` is one of these items or nested inside one,
 /// compared by address.
 fn field_in_items(items: &[ast::Item], target: *const ast::Field, cells: &[ItemCells]) -> bool {
@@ -528,7 +768,7 @@ fn find_lazy_field_ns_in_blocks<'a>(
 }
 
 /// The `NamedSource` a diagnostic against an import's text renders with.
-fn import_named_source(imp: &cells::LoadedImport) -> NamedSource<Arc<str>> {
+pub(super) fn import_named_source(imp: &cells::LoadedImport) -> NamedSource<Arc<str>> {
     NamedSource::new(imp.path.display().to_string(), imp.source.clone())
 }
 
