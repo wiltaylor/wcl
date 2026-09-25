@@ -1,0 +1,15 @@
+# Check every text file out with LF, whatever the platform or the user's
+# core.autocrlf. Tests compare heredoc values, snapshots, casts and rendered
+# output byte for byte, and a heredoc body keeps the line endings its file
+# has, so a CRLF checkout changes what a .wcl file means.
+* text=auto eol=lf
+
+# Binary assets: never converted, never diffed as text.
+*.png   binary
+*.jpg   binary
+*.woff2 binary
+*.ttf   binary
+*.mp4   binary
+
+# Vendored as published, CRLF and all; shipped verbatim, not parsed.
+crates/wcl_wdoc/assets/fonts/OFL-IBMPlexSans.txt -text
