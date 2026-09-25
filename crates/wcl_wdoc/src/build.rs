@@ -2694,7 +2694,7 @@ fn build_normal_page(
     // Index the page's own content (not the template shell, so nav
     // chrome doesn't match every query). The title is the first `h1`
     // when the page has one, else the page name.
-    let text = html_to_text(&content);
+    let text = crate::html::plain_text(&content);
     let title = rendered.page_heading.unwrap_or_else(|| page_name.clone());
     Ok(Some(SearchEntry {
         href: format!("{page_name}.html"),
@@ -2722,68 +2722,6 @@ impl SearchEntry {
             "text": self.text,
         })
     }
-}
-
-/// Plain text of rendered HTML for the search index: tags dropped,
-/// `<script>` / `<style>` contents skipped (SVG text nodes — diagram
-/// labels — survive, which is wanted), whitespace collapsed.
-fn html_to_text(html: &str) -> String {
-    let mut out = String::with_capacity(html.len() / 4);
-    let mut rest = html;
-    let mut last_ws = true;
-    while let Some(lt) = rest.find('<') {
-        for ch in rest[..lt].chars() {
-            if ch.is_whitespace() {
-                if !last_ws {
-                    out.push(' ');
-                    last_ws = true;
-                }
-            } else {
-                out.push(ch);
-                last_ws = false;
-            }
-        }
-        rest = &rest[lt..];
-        let lower = rest.get(..8).unwrap_or("").to_ascii_lowercase();
-        let skip_to = if lower.starts_with("<script") {
-            Some("</script>")
-        } else if lower.starts_with("<style") {
-            Some("</style>")
-        } else {
-            None
-        };
-        if let Some(close) = skip_to {
-            match rest.to_ascii_lowercase().find(close) {
-                Some(end) => rest = &rest[end + close.len()..],
-                None => break,
-            }
-            continue;
-        }
-        match rest.find('>') {
-            Some(gt) => rest = &rest[gt + 1..],
-            None => break,
-        }
-    }
-    for ch in rest.chars() {
-        if ch.is_whitespace() {
-            if !last_ws {
-                out.push(' ');
-                last_ws = true;
-            }
-        } else {
-            out.push(ch);
-            last_ws = false;
-        }
-    }
-    // Decode the entities the HTML emitters produce, so the index (and
-    // the widget, which sets textContent) shows `&`, not `&amp;`.
-    let decoded = out
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&amp;", "&");
-    decoded.trim().to_string()
 }
 
 /// The bundled client-side search widget (see `assets/wdoc-search.js`).

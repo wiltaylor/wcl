@@ -482,8 +482,8 @@ pub(crate) fn render_shape(
 fn wrap_shape_link(block: &Block<'_>, ctx: RenderCtx<'_>, svg: String) -> String {
     match field_utf8(block, "link") {
         Some(link) => format!(
-            "<a href=\"{}\">{}</a>",
-            escape_html(&ctx.patterns.resolve_href(&link)),
+            "<a{}>{}</a>",
+            crate::inline::href_attr(&ctx.patterns.resolve_href(&link)),
             svg
         ),
         None => svg,

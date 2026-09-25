@@ -320,7 +320,9 @@ p "Outside: [example](https://example.com), or bare https://example.com/docs."
 WCL
   }
 
-  p "A bare token target is a **page name**, not a path. The build rewrites it to `wdoc_code.html` for the web target and `wdoc_code.md` for Markdown, so one source works for both. A target that starts with `#`, `/`, `./`, or `../`, that contains `://`, or that carries a `mailto:` or `tel:` scheme passes through untouched, and the build never checks it. A `site:page` target crosses to another site declared in the same document and gets however many `../` steps that takes. [Documents, pages and sites](wdoc_sites) covers multi-site builds."
+  p "A bare token target is a **page name**, not a path. The build rewrites it to `wdoc_code.html` for the web target and `wdoc_code.md` for Markdown, so one source works for both. A target that starts with `#`, `/`, `./`, or `../`, or that carries an `http:`, `https:`, `mailto:` or `tel:` scheme passes through untouched, and the build never checks it. A `site:page` target crosses to another site declared in the same document and gets however many `../` steps that takes. [Documents, pages and sites](wdoc_sites) covers multi-site builds."
+
+  p "Those four are the only schemes a link may carry. A `javascript:`, `data:`, `file:` or `ftp:` target, or any other scheme, is dropped: the text still renders, as an `<a>` with no `href`, and the build prints a `warning:` naming the target and still exits 0. The check reads the target the way a browser would, so `JaVaScRiPt:`, a leading space, a tab inside the word, or a `&#115;` character reference does not slip past it. A diagram shape's `link` field follows the same rule."
 
   p "The bare-URL form drops the scheme from the link text: `https://example.com/docs` renders as `example.com/docs`. It also stops before sentence-final punctuation, so a URL at the end of a sentence keeps its full stop as prose."
 
@@ -378,6 +380,8 @@ WCL
   p "`to_span` receives the regex's capture groups as a `list<utf8>`: `at(g, 0)` is the whole match, `at(g, 1)` is the first explicit group, and so on. It returns a **list**, so one match may produce several spans. There are four variants: `Plain` (a classed `<span>`), `Link`, `Icon`, and `Math`. A `to_span` that returns something other than a list leaves the matched text alone rather than failing the build."
 
   p "`boundary = true` skips a match that touches a letter, digit, or underscore on either side. The built-in `italic` uses it, so `safe_mode_password` keeps its underscores while `a _word_ here` formats. Turn it on for any marker built from characters that also occur inside identifiers."
+
+  p "A `pattern` the regex engine cannot compile fails the build. The error names the pattern, points at its `pattern` field, and quotes the engine's reason, such as `unclosed character class`, and `wcl wdoc build` exits 3."
 
   callout "A pattern that re-emits its own trigger nests eight deep" {
     kind = :warning

@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use crate::blocks::image::{fnv1a, is_external, sanitize};
 use crate::build::BuildError;
-use crate::render::escape_html;
+use crate::render::{UrlUse, disallowed_url_warning, escape_html, url_allowed};
 
 /// How a `video` `source` is embedded.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -214,6 +214,19 @@ pub(crate) fn render_html(payload: VideoPayload<'_>, registry: &VideoRegistry) -
     if source.is_empty() {
         return String::new();
     }
+    // The player turns `data-src` into a `<video src>` or `<iframe src>`,
+    // so a `javascript:` or `data:text/html` source must never reach it.
+    if !url_allowed(source, UrlUse::Video) {
+        crate::render::record_render_warning(disallowed_url_warning("video source", source));
+        return String::new();
+    }
+    let poster = poster.filter(|p| {
+        let ok = url_allowed(p, UrlUse::Image);
+        if !ok {
+            crate::render::record_render_warning(disallowed_url_warning("video poster", p));
+        }
+        ok
+    });
     registry.used.set(true);
     let kind = classify(source);
     let (kind_str, play_url) = match &kind {

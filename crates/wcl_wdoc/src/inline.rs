@@ -26,7 +26,7 @@ use crate::blocks::image::ImageRegistry;
 use crate::blocks::video::VideoRegistry;
 use crate::html::render_styles;
 use crate::pdf::ir::{FontFamily, InlineRun, TextStyle};
-use crate::render::escape_html;
+use crate::render::{ALLOWED_URL_SCHEMES, UrlUse, escape_html, url_allowed, url_scheme};
 
 /// Maximum recursion depth when re-tokenizing a match's text
 /// fields. Keeps a self-referential pattern from blowing the
@@ -182,9 +182,10 @@ enum InlineToken<'a> {
 impl InlinePatterns {
     /// Enumerate every `@block("inline_pattern")` at the document
     /// root, compile its regex, and capture its `to_span` function.
-    /// Patterns whose regex fails to compile or whose `to_span`
-    /// isn't a function are silently skipped — schema validation
-    /// flags those separately.
+    /// A regex that fails to compile is recorded as a lower error, so
+    /// the render fails naming the pattern. Patterns whose `to_span`
+    /// isn't a function are skipped — schema validation flags those
+    /// separately.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn load(
         doc: &Document,
@@ -212,8 +213,22 @@ impl InlinePatterns {
             else {
                 continue;
             };
-            let Ok(regex) = Regex::new(pattern_src) else {
-                continue;
+            let regex = match Regex::new(pattern_src) {
+                Ok(regex) => regex,
+                Err(e) => {
+                    // A pattern that never compiles would never match, and
+                    // the author would see their markup pass through as
+                    // text with no hint why — fail the render instead.
+                    let name = crate::render::label_string(&block).unwrap_or_default();
+                    crate::render::record_lower_error(
+                        &block,
+                        wcl_lang::EvalError::user_error(
+                            format!("inline_pattern '{name}': pattern regex does not compile: {e}"),
+                            pattern_field.span(),
+                        ),
+                    );
+                    continue;
+                }
             };
             let Some(to_span_field) = block.field("to_span") else {
                 continue;
@@ -637,22 +652,28 @@ impl InlinePatterns {
         let inner = self.render_inner(doc, &text, depth + 1);
         let class_attr = class_attr(map);
         let mut out = String::new();
-        write!(
-            out,
-            "<a{class_attr} href=\"{}\">{inner}</a>",
-            escape_html(&resolved)
-        )
-        .expect("write to String");
+        write!(out, "<a{class_attr}{}>{inner}</a>", href_attr(&resolved)).expect("write to String");
         out
     }
 
     /// Rewrite `href` for the rendered `<a href="...">`. External
-    /// URLs (anything with a scheme, anchor-only, or path-relative
+    /// URLs (an allowed scheme, anchor-only, or path-relative
     /// prefix) pass through unchanged. A bare token (or `name#frag`)
     /// that matches a known page is rewritten to `<page>.html` with
     /// the fragment preserved. A bare token that doesn't match any
     /// page is recorded as a link error so build can fail.
+    ///
+    /// Any other scheme (`javascript:`, `data:`, `file:`, …) resolves to
+    /// the empty string with a render warning, and the caller drops the
+    /// `href` (see [`href_attr`]). `site:page` shapes are exempt: those
+    /// resolve as cross-site links, or record a link error.
     pub(crate) fn resolve_href(&self, href: &str) -> String {
+        if !is_site_link(href) && !url_allowed(href, UrlUse::Link) {
+            crate::render::record_render_warning(crate::render::disallowed_url_warning(
+                "link", href,
+            ));
+            return String::new();
+        }
         if is_external_href(href) {
             return href.to_string();
         }
@@ -684,7 +705,9 @@ impl InlinePatterns {
                     .borrow_mut()
                     .push(format!("link to unknown site '{site}'")),
             }
-            return href.to_string();
+            // An unresolved `site:page` is not a URL a browser should
+            // follow (`javascript:void` has this shape), so emit none.
+            return String::new();
         }
         if self.page_names.contains(target) {
             return format!("{target}.html{fragment}");
@@ -744,7 +767,12 @@ impl InlinePatterns {
                 let raw = map_utf8(map, "href").unwrap_or_default();
                 let href = self.markdown_href(&raw);
                 let inner = self.markdown_inner(doc, &text, depth + 1);
-                format!("[{inner}]({href})")
+                // A dropped href leaves the text, unlinked.
+                if href.is_empty() {
+                    inner
+                } else {
+                    format!("[{inner}]({href})")
+                }
             }
             "Icon" => format!(":{}:", map_utf8(map, "name").unwrap_or_default()),
             "Math" => {
@@ -858,8 +886,8 @@ fn md_code_span(code: &str) -> String {
     format!("{fence}{pad}{code}{pad}{fence}")
 }
 
-/// Whether an href leaves the site — a scheme, a protocol-relative
-/// prefix, or a mail link.
+/// Whether an href leaves the site's page namespace — an allowed scheme,
+/// an anchor, or an absolute / path-relative prefix.
 fn is_external_href(href: &str) -> bool {
     if href.starts_with('#') || href.starts_with('/') {
         return true;
@@ -867,15 +895,32 @@ fn is_external_href(href: &str) -> bool {
     if href.starts_with("./") || href.starts_with("../") {
         return true;
     }
-    if href.contains("://") {
-        return true;
+    url_scheme(href).is_some_and(|(s, _)| ALLOWED_URL_SCHEMES.contains(&s.as_str()))
+}
+
+/// Whether `href` has the `site:page` shape of a cross-site link: two
+/// identifier-like halves around one `:`, with an optional `#fragment`.
+fn is_site_link(href: &str) -> bool {
+    let target = href.split('#').next().unwrap_or(href);
+    let ident = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+    };
+    match target.split_once(':') {
+        Some((site, page)) => ident(site) && ident(page),
+        None => false,
     }
-    for scheme in ["mailto:", "tel:", "data:", "javascript:"] {
-        if href.starts_with(scheme) {
-            return true;
-        }
+}
+
+/// The ` href="…"` attribute for a resolved link, or nothing when
+/// [`InlinePatterns::resolve_href`] dropped a disallowed URL.
+pub(crate) fn href_attr(resolved: &str) -> String {
+    if resolved.is_empty() {
+        String::new()
+    } else {
+        format!(" href=\"{}\"", escape_html(resolved))
     }
-    false
 }
 
 /// Read a `utf8` entry out of a span record.
