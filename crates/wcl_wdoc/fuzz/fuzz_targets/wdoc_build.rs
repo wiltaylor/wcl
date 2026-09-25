@@ -25,7 +25,9 @@ fn scratch() -> &'static PathBuf {
 // `BuildError` is an expected outcome; only a panic, a hang or an abort is
 // a finding.
 fuzz_target!(|data: &[u8]| {
-    let Ok(body) = std::str::from_utf8(data) else { return };
+    let Ok(body) = std::str::from_utf8(data) else {
+        return;
+    };
     let dir = scratch();
     let src = dir.join("doc.wcl");
     if std::fs::write(&src, format!("import <wdoc.wcl>\n{body}")).is_err() {
