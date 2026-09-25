@@ -48,6 +48,7 @@ fn describe(e: &BuildError) -> String {
         BuildError::Tileset(m) => format!("tileset: {m}"),
         BuildError::EdgeRouting(m) => format!("edge routing: {m}"),
         BuildError::CodeInclude(m) => format!("code include: {m}"),
+        other => format!("{other:?}"),
     }
 }
 

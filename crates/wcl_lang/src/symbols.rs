@@ -38,6 +38,7 @@ pub struct SymbolRecord {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// What sort of declaration a [`SymbolRecord`] describes.
+#[non_exhaustive]
 pub enum SymbolKind {
     /// A `fn name(…) -> T body` item (an indexed let binding).
     FnDecl,

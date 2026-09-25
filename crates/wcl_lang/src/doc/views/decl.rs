@@ -237,6 +237,7 @@ pub(crate) enum UnionChildKind {
 /// (the legacy form) or a reference to a `UnionDecl` (structural
 /// dispatch). Mirrors the namespace-resolution dance used elsewhere
 /// for path lookups.
+#[non_exhaustive]
 pub enum ChildKind<'a> {
     /// `@child("button")` — match nested blocks by their `kind`.
     Kind(String),
@@ -422,6 +423,7 @@ pub(in crate::doc) fn synth_child_from_value(
 
 /// The payload shape of a union variant, as the document layer sees it.
 /// The view counterpart of [`ast::VariantBody`].
+#[non_exhaustive]
 pub enum VariantBodyView<'a> {
     /// Named fields declared inline on the variant. Read them with
     /// [`UnionVariant::fields`].
@@ -1197,6 +1199,7 @@ impl<'a> UseDeclView<'a> {
 }
 
 /// What a [`UseDeclView`] brings into scope.
+#[non_exhaustive]
 pub enum UseFormView<'a> {
     /// `use a.b.c`, or `use a.b.c as d` — the path's last segment,
     /// optionally renamed.

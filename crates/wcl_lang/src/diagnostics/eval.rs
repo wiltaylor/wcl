@@ -71,6 +71,7 @@ impl miette::SourceCode for SchemaDiagnosticSource {
 /// Every variant carries a span so the diagnostic can point at the text
 /// responsible. Errors are cached per field, so a field that fails
 /// reports the same error on every later read rather than being retried.
+#[non_exhaustive]
 pub enum EvalError {
     #[error("cycle while evaluating '{field}'")]
     #[diagnostic(code(wcl::eval::cycle))]

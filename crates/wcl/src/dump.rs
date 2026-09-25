@@ -180,6 +180,8 @@ fn dump_use_decl(u: &UseDeclView<'_>, out: &mut Out) {
                 .collect();
             line!(out, 0, "use {prefix}.{{{}}}", parts.join(", "));
         }
+        // A `use` form this dump does not know: its path, marked unknown.
+        _ => line!(out, 0, "use {prefix} # unrecognised form"),
     }
 }
 
@@ -251,6 +253,8 @@ fn dump_variant(v: &UnionVariant<'_>, out: &mut Out) {
         VariantBodyView::Unit => {
             line!(out, 1, "{} none", v.name());
         }
+        // A body form this dump does not know: the name, marked unknown.
+        _ => line!(out, 1, "{} # unrecognised body", v.name()),
     }
 }
 
@@ -393,5 +397,8 @@ fn profile_key_to_json(k: &ProfileKey) -> serde_json::Value {
         ProfileKey::Field { path } => serde_json::json!({ "kind": "field", "path": path }),
         ProfileKey::UserFn { name } => serde_json::json!({ "kind": "user_fn", "name": name }),
         ProfileKey::Builtin { name } => serde_json::json!({ "kind": "builtin", "name": name }),
+        // A key kind a later `wcl_lang` adds keeps its node, labelled by
+        // its debug form.
+        other => serde_json::json!({ "kind": "other", "name": format!("{other:?}") }),
     }
 }

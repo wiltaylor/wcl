@@ -49,6 +49,7 @@ fn build_report(file: &Path, out: &Path) -> BuildReport {
         Err(BuildError::Tileset(m)) => panic!("build tileset error: {m}"),
         Err(BuildError::EdgeRouting(m)) => panic!("build edge-routing error: {m}"),
         Err(BuildError::CodeInclude(m)) => panic!("build code-include error: {m}"),
+        Err(other) => panic!("build error: {other:?}"),
     }
 }
 
@@ -2338,6 +2339,7 @@ page index {
             panic!("expected Schema, got DuplicatePage({site}: {name})")
         }
         Ok(n) => panic!("expected Schema error, got Ok({n})"),
+        Err(other) => panic!("expected Schema, got {other:?}"),
     }
 }
 
@@ -2456,6 +2458,7 @@ page index {
             panic!("expected DuplicateId, got DuplicatePage({site}: {name})")
         }
         Ok(n) => panic!("expected DuplicateId, got Ok({n})"),
+        Err(other) => panic!("expected DuplicateId, got {other:?}"),
     }
 }
 
@@ -4672,6 +4675,7 @@ page index {
         Err(BuildError::EdgeRouting(m)) => panic!("expected BadLink, got EdgeRouting({m})"),
         Err(BuildError::CodeInclude(m)) => panic!("expected BadLink, got CodeInclude({m})"),
         Ok(n) => panic!("expected BadLink, got Ok({n})"),
+        Err(other) => panic!("expected BadLink, got {other:?}"),
     }
 }
 
@@ -4787,6 +4791,7 @@ page index {
         Err(BuildError::EdgeRouting(m)) => panic!("expected BadLink, got EdgeRouting({m})"),
         Err(BuildError::CodeInclude(m)) => panic!("expected BadLink, got CodeInclude({m})"),
         Ok(n) => panic!("expected BadLink, got Ok({n})"),
+        Err(other) => panic!("expected BadLink, got {other:?}"),
     }
 }
 

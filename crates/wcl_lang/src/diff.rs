@@ -33,6 +33,7 @@ pub const DOCUMENT_ENTITY: &str = "<document>";
 
 /// What happened to a whole entity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ChangeOp {
     /// The entity exists only in the new document.
     Added,
@@ -55,6 +56,7 @@ impl ChangeOp {
 
 /// What happened to one field path inside a modified entity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FieldKind {
     /// The path has a value only on the new side. An optional field
     /// going from `none` to a value also counts as added.
@@ -78,6 +80,7 @@ impl FieldKind {
 
 /// One reported change to an entity.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct Change {
     /// Whether the entity was added, removed or modified.
     pub op: ChangeOp,
@@ -95,6 +98,7 @@ pub struct Change {
 /// One field-path edit within a modified entity, with the values on
 /// each side. The absent side of an add or remove is `None`.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FieldChange {
     /// Dotted and indexed path within the entity (`fields.tags[2]`).
     /// Empty when the compared values themselves differ at the root.
@@ -118,6 +122,7 @@ pub enum Side {
 
 /// What could not be evaluated, and so was left out of the comparison.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Skipped {
     /// A top-level block, by the entity key it would have had.
     Entity(String),
@@ -131,6 +136,7 @@ pub enum Skipped {
 /// `warning: `, for example
 /// `field 'port' could not be evaluated, skipping: <error>`.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct DiffWarning {
     /// The document the item belongs to.
     pub side: Side,
@@ -156,6 +162,7 @@ impl fmt::Display for DiffWarning {
 
 /// The result of [`diff_documents`].
 #[derive(Debug, Clone, PartialEq, Default)]
+#[non_exhaustive]
 pub struct Diff {
     /// One entry per entity that differs, sorted by entity key.
     pub changes: Vec<Change>,

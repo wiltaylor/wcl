@@ -14,6 +14,7 @@ use crate::ast::{Span, Trivia};
 
 #[derive(Debug, Clone, PartialEq)]
 /// One lexical token's payload.
+#[non_exhaustive]
 pub enum TokenKind {
     /// A bare identifier or keyword-like name.
     Ident(String),
@@ -114,6 +115,7 @@ pub enum TokenKind {
 /// A numeric literal, resolved to the type its suffix names. An
 /// unsuffixed integer lexes as [`NumberLit::I64`] and an unsuffixed
 /// float as [`NumberLit::F64`].
+#[non_exhaustive]
 pub enum NumberLit {
     /// Signed 8-bit.
     I8(i8),

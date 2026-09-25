@@ -80,6 +80,9 @@ pub(crate) fn collect(source: &str, uri: &Uri, doc: &Document) -> Option<Vec<Occ
                         );
                     }
                 }
+                // A `use` form this server does not know binds no alias
+                // it can follow.
+                _ => {}
             }
         }
     }
@@ -729,7 +732,9 @@ impl Collector<'_> {
                             VariantBody::InterfaceRef { iface_span, .. } => {
                                 self.type_refs(*iface_span)
                             }
-                            VariantBody::Unit => {}
+                            // Unit carries no names; an unknown body form
+                            // contributes none this server can place.
+                            _ => {}
                         }
                     }
                 }
@@ -926,8 +931,11 @@ impl Collector<'_> {
                             }
                         }
                     }
+                    _ => {}
                 },
-                Item::NamespaceDecl(_) | Item::Import(_) => {}
+                // Namespaces and imports name no symbol occurrence, and
+                // an item kind this server does not know is skipped.
+                _ => {}
             }
         }
         self.item_scopes.pop();
@@ -1036,12 +1044,9 @@ impl Collector<'_> {
                 }
             }
             Pattern::LiteralSymbol(name, span) => self.symbol(name, *span, expected),
-            Pattern::Wildcard(_)
-            | Pattern::LiteralBool(..)
-            | Pattern::LiteralNumber { .. }
-            | Pattern::LiteralUtf8(..)
-            | Pattern::LiteralAscii(..)
-            | Pattern::LiteralNone(_) => {}
+            // Wildcards and the other literals bind and name nothing, and
+            // neither does a pattern form this server does not know.
+            _ => {}
         }
     }
 
@@ -1304,29 +1309,9 @@ impl Collector<'_> {
                     }
                 }
             }
-            Expr::Bool(_)
-            | Expr::I8(_)
-            | Expr::I16(_)
-            | Expr::I32(_)
-            | Expr::I64(_)
-            | Expr::I128(_)
-            | Expr::Isize(_)
-            | Expr::U8(_)
-            | Expr::U16(_)
-            | Expr::U32(_)
-            | Expr::U64(_)
-            | Expr::U128(_)
-            | Expr::Usize(_)
-            | Expr::F32(_)
-            | Expr::F64(_)
-            | Expr::UnitLiteral { .. }
-            | Expr::Utf8(_)
-            | Expr::Ascii(_)
-            | Expr::Utf16(_)
-            | Expr::Utf32(_)
-            | Expr::None
-            | Expr::SelfKw(_)
-            | Expr::ParentKw(_) => {}
+            // Literals and `self`/`parent` name nothing, and an expression
+            // form this server does not know is skipped.
+            _ => {}
         }
         self.bindings.truncate(depth);
     }

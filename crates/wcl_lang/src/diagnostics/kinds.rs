@@ -18,6 +18,7 @@
 /// that wording: `EvalError::Arithmetic` and the `sum` builtin both render
 /// through it, so one fault reads the same wherever it surfaces.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ArithmeticFault {
     /// `/` or `%` with a zero divisor — undefined, not merely
     /// unrepresentable, so no wider type would rescue it.
@@ -53,6 +54,7 @@ impl std::fmt::Display for ArithmeticFault {
 ///
 /// Structured rather than pre-formatted so a tool can branch on the kind
 /// of violation without parsing the rendered message.
+#[non_exhaustive]
 pub enum SchemaViolationKind {
     /// A decorator name that resolves to no type carrying a matching
     /// `@decorator("name")` declaration.

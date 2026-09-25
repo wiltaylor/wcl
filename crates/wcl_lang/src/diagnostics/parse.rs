@@ -27,6 +27,7 @@ use thiserror::Error;
 #[derive(Debug, Error, Diagnostic)]
 /// A failure to turn source text into a syntax tree: either the file
 /// could not be read, or it did not parse.
+#[non_exhaustive]
 pub enum ParseError {
     #[error("io error: {0}")]
     /// The source could not be read from disk.
@@ -111,6 +112,7 @@ impl ParseError {
 /// the offending source with a caret and, optionally, a second label
 /// pointing at a related site. The first failure of a parse also holds
 /// the ones after it, in [`others`](Self::others).
+#[non_exhaustive]
 pub struct SyntaxError {
     /// The rendered message.
     pub message: String,

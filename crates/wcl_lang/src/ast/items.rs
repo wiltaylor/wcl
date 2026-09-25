@@ -163,6 +163,7 @@ pub struct ConnectionStmt {
 /// One top-level (or in-block) declaration. A [`Source`] is a list of
 /// these, and a [`Block`]'s body is too.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Item {
     /// `name = expr` — document data.
     Field(Field),
@@ -193,6 +194,27 @@ pub enum Item {
 }
 
 impl Item {
+    /// The item's source span, whatever its variant. `Item` is
+    /// `#[non_exhaustive]`, so this is how a host reaches the span without
+    /// matching every form.
+    pub fn span(&self) -> Span {
+        match self {
+            Item::Field(x) => x.span,
+            Item::Let(x) => x.span,
+            Item::Block(x) => x.span,
+            Item::TypeDecl(x) => x.span,
+            Item::InterfaceDecl(x) => x.span,
+            Item::UnionDecl(x) => x.span,
+            Item::NamespaceDecl(x) => x.span,
+            Item::UseDecl(x) => x.span,
+            Item::SymbolSetDecl(x) => x.span,
+            Item::Import(x) => x.span,
+            Item::Table(x) => x.span,
+            Item::ConnectionDecl(x) => x.span,
+            Item::Connection(x) => x.span,
+        }
+    }
+
     /// Attach a same-line trailing comment to this item, whatever its
     /// variant. Used by the parser to re-attach a comment that the lexer
     /// diverted as the next token's `same_line_comment` onto the item

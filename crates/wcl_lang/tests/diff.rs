@@ -6,8 +6,7 @@ use std::sync::Arc;
 use wcl_lang::Document;
 use wcl_lang::Value;
 use wcl_lang::diff::{
-    ChangeOp, DOCUMENT_ENTITY, Diff, FieldChange, FieldKind, Side, Skipped, diff_documents,
-    diff_values,
+    ChangeOp, DOCUMENT_ENTITY, Diff, FieldKind, Side, Skipped, diff_documents, diff_values,
 };
 
 fn record(pairs: &[(&str, Value)]) -> Value {
@@ -44,15 +43,14 @@ fn equal_values_produce_no_change() {
 fn changed_leaf_carries_old_and_new() {
     let a = record(&[("x", Value::I64(1))]);
     let b = record(&[("x", Value::I64(2))]);
-    assert_eq!(
-        diff_values(&a, &b),
-        vec![FieldChange {
-            path: "x".into(),
-            kind: FieldKind::Changed,
-            old: Some(Value::I64(1)),
-            new: Some(Value::I64(2)),
-        }]
-    );
+    // `FieldChange` is non_exhaustive, so outside the crate it is read
+    // field by field rather than built as a literal to compare against.
+    let d = diff_values(&a, &b);
+    assert_eq!(d.len(), 1);
+    assert_eq!(d[0].path, "x");
+    assert_eq!(d[0].kind, FieldKind::Changed);
+    assert_eq!(d[0].old, Some(Value::I64(1)));
+    assert_eq!(d[0].new, Some(Value::I64(2)));
 }
 
 #[test]

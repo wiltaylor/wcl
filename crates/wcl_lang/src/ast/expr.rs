@@ -15,6 +15,7 @@ use super::{ElemTrivia, Pattern, Span, Trivia, TypeRef};
 /// expression language: literals, operators, calls, blocks, control flow
 /// and pattern matching.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Expr {
     /// `true` / `false`.
     Bool(bool),
@@ -357,6 +358,7 @@ pub struct LetBinding {
 
 /// A binary operator. Precedence lives in [`BinOp::binding_power`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BinOp {
     /// `a + b`.
     Add,
@@ -436,6 +438,7 @@ pub const MEMBER_BP: u8 = 17;
 
 /// A prefix operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum UnaryOp {
     /// `-x`, arithmetic negation.
     Neg,

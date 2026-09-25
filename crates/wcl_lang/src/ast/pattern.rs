@@ -7,6 +7,7 @@ use super::Span;
 
 /// A pattern, as written in a `match` arm or an `if let`.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Pattern {
     /// `_` — matches anything, binds nothing.
     Wildcard(Span),

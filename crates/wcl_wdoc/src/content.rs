@@ -72,6 +72,7 @@ pub struct At {
 
 /// Why a [`Value`] could not be read as a content node.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ContentError {
     /// The value wasn't a record-payload variant of the expected union.
     NotAVariant {
