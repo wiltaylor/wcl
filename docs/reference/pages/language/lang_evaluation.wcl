@@ -1035,7 +1035,7 @@ $ wcl get sizes.wcl replicas
 wcl::eval::user_error
 
   × error: expected a positive number
-   ╭─[.../guards.wcl:3:50]
+   ╭─[guards.wcl:3:50]
  2 │
  3 │ fn positive(n: i64) -> i64 if n > 0 { n } else { error("expected a positive number") }
    ·                                                  ─────────────────┬─────────────────
