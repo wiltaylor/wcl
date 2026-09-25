@@ -3113,7 +3113,6 @@ name = "wcl_lang"
 version = "0.0.0"
 dependencies = [
  "criterion",
- "dunce",
  "insta",
  "miette",
  "proptest",

@@ -33,24 +33,141 @@ pub fn disk_loader() -> FileLoader {
 /// falls through to `std::fs::read_to_string`.
 ///
 /// Keys should be canonical absolute paths to match the way imports
-/// are resolved internally. On Windows either form of a canonical path
+/// are resolved internally. Keys and lookups both pass through
+/// [`path_key`], so on Windows any spelling of a canonical path
 /// matches: `std::fs::canonicalize`'s `\\?\C:\...` or the plain
-/// `C:\...` imports resolve to. The overlay also accepts raw keys as a
-/// convenience for callers that have not canonicalised.
+/// `C:\...` imports resolve to, with either drive-letter case or
+/// separator. The overlay also accepts raw keys as a convenience for
+/// callers that have not canonicalised.
 pub fn overlay_loader(overlay: HashMap<PathBuf, String>) -> FileLoader {
+    let overlay: HashMap<PathBuf, String> = overlay
+        .into_iter()
+        .map(|(path, text)| (path_key(&path), text))
+        .collect();
     Arc::new(move |p: &Path| {
-        if let Some(s) = overlay.get(p) {
+        if let Some(s) = overlay.get(&path_key(p)) {
             return Ok(s.clone());
         }
-        if let Ok(canon) = std::fs::canonicalize(p)
-            && let Some(s) = overlay
-                .get(&canon)
-                .or_else(|| overlay.get(dunce::simplified(&canon)))
+        if let Ok(canon) = canonical_path(p)
+            && let Some(s) = overlay.get(&canon)
         {
             return Ok(s.clone());
         }
         std::fs::read_to_string(p)
     })
+}
+
+/// The spelling of `path` that every spelling of it agrees on, so a
+/// path can key a map whichever way it arrived. On Windows: the `\\?\`
+/// verbatim prefix `std::fs::canonicalize` adds is dropped (`\\?\C:\x`
+/// becomes `C:\x`, `\\?\UNC\host\share\x` becomes `\\host\share\x`)
+/// where the plain form names the same file, the drive letter is
+/// uppercased, and `/` becomes `\`. Nothing else changes case, since a
+/// directory can be case-sensitive. Elsewhere `path` is returned as is.
+///
+/// A verbatim path keeps its prefix when dropping it would change what
+/// it names: a component that is empty, `.` or `..`, ends in a space or
+/// a dot, holds a character Windows forbids in a name, or is a device
+/// name such as `CON`; or a path over 260 UTF-16 units.
+pub fn path_key(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    if let Some(text) = path.to_str() {
+        return PathBuf::from(windows_path_key(text));
+    }
+    path.to_path_buf()
+}
+
+/// `path` with symlinks and `..` resolved, in its [`path_key`]
+/// spelling: the form imports resolve to, and the one diagnostics, a
+/// document's `source_path` and an editor's URIs show.
+pub fn canonical_path(path: &Path) -> std::io::Result<PathBuf> {
+    std::fs::canonicalize(path).map(|canon| path_key(&canon))
+}
+
+/// [`path_key`]'s Windows rules on a path's text, compiled on every
+/// platform so they can be tested anywhere.
+#[cfg(any(windows, test))]
+fn windows_path_key(path: &str) -> String {
+    let Some(verbatim) = path.strip_prefix(r"\\?\") else {
+        return upper_drive(&path.replace('/', "\\"));
+    };
+    match plain_form(verbatim) {
+        Some(plain) => upper_drive(&plain),
+        None => format!(r"\\?\{}", upper_drive(verbatim)),
+    }
+}
+
+/// The plain spelling of the verbatim path `rest` (the text after
+/// `\\?\`), or `None` when there is none that names the same file.
+#[cfg(any(windows, test))]
+fn plain_form(rest: &str) -> Option<String> {
+    let (plain, names) = if rest
+        .get(..4)
+        .is_some_and(|p| p.eq_ignore_ascii_case(r"UNC\"))
+    {
+        // A share path needs both its host and its share.
+        let tail = &rest[4..];
+        if tail.split('\\').filter(|name| !name.is_empty()).count() < 2 {
+            return None;
+        }
+        (format!(r"\\{tail}"), tail)
+    } else {
+        let bytes = rest.as_bytes();
+        let is_drive = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
+        if !is_drive || bytes.get(2).is_some_and(|&b| b != b'\\') {
+            return None;
+        }
+        (rest.to_string(), rest.get(3..).unwrap_or_default())
+    };
+    let names = names.strip_suffix('\\').unwrap_or(names);
+    let every_name_plain = names.is_empty()
+        || names
+            .split('\\')
+            .all(|name| is_plain_name(name) && !is_device_name(name));
+    let fits = rest.encode_utf16().count() + 4 <= 260;
+    (every_name_plain && fits).then_some(plain)
+}
+
+/// A name Windows reads the same with or without the verbatim prefix:
+/// non-empty, at most 255 UTF-16 units, free of `<>:"/\|?*` and control
+/// characters, and not ending in a space or a dot (so not `.` or `..`).
+#[cfg(any(windows, test))]
+fn is_plain_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.encode_utf16().count() <= 255
+        && !name
+            .chars()
+            .any(|c| c < ' ' || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'))
+        && !name.ends_with([' ', '.'])
+}
+
+/// A DOS device name (`CON`, `nul.txt`, `COM1 `…), which only the
+/// verbatim prefix lets a path name as a file.
+#[cfg(any(windows, test))]
+fn is_device_name(name: &str) -> bool {
+    const DEVICES: [&str; 22] = [
+        "AUX", "NUL", "PRN", "CON", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    let stem = match name.rfind('.') {
+        Some(0) | None => name,
+        Some(dot) => &name[..dot],
+    };
+    let stem = stem.trim_end_matches([' ', '.']);
+    DEVICES
+        .iter()
+        .any(|device| stem.eq_ignore_ascii_case(device))
+}
+
+/// `path` with a leading drive letter uppercased.
+#[cfg(any(windows, test))]
+fn upper_drive(path: &str) -> String {
+    let mut out = path.to_string();
+    let bytes = out.as_bytes();
+    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        out[..1].make_ascii_uppercase();
+    }
+    out
 }
 
 /// A set of named source files embedded in the binary, addressable from
@@ -150,5 +267,105 @@ impl Registry {
             }
             fallback(p)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::windows_path_key as key;
+
+    #[test]
+    fn a_verbatim_drive_path_takes_its_plain_spelling() {
+        assert_eq!(key(r"\\?\C:\Users\me\a.wcl"), r"C:\Users\me\a.wcl");
+        assert_eq!(key(r"\\?\c:\x"), r"C:\x");
+        assert_eq!(key(r"\\?\C:\"), r"C:\");
+    }
+
+    #[test]
+    fn a_verbatim_share_path_takes_its_unc_spelling() {
+        assert_eq!(key(r"\\?\UNC\h\s\a"), r"\\h\s\a");
+        assert_eq!(
+            key(r"\\?\unc\server\share\dir\a.wcl"),
+            r"\\server\share\dir\a.wcl"
+        );
+        assert_eq!(key(r"\\?\UNC\h\s"), r"\\h\s");
+    }
+
+    #[test]
+    fn a_plain_path_gets_an_uppercase_drive_and_backslashes() {
+        assert_eq!(key("c:/x"), r"C:\x");
+        assert_eq!(key(r"c:\x/y.wcl"), r"C:\x\y.wcl");
+        assert_eq!(key("//h/s/a"), r"\\h\s\a");
+        assert_eq!(key(r"\\h\s\a"), r"\\h\s\a");
+    }
+
+    #[test]
+    fn nothing_but_the_drive_letter_changes_case() {
+        assert_eq!(key(r"c:\Users\ME\Main.WCL"), r"C:\Users\ME\Main.WCL");
+        assert_eq!(key(r"\\?\UNC\Host\Share\A"), r"\\Host\Share\A");
+    }
+
+    #[test]
+    fn a_verbatim_path_the_plain_form_would_misread_keeps_its_prefix() {
+        // Each of these names a different file, or none, without `\\?\`.
+        for path in [
+            r"\\?\C:\a\..\b",
+            r"\\?\C:\a\.\b",
+            r"\\?\C:\trailing.",
+            r"\\?\C:\trailing \x",
+            r"\\?\C:\dir\CON",
+            r"\\?\C:\dir\nul.txt",
+            r"\\?\C:\dir\com1 ",
+            r"\\?\C:\a\\b",
+            r"\\?\C:\a/b",
+            r"\\?\UNC\h",
+            r"\\?\UNC\h\s\..\t",
+            r"\\?\Volume{0000}\x",
+        ] {
+            assert_eq!(key(path), path, "{path}");
+        }
+        // Still keyed with an uppercase drive.
+        assert_eq!(key(r"\\?\c:\a\..\b"), r"\\?\C:\a\..\b");
+    }
+
+    #[test]
+    fn a_verbatim_path_over_the_length_limit_keeps_its_prefix() {
+        let long = format!(r"\\?\C:\{}\{}", "a".repeat(200), "b".repeat(60));
+        assert_eq!(key(&long), long);
+        let fits = format!(r"\\?\C:\{}\{}", "a".repeat(200), "b".repeat(40));
+        assert_eq!(key(&fits), &fits[4..]);
+    }
+
+    #[test]
+    fn names_that_only_look_like_devices_are_plain() {
+        for name in ["CONSOLE", "com10", "nullable.txt", "AUXX"] {
+            let path = format!(r"\\?\C:\{name}");
+            assert_eq!(key(&path), &path[4..], "{name}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_every_spelling_of_a_path_shares_its_key() {
+        use std::path::Path;
+        let key = |path: &str| super::path_key(Path::new(path)).into_os_string();
+        assert_eq!(key(r"\\?\UNC\h\s\a"), r"\\h\s\a");
+        assert_eq!(key(r"\\?\c:\x"), r"C:\x");
+        assert_eq!(key("c:/x"), r"C:\x");
+        let dir = tempfile::tempdir().unwrap();
+        let canonical = super::canonical_path(dir.path()).unwrap();
+        assert!(
+            !canonical.to_str().unwrap().starts_with(r"\\?\"),
+            "{canonical:?}"
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn off_windows_every_path_is_its_own_key() {
+        use std::path::Path;
+        for path in [r"\\?\C:\x", "c:/x", "/tmp/a//b"] {
+            assert_eq!(super::path_key(Path::new(path)), Path::new(path));
+        }
     }
 }

@@ -53,7 +53,7 @@ mod types;
 mod validate;
 mod views;
 pub use imports::{SYSTEM_IMPORT_ROOT, system_import_key};
-pub use loader::{FileLoader, Registry, disk_loader, overlay_loader};
+pub use loader::{FileLoader, Registry, canonical_path, disk_loader, overlay_loader, path_key};
 pub use types::{FieldShape, ResolvedType};
 pub use views::{
     Block, ChildKind, Connection, ConnectionDecl, DataKind, DataRef, DeclName, DeclaresKind,
