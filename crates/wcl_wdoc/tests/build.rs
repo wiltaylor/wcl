@@ -4382,6 +4382,42 @@ page index {
 }
 
 #[test]
+fn build_errors_on_inline_pattern_regex_that_does_not_compile() {
+    // A pattern whose regex does not compile would otherwise never match
+    // and vanish without a word; it fails the build, naming the pattern.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("custom.wcl");
+    write_fixture(
+        &src,
+        r##"
+inline_pattern broken {
+  pattern = "#(["
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 0), class: ["tag"] }]
+}
+
+page index {
+  text {
+    span "hello #world" {}
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::Eval(report)) => {
+            let msg = format!("{report:?}");
+            assert!(
+                msg.contains("inline_pattern 'broken'") && msg.contains("regex"),
+                "{msg}"
+            );
+        }
+        Ok(_) => panic!("a bad inline_pattern regex built silently"),
+        Err(_) => panic!("expected an eval error for the bad regex"),
+    }
+}
+
+#[test]
 fn build_inline_pattern_depth_limit() {
     // A pathological pattern: matches 'X' and emits a Plain whose
     // text is also 'X', causing infinite recursion unless the depth

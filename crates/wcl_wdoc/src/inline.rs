@@ -182,9 +182,10 @@ enum InlineToken<'a> {
 impl InlinePatterns {
     /// Enumerate every `@block("inline_pattern")` at the document
     /// root, compile its regex, and capture its `to_span` function.
-    /// Patterns whose regex fails to compile or whose `to_span`
-    /// isn't a function are silently skipped — schema validation
-    /// flags those separately.
+    /// A regex that fails to compile is recorded as a lower error, so
+    /// the render fails naming the pattern. Patterns whose `to_span`
+    /// isn't a function are skipped — schema validation flags those
+    /// separately.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn load(
         doc: &Document,
@@ -212,8 +213,22 @@ impl InlinePatterns {
             else {
                 continue;
             };
-            let Ok(regex) = Regex::new(pattern_src) else {
-                continue;
+            let regex = match Regex::new(pattern_src) {
+                Ok(regex) => regex,
+                Err(e) => {
+                    // A pattern that never compiles would never match, and
+                    // the author would see their markup pass through as
+                    // text with no hint why — fail the render instead.
+                    let name = crate::render::label_string(&block).unwrap_or_default();
+                    crate::render::record_lower_error(
+                        &block,
+                        wcl_lang::EvalError::user_error(
+                            format!("inline_pattern '{name}': pattern regex does not compile: {e}"),
+                            pattern_field.span(),
+                        ),
+                    );
+                    continue;
+                }
             };
             let Some(to_span_field) = block.field("to_span") else {
                 continue;
