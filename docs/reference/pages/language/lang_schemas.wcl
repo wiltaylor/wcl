@@ -1104,12 +1104,31 @@ $ wcl get fit.wcl ratio
 1.0f32
 $ wcl get fit.wcl whole
 4i32
-$ wcl get fit.wcl level
-300
 CONSOLE
   }
 
-  p "The last line is the lazy path at work. Reading a field checks that the field is declared, not that its value fits. The fit is `wcl check`'s verdict, so `level` comes back as the `300` you wrote, unconverted. [How a validation error reads](#how-a-validation-error-reads) says more about the two paths."
+  p "A number that does not fit has no declared type to be converted to, so reading it is an error. `wcl get` reports the same violation `wcl check` did, and exits 3, the code for a failed evaluation:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get fit.wcl level
+wcl::eval::schema_violation
+
+  × field 'level' declared as u8 but value 300 is out of range for u8
+    ╭─[fit.wcl:12:1]
+ 11 │ port  = 8080      // fits: reads back as 8080u16
+ 12 │ level = 300       // out of range for u8
+    · ─────┬─────
+    ·      ╰── schema violation
+ 13 │ retry = 2.5       // not a whole number
+    ╰────
+
+$ echo $?
+3
+CONSOLE
+  }
+
+  p "A host reading the field through the library gets the same error from `Field::value`, so no caller ever holds `300` believing it is a `u8`. A field marked `@schemaless`, or one inside a `@schemaless` block, is exempt on both paths and reads back as written. [How a validation error reads](#how-a-validation-error-reads) says more about the two paths."
 
   p "A type alias checks as the type it names, so `port: Port` with `type Port = u16` refuses `70000`. A decorator argument is held to its slot's type the same way: `@level(300)` against a `u8` slot fails with `argument for decorator '@level' slot 'n' is declared as u8 but the value 300 is out of range for u8`. A function parameter converts an argument that fits, so `(fn(x: u8) -> u8 x)(7)` is `7u8`, but it is not a schema slot. An argument that does not fit is passed as written."
 
@@ -1179,7 +1198,7 @@ wcl::eval::schema_violation
 CONSOLE
   }
 
-  p "The two paths agree on membership by design, and they cover each other. Nothing you read slips past the lazy check, and nothing you never read escapes the strict one. See [How a document evaluates](lang_evaluation) for what lazy means everywhere else."
+  p "The two paths agree by design on membership and on whether a number fits its type, and they cover each other. Nothing you read slips past the lazy check, and nothing you never read escapes the strict one. See [How a document evaluates](lang_evaluation) for what lazy means everywhere else."
 
   h2 "Where to go next"
 

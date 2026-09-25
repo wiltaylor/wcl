@@ -352,8 +352,9 @@ The messages you will meet most often:
 - `max_children` counts **every** nested block, not the members of one slot.
 - A gather field named like a library's silently loses blocks. It is a warning, and warnings do
   not fail the build.
-- A number that does not fit its declared numeric type (`300` for `u8`) fails `wcl check`, but
-  `wcl get` on the field returns it unconverted and without an error. See
+- A number that does not fit its declared numeric type (`300` for `u8`) fails `wcl check`
+  (exit 2) *and* any read of the field: `wcl get` exits 3 with the same message, and
+  `Field::value` returns the `SchemaViolation`. See
   [`lang_types.md`](lang_types.md#a-number-must-fit-its-numeric-type).
 - A field whose expression *fails to evaluate* is skipped by validation rather than reported.
   `wcl check` says `OK` for `n = error("boom")`. See

@@ -45,9 +45,30 @@ ratio = 1          // 1.0f32
 masks = [1, 256]   // × … but element [1] holds 256, which is out of range for u8
 ```
 
-Aliases resolve first, so `type Port = u16` checks against `u16`. The error is a strict
-`wcl check` verdict. Reading a misfit field with `wcl get` returns the number as written
-(`300`), unconverted and without an error.
+Aliases resolve first, so `type Port = u16` checks against `u16`. Both paths report a misfit
+with the same message: `wcl check` exits 2, and reading the field fails too. `wcl get` exits 3,
+`wcl parse` prints the field as `<error: …>` and exits 3, and a library read (`Field::value`,
+`Field::value_typed`) returns the `SchemaViolation`. A number that fits reads back converted:
+
+```console
+$ wcl get cfg.wcl port
+8080u16
+$ wcl get cfg.wcl level
+wcl::eval::schema_violation
+
+  × field 'level' declared as u8 but value 300 is out of range for u8
+   ╭─[cfg.wcl:5:1]
+ 4 │ port  = 8080       // 8080u16
+ 5 │ level = 300        // × field 'level' declared as u8 but value 300 is out of range for u8
+   · ─────┬─────
+   ·      ╰── schema violation
+ 6 │ ratio = 1          // 1.0f32
+   ╰────
+
+```
+
+`@schemaless` on the field, or on its block, exempts it on both paths; it then reads back
+unconverted (`300`).
 
 ## Type references
 

@@ -335,6 +335,13 @@ impl<'a> Field<'a> {
     /// Forces the expression on first call and caches the outcome, so a
     /// field that fails to evaluate reports the same error on every
     /// later read rather than being retried.
+    ///
+    /// A number converts to the field's declared numeric type when it
+    /// fits. One that does not (`300` for a `u8`, `2.5` for an integer
+    /// type, an out-of-range list element) is an
+    /// [`EvalError::SchemaViolation`] of kind `FieldTypeMismatch`, worded
+    /// as [`Document::schema_errors`] words it, unless the field or its
+    /// block is `@schemaless`.
     pub fn value(&self) -> Result<&'a Value, &'a EvalError> {
         let cell = self.field_cell();
         if let Some(cached) = cell.value.get() {
