@@ -352,7 +352,7 @@ WCL
 HTML
   }
 
-  p "wdoc HTML-escapes each href and otherwise emits it **exactly as you wrote it**. Nothing resolves it, copies it, or checks that anything is there. That is deliberate: one field takes a URL, a path under a copied [`assets` folder](#the-assets-folder) and a path to a shipped `file` block's output, with no mode switch. `fonts` and `stylesheets` produce identical markup. Two names exist so a reader of the `site` block can see which link is typography and which is design."
+  p "wdoc HTML-escapes each href and otherwise emits it **exactly as you wrote it**. The build never rewrites it, copies it, or fails because nothing is there. The one thing that looks behind it is the [class lint](wdoc_css#the-class-lint): after the build, it reads a stylesheet whose href lands in the output folder, so the classes `assets/site.css` styles do not warn. It skips a URL. Emitting the href as written is deliberate: one field takes a URL, a path under a copied [`assets` folder](#the-assets-folder) and a path to a shipped `file` block's output, with no mode switch. `fonts` and `stylesheets` produce identical markup. Two names exist so a reader of the `site` block can see which link is typography and which is design."
 
   h3 "From the layout"
 

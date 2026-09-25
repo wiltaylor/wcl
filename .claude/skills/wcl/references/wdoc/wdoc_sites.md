@@ -295,8 +295,9 @@ A template on a sub-site sees a back-link to the root site (`TemplateCtx.home_hr
   site.
 - `assets` copies a folder verbatim, so it also takes an externally-built bundle — a Vite or a
   webpack `dist/`. Reference the copied files by their output path.
-- wdoc emits the `stylesheets` / `scripts` / `fonts` hrefs verbatim. It does not resolve or
-  rewrite them, so a copied asset, a shipped `file` and a URL all behave the same way.
+- wdoc emits the `stylesheets` / `scripts` / `fonts` hrefs verbatim. It does not rewrite them,
+  so a copied asset, a shipped `file` and a URL all link the same way. Only the class lint
+  looks behind one, reading a stylesheet that lands in the output folder.
 
 ## See also
 
