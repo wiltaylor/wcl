@@ -1,12 +1,17 @@
-//! `textDocument/definition` + `textDocument/references` request
-//! handlers. Both run the same identifier resolver and then either
-//! return the declaration span or collect AST occurrences with the
-//! same declaration identity.
+//! `textDocument/definition`, `textDocument/references` and
+//! `textDocument/rename` request handlers. All three run the same
+//! identifier resolver and then either return the declaration span or
+//! collect AST occurrences with the same declaration identity.
 
-use tower_lsp_server::ls_types::{GotoDefinitionResponse, Location, Uri};
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+
+use tower_lsp_server::ls_types::{GotoDefinitionResponse, Location, TextEdit, Uri, WorkspaceEdit};
 use wcl_lang::Document;
 
-use crate::ctx::Ctx;
+use crate::convert::uri_to_path;
+use crate::ctx::{Ctx, canonical};
+use crate::occurrences::{self, Identity, Occurrence};
 use crate::resolve;
 
 /// Go-to-definition for `(uri, offset)`. Returns `None` when the
@@ -18,60 +23,138 @@ pub(crate) fn goto_definition(
     source: &str,
     offset: usize,
     root_doc: Option<&Document>,
-    root_path: Option<&std::path::Path>,
+    root_path: Option<&Path>,
 ) -> Option<GotoDefinitionResponse> {
     // Per-file open often fails when the file references cross-file
     // types — that's fine, `locate_at` falls back to the root doc for
     // resolution and hands back the (possibly-`None`) per-file doc.
     let (sym, _, local_doc) = resolve::locate_at(ctx, source, uri.as_str(), offset, root_doc)?;
     // Cross-file: if the resolved FQN lives in an imported source,
-    // surface that file's URI instead of the request URI. Prefer
-    // the root doc's symbol index when present (it sees every
-    // transitively-imported file).
+    // surface that file instead of the request file. Prefer the root
+    // doc's symbol index when present (it sees every transitively
+    // imported file).
     let lookup_doc = root_doc.or(local_doc.as_ref())?;
-    let (location_uri, span) = match sym.simple_fqn() {
-        Some(fqn) => match lookup_doc.find_symbol(fqn) {
-            Some(hit) => {
-                // A `None` `source_path` means the symbol lives in
-                // the *root* document — that's the main file passed
-                // to `Document::from_file`. Map `None` to `root_path`
-                // when present so the editor opens the right file.
-                let target = hit
-                    .source_path
-                    .or(root_path)
-                    .and_then(crate::convert::path_to_uri)
-                    .unwrap_or_else(|| uri.clone());
-                (target, hit.record.span)
+    // The file an index hit with no `source_path` lives in: the root
+    // file for the root document, the request file for its own.
+    let unsourced = if root_doc.is_some() { root_path } else { None };
+    let (target, span) = match sym.simple_fqn().and_then(|fqn| lookup_doc.find_symbol(fqn)) {
+        Some(hit) => (hit.source_path.or(unsourced), hit.record.span),
+        None => (None, resolve::declaration_span(lookup_doc, &sym)?),
+    };
+    let request_path = uri_to_path(&uri).map(|p| canonical(&p));
+    let location = match target {
+        Some(path) if request_path.as_deref() != Some(canonical(path).as_path()) => {
+            // Convert against the target's own text — its open buffer
+            // when it has one, since the index was built from that.
+            let text = ctx.text(path)?;
+            Location {
+                uri: ctx.uri_for(path)?,
+                range: ctx.index(&text).range(span),
             }
-            None => (uri.clone(), resolve::declaration_span(lookup_doc, &sym)?),
-        },
-        None => (uri.clone(), resolve::declaration_span(lookup_doc, &sym)?),
-    };
-    // For cross-file hits we want the range computed against the
-    // *target* file's source, not the request's. We only have the
-    // request source here — fall back to span-on-request when the
-    // file matches; otherwise emit a zero-based range and let the
-    // editor open the file to the offset.
-    let range = if location_uri == uri {
-        ctx.index(source).range(span)
-    } else {
-        // Read the target file lazily to compute line/col. If the
-        // read fails (transient I/O), report the same as a request-
-        // file range — the byte offsets still help the editor.
-        match crate::convert::uri_to_path(&location_uri)
-            .and_then(|p| std::fs::read_to_string(p).ok())
-        {
-            Some(text) => ctx.index(&text).range(span),
-            None => ctx.index(source).range(span),
         }
+        _ => Location {
+            range: ctx.index(source).range(span),
+            uri,
+        },
     };
-    Some(GotoDefinitionResponse::Scalar(Location {
-        uri: location_uri,
-        range,
-    }))
+    Some(GotoDefinitionResponse::Scalar(location))
 }
 
-/// Find occurrences of the selected declaration in the current source snapshot.
+/// One source's authored occurrences, as seen by one request.
+struct SourceOccurrences {
+    /// The URI the source is reported under.
+    uri: Uri,
+    /// The text the occurrence spans index into.
+    text: String,
+    /// Every occurrence in the source.
+    occurrences: Vec<Occurrence>,
+}
+
+/// The occurrence under `offset` (or ending at it), if any.
+fn selected(occurrences: &[Occurrence], offset: usize) -> Option<&Occurrence> {
+    occurrences
+        .iter()
+        .find(|o| o.span.start <= offset && offset < o.span.end)
+        .or_else(|| occurrences.iter().find(|o| o.span.end == offset))
+}
+
+/// The request source followed by every other source an occurrence of
+/// `identity` can appear in. A local binding never leaves its source;
+/// anything else can appear in any file the document imports and in the
+/// root. Each file is collected once, however many spellings of its
+/// path the import graph and the editor use.
+///
+/// A file that cannot be read or parsed is skipped and logged when
+/// `strict` is false (a reference list is still useful without it) and
+/// is an error when it is true (a rename that cannot see a file would
+/// leave it half-renamed).
+#[allow(clippy::too_many_arguments)]
+fn gather(
+    ctx: &Ctx,
+    uri: &Uri,
+    source: &str,
+    current: Vec<Occurrence>,
+    identity: &Identity,
+    doc: &Document,
+    root_path: Option<&Path>,
+    strict: bool,
+) -> Result<Vec<SourceOccurrences>, String> {
+    let mut seen: HashSet<PathBuf> = uri_to_path(uri)
+        .map(|p| canonical(&p))
+        .into_iter()
+        .collect();
+    let mut sources = vec![SourceOccurrences {
+        uri: uri.clone(),
+        text: source.to_string(),
+        occurrences: current,
+    }];
+    if matches!(identity, Identity::Local(..)) {
+        return Ok(sources);
+    }
+    let paths = doc.imported_paths().into_iter().chain(root_path);
+    for path in paths {
+        if path.starts_with(wcl_lang::SYSTEM_IMPORT_ROOT) || !seen.insert(canonical(path)) {
+            continue;
+        }
+        let collected = ctx
+            .uri_for(path)
+            .ok_or("is not a local file")
+            .and_then(|file_uri| {
+                let text = ctx.text(path).ok_or("cannot be read")?;
+                let occurrences =
+                    occurrences::collect(&text, &file_uri, doc).ok_or("does not parse")?;
+                Ok(SourceOccurrences {
+                    uri: file_uri,
+                    text,
+                    occurrences,
+                })
+            });
+        match collected {
+            Ok(source) => sources.push(source),
+            Err(why) if strict => return Err(format!("{} {why}", path.display())),
+            Err(why) => tracing::warn!("references skip {}: it {why}", path.display()),
+        }
+    }
+    Ok(sources)
+}
+
+/// The document occurrences resolve against: the root when there is
+/// one, else the request buffer opened on its own.
+fn lookup_document<'a>(
+    ctx: &Ctx,
+    uri: &Uri,
+    source: &str,
+    root_doc: Option<&'a Document>,
+    local: &'a mut Option<Document>,
+) -> Option<&'a Document> {
+    if root_doc.is_none() {
+        *local = ctx.open(source, uri.as_str()).ok();
+    }
+    root_doc.or(local.as_ref())
+}
+
+/// Find occurrences of the selected declaration in the current source
+/// snapshot and every other source it can appear in.
 pub(crate) fn references(
     ctx: &Ctx,
     uri: Uri,
@@ -79,52 +162,20 @@ pub(crate) fn references(
     offset: usize,
     include_declaration: bool,
     root_doc: Option<&Document>,
-    root_path: Option<&std::path::Path>,
+    root_path: Option<&Path>,
 ) -> Option<Vec<Location>> {
-    let local_doc = if root_doc.is_none() {
-        ctx.open(source, uri.as_str()).ok()
-    } else {
-        None
-    };
-    let doc = root_doc.or(local_doc.as_ref())?;
-    let current = crate::occurrences::collect(source, &uri, doc)?;
-    let selected = current
-        .iter()
-        .find(|o| o.span.start <= offset && offset < o.span.end)
-        .or_else(|| current.iter().find(|o| o.span.end == offset))?;
-    let identity = selected.identity.clone();
-    let mut sources = vec![(uri.clone(), source.to_string(), current)];
-    if !matches!(identity, crate::occurrences::Identity::Local(..)) {
-        let mut paths: Vec<_> = doc
-            .imported_paths()
-            .into_iter()
-            .map(std::path::Path::to_path_buf)
-            .collect();
-        if let Some(root) = root_path {
-            paths.push(root.to_path_buf());
-        }
-        paths.sort();
-        paths.dedup();
-        for path in paths {
-            if path.starts_with(wcl_lang::SYSTEM_IMPORT_ROOT) {
-                continue;
-            }
-            let file_uri = crate::convert::path_to_uri(&path)?;
-            if file_uri == uri {
-                continue;
-            }
-            let text = ctx.text(&path)?;
-            let occurrences = crate::occurrences::collect(&text, &file_uri, doc)?;
-            sources.push((file_uri, text, occurrences));
-        }
-    }
+    let mut local = None;
+    let doc = lookup_document(ctx, &uri, source, root_doc, &mut local)?;
+    let current = occurrences::collect(source, &uri, doc)?;
+    let identity = selected(&current, offset)?.identity.clone();
+    let sources = gather(ctx, &uri, source, current, &identity, doc, root_path, false).ok()?;
     let mut out = Vec::new();
-    for (file_uri, text, occurrences) in sources {
-        let index = ctx.index(&text);
-        for occurrence in occurrences {
+    for source in &sources {
+        let index = ctx.index(&source.text);
+        for occurrence in &source.occurrences {
             if occurrence.identity == identity && (include_declaration || !occurrence.declaration) {
                 out.push(Location {
-                    uri: file_uri.clone(),
+                    uri: source.uri.clone(),
                     range: index.range(occurrence.span),
                 });
             }
@@ -137,7 +188,6 @@ pub(crate) fn references(
 /// cursor (declaration included) becomes a text edit replacing it
 /// with `new_name`, using declaration identities across source snapshots.
 /// `Err` explains an invalid new name or a target with unsupported contextual uses.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn rename(
     ctx: &Ctx,
     uri: Uri,
@@ -145,156 +195,125 @@ pub(crate) fn rename(
     offset: usize,
     new_name: &str,
     root_doc: Option<&Document>,
-    root_path: Option<&std::path::Path>,
-) -> Result<Option<tower_lsp_server::ls_types::WorkspaceEdit>, String> {
+    root_path: Option<&Path>,
+) -> Result<Option<WorkspaceEdit>, String> {
     if !is_valid_identifier(new_name) {
         return Err(format!("'{new_name}' is not a valid WCL identifier"));
     }
-    let local_doc = if root_doc.is_none() {
-        ctx.open(source, uri.as_str()).ok()
-    } else {
-        None
-    };
-    let Some(doc) = root_doc.or(local_doc.as_ref()) else {
+    let mut local = None;
+    let Some(doc) = lookup_document(ctx, &uri, source, root_doc, &mut local) else {
         return Ok(None);
     };
-    let Some(occurrences) = crate::occurrences::collect(source, &uri, doc) else {
+    let Some(current) = occurrences::collect(source, &uri, doc) else {
         return Ok(None);
     };
-    let selected = occurrences
-        .iter()
-        .find(|o| o.span.start <= offset && offset < o.span.end)
-        .or_else(|| occurrences.iter().find(|o| o.span.end == offset));
-    let Some(selected) = selected else {
+    let Some(identity) = selected(&current, offset).map(|o| o.identity.clone()) else {
         return Ok(None);
     };
-    let identity = selected.identity.clone();
-    let Some(locations) = references(ctx, uri.clone(), source, offset, true, root_doc, root_path)
-    else {
-        return Ok(None);
-    };
-    let mut changes: std::collections::HashMap<Uri, Vec<tower_lsp_server::ls_types::TextEdit>> =
-        std::collections::HashMap::new();
-    let mut seen: std::collections::HashSet<(Uri, u32, u32, u32, u32)> =
-        std::collections::HashSet::new();
-    let mut snapshots =
-        std::collections::HashMap::from([(uri.clone(), (source.to_string(), occurrences))]);
-    for path in doc.imported_paths().into_iter().chain(root_path) {
-        if path.starts_with(wcl_lang::SYSTEM_IMPORT_ROOT) {
-            continue;
-        }
-        let target =
-            crate::convert::path_to_uri(path).ok_or("Rename target is not a local file")?;
-        if snapshots.contains_key(&target) {
-            continue;
-        }
-        let text = ctx.text(path).ok_or("Cannot read rename target")?;
-        let occurrences =
-            crate::occurrences::collect(&text, &target, doc).ok_or("Cannot parse rename target")?;
-        snapshots.insert(target, (text, occurrences));
-    }
-    if let crate::occurrences::Identity::Global(name) = &identity
+    let sources = gather(ctx, &uri, source, current, &identity, doc, root_path, true)
+        .map_err(|why| format!("Cannot rename: {why}"))?;
+    let all = || sources.iter().flat_map(|s| &s.occurrences);
+    if let Identity::Global(name) = &identity
         && let Some((category, _)) = name.split_once(':')
-        && snapshots.values().any(|(_, occurrences)| occurrences.iter().any(|o| matches!(&o.identity, crate::occurrences::Identity::Unresolved(c) if c == category)))
+        && all().any(|o| matches!(&o.identity, Identity::Unresolved(c) if c == category))
     {
-        return Err("A computed semantic name prevents a complete rename; use a literal name first".into());
-    }
-    for loc in locations {
-        if !snapshots.contains_key(&loc.uri) {
-            let path =
-                crate::convert::uri_to_path(&loc.uri).ok_or("Rename target is not a local file")?;
-            let text = ctx.text(&path).ok_or("Cannot read rename target")?;
-            let occurrences = crate::occurrences::collect(&text, &loc.uri, doc)
-                .ok_or("Cannot parse rename target")?;
-            snapshots.insert(loc.uri.clone(), (text, occurrences));
-        }
-        let (text, occurrences) = &snapshots[&loc.uri];
-        let occurrence = occurrences
-            .iter()
-            .find(|o| o.identity == identity && ctx.index(text).range(o.span) == loc.range)
-            .ok_or("Rename target changed")?;
-        if occurrences
-            .iter()
-            .any(|o| o.span == occurrence.span && o.identity != identity)
-        {
-            return Err("Rename target is used with more than one declaration identity".into());
-        }
-        let new_text = format!(
-            "{}{new_name}{}",
-            occurrence.replacement_prefix, occurrence.replacement_suffix
+        return Err(
+            "A computed semantic name prevents a complete rename; use a literal name first".into(),
         );
-        let key = (
-            loc.uri.clone(),
-            loc.range.start.line,
-            loc.range.start.character,
-            loc.range.end.line,
-            loc.range.end.character,
-        );
-        if seen.insert(key) {
-            changes
-                .entry(loc.uri)
-                .or_default()
-                .push(tower_lsp_server::ls_types::TextEdit {
-                    range: loc.range,
-                    new_text,
-                });
-        }
     }
-    if !snapshots.values().any(|(_, occurrences)| {
-        occurrences
-            .iter()
-            .any(|o| o.identity == identity && o.declaration)
-    }) {
+    if !all().any(|o| o.identity == identity && o.declaration) {
         return Err("The selected name has no editable authored declaration".into());
     }
-    if doc.schema_errors().is_empty() {
-        let mut updated = (*ctx.buffers).clone();
-        updated.insert(
-            crate::convert::uri_to_path(&uri).ok_or("Rename target is not a local file")?,
-            source.to_string(),
-        );
-        for (target, edits) in &changes {
-            let original = &snapshots[target].0;
-            let mut text = original.clone();
-            let index = ctx.index(original);
-            let mut ordered: Vec<_> = edits.iter().collect();
-            ordered.sort_by_key(|e| std::cmp::Reverse(e.range.start));
-            for edit in ordered {
-                let start = index.offset(edit.range.start);
-                let end = index.offset(edit.range.end);
-                text.replace_range(start..end, &edit.new_text);
+
+    // Each edit keeps its byte span too, to check the result below.
+    let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
+    let mut edited: Vec<(usize, Vec<(wcl_lang::Span, String)>)> = Vec::new();
+    for (i, source) in sources.iter().enumerate() {
+        let index = ctx.index(&source.text);
+        let mut spans: Vec<(wcl_lang::Span, String)> = Vec::new();
+        for occurrence in source.occurrences.iter().filter(|o| o.identity == identity) {
+            if source
+                .occurrences
+                .iter()
+                .any(|o| o.span == occurrence.span && o.identity != identity)
+            {
+                return Err("Rename target is used with more than one declaration identity".into());
             }
-            updated.insert(
-                crate::convert::uri_to_path(target).ok_or("Rename target is not a local file")?,
-                text,
+            if spans.iter().any(|(span, _)| *span == occurrence.span) {
+                continue;
+            }
+            let new_text = format!(
+                "{}{new_name}{}",
+                occurrence.replacement_prefix, occurrence.replacement_suffix
             );
+            changes
+                .entry(source.uri.clone())
+                .or_default()
+                .push(TextEdit {
+                    range: index.range(occurrence.span),
+                    new_text: new_text.clone(),
+                });
+            spans.push((occurrence.span, new_text));
         }
-        let checked = if let Some(root) = root_path {
-            Document::from_file_with_loader(
-                root,
-                doc.environment(),
-                wcl_wdoc::schema_registry().loader(wcl_lang::overlay_loader(updated)),
-            )
-        } else {
-            let path =
-                crate::convert::uri_to_path(&uri).ok_or("Rename target is not a local file")?;
-            Document::open_at_with_loader(
-                updated.get(&path).map(String::as_str).unwrap_or(source),
-                uri.as_str(),
-                path.parent().map(std::path::Path::to_path_buf),
-                doc.environment(),
-                wcl_wdoc::schema_registry().loader(wcl_lang::overlay_loader(updated.clone())),
-            )
-        }
-        .map_err(|error| format!("Rename would invalidate the document: {error}"))?;
-        if let Some(error) = checked.schema_errors().first() {
-            return Err(format!("Rename has unresolved contextual uses: {error}"));
+        if !spans.is_empty() {
+            edited.push((i, spans));
         }
     }
-    Ok(Some(tower_lsp_server::ls_types::WorkspaceEdit {
+
+    if doc.schema_errors().is_empty() {
+        check_rename(ctx, &uri, source, doc, root_path, &sources, edited)?;
+    }
+    Ok(Some(WorkspaceEdit {
         changes: Some(changes),
         ..Default::default()
     }))
+}
+
+/// Re-open the document with the rename applied and refuse it when the
+/// result no longer validates — a use the occurrence walk cannot see
+/// (a contextual kind name built at runtime, say) would otherwise break
+/// silently.
+fn check_rename(
+    ctx: &Ctx,
+    uri: &Uri,
+    source: &str,
+    doc: &Document,
+    root_path: Option<&Path>,
+    sources: &[SourceOccurrences],
+    edited: Vec<(usize, Vec<(wcl_lang::Span, String)>)>,
+) -> Result<(), String> {
+    const NOT_LOCAL: &str = "Rename target is not a local file";
+    let request_path = uri_to_path(uri).ok_or(NOT_LOCAL)?;
+    let mut updated = (*ctx.buffers).clone();
+    updated.insert(request_path.clone(), source.to_string());
+    for (i, mut spans) in edited {
+        let source = &sources[i];
+        let mut text = source.text.clone();
+        spans.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
+        for (span, new_text) in spans {
+            text.replace_range(span.start..span.end, &new_text);
+        }
+        updated.insert(uri_to_path(&source.uri).ok_or(NOT_LOCAL)?, text);
+    }
+    let loader = wcl_wdoc::schema_registry().loader(wcl_lang::overlay_loader(updated.clone()));
+    let checked = match root_path {
+        Some(root) => Document::from_file_with_loader(root, doc.environment(), loader),
+        None => Document::open_at_with_loader(
+            updated
+                .get(&request_path)
+                .map(String::as_str)
+                .unwrap_or(source),
+            uri.as_str(),
+            request_path.parent().map(Path::to_path_buf),
+            doc.environment(),
+            loader,
+        ),
+    }
+    .map_err(|error| format!("Rename would invalidate the document: {error}"))?;
+    if let Some(error) = checked.schema_errors().first() {
+        return Err(format!("Rename has unresolved contextual uses: {error}"));
+    }
+    Ok(())
 }
 
 /// A legal WCL identifier: ASCII letter / underscore head, ASCII
@@ -790,6 +809,32 @@ tree { @note leaf first {} selected = first }
         let with_decl = references(&ctx(), url(), src, cursor, true, None, None).unwrap();
         let no_decl = references(&ctx(), url(), src, cursor, false, None, None).unwrap();
         assert_eq!(with_decl.len(), no_decl.len() + 1);
+    }
+
+    #[test]
+    fn references_skip_an_import_that_can_no_longer_be_read() {
+        // The document was built while shared.wcl existed; it is gone by
+        // the time references walks the imports. The references in the
+        // readable file still come back.
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.wcl");
+        let shared = dir.path().join("shared.wcl");
+        let source = "import \"./shared.wcl\"\ntype Foo { x: utf8 }\ntype Wrap { f: Foo }\n";
+        std::fs::write(&main, source).unwrap();
+        std::fs::write(&shared, "namespace shared\ntype Other { f: utf8 }\n").unwrap();
+        let doc = Document::from_file(&main).unwrap();
+        std::fs::remove_file(&shared).unwrap();
+        let refs = references(
+            &ctx(),
+            Uri::from_file_path(&main).unwrap(),
+            source,
+            source.rfind("Foo").unwrap(),
+            true,
+            Some(&doc),
+            Some(&main),
+        )
+        .expect("references in the readable file");
+        assert_eq!(refs.len(), 2, "{refs:?}");
     }
 
     #[test]

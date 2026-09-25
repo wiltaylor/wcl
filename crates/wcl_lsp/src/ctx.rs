@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
 use wcl_lang::{Document, FileLoader, ParseError, overlay_loader};
 
-use crate::convert::{LineIndex, PositionEncoding, uri_to_path};
+use crate::convert::{LineIndex, PositionEncoding, path_to_uri, uri_to_path};
 
 /// Settings and a snapshot of the open buffers, shared by one request's
 /// (or one diagnostics pass's) analysis.
@@ -18,6 +18,10 @@ pub(crate) struct Ctx {
     pub encoding: PositionEncoding,
     /// Every open buffer with a filesystem path, as `path → text`.
     pub buffers: Arc<HashMap<PathBuf, String>>,
+    /// Canonical path of every open buffer → the path it was opened as,
+    /// so a file reached through an import (canonical) and the same file
+    /// opened through a symlink are recognised as one.
+    opened_as: HashMap<PathBuf, PathBuf>,
     /// The embedded wdoc library over an overlay of `buffers` on disk.
     loader: FileLoader,
 }
@@ -37,9 +41,14 @@ impl Ctx {
         buffers: HashMap<PathBuf, String>,
     ) -> Self {
         let loader = wcl_wdoc::schema_registry().loader(overlay_loader(buffers.clone()));
+        let opened_as = buffers
+            .keys()
+            .map(|path| (canonical(path), path.clone()))
+            .collect();
         Self {
             encoding,
             buffers: Arc::new(buffers),
+            opened_as,
             loader,
         }
     }
@@ -59,8 +68,19 @@ impl Ctx {
     pub(crate) fn text(&self, path: &Path) -> Option<String> {
         self.buffers
             .get(path)
+            .or_else(|| self.buffers.get(self.opened_as.get(&canonical(path))?))
             .cloned()
             .or_else(|| std::fs::read_to_string(path).ok())
+    }
+
+    /// The URI to report `path` under: the spelling its buffer was opened
+    /// with when it is open, so the editor matches it to that buffer.
+    pub(crate) fn uri_for(&self, path: &Path) -> Option<Uri> {
+        let path = self
+            .opened_as
+            .get(&canonical(path))
+            .map_or(path, PathBuf::as_path);
+        path_to_uri(path)
     }
 
     /// Open `source` (named `uri`) the way the wdoc build would: system
@@ -84,4 +104,10 @@ impl Ctx {
             self.loader(),
         )
     }
+}
+
+/// `path` with symlinks and `..` resolved, or unchanged when it does not
+/// exist — the key two spellings of one file agree on.
+pub(crate) fn canonical(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }

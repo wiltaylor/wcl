@@ -1072,3 +1072,107 @@ async fn per_file_mode_resolves_relative_and_system_imports() {
         "imported type in per-file mode: {labels:?}"
     );
 }
+
+/// `(line, character)` of the `nth` occurrence of `needle` in `text`,
+/// plus `into` characters (ASCII text).
+fn position_of(text: &str, needle: &str, nth: usize, into: u32) -> Position {
+    let offset = text
+        .match_indices(needle)
+        .nth(nth)
+        .unwrap_or_else(|| panic!("{needle:?} #{nth} in {text:?}"))
+        .0;
+    let line = text[..offset].matches('\n').count() as u32;
+    let line_start = text[..offset].rfind('\n').map_or(0, |p| p + 1);
+    Position::new(line, (offset - line_start) as u32 + into)
+}
+
+#[tokio::test]
+async fn goto_definition_reads_the_target_from_its_open_buffer() {
+    // shared.wcl's unsaved buffer moves `Color` down three lines. The
+    // root is built from that buffer, so the range must be computed
+    // against it too — not against the stale file on disk.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    let main_src = "import \"./shared.wcl\"\ntype Wrap { c: shared.Color }\n";
+    std::fs::write(&main, main_src).unwrap();
+    std::fs::write(&shared, "namespace shared\ntype Color { name: utf8 }\n").unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+    let main_uri = Uri::from_file_path(&main).unwrap();
+    let shared_uri = Uri::from_file_path(&shared).unwrap();
+    open(backend, &main_uri, main_src).await;
+    open(
+        backend,
+        &shared_uri,
+        "namespace shared\n\n\n\ntype Color { name: utf8 }\n",
+    )
+    .await;
+
+    let resp = backend
+        .goto_definition(tower_lsp_server::ls_types::GotoDefinitionParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: main_uri },
+                position: position_of(main_src, "Color", 0, 1),
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("goto");
+    let tower_lsp_server::ls_types::GotoDefinitionResponse::Scalar(location) =
+        resp.expect("definition found")
+    else {
+        panic!("expected a scalar location");
+    };
+    assert_eq!(location.uri, shared_uri);
+    assert_eq!(location.range.start.line, 4, "{location:?}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn rename_through_a_symlinked_workspace_edits_each_file_once() {
+    use tower_lsp_server::ls_types::RenameParams;
+    // The root path is canonical; the editor opened main.wcl through a
+    // symlink. Both spellings name one file, which must be edited once,
+    // under the URI the editor knows.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let real = dir.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    let main_src = "type Foo { x: utf8 }\ntype Wrap { f: Foo }\n";
+    std::fs::write(real.join("main.wcl"), main_src).unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(&link))
+        .await
+        .expect("initialize");
+    let main_uri = Uri::from_file_path(link.join("main.wcl")).unwrap();
+    open(backend, &main_uri, main_src).await;
+
+    let edit = backend
+        .rename(RenameParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: main_uri.clone(),
+                },
+                position: position_of(main_src, "Foo", 0, 1),
+            },
+            new_name: "Bar".into(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        })
+        .await
+        .expect("rename ok")
+        .expect("workspace edit");
+    let changes = edit.changes.expect("changes");
+    assert_eq!(changes.len(), 1, "{changes:?}");
+    assert_eq!(changes[&main_uri].len(), 2, "{changes:?}");
+}
