@@ -14,6 +14,8 @@
 
 #![allow(unused_assignments)] // miette/thiserror derive triggers spurious lints on variant fields
 
+use std::sync::Arc;
+
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
@@ -24,7 +26,7 @@ use super::{ArithmeticFault, SchemaViolationKind};
 pub struct SchemaDiagnosticSource {
     /// The name that was written.
     name: String,
-    text: String,
+    text: Arc<str>,
 }
 
 // Retained for callers that attach provenance directly to a cloned
@@ -34,7 +36,7 @@ pub struct SchemaDiagnosticSource {
 impl SchemaDiagnosticSource {
     /// Capture a `NamedSource` as owned name and text, so the
     /// provenance can outlive the borrow it was taken from.
-    fn from_named_source(source: NamedSource<String>) -> Self {
+    fn from_named_source(source: NamedSource<Arc<str>>) -> Self {
         Self {
             name: source.name().to_string(),
             text: source.inner().clone(),
@@ -42,7 +44,7 @@ impl SchemaDiagnosticSource {
     }
 
     /// Rebuild the `NamedSource` for rendering.
-    pub(crate) fn named_source(&self) -> NamedSource<String> {
+    pub(crate) fn named_source(&self) -> NamedSource<Arc<str>> {
         NamedSource::new(&self.name, self.text.clone())
     }
 }
@@ -134,12 +136,32 @@ pub enum EvalError {
 
     #[error("call depth limit exceeded (max {max})")]
     #[diagnostic(code(wcl::eval::call_depth_exceeded))]
-    /// Function calls nested deeper than the evaluator's limit —
-    /// the guard against unbounded recursion.
+    /// A `fn` call nested deeper than the evaluator's limit, which calls
+    /// share with the fields and `let`s they force — the guard against
+    /// unbounded recursion.
     CallDepthExceeded {
         /// The limit that was exceeded.
         max: usize,
         #[label("function call recurses too deeply")]
+        /// Source span the diagnostic points at.
+        span: SourceSpan,
+    },
+
+    #[error("evaluation depth limit exceeded (max {max})")]
+    #[diagnostic(
+        code(wcl::eval::depth_exceeded),
+        help(
+            "a chain of references nests deeper than the evaluator allows; break it into shorter chains"
+        )
+    )]
+    /// Field and `let` evaluations nested deeper than the evaluator's
+    /// limit (which `fn` calls count towards too) — a long chain of
+    /// references that never loops back, which would otherwise overflow
+    /// the thread's stack.
+    EvalDepthExceeded {
+        /// The limit that was exceeded.
+        max: usize,
+        #[label("evaluation nests too deeply here")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
     },
@@ -243,6 +265,22 @@ pub enum EvalError {
         /// Type of the right operand, as WCL spells it.
         rhs_type: String,
         #[label("incompatible operands")]
+        /// Source span the diagnostic points at.
+        span: SourceSpan,
+    },
+
+    #[error("operator '{op}' is not defined for {operand_type}")]
+    #[diagnostic(code(wcl::eval::type_mismatch))]
+    /// An operator that reads one operand at a time — prefix `-` and `!`,
+    /// or an operand of `&&` / `||` that is not a `bool` — was applied to
+    /// a type it is not defined for. Shares the `type_mismatch` code with
+    /// [`EvalError::TypeMismatch`], its two-operand counterpart.
+    UnaryTypeMismatch {
+        /// The operator that was applied.
+        op: String,
+        /// Type of the offending operand, as WCL spells it.
+        operand_type: String,
+        #[label("incompatible operand")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
     },
@@ -465,7 +503,7 @@ impl EvalError {
     #[allow(dead_code)]
     /// Attach provenance to a schema violation so the diagnostic can
     /// render the offending source. A no-op on every other variant.
-    pub(crate) fn with_schema_source(self, source: NamedSource<String>) -> Self {
+    pub(crate) fn with_schema_source(self, source: NamedSource<Arc<str>>) -> Self {
         match self {
             Self::SchemaViolation {
                 kind,
@@ -488,7 +526,7 @@ impl EvalError {
 
     #[allow(dead_code)]
     /// The provenance attached by [`Self::with_schema_source`], if any.
-    pub(crate) fn schema_source(&self) -> Option<NamedSource<String>> {
+    pub(crate) fn schema_source(&self) -> Option<NamedSource<Arc<str>>> {
         match self {
             Self::SchemaViolation {
                 origin: Some(source),
@@ -534,14 +572,27 @@ impl EvalError {
     }
 
     /// Build an [`EvalError::BuiltinTypeMismatch`].
+    ///
+    /// The rendered error already leads with `'{name}': `, so a message
+    /// that opens with its own `name: ` (the convention builtin bodies
+    /// follow, since they report through a bare `String`) has that prefix
+    /// dropped rather than printed twice.
     pub(crate) fn builtin_type(
         name: impl Into<String>,
         message: impl Into<String>,
         span: crate::ast::Span,
     ) -> Self {
+        let name = name.into();
+        let mut message = message.into();
+        if let Some(rest) = message
+            .strip_prefix(name.as_str())
+            .and_then(|rest| rest.strip_prefix(": "))
+        {
+            message = rest.to_string();
+        }
         Self::BuiltinTypeMismatch {
-            name: name.into(),
-            message: message.into(),
+            name,
+            message,
             span: span_to_miette(span),
         }
     }
@@ -565,6 +616,14 @@ impl EvalError {
     /// Build an [`EvalError::CallDepthExceeded`].
     pub(crate) fn call_depth_exceeded(max: usize, span: crate::ast::Span) -> Self {
         Self::CallDepthExceeded {
+            max,
+            span: span_to_miette(span),
+        }
+    }
+
+    /// Build an [`EvalError::EvalDepthExceeded`].
+    pub(crate) fn eval_depth_exceeded(max: usize, span: crate::ast::Span) -> Self {
+        Self::EvalDepthExceeded {
             max,
             span: span_to_miette(span),
         }
@@ -673,6 +732,19 @@ impl EvalError {
             op: op.into(),
             lhs_type: lhs_type.into(),
             rhs_type: rhs_type.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    /// Build an [`EvalError::UnaryTypeMismatch`].
+    pub(crate) fn unary_type_mismatch(
+        op: impl Into<String>,
+        operand_type: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::UnaryTypeMismatch {
+            op: op.into(),
+            operand_type: operand_type.into(),
             span: span_to_miette(span),
         }
     }

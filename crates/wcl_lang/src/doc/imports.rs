@@ -17,6 +17,7 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use crate::ast::{self, Span};
 use crate::diagnostics::{EvalError, ParseError};
@@ -25,6 +26,7 @@ use crate::symbols::SymbolIndex;
 
 use super::cells::{ItemCellKind, ItemCells, LoadedImport};
 use super::loader::FileLoader;
+use super::lookup::NameIndex;
 use super::validate::open_error;
 
 /// One source of items to search: its items paired with their cells.
@@ -39,6 +41,9 @@ pub(super) struct BlockSlice<'a> {
     /// instances spliced in by an import keep resolving bare kinds in
     /// their declaring file's namespace.
     pub(super) file_ns: &'a [String],
+    /// By-name index over `items`, owned by whatever owns the cells and
+    /// built on the first lookup that needs it.
+    pub(super) index: &'a OnceLock<NameIndex>,
 }
 
 /// Cross-file import bookkeeping threaded down the eager-expansion
@@ -77,6 +82,7 @@ pub(super) fn push_loaded_imports<'a>(cells: &'a [ItemCells], out: &mut Vec<Bloc
                 items: &li.items,
                 cells: &li.cells,
                 file_ns: &li.file_ns,
+                index: &li.name_index,
             });
             push_eager_imports(&li.eager_imports, out);
         }
@@ -91,6 +97,7 @@ pub(super) fn push_eager_imports<'a>(imps: &'a [LoadedImport], out: &mut Vec<Blo
             items: &imp.items,
             cells: &imp.cells,
             file_ns: &imp.file_ns,
+            index: &imp.name_index,
         });
         push_eager_imports(&imp.eager_imports, out);
     }
@@ -162,11 +169,12 @@ pub(super) fn load_import_lazily(
         .collect();
     Ok(LoadedImport {
         path,
-        source: src,
+        source: src.into(),
         file_ns,
         items: parsed_ast.items,
         cells,
         symbols: parsed_symbols,
+        name_index: OnceLock::new(),
         eager_imports: child_eager,
     })
 }
@@ -209,7 +217,7 @@ pub(super) fn resolve_import_path_kind(
 /// registry key is `importer` — `None` for a disk file, whose system imports
 /// resolve from the registry root.
 ///
-/// The same rule [`resolve_import_path_kind`] applies, in the vocabulary a
+/// The same rule `resolve_import_path_kind` applies, in the vocabulary a
 /// [`Registry`](super::Registry) speaks: keys, not `<wcl-system>` paths. For a
 /// caller that reads a registered file directly rather than through a loader
 /// (a library walking its own embedded parts) — so that it cannot disagree
@@ -362,11 +370,12 @@ pub(super) fn expand_top_level_imports(
 
         out.push(LoadedImport {
             path: path.clone(),
-            source: src,
+            source: src.into(),
             file_ns,
             items: parsed_ast.items,
             cells,
             symbols: parsed_symbols,
+            name_index: OnceLock::new(),
             eager_imports: child_eager,
         });
 

@@ -9,7 +9,7 @@ use std::path::Path;
 
 use wcl_lang::Block;
 
-use crate::render::{escape_html, field_bool, field_f64};
+use crate::render::{Warnings, escape_html, field_bool, field_f64};
 
 /// Minimum frame spacing for replay (seconds): events closer than this
 /// are coalesced into one frame so a busy recording stays small.
@@ -94,7 +94,7 @@ pub(super) struct Cast {
 
 /// Parse an asciicast v2 recording and replay it into coalesced frames.
 /// Falls back to the block's `cols`/`rows` when the header omits a size.
-pub(super) fn parse_cast(src: &str, def_cols: usize, def_rows: usize) -> Cast {
+pub(super) fn parse_cast(src: &str, def_cols: usize, def_rows: usize, warnings: &Warnings) -> Cast {
     let mut lines = src.lines().filter(|l| !l.trim().is_empty());
     let dim = |h: &serde_json::Value, key: &str, def: usize| {
         h.get(key)
@@ -109,6 +109,7 @@ pub(super) fn parse_cast(src: &str, def_cols: usize, def_rows: usize) -> Cast {
                 dim(&h, "width", def_cols),
                 dim(&h, "height", def_rows),
                 "recording",
+                warnings,
             )
         })
         .unwrap_or((def_cols, def_rows));
@@ -152,7 +153,7 @@ pub(super) fn parse_cast(src: &str, def_cols: usize, def_rows: usize) -> Cast {
         }
     }
     if capped {
-        crate::render::record_render_warning(format!(
+        warnings.record(format!(
             "terminal recording: more than {frame_cap} frames at {cols}x{rows} — later \
              frames dropped, the replay jumps to the final screen"
         ));
@@ -224,7 +225,28 @@ fn frames_json(cast: &Cast, pal: &Palette, g: &Geom, opts: &Opts) -> String {
         "speed": opts.speed,
         "frames": frames,
     });
-    payload.to_string()
+    escape_script_json(&payload.to_string())
+}
+
+/// Make serialised JSON safe to embed inside a `<script>` element.
+///
+/// A recording holds whatever the terminal printed, so `</script>` in it
+/// would close the element and let the rest run as markup. `<`, `>` and
+/// `&` become `\u` escapes (identical once parsed as JSON), as do U+2028
+/// and U+2029, which some script parsers treat as line terminators.
+fn escape_script_json(json: &str) -> String {
+    let mut out = String::with_capacity(json.len());
+    for c in json.chars() {
+        match c {
+            '<' => out.push_str("\\u003c"),
+            '>' => out.push_str("\\u003e"),
+            '&' => out.push_str("\\u0026"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// Playback options read from the `terminal` block.
@@ -254,6 +276,7 @@ pub(super) fn render_replay(
     class_attr: &str,
     style_attr: &str,
     id_attr: &str,
+    warnings: &Warnings,
 ) -> String {
     let path = match base_dir {
         Some(dir) => dir.join(src_rel),
@@ -262,10 +285,10 @@ pub(super) fn render_replay(
     let Ok(src) = std::fs::read_to_string(&path) else {
         return format!(
             "<div class=\"{class_attr} wdoc-terminal-error\"{id_attr}>cannot read cast: {}</div>",
-            escape_html(&path.display().to_string())
+            escape_html(src_rel)
         );
     };
-    let cast = parse_cast(&src, def_cols, def_rows);
+    let cast = parse_cast(&src, def_cols, def_rows, warnings);
     let g = Geom::new(cast.cols, cast.rows, font_px, line_height, chrome);
     let opts = Opts {
         autoplay: field_bool(block, "autoplay").unwrap_or(false),
@@ -306,12 +329,21 @@ mod tests {
 
     #[test]
     fn cast_header_size_is_clamped() {
+        let warnings = Warnings::default();
         let cast = parse_cast(
             "{\"version\":2,\"width\":18446744073709551615,\"height\":4000000000}\n",
             80,
             24,
+            &warnings,
         );
         assert_eq!((cast.cols, cast.rows), (MAX_COLS, MAX_ROWS));
+        let recorded = warnings.take();
+        assert!(
+            recorded
+                .iter()
+                .any(|w| w.starts_with("terminal recording:")),
+            "{recorded:?}"
+        );
         let grid = &cast.frames[0].grid;
         assert_eq!(grid.cells.len(), MAX_COLS * MAX_ROWS);
     }
@@ -323,10 +355,16 @@ mod tests {
         for i in 0..events {
             src.push_str(&format!("[{}.0, \"o\", \"{}\\r\\n\"]\n", i, i % 10));
         }
-        let cast = parse_cast(&src, 80, 24);
+        let warnings = Warnings::default();
+        let cast = parse_cast(&src, 80, 24, &warnings);
         // The cap, plus the final screen and the leading blank frame.
         assert!(cast.frames.len() <= MAX_FRAMES + 2, "{}", cast.frames.len());
         let last = cast.frames.last().expect("a frame");
         assert_eq!(last.t_ms, (events as u32 - 1) * 1000);
+        let recorded = warnings.take();
+        assert!(
+            recorded.iter().any(|w| w.contains("later frames dropped")),
+            "{recorded:?}"
+        );
     }
 }

@@ -284,10 +284,12 @@ CONSOLE
 
   callout "A cycle is a value, not a crash" {
     kind = :note
-    body  = "There is no unwinding and no abort. The cycle becomes the field's cached result, the surrounding evaluation carries on, and `wcl parse` exits 0 with the error printed in place. Only a command that was asked for the cycling field itself, `wcl get`, reports a failing exit code."
+    body  = "There is no unwinding and no abort. The cycle becomes the field's cached result and the surrounding evaluation carries on, so `wcl parse` still prints `c`, with the error in place of `a` and `b`. It also prints both diagnostics to stderr and exits 3, because it forced the fields that failed. A command that never reaches the loop succeeds: `wcl get cycle.wcl c` exits 0."
   }
 
   p "Two other cycles get their own diagnostic rather than this one. A `union` whose `extends` chain loops back on itself fails with `wcl::eval::union_cycle` at the point of construction. A user `fn` that recurses without a base case hits a nesting cap and fails with `wcl::eval::call_depth_exceeded`. Neither is a field-cell cycle, so neither is reported as one."
+
+  p "A chain that never loops back is not a cycle, but its length is capped too. Every field forced to answer another is one level deeper, and so is every `let` and every `fn` call. Evaluation nests at most **200** levels deep, which keeps it inside a small thread stack such as an editor's language server. Give a block `a0 = a1 + 1`, `a1 = a2 + 1` and so on down to `a5000 = 0`, and `wcl get chain.wcl cfg.a0` exits 3 with `evaluation depth limit exceeded (max 200)`, code `wcl::eval::depth_exceeded`. Reading `cfg.a4850` from the same file answers `150`, because that chain is short enough. The limit applies to how deep the evaluation nests, not to how big the document is. A thousand sibling fields that each read one constant are only two levels deep."
 
   h2 "How a name resolves"
 
@@ -575,7 +577,7 @@ WCL
   table {
     rows:
       | "Family"           | "Rust type"           | "Raised when"                        | "Reported by"           | "Exit" |
-      | "Parse error"      | "`ParseError`"        | "The file is opened, always"          | "Every command"         | "1" |
+      | "Parse error"      | "`ParseError`"        | "The file is opened, always"          | "Every command"         | "1, or 4 when the file cannot be read" |
       | "Schema violation" | "`SchemaViolationKind` inside `EvalError::SchemaViolation`" | "Validation is requested, **and** when a field is forced" | "`wcl check` as a violation, `wcl get` / `wcl parse` as an evaluation failure" | "2 from `check`, 3 from `get`" |
       | "Evaluation error" | "`EvalError`"         | "A field is forced"                   | "`wcl get`, `wcl parse`" | "3" |
   }
@@ -793,7 +795,7 @@ CONSOLE
 
   h3 "Evaluation errors"
 
-  p "`EvalError` has twenty-four variants, each with a stable `wcl::eval::…` code. The full set is best read off the crate. These are the ones you will meet writing documents:"
+  p "`EvalError` has twenty-six variants, each with a stable `wcl::eval::…` code. The full set is best read off the crate. These are the ones you will meet writing documents:"
 
   table {
     rows:
@@ -809,6 +811,7 @@ CONSOLE
       | "`wcl::eval::builtin_type`"         | "A builtin got arguments of the wrong shape" |
       | "`wcl::eval::call_arity`"           | "A `fn` got the wrong number of arguments" |
       | "`wcl::eval::call_depth_exceeded`"  | "A `fn` recursed past the evaluator's nesting cap" |
+      | "`wcl::eval::depth_exceeded`"       | "Fields and `let`s referenced each other more than 200 levels deep" |
       | "`wcl::eval::match_no_arm`"         | "No `match` arm fitted the value" |
       | "`wcl::eval::unknown_variant`"      | "A `Union::Name` construction named no variant of that union" |
       | "`wcl::eval::user_error`"           | "The `error()` builtin, or a host raising through the same channel" |

@@ -11,3 +11,5 @@ service web {
     method = "GET"
   }
 }
+
+// expect-exit: 2

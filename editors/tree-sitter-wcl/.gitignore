@@ -6,3 +6,4 @@ build/
 *.so
 *.dylib
 *.dll
+src/tree_sitter/

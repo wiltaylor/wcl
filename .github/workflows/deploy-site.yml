@@ -7,8 +7,11 @@ name: Deploy Site
 #   docs/landing/main.wcl   -> docs/_site           (/)
 #   docs/reference/main.wcl -> docs/_site/reference  (/reference/)
 #
-# These are the same two steps, in the same order, that `just docs-build`
-# runs — the gate builds what the deploy ships, so they cannot drift.
+# The build is `just docs-relative-urls`, the same gate part CI runs: it
+# renders both documents through `docs-build` and then refuses the tree if
+# any URL in it is root-absolute. What ships is exactly what the gate
+# checked, and a site that fails the check never deploys — this workflow
+# triggers on its own paths, so it does not wait for CI's result.
 #
 # Runs only when the site's own inputs change on main, so an ordinary code
 # push doesn't trigger a (slow) Rust build + deploy. `workflow_dispatch` is
@@ -24,6 +27,15 @@ on:
       - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# Deploys queue rather than cancel: an interrupted `pages deploy` could
+# leave a half-uploaded site live.
+concurrency:
+  group: deploy-site
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -36,23 +48,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      # rustup reads rust-toolchain.toml — the same pinned release CI uses.
+      - run: rustup toolchain install
+
+      - uses: taiki-e/install-action@just
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build wcl
-        run: cargo build --release -p wcl
-
-      # A build tree is self-contained and relocatable by design, and `build`
-      # never wipes its `--out` dir. The second invocation therefore writes
-      # into the first one's output safely. No staging directory, and nothing
-      # is copied. Order matters: build the landing first.
-      - name: Build the landing page
-        run: ./target/release/wcl wdoc build docs/landing/main.wcl --out docs/_site
-
-      - name: Build the reference book
-        run: ./target/release/wcl wdoc build docs/reference/main.wcl --out docs/_site/reference
+      - name: Build and check the site
+        run: just docs-relative-urls
 
       # Ship the install scripts at the site root so the curl/iwr one-liners
       # resolve (https://wcl.dev/install.sh, .../install.ps1). docs/_site is

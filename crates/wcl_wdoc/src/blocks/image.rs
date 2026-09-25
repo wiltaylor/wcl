@@ -19,7 +19,9 @@ use std::path::{Path, PathBuf};
 use wcl_lang::Block;
 
 use crate::build::BuildError;
-use crate::render::{escape_html, field_f64, field_id, field_utf8, field_utf8_list, label_string};
+use crate::render::{
+    Warnings, escape_html, field_f64, field_id, field_utf8, field_utf8_list, label_string,
+};
 
 /// One resolved image reference.
 #[derive(Clone)]
@@ -219,6 +221,7 @@ pub(crate) fn render_html(block: &Block<'_>, registry: &ImageRegistry) -> String
 pub(crate) fn render_svg(
     block: &Block<'_>,
     registry: &ImageRegistry,
+    warnings: &Warnings,
     parent_w: f64,
     parent_h: f64,
 ) -> String {
@@ -229,7 +232,7 @@ pub(crate) fn render_svg(
         return String::new();
     }
     let entry = registry.register(&source);
-    let (x, y, w, h) = box_for(block, entry.dims, parent_w, parent_h);
+    let (x, y, w, h) = box_for(block, entry.dims, warnings, parent_w, parent_h);
     let mut out = format!(
         "<image href=\"{}\" x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\" \
          preserveAspectRatio=\"none\"",
@@ -257,11 +260,12 @@ pub(crate) fn render_svg(
 pub(crate) fn image_bbox(
     block: &Block<'_>,
     registry: &ImageRegistry,
+    warnings: &Warnings,
     parent_w: f64,
     parent_h: f64,
 ) -> (f64, f64, f64, f64) {
     let dims = label_string(block).and_then(|s| registry.dims(&s));
-    box_for(block, dims, parent_w, parent_h)
+    box_for(block, dims, warnings, parent_w, parent_h)
 }
 
 /// Shared geometry for `render_svg` + `image_bbox`: display size from
@@ -269,6 +273,7 @@ pub(crate) fn image_bbox(
 fn box_for(
     block: &Block<'_>,
     dims: Option<(u32, u32)>,
+    warnings: &Warnings,
     parent_w: f64,
     parent_h: f64,
 ) -> (f64, f64, f64, f64) {
@@ -282,7 +287,7 @@ fn box_for(
     // rendering nothing silently.
     if w <= 0.0 || h <= 0.0 {
         let source = label_string(block).unwrap_or_default();
-        crate::render::record_render_warning(format!(
+        warnings.record(format!(
             "image \"{source}\": no intrinsic size available (unreadable or unsupported \
              header, or an external URL) — set `width`/`height` or the diagram image \
              renders invisible"

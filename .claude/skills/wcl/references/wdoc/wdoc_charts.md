@@ -48,7 +48,7 @@ but never necessary. Values are `f64`, and an integer literal also works there:
 `values: [42, 55]` is the same as `[42.0, 55.0]`.
 
 Give at least one series. With `series = []` and no `categories`, the chart has no slot count to
-read and the build fails with `'at': at: index 0 out of bounds`.
+read and the build fails with `'at': index 0 out of bounds`.
 
 ## Shared fields
 
@@ -171,7 +171,7 @@ line_chart {
 ## Gotchas
 
 - The chart's `width` / `height` are `f64`; the enclosing diagram's are `i64`. Set both.
-- **More categories than values is a build error**: `'at': at: index 2 out of bounds`. The plot
+- **More categories than values is a build error**: `'at': index 2 out of bounds`. The plot
   walks one value per category. Fewer categories than values silently plots only the first few.
 - Every series should hold the same number of values. Nothing checks that for you.
 - `category` on an annotation point is a 0-based `i64` index into the categories, not an x value.

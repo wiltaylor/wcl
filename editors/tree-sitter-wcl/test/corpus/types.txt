@@ -1,0 +1,117 @@
+================================================================================
+generic, qualified and reference types (examples/literal_units.wcl)
+================================================================================
+
+type Config {
+  buffer:   std.ByteSize
+  sizes:    list<std.ByteSize>
+  owner:    &Person
+  lookup:   map<utf8, i64>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_decl
+    (dotted_name
+      (identifier))
+    (field_block
+      (type_field
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier)
+            (identifier))))
+      (type_field
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier))
+          (type_arguments
+            (named_type
+              (dotted_name
+                (identifier)
+                (identifier))))))
+      (type_field
+        (identifier)
+        (reference_type
+          (named_type
+            (dotted_name
+              (identifier)))))
+      (type_field
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier))
+          (type_arguments
+            (named_type
+              (dotted_name
+                (identifier)))
+            (named_type
+              (dotted_name
+                (identifier)))))))))
+
+================================================================================
+function types (examples/closures.wcl)
+================================================================================
+
+type Demo {
+  adder:  fn(i64) -> fn(i64) -> i64
+  thunk:  fn() -> utf8
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_decl
+    (dotted_name
+      (identifier))
+    (field_block
+      (type_field
+        (identifier)
+        (function_type
+          (named_type
+            (dotted_name
+              (identifier)))
+          (function_type
+            (named_type
+              (dotted_name
+                (identifier)))
+            (named_type
+              (dotted_name
+                (identifier))))))
+      (type_field
+        (identifier)
+        (function_type
+          (named_type
+            (dotted_name
+              (identifier))))))))
+
+================================================================================
+tensor types
+================================================================================
+
+type Model {
+  weights: tensor<f32, [3, n, 4]>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_decl
+    (dotted_name
+      (identifier))
+    (field_block
+      (type_field
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier))
+          (type_arguments
+            (named_type
+              (dotted_name
+                (identifier)))
+            (tensor_dimensions
+              (number)
+              (identifier)
+              (number))))))))

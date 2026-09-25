@@ -11,10 +11,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[allow(deprecated)] // SymbolInformation::deprecated is required by lsp-types
-use tower_lsp::lsp_types::{Location, SymbolInformation, Url};
+use tower_lsp_server::ls_types::{Location, SymbolInformation};
 use wcl_lang::{Document, SymbolRecord};
 
-use crate::convert::span_to_range;
+use crate::convert::LineIndex;
+use crate::ctx::Ctx;
 use crate::symbols::classify;
 
 /// Hard cap on returned matches, mirroring what editors render.
@@ -23,26 +24,12 @@ const MAX_RESULTS: usize = 256;
 /// Resolve `workspace/symbol`: fuzzy-match `query` against every symbol
 /// visible from the root document and the open buffers, best first.
 pub(crate) fn workspace_symbols(
+    ctx: &Ctx,
     query: &str,
     root_doc: Option<&Document>,
     root_path: Option<&Path>,
-    open_buffers: &HashMap<PathBuf, String>,
 ) -> Vec<SymbolInformation> {
-    // One text read per file (overlay first, then disk) — span→range
-    // conversion needs the declaring file's bytes.
-    let mut texts: HashMap<PathBuf, Option<String>> = HashMap::new();
-    let mut text_for = |path: &Path| -> Option<String> {
-        texts
-            .entry(path.to_path_buf())
-            .or_insert_with(|| {
-                open_buffers
-                    .get(path)
-                    .cloned()
-                    .or_else(|| std::fs::read_to_string(path).ok())
-            })
-            .clone()
-    };
-
+    let open_buffers: &HashMap<PathBuf, String> = &ctx.buffers;
     // (score, path, record) triples; resolved to locations only for the
     // entries that survive the cap.
     let mut hits: Vec<(u32, PathBuf, SymbolRecord)> = Vec::new();
@@ -67,7 +54,10 @@ pub(crate) fn workspace_symbols(
         if in_graph.iter().any(|p| p == path) {
             continue;
         }
-        let Ok(doc) = Document::open(text, &path.display().to_string()) else {
+        let Some(uri) = crate::convert::path_to_uri(path) else {
+            continue;
+        };
+        let Ok(doc) = ctx.open(text, uri.as_str()) else {
             continue;
         };
         for rec in doc.symbols().iter() {
@@ -81,10 +71,28 @@ pub(crate) fn workspace_symbols(
     hits.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.2.fqn.cmp(&b.2.fqn)));
     hits.truncate(MAX_RESULTS);
 
-    hits.into_iter()
+    // One text read and one line index per file (overlay first, then
+    // disk) — span→range conversion needs the declaring file's bytes.
+    let mut texts: HashMap<&Path, String> = HashMap::new();
+    for (_, path, _) in &hits {
+        if !texts.contains_key(path.as_path())
+            && let Some(text) = open_buffers
+                .get(path)
+                .cloned()
+                .or_else(|| std::fs::read_to_string(path).ok())
+        {
+            texts.insert(path, text);
+        }
+    }
+    let indexes: HashMap<&Path, LineIndex<'_>> = texts
+        .iter()
+        .map(|(path, text)| (*path, ctx.index(text)))
+        .collect();
+
+    hits.iter()
         .filter_map(|(_, path, rec)| {
-            let text = text_for(&path)?;
-            let uri = Url::from_file_path(&path).ok()?;
+            let index = indexes.get(path.as_path())?;
+            let uri = crate::convert::path_to_uri(path)?;
             let (kind, container_name) = classify(&rec.kind);
             #[allow(deprecated)]
             Some(SymbolInformation {
@@ -94,7 +102,7 @@ pub(crate) fn workspace_symbols(
                 deprecated: None,
                 location: Location {
                     uri,
-                    range: span_to_range(&text, rec.span),
+                    range: index.range(rec.span),
                 },
                 container_name,
             })
@@ -177,7 +185,12 @@ mod tests {
             PathBuf::from("/tmp/standalone.wcl"),
             "type Widget {\n  size: i64\n}\n".to_string(),
         );
-        let hits = workspace_symbols("Widg", None, None, &buffers);
+        let hits = workspace_symbols(
+            &Ctx::with_buffers(Default::default(), buffers),
+            "Widg",
+            None,
+            None,
+        );
         // The member `Widget.size` also matches through its FQN, but
         // the short-name prefix hit ranks first.
         assert!(!hits.is_empty());

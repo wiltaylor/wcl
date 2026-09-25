@@ -3,3 +3,5 @@
 
 @schemaless message = <<END
 this body never closes
+
+// expect-exit: 1

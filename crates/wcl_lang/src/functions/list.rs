@@ -16,7 +16,7 @@ use super::builtin::{BuiltinFn, Caller, from_fn};
 use super::expect_function;
 use crate::diagnostics::ArithmeticFault;
 use crate::environment::Environment;
-use crate::numeric::{for_each_float_numeric_variant, for_each_integer_numeric_variant};
+use crate::numeric::{NumberKey, for_each_float_numeric_variant, for_each_integer_numeric_variant};
 use crate::value::{Value, VariantPayload};
 
 /// Register every list and sequence builtin into `env`.
@@ -320,11 +320,11 @@ pub(super) fn register(env: &mut Environment) {
     env.add_builtin(
         "slice",
         from_fn(slice_pure)
-            .doc("The half-open range `[start, end)` of a string's characters or a list's elements (bounds are clamped).")
-            .param("xs", "utf8 | [T]", "The string or list to slice.")
-            .param("start", "i64", "Inclusive start index (clamped to the length).")
-            .param("end", "i64", "Exclusive end index (clamped to the length).")
-            .returns("utf8 | [T]", "The sub-string / sub-list."),
+            .doc("The half-open range `[start, end)` of a string's characters or a list's elements. A negative index counts from the end; bounds are then clamped.")
+            .param("xs", "utf8 | ascii | [T]", "The string or list to slice.")
+            .param("start", "i64", "Inclusive start index; negative counts from the end (clamped to the length).")
+            .param("end", "i64", "Exclusive end index; negative counts from the end (clamped to the length).")
+            .returns("utf8 | ascii | [T]", "The sub-string / sub-list; a string keeps its type."),
     );
 }
 
@@ -400,108 +400,10 @@ enum SortKey {
     Str(String),
 }
 
-/// Preserve integer magnitudes and floating-point values without lossy promotion.
-enum NumberKey {
-    /// Sign and absolute magnitude cover every signed and unsigned integer width.
-    Integer {
-        /// Whether the original integer is below zero.
-        negative: bool,
-        /// Absolute value, including magnitudes above i128::MAX.
-        magnitude: u128,
-    },
-    /// An f64, or an exactly widened f32, excluding NaN.
-    Float(f64),
-}
-
-impl NumberKey {
-    /// Convert a numeric value to an exact key; callers exclude non-numeric values.
-    fn new(v: &Value) -> Result<Self, String> {
-        match v {
-            Value::F32(n) => Self::float(f64::from(*n)),
-            Value::F64(n) => Self::float(*n),
-            Value::U128(n) => Ok(Self::Integer {
-                negative: false,
-                magnitude: *n,
-            }),
-            _ => {
-                let n = v.as_i128().expect("numeric integer sort key");
-                Ok(Self::Integer {
-                    negative: n < 0,
-                    magnitude: n.unsigned_abs(),
-                })
-            }
-        }
-    }
-
-    /// Reject NaN so every accepted pair has a consistent ordering.
-    fn float(n: f64) -> Result<Self, String> {
-        if n.is_nan() {
-            return Err("numeric keys must not be NaN".into());
-        }
-        Ok(Self::Float(n))
-    }
-
-    /// Compare mixed numbers by magnitude, treating signed zeros as equal.
-    /// Integer/float pairs compare the integral part before the fractional part.
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
-        match (self, other) {
-            (
-                Self::Integer {
-                    negative: an,
-                    magnitude: a,
-                },
-                Self::Integer {
-                    negative: bn,
-                    magnitude: b,
-                },
-            ) => match (an, bn) {
-                (true, false) => Ordering::Less,
-                (false, true) => Ordering::Greater,
-                (true, true) => b.cmp(a),
-                (false, false) => a.cmp(b),
-            },
-            (Self::Float(a), Self::Float(b)) => a.partial_cmp(b).expect("non-NaN sort keys"),
-            (
-                Self::Integer {
-                    negative,
-                    magnitude,
-                },
-                Self::Float(n),
-            ) => {
-                let float_negative = *n < 0.0;
-                if *negative != float_negative {
-                    return if *negative {
-                        Ordering::Less
-                    } else {
-                        Ordering::Greater
-                    };
-                }
-                let n = n.abs();
-                // 2^128 is exactly representable, but is outside u128. Below
-                // it, truncating the float preserves every integer bit.
-                let order = if n >= 2.0_f64.powi(128) {
-                    Ordering::Less
-                } else {
-                    magnitude.cmp(&(n as u128)).then_with(|| {
-                        if n.fract() > 0.0 {
-                            Ordering::Less
-                        } else {
-                            Ordering::Equal
-                        }
-                    })
-                };
-                if *negative { order.reverse() } else { order }
-            }
-            (Self::Float(_), Self::Integer { .. }) => other.cmp(self).reverse(),
-        }
-    }
-}
-
 /// Reduce a value to something orderable, or fail naming `who`.
 fn sort_key(who: &str, v: Value) -> Result<SortKey, String> {
     if v.is_numeric() {
-        return NumberKey::new(&v)
+        return NumberKey::sortable(&v)
             .map(SortKey::Num)
             .map_err(|e| format!("{who}: {e}"));
     }
@@ -625,20 +527,27 @@ fn group_by_hof(caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String
     ))
 }
 
-/// `slice(xs, start, end)` over a list or string. Indices are clamped
-/// rather than erroring, and negative indices count from the end.
+/// `slice(xs, start, end)` over a list or string: the elements (or
+/// characters) from `start` up to, not including, `end`.
+///
+/// A negative index counts from the end, so `-1` names the last element
+/// and `slice(xs, -2, len(xs))` is the last two. After that, indices are
+/// clamped to `0..=len` rather than erroring, and an `end` at or before
+/// `start` gives an empty result. A string keeps its type: slicing an
+/// `ascii` string gives an `ascii` string.
 fn slice_pure(xs: Value, start: i64, end: i64) -> Result<Value, String> {
     let clamp = |len: usize| {
-        let s = start.clamp(0, len as i64) as usize;
-        let e = end.clamp(0, len as i64) as usize;
+        let len = len as i64;
+        let resolve = |i: i64| {
+            let from_end = if i < 0 { len.saturating_add(i) } else { i };
+            from_end.clamp(0, len) as usize
+        };
+        let (s, e) = (resolve(start), resolve(end));
         (s, s.max(e))
     };
     match xs {
-        Value::Utf8(s) | Value::Ascii(s) => {
-            let chars: Vec<char> = s.chars().collect();
-            let (lo, hi) = clamp(chars.len());
-            Ok(Value::Utf8(chars[lo..hi].iter().collect()))
-        }
+        Value::Utf8(s) => Ok(Value::Utf8(slice_chars(&s, clamp))),
+        Value::Ascii(s) => Ok(Value::Ascii(slice_chars(&s, clamp))),
         Value::List(items) => {
             let (lo, hi) = clamp(items.len());
             Ok(Value::List(std::sync::Arc::new(items[lo..hi].to_vec())))
@@ -648,6 +557,13 @@ fn slice_pure(xs: Value, start: i64, end: i64) -> Result<Value, String> {
             other.type_name()
         )),
     }
+}
+
+/// The characters of `s` between the bounds `clamp` picks for its length.
+fn slice_chars(s: &str, clamp: impl Fn(usize) -> (usize, usize)) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let (lo, hi) = clamp(chars.len());
+    chars[lo..hi].iter().collect()
 }
 
 /// `contains(xs, needle)` by value equality.
@@ -671,7 +587,7 @@ fn sort_pure(xs: Vec<Value>) -> Result<Value, String> {
     if first.is_numeric() && xs.iter().all(|v| v.is_numeric()) {
         let mut keyed: Vec<(NumberKey, Value)> = xs
             .iter()
-            .map(|v| NumberKey::new(v).map(|key| (key, v.clone())))
+            .map(|v| NumberKey::sortable(v).map(|key| (key, v.clone())))
             .collect::<Result<_, _>>()
             .map_err(|e| format!("sort: {e}"))?;
         keyed.sort_by(|a, b| a.0.cmp(&b.0));

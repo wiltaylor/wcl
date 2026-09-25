@@ -24,6 +24,7 @@
 use std::collections::HashMap;
 
 use crate::blocks::diagram::layout::layered::Node;
+use crate::render::Warnings;
 
 /// Tunable knobs for the force simulation, surfaced on `diagram` /
 /// `container` as optional WCL fields. Defaults are picked to give a
@@ -64,6 +65,7 @@ pub(crate) fn assign_force_offsets(
     nodes: &[Node],
     edges: &[(String, String)],
     params: ForceParams,
+    warnings: &Warnings,
 ) -> Vec<(f64, f64)> {
     let n = nodes.len();
     if n == 0 {
@@ -74,7 +76,7 @@ pub(crate) fn assign_force_offsets(
     // to a grid; otherwise trim the step counts to fit it.
     let pairs = n * (n - 1) / 2;
     if pairs > MAX_PAIR_VISITS {
-        crate::render::record_render_warning(format!(
+        warnings.record(format!(
             "force layout: {n} nodes is too many to relax (limit {}) — laid out on a grid",
             max_force_nodes()
         ));
@@ -83,7 +85,7 @@ pub(crate) fn assign_force_offsets(
     let pass_cap = MAX_PAIR_VISITS / pairs.max(1);
     let iterations = params.iterations.min(pass_cap);
     if iterations < params.iterations {
-        crate::render::record_render_warning(format!(
+        warnings.record(format!(
             "force layout: {n} nodes — iterations reduced from {} to {iterations} to bound \
              layout time",
             params.iterations
@@ -334,13 +336,18 @@ mod tests {
 
     #[test]
     fn empty_input_empty_output() {
-        let offsets = assign_force_offsets(&[], &[], ForceParams::default());
+        let offsets = assign_force_offsets(&[], &[], ForceParams::default(), &Warnings::default());
         assert!(offsets.is_empty());
     }
 
     #[test]
     fn single_node_at_origin() {
-        let offsets = assign_force_offsets(&[node("a")], &[], ForceParams::default());
+        let offsets = assign_force_offsets(
+            &[node("a")],
+            &[],
+            ForceParams::default(),
+            &Warnings::default(),
+        );
         assert_eq!(offsets.len(), 1);
         assert!((offsets[0].0).abs() < 1e-9);
         assert!((offsets[0].1).abs() < 1e-9);
@@ -354,8 +361,10 @@ mod tests {
             ("b".into(), "c".into()),
             ("c".into(), "a".into()),
         ];
-        let first = assign_force_offsets(&nodes, &edges, ForceParams::default());
-        let second = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let first =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
+        let second =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         assert_eq!(first, second);
     }
 
@@ -363,7 +372,8 @@ mod tests {
     fn all_coordinates_finite() {
         let nodes = vec![node("a"), node("b"), node("c"), node("d"), node("e")];
         let edges = vec![("a".into(), "b".into()), ("a".into(), "c".into())];
-        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let offsets =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         for (x, y) in offsets {
             assert!(x.is_finite() && y.is_finite());
         }
@@ -373,7 +383,8 @@ mod tests {
     fn offsets_normalized_to_origin() {
         let nodes = vec![node("a"), node("b"), node("c"), node("d")];
         let edges = vec![("a".into(), "b".into())];
-        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let offsets =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         let min_x = offsets.iter().map(|o| o.0).fold(f64::INFINITY, f64::min);
         let min_y = offsets.iter().map(|o| o.1).fold(f64::INFINITY, f64::min);
         // The extreme node's box corner sits exactly at (0, *) / (*, 0).
@@ -393,10 +404,15 @@ mod tests {
         };
         let nodes = vec![node("a"), node("b")];
 
-        let linked = assign_force_offsets(&nodes, &[("a".into(), "b".into())], params());
+        let linked = assign_force_offsets(
+            &nodes,
+            &[("a".into(), "b".into())],
+            params(),
+            &Warnings::default(),
+        );
         let d_linked = dist(linked[0], linked[1]);
 
-        let loose = assign_force_offsets(&nodes, &[], params());
+        let loose = assign_force_offsets(&nodes, &[], params(), &Warnings::default());
         let d_loose = dist(loose[0], loose[1]);
 
         assert!(
@@ -434,7 +450,8 @@ mod tests {
             ("e".into(), "a".into()),
             ("e".into(), "f".into()),
         ];
-        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let offsets =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         assert_no_overlap(&nodes, &offsets);
     }
 
@@ -457,7 +474,8 @@ mod tests {
                 edges.push(("n1".into(), format!("n{i}")));
             }
         }
-        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let offsets =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         assert_no_overlap(&nodes, &offsets);
     }
 
@@ -471,7 +489,8 @@ mod tests {
             ("c".into(), "a".into()),
             ("d".into(), "d".into()),
         ];
-        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let offsets =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         assert_eq!(offsets.len(), nodes.len());
         assert!(offsets.iter().all(|(x, y)| x.is_finite() && y.is_finite()));
     }
@@ -487,6 +506,7 @@ mod tests {
                 seed: 1,
                 ..ForceParams::default()
             },
+            &Warnings::default(),
         );
         let b = assign_force_offsets(
             &nodes,
@@ -495,6 +515,7 @@ mod tests {
                 seed: 7,
                 ..ForceParams::default()
             },
+            &Warnings::default(),
         );
         assert_ne!(a, b);
     }
@@ -509,7 +530,7 @@ mod tests {
             link_distance: 0.0,
             ..ForceParams::default()
         };
-        let offsets = assign_force_offsets(&nodes, &edges, params);
+        let offsets = assign_force_offsets(&nodes, &edges, params, &Warnings::default());
         assert_no_overlap(&nodes, &offsets);
     }
 
@@ -517,12 +538,17 @@ mod tests {
     fn huge_graph_falls_back_to_a_grid() {
         let n = max_force_nodes() + 1;
         let nodes: Vec<Node> = (0..n).map(|i| node(&format!("n{i}"))).collect();
-        let offsets = assign_force_offsets(&nodes, &[], ForceParams::default());
+        let warnings = Warnings::default();
+        let offsets = assign_force_offsets(&nodes, &[], ForceParams::default(), &warnings);
         assert_eq!(offsets.len(), n);
         let cols = (n as f64).sqrt().ceil() as usize;
         assert_eq!(offsets[1], (100.0, 0.0));
         assert_eq!(offsets[cols], (0.0, 60.0));
-        let _ = crate::render::take_render_warnings();
+        let recorded = warnings.take();
+        assert!(
+            recorded.iter().any(|w| w.contains("laid out on a grid")),
+            "{recorded:?}"
+        );
     }
 
     #[test]
@@ -530,13 +556,14 @@ mod tests {
         // 2,000 nodes x 300 iterations would visit ~600M pairs; the
         // budget trims it to a few dozen passes.
         let nodes: Vec<Node> = (0..2_000).map(|i| node(&format!("n{i}"))).collect();
-        let offsets = assign_force_offsets(&nodes, &[], ForceParams::default());
+        let warnings = Warnings::default();
+        let offsets = assign_force_offsets(&nodes, &[], ForceParams::default(), &warnings);
         assert_eq!(offsets.len(), 2_000);
         assert!(offsets.iter().all(|o| o.0.is_finite() && o.1.is_finite()));
-        let warnings = crate::render::take_render_warnings();
+        let recorded = warnings.take();
         assert!(
-            warnings.iter().any(|w| w.contains("iterations reduced")),
-            "{warnings:?}"
+            recorded.iter().any(|w| w.contains("iterations reduced")),
+            "{recorded:?}"
         );
     }
 }

@@ -64,6 +64,7 @@ fn render_diagram_inner(
     let cctx = CollectCtx {
         tilesets: patterns.tilesets(),
         images: patterns.images(),
+        warnings: patterns.warnings(),
     };
     let cls = class_attr(block);
     let width = field_i64(block, "width").unwrap_or(0);
@@ -76,9 +77,15 @@ fn render_diagram_inner(
     // (now populated), drawn *behind* the shapes, and excluded from the
     // obstacle graph (they never become a `Block`). Their expanded boxes
     // join the viewBox fit so a padded boundary never clips.
-    let (boundaries, boundary_bboxes) = render_boundaries(block, &collector.positions);
-    let (edges, edge_bboxes) =
-        render_edges(block, &collector.positions, &collector.containers, (vw, vh));
+    let (boundaries, boundary_bboxes) =
+        render_boundaries(block, &collector.positions, patterns.warnings());
+    let (edges, edge_bboxes) = render_edges(
+        block,
+        &collector.positions,
+        &collector.containers,
+        (vw, vh),
+        patterns.warnings(),
+    );
     let mut content_bboxes = collector.bboxes.clone();
     content_bboxes.extend(boundary_bboxes);
     let viewbox = fit_viewbox(&content_bboxes, &edge_bboxes, vw, vh);
@@ -216,7 +223,7 @@ pub(crate) fn collect_planned_children(
     out: &mut Collector,
 ) {
     let children: Vec<Block<'_>> = diagram_children(block);
-    let (offsets, widths, heights) = compute_planned_plan(block, &children);
+    let (offsets, widths, heights) = compute_planned_plan(block, &children, cctx.warnings);
     // Size each child's parent box from the plan (effective_dims), not
     // the raw width/height, so collect and render agree on circles
     // (sized by diameter) and text-grown shapes alike.
@@ -332,6 +339,7 @@ pub(crate) fn compute_layered_plan(
 pub(crate) fn compute_force_plan(
     block: &Block<'_>,
     children: &[Block<'_>],
+    warnings: &Warnings,
 ) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
     let defaults = ForceParams::default();
     // Clamp `iterations` (an unbounded value would spin the simulation
@@ -359,7 +367,7 @@ pub(crate) fn compute_force_plan(
 
     let (flow_idx, flow_nodes) = flow_nodes_of(children);
     let edges: Vec<(String, String)> = edge_id_pairs(block);
-    let flow_offsets = force::assign_force_offsets(&flow_nodes, &edges, params);
+    let flow_offsets = force::assign_force_offsets(&flow_nodes, &edges, params, warnings);
     assemble_plan(children, &flow_idx, &flow_nodes, &flow_offsets)
 }
 
@@ -426,10 +434,11 @@ fn boundary_padding_by_member(block: &Block<'_>) -> HashMap<String, f64> {
 pub(crate) fn compute_planned_plan(
     block: &Block<'_>,
     children: &[Block<'_>],
+    warnings: &Warnings,
 ) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
     let (mut offsets, widths, heights) =
         match field_symbol(block, "layout").unwrap_or_default().as_str() {
-            "force" => compute_force_plan(block, children),
+            "force" => compute_force_plan(block, children, warnings),
             "radial" => compute_radial_plan(block, children),
             _ => compute_layered_plan(block, children),
         };
@@ -583,7 +592,8 @@ fn evict_boundary_outsiders(
 /// Render children at the positions the layout plan assigned.
 pub(crate) fn render_planned_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> String {
     let children: Vec<Block<'_>> = diagram_children(block);
-    let (offsets, widths, heights) = compute_planned_plan(block, &children);
+    let (offsets, widths, heights) =
+        compute_planned_plan(block, &children, ctx.patterns.warnings());
     let mut out = String::new();
     for ((child, (tx, ty)), (cw, ch)) in children
         .iter()
@@ -696,13 +706,14 @@ fn gather_boundaries_recursive<'a>(block: &Block<'a>, out: &mut Vec<Block<'a>>) 
 pub(crate) fn render_boundaries(
     block: &Block<'_>,
     positions: &ShapePositions,
+    warnings: &Warnings,
 ) -> (String, Vec<(f64, f64, f64, f64)>) {
     let mut boundaries: Vec<Block<'_>> = Vec::new();
     gather_boundaries_recursive(block, &mut boundaries);
     let mut out = String::new();
     let mut bboxes: Vec<(f64, f64, f64, f64)> = Vec::new();
     for b in &boundaries {
-        if let Some((svg, bbox)) = render_one_boundary(b, positions) {
+        if let Some((svg, bbox)) = render_one_boundary(b, positions, warnings) {
             out.push_str(&svg);
             bboxes.push(bbox);
         }
@@ -714,6 +725,7 @@ pub(crate) fn render_boundaries(
 fn render_one_boundary(
     block: &Block<'_>,
     positions: &ShapePositions,
+    warnings: &Warnings,
 ) -> Option<(String, (f64, f64, f64, f64))> {
     let label = label_string(block).filter(|s| !s.is_empty());
     let name = label.clone().unwrap_or_else(|| "<unnamed>".to_string());
@@ -726,7 +738,7 @@ fn render_one_boundary(
     let mut found = 0usize;
     for id in &ids {
         let Some(m) = positions.get(id) else {
-            crate::render::record_edge_warning(format!(
+            warnings.record(format!(
                 "diagram boundary '{name}': member '{id}' matches no shape id"
             ));
             continue;
@@ -739,7 +751,7 @@ fn render_one_boundary(
         found += 1;
     }
     if found == 0 {
-        crate::render::record_edge_warning(format!(
+        warnings.record(format!(
             "diagram boundary '{name}': no members resolved to a shape — nothing drawn"
         ));
         return None;
@@ -858,7 +870,10 @@ pub(crate) fn content_size(block: &Block<'_>) -> (f64, f64) {
             if children.is_empty() {
                 return (0.0, 0.0);
             }
-            let (offsets, widths, heights) = compute_planned_plan(block, &children);
+            // Sizing only: the collect and render passes plan the same
+            // children and record any layout warnings themselves.
+            let (offsets, widths, heights) =
+                compute_planned_plan(block, &children, &Warnings::default());
             let mut max_x = 0.0_f64;
             let mut max_y = 0.0_f64;
             for ((ox, oy), (cw, ch)) in offsets.iter().zip(widths.iter().zip(heights.iter())) {

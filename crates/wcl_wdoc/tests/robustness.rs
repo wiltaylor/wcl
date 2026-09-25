@@ -5,26 +5,32 @@
 use std::path::Path;
 
 use tempfile::TempDir;
-use wcl_wdoc::{BuildError, PageSize, build, pdf, take_render_warnings};
+use wcl_wdoc::{BuildError, BuildOptions, BuildReport, PageSize, build, build_with_options, pdf};
 
 /// Build `body` (with the stdlib import prepended) as a one-file site and
 /// return the build result plus the output directory.
-fn build_doc(body: &str) -> (Result<usize, BuildError>, TempDir) {
+fn build_doc(body: &str) -> (Result<BuildReport, BuildError>, TempDir) {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("doc.wcl");
     std::fs::write(&src, format!("import <wdoc.wcl>\n{body}")).expect("write fixture");
     let out = tmp.path().join("out");
-    let result = build(&src, &out, None);
+    let result = build_with_options(&src, &out, None, &BuildOptions::default());
     (result, tmp)
+}
+
+/// Build `body` and return `index.html` plus the build's warnings,
+/// failing the test on any error.
+fn build_with_warnings(body: &str) -> (String, Vec<String>) {
+    let (result, tmp) = build_doc(body);
+    match result {
+        Ok(report) => (read_index(tmp.path()), report.warnings),
+        Err(e) => panic!("build failed: {}", describe(&e)),
+    }
 }
 
 /// Build `body` and return `index.html`, failing the test on any error.
 fn build_html(body: &str) -> String {
-    let (result, tmp) = build_doc(body);
-    if let Err(e) = result {
-        panic!("build failed: {}", describe(&e));
-    }
-    read_index(tmp.path())
+    build_with_warnings(body).0
 }
 
 /// A one-line account of a build error, for test failure messages.
@@ -130,7 +136,7 @@ fn timeline_huge_every_does_not_overflow() {
 fn oversized_terminal_is_clamped_with_a_warning() {
     // `cols * rows` cells used to be allocated as asked: 10^9 x 10^9
     // overflowed or exhausted memory.
-    let html = build_html(
+    let (html, warnings) = build_with_warnings(
         r##"
 page index {
   terminal {
@@ -143,7 +149,6 @@ page index {
     // 500 columns of 8-unit cells plus the 6-unit window margins.
     assert!(html.contains("viewBox=\"0 0 4012 "), "{html}");
     assert!(html.contains(">h</text>"), "{html}");
-    let warnings = take_render_warnings();
     assert!(
         warnings
             .iter()
@@ -295,7 +300,10 @@ fn extreme_aspect_inline_math_does_not_stall_the_pdf() {
     .expect("write fixture");
     let out = tmp.path().join("out");
     assert!(
-        matches!(pdf(&src, &out, None, PageSize::A4), Ok(1)),
+        matches!(
+            pdf(&src, &out, None, PageSize::A4),
+            Ok(BuildReport { count: 1, .. })
+        ),
         "pdf build failed"
     );
 }

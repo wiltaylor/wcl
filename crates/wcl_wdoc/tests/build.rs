@@ -3,7 +3,10 @@
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
-use wcl_wdoc::{BuildError, BuildOptions, RebuildOutcome, build, build_incremental};
+use wcl_wdoc::{
+    BuildError, BuildOptions, BuildReport, RebuildOutcome, build, build_incremental,
+    build_with_options,
+};
 
 fn examples_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -22,8 +25,14 @@ fn write_fixture(path: impl AsRef<Path>, body: impl AsRef<str>) {
 }
 
 fn build_ok(file: &Path, out: &Path) -> usize {
-    match build(file, out, None) {
-        Ok(n) => n,
+    build_report(file, out).count
+}
+
+/// Build `file` into `out`, panicking on failure, and return the report —
+/// the page count plus the warnings the build found.
+fn build_report(file: &Path, out: &Path) -> BuildReport {
+    match build_with_options(file, out, None, &BuildOptions::default()) {
+        Ok(report) => report,
         Err(BuildError::Io(e, ctx)) => panic!("build io error: {ctx}: {e}"),
         Err(BuildError::Parse(r)) => panic!("build parse error: {r:?}"),
         Err(BuildError::Schema(n)) => panic!("build schema error: {n} violations"),
@@ -3037,6 +3046,75 @@ page index {
     );
 }
 
+/// Warnings travel in the build's result, not in state tied to the thread
+/// that rendered: a build run on a worker thread (as the dev server's
+/// rebuild worker does) still hands its warnings back to the caller.
+#[test]
+fn build_warnings_reach_a_caller_on_another_thread() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("dangling_edge.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 300
+    height = 120
+    rect { id = a  x = 20.0  y = 20.0  width = 60.0  height = 40.0  fill = "#abc" }
+    a -> nonexistent
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let (file, dir) = (src.clone(), out.path().to_path_buf());
+    let report = std::thread::spawn(move || {
+        build_with_options(&file, &dir, None, &BuildOptions::default())
+            .unwrap_or_else(|e| panic!("build failed: {}", e.render_plain()))
+    })
+    .join()
+    .expect("build thread panicked");
+    assert!(
+        report.warnings.iter().any(|w| w.contains("nonexistent")),
+        "expected the unmatched-endpoint warning, got: {:?}",
+        report.warnings
+    );
+
+    // A second build of the same document reports it again: nothing is
+    // drained away by the first, and nothing stale carries over.
+    let again = build_report(&src, out.path()).warnings;
+    assert_eq!(again, report.warnings);
+}
+
+/// An incremental rebuild returns the warnings its re-rendered pages raise.
+#[test]
+fn incremental_rebuild_returns_its_warnings() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = write_incremental_book(tmp.path());
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+
+    let a = tmp.path().join("a.wcl");
+    std::fs::write(
+        &a,
+        "page a {\n  sites = [:docs]\n  h1 \"Page A\"\n  diagram {\n    width = 100  height = 60\n    \
+         rect { id = s  x = 1.0  y = 1.0  width = 10.0  height = 10.0 }\n    s -> ghost\n  }\n}\n",
+    )
+    .expect("rewrite a.wcl");
+    let report = build_incremental(&main, out.path(), None, &BuildOptions::default(), &[a])
+        .unwrap_or_else(|e| panic!("incremental build failed: {}", e.render_plain()));
+    assert!(
+        matches!(report.outcome, RebuildOutcome::Targeted { .. }),
+        "{:?}",
+        report.outcome
+    );
+    assert!(
+        report.warnings.iter().any(|w| w.contains("ghost")),
+        "expected the unmatched-endpoint warning, got: {:?}",
+        report.warnings
+    );
+}
+
 #[test]
 fn build_warns_on_unmatched_edge_endpoint() {
     // An edge endpoint that names no rendered shape (a typo, or a
@@ -3059,15 +3137,14 @@ page index {
     );
     let out = TempDir::new().expect("mkdir out");
     // Build SUCCEEDS (non-fatal) and the dangling edge draws nothing.
-    build_ok(&src, out.path());
+    let warnings = build_report(&src, out.path()).warnings;
     let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
     assert!(
         !html.contains("marker-end=\"url(#wdoc-arrow)\""),
         "the unmatched edge should not have drawn a line:\n{html}"
     );
-    // The drop surfaced a warning naming the missing endpoint. (build leaves
-    // warnings in the sink on this thread for the caller to drain.)
-    let warnings = wcl_wdoc::take_render_warnings();
+    // The drop surfaced a warning naming the missing endpoint, returned in
+    // the build's report.
     assert!(
         warnings
             .iter()
@@ -4206,6 +4283,130 @@ fn build_renders_link_inline() {
 }
 
 #[test]
+fn build_drops_links_with_disallowed_schemes() {
+    // `javascript:` / `data:` targets never reach an href, however they are
+    // disguised; the text stays and each drop is a render warning.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "[a](javascript:void)");
+    let out = TempDir::new().expect("mkdir out");
+    // `javascript:void` has the `site:page` shape, so it is a link error
+    // (an unknown site) rather than a dropped URL.
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadLink(msgs)) => assert!(
+            msgs.iter().any(|m| m.contains("unknown site 'javascript'")),
+            "{msgs:?}"
+        ),
+        _ => panic!("expected a BadLink error for `javascript:void`"),
+    }
+
+    let src = write_inline_fixture(
+        &tmp,
+        "[b](JaVaScRiPt:x.y) [c](\\tjava\\tscript:x.y) [d](java&#115;cript:x.y) \
+         [e](data:text/html,x) [f](mailto:me@x.y) [g](#top)",
+    );
+    let warnings = build_report(&src, out.path()).warnings;
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let lower = html.to_ascii_lowercase();
+    assert!(
+        !lower.contains("script:x.y"),
+        "script href emitted:\n{html}"
+    );
+    assert!(
+        !html.contains("data:text/html"),
+        "data href emitted:\n{html}"
+    );
+    for text in ["b", "c", "d", "e"] {
+        assert!(
+            html.contains(&format!("<a class=\"link\">{text}</a>")),
+            "link {text} should keep its text without an href:\n{html}"
+        );
+    }
+    assert!(html.contains("href=\"mailto:me@x.y\""), "{html}");
+    assert!(html.contains("href=\"#top\""), "{html}");
+    assert_eq!(
+        warnings
+            .iter()
+            .filter(|w| w.contains("disallowed URL scheme"))
+            .count(),
+        4,
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn build_drops_diagram_shape_links_with_disallowed_schemes() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("linked.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  diagram { width = 200  height = 100\n    rect { x = 10.0  y = 10.0  width = 80.0  height = 40.0  link = \" JaVaScRiPt:alert(1)\" }\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let warnings = build_report(&src, out.path()).warnings;
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(!html.contains("alert(1)"), "script link emitted:\n{html}");
+    assert!(
+        html.contains("<a><rect"),
+        "shape should stay, unlinked:\n{html}"
+    );
+    assert!(
+        warnings.iter().any(|w| w.contains("'javascript:'")),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn element_attrs_reject_bad_names_and_script_urls() {
+    // An attribute name is emitted unescaped, so one that is not
+    // `[A-Za-z0-9_:-]+` is dropped; URL attributes share the link allowlist.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("attrs.wcl");
+    write_fixture(
+        &src,
+        r##"
+@block("probe")
+type Probe extends ContentBlock {
+  lower = fn(p: Probe) -> list<Html> [
+    Html::Element {
+      tag: "a",
+      attrs: [
+        ["x onmouseover=alert(1)", "v"],
+        ["x><script>alert(2)</script", "v"],
+        ["data-ok_1:x", "kept"],
+        ["href", "javascript:alert(3)"],
+      ],
+      children: [ Html::Raw { html: "x" } ],
+    },
+    Html::Element { tag: "img", attrs: [["src", "data:image/png;base64,AA"]], children: [] },
+  ]
+}
+site { title = "T" }
+page index { probe {} }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let warnings = build_report(&src, out.path()).warnings;
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(!html.contains("onmouseover"), "{html}");
+    assert!(!html.contains("<script>alert(2)"), "{html}");
+    assert!(!html.contains("alert(3)"), "{html}");
+    assert!(html.contains("<a data-ok_1:x=\"kept\">x</a>"), "{html}");
+    assert!(html.contains("src=\"data:image/png;base64,AA\""), "{html}");
+    assert_eq!(
+        warnings
+            .iter()
+            .filter(|w| w.contains("attribute name"))
+            .count(),
+        2,
+        "{warnings:?}"
+    );
+    assert!(
+        warnings.iter().any(|w| w.contains("element <a> href")),
+        "{warnings:?}"
+    );
+}
+
+#[test]
 fn build_renders_recursive_inline() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = write_inline_fixture(&tmp, "**bold _and italic_**");
@@ -4252,6 +4453,42 @@ page index {
         html.contains("<span class=\"tag\">wdoc</span>"),
         "missing second hashtag span:\n{html}"
     );
+}
+
+#[test]
+fn build_errors_on_inline_pattern_regex_that_does_not_compile() {
+    // A pattern whose regex does not compile would otherwise never match
+    // and vanish without a word; it fails the build, naming the pattern.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("custom.wcl");
+    write_fixture(
+        &src,
+        r##"
+inline_pattern broken {
+  pattern = "#(["
+  to_span = fn(g: list<utf8>) -> list<InlineSpan>
+    [InlineSpan::Plain { text: at(g, 0), class: ["tag"] }]
+}
+
+page index {
+  text {
+    span "hello #world" {}
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::Eval(report)) => {
+            let msg = format!("{report:?}");
+            assert!(
+                msg.contains("inline_pattern 'broken'") && msg.contains("regex"),
+                "{msg}"
+            );
+        }
+        Ok(_) => panic!("a bad inline_pattern regex built silently"),
+        Err(_) => panic!("expected an eval error for the bad regex"),
+    }
 }
 
 #[test]
@@ -7530,6 +7767,49 @@ fn pan_zoom_diagram_inside_component_ships_player_js() {
 }
 
 #[test]
+fn players_on_different_pages_each_ship() {
+    // One page holds a terminal, a later one a pan/zoom diagram inside a
+    // component body: the site-wide player scan has to keep walking after
+    // the first find, and into the component, to see both.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("c.wcl");
+    write_fixture(
+        &src,
+        "wdoc_component graph {\n  wdoc_body {\n    \
+         diagram { pan_zoom = true  width = 200  height = 120\n      \
+         process \"A\" { id = a }  process \"B\" { id = b }\n      a -> b\n    }\n  }\n}\n\
+         site s { default_template = :book  title = \"x\" }\n\
+         page shell { sites = [:s]  start = true\n  h1 \"Shell\"\n  \
+         terminal { source = \"./none.cast\" }\n}\n\
+         page plain { sites = [:s]\n  h1 \"Plain\"\n  p \"Nothing to play.\"\n}\n\
+         page graphs { sites = [:s]\n  h1 \"Graphs\"\n  graph {}\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let wdoc = out.path().join("_wdoc");
+    assert!(
+        wdoc.join("terminal-player.js").exists(),
+        "terminal player missing"
+    );
+    assert!(
+        wdoc.join("diagram-pan-zoom.js").exists(),
+        "pan/zoom player missing"
+    );
+    assert!(
+        !wdoc.join("wdoc-map.js").exists(),
+        "map player shipped without a map"
+    );
+    assert!(
+        !wdoc.join("dopesheet-player.js").exists(),
+        "dopesheet player shipped without a dopesheet"
+    );
+    // Each page loads the site's players, so the plain page carries both.
+    let plain = std::fs::read_to_string(out.path().join("plain.html")).expect("read");
+    assert!(plain.contains("_wdoc/terminal-player.js"), "{plain}");
+    assert!(plain.contains("_wdoc/diagram-pan-zoom.js"), "{plain}");
+}
+
+#[test]
 fn terminal_replay_emits_player_and_assets() {
     // A `source` recording produces frames JSON, the player wiring, and
     // writes the bundled font + player assets into `_wdoc/`.
@@ -7620,6 +7900,60 @@ fn terminal_missing_cast_is_marked_not_fatal() {
         html.contains("wdoc-terminal-error"),
         "no error marker:\n{html}"
     );
+}
+
+#[test]
+fn terminal_replay_json_cannot_close_its_script() {
+    // A recording that printed `</script><script>...` must stay inside the
+    // frames JSON: `<`, `>`, `&` and U+2028/9 are emitted as `\u` escapes.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(
+        tmp.path().join("evil.cast"),
+        "{\"version\":2,\"width\":60,\"height\":2}\n[0.0,\"o\",\"</script><script>alert(1)</script> & \\u2028\"]\n",
+    )
+    .expect("write cast");
+    let src = tmp.path().join("t.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  terminal { source = \"./evil.cast\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let start = html
+        .find("class=\"term-frames\"")
+        .expect("frames script present");
+    let body_start = start + html[start..].find('>').expect("script tag closes") + 1;
+    let body_end = body_start + html[body_start..].find("</script").expect("script ends");
+    let json = &html[body_start..body_end];
+    assert!(
+        !json.contains('<') && !json.contains('>') && !json.contains('&'),
+        "raw markup characters in frames JSON:\n{json}"
+    );
+    assert!(!json.contains('\u{2028}'), "raw U+2028 in frames JSON");
+    assert!(json.contains("\\u003c/script\\u003e"), "{json}");
+    assert!(
+        !html.contains("<script>alert(1)"),
+        "recording escaped its script:\n{html}"
+    );
+}
+
+#[test]
+fn terminal_missing_cast_error_shows_authored_path() {
+    // The error marker is published HTML: it names the source as the
+    // author wrote it, never the absolute path on the build host.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  terminal { source = \"./nope.cast\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(html.contains("cannot read cast: ./nope.cast"), "{html}");
+    let host = tmp.path().to_string_lossy().to_string();
+    assert!(!html.contains(&host), "host path leaked:\n{html}");
 }
 
 #[test]
@@ -8023,14 +8357,20 @@ fn fake_png(w: u32, h: u32) -> Vec<u8> {
 /// returning the rendered `index.html` and the live output dir (so the
 /// caller can probe `_wdoc/`). The PNG is `sheet_w`×`sheet_h`.
 fn build_tilemap(src: &str, sheet_w: u32, sheet_h: u32) -> (String, TempDir) {
+    let (index, out, _) = build_tilemap_warnings(src, sheet_w, sheet_h);
+    (index, out)
+}
+
+/// [`build_tilemap`], plus the warnings the build returned.
+fn build_tilemap_warnings(src: &str, sheet_w: u32, sheet_h: u32) -> (String, TempDir, Vec<String>) {
     let tmp = TempDir::new().expect("mkdir tempdir");
     std::fs::write(tmp.path().join("sheet.png"), fake_png(sheet_w, sheet_h)).expect("write png");
     let file = tmp.path().join("main.wcl");
     write_fixture(&file, src);
     let out = TempDir::new().expect("mkdir out");
-    build_ok(&file, out.path());
+    let warnings = build_report(&file, out.path()).warnings;
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    (index, out)
+    (index, out, warnings)
 }
 
 #[test]
@@ -8199,14 +8539,13 @@ page index {
   }
 }
 "#;
-    let (index, _out) = build_tilemap(src, 256, 256);
+    let (index, _out, warnings) = build_tilemap_warnings(src, 256, 256);
     assert!(
         index.contains("width=\"128\" height=\"64\" preserveAspectRatio=\"none\"/>"),
         "{index}"
     );
     // The override still wins, but a readable header that disagrees is a
     // guaranteed-distorted render — the build now says so.
-    let warnings = wcl_wdoc::take_render_warnings();
     assert!(
         warnings
             .iter()
@@ -8493,6 +8832,12 @@ page index {
 /// `thumb.png` available, returning the rendered `index.html` and the
 /// live output dir (to probe `_wdoc/`).
 fn build_video(src: &str) -> (String, TempDir) {
+    let (index, out, _) = build_video_warnings(src);
+    (index, out)
+}
+
+/// [`build_video`], plus the warnings the build returned.
+fn build_video_warnings(src: &str) -> (String, TempDir, Vec<String>) {
     let tmp = TempDir::new().expect("mkdir tempdir");
     // The build only copies the file's bytes (it never decodes a video),
     // so any non-empty content stands in for a real `.mp4`.
@@ -8502,9 +8847,37 @@ fn build_video(src: &str) -> (String, TempDir) {
     let file = tmp.path().join("main.wcl");
     write_fixture(&file, src);
     let out = TempDir::new().expect("mkdir out");
-    build_ok(&file, out.path());
+    let warnings = build_report(&file, out.path()).warnings;
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
-    (index, out)
+    (index, out, warnings)
+}
+
+#[test]
+fn build_video_drops_disallowed_source_and_poster() {
+    // The player turns `data-src` into a <video>/<iframe> src, so a script
+    // source never reaches the page; a bad poster falls back to none.
+    let src = r#"
+page index {
+  video "data:text/html,<script>alert(1)</script>" {}
+  video "https://example.com/embed/x" { poster = "javascript:alert(2)" }
+}
+"#;
+    let (index, _out, warnings) = build_video_warnings(src);
+    assert!(!index.contains("alert(1)"), "{index}");
+    assert!(!index.contains("alert(2)"), "{index}");
+    assert!(
+        index.contains("data-kind=\"generic\" data-src=\"https://example.com/embed/x\""),
+        "{index}"
+    );
+    assert!(index.contains("wdoc-video-placeholder"), "{index}");
+    assert!(
+        warnings.iter().any(|w| w.starts_with("video source")),
+        "{warnings:?}"
+    );
+    assert!(
+        warnings.iter().any(|w| w.starts_with("video poster")),
+        "{warnings:?}"
+    );
 }
 
 #[test]
@@ -8798,6 +9171,34 @@ fn wireframe_class_paint_and_raw_color_are_baked_onto_widget() {
     assert!(
         html.contains("fill=\"#ffffff\""),
         "class raw color not baked onto the button label:\n{html}"
+    );
+}
+
+#[test]
+fn wireframe_class_colours_cannot_break_out_of_their_attribute() {
+    // A class colour carrying a `"` is escaped into the SVG attribute, so
+    // it cannot close the attribute and add its own.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wf.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  diagram { width = 200  height = 60\n    wf_button \"P\" { class = [\"evil\"] }\n  }\n}\nclass evil { fill = \"red\\\" onload=\\\"alert(1)\"  stroke = \"blue\\\"><script>x</script>\"  css = \"color:x\\\" onclick=\\\"y;\" }\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Only the SVG matters here: the class also lands verbatim in the
+    // page stylesheet, which is author CSS by design.
+    let svg = &html[html.find("<svg").expect("diagram svg")..];
+    assert!(!svg.contains("onload=\"alert(1)"), "fill broke out:\n{svg}");
+    assert!(
+        !svg.contains("<script>x</script>"),
+        "stroke broke out:\n{svg}"
+    );
+    assert!(!svg.contains("onclick=\"y"), "color broke out:\n{svg}");
+    assert!(
+        html.contains("fill=\"red&quot; onload=&quot;alert(1)\""),
+        "fill not escaped in place:\n{html}"
     );
 }
 
@@ -9748,6 +10149,80 @@ page index { text { span "Hi" {} } }
         html.contains("--wdoc-accent:var(--wdoc-pink);"),
         "accent should be pink:\n{html}"
     );
+}
+
+#[test]
+fn author_values_cannot_close_the_page_style_element() {
+    // Class fields, class CSS and theme palette values all land in the
+    // page <style>. A `</style` in any of them must not end the element,
+    // while ordinary author CSS still arrives intact.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("style.wcl");
+    write_fixture(
+        &src,
+        r##"
+theme evil {
+  palette dark { bg = "#000</STYLE><script>alert(3)</script>" }
+}
+site { default_template = :webpage  theme = :evil }
+class evil {
+  fill = "red</style><script>alert(1)</script>"
+  css  = "color:#123456; content:'</style><!--<script>alert(2)</script>';"
+}
+page index { p "hi" { class = ["evil"] } }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Inside the element the values are inert text; the element must end
+    // only at the renderer's own `</style>`, after all three of them.
+    let end = html
+        .to_ascii_lowercase()
+        .find("</style")
+        .expect("style element closes");
+    for n in 1..=3 {
+        let value = format!("<script>alert({n})");
+        assert!(html[..end].contains(&value), "value {n} missing:\n{html}");
+        assert!(
+            !html[end..].contains(&value),
+            "value {n} escaped the <style> element:\n{html}"
+        );
+    }
+    assert!(!html.contains("<!--<script>"), "{html}");
+    assert!(html.contains("color:#123456;"), "author CSS lost:\n{html}");
+    assert!(html.contains("<\\/style>"), "{html}");
+    assert!(html.contains("\\3C !--"), "{html}");
+}
+
+#[test]
+fn theme_palette_colours_cannot_break_out_of_wireframe_attributes() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wf.wcl");
+    write_fixture(
+        &src,
+        r##"
+theme evil {
+  palette dark { border = "#333\" onload=\"alert(1)"  fg = "#fff\"><script>alert(2)</script>" }
+}
+site { theme = :evil }
+page index {
+  diagram { width = 200  height = 60
+    wf_button "P" {}
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let svg = &html[html.find("<svg").expect("diagram svg")..];
+    assert!(
+        !svg.contains("onload=\"alert(1)"),
+        "border broke out:\n{svg}"
+    );
+    assert!(!svg.contains("<script>alert(2)"), "fg broke out:\n{svg}");
+    assert!(svg.contains("&quot; onload=&quot;alert(1)"), "{svg}");
 }
 
 #[test]
@@ -12109,8 +12584,7 @@ fn diagram_image_with_unreadable_header_warns() {
         "page p {\n  diagram { width = 100  height = 60\n    image \"img.webp\" { }\n  }\n}\n",
     );
     let out = TempDir::new().expect("mkdir out");
-    build_ok(&src, out.path());
-    let warnings = wcl_wdoc::take_render_warnings();
+    let warnings = build_report(&src, out.path()).warnings;
     assert!(
         warnings
             .iter()
@@ -12170,7 +12644,7 @@ import "./lib.wcl"
 
 fn rebuild(main: &Path, out: &Path, changed: &[PathBuf]) -> RebuildOutcome {
     match build_incremental(main, out, None, &BuildOptions::default(), changed) {
-        Ok(o) => o,
+        Ok(report) => report.outcome,
         Err(e) => panic!("incremental build failed: {}", e.render_plain()),
     }
 }
@@ -12328,6 +12802,231 @@ fn incremental_reuses_an_already_present_icon() {
         RebuildOutcome::Targeted { pages } => assert_eq!(pages, vec!["a".to_string()]),
         RebuildOutcome::Full { pages } => panic!("expected targeted, got full ({pages} pages)"),
     }
+}
+
+/// Lay out a book whose navigation comes from the pages themselves — no
+/// `toc`, so the sidebar lists each page under its first heading, in page
+/// order. `sites` is the literal `site` declarations; `pages` maps a file
+/// name to its source. Returns the `main.wcl` path.
+fn write_nav_book(dir: &Path, sites: &str, pages: &[(&str, &str)]) -> PathBuf {
+    let main = dir.join("main.wcl");
+    let imports: String = pages
+        .iter()
+        .map(|(file, _)| format!("import \"./{file}\"\n"))
+        .collect();
+    write_fixture(&main, format!("{sites}\n{imports}"));
+    for (file, src) in pages {
+        std::fs::write(dir.join(file), src).expect("write page file");
+    }
+    main
+}
+
+/// A page source: `name`'s first heading is `title`.
+fn nav_page(name: &str, site: &str, title: &str) -> String {
+    format!("page {name} {{\n  sites = [:{site}]\n  h1 \"{title}\"\n  p \"Body of {name}.\"\n}}\n")
+}
+
+const NAV_SITE: &str = "site docs {\n  default_template = :book\n  title = \"Docs\"\n}\n";
+
+#[test]
+fn incremental_heading_edit_refreshes_other_pages_nav() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let a_src = nav_page("a", "docs", "Page A");
+    let b_src = nav_page("b", "docs", "Page B");
+    let main = write_nav_book(
+        tmp.path(),
+        NAV_SITE,
+        &[("a.wcl", &a_src), ("b.wcl", &b_src)],
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+    let b_html = std::fs::read_to_string(out.path().join("b.html")).expect("read b.html");
+    assert!(b_html.contains("Page A"), "{b_html}");
+
+    // Only a.wcl changes, but its first heading is the title every other
+    // page's sidebar shows for it.
+    let a = tmp.path().join("a.wcl");
+    std::fs::write(&a, nav_page("a", "docs", "Renamed A")).expect("rewrite a.wcl");
+    rebuild(&main, out.path(), &[a]);
+
+    let b_html = std::fs::read_to_string(out.path().join("b.html")).expect("read b.html");
+    assert!(
+        b_html.contains("Renamed A"),
+        "stale nav in b.html: {b_html}"
+    );
+    assert!(!b_html.contains("Page A"), "stale nav in b.html: {b_html}");
+}
+
+#[test]
+fn incremental_body_edit_stays_targeted_with_a_nav_manifest() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let a_src = nav_page("a", "docs", "Page A");
+    let b_src = nav_page("b", "docs", "Page B");
+    let main = write_nav_book(
+        tmp.path(),
+        NAV_SITE,
+        &[("a.wcl", &a_src), ("b.wcl", &b_src)],
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+
+    // Same heading, different prose: nothing another page shows has moved.
+    let a = tmp.path().join("a.wcl");
+    std::fs::write(&a, a_src.replace("Body of a.", "Edited body.")).expect("rewrite a.wcl");
+    match rebuild(&main, out.path(), &[a]) {
+        RebuildOutcome::Targeted { pages } => assert_eq!(pages, vec!["a".to_string()]),
+        RebuildOutcome::Full { pages } => panic!("expected targeted, got full ({pages} pages)"),
+    }
+}
+
+#[test]
+fn incremental_reorder_within_a_file_refreshes_other_pages_nav() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let pair = format!(
+        "{}{}",
+        nav_page("first", "docs", "First"),
+        nav_page("second", "docs", "Second")
+    );
+    let c_src = nav_page("c", "docs", "Page C");
+    let main = write_nav_book(
+        tmp.path(),
+        NAV_SITE,
+        &[("pair.wcl", &pair), ("c.wcl", &c_src)],
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+    let in_order = |html: &str| {
+        let first = html.find("first.html").expect("first in nav");
+        let second = html.find("second.html").expect("second in nav");
+        first < second
+    };
+    let c_html = std::fs::read_to_string(out.path().join("c.html")).expect("read c.html");
+    assert!(in_order(&c_html), "{c_html}");
+
+    // Swap the two pages. The page set is unchanged and pair.wcl holds only
+    // pages, but page c, in another file, lists them in the old order.
+    let swapped = format!(
+        "{}{}",
+        nav_page("second", "docs", "Second"),
+        nav_page("first", "docs", "First")
+    );
+    let pair_path = tmp.path().join("pair.wcl");
+    std::fs::write(&pair_path, swapped).expect("rewrite pair.wcl");
+    rebuild(&main, out.path(), &[pair_path]);
+
+    let c_html = std::fs::read_to_string(out.path().join("c.html")).expect("read c.html");
+    assert!(!in_order(&c_html), "stale nav order in c.html: {c_html}");
+}
+
+#[test]
+fn incremental_page_deletion_refreshes_other_pages_nav() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let pair = format!(
+        "{}{}",
+        nav_page("keep", "docs", "Keep"),
+        nav_page("gone", "docs", "Gone")
+    );
+    let c_src = nav_page("c", "docs", "Page C");
+    let main = write_nav_book(
+        tmp.path(),
+        NAV_SITE,
+        &[("pair.wcl", &pair), ("c.wcl", &c_src)],
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+    let c_html = std::fs::read_to_string(out.path().join("c.html")).expect("read c.html");
+    assert!(c_html.contains("gone.html"), "{c_html}");
+
+    let pair_path = tmp.path().join("pair.wcl");
+    std::fs::write(&pair_path, nav_page("keep", "docs", "Keep")).expect("rewrite pair.wcl");
+    match rebuild(&main, out.path(), &[pair_path]) {
+        RebuildOutcome::Full { .. } => {}
+        RebuildOutcome::Targeted { pages } => panic!("expected full, got targeted: {pages:?}"),
+    }
+    let c_html = std::fs::read_to_string(out.path().join("c.html")).expect("read c.html");
+    assert!(
+        !c_html.contains("gone.html"),
+        "stale nav in c.html: {c_html}"
+    );
+
+    // The deleted page's old output stays on disk (a build never wipes), but
+    // it must not pin every later edit to a full rebuild.
+    let c = tmp.path().join("c.wcl");
+    std::fs::write(&c, c_src.replace("Body of c.", "Edited c.")).expect("rewrite c.wcl");
+    match rebuild(&main, out.path(), &[c]) {
+        RebuildOutcome::Targeted { pages } => assert_eq!(pages, vec!["c".to_string()]),
+        RebuildOutcome::Full { pages } => panic!("expected targeted, got full ({pages} pages)"),
+    }
+}
+
+#[test]
+fn incremental_heading_edit_refreshes_nav_across_multiple_sites() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let sites = "site docs {\n  default_template = :book\n  title = \"Docs\"\n}\n\
+                 site blog {\n  default_template = :book\n  title = \"Blog\"\n}\n";
+    let a_src = nav_page("a", "docs", "Page A");
+    let b_src = nav_page("b", "docs", "Page B");
+    let p_src = nav_page("post", "blog", "Post");
+    let q_src = nav_page("other", "blog", "Other post");
+    let main = write_nav_book(
+        tmp.path(),
+        sites,
+        &[
+            ("a.wcl", &a_src),
+            ("b.wcl", &b_src),
+            ("post.wcl", &p_src),
+            ("other.wcl", &q_src),
+        ],
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+
+    // A blog-only prose edit stays targeted: neither site's nav moved.
+    let post = tmp.path().join("post.wcl");
+    std::fs::write(&post, p_src.replace("Body of post.", "Edited.")).expect("rewrite post");
+    match rebuild(&main, out.path(), std::slice::from_ref(&post)) {
+        RebuildOutcome::Targeted { pages } => assert_eq!(pages, vec!["post".to_string()]),
+        RebuildOutcome::Full { pages } => panic!("expected targeted, got full ({pages} pages)"),
+    }
+
+    // A docs heading edit reaches the other docs page's sidebar.
+    let a = tmp.path().join("a.wcl");
+    std::fs::write(&a, nav_page("a", "docs", "Renamed A")).expect("rewrite a.wcl");
+    rebuild(&main, out.path(), &[a]);
+    let b_html =
+        std::fs::read_to_string(out.path().join("docs").join("b.html")).expect("read b.html");
+    assert!(
+        b_html.contains("Renamed A"),
+        "stale nav in docs/b.html: {b_html}"
+    );
+}
+
+#[test]
+fn incremental_collection_member_heading_edit_rerenders_the_index() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let sites = r#"
+template digest {
+  slot content: content*
+  render = fn(c: TemplateCtx) -> list<Html>
+    map(c.members, fn(member: PageHandle) -> Html
+      ela("article", [], [["data-member", member.name]], slot(member, :content)))
+}
+site digest { default_template = :digest }
+"#;
+    let a_src = nav_page("a", "digest", "Story A");
+    let b_src = nav_page("b", "digest", "Story B");
+    let main = write_nav_book(tmp.path(), sites, &[("a.wcl", &a_src), ("b.wcl", &b_src)]);
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&main, out.path());
+
+    let a = tmp.path().join("a.wcl");
+    std::fs::write(&a, nav_page("a", "digest", "Retitled A")).expect("rewrite a.wcl");
+    match rebuild(&main, out.path(), &[a]) {
+        RebuildOutcome::Full { .. } => {}
+        RebuildOutcome::Targeted { pages } => panic!("expected full, got targeted: {pages:?}"),
+    }
+    let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index");
+    assert!(index.contains("Retitled A"), "{index}");
 }
 
 /// `markdown_source` renders its body to a highlighted Markdown code block,
@@ -12891,10 +13590,9 @@ const BOOK_FONT_FACE_COUNT: usize = 13;
 // its rules select, both directions, at warning level.
 
 /// Build one named site, failing the test on any build error.
-fn build_one_site(file: &Path, out: &Path, site: &str) {
-    if build(file, out, Some(site)).is_err() {
-        panic!("building site {site} failed");
-    }
+fn build_one_site(file: &Path, out: &Path, site: &str) -> BuildReport {
+    build_with_options(file, out, Some(site), &BuildOptions::default())
+        .unwrap_or_else(|e| panic!("building site {site} failed: {}", e.render_plain()))
 }
 
 /// Build every site of `src` and return the class-lint warnings it left.
@@ -12903,9 +13601,8 @@ fn class_lint_warnings(src: &str) -> Vec<String> {
     let file = tmp.path().join("lint.wcl");
     write_fixture(&file, src);
     let out = TempDir::new().expect("mkdir out");
-    let _ = wcl_wdoc::take_render_warnings();
-    build_ok(&file, out.path());
-    wcl_wdoc::take_render_warnings()
+    build_report(&file, out.path())
+        .warnings
         .into_iter()
         .filter(|w| w.starts_with("class \""))
         .collect()
@@ -12985,9 +13682,8 @@ page guide {
     let file = tmp.path().join("one-site.wcl");
     write_fixture(&file, src);
     let out = TempDir::new().expect("mkdir out");
-    let _ = wcl_wdoc::take_render_warnings();
-    build_one_site(&file, out.path(), "home");
-    let warnings: Vec<String> = wcl_wdoc::take_render_warnings()
+    let warnings: Vec<String> = build_one_site(&file, out.path(), "home")
+        .warnings
         .into_iter()
         .filter(|w| w.starts_with("class \""))
         .collect();
@@ -13700,7 +14396,6 @@ site book { default_template = :book  theme = :tinted }
 /// build still succeeds — nothing is malformed — so it says so out loud.
 #[test]
 fn theme_with_no_palette_warns_rather_than_reporting_silent_success() {
-    let _ = wcl_wdoc::take_render_warnings();
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("bare.wcl");
     write_fixture(
@@ -13716,8 +14411,7 @@ site book { default_template = :book  theme = :bare }
 "##,
     );
     let out = TempDir::new().expect("mkdir out");
-    build_ok(&src, out.path());
-    let warnings = wcl_wdoc::take_render_warnings();
+    let warnings = build_report(&src, out.path()).warnings;
     for mode in ["dark", "light"] {
         assert!(
             warnings
@@ -13732,7 +14426,6 @@ site book { default_template = :book  theme = :bare }
 /// built-ins, which every default document uses.
 #[test]
 fn built_in_theme_emits_no_palette_warning() {
-    let _ = wcl_wdoc::take_render_warnings();
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("plain.wcl");
     write_fixture(
@@ -13743,8 +14436,7 @@ site book { default_template = :book  theme = :nord }
 "##,
     );
     let out = TempDir::new().expect("mkdir out");
-    build_ok(&src, out.path());
-    let warnings = wcl_wdoc::take_render_warnings();
+    let warnings = build_report(&src, out.path()).warnings;
     assert!(
         !warnings.iter().any(|w| w.contains("palette")),
         "built-in theme warned: {warnings:?}"

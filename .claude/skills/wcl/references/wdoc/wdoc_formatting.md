@@ -235,6 +235,14 @@ themselves, so the stacked reading says the same thing as the side-by-side one.
 - `class` is a **list**: `class = ["lead"]`, not `class = "lead"`.
 - A link's URL is a bare **page name**, not a path or a filename. `[docs](docs.html)` is wrong;
   `[docs](docs)` is right. A link to an unknown page fails the build.
+- A link target's scheme is allowlisted: `http`, `https`, `mailto`, `tel`, plus relative paths
+  and `#fragments`. Any other scheme (`javascript:`, `data:`, `file:`, `ftp:`) renders the text
+  as an `<a>` with no `href`, prints `warning: link '…' uses the disallowed URL scheme …`, and
+  exits 0. Case, spaces, tabs and `&#…;` references are seen through. Diagram shape `link`s
+  follow the same rule. A target shaped `word:word` (`javascript:void`) is a `site:page` link
+  instead and fails the build as `link to unknown site`.
+- An `inline_pattern` whose `pattern` does not compile fails the build (exit 3), naming the
+  pattern. It is never skipped silently.
 - A prose string with a literal `$`, `_`, `` ` `` or `**` may match a pattern. Check the
   rendered page.
 - In a WCL string a `$` is only special in an interpolating string. A regex that must match a

@@ -801,6 +801,25 @@ fn union_dispatch_table_rows_to_variants() {
 }
 
 #[test]
+fn union_dispatch_example_passes_the_schema_check() {
+    // Regression: the fixture reported four violations — three missing
+    // @document schemas, and `config` inside `mixed "demo"` dispatched
+    // to `Shape` although `@child("config")` claims it.
+    let path = examples_dir().join("union_dispatch.wcl");
+    let doc = Document::from_file(&path).expect("union_dispatch fixture parses");
+    assert!(doc.schema_errors().is_empty(), "{:#?}", doc.schema_errors());
+    let shapes = doc
+        .get("mixed.shapes")
+        .expect("mixed.shapes")
+        .value()
+        .unwrap();
+    let Value::List(items) = shapes else {
+        panic!("mixed.shapes should be a list");
+    };
+    assert_eq!(items.len(), 1, "only `circle` is a shape: {items:?}");
+}
+
+#[test]
 fn union_dispatch_no_match_surfaces_schema_error() {
     let src = r#"
         union Shape { Circle { radius: f64 } Square { side: f64 } }

@@ -2,6 +2,7 @@
 name = "wcl_lsp"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "WCL language server (LSP) implementation"
@@ -12,8 +13,8 @@ path = "src/lib.rs"
 [dependencies]
 wcl_lang = { workspace = true }
 wcl_wdoc = { workspace = true }
-tower-lsp = { workspace = true }
-tokio = { workspace = true }
+tower-lsp-server = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
 dashmap = { workspace = true }
 miette = { workspace = true }
 ropey = { workspace = true }

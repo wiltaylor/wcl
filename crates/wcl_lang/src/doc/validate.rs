@@ -99,7 +99,7 @@ pub(crate) fn open_error(
 ) -> ParseError {
     ParseError::syntax(
         message,
-        NamedSource::new(file, source.to_string()),
+        NamedSource::new(file, std::sync::Arc::from(source)),
         span_to_miette(span),
         label.to_string(),
     )

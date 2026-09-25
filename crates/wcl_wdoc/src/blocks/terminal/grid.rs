@@ -70,11 +70,11 @@ pub(super) const MAX_ROWS: usize = 200;
 /// Clamp a requested grid size to `1..=MAX_COLS` × `1..=MAX_ROWS`,
 /// recording a render warning when either side was cut. `what` names the
 /// source of the size for the message.
-pub(super) fn clamp_dims(cols: i64, rows: i64, what: &str) -> (usize, usize) {
+pub(super) fn clamp_dims(cols: i64, rows: i64, what: &str, warnings: &Warnings) -> (usize, usize) {
     let c = cols.clamp(1, MAX_COLS as i64) as usize;
     let r = rows.clamp(1, MAX_ROWS as i64) as usize;
     if cols > MAX_COLS as i64 || rows > MAX_ROWS as i64 {
-        crate::render::record_render_warning(format!(
+        warnings.record(format!(
             "terminal {what}: {cols}x{rows} exceeds the {MAX_COLS}x{MAX_ROWS} maximum — \
              clamped to {c}x{r}"
         ));

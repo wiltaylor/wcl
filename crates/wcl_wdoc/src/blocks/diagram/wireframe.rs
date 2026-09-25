@@ -33,8 +33,8 @@ use std::collections::HashMap;
 use wcl_lang::{Block, Document};
 
 use crate::render::{
-    ThemeRoles, escape_html, expand_container_children, field_bool, field_f64, field_i64, field_id,
-    field_symbol, field_utf8, field_utf8_list, label_string, resolve_roles,
+    ThemeRoles, Warnings, escape_html, expand_container_children, field_bool, field_f64, field_i64,
+    field_id, field_symbol, field_utf8, field_utf8_list, label_string, resolve_roles,
 };
 use crate::svg::{RenderCtx, resolve_rect_box};
 
@@ -158,7 +158,7 @@ pub(crate) fn render_wireframe_shape(
     let (x, y, _, _) = resolve_rect_box(block, parent_w, parent_h);
     let w = build(Some(ctx.doc), block);
     let mut body = String::new();
-    emit(&w, 0.0, 0.0, &roles, &mut body);
+    emit(&w, 0.0, 0.0, &roles, ctx.patterns.warnings(), &mut body);
     format!("<g transform=\"translate({x:.2} {y:.2})\">{body}</g>")
 }
 
@@ -879,7 +879,7 @@ fn grid_size(items: &[Widget], cols: usize) -> (f64, f64) {
 /// Emit a widget's SVG at absolute top-left `(x, y)`. Neutral colours come
 /// from the resolved theme `roles`; a widget's own `class` (`theme`) overrides
 /// box fill / text colour / border.
-fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
+fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, warnings: &Warnings, out: &mut String) {
     if w.disabled {
         out.push_str("<g opacity=\"0.45\">");
     }
@@ -1085,7 +1085,7 @@ fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
                 emit_window_controls(out, x + w.w, y, roles);
             }
             // Body column.
-            emit_column(body, x + PAD, y + TITLEBAR_H + PAD, roles, out);
+            emit_column(body, x + PAD, y + TITLEBAR_H + PAD, roles, warnings, out);
         }
         Kind::Browser { url, body, theme } => {
             let bg = theme.bg.as_deref().unwrap_or(&roles.bg_alt);
@@ -1133,7 +1133,14 @@ fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
                 url,
             );
             // Content area.
-            emit_column(body, x + PAD, y + BROWSER_TOOLBAR_H + PAD, roles, out);
+            emit_column(
+                body,
+                x + PAD,
+                y + BROWSER_TOOLBAR_H + PAD,
+                roles,
+                warnings,
+                out,
+            );
         }
         Kind::Device {
             tablet,
@@ -1234,7 +1241,7 @@ fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
                 "none",
             );
             // Screen content.
-            emit_column(body, sx + PAD, sy + STATUS_H + PAD, roles, out);
+            emit_column(body, sx + PAD, sy + STATUS_H + PAD, roles, warnings, out);
         }
         Kind::Panel { title, body, theme } => {
             rect(
@@ -1262,27 +1269,36 @@ fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
                 );
                 cy += LINE_H + 4.0;
             }
-            emit_column(body, x + PANEL_PAD, cy, roles, out);
+            emit_column(body, x + PANEL_PAD, cy, roles, warnings, out);
         }
         Kind::Row(items) => {
             let mut cx = x;
             for c in items {
-                emit(c, cx, y + (w.h - c.h) / 2.0, roles, out);
+                emit(c, cx, y + (w.h - c.h) / 2.0, roles, warnings, out);
                 cx += c.w + ROW_GAP;
             }
         }
         Kind::Column(items) => {
-            emit_column(items, x, y, roles, out);
+            emit_column(items, x, y, roles, warnings, out);
         }
         Kind::Grid { cols, items } => {
             let (col_w, rows) = grid_geometry(items, *cols);
             for (r, chunk) in items.chunks(*cols).enumerate() {
                 for (i, c) in chunk.iter().enumerate() {
-                    emit(c, x + i as f64 * (col_w + GAP), y + rows[r].0, roles, out);
+                    emit(
+                        c,
+                        x + i as f64 * (col_w + GAP),
+                        y + rows[r].0,
+                        roles,
+                        warnings,
+                        out,
+                    );
                 }
             }
         }
-        Kind::NodeGraph { nodes, links } => emit_node_graph(nodes, links, x, y, w, roles, out),
+        Kind::NodeGraph { nodes, links } => {
+            emit_node_graph(nodes, links, x, y, w, roles, warnings, out)
+        }
     }
     if w.disabled {
         out.push_str("</g>");
@@ -1291,6 +1307,7 @@ fn emit(w: &Widget, x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
 
 /// Emit a node graph: route every link under the nodes (so the wires sit
 /// behind the boxes), then draw the node boxes with their ports on top.
+#[allow(clippy::too_many_arguments)] // the shared `emit` parameters plus this widget's own nodes and links
 fn emit_node_graph(
     nodes: &[GNode],
     links: &[GLink],
@@ -1298,6 +1315,7 @@ fn emit_node_graph(
     oy: f64,
     w: &Widget,
     roles: &ThemeRoles,
+    warnings: &Warnings,
     out: &mut String,
 ) {
     // Node boxes as routing obstacles in absolute (emitted) coordinates.
@@ -1331,6 +1349,7 @@ fn emit_node_graph(
             &obs,
             &[],
             viewport,
+            warnings,
         )
         .unwrap_or_else(|| vec![src, dst]);
         polyline(out, &pts, &roles.fg_muted, 1.5);
@@ -1423,10 +1442,17 @@ fn emit_node(out: &mut String, ox: f64, oy: f64, n: &GNode, roles: &ThemeRoles) 
 }
 
 /// Emit a vertical stack of widgets (window/panel body, `wf_column`).
-fn emit_column(items: &[Widget], x: f64, y: f64, roles: &ThemeRoles, out: &mut String) {
+fn emit_column(
+    items: &[Widget],
+    x: f64,
+    y: f64,
+    roles: &ThemeRoles,
+    warnings: &Warnings,
+    out: &mut String,
+) {
     let mut cy = y;
     for c in items {
-        emit(c, x, cy, roles, out);
+        emit(c, x, cy, roles, warnings, out);
         cy += c.h + GAP;
     }
 }
@@ -1538,12 +1564,16 @@ fn baseline(top: f64, h: f64) -> f64 {
 
 /// A widget's baked theme from its `class` list (first class that sets each
 /// field wins). Empty when no class supplies an override.
+///
+/// The colours are author text baked straight into SVG attributes, so each
+/// is escaped here: a `"` in a class colour must not close the attribute.
 fn theme_of(doc: &Document, block: &Block<'_>) -> Theme {
     let classes = field_utf8_list(block, "class");
+    let attr = |v: Option<String>| v.map(|v| escape_html(&v));
     Theme {
-        bg: class_field(doc, &classes, "fill"),
-        fg: class_css_property(doc, &classes, "color"),
-        border: class_field(doc, &classes, "stroke"),
+        bg: attr(class_field(doc, &classes, "fill")),
+        fg: attr(class_css_property(doc, &classes, "color")),
+        border: attr(class_field(doc, &classes, "stroke")),
     }
 }
 

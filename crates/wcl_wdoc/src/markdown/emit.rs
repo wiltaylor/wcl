@@ -158,8 +158,12 @@ impl Emitter<'_> {
                 out.push(image_ref(&self.svg_alt(block, "diagram"), &rel));
             }
             "terminal" => {
-                let svg =
-                    crate::blocks::terminal::render_terminal_pdf(self.doc, block, self.base_dir);
+                let svg = crate::blocks::terminal::render_terminal_pdf(
+                    self.doc,
+                    block,
+                    self.base_dir,
+                    self.patterns.warnings(),
+                );
                 let rel = self.write_svg("terminal", &svg)?;
                 out.push(image_ref(&self.svg_alt(block, "terminal"), &rel));
             }
@@ -308,7 +312,7 @@ impl Emitter<'_> {
             // another custom variant rendered in the book and nowhere else.
             other => {
                 for v in crate::render::expand_custom_variant(self.doc, map, other) {
-                    match crate::render::recursed_content(&v) {
+                    match crate::render::recursed_content(&v, self.patterns.warnings()) {
                         // A nested content node can't abort the page: its
                         // own I/O failure degrades to nothing rendered.
                         Some(node) => {

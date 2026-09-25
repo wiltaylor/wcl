@@ -9,6 +9,7 @@
 use super::decl::synth_child_from_value;
 use super::decorator::iter_decorators;
 use super::*;
+use crate::doc::eval_stack::{self, FrameKey};
 
 /// Public view of an `lhs -> rhs [:sym]` connection statement.
 #[derive(Debug, Clone, Copy)]
@@ -134,7 +135,7 @@ impl<'a> Block<'a> {
     /// block against the correct file's snippet (a cross-file span won't
     /// line up with the root source's text). Falls back to the root
     /// source for synthesised blocks not backed by on-disk AST.
-    pub fn named_source(&self) -> miette::NamedSource<String> {
+    pub fn named_source(&self) -> miette::NamedSource<std::sync::Arc<str>> {
         self.doc.named_source_for_block(self.ast)
     }
 
@@ -413,7 +414,26 @@ impl<'a> Block<'a> {
     /// successfully-loaded import (transitively). The block's own
     /// slice is always element 0.
     pub(in crate::doc) fn realize_and_sources(&self) -> Vec<BlockSlice<'a>> {
-        let (_, items_cells) = self.block_inner();
+        let ItemCellKind::Block {
+            items: items_cells,
+            has_block_imports,
+            name_index,
+            ..
+        } = &self.cells.kind
+        else {
+            unreachable!("Block view wraps a Block cell")
+        };
+        let own = BlockSlice {
+            items: &self.ast.items,
+            cells: items_cells,
+            file_ns: self.file_ns,
+            index: name_index,
+        };
+        // Without an in-block import the body is its own only source;
+        // skip rescanning every cell for one.
+        if !has_block_imports {
+            return vec![own];
+        }
         // Force any unloaded Import cells.
         for cell in items_cells {
             if let ItemCellKind::Import {
@@ -435,11 +455,7 @@ impl<'a> Block<'a> {
                 });
             }
         }
-        let mut out = vec![BlockSlice {
-            items: &self.ast.items,
-            cells: items_cells,
-            file_ns: self.file_ns,
-        }];
+        let mut out = vec![own];
         push_loaded_imports(items_cells, &mut out);
         out
     }
@@ -462,14 +478,7 @@ impl<'a> Block<'a> {
     pub fn field(&self, name: &str) -> Option<Field<'a>> {
         let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
-            if let Some(f) = find_field(
-                src.items,
-                src.cells,
-                name,
-                self.doc,
-                src.file_ns,
-                &child_scope,
-            ) {
+            if let Some(f) = find_field(&src, name, self.doc, &child_scope) {
                 return Some(f);
             }
         }
@@ -480,14 +489,7 @@ impl<'a> Block<'a> {
     pub fn block(&self, kind: &str) -> Option<Block<'a>> {
         let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
-            if let Some(b) = find_block(
-                src.items,
-                src.cells,
-                kind,
-                self.doc,
-                src.file_ns,
-                &child_scope,
-            ) {
+            if let Some(b) = find_block(&src, kind, self.doc, &child_scope) {
                 return Some(b);
             }
         }
@@ -501,7 +503,7 @@ impl<'a> Block<'a> {
     pub(crate) fn find_let(&self, name: &str) -> Option<LetView<'a>> {
         let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
-            if let Some(l) = find_let(src.items, src.cells, name, self.doc, &child_scope) {
+            if let Some(l) = find_let(&src, name, self.doc, &child_scope) {
                 return Some(l);
             }
         }
@@ -621,14 +623,29 @@ impl<'a> Block<'a> {
             }
             let scope = self.child_scope();
             // Connection statements live in the block's own items and in
-            // any in-block import it splices in; project across both.
-            let mut values = Vec::new();
-            for src in self.realize_and_sources() {
-                values.extend(self.doc.project_connections(src.items, conn_schema, &scope));
-            }
-            let projected = Value::List(std::sync::Arc::new(values));
-            self.typed_proj_memo_insert(name, projected.clone());
-            return Some(DataRef::from_variant_value(projected));
+            // any in-block import it splices in; project across both. A
+            // label that reads this projection back while it's computing
+            // is a cycle, reported (and not memoised) like the root's.
+            let projected = eval_stack::enter(FrameKey::named(self.cells, name))
+                .map_err(|refused| refused.into_error(name, f.span()))
+                .and_then(|_frame| {
+                    let mut values = Vec::new();
+                    for src in self.realize_and_sources() {
+                        values.extend(self.doc.project_connections(
+                            src.items,
+                            conn_schema,
+                            &scope,
+                        )?);
+                    }
+                    Ok(Value::List(std::sync::Arc::new(values)))
+                });
+            return Some(match projected {
+                Ok(projected) => {
+                    self.typed_proj_memo_insert(name, projected.clone());
+                    DataRef::from_variant_value(projected)
+                }
+                Err(e) => DataRef::from_error(e),
+            });
         }
 
         // Union-typed @children: dispatch every nested block / table
@@ -828,9 +845,22 @@ impl<'a> Block<'a> {
         DataRef::from_variant_value_list(out)
     }
 
+    /// The nested-block kinds a string-kind slot of this block's schema
+    /// (`@child("config")`, `@children("svc")`) claims. A block of one of
+    /// these kinds belongs to that slot, so union dispatch never sees it:
+    /// in a schema with both `@child("config") cfg: ConfigSpec` and
+    /// `@children(Shape) shapes: list<Shape>`, a `config { … }` block is
+    /// the config, not a shape that failed to match.
+    fn kind_slot_claims(&self) -> Vec<String> {
+        self.schema()
+            .map(|schema| schema.allowed_child_kinds())
+            .unwrap_or_default()
+    }
+
     /// Iterate the nested-block + synth-row sources for a union-typed
     /// `@children(SomeUnion)` field. Each entry comes back with a
-    /// tag identifying which dispatcher should consume it.
+    /// tag identifying which dispatcher should consume it. Nested blocks
+    /// a string-kind slot claims are left out (see `kind_slot_claims`).
     pub(crate) fn union_children_blocks(
         &self,
         field_name: &str,
@@ -843,8 +873,10 @@ impl<'a> Block<'a> {
         };
         let mut out: Vec<(UnionChildKind, Block<'a>)> = Vec::new();
         let child_scope = self.child_scope();
+        let claimed = self.kind_slot_claims();
         for (item, cells) in self.ast.items.iter().zip(items_cells.iter()) {
             match item {
+                ast::Item::Block(b) if claimed.contains(&b.kind) => {}
                 ast::Item::Block(b) => {
                     out.push((
                         UnionChildKind::Nested,
@@ -884,7 +916,9 @@ impl<'a> Block<'a> {
         // each matches by shape.
         for src in self.imported_slices() {
             for (item, cells) in src.items.iter().zip(src.cells.iter()) {
-                if let ast::Item::Block(b) = item {
+                if let ast::Item::Block(b) = item
+                    && !claimed.contains(&b.kind)
+                {
                     out.push((
                         UnionChildKind::Nested,
                         Block {
@@ -912,8 +946,11 @@ impl<'a> Block<'a> {
             _ => unreachable!("Block view wraps a Block cell"),
         };
         let child_scope = self.child_scope();
+        let claimed = self.kind_slot_claims();
         for (item, cells) in self.ast.items.iter().zip(items_cells.iter()) {
-            if let ast::Item::Block(b) = item {
+            if let ast::Item::Block(b) = item
+                && !claimed.contains(&b.kind)
+            {
                 let blk = Block {
                     ast: b,
                     cells,
@@ -931,7 +968,9 @@ impl<'a> Block<'a> {
         // that matches a variant wins.
         for src in self.imported_slices() {
             for (item, cells) in src.items.iter().zip(src.cells.iter()) {
-                if let ast::Item::Block(b) = item {
+                if let ast::Item::Block(b) = item
+                    && !claimed.contains(&b.kind)
+                {
                     let blk = Block {
                         ast: b,
                         cells,

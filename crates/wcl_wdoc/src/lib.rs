@@ -51,8 +51,8 @@ mod svg;
 mod visibility;
 
 pub use build::{
-    BuildError, BuildOptions, RebuildOutcome, build, build_incremental, build_with_options,
-    schema_registry, take_render_warnings, wdoc_environment,
+    BuildError, BuildOptions, BuildReport, RebuildOutcome, RebuildReport, build, build_incremental,
+    build_with_options, schema_registry, wdoc_environment,
 };
 pub use markdown::markdown;
 pub use pdf::{PageSize, PdfError, pdf};

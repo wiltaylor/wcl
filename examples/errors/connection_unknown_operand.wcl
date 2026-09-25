@@ -20,3 +20,5 @@ type Service {
 service "web" { port = 8080u32 }
 
 web -> mystery
+
+// expect-exit: 2

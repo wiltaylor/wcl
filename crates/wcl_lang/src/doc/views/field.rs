@@ -8,6 +8,7 @@
 use super::decl::resolve_child_kind_arg;
 use super::decorator::iter_decorators;
 use super::*;
+use crate::doc::eval_stack::{self, FrameKey};
 
 #[derive(Clone, Copy)]
 /// One field of a [`TypeDecl`], [`InterfaceDecl`] or record variant,
@@ -87,7 +88,7 @@ impl<'a> TypeField<'a> {
     /// If this field carries an `@child("kind")` decorator, returns the
     /// nested block kind it binds. Returns `None` when the decorator
     /// is absent OR when its positional arg names a union type rather
-    /// than a string kind (use [`child_kind_or_union`] for the union
+    /// than a string kind (use [`child_kind_or_union`](Self::child_kind_or_union) for the union
     /// case).
     pub fn child_block_kind(&self) -> Option<String> {
         match self.child_kind_or_union()? {
@@ -98,7 +99,7 @@ impl<'a> TypeField<'a> {
 
     /// If this field carries an `@children("kind", min?, max?)`
     /// decorator, returns the nested block kind it binds. Returns
-    /// `None` for the union form — use [`children_kind_or_union`].
+    /// `None` for the union form — use [`children_kind_or_union`](Self::children_kind_or_union).
     pub fn children_block_kind(&self) -> Option<String> {
         match self.children_kind_or_union()? {
             ChildKind::Kind(s) => Some(s),
@@ -160,7 +161,7 @@ impl<'a> TypeField<'a> {
         }
     }
 
-    /// Like [`children_block_kind`] but borrows directly from the AST
+    /// Like [`children_block_kind`](Self::children_block_kind) but borrows directly from the AST
     /// — useful when callers need a `&'a str` (e.g. to plug into a
     /// `Block::kind_override`). `None` if the decorator isn't present
     /// or the positional arg isn't a string literal.
@@ -273,12 +274,11 @@ impl<'a> Field<'a> {
         c
     }
 
-    /// `true` while this field's RHS is being evaluated higher up the
-    /// (single-threaded) evaluation stack — see
-    /// [`LetView::mid_evaluation`].
+    /// `true` while this field's RHS is being evaluated higher up this
+    /// thread's evaluation stack — see [`LetView::mid_evaluation`].
     pub(in crate::doc) fn mid_evaluation(&self) -> bool {
         let cell = self.field_cell();
-        cell.value.get().is_none() && cell.evaluating.load(Ordering::Acquire)
+        cell.value.get().is_none() && eval_stack::is_active(FrameKey::cell(cell))
     }
 
     /// Decorators attached to this item, in source order.
@@ -359,17 +359,24 @@ impl<'a> Field<'a> {
                 .expect("just-set membership error")
                 .as_ref();
         }
-        if cell.evaluating.swap(true, Ordering::Acquire) {
-            let _ = cell.value.set(Err(EvalError::Cycle {
-                field: self.ast.name.clone(),
-                span: span_to_miette(self.ast.span),
-            }));
-            return cell
-                .value
-                .get()
-                .expect("cycle cell was just initialised")
-                .as_ref();
-        }
+        // A force already on this thread's stack is a cycle; one past
+        // the depth cap is refused. Either way the refusal is cached, as
+        // any other evaluation error is. Another thread forcing the same
+        // cell concurrently isn't on this stack, so it computes the
+        // value independently rather than reading as a cycle.
+        let _frame = match eval_stack::enter(FrameKey::cell(cell)) {
+            Ok(frame) => frame,
+            Err(refused) => {
+                let _ = cell
+                    .value
+                    .set(Err(refused.into_error(&self.ast.name, self.ast.span)));
+                return cell
+                    .value
+                    .get()
+                    .expect("refused cell was just initialised")
+                    .as_ref();
+            }
+        };
         // For `&T`-typed fields, evaluate the RHS as a path producing
         // a `DataRef`. If the target is a leaf `Field`, auto-deref to
         // its value. Otherwise (type / union / variant / block / …),
@@ -439,7 +446,6 @@ impl<'a> Field<'a> {
             }
             other => Ok(other),
         });
-        cell.evaluating.store(false, Ordering::Release);
         cell.value.get_or_init(|| result).as_ref()
     }
 
@@ -469,7 +475,6 @@ impl<'a> Field<'a> {
     /// applicable schema (parent block, or the document if top-level).
     /// `None` means the membership check passes.
     fn schema_membership_error(&self) -> Option<EvalError> {
-        use crate::diagnostics::SchemaViolationKind as Kind;
         match self.scope.frames().last().cloned() {
             Some(frame) => {
                 // Whole-block opt-out shadows individual fields too.
@@ -490,13 +495,9 @@ impl<'a> Field<'a> {
                     // per-instance annotation.
                     Some(schema) if schema.is_schemaless() => None,
                     Some(schema) if schema.field(self.name()).is_some() => None,
-                    Some(schema) => Some(EvalError::schema_violation(
-                        Kind::UnknownField,
-                        format!(
-                            "field '{}' is not declared by schema '{}'",
-                            self.name(),
-                            schema.name()
-                        ),
+                    Some(schema) => Some(crate::doc::schema_check::unknown_field_error(
+                        self.name(),
+                        schema.name(),
                         self.ast.span,
                     )),
                     // Inside an un-schema'd block — the enclosing
@@ -512,25 +513,11 @@ impl<'a> Field<'a> {
                 // library schemas pulled in by imports).
                 let field_ns = self.doc.find_field_source_ns(self.ast);
                 let schemas = self.doc.doc_schemas_for_ns(field_ns);
-                if schemas.is_empty() {
-                    Some(EvalError::schema_violation(
-                        Kind::NoDocumentSchema,
-                        format!("top-level field '{}' has no @document schema", self.name()),
-                        self.ast.span,
-                    ))
-                } else if schemas.declares_field(self.name()) {
-                    None
-                } else {
-                    Some(EvalError::schema_violation(
-                        Kind::UnknownField,
-                        format!(
-                            "field '{}' is not declared by @document schema '{}'",
-                            self.name(),
-                            schemas.names()
-                        ),
-                        self.ast.span,
-                    ))
-                }
+                crate::doc::schema_check::root_field_membership_error(
+                    self.name(),
+                    &schemas,
+                    self.ast.span,
+                )
             }
         }
     }
@@ -636,36 +623,34 @@ pub(crate) struct LetView<'a> {
 }
 
 impl<'a> LetView<'a> {
-    /// `true` while this let's RHS is being evaluated higher up the
-    /// (single-threaded) evaluation stack. Used by `scope_lookup` to
-    /// give `a = a` outward-shadowing semantics: a mid-evaluation match
-    /// is skipped so the name resolves to an outer binding instead of
-    /// the binding being defined.
+    /// `true` while this let's RHS is being evaluated higher up this
+    /// thread's evaluation stack. Used by `scope_lookup` to give `a = a`
+    /// outward-shadowing semantics: a mid-evaluation match is skipped so
+    /// the name resolves to an outer binding instead of the binding
+    /// being defined. Another thread's in-flight evaluation of the same
+    /// let doesn't count.
     pub(crate) fn mid_evaluation(&self) -> bool {
-        self.cell.value.get().is_none() && self.cell.evaluating.load(Ordering::Acquire)
+        self.cell.value.get().is_none() && eval_stack::is_active(FrameKey::cell(self.cell))
     }
 
     /// Evaluate (once) and return the bound value. Mirrors
-    /// [`Field::value`]'s cycle-detection: a re-entrant evaluation
-    /// caches and returns an `EvalError::Cycle`.
+    /// [`Field::value`]'s cycle and depth checks: a re-entrant
+    /// evaluation caches and returns an `EvalError::Cycle`.
     pub(crate) fn value(&self) -> Result<Value, EvalError> {
         let cell = self.cell;
         if let Some(cached) = cell.value.get() {
             return cached.clone();
         }
-        if cell.evaluating.swap(true, Ordering::Acquire) {
-            let _ = cell.value.set(Err(EvalError::Cycle {
-                field: self.ast.name.clone(),
-                span: span_to_miette(self.ast.span),
-            }));
-            return cell
-                .value
-                .get()
-                .expect("cycle cell was just initialised")
-                .clone();
-        }
+        let _frame = match eval_stack::enter(FrameKey::cell(cell)) {
+            Ok(frame) => frame,
+            Err(refused) => {
+                return cell
+                    .value
+                    .get_or_init(|| Err(refused.into_error(&self.ast.name, self.ast.span)))
+                    .clone();
+            }
+        };
         let result = self.doc.eval_in_scope(&self.ast.value, &self.scope);
-        cell.evaluating.store(false, Ordering::Release);
         cell.value.get_or_init(|| result).clone()
     }
 }

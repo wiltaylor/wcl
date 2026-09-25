@@ -15,6 +15,7 @@
 
 use wcl_lang::{DeclName, Document, Span, SymbolKind, SymbolRecord, ast, parse_for_edit};
 
+use crate::ctx::Ctx;
 use crate::scan::is_ident_byte;
 use crate::walk;
 
@@ -241,12 +242,13 @@ fn dotted_path_at(source: &str, span: Span) -> (String, Span) {
 /// [`Document`] (which several callers still need for follow-up
 /// lookups). Shared by go-to-definition, find-references, and hover.
 pub(crate) fn locate_at(
+    ctx: &Ctx,
     source: &str,
     uri: &str,
     offset: usize,
     root_doc: Option<&Document>,
 ) -> Option<(LocatedSymbol, Span, Option<Document>)> {
-    let local_doc = Document::open(source, uri).ok();
+    let local_doc = ctx.open(source, uri).ok();
     // `parse_for_edit` is purely syntactic, so the AST is available even
     // when neither doc type-checks.
     let ast = parse_for_edit(source, uri).ok()?;

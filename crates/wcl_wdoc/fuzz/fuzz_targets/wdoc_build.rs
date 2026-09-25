@@ -34,5 +34,4 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
     let _ = wcl_wdoc::build(&src, &dir.join("out"), None);
-    let _ = wcl_wdoc::take_render_warnings();
 });

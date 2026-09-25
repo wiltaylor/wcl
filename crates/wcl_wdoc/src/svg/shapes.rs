@@ -170,7 +170,8 @@ pub(crate) fn collect_shape_positions(
         "image" => {
             // Mirror image::render_svg's geometry (declared or natural
             // size × scale, anchored) so edges + the viewBox fit see it.
-            let (x, y, w, h) = image::image_bbox(block, cctx.images, parent_w, parent_h);
+            let (x, y, w, h) =
+                image::image_bbox(block, cctx.images, cctx.warnings, parent_w, parent_h);
             record(block, (tx + x, ty + y, w, h), out);
         }
         "dopesheet" => {
@@ -435,7 +436,15 @@ pub(crate) fn render_shape(
         }
         // An `image` embeds an external raster as an SVG `<image>`; the
         // asset copy + path rewrite is special-cased like `tilemap`.
-        "image" => return Some(image::render_svg(block, ctx.images, parent_w, parent_h)),
+        "image" => {
+            return Some(image::render_svg(
+                block,
+                ctx.images,
+                ctx.patterns.warnings(),
+                parent_w,
+                parent_h,
+            ));
+        }
         // A `map` is a zoomable image + pins + popup cards — special-cased
         // like `tilemap` (its tiles, icon `<use>`s, and HTML cards aren't
         // expressible in WCL). It pushes its cards into `ctx.overlays`.
@@ -482,8 +491,8 @@ pub(crate) fn render_shape(
 fn wrap_shape_link(block: &Block<'_>, ctx: RenderCtx<'_>, svg: String) -> String {
     match field_utf8(block, "link") {
         Some(link) => format!(
-            "<a href=\"{}\">{}</a>",
-            escape_html(&ctx.patterns.resolve_href(&link)),
+            "<a{}>{}</a>",
+            crate::inline::href_attr(&ctx.patterns.resolve_href(&link)),
             svg
         ),
         None => svg,

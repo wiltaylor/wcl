@@ -1,6 +1,5 @@
 target/
 artifacts/
-Cargo.lock
 
 # libFuzzer writes coverage-expanding inputs as 40-char hex hashes
 # (no file extension) into corpus/<target>/. Ignore everything in

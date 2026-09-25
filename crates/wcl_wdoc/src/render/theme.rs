@@ -11,7 +11,7 @@
 
 use wcl_lang::{Block, Document};
 
-use super::{field_symbol, field_utf8, label_string};
+use super::{escape_html, field_symbol, field_utf8, label_string};
 
 /// Theme used when a site declares none.
 pub(crate) const DEFAULT_THEME: &str = "forge";
@@ -251,14 +251,15 @@ pub(crate) fn resolve_roles(doc: &Document, theme: &str, accent: &str, mode: &st
     if chain.is_empty() {
         return def;
     }
-    let role = |f: &str, fallback: &str| {
-        chain_role(&chain, mode, f).unwrap_or_else(|| fallback.to_string())
-    };
+    // Palette values are author text the wireframe and terminal bake into
+    // SVG attributes, so each is escaped here: a `"` must not close one.
+    let stated = |f: &str| chain_role(&chain, mode, f).map(|v| escape_html(&v));
+    let role = |f: &str, fallback: &str| stated(f).unwrap_or_else(|| fallback.to_string());
     ThemeRoles {
         // The wireframe panel sits on the reading surface (`book_bg`), not
         // the darker outer gutter (`bg`); fall back to `bg` then Forge.
-        bg: chain_role(&chain, mode, "book_bg")
-            .or_else(|| chain_role(&chain, mode, "bg"))
+        bg: stated("book_bg")
+            .or_else(|| stated("bg"))
             .unwrap_or_else(|| def.bg.clone()),
         bg_alt: role("bg_alt", &def.bg_alt),
         bg_inset: role("bg_inset", &def.bg_inset),

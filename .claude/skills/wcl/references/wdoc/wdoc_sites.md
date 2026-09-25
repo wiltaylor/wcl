@@ -242,7 +242,8 @@ _site/
 ```
 
 `_wdoc/` holds everything the pages share: the bundled fonts, the favicon, the page manifest
-(`pages.json`) and the icon sprite. It also holds the small player scripts a page asks for —
+(`pages.json`: each page's name and first-heading title, in order, which `wdoc serve` checks
+before a targeted rebuild) and the icon sprite. It also holds the small player scripts a page asks for —
 search, terminal replay, diagram pan and zoom, the deck player. A page references that folder
 by a plain relative path, so a site directory is self-contained and can move anywhere.
 

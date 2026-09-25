@@ -9,7 +9,7 @@
 use crate::ast::{self, Span};
 use crate::diagnostics::{ArithmeticFault, EvalError};
 use crate::numeric::{
-    for_each_float_numeric_variant, for_each_integer_numeric_variant, for_each_numeric_variant,
+    NumberKey, for_each_float_numeric_variant, for_each_integer_numeric_variant,
     for_each_signed_integer_numeric_variant,
 };
 use crate::value::Value;
@@ -72,10 +72,9 @@ pub(super) fn describe_expr(expr: &ast::Expr) -> &'static str {
 pub(super) fn as_bool(v: &Value, op: ast::BinOp, span: Span) -> Result<bool, EvalError> {
     match v {
         Value::Bool(b) => Ok(*b),
-        other => Err(EvalError::type_mismatch(
+        other => Err(EvalError::unary_type_mismatch(
             op_name(op),
             other.type_name(),
-            "—",
             span,
         )),
     }
@@ -129,11 +128,11 @@ pub(super) fn apply_unary(op: ast::UnaryOp, v: Value, span: Span) -> Result<Valu
                 };
             }
             for_each_float_numeric_variant!(float_arm);
-            Err(EvalError::type_mismatch("-", v.type_name(), "—", span))
+            Err(EvalError::unary_type_mismatch("-", v.type_name(), span))
         }
         ast::UnaryOp::Not => match v {
             Value::Bool(b) => Ok(Value::Bool(!b)),
-            other => Err(EvalError::type_mismatch("!", other.type_name(), "—", span)),
+            other => Err(EvalError::unary_type_mismatch("!", other.type_name(), span)),
         },
     }
 }
@@ -204,8 +203,10 @@ arith_fn!(arith_mod, %, |a, b, _overflow| if b == 0 {
     Ok(a.wrapping_rem(b))
 });
 
-/// Promote two numeric values to a common variant for arithmetic /
-/// comparison. Returns `None` when either operand is non-numeric.
+/// Promote two numeric values to a common variant for arithmetic.
+/// Returns `None` when either operand is non-numeric. Comparison does
+/// not come through here: it reads both sides exactly through
+/// [`NumberKey`] instead.
 /// Ladder: any float → `f64`; otherwise both → `i128`. Unsigned
 /// values that don't fit in `i128` (i.e. `u128` magnitudes above
 /// `i128::MAX`) return `None` — the caller falls back to a
@@ -260,74 +261,59 @@ pub(super) fn apply_binary(
         B::Mod => arith(arith_mod),
         B::Eq => Ok(Value::Bool(values_eq(&l, &r))),
         B::Ne => Ok(Value::Bool(!values_eq(&l, &r))),
-        B::Lt => compare(&l, &r, span, |c| c == std::cmp::Ordering::Less),
-        B::Le => compare(&l, &r, span, |c| c != std::cmp::Ordering::Greater),
-        B::Gt => compare(&l, &r, span, |c| c == std::cmp::Ordering::Greater),
-        B::Ge => compare(&l, &r, span, |c| c != std::cmp::Ordering::Less),
+        B::Lt | B::Le | B::Gt | B::Ge => compare(op, &l, &r, span),
         B::And | B::Or | B::Coalesce => unreachable!("handled with short-circuit eval"),
     }
 }
 
 /// Structural equality across values, comparing numbers by magnitude
 /// rather than by variant.
+///
+/// Numbers of different types compare exactly, through [`NumberKey`]:
+/// `1u8 == 1.0` holds, while `9007199254740993 == 9007199254740992.0`
+/// does not, although both sides round to the same `f64`. NaN equals
+/// nothing, itself included.
 pub(super) fn values_eq(l: &Value, r: &Value) -> bool {
     // Fast path: same-typed structural equality.
     if l == r {
         return true;
     }
-    // For mixed numeric types, promote to a common form and compare.
-    if let Some((pl, pr)) = promote_pair(l, r) {
-        return pl == pr;
+    match (NumberKey::new(l), NumberKey::new(r)) {
+        (Some(a), Some(b)) => a.partial_cmp(&b) == Some(std::cmp::Ordering::Equal),
+        _ => false,
     }
-    false
 }
 
-/// Order two numeric values, or `None` when either is not numeric.
-fn numeric_cmp(l: &Value, r: &Value) -> Option<std::cmp::Ordering> {
+/// Shared implementation of the ordering operators `<`, `<=`, `>` and
+/// `>=`.
+///
+/// Numbers of any two types order exactly, through [`NumberKey`] — the
+/// same order `sort` uses. A NaN operand is unordered, so every one of
+/// the four operators answers `false` for it (IEEE 754). Strings of the
+/// same type order lexicographically; any other pair is a type mismatch
+/// naming the operator that was written.
+fn compare(op: ast::BinOp, l: &Value, r: &Value, span: Span) -> Result<Value, EvalError> {
     use std::cmp::Ordering;
-    macro_rules! arm {
-        ($t:ty, $variant:ident) => {
-            if let (Value::$variant(a), Value::$variant(b)) = (l, r) {
-                return Some(a.partial_cmp(b).unwrap_or(Ordering::Equal));
+    let ord: Option<Ordering> = match (l, r) {
+        (Value::Utf8(a), Value::Utf8(b)) | (Value::Ascii(a), Value::Ascii(b)) => Some(a.cmp(b)),
+        _ => match (NumberKey::new(l), NumberKey::new(r)) {
+            (Some(a), Some(b)) => a.partial_cmp(&b),
+            _ => {
+                return Err(EvalError::type_mismatch(
+                    op_name(op),
+                    l.type_name(),
+                    r.type_name(),
+                    span,
+                ));
             }
-        };
-    }
-    for_each_numeric_variant!(arm);
-    // Cross-type numeric comparison: promote to a common variant
-    // and retry. `promote_pair` returns either two `F64`s or two
-    // `I128`s, both of which have well-defined ordering.
-    if let Some((pl, pr)) = promote_pair(l, r) {
-        macro_rules! arm2 {
-            ($t:ty, $variant:ident) => {
-                if let (Value::$variant(a), Value::$variant(b)) = (&pl, &pr) {
-                    return Some(a.partial_cmp(b).unwrap_or(Ordering::Equal));
-                }
-            };
-        }
-        for_each_numeric_variant!(arm2);
-    }
-    None
-}
-
-/// Shared implementation of the ordering operators: compare, then let
-/// `pick` turn the ordering into the operator's answer.
-fn compare<F>(l: &Value, r: &Value, span: Span, pick: F) -> Result<Value, EvalError>
-where
-    F: Fn(std::cmp::Ordering) -> bool,
-{
-    if let Some(ord) = numeric_cmp(l, r) {
-        return Ok(Value::Bool(pick(ord)));
-    }
-    let ord = match (l, r) {
-        (Value::Utf8(a), Value::Utf8(b)) | (Value::Ascii(a), Value::Ascii(b)) => a.cmp(b),
-        _ => {
-            return Err(EvalError::type_mismatch(
-                "<>",
-                l.type_name(),
-                r.type_name(),
-                span,
-            ));
-        }
+        },
     };
-    Ok(Value::Bool(pick(ord)))
+    let answer = ord.is_some_and(|ord| match op {
+        ast::BinOp::Lt => ord == Ordering::Less,
+        ast::BinOp::Le => ord != Ordering::Greater,
+        ast::BinOp::Gt => ord == Ordering::Greater,
+        ast::BinOp::Ge => ord != Ordering::Less,
+        _ => unreachable!("compare handles only the ordering operators"),
+    });
+    Ok(Value::Bool(answer))
 }

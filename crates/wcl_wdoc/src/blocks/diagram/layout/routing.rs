@@ -15,6 +15,8 @@
 
 use std::collections::{BinaryHeap, HashMap};
 
+use crate::render::Warnings;
+
 /// Side of a shape's bounding box that an anchor sits on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Side {
@@ -107,6 +109,7 @@ const BORDER_CLEARANCE: f64 = CELL;
 /// search could neither find nor rule out within them falls back to a
 /// plain elbow between the anchors, with a render warning, rather than
 /// stalling the build on a huge grid.
+#[allow(clippy::too_many_arguments)] // the edge geometry plus the warning sink; a struct would only rename them
 pub(crate) fn route_elbow(
     src: (f64, f64),
     src_side: Side,
@@ -115,6 +118,7 @@ pub(crate) fn route_elbow(
     obstacles: &[Obstacle],
     borders: &[(f64, f64, f64, f64)],
     viewport: (f64, f64),
+    warnings: &Warnings,
 ) -> Option<Vec<(f64, f64)>> {
     // Pre-flight the grid size once so an over-cap diagram gets a
     // size diagnostic instead of the misleading "too tightly packed"
@@ -149,7 +153,7 @@ pub(crate) fn route_elbow(
             }
             Search::Unroutable => {}
             Search::OutOfBudget => {
-                crate::render::record_render_warning(format!(
+                warnings.record(format!(
                     "diagram edge from ({:.0}, {:.0}) to ({:.0}, {:.0}): the router gave up \
                      after {MAX_EXPANSIONS} search steps, so it is drawn as a plain elbow that \
                      may cross other shapes. Reduce the diagram's size or set \
@@ -853,6 +857,7 @@ mod tests {
             &[],
             &[],
             (1.0e30, 1.0e30),
+            &Warnings::default(),
         );
         assert!(got.is_none());
         let err = crate::render::take_route_error().expect("size diagnostic recorded");
@@ -872,6 +877,7 @@ mod tests {
             &[],
             &[],
             (f64::NAN, 200.0),
+            &Warnings::default(),
         );
         crate::render::take_route_error();
     }
@@ -886,6 +892,7 @@ mod tests {
             &[],
             &[],
             (320.0, 200.0),
+            &Warnings::default(),
         )
         .expect("unobstructed route");
         // Start, end and no intermediate bends (or only redundant ones at the same y).
@@ -909,6 +916,7 @@ mod tests {
             }],
             &[],
             (320.0, 200.0),
+            &Warnings::default(),
         )
         .expect("route around a single obstacle");
         // At least 3 points (one bend), and at least one y differs
@@ -970,6 +978,7 @@ mod tests {
             &[box_a, box_b, box_c],
             &[],
             (320.0, 240.0),
+            &Warnings::default(),
         )
         .expect("a detour around the packed row exists");
 
@@ -1025,6 +1034,7 @@ mod tests {
             &[box_b, dst_box],
             &[],
             (240.0, 240.0),
+            &Warnings::default(),
         );
         assert!(
             routed.is_none(),
@@ -1076,6 +1086,7 @@ mod tests {
             &[],
             &[],
             (520.0, 320.0),
+            &Warnings::default(),
         )
         .expect("unobstructed route");
         assert!(pts.len() >= 2, "route should not be empty");
@@ -1196,8 +1207,17 @@ mod tests {
             })
         };
         // Control: with no border, the route runs straight along y=0.
-        let bare = route_elbow(src, Side::East, dst, Side::West, &[], &[], (220.0, 220.0))
-            .expect("bare route");
+        let bare = route_elbow(
+            src,
+            Side::East,
+            dst,
+            Side::West,
+            &[],
+            &[],
+            (220.0, 220.0),
+            &Warnings::default(),
+        )
+        .expect("bare route");
         assert!(on_top(&bare), "control should run along y=0: {bare:?}");
         // With the border, the long run must leave the border line.
         let routed = route_elbow(
@@ -1208,6 +1228,7 @@ mod tests {
             &[],
             &[border],
             (220.0, 220.0),
+            &Warnings::default(),
         )
         .expect("bordered route");
         assert!(
@@ -1229,6 +1250,7 @@ mod tests {
             &[],
             &[border],
             (220.0, 220.0),
+            &Warnings::default(),
         );
         assert!(
             routed.is_some(),
@@ -1287,6 +1309,7 @@ mod tests {
             },
         ];
         let (src, dst) = ((70.0, 25.0), (9170.0, 9095.0));
+        let warnings = Warnings::default();
         let pts = route_elbow(
             src,
             Side::East,
@@ -1295,6 +1318,7 @@ mod tests {
             &ring,
             &[],
             (19000.0, 19000.0),
+            &warnings,
         )
         .expect("an out-of-budget search still yields a route");
         assert_eq!(*pts.first().unwrap(), src);
@@ -1305,6 +1329,10 @@ mod tests {
                 "fallback must stay orthogonal: {pts:?}"
             );
         }
-        let _ = crate::render::take_render_warnings();
+        let recorded = warnings.take();
+        assert!(
+            recorded.iter().any(|w| w.contains("the router gave up")),
+            "{recorded:?}"
+        );
     }
 }

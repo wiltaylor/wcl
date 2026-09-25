@@ -3,19 +3,19 @@
   "version": "0.0.1",
   "private": true,
   "description": "Tree-sitter grammar for the WCL configuration language.",
-  "main": "bindings/node",
+  "license": "MIT",
   "keywords": ["parser", "tree-sitter", "wcl"],
+  "files": [
+    "grammar.js",
+    "tree-sitter.json",
+    "queries/*",
+    "src/scanner.c"
+  ],
   "scripts": {
     "generate": "tree-sitter generate",
-    "test": "tree-sitter test"
+    "test": "tree-sitter generate && tree-sitter test"
   },
   "devDependencies": {
-    "tree-sitter-cli": "^0.26.11"
-  },
-  "tree-sitter": [
-    {
-      "scope": "source.wcl",
-      "file-types": ["wcl"]
-    }
-  ]
+    "tree-sitter-cli": "^0.26.8"
+  }
 }

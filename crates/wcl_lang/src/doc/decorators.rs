@@ -33,7 +33,7 @@ impl Document {
         cells: &[ItemCells],
         file_ns: &[String],
         seen_imports: &mut HashSet<PathBuf>,
-        source: &NamedSource<String>,
+        source: &NamedSource<std::sync::Arc<str>>,
         out: &mut CollectedSchemaErrors,
     ) {
         for (item, cell) in items.iter().zip(cells) {
@@ -93,7 +93,10 @@ impl Document {
                         source,
                         out,
                     );
-                    let ItemCellKind::TypeDecl { field_decorators } = &cell.kind else {
+                    let ItemCellKind::TypeDecl {
+                        field_decorators, ..
+                    } = &cell.kind
+                    else {
                         unreachable!("type declaration has type cells")
                     };
                     for (field, decorator_cells) in declaration.fields.iter().zip(field_decorators)
@@ -273,7 +276,7 @@ impl Document {
         position: &str,
         block_kind: Option<&str>,
         file_ns: &[String],
-        source: &NamedSource<String>,
+        source: &NamedSource<std::sync::Arc<str>>,
         out: &mut CollectedSchemaErrors,
     ) {
         let mut errors = Vec::new();

@@ -185,6 +185,7 @@ pub(crate) fn collect_content(
                 base_dir,
                 width.map(|w| w as f32),
                 height.map(|h| h as f32),
+                patterns.warnings(),
             ) {
                 out.push(node);
             }
@@ -213,6 +214,7 @@ pub(crate) fn collect_content(
                     base_dir,
                     width.map(|w| w as f32),
                     height.map(|h| h as f32),
+                    patterns.warnings(),
                 )
             }) {
                 out.push(node);

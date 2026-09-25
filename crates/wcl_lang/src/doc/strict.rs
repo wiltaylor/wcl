@@ -35,8 +35,8 @@ use super::schema_lookup::{DeclLoc, DocSchemas};
 use super::scope::Scope;
 use super::types::variant_dispatch;
 use super::types::{
-    format_union_variants_hint, symbol_set_membership_error_in, validate_union,
-    value_matches_type_ref,
+    describe_type_mismatch, format_union_variants_hint, symbol_set_membership_error_in,
+    validate_union, value_matches_type_ref,
 };
 use super::views::{Block, BuiltinDecorator, DeclName, Field, TypeDecl, TypeField, UnionDecl};
 use super::{CollectedSchemaErrors, Document};
@@ -48,7 +48,7 @@ impl Document {
     /// them to `Warning` severity).
     ///
     /// Currently detects **gather-field shadowing** between `@document`
-    /// schemas ([`SchemaViolationKind::DocumentFieldShadow`]): two
+    /// schemas ([`SchemaViolationKind::DocumentFieldShadow`](crate::SchemaViolationKind::DocumentFieldShadow)): two
     /// schemas that co-govern a namespace declaring the same field name
     /// where at least one side is a `@child`/`@children` gather slot.
     /// The merge (`doc_schemas_for_ns`) resolves such a name first-wins,
@@ -167,7 +167,7 @@ impl Document {
     /// Strict-mode validation paired with a source when its provenance is
     /// known. Hosts should omit a snippet for `None` rather than attach the
     /// root document to a recursively-produced cross-file error.
-    pub fn schema_diagnostics(&self) -> Vec<(EvalError, Option<NamedSource<String>>)> {
+    pub fn schema_diagnostics(&self) -> Vec<(EvalError, Option<NamedSource<std::sync::Arc<str>>>)> {
         self.collect_schema_errors()
     }
 
@@ -412,7 +412,10 @@ impl Document {
                 &[],
                 &mut errors,
             );
-            let ItemCellKind::TypeDecl { field_decorators } = &cells.kind else {
+            let ItemCellKind::TypeDecl {
+                field_decorators, ..
+            } = &cells.kind
+            else {
                 unreachable!("synthetic type cells mirror the declaration")
             };
             for (field, decorator_cells) in declaration.fields.iter().zip(field_decorators) {
@@ -537,26 +540,12 @@ impl Document {
                 out.extend(schema_check::decorator_argument_errors(self, &decorator));
             }
         }
-        if schemas.is_empty() {
-            EvalError::push_schema_violation(
-                out,
-                Kind::NoDocumentSchema,
-                format!("top-level field '{}' has no @document schema", f.name()),
-                f.span(),
-            );
+        if let Some(error) = schema_check::root_field_membership_error(f.name(), schemas, f.span())
+        {
+            out.push(error);
             return;
         }
         let Some(declared) = schemas.field(f.name()) else {
-            EvalError::push_schema_violation(
-                out,
-                Kind::UnknownField,
-                format!(
-                    "top-level field '{}' is not declared by @document schema '{}'",
-                    f.name(),
-                    schemas.names()
-                ),
-                f.span(),
-            );
             return;
         };
         let Ok(v) = f.value() else {
@@ -607,10 +596,13 @@ impl Document {
                 out,
                 Kind::FieldTypeMismatch,
                 format!(
-                    "field '{}' declared as {} but value is {}",
+                    "field '{}' declared as {} but {}",
                     f.name(),
                     declared.type_ref(),
-                    v.type_name(),
+                    describe_type_mismatch(
+                        v,
+                        &self.resolve_alias_in(declared.type_ref(), declared.file_ns),
+                    ),
                 ),
                 f.span(),
             );

@@ -7,3 +7,5 @@ type A extends B {
 type B extends A {
   id: i64
 }
+
+// expect-exit: 1

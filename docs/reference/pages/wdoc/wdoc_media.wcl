@@ -287,6 +287,8 @@ WCL
 
   p "The YouTube shapes it understands are `watch?v=ID`, `youtu.be/ID`, `/embed/ID`, `/shorts/ID` and `/v/ID`, on `youtube.com`, `m.youtube.com`, `youtu.be` or `youtube-nocookie.com`, with or without `www.` and with any extra query parameters. Paste the URL from the address bar and wdoc recognises it."
 
+  p "The player hands the source to a `<video>` or an `<iframe>`, so the build checks its scheme first. A source may be a path, an `http(s)` URL, or a `data:video/` URI. Anything else, a `javascript:` URL or a `data:text/html` page, renders no video at all and prints a `warning:`. A `poster` gets the same check with `data:image/` in place of `data:video/`, and a poster that fails it falls through to the next step below."
+
   code wcl {
     source = <<'WCL'
 video "https://www.youtube.com/watch?v=aqz-KE-bpKQ" { title = "Trailer" }

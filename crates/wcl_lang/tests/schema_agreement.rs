@@ -406,6 +406,133 @@ fn nested_blocks_two_levels_deep_agree_on_unknown_field() {
     assert_eq!(flagged.len(), 1, "exactly `sneaky` must be flagged");
 }
 
+/// The lazy membership error a field's `value()` reports, rendered.
+fn lazy_membership_message(field: &Field<'_>) -> Option<String> {
+    match field.value() {
+        Err(e @ EvalError::SchemaViolation { kind, .. }) if is_membership_kind(*kind) => {
+            Some(e.to_string())
+        }
+        _ => None,
+    }
+}
+
+#[test]
+fn membership_errors_are_worded_identically_on_both_paths() {
+    // Both paths build the error through one helper, so the message a
+    // host sees from `value()` is the one `wcl check` prints.
+    for src in [
+        "rogue = 1\n",
+        "@document type Cfg { name: utf8 }\nrogue = 1\n",
+        r#"
+        @document type Cfg { @children("svc") svcs: list<Svc> }
+        @block("svc") type Svc { region: utf8 }
+        svc web { rogue = 1 }
+        "#,
+    ] {
+        let doc = open(src);
+        let lazy: Vec<String> = collect_fields(&doc)
+            .iter()
+            .filter_map(lazy_membership_message)
+            .collect();
+        let strict: Vec<String> = doc
+            .schema_errors()
+            .iter()
+            .filter(|e| {
+                matches!(e, EvalError::SchemaViolation { kind, .. } if is_membership_kind(*kind))
+            })
+            .map(ToString::to_string)
+            .filter(|m| m.contains("'rogue'"))
+            .collect();
+        assert_eq!(lazy.len(), 1, "{src}: {lazy:?}");
+        assert_eq!(lazy, strict, "{src}");
+    }
+}
+
+#[test]
+fn numeric_misfits_are_strict_type_errors_and_membership_still_agrees() {
+    // A number that does not fit its declared type is a FieldTypeMismatch
+    // on the strict path. It is a *type* verdict, so the lazy path reads
+    // the value as written (it does not run type checks) — and neither
+    // path reports a membership violation.
+    let src = r#"
+        @document type Cfg { port: u16  ratio: u8  @children("svc") svcs: list<Svc> }
+        @block("svc") type Svc { weight: u8 }
+        port = 70000
+        ratio = 2.5
+        svc web { weight = 256 }
+    "#;
+    let flagged = assert_agreement(src);
+    assert!(flagged.is_empty(), "no membership flags: {flagged:?}");
+
+    let doc = open(src);
+    let mismatches = doc
+        .schema_errors()
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                EvalError::SchemaViolation {
+                    kind: SchemaViolationKind::FieldTypeMismatch,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(mismatches, 3, "{:#?}", doc.schema_errors());
+    assert_eq!(
+        doc.get("port").unwrap().value().unwrap(),
+        wcl_lang::Value::I64(70000)
+    );
+}
+
+#[test]
+fn fitting_numbers_read_back_as_the_declared_type_on_both_paths() {
+    let src = r#"
+        @document type Cfg { port: u16  @children("svc") svcs: list<Svc> }
+        @block("svc") type Svc { weight: u8 }
+        port = 8080
+        svc web { weight = 3 }
+    "#;
+    let flagged = assert_agreement(src);
+    assert!(flagged.is_empty());
+    let doc = open(src);
+    assert!(doc.schema_errors().is_empty(), "{:#?}", doc.schema_errors());
+    assert_eq!(
+        doc.get("port").unwrap().value().unwrap(),
+        wcl_lang::Value::U16(8080)
+    );
+    let web = doc.blocks().next().expect("svc web");
+    assert_eq!(
+        web.field("weight").unwrap().value().unwrap(),
+        &wcl_lang::Value::U8(3)
+    );
+}
+
+#[test]
+fn string_kind_slot_claims_its_blocks_before_union_dispatch() {
+    // Regression: a schema with both `@child("config")` and
+    // `@children(Shape)` sent the `config` block to union dispatch too,
+    // which reported "no variant of 'Shape' matches". The string-kind
+    // slot claims it; only the other blocks are dispatched.
+    let src = r#"
+        union Shape { Circle { radius: f64 } Square { side: f64 } }
+        @document type Root { @children("mixed") mixes: list<Mixed> }
+        @block("config") type ConfigSpec { name: utf8 }
+        @block("mixed") type Mixed {
+          @child("config") cfg: ConfigSpec
+          @children(Shape) shapes: list<Shape>
+        }
+        mixed "demo" {
+          config { name = "alpha" }
+          circle { radius = 3.0 }
+        }
+    "#;
+    let flagged = assert_agreement(src);
+    assert!(flagged.is_empty());
+    let doc = open(src);
+    assert!(doc.schema_errors().is_empty(), "{:#?}", doc.schema_errors());
+}
+
 // ---------------------------------------------------------------------------
 // Fixture corpus
 // ---------------------------------------------------------------------------
@@ -424,27 +551,73 @@ fn wcl_files_under(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Every fixture in `examples/` that opens (files with syntax errors or
-/// unresolvable system imports are skipped — agreement is only defined
-/// for documents that load) must produce identical strict/lazy
-/// membership verdicts. The `examples/errors/` fixtures are valuable
+/// Documents under `examples/` that cannot open as a plain wcl
+/// document, relative to `examples/`. Agreement is only defined for
+/// documents that load, so these are skipped — and every entry must
+/// still fail to open, so the list cannot hide a fixture that has
+/// since started loading.
+const UNOPENABLE: &[&str] = &[
+    // Import `<wdoc.wcl>`, which only the wdoc registry provides.
+    "wdoc/main.wcl",
+    "wdoc_relocatable/main.wcl",
+    "wdoc_template.wcl",
+    "wdoc_website.wcl",
+    // Page fragments naming wdoc types, resolved only when
+    // `wdoc/main.wcl` imports them.
+    "wdoc/pages/data.wcl",
+    "wdoc/pages/terminal.wcl",
+];
+
+/// Whether `path` is expected not to open: listed in [`UNOPENABLE`],
+/// or an `examples/errors/` fixture declaring `// expect-exit: 1` (the
+/// parse-or-load failure code `crates/wcl/tests/examples.rs` checks).
+fn expected_unopenable(root: &Path, path: &Path) -> bool {
+    let rel = path
+        .strip_prefix(root)
+        .expect("fixture under examples/")
+        .to_string_lossy()
+        .replace('\\', "/");
+    if UNOPENABLE.contains(&rel.as_str()) {
+        return true;
+    }
+    rel.starts_with("errors/")
+        && std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+            .lines()
+            .any(|l| l.trim() == "// expect-exit: 1")
+}
+
+/// Every fixture in `examples/` must open and produce identical
+/// strict/lazy membership verdicts, except those
+/// [`expected_unopenable`]. The `examples/errors/` fixtures are valuable
 /// here precisely *because* they carry schema violations.
 #[test]
 fn examples_corpus_agrees() {
+    let root = examples_dir();
     let mut files = Vec::new();
-    wcl_files_under(&examples_dir(), &mut files);
+    wcl_files_under(&root, &mut files);
     files.sort();
     assert!(!files.is_empty(), "no .wcl fixtures found under examples/");
 
+    let listed = |path: &Path| expected_unopenable(&root, path);
+
     let mut checked = 0usize;
+    let mut unexpected = Vec::new();
     for path in &files {
-        // Guard: skip fixtures that don't open (syntax-error fixtures,
-        // documents importing <wdoc.wcl> without the wdoc registry, …).
-        if let Ok(doc) = Document::from_file(path) {
-            assert_agreement_doc(&doc, &path.display().to_string());
-            checked += 1;
+        match (Document::from_file(path), listed(path)) {
+            (Ok(doc), false) => {
+                assert_agreement_doc(&doc, &path.display().to_string());
+                checked += 1;
+            }
+            (Err(e), false) => unexpected.push(format!("{} failed to open: {e}", path.display())),
+            (Ok(_), true) => unexpected.push(format!(
+                "{} opens but is listed in UNOPENABLE — remove it from the list",
+                path.display()
+            )),
+            (Err(_), true) => {}
         }
     }
+    assert!(unexpected.is_empty(), "{}", unexpected.join("\n"));
     assert!(checked > 0, "corpus run checked no documents");
 }
 

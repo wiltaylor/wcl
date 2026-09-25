@@ -2,6 +2,7 @@
 name = "wcl"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "WCL command-line interface"
@@ -15,9 +16,10 @@ wcl_lang = { workspace = true }
 wcl_lsp = { workspace = true }
 wcl_wdoc = { workspace = true }
 clap = { workspace = true }
-miette = { workspace = true }
-thiserror = { workspace = true }
-serde_json = "1"
+# `fancy` renders every `miette::Report` graphically on stderr. The CLI owns
+# the terminal, so it is the one crate that turns on terminal detection.
+miette = { workspace = true, features = ["fancy"] }
+serde_json = { workspace = true }
 tempfile = { workspace = true }
 # `wcl wdoc serve` dev server: axum + a notify file watcher, driven on a
 # tokio runtime (extra `fs` for the static handler, `signal` for Ctrl-C,
@@ -29,7 +31,6 @@ notify = { workspace = true }
 [dev-dependencies]
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
-insta = { workspace = true }
 tower = { workspace = true }
 
 [lints]

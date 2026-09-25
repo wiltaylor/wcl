@@ -128,7 +128,7 @@ lists.wcl: 1 schema violation
 CONSOLE
   }
 
-  p "The message names the field, not the offending element. A long list tells you _that_ an element is wrong, not _which_. Numeric elements are the one loose end: the evaluator promotes between numeric types, so `[1, 2]` satisfies `list<u32>` even though the literals are default-typed integers. [Values and primitives](lang_values) covers the promotion rule."
+  p "The message names the field, not the offending element. A long list tells you _that_ an element is wrong, not _which_. Numeric elements are the exception, in both directions. A number takes the element type when it fits, so `[1, 2]` satisfies `list<u32>` although the literals are default-typed integers, and it reads back as `[1u32, 2u32]`. A number that does not fit is named with its index: `small = [1, 300]` against `list<u8>` fails with `field 'small' declared as list<u8> but element [1] holds 300, which is out of range for u8`. [Schemas](lang_schemas#a-number-must-fit-its-type) covers the rule."
 
   p "`spare = []` shows the second rule: **the empty list is legal for any element type.** There is nothing in `[]` to check. A gather field with no children evaluates to exactly this."
 
@@ -186,7 +186,7 @@ $ wcl get pick.wcl middle
 $ wcl get pick.wcl found
 1
 $ wcl get pick.wcl count
-3
+3usize
 CONSOLE
   }
 
@@ -255,7 +255,7 @@ WCL
   code console {
     source = <<'CONSOLE'
 $ wcl get load.wcl shape
-[2, 3]
+[2usize, 3usize]
 $ wcl get load.wcl flat
 [0.4, 0.6, 0.9, 0.3, 0.5, 0.8]
 $ wcl get load.wcl by_hour
@@ -273,7 +273,7 @@ CONSOLE
 $ wcl get load.wcl load
 wcl::eval::builtin_type
 
-  × 'tensor': tensor: data length 2 does not match shape product 6
+  × 'tensor': data length 2 does not match shape product 6
 CONSOLE
   }
 
@@ -582,7 +582,7 @@ CONSOLE
   h2 "Where to go next"
 
   list {
-    li "[Values and primitives](lang_values). The scalars all three are built out of, and the numeric promotion rule behind `[1, 2]` satisfying `list<u32>`."
+    li "[Values and primitives](lang_values). The scalars all three are built out of, and and the numeric types behind `[1, 2]` satisfying `list<u32>`."
     li "[Types](lang_types). `type`, `interface`, `union` and `symbol_set` in full, including the variant forms this chapter only dispatched to."
     li "[Expressions and operators](lang_expressions). Block expressions, `let` bindings, member access and the rest of what may sit on the right of an `=`."
     li "[Functions](lang_functions). `fn` literals and `fn` items, the closures every collection builtin takes."

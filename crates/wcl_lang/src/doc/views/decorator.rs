@@ -158,7 +158,7 @@ impl<'a> Decorator<'a> {
     /// `Value::Variant` by structural shape. Otherwise, the named
     /// arg is consulted first, then the positional arg at the slot's
     /// `@inline(N)` index — so `@block("books")` resolves the `name`
-    /// slot from positional[0] when no `name = ...` was written. A slot
+    /// slot from `positional[0]` when no `name = ...` was written. A slot
     /// without `@inline` is named-only.
     ///
     /// If neither a named nor positional argument fills the slot, its
@@ -282,7 +282,7 @@ impl<'a> NamedArg<'a> {
         &self.ast.name
     }
 
-    /// Cached via the parent [`DecoratorCell`]'s named-arg map.
+    /// Cached via the parent `DecoratorCell`'s named-arg map.
     pub fn value(&self) -> Result<Value, EvalError> {
         let map = self.parent.named.get_or_init(|| {
             self.parent_ast

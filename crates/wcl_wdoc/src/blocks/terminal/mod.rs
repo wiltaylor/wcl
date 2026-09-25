@@ -34,7 +34,7 @@ use std::path::Path;
 use wcl_lang::{Block, Document};
 
 use crate::render::{
-    escape_html, field_bool, field_f64, field_i64, field_id, field_symbol, field_utf8,
+    Warnings, escape_html, field_bool, field_f64, field_i64, field_id, field_symbol, field_utf8,
     field_utf8_list, label_string, resolve_roles,
 };
 
@@ -89,12 +89,6 @@ const DEFAULT_LINE_HEIGHT: f64 = 1.2;
 /// Default font size in px when `font_size` is omitted.
 const DEFAULT_FONT_PX: f64 = 14.0;
 
-/// True when `block`'s subtree contains a `terminal` (so the build knows
-/// to emit the font + player assets).
-pub(crate) fn uses_terminal(block: &Block<'_>) -> bool {
-    crate::render::block_tree_any(block, &|b| b.kind() == "terminal")
-}
-
 /// Render a `@block("terminal")` to an HTML fragment: a `wdoc-terminal`
 /// `<div>` wrapping the inline-SVG grid, plus — for replay — the player
 /// controls and the frames JSON the bundled player steps through.
@@ -102,6 +96,7 @@ pub(crate) fn render_terminal(
     doc: &Document,
     block: &Block<'_>,
     base_dir: Option<&Path>,
+    warnings: &Warnings,
 ) -> String {
     let font_px = field_f64(block, "font_size").unwrap_or(DEFAULT_FONT_PX);
     let line_height = field_f64(block, "line_height").unwrap_or(DEFAULT_LINE_HEIGHT);
@@ -114,6 +109,7 @@ pub(crate) fn render_terminal(
         field_i64(block, "cols").unwrap_or(80),
         field_i64(block, "rows").unwrap_or(24),
         "block",
+        warnings,
     );
 
     // The terminal is themed by the WCL `class` system: its `class` list
@@ -169,6 +165,7 @@ pub(crate) fn render_terminal(
             &class_attr,
             &style_attr,
             &id_attr,
+            warnings,
         );
     }
 
@@ -196,6 +193,7 @@ pub(crate) fn render_terminal_pdf(
     doc: &Document,
     block: &Block<'_>,
     base_dir: Option<&Path>,
+    warnings: &Warnings,
 ) -> String {
     let font_px = field_f64(block, "font_size").unwrap_or(DEFAULT_FONT_PX);
     let line_height = field_f64(block, "line_height").unwrap_or(DEFAULT_LINE_HEIGHT);
@@ -208,6 +206,7 @@ pub(crate) fn render_terminal_pdf(
         field_i64(block, "cols").unwrap_or(80),
         field_i64(block, "rows").unwrap_or(24),
         "block",
+        warnings,
     );
 
     // Same palette resolution as the HTML path: explicit fg/bg/preset, else
@@ -235,7 +234,7 @@ pub(crate) fn render_terminal_pdf(
             None => Path::new(&src_rel).to_path_buf(),
         };
         if let Ok(src) = std::fs::read_to_string(&path) {
-            let cast = parse_cast(&src, def_cols, def_rows);
+            let cast = parse_cast(&src, def_cols, def_rows, warnings);
             let g = Geom::new(cast.cols, cast.rows, font_px, line_height, chrome);
             let last = cast
                 .frames
