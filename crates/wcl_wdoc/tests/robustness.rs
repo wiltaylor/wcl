@@ -168,3 +168,60 @@ page index {
 "##,
     );
 }
+
+/// Every `height="…"` on a bar rect of the first series.
+fn bar_heights(html: &str) -> Vec<f64> {
+    html.split("<rect class=\"wdoc-series-1\"")
+        .skip(1)
+        .filter_map(|r| r.split("height=\"").nth(1)?.split('"').next()?.parse().ok())
+        .collect()
+}
+
+#[test]
+fn negative_bar_values_extend_the_scale_below_zero() {
+    // The auto scale folded from 0 up, so a negative value got a
+    // negative-height rect and vanished.
+    let html = build_html(
+        r##"
+page index {
+  diagram { width = 400  height = 240
+    bar_chart { width = 400.0  height = 240.0
+      categories = ["a", "b", "c"]
+      series = [ { name: "s", values: [10.0, -5.0, 20.0] } ]
+    }
+  }
+}
+"##,
+    );
+    // Plot height 206 over the auto scale -5..20: the -5 bar hangs 41.2
+    // below the zero line, and the 20 bar stands 164.8 above it.
+    assert!(
+        html.contains("y=\"172.8\" width=\"92.80000000000001\" height=\"41.2\""),
+        "{html}"
+    );
+    assert!(html.contains("y=\"8\" width=\"92.80000000000001\" height=\"164.8\""), "{html}");
+    assert!(bar_heights(&html).iter().all(|h| *h >= 0.0));
+}
+
+#[test]
+fn bars_are_clamped_to_an_explicit_scale() {
+    // Values outside an explicit y_min..y_max stay inside the plot area
+    // rather than drawing off it or with a negative height.
+    let html = build_html(
+        r##"
+page index {
+  diagram { width = 400  height = 240
+    bar_chart { width = 400.0  height = 240.0
+      y_min = 0.0  y_max = 10.0
+      categories = ["a", "b"]
+      series = [ { name: "s", values: [-50.0, 50.0] } ]
+    }
+  }
+}
+"##,
+    );
+    let heights = bar_heights(&html);
+    assert_eq!(heights.len(), 2, "{html}");
+    assert_eq!(heights[0], 0.0);
+    assert_eq!(heights[1], 206.0);
+}
