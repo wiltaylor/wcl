@@ -333,6 +333,10 @@ outer ring), `start_angle` in radians (`-PI/2`, i.e. top), `node_gap` as the min
 between ring neighbours. A shape's ring is its graph distance from the hub. Pair it with
 `routing = :straight` for clean spokes.
 
+Each ring sits at least `ring_gap` outside the ring before it, and far enough out that the two
+rings' boxes (plus `node_gap`) cannot touch. A crowded inner ring therefore pushes a sparse outer
+ring out with it.
+
 ## Styling shapes
 
 Every shape takes `fill` and `stroke` attributes, and every shape takes a `class` list. **Prefer
