@@ -48,11 +48,11 @@
     "watch": "tsc -watch -p ./"
   },
   "dependencies": {
-    "vscode-languageclient": "^10.1.0"
+    "vscode-languageclient": "^10.1.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@types/vscode": "^1.91.0",
+    "@types/vscode": "^1.138.0",
     "typescript": "^7.0.2"
   }
 }
