@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
-use wcl_wdoc::{PageSize, PdfError, pdf};
+use wcl_wdoc::{BuildReport, PageSize, PdfError, pdf};
 
 /// Write a wdoc fixture, prepending the `import <wdoc.wcl>` line a real
 /// document needs.
@@ -14,7 +14,7 @@ fn write_fixture(path: impl AsRef<Path>, body: &str) {
 
 fn pdf_ok(file: &Path, out: &Path, size: PageSize) -> usize {
     match pdf(file, out, None, size) {
-        Ok(n) => n,
+        Ok(BuildReport { count: n, .. }) => n,
         Err(PdfError::Io(e, ctx)) => panic!("pdf io error: {ctx}: {e}"),
         Err(PdfError::Parse(r)) => panic!("pdf parse error: {r:?}"),
         Err(PdfError::Schema(n)) => panic!("pdf schema error: {n} violations"),
@@ -22,6 +22,31 @@ fn pdf_ok(file: &Path, out: &Path, size: PageSize) -> usize {
         Err(PdfError::BadDoc(m)) => panic!("pdf bad-doc error: {m}"),
         Err(PdfError::Render(m)) => panic!("pdf render error: {m}"),
     }
+}
+
+/// An image the PDF cannot read renders nothing, so the build says so in
+/// the warnings it returns rather than dropping the picture silently.
+#[test]
+fn pdf_returns_a_warning_for_an_unreadable_image() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  p \"Before.\"\n  image \"missing.png\" {}\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let Ok(report) = pdf(&src, out.path(), None, PageSize::A4) else {
+        panic!("pdf failed");
+    };
+    assert_eq!(report.count, 1);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.contains("missing.png") && w.contains("missing from the PDF")),
+        "expected an unreadable-image warning, got: {:?}",
+        report.warnings
+    );
 }
 
 /// Read the physical page count out of the (uncompressed) page-tree node.
@@ -312,7 +337,7 @@ fn one_pdf_per_site_in_toc_order() {
     // `--site` renders just one.
     let one = TempDir::new().expect("mkdir out");
     match pdf(&src, one.path(), Some("blog"), PageSize::A4) {
-        Ok(n) => assert_eq!(n, 1),
+        Ok(BuildReport { count: n, .. }) => assert_eq!(n, 1),
         Err(_) => panic!("pdf --site blog failed"),
     }
     assert!(one.path().join("blog.pdf").exists());
@@ -374,7 +399,7 @@ fn computed_table_eval_error_fails_the_build() {
             let text = format!("{r:?}");
             assert!(text.contains("no_such_name"), "names the binding: {text}");
         }
-        Ok(n) => panic!("expected an eval error, but wrote {n} pdf(s)"),
+        Ok(BuildReport { count: n, .. }) => panic!("expected an eval error, but wrote {n} pdf(s)"),
         Err(_) => panic!("expected PdfError::Eval, got a different error"),
     }
 }
@@ -618,7 +643,7 @@ fn unresolved_name_in_page_block_errors() {
     let out = tmp.path().join("out");
     match pdf(&src, &out, None, PageSize::A4) {
         Err(PdfError::Eval(_)) => {}
-        Ok(n) => panic!("expected an eval error, but wrote {n} pdf(s)"),
+        Ok(BuildReport { count: n, .. }) => panic!("expected an eval error, but wrote {n} pdf(s)"),
         Err(other) => {
             other.report();
             panic!("expected PdfError::Eval, got a different error (see above)");
@@ -1282,7 +1307,9 @@ fn a_file_block_refuses_to_build_a_pdf() {
                 "names the kind, the target and the waiver: {text}"
             );
         }
-        Ok(n) => panic!("expected an uncovered-target error, but wrote {n} page(s)"),
+        Ok(BuildReport { count: n, .. }) => {
+            panic!("expected an uncovered-target error, but wrote {n} page(s)")
+        }
         Err(_) => panic!("expected PdfError::Eval"),
     }
 }
@@ -1357,7 +1384,9 @@ fn a_file_block_inside_a_card_still_refuses_to_build_a_pdf() {
                 "names the kind and the output target: {text}"
             );
         }
-        Ok(n) => panic!("expected an uncovered-target error, but wrote {n} page(s)"),
+        Ok(BuildReport { count: n, .. }) => {
+            panic!("expected an uncovered-target error, but wrote {n} page(s)")
+        }
         Err(_) => panic!("expected PdfError::Eval"),
     }
 }

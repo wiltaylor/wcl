@@ -28,19 +28,19 @@ use crate::blocks::diagram::tileset::TilesetRegistry;
 use crate::blocks::icons::IconRegistry;
 use crate::blocks::image::ImageRegistry;
 use crate::build::{
-    BuildError, SiteSpec, collect_pages, collect_site_specs, page_name, root_site_name,
-    schema_registry, site_start_page,
+    BuildError, BuildReport, SiteSpec, collect_pages, collect_site_specs, page_name,
+    root_site_name, schema_registry, site_start_page,
 };
 use crate::inline::InlinePatterns;
 
 /// Render `file` to a folder of Markdown pages (plus SVG assets) under
-/// `out_dir`. Returns the number of pages written. `site_filter` restricts
-/// rendering to a single named site.
+/// `out_dir`. Returns the number of pages written and the pass's warnings.
+/// `site_filter` restricts rendering to a single named site.
 pub fn markdown(
     file: &Path,
     out_dir: &Path,
     site_filter: Option<&str>,
-) -> Result<usize, BuildError> {
+) -> Result<BuildReport, BuildError> {
     let user_src = fs::read_to_string(file)
         .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
     let name = file.display().to_string();
@@ -125,9 +125,9 @@ pub fn markdown(
     // pass so stale messages can't leak into this one (mirrors `build`).
     let _ = crate::render::take_route_error();
     let _ = crate::render::take_include_error();
-    let _ = crate::render::take_render_warnings();
     // File-backed code listings resolve against the document's directory.
     let _doc_dir = crate::render::DocDirGuard::set(base_dir.as_deref());
+    let warnings = crate::render::Warnings::default();
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
         let mut count = 0;
         for spec in &build_set {
@@ -140,7 +140,7 @@ pub fn markdown(
             };
             fs::create_dir_all(&site_out)
                 .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", site_out.display())))?;
-            count += markdown_site(
+            let (pages, site_warnings) = markdown_site(
                 &doc,
                 base_dir.as_deref(),
                 spec,
@@ -149,6 +149,8 @@ pub fn markdown(
                 &site_pages,
                 &site_prefix,
             )?;
+            count += pages;
+            warnings.extend(site_warnings);
 
             // Landing-page parity with the HTML build: copy the `start` page (or
             // none) to `index.md` so `<site>/` has an entry point.
@@ -183,12 +185,17 @@ pub fn markdown(
     if let Some(msg) = crate::render::take_include_error() {
         return Err(BuildError::CodeInclude(msg));
     }
-    result
+    Ok(BuildReport {
+        count: result?,
+        warnings: warnings.take(),
+        profile: None,
+    })
 }
 
 /// Render one site's pages into `out_dir`. Mirrors `build::build_site`'s
 /// per-site registry setup, but emits Markdown + SVG instead of HTML and
-/// skips all CSS / template / nav / JS concerns.
+/// skips all CSS / template / nav / JS concerns. Returns the page count
+/// and the warnings the site's pages raised.
 #[allow(clippy::too_many_arguments)]
 fn markdown_site(
     doc: &Document,
@@ -198,7 +205,7 @@ fn markdown_site(
     current_prefix: String,
     site_pages: &BTreeMap<String, HashSet<String>>,
     site_prefix: &BTreeMap<String, String>,
-) -> Result<usize, BuildError> {
+) -> Result<(usize, Vec<String>), BuildError> {
     let mut page_names: HashSet<String> = HashSet::new();
     for n in spec.pages.iter().filter_map(page_name) {
         // Routes must be unique within a site — colliding `wdoc_repeater`
@@ -274,7 +281,7 @@ fn markdown_site(
         return Err(BuildError::BadLink(link_errors));
     }
 
-    Ok(count)
+    Ok((count, patterns.warnings().take()))
 }
 
 /// Write a top-level `index.md` chooser for a multi-site build with no root

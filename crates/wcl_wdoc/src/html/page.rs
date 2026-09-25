@@ -1512,7 +1512,7 @@ pub(crate) fn render_element_payload(
                 // Escaping protects the value but not the name: a space or
                 // `>` in it would open new markup, so a bad name is dropped.
                 if !is_valid_attr_name(&name) {
-                    crate::render::record_render_warning(format!(
+                    patterns.warnings().record(format!(
                         "element <{tag}> attribute name '{name}' is invalid and was dropped \
                          (names use only A-Z, a-z, 0-9, _, : and -)"
                     ));
@@ -1527,7 +1527,7 @@ pub(crate) fn render_element_payload(
                 if let Some(url_use) = url_use
                     && !url_allowed(&value, url_use)
                 {
-                    crate::render::record_render_warning(disallowed_url_warning(
+                    patterns.warnings().record(disallowed_url_warning(
                         &format!("element <{tag}> {name}"),
                         &value,
                     ));

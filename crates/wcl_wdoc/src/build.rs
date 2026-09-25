@@ -16,6 +16,7 @@ use crate::html::{
     site_theme_css, toc_to_value,
 };
 use crate::inline::InlinePatterns;
+use crate::render::Warnings;
 use crate::render::{
     MAX_LOWER_DEPTH, escape_html, expand_component_children, expand_instance_children,
     expand_repeater_children, field_bool, field_id, field_symbol, field_symbol_list_opt,
@@ -501,8 +502,29 @@ fn progress(line: std::fmt::Arguments<'_>) {
 /// `out_dir`; without it every site renders into its own subdirectory.
 /// The output directory is created if missing and is never wiped — an
 /// existing file wdoc does not write is left alone.
+///
+/// The build's non-fatal warnings are discarded; call
+/// [`build_with_options`] to receive them.
 pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<usize, BuildError> {
-    build_with_options(file, out_dir, site_filter, &BuildOptions::default()).map(|(n, _)| n)
+    build_with_options(file, out_dir, site_filter, &BuildOptions::default()).map(|r| r.count)
+}
+
+/// What a successful render pass produced. Returned by
+/// [`build_with_options`], [`markdown`](crate::markdown()) and
+/// [`pdf`](crate::pdf()).
+#[derive(Debug)]
+pub struct BuildReport {
+    /// Pages written (HTML, Markdown) or PDF files written (PDF).
+    pub count: usize,
+    /// The non-fatal warnings the pass found — a diagram edge whose
+    /// endpoint names no shape, a theme with no palette, an image with no
+    /// usable size, a class the stylesheet and the pages disagree on — in
+    /// the order found, without duplicates. The build still succeeded; the
+    /// CLI prints each as `warning: …`.
+    pub warnings: Vec<String>,
+    /// The evaluation profile, when [`BuildOptions::profile`] asked for one
+    /// (HTML builds only).
+    pub profile: Option<wcl_lang::Profile>,
 }
 
 /// Options for [`build_with_options`]. `Default` matches plain [`build`].
@@ -513,19 +535,24 @@ pub struct BuildOptions {
     pub profile: bool,
 }
 
-/// [`build`] with [`BuildOptions`]. Returns the page count plus, when
-/// profiling was requested, the evaluation profile snapshot.
+/// [`build`] with [`BuildOptions`]. Returns the page count, the build's
+/// warnings and, when profiling was requested, the evaluation profile.
 pub fn build_with_options(
     file: &Path,
     out_dir: &Path,
     site_filter: Option<&str>,
     opts: &BuildOptions,
-) -> Result<(usize, Option<wcl_lang::Profile>), BuildError> {
-    let (outcome, profile) = build_inner(file, out_dir, site_filter, opts, None)?;
-    Ok((outcome.pages(), profile))
+) -> Result<BuildReport, BuildError> {
+    let pass = build_inner(file, out_dir, site_filter, opts, None)?;
+    Ok(BuildReport {
+        count: pass.outcome.pages(),
+        warnings: pass.warnings,
+        profile: pass.profile,
+    })
 }
 
 /// Outcome of an incremental rebuild attempt ([`build_incremental`]).
+#[derive(Debug)]
 pub enum RebuildOutcome {
     /// A full site rebuild ran — the safe fallback, identical to
     /// [`build_with_options`]. Carries the page count.
@@ -540,6 +567,17 @@ pub enum RebuildOutcome {
         /// Names of the pages rewritten in place.
         pages: Vec<String>,
     },
+}
+
+/// What [`build_incremental`] did, and the warnings the pages it rendered
+/// raised.
+#[derive(Debug)]
+pub struct RebuildReport {
+    /// Whether the rebuild stayed targeted or fell back to a full build.
+    pub outcome: RebuildOutcome,
+    /// The non-fatal warnings found, as [`BuildReport::warnings`]. A
+    /// targeted rebuild reports only what its re-rendered pages raised.
+    pub warnings: Vec<String>,
 }
 
 /// Incremental rebuild for the dev server. Re-parses the document (imports
@@ -560,11 +598,15 @@ pub fn build_incremental(
     site_filter: Option<&str>,
     opts: &BuildOptions,
     changed_paths: &[PathBuf],
-) -> Result<RebuildOutcome, BuildError> {
-    let (outcome, _) = build_inner(file, out_dir, site_filter, opts, Some(changed_paths))?;
-    Ok(match outcome {
+) -> Result<RebuildReport, BuildError> {
+    let pass = build_inner(file, out_dir, site_filter, opts, Some(changed_paths))?;
+    let outcome = match pass.outcome {
         BuildOutcome::Full(pages) => RebuildOutcome::Full { pages },
         BuildOutcome::Targeted(pages) => RebuildOutcome::Targeted { pages },
+    };
+    Ok(RebuildReport {
+        outcome,
+        warnings: pass.warnings,
     })
 }
 
@@ -587,6 +629,16 @@ impl BuildOutcome {
     }
 }
 
+/// Everything one [`build_inner`] pass hands back to its entry point.
+struct BuildPass {
+    /// What the pass rendered.
+    outcome: BuildOutcome,
+    /// The evaluation profile, when one was requested.
+    profile: Option<wcl_lang::Profile>,
+    /// The pass's non-fatal warnings.
+    warnings: Vec<String>,
+}
+
 /// The shared body of every build entry point: parse, validate, resolve
 /// the sites to render, and render them. `targets` selects an incremental
 /// re-render when present.
@@ -596,7 +648,7 @@ fn build_inner(
     site_filter: Option<&str>,
     opts: &BuildOptions,
     changed: Option<&[PathBuf]>,
-) -> Result<(BuildOutcome, Option<wcl_lang::Profile>), BuildError> {
+) -> Result<BuildPass, BuildError> {
     let user_src = fs::read_to_string(file)
         .map_err(|e| BuildError::Io(e, format!("read {}", file.display())))?;
 
@@ -719,10 +771,10 @@ fn build_inner(
     if let Some(targets) = targets {
         let _ = crate::render::take_route_error();
         let _ = crate::render::take_include_error();
-        let _ = crate::render::take_render_warnings();
         // A targeted re-render rewrites some pages of one site; the class
         // lint needs every page of every site, so this scan is discarded.
         let scan = ClassScan::default();
+        let warnings = Warnings::default();
         let (result, eval_err) =
             crate::render::scoped_eval_errors(|| -> Result<Option<Vec<String>>, BuildError> {
                 let mut rendered = Vec::new();
@@ -755,6 +807,7 @@ fn build_inner(
                         Some(&site_targets),
                         &scan,
                     )?;
+                    warnings.extend(built.warnings);
                     if built.need_full {
                         // A targeted render reached shared state (a new icon, or
                         // a presentation deck) — give up and full-rebuild.
@@ -786,20 +839,22 @@ fn build_inner(
             return Err(BuildError::CodeInclude(msg));
         }
         if let Some(rendered) = result? {
-            return Ok((BuildOutcome::Targeted(rendered), doc.profile()));
+            return Ok(BuildPass {
+                outcome: BuildOutcome::Targeted(rendered),
+                profile: doc.profile(),
+                warnings: warnings.take(),
+            });
         }
         // `need_full` ⇒ fall through to the full build below.
     }
 
-    // Clear any routing error / render warnings stranded by an earlier build
-    // (e.g. a previous `wcl wdoc serve` pass) so stale messages can't leak
-    // into this one. Render warnings are left in the sink after a successful
-    // build for the caller to drain via [`take_render_warnings`].
+    // Clear any routing error stranded by an earlier build (e.g. a previous
+    // `wcl wdoc serve` pass) so a stale message can't leak into this one.
     let _ = crate::render::take_route_error();
     let _ = crate::render::take_include_error();
-    let _ = crate::render::take_render_warnings();
     let _ = crate::css_lint::take_structural_uses();
     let scan = ClassScan::default();
+    let warnings = Warnings::default();
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
         let mut count = 0;
         for spec in &build_set {
@@ -812,7 +867,7 @@ fn build_inner(
                 site_layout(spec, out_dir, multi, root_site.as_deref(), &root_title);
             fs::create_dir_all(&site_out)
                 .map_err(|e| BuildError::Io(e, format!("create_dir_all {}", site_out.display())))?;
-            count += build_site(
+            let built = build_site(
                 &doc,
                 base_dir.as_deref(),
                 spec,
@@ -824,8 +879,9 @@ fn build_inner(
                 &home_title,
                 None,
                 &scan,
-            )?
-            .count;
+            )?;
+            count += built.count;
+            warnings.extend(built.warnings);
             // Landing page: a page marked `start` is copied to this site's
             // `index.html`, so `/` (or `/<site>/`) serves it without needing
             // a page literally named `index`. The page also stays reachable
@@ -850,7 +906,7 @@ fn build_inner(
             // so only the global/unscoped CSS). Each site's bundled assets
             // live under its own subdirectory, so the chooser's own `_wdoc/`
             // carries no fonts and its CSS must name none.
-            let chooser_css = site_css(&doc, None, None, BundledFonts::default());
+            let chooser_css = site_css(&doc, None, None, BundledFonts::default(), &warnings);
             write_chooser_index(out_dir, &chooser_css.text, &build_set, &scan)?;
         }
 
@@ -876,12 +932,14 @@ fn build_inner(
     // either direction (see `css_lint`), so `--site` renders without it.
     if site_filter.is_none() {
         scan.record_uses(crate::css_lint::take_structural_uses());
-        for finding in scan.findings() {
-            crate::render::record_render_warning(finding);
-        }
+        warnings.extend(scan.findings());
     }
     // `profile()` is `None` unless `opts.profile` enabled collection.
-    Ok((BuildOutcome::Full(count), doc.profile()))
+    Ok(BuildPass {
+        outcome: BuildOutcome::Full(count),
+        profile: doc.profile(),
+        warnings: warnings.take(),
+    })
 }
 
 /// Decide whether a set of `changed` source files can be served by
@@ -943,17 +1001,6 @@ fn affected_pages(doc: &Document, file: &Path, changed: &[PathBuf]) -> Option<Ha
         return None;
     }
     Some(targets)
-}
-
-/// Drain the non-fatal render warnings collected during the most recent
-/// build/render pass on this thread: a diagram edge whose `source` /
-/// `destination` named no rendered shape id, a block with no `lower`, an
-/// image with no usable intrinsic size, … The render passes leave them
-/// here rather than failing; the CLI / dev server drain and print them to
-/// stderr after a successful run. A fresh pass clears any leftovers first,
-/// so a stale warning can't leak.
-pub fn take_render_warnings() -> Vec<String> {
-    crate::render::take_render_warnings()
 }
 
 /// The name of the site marked `root = true`, if any. More than one root
@@ -1284,6 +1331,7 @@ fn site_css(
     site_name: Option<&str>,
     site_block: Option<&Block<'_>>,
     fonts: BundledFonts,
+    warnings: &Warnings,
 ) -> SiteCss {
     let mut css = CssBuckets::default();
     for (origin, b) in doc.blocks_with_source() {
@@ -1304,7 +1352,7 @@ fn site_css(
     } = css;
     // The colour theme sits between the library rules (whose defaults it
     // overrides) and the user rules (which still win).
-    let theme_css = site_theme_css(doc, site_block);
+    let theme_css = site_theme_css(doc, site_block, warnings);
     if let Some(theme) = &theme_css {
         declared.extend(theme.classes.iter().cloned());
     }
@@ -1366,6 +1414,8 @@ struct SiteBuild {
     /// Set when the incremental path hit something it cannot do in
     /// place, so the caller must fall back to a full rebuild.
     need_full: bool,
+    /// The non-fatal warnings rendering this site raised.
+    warnings: Vec<String>,
 }
 
 /// Render one site's pages into `out_dir`. Everything that scopes to a
@@ -1404,15 +1454,12 @@ fn build_site(
     // folders, the search index and icon sprite) rather than rewriting them.
     let write_shared = target.is_none();
 
-    // Terminal + pan/zoom assets, scoped to this site's pages, so a site
-    // that uses neither pays nothing. The `uses_*` flags drive each page's
-    // `<script>` tags, so they're computed regardless; only the asset
-    // writes are skipped on the incremental path.
-    let uses_terminals = spec
-        .pages
-        .iter()
-        .any(crate::blocks::terminal::uses_terminal);
-    if uses_terminals && write_shared {
+    // Player assets, scoped to this site's pages, so a site that uses none
+    // pays nothing. The flags drive each page's `<script>` tags, so they're
+    // computed regardless; only the asset writes are skipped on the
+    // incremental path.
+    let mut players = PlayerScripts::scan(&spec.pages);
+    if players.terminals && write_shared {
         write_terminal_assets(out_dir)?;
     }
 
@@ -1422,35 +1469,36 @@ fn build_site(
     // its pages gets the Nerd Font grid faces.
     let fonts = BundledFonts {
         book: spec.block.is_some(),
-        terminal: uses_terminals,
+        terminal: players.terminals,
     };
 
     // The page <style>: bundled theme + structured rules, scoped
     // to this site (global blocks plus those whose `sites` list names it).
-    let css = site_css(doc, spec.name.as_deref(), spec.block.as_ref(), fonts);
+    let site_warnings = Warnings::default();
+    let css = site_css(
+        doc,
+        spec.name.as_deref(),
+        spec.block.as_ref(),
+        fonts,
+        &site_warnings,
+    );
     // This site's contribution to the class lint. Every site contributes,
     // because a rule scoped to one site would read as dead in the others.
     scan.record_rules(&css.declared, &css.authored);
 
-    let uses_pan_zoom = spec.pages.iter().any(crate::svg::uses_pan_zoom);
-    let uses_map = spec.pages.iter().any(crate::svg::uses_map);
     // A map drives the same viewBox camera as a pan/zoom diagram, so it
     // needs the pan/zoom player too — plus its own layer/card player.
-    if (uses_pan_zoom || uses_map) && write_shared {
+    if (players.pan_zoom || players.map) && write_shared {
         write_asset(
             out_dir,
             "diagram-pan-zoom.js",
             crate::svg::DIAGRAM_PAN_ZOOM_JS,
         )?;
     }
-    if uses_map && write_shared {
+    if players.map && write_shared {
         write_asset(out_dir, "wdoc-map.js", crate::svg::WDOC_MAP_JS)?;
     }
-    let uses_dopesheet = spec
-        .pages
-        .iter()
-        .any(crate::blocks::diagram::dopesheet::uses_dopesheet);
-    if uses_dopesheet && write_shared {
+    if players.dopesheet && write_shared {
         write_asset(
             out_dir,
             "dopesheet-player.js",
@@ -1476,6 +1524,7 @@ fn build_site(
         .as_ref()
         .and_then(|b| field_bool(b, "search"))
         .unwrap_or(false);
+    players.search = search;
     let toc_nodes: Vec<TocNode> = spec.block.as_ref().map(read_toc).unwrap_or_default();
     let menu_nodes: Vec<MenuNode> = spec.block.as_ref().map(read_menu).unwrap_or_default();
     let deck_nodes: Vec<DeckSectionNode> = spec.block.as_ref().map(read_deck).unwrap_or_default();
@@ -1519,16 +1568,29 @@ fn build_site(
         }
     }
 
-    // Incremental: a page added or removed shifts every other page's
-    // template `pages` list (auto nav / prev-next), so a targeted render
-    // can't stay isolated — detect it against the prior build's on-disk
-    // pages and bail to a full rebuild.
-    if target.is_some() && !page_set_matches_disk(out_dir, &page_names) {
-        return Ok(SiteBuild {
-            count: 0,
-            rendered: Vec::new(),
-            need_full: true,
-        });
+    // Incremental: a page added, removed, reordered or retitled shifts
+    // every other page's navigation (auto contents, page list, prev/next),
+    // so a targeted render can't stay isolated — detect it against the
+    // prior full build's manifest and bail to a full rebuild. A full build
+    // drops the manifest first and writes it only once every page is out,
+    // so one that fails part-way leaves nothing for a later match.
+    let manifest = nav_manifest(&pages);
+    if target.is_some() {
+        if !nav_manifest_matches(out_dir, &manifest) {
+            return Ok(SiteBuild {
+                count: 0,
+                rendered: Vec::new(),
+                need_full: true,
+                warnings: Vec::new(),
+            });
+        }
+    } else {
+        let path = nav_manifest_path(out_dir);
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(BuildError::Io(e, format!("remove {}", path.display()))),
+        }
     }
 
     if let Some(missing) = toc_missing_page(&toc_nodes, &page_names) {
@@ -1579,6 +1641,8 @@ fn build_site(
     inline_patterns.set_ui_theme(crate::render::resolve_ui_theme(spec.block.as_ref()));
     // The `markdown_source` block writes its Markdown's diagram SVGs here.
     inline_patterns.set_output_dir(out_dir.to_path_buf());
+    // What the stylesheet pass found joins what the pages will.
+    inline_patterns.warnings().extend(site_warnings.take());
 
     // Resolve the site favicon once. A user `icon` path is resolved + copied
     // via the image registry (already copied after the page loop); an
@@ -1660,13 +1724,7 @@ fn build_site(
         pages_value: &pages_value,
         home_href,
         home_title,
-        players: PlayerScripts {
-            terminals: uses_terminals,
-            pan_zoom: uses_pan_zoom,
-            map: uses_map,
-            dopesheet: uses_dopesheet,
-            search,
-        },
+        players,
         search,
     };
 
@@ -1677,6 +1735,7 @@ fn build_site(
             count: 0,
             rendered: Vec::new(),
             need_full: true,
+            warnings: Vec::new(),
         });
     }
 
@@ -1777,10 +1836,17 @@ fn build_site(
         return Err(BuildError::BadLink(link_errors));
     }
 
+    // Every page is out: record the navigation they were rendered against,
+    // for the next incremental rebuild to check.
+    if write_shared {
+        write_asset(out_dir, NAV_MANIFEST, &manifest)?;
+    }
+
     Ok(SiteBuild {
         count,
         rendered,
         need_full,
+        warnings: inline_patterns.warnings().take(),
     })
 }
 
@@ -2312,32 +2378,37 @@ fn block_matches_accepted_type(block: &Block<'_>, accepted: &TypeRef) -> bool {
     })
 }
 
-/// Whether the site's current page set matches the `<name>.html` files
-/// already on disk (one per page, ignoring the `index.html` landing copy and
-/// any page literally named `index`). The incremental path uses this to fall
-/// back to a full rebuild when a page was added or removed — either shifts
-/// every other page's template `pages` list (auto nav / prev-next).
-fn page_set_matches_disk(site_out: &Path, page_names: &HashSet<String>) -> bool {
-    let Ok(entries) = fs::read_dir(site_out) else {
-        return false;
-    };
-    let mut on_disk: HashSet<String> = HashSet::new();
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else { continue };
-        if name == "index.html" {
-            continue;
-        }
-        if let Some(stem) = name.strip_suffix(".html") {
-            on_disk.insert(stem.to_string());
-        }
-    }
-    let expected: HashSet<String> = page_names
+/// Where a full build records the navigation facts every page of a site
+/// renders, under the site's `_wdoc/` directory. See [`nav_manifest`].
+const NAV_MANIFEST: &str = "pages.json";
+
+/// The navigation facts a site's pages share: each page's name and
+/// first-heading title, in page order. Every page's template reads them —
+/// the auto contents, the page list, prev/next — so a change to any of
+/// them reaches pages whose own source did not change.
+fn nav_manifest(pages: &[(String, String, String)]) -> String {
+    let entries: Vec<serde_json::Value> = pages
         .iter()
-        .filter(|n| n.as_str() != "index")
-        .cloned()
+        .map(|(name, _, title)| serde_json::json!([name, title]))
         .collect();
-    on_disk == expected
+    serde_json::Value::Array(entries).to_string()
+}
+
+/// Path of the site's navigation manifest under `site_out`.
+fn nav_manifest_path(site_out: &Path) -> PathBuf {
+    site_out
+        .join(crate::blocks::terminal::ASSET_DIR)
+        .join(NAV_MANIFEST)
+}
+
+/// Whether the manifest the prior full build left in `site_out` records
+/// exactly `manifest`. The incremental path re-renders only the edited
+/// pages, so it falls back to a full rebuild when a page was added,
+/// removed, reordered or retitled — any of which would leave every other
+/// page's navigation stale. A missing manifest (no prior full build, or
+/// one that failed part-way) never matches.
+fn nav_manifest_matches(site_out: &Path, manifest: &str) -> bool {
+    fs::read_to_string(nav_manifest_path(site_out)).is_ok_and(|on_disk| on_disk == manifest)
 }
 
 /// Whether the on-disk shared icon sprite at `out_dir/_wdoc/icons.svg`
@@ -2372,6 +2443,38 @@ struct PlayerScripts {
 }
 
 impl PlayerScripts {
+    /// The players `pages` use, from one walk per page (component bodies
+    /// included, see [`crate::render::block_tree_walk`]) that stops as
+    /// soon as every player is known to be needed. `search` is the site's
+    /// own setting, not something a page's blocks decide, so it starts off.
+    fn scan(pages: &[Block<'_>]) -> Self {
+        let mut players = PlayerScripts {
+            terminals: false,
+            pan_zoom: false,
+            map: false,
+            dopesheet: false,
+            search: false,
+        };
+        for page in pages {
+            let all_found = crate::render::block_tree_walk(page, &mut |b| {
+                match b.kind() {
+                    "terminal" => players.terminals = true,
+                    "map" => players.map = true,
+                    "dopesheet" => players.dopesheet = true,
+                    "diagram" if field_bool(b, "pan_zoom") == Some(true) => {
+                        players.pan_zoom = true;
+                    }
+                    _ => {}
+                }
+                players.terminals && players.pan_zoom && players.map && players.dopesheet
+            });
+            if all_found {
+                break;
+            }
+        }
+        players
+    }
+
     /// Append the `<script>` tags for the players this site uses. Loaded
     /// once per page; each no-ops on a page that doesn't use it. Shared
     /// verbatim by the per-page loop and the presentation deck.

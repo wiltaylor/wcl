@@ -16,13 +16,21 @@ use crate::inline::InlinePatterns;
 use super::lower::record_lower_error;
 use super::{MAX_LOWER_DEPTH, field_bool, label_string};
 
-/// `true` as soon as `pred` matches `block`, any descendant in its raw
-/// block subtree, or — when a block is a `wdoc_component` instance — any
-/// block in the component definition's body. Drives the player-asset
-/// detection scans (`uses_pan_zoom` / `uses_terminal` / `uses_map` / …):
-/// a feature used *only* inside a component body (which never appears in
-/// the page's raw block tree, since the page holds the instance block)
-/// still ships its JS/CSS.
+/// `true` as soon as `pred` matches `block` or any block
+/// [`block_tree_walk`] reaches from it. Drives the map detection that
+/// makes a diagram interactive (`uses_map`).
+pub(crate) fn block_tree_any<F: Fn(&Block<'_>) -> bool>(block: &Block<'_>, pred: &F) -> bool {
+    block_tree_walk(block, &mut |b| pred(b))
+}
+
+/// Call `visit` on `block`, every descendant in its raw block subtree, and
+/// — when a block is a `wdoc_component` instance — every block in the
+/// component definition's body, stopping as soon as `visit` returns `true`.
+/// Returns whether it stopped early. Drives the player-asset detection
+/// (the build's one scan for terminals, pan/zoom diagrams, maps and
+/// dopesheets): a feature used *only* inside a component body (which never
+/// appears in the page's raw block tree, since the page holds the instance
+/// block) still ships its JS/CSS.
 ///
 /// Crossing into a component body increments `depth`; once it passes
 /// `MAX_LOWER_DEPTH` the descent stops, bounding a self-referential
@@ -31,17 +39,20 @@ use super::{MAX_LOWER_DEPTH, field_bool, label_string};
 /// bounded by the finite block tree. Detection-only: it reads the static
 /// definition, so — unlike [`expand_container_children`] — it evaluates
 /// no `each` / slot expressions and records no lowering errors.
-pub(crate) fn block_tree_any<F: Fn(&Block<'_>) -> bool>(block: &Block<'_>, pred: &F) -> bool {
-    fn go<F: Fn(&Block<'_>) -> bool>(block: &Block<'_>, pred: &F, depth: usize) -> bool {
-        pred(block)
-            || block.blocks().any(|b| go(&b, pred, depth))
+pub(crate) fn block_tree_walk(
+    block: &Block<'_>,
+    visit: &mut dyn FnMut(&Block<'_>) -> bool,
+) -> bool {
+    fn go(block: &Block<'_>, visit: &mut dyn FnMut(&Block<'_>) -> bool, depth: usize) -> bool {
+        visit(block)
+            || block.blocks().any(|b| go(&b, visit, depth))
             || (depth < MAX_LOWER_DEPTH
                 && block
                     .doc()
                     .kind_declarer(block.kind())
-                    .is_some_and(|def| def.blocks().any(|b| go(&b, pred, depth + 1))))
+                    .is_some_and(|def| def.blocks().any(|b| go(&b, visit, depth + 1))))
     }
-    go(block, pred, 0)
+    go(block, visit, 0)
 }
 
 /// The blocks `block` generates, or `None` when it generates nothing and

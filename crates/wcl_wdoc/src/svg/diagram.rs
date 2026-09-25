@@ -64,6 +64,7 @@ fn render_diagram_inner(
     let cctx = CollectCtx {
         tilesets: patterns.tilesets(),
         images: patterns.images(),
+        warnings: patterns.warnings(),
     };
     let cls = class_attr(block);
     let width = field_i64(block, "width").unwrap_or(0);
@@ -76,9 +77,15 @@ fn render_diagram_inner(
     // (now populated), drawn *behind* the shapes, and excluded from the
     // obstacle graph (they never become a `Block`). Their expanded boxes
     // join the viewBox fit so a padded boundary never clips.
-    let (boundaries, boundary_bboxes) = render_boundaries(block, &collector.positions);
-    let (edges, edge_bboxes) =
-        render_edges(block, &collector.positions, &collector.containers, (vw, vh));
+    let (boundaries, boundary_bboxes) =
+        render_boundaries(block, &collector.positions, patterns.warnings());
+    let (edges, edge_bboxes) = render_edges(
+        block,
+        &collector.positions,
+        &collector.containers,
+        (vw, vh),
+        patterns.warnings(),
+    );
     let mut content_bboxes = collector.bboxes.clone();
     content_bboxes.extend(boundary_bboxes);
     let viewbox = fit_viewbox(&content_bboxes, &edge_bboxes, vw, vh);
@@ -696,13 +703,14 @@ fn gather_boundaries_recursive<'a>(block: &Block<'a>, out: &mut Vec<Block<'a>>) 
 pub(crate) fn render_boundaries(
     block: &Block<'_>,
     positions: &ShapePositions,
+    warnings: &Warnings,
 ) -> (String, Vec<(f64, f64, f64, f64)>) {
     let mut boundaries: Vec<Block<'_>> = Vec::new();
     gather_boundaries_recursive(block, &mut boundaries);
     let mut out = String::new();
     let mut bboxes: Vec<(f64, f64, f64, f64)> = Vec::new();
     for b in &boundaries {
-        if let Some((svg, bbox)) = render_one_boundary(b, positions) {
+        if let Some((svg, bbox)) = render_one_boundary(b, positions, warnings) {
             out.push_str(&svg);
             bboxes.push(bbox);
         }
@@ -714,6 +722,7 @@ pub(crate) fn render_boundaries(
 fn render_one_boundary(
     block: &Block<'_>,
     positions: &ShapePositions,
+    warnings: &Warnings,
 ) -> Option<(String, (f64, f64, f64, f64))> {
     let label = label_string(block).filter(|s| !s.is_empty());
     let name = label.clone().unwrap_or_else(|| "<unnamed>".to_string());
@@ -726,7 +735,7 @@ fn render_one_boundary(
     let mut found = 0usize;
     for id in &ids {
         let Some(m) = positions.get(id) else {
-            crate::render::record_edge_warning(format!(
+            warnings.record(format!(
                 "diagram boundary '{name}': member '{id}' matches no shape id"
             ));
             continue;
@@ -739,7 +748,7 @@ fn render_one_boundary(
         found += 1;
     }
     if found == 0 {
-        crate::render::record_edge_warning(format!(
+        warnings.record(format!(
             "diagram boundary '{name}': no members resolved to a shape — nothing drawn"
         ));
         return None;

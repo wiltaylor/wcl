@@ -141,6 +141,7 @@ fn theme_metric_vars(chain: &[Block<'_>], out: &mut String) {
 pub(crate) fn site_theme_css(
     doc: &Document,
     site_block: Option<&Block<'_>>,
+    warnings: &crate::render::Warnings,
 ) -> Option<RenderedCss> {
     let block = site_block?;
 
@@ -176,7 +177,7 @@ pub(crate) fn site_theme_css(
     // no accent — while the build reports success. Say so instead.
     for (mode, ok) in [("dark", dark), ("light", light)] {
         if !ok {
-            crate::render::record_render_warning(format!(
+            warnings.record(format!(
                 "theme \"{name}\" states no {mode} palette, directly or through \
                  `extends`, so every `--wdoc-*` colour is undeclared and the page \
                  renders unstyled — add a `palette {mode} {{ … }}`, or inherit one \

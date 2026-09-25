@@ -67,6 +67,12 @@ pub(crate) struct TilesetRegistry {
     /// Names of tilesets referenced by a rendered tilemap. Only these
     /// images are copied into `_wdoc/`.
     used: RefCell<BTreeSet<String>>,
+    /// Non-fatal problems found while loading (a declared size that
+    /// disagrees with the file header). [`InlinePatterns::load`] moves them
+    /// into the pass's warnings, since loading runs before that exists.
+    ///
+    /// [`InlinePatterns::load`]: crate::inline::InlinePatterns::load
+    load_warnings: Vec<String>,
 }
 
 impl TilesetRegistry {
@@ -77,6 +83,7 @@ impl TilesetRegistry {
     /// determined is a build error — it could never render correctly.
     pub(crate) fn load(doc: &Document, base_dir: Option<&Path>) -> Result<Self, BuildError> {
         let mut sets = HashMap::new();
+        let mut load_warnings = Vec::new();
         for block in doc.blocks() {
             if block.kind() != "tileset" {
                 continue;
@@ -116,7 +123,7 @@ impl TilesetRegistry {
                     if let Some((aw, ah)) = fs::read(&src_path).ok().as_deref().and_then(image_dims)
                         && (aw as i64, ah as i64) != (w, h)
                     {
-                        crate::render::record_render_warning(format!(
+                        load_warnings.push(format!(
                             "tileset \"{name}\": declared image_width/image_height {w}x{h} \
                              disagree with {} ({aw}x{ah}) — tiles will render distorted",
                             src_path.display()
@@ -171,7 +178,13 @@ impl TilesetRegistry {
         Ok(TilesetRegistry {
             sets,
             used: RefCell::new(BTreeSet::new()),
+            load_warnings,
         })
+    }
+
+    /// Take the non-fatal problems found while loading.
+    pub(crate) fn take_load_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.load_warnings)
     }
 
     /// Note that a tileset was used.

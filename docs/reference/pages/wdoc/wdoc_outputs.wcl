@@ -126,7 +126,9 @@ rebuilt: 2 pages (full)
 TEXT
   }
 
-  p "The fallback is deliberately eager, because the failure mode of being clever here is a stale page that looks right. Seven kinds of change force a full build: an imported library, the page set, the CSS, an asset declaration, a repeater, one that pulls in an icon the sprite does not have yet, and a file holding a `site` block. That is why editing your entry document usually rebuilds everything."
+  p "The fallback is deliberately eager, because the failure mode of being clever here is a stale page that looks right. Seven kinds of change force a full build: an imported library, the page set or its navigation, the CSS, an asset declaration, a repeater, one that pulls in an icon the sprite does not have yet, and a file holding a `site` block. That is why editing your entry document usually rebuilds everything."
+
+  p "Navigation deserves a word, because it is the one place a page edit reaches other pages. Every page's sidebar, page list and next/previous links are built from the site's pages: their names, their order, and each one's first `h1` or `chapter_header`. So a full build writes that list to `_wdoc/pages.json`, and a rebuild compares against it. Add, remove or reorder a page, or give one a new first heading, and the lists differ: the rebuild renders everything, and the other pages' navigation stays true. Edit the prose under an unchanged heading and the lists match, so only that page re-renders."
 
   callout "Scoping is by file, not by block" {
     kind = :note

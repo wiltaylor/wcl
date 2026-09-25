@@ -139,6 +139,10 @@ pub(crate) struct InlinePatterns {
     vis_site: RefCell<Option<String>>,
     /// Template currently being emitted, for the visibility predicate.
     vis_template: RefCell<Option<String>>,
+    /// The non-fatal warnings this pass records. Rides here, like
+    /// `link_errors`, because every walker that can find one already
+    /// carries the patterns; the entry point drains it into its result.
+    warnings: crate::render::Warnings,
 }
 
 /// One inline-markup rule: the regex that recognises it and the WCL
@@ -195,12 +199,14 @@ impl InlinePatterns {
         site_pages: BTreeMap<String, HashSet<String>>,
         site_prefix: BTreeMap<String, String>,
         icons: IconRegistry,
-        tilesets: TilesetRegistry,
+        mut tilesets: TilesetRegistry,
         images: ImageRegistry,
         videos: VideoRegistry,
         files: FileRegistry,
         backend: Backend,
     ) -> Self {
+        let warnings = crate::render::Warnings::default();
+        warnings.extend(tilesets.take_load_warnings());
         let mut compiled = Vec::new();
         for block in doc.blocks() {
             if block.kind() != "inline_pattern" {
@@ -265,6 +271,7 @@ impl InlinePatterns {
             backend,
             vis_site: RefCell::new(None),
             vis_template: RefCell::new(None),
+            warnings,
         }
     }
 
@@ -362,6 +369,11 @@ impl InlinePatterns {
     /// result into a `BuildError::BadLink`.
     pub(crate) fn take_link_errors(&self) -> Vec<String> {
         self.link_errors.borrow_mut().drain(..).collect()
+    }
+
+    /// The pass's non-fatal warning sink.
+    pub(crate) fn warnings(&self) -> &crate::render::Warnings {
+        &self.warnings
     }
 
     /// Tokenize `text` and emit HTML: literal text gets html-escaped,
@@ -669,9 +681,8 @@ impl InlinePatterns {
     /// resolve as cross-site links, or record a link error.
     pub(crate) fn resolve_href(&self, href: &str) -> String {
         if !is_site_link(href) && !url_allowed(href, UrlUse::Link) {
-            crate::render::record_render_warning(crate::render::disallowed_url_warning(
-                "link", href,
-            ));
+            self.warnings
+                .record(crate::render::disallowed_url_warning("link", href));
             return String::new();
         }
         if is_external_href(href) {

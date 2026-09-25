@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use tempfile::TempDir;
-use wcl_wdoc::{BuildError, markdown};
+use wcl_wdoc::{BuildError, BuildReport, markdown};
 
 /// Write a wdoc fixture, prepending the `import <wdoc.wcl>` line a real
 /// document needs.
@@ -12,9 +12,38 @@ fn write_fixture(path: impl AsRef<Path>, body: &str) {
     std::fs::write(path, composed).expect("write wdoc fixture");
 }
 
+/// The Markdown build returns its warnings too — here a diagram edge whose
+/// endpoint names no shape.
+#[test]
+fn markdown_returns_its_warnings() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  diagram {
+    width  = 300
+    height = 120
+    rect { id = a  x = 20.0  y = 20.0  width = 60.0  height = 40.0  fill = "#abc" }
+    a -> nonexistent
+  }
+}
+"##,
+    );
+    let out = tmp.path().join("out");
+    let report = markdown(&src, &out, None)
+        .unwrap_or_else(|e| panic!("markdown failed: {}", e.render_plain()));
+    assert!(
+        report.warnings.iter().any(|w| w.contains("nonexistent")),
+        "expected the unmatched-endpoint warning, got: {:?}",
+        report.warnings
+    );
+}
+
 fn md_ok(file: &Path, out: &Path, site: Option<&str>) -> usize {
     match markdown(file, out, site) {
-        Ok(n) => n,
+        Ok(BuildReport { count: n, .. }) => n,
         Err(BuildError::Io(e, ctx)) => panic!("markdown io error: {ctx}: {e}"),
         Err(BuildError::Parse(r)) => panic!("markdown parse error: {r:?}"),
         Err(BuildError::Schema(n)) => panic!("markdown schema error: {n} violations"),
@@ -345,7 +374,9 @@ fn lowerless_block_fails_the_build() {
     let out = tmp.path().join("out");
     match markdown(&src, &out, None) {
         Err(BuildError::Schema(n)) => assert_eq!(n, 1, "one contract violation"),
-        Ok(n) => panic!("expected a schema error, but wrote {n} page(s)"),
+        Ok(BuildReport { count: n, .. }) => {
+            panic!("expected a schema error, but wrote {n} page(s)")
+        }
         Err(_) => panic!("expected BuildError::Schema, got a different error"),
     }
 }
@@ -366,7 +397,7 @@ fn computed_table_eval_error_fails_the_build() {
             let text = format!("{r:?}");
             assert!(text.contains("no_such_name"), "names the binding: {text}");
         }
-        Ok(n) => panic!("expected an eval error, but wrote {n} page(s)"),
+        Ok(BuildReport { count: n, .. }) => panic!("expected an eval error, but wrote {n} page(s)"),
         Err(_) => panic!("expected BuildError::Eval, got a different error"),
     }
 }
@@ -385,7 +416,7 @@ fn unresolved_name_in_page_block_errors() {
     let out = tmp.path().join("out");
     match markdown(&src, &out, None) {
         Err(BuildError::Eval(_)) => {}
-        Ok(n) => panic!("expected an eval error, but wrote {n} page(s)"),
+        Ok(BuildReport { count: n, .. }) => panic!("expected an eval error, but wrote {n} page(s)"),
         Err(other) => {
             other.report();
             panic!("expected BuildError::Eval, got a different error (see above)");
@@ -725,7 +756,9 @@ fn a_block_the_target_does_not_cover_fails_the_build() {
                 "names the kind, the target and the waiver: {text}"
             );
         }
-        Ok(n) => panic!("expected an uncovered-target error, but wrote {n} page(s)"),
+        Ok(BuildReport { count: n, .. }) => {
+            panic!("expected an uncovered-target error, but wrote {n} page(s)")
+        }
         Err(e) => panic!("expected BuildError::Eval, got {e}", e = e.render_plain()),
     }
 }

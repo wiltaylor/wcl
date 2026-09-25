@@ -122,10 +122,10 @@ struct RebuildReport {
     summary: String,
 }
 
-/// Print any non-fatal edge warnings left by the most recent build (edges
-/// whose endpoint matched no shape id) to stderr.
-fn print_edge_warnings() {
-    for w in wcl_wdoc::take_render_warnings() {
+/// Print the non-fatal warnings a build returned (edges whose endpoint
+/// matched no shape id, …) to stderr.
+fn print_render_warnings(warnings: &[String]) {
+    for w in warnings {
         eprintln!("warning: {w}");
     }
 }
@@ -134,9 +134,10 @@ fn print_edge_warnings() {
 /// bump the live-reload generation.
 fn run_build(file: &Path, out: &Path, site: Option<&str>, state: &ServeState, rebuild: bool) {
     let opts = BuildOptions::default();
-    match build_with_options(file, out, site, &opts).map(|(n, _)| n) {
-        Ok(n) => {
-            print_edge_warnings();
+    match build_with_options(file, out, site, &opts) {
+        Ok(report) => {
+            print_render_warnings(&report.warnings);
+            let n = report.count;
             let plural = if n == 1 { "" } else { "s" };
             if rebuild {
                 eprintln!("rebuilt: {n} page{plural}");
@@ -171,9 +172,11 @@ fn run_rebuild_request(
     let opts = BuildOptions::default();
     let changed = drain_pending(state);
     let result = if changed.is_empty() {
-        build_with_options(file, out, site, &opts).map(|(n, _)| format!("{} (full)", page_count(n)))
+        build_with_options(file, out, site, &opts)
+            .map(|r| (format!("{} (full)", page_count(r.count)), r.warnings))
     } else {
-        build_incremental(file, out, site, &opts, &changed).map(rebuild_summary)
+        build_incremental(file, out, site, &opts, &changed)
+            .map(|r| (rebuild_summary(r.outcome), r.warnings))
     };
     finish_rebuild(state, result)
 }
@@ -188,14 +191,15 @@ fn drain_pending(state: &ServeState) -> Vec<PathBuf> {
 }
 
 /// Record a build outcome in `state`, bump the live-reload generation, and
-/// build the [`RebuildReport`]. `result` is `Ok(summary)` or the build error.
+/// build the [`RebuildReport`]. `result` is `Ok((summary, warnings))` or the
+/// build error.
 fn finish_rebuild(
     state: &ServeState,
-    result: Result<String, wcl_wdoc::BuildError>,
+    result: Result<(String, Vec<String>), wcl_wdoc::BuildError>,
 ) -> RebuildReport {
     let report = match result {
-        Ok(summary) => {
-            print_edge_warnings();
+        Ok((summary, warnings)) => {
+            print_render_warnings(&warnings);
             eprintln!("rebuilt: {summary}");
             *state.error.write().unwrap_or_else(|e| e.into_inner()) = None;
             RebuildReport { ok: true, summary }

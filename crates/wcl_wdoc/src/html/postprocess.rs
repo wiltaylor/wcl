@@ -106,7 +106,7 @@ pub(crate) fn plain_text(html: &str) -> String {
             None
         };
         if let Some(close) = skip_to {
-            match rest.to_ascii_lowercase().find(close) {
+            match find_ascii_ci(rest, close) {
                 Some(end) => rest = &rest[end + close.len()..],
                 None => rest = "",
             }
@@ -127,6 +127,22 @@ pub(crate) fn plain_text(html: &str) -> String {
         .replace("&amp;", "&")
         .trim()
         .to_string()
+}
+
+/// Byte offset of the first match of the ASCII `needle` in `haystack`,
+/// ignoring ASCII case. Searches the bytes in place — lowercasing the rest
+/// of the page to find each `</script>` made the plain-text pass quadratic
+/// in the page size. A match starts on the needle's first (ASCII) byte, so
+/// the offset is always a char boundary.
+fn find_ascii_ci(haystack: &str, needle: &str) -> Option<usize> {
+    let needle = needle.as_bytes();
+    let first = needle.first()?.to_ascii_lowercase();
+    let bytes = haystack.as_bytes();
+    let last_start = bytes.len().checked_sub(needle.len())?;
+    (0..=last_start).find(|&i| {
+        bytes[i].to_ascii_lowercase() == first
+            && bytes[i..i + needle.len()].eq_ignore_ascii_case(needle)
+    })
 }
 
 /// Slugify heading text into an id-safe form.
@@ -206,6 +222,21 @@ pub(crate) fn process_footnotes(content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn find_ascii_ci_ignores_case_and_respects_bounds() {
+        assert_eq!(find_ascii_ci("ab</SCRIPT>", "</script>"), Some(2));
+        assert_eq!(find_ascii_ci("é</Style>", "</style>"), Some(2));
+        assert_eq!(find_ascii_ci("</scrip", "</script>"), None);
+        assert_eq!(find_ascii_ci("", "</style>"), None);
+        assert_eq!(find_ascii_ci("abc", ""), None);
+    }
+
+    #[test]
+    fn plain_text_skips_script_and_style_in_any_case() {
+        let html = "<p>a</p> <SCRIPT>x()</ScRiPt> <style>.p{}</STYLE> <p>b</p>";
+        assert_eq!(plain_text(html), "a b");
+    }
 
     #[test]
     fn plain_text_decodes_amp_last() {
