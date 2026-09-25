@@ -154,7 +154,7 @@ pub(crate) fn render_html_variant_with_blocks(
                 _ => None,
             })
             .and_then(|name| patterns.style(name))
-            .map(|css| format!("<style>{css}</style>"))
+            .map(|css| format!("<style>{}</style>", escape_style_text(css)))
             .unwrap_or_default(),
         // A `Head` reached in body context renders to nothing — its
         // children are hoisted into `<head>` only when the fundamental is
