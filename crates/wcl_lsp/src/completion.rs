@@ -10,7 +10,7 @@
 use std::collections::HashSet;
 
 use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind};
-use wcl_lang::{DeclName, Document, SymbolKind, parse_for_edit};
+use wcl_lang::{DeclName, Document, SymbolKind, parse_for_edit, parse_for_edit_recovering};
 
 use crate::ctx::Ctx;
 use crate::resolve::preceding_non_ws;
@@ -190,38 +190,38 @@ fn identifier_items(
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
-    // Locals — only computable when we have a parseable AST.
-    if let Ok(ast) = parse_for_edit(source, uri) {
-        let scopes = walk::enclosing_scopes_at(&ast.items, offset);
-        // Inner-most first so they outrank outer same-name entries.
-        for p in scopes.params.iter().rev() {
-            push_unique(
-                &mut out,
-                &mut seen,
-                p.name.clone(),
-                CompletionItemKind::VARIABLE,
-                "parameter".to_string(),
-            );
-        }
-        for lb in scopes.lets.iter().rev() {
-            push_unique(
-                &mut out,
-                &mut seen,
-                lb.name.clone(),
-                CompletionItemKind::VARIABLE,
-                "let binding".to_string(),
-            );
-        }
-        // Match-arm / if-let pattern bindings (inner-most first).
-        for (name, _) in scopes.bindings.iter().rev() {
-            push_unique(
-                &mut out,
-                &mut seen,
-                (*name).to_string(),
-                CompletionItemKind::VARIABLE,
-                "pattern binding".to_string(),
-            );
-        }
+    // Locals, from every item that parses: a syntax error elsewhere in
+    // the file does not hide the scopes around the cursor.
+    let ast = parse_for_edit_recovering(source, uri).source;
+    let scopes = walk::enclosing_scopes_at(&ast.items, offset);
+    // Inner-most first so they outrank outer same-name entries.
+    for p in scopes.params.iter().rev() {
+        push_unique(
+            &mut out,
+            &mut seen,
+            p.name.clone(),
+            CompletionItemKind::VARIABLE,
+            "parameter".to_string(),
+        );
+    }
+    for lb in scopes.lets.iter().rev() {
+        push_unique(
+            &mut out,
+            &mut seen,
+            lb.name.clone(),
+            CompletionItemKind::VARIABLE,
+            "let binding".to_string(),
+        );
+    }
+    // Match-arm / if-let pattern bindings (inner-most first).
+    for (name, _) in scopes.bindings.iter().rev() {
+        push_unique(
+            &mut out,
+            &mut seen,
+            (*name).to_string(),
+            CompletionItemKind::VARIABLE,
+            "pattern binding".to_string(),
+        );
     }
 
     for doc in [root_doc, local_doc].into_iter().flatten() {

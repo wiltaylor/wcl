@@ -7,23 +7,26 @@
 
 #[allow(deprecated)] // DocumentSymbol::deprecated is required by lsp-types
 use tower_lsp_server::ls_types::{DocumentSymbol, SymbolKind as LspSymbolKind};
-use wcl_lang::{SymbolKind, SymbolRecord};
+use wcl_lang::{SymbolIndex, SymbolKind, SymbolRecord};
 
 use crate::convert::LineIndex;
 use crate::ctx::Ctx;
 
-/// Build a flat list of document symbols for `source`. Returns an
-/// empty vec on parse failure (the diagnostics path already surfaces
-/// the parse error).
+/// Build a flat list of document symbols for `source`. A file with
+/// syntax errors still gets an outline: the declarations of every item
+/// that parsed (the diagnostics path surfaces the errors themselves).
 pub(crate) fn compute(ctx: &Ctx, source: &str, uri: &str) -> Vec<DocumentSymbol> {
-    let Ok(doc) = ctx.open(source, uri) else {
-        return Vec::new();
-    };
     let index = ctx.index(source);
-    doc.symbols()
-        .iter()
-        .map(|rec| record_to_symbol(&index, rec))
-        .collect()
+    let to_symbols = |symbols: &SymbolIndex| {
+        symbols
+            .iter()
+            .map(|rec| record_to_symbol(&index, rec))
+            .collect()
+    };
+    match ctx.open(source, uri) {
+        Ok(doc) => to_symbols(doc.symbols()),
+        Err(_) => to_symbols(&wcl_lang::parse_for_edit_recovering(source, uri).symbols),
+    }
 }
 
 /// Convert an indexed declaration into the outline entry a client
@@ -91,9 +94,10 @@ mod tests {
     }
 
     #[test]
-    fn parse_failure_yields_no_symbols() {
-        let src = "type Broken {";
+    fn parse_failure_keeps_the_symbols_that_parsed() {
+        let src = "type Kept {\n  name: utf8\n}\nbroken = = 1\ntype Broken {";
         let syms = compute(&Ctx::new(Default::default()), src, "test.wcl");
-        assert!(syms.is_empty());
+        let names: Vec<_> = syms.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["Kept", "name"]);
     }
 }

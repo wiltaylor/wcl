@@ -60,20 +60,21 @@ pub(crate) fn document(ctx: &Ctx, doc: &Document) -> Vec<(Origin, Diagnostic)> {
     out
 }
 
-/// A document that failed to open. A syntax error carries the source it
-/// was raised on — the analysed document or an imported file — so it is
-/// placed there; an I/O failure lands at the top of the analysed file.
+/// A document that failed to open. Each syntax error carries the source
+/// it was raised on — the analysed document or an imported file — so it
+/// is placed there; an I/O failure lands at the top of the analysed file.
 pub(crate) fn parse_failure(ctx: &Ctx, err: &ParseError, name: &str) -> Vec<(Origin, Diagnostic)> {
     match err {
-        ParseError::Syntax(syntax) => origin_of(syntax.src.name(), name)
-            .map(|origin| {
+        ParseError::Syntax(_) => err
+            .syntax_errors()
+            .filter_map(|syntax| {
+                let origin = origin_of(syntax.src.name(), name)?;
                 let range = source_span_to_range(ctx, syntax.src.inner(), syntax.span);
-                (
+                Some((
                     origin,
                     syntax_diagnostic(range, &syntax.message, &syntax.label),
-                )
+                ))
             })
-            .into_iter()
             .collect(),
         ParseError::Io(io) => vec![(
             Origin::Analysed,
@@ -89,20 +90,20 @@ pub(crate) fn parse_failure(ctx: &Ctx, err: &ParseError, name: &str) -> Vec<(Ori
     }
 }
 
-/// Syntax-only diagnostics for `source`: a parse with no import
-/// resolution or schema validation. Used for files outside a configured
-/// root's import graph, where validating the fragment in isolation
-/// reports false positives for everything the root supplies.
+/// Syntax-only diagnostics for `source`: every syntax error of a parse
+/// with no import resolution or schema validation. Used for files
+/// outside a configured root's import graph, where validating the
+/// fragment in isolation reports false positives for everything the
+/// root supplies.
 pub(crate) fn syntax_only(ctx: &Ctx, source: &str, name: &str) -> Vec<Diagnostic> {
-    match wcl_lang::parse_for_edit(source, name) {
-        Ok(_) => Vec::new(),
-        Err(ParseError::Syntax(syntax)) => {
+    wcl_lang::parse_for_edit_recovering(source, name)
+        .errors
+        .iter()
+        .map(|syntax| {
             let range = source_span_to_range(ctx, source, syntax.span);
-            vec![syntax_diagnostic(range, &syntax.message, &syntax.label)]
-        }
-        // `parse_for_edit` reads nothing, so it cannot fail on I/O.
-        Err(ParseError::Io(_)) => Vec::new(),
-    }
+            syntax_diagnostic(range, &syntax.message, &syntax.label)
+        })
+        .collect()
 }
 
 /// Where a diagnostic raised on the source named `name` belongs, given
@@ -228,6 +229,22 @@ mod tests {
             assert_eq!(d.severity, Some(DiagnosticSeverity::ERROR));
             assert_eq!(d.code, Some(NumberOrString::String("wcl::parse".into())));
             assert!(d.range.start.line <= d.range.end.line);
+        }
+    }
+
+    #[test]
+    fn every_syntax_error_is_published() {
+        let src = "a = = 1\nb = 2\nsvc {\n  c = )\n  d = 3\n}\ne = \"open\nf = 4\n";
+        for diags in [
+            compute(src, "test.wcl"),
+            syntax_only(&ctx(), src, "test.wcl"),
+        ] {
+            let lines: Vec<u32> = diags.iter().map(|d| d.range.start.line).collect();
+            assert_eq!(lines, vec![0, 3, 6], "{diags:#?}");
+            assert!(diags.iter().all(|d| {
+                d.code == Some(NumberOrString::String("wcl::parse".into()))
+                    && d.severity == Some(DiagnosticSeverity::ERROR)
+            }));
         }
     }
 
