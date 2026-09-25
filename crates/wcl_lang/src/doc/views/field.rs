@@ -87,7 +87,7 @@ impl<'a> TypeField<'a> {
     /// If this field carries an `@child("kind")` decorator, returns the
     /// nested block kind it binds. Returns `None` when the decorator
     /// is absent OR when its positional arg names a union type rather
-    /// than a string kind (use [`child_kind_or_union`] for the union
+    /// than a string kind (use [`child_kind_or_union`](Self::child_kind_or_union) for the union
     /// case).
     pub fn child_block_kind(&self) -> Option<String> {
         match self.child_kind_or_union()? {
@@ -98,7 +98,7 @@ impl<'a> TypeField<'a> {
 
     /// If this field carries an `@children("kind", min?, max?)`
     /// decorator, returns the nested block kind it binds. Returns
-    /// `None` for the union form — use [`children_kind_or_union`].
+    /// `None` for the union form — use [`children_kind_or_union`](Self::children_kind_or_union).
     pub fn children_block_kind(&self) -> Option<String> {
         match self.children_kind_or_union()? {
             ChildKind::Kind(s) => Some(s),
@@ -160,7 +160,7 @@ impl<'a> TypeField<'a> {
         }
     }
 
-    /// Like [`children_block_kind`] but borrows directly from the AST
+    /// Like [`children_block_kind`](Self::children_block_kind) but borrows directly from the AST
     /// — useful when callers need a `&'a str` (e.g. to plug into a
     /// `Block::kind_override`). `None` if the decorator isn't present
     /// or the positional arg isn't a string literal.

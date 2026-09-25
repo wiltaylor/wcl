@@ -13,6 +13,10 @@
 #   --pre           install the newest pre-release
 #   --bin-dir <dir> install into <dir> (default: $WCL_INSTALL_DIR or ~/.local/bin)
 #   --help          show this help
+#
+# Prebuilt binaries: Linux x86_64 (glibc or musl), macOS aarch64 and x86_64.
+# Every download is checked against the release's SHA256SUMS before it is
+# installed; a missing or mismatched checksum aborts the install.
 
 set -eu
 
@@ -22,11 +26,14 @@ SOURCE_BUILD="cargo install --git https://github.com/wiltaylor/wcl -p wcl --lock
 VERSION="${WCL_VERSION:-}"
 BIN_DIR="${WCL_INSTALL_DIR:-$HOME/.local/bin}"
 PRE=0
+# Where release assets are fetched from. Only the tests point it elsewhere
+# (a local file server standing in for GitHub).
+RELEASES_URL="${WCL_RELEASES_URL:-https://github.com/$REPO/releases}"
 
 err() { printf 'error: %s\n' "$1" >&2; exit 1; }
 
 usage() {
-  sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -55,25 +62,40 @@ else
   err "need curl or wget on PATH"
 fi
 
+# ── SHA-256 helper ──────────────────────────────────────────────────────────
+# Checked up front, so a machine that cannot verify never downloads at all.
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256() { sha256sum "$1" | cut -d' ' -f1; }
+elif command -v shasum >/dev/null 2>&1; then
+  sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
+else
+  err "need sha256sum or shasum on PATH to verify the download"
+fi
+
 # Pull the first "tag_name": "..." out of a GitHub API JSON response.
 first_tag() { sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1; }
+
+# glibc or musl? A glibc binary does not start on musl (Alpine), so musl
+# systems get the statically linked build.
+is_musl() {
+  ls /lib/ld-musl-* >/dev/null 2>&1 && return 0
+  ldd --version 2>&1 | grep -qi musl
+}
 
 # ── Detect platform ─────────────────────────────────────────────────────────
 os="$(uname -s)"
 arch="$(uname -m)"
 case "$arch" in
   x86_64|amd64) arch="x86_64" ;;
+  arm64|aarch64) arch="aarch64" ;;
 esac
-case "$os" in
-  Linux)
-    [ "$arch" = "x86_64" ] || err "no prebuilt binary for Linux/$arch — build from source:
-  $SOURCE_BUILD"
-    suffix="linux-x86_64" ;;
-  Darwin)
-    err "no prebuilt macOS binary yet — build from source:
-  $SOURCE_BUILD" ;;
+case "$os/$arch" in
+  Linux/x86_64)
+    if is_musl; then suffix="linux-x86_64-musl"; else suffix="linux-x86_64"; fi ;;
+  Darwin/aarch64) suffix="macos-aarch64" ;;
+  Darwin/x86_64)  suffix="macos-x86_64" ;;
   *)
-    err "unsupported platform: $os/$arch — build from source:
+    err "no prebuilt binary for $os/$arch — build from source:
   $SOURCE_BUILD" ;;
 esac
 
@@ -93,24 +115,35 @@ fi
 
 ver="${tag#v}"
 asset="wcl-${ver}-${suffix}"
-url="https://github.com/$REPO/releases/download/$tag/$asset"
+base="$RELEASES_URL/download/$tag"
 
-# ── Download + install ──────────────────────────────────────────────────────
+# ── Download + verify + install ─────────────────────────────────────────────
 printf 'Installing wcl %s to %s\n' "$ver" "$BIN_DIR"
 
-tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT INT TERM
-download_file "$url" "$tmp" || err "download failed: $url
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT INT TERM
+download_file "$base/$asset" "$tmp/$asset" || err "download failed: $base/$asset
 The release may not exist or may lack a $suffix asset. See https://github.com/$REPO/releases"
+download_file "$base/SHA256SUMS" "$tmp/SHA256SUMS" || err "download failed: $base/SHA256SUMS
+Releases before checksums were published cannot be verified; build from source instead:
+  $SOURCE_BUILD"
 
-chmod +x "$tmp"
+# SHA256SUMS lines are `<hex>  <file>`; match the file name exactly.
+expected="$(awk -v f="$asset" '$2 == f || $2 == "*" f { print $1; exit }' "$tmp/SHA256SUMS")"
+[ -n "$expected" ] || err "SHA256SUMS has no entry for $asset — refusing to install"
+actual="$(sha256 "$tmp/$asset")"
+[ "$expected" = "$actual" ] || err "checksum mismatch for $asset — refusing to install
+  expected $expected
+  got      $actual"
+
+chmod +x "$tmp/$asset"
 mkdir -p "$BIN_DIR"
-mv "$tmp" "$BIN_DIR/wcl"
-trap - EXIT INT TERM
+mv "$tmp/$asset" "$BIN_DIR/wcl"
 
 printf 'Installed: %s\n' "$("$BIN_DIR/wcl" --version 2>/dev/null || echo "$BIN_DIR/wcl")"
 
 # ── PATH hint ───────────────────────────────────────────────────────────────
+# shellcheck disable=SC2016 # `$PATH` is printed literally, for the user to paste.
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *) printf '\n%s is not on your PATH. Add it, e.g.:\n  export PATH="%s:$PATH"\n' "$BIN_DIR" "$BIN_DIR" ;;

@@ -21,7 +21,7 @@
 //! - [`diff`] and [`gitspec`] — `wcl diff`, and the `<rev>:<path>`
 //!   convention it accepts on either side.
 //! - [`scaffold`] — `wcl init`, the template-driven project generator.
-//! - [`serve`] — the watch-and-rebuild dev server behind `wcl wdoc serve`.
+//! - [`serve`] — the rebuild-on-request dev server behind `wcl wdoc serve`.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -303,8 +303,8 @@ enum Command {
         list: bool,
     },
     /// WCL-driven static site generator. Use `wcl wdoc build` for a
-    /// one-shot render and `wcl wdoc serve` for a watch-rebuild dev
-    /// server.
+    /// one-shot render and `wcl wdoc serve` for a dev server that rebuilds
+    /// on request.
     Wdoc {
         #[command(subcommand)]
         cmd: WdocCommand,

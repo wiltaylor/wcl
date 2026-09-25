@@ -23,7 +23,7 @@ page quickstart {
   list {
     li "**A terminal and a text editor.** Nothing else. WCL is one static binary with no runtime and no project scaffolding, and every command below is typed at a shell prompt."
     li "**About twenty minutes**, if you type the files rather than copy them."
-    li "**Linux on x86_64** for the prebuilt binary. On anything else — macOS included — the [Install](#install) section builds from source instead, which needs a [Rust toolchain](https://rustup.rs)."
+    li "**Linux on x86_64, or macOS** (Apple silicon or Intel) for the prebuilt binary. On anything else the [Install](#install) section builds from source instead, which needs a [Rust toolchain](https://rustup.rs)."
     li "**No prior WCL.** This chapter assumes you have read none of the rest of the book. Every term it uses, it introduces."
   }
 
@@ -37,7 +37,7 @@ $ curl -fsSL https://wcl.dev/install.sh | sh -s -- --pre
 BASH
   }
 
-  p "That drops a single binary into `~/.local/bin` (override with `--bin-dir <dir>` or `$WCL_INSTALL_DIR`) and tells you if that directory is not on your `PATH`. Prebuilt binaries exist for Linux on x86_64. On anything else, macOS included, build from source with Cargo, which needs a Rust toolchain:"
+  p "That drops a single binary into `~/.local/bin` (override with `--bin-dir <dir>` or `$WCL_INSTALL_DIR`) and tells you if that directory is not on your `PATH`. Before installing, it checks the download against the release's `SHA256SUMS` file and stops if the two disagree. Prebuilt binaries exist for Linux on x86_64 (glibc or musl) and for macOS on Apple silicon and Intel. On anything else, build from source with Cargo, which needs a Rust toolchain:"
 
   code bash {
     source = <<'BASH'

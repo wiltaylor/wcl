@@ -1,10 +1,10 @@
 //! Pure-Rust PDF backend for wdoc (`wcl wdoc build --type pdf`).
 //!
 //! Reuses the existing fundamentals lowering to build a small, paint-agnostic
-//! [`ir`] block model, lays it out and paginates it ([`layout`]), and paints it
-//! to a PDF with [`krilla`](::krilla) ([`paint`]) — no browser, no external
+//! `ir` block model, lays it out and paginates it (`layout`), and paints it
+//! to a PDF with [`krilla`] (`paint`) — no browser, no external
 //! tools. Diagrams, charts, equations and icons are embedded vector-preserving
-//! via krilla-svg ([`svg_embed`]).
+//! via krilla-svg (`svg_embed`).
 //!
 //! Renders prose, headings, styled inline text, links, lists, tables, code
 //! blocks, callouts and SVG content across A4 / US-Letter pages with a running

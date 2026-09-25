@@ -298,7 +298,7 @@ impl FnValue {
     }
 
     /// Pretty-print this function value back to its `fn(params) -> ret body`
-    /// source form. Reconstructs an [`ast::FunctionLit`] from the stored
+    /// source form. Reconstructs an [`ast::FunctionLit`](crate::ast::FunctionLit) from the stored
     /// params / return type / body (spans are irrelevant to the printer) and
     /// renders it via the formatter. Used by the `ast_string` builtin.
     pub fn to_source(&self) -> String {
@@ -487,7 +487,7 @@ impl Value {
 ///
 /// For the compact, interpolation-friendly form used by the `format(...)`
 /// builtin (unsuffixed numbers, unquoted strings), see
-/// [`crate::functions::format_value`].
+/// `crate::functions::format_value`.
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

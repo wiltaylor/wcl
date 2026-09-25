@@ -35,7 +35,11 @@ WCL is pre-release only for now. Install the newest pre-release with the install
 curl -fsSL https://wcl.dev/install.sh | sh -s -- --pre
 ```
 
-On a platform with no prebuilt binary, build from source with Cargo instead:
+Prebuilt binaries: Linux x86_64 (glibc or musl), macOS aarch64 and x86_64, Windows x86_64
+(`install.ps1`). Both scripts verify the download against the release's `SHA256SUMS` and refuse
+to install without a matching entry, so `--version` on a release published before checksums
+fails. On a platform with no prebuilt binary, or for such an old version, build from source
+with Cargo instead:
 
 ```console
 cargo install --git https://github.com/wiltaylor/wcl -p wcl --locked
