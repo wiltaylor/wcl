@@ -401,8 +401,12 @@ impl<'a> Parser<'a> {
     }
 
     /// Record a syntax error for the parse to report. Once
-    /// [`MAX_SYNTAX_ERRORS`] are held the parse gives up.
+    /// [`MAX_SYNTAX_ERRORS`] are held the parse gives up, and errors met
+    /// while the item loops unwind are dropped.
     fn record(&mut self, err: ParseError) {
+        if self.gave_up {
+            return;
+        }
         if let ParseError::Syntax(syntax) = err {
             self.errors.push(*syntax);
         }

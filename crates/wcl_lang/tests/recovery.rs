@@ -228,6 +228,22 @@ fn errors_are_capped() {
     assert_eq!(parsed.errors.len(), MAX_SYNTAX_ERRORS);
 }
 
+/// Found by fuzzing: the cap is reached inside a block body, and the
+/// item loops unwinding out of it met further errors on the way.
+#[test]
+fn errors_stay_capped_when_the_cap_is_reached_inside_a_body() {
+    for tail in ["~\n", "}\n~ ~\n", "\"open\n"] {
+        let src = format!("a {{\n{}{tail}", "  x = =\n".repeat(MAX_SYNTAX_ERRORS));
+        let parsed = recover(&src);
+        assert_eq!(parsed.errors.len(), MAX_SYNTAX_ERRORS, "tail {tail:?}");
+    }
+    let src = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/recovery_cap.wcl"),
+    )
+    .expect("fixture");
+    assert_eq!(recover(&src).errors.len(), MAX_SYNTAX_ERRORS);
+}
+
 #[test]
 fn the_partial_tree_carries_symbols() {
     let src = "type T { name: utf8 }\nbroken = = 1\nname = \"x\"\n";
@@ -384,7 +400,7 @@ fn unique(picks: &[usize]) -> Vec<String> {
         .enumerate()
         .map(|(i, &p)| {
             let item = VALID[p];
-            let (head, rest) = item.split_at(item.find(|c: char| c == ' ').unwrap_or(0));
+            let (head, rest) = item.split_at(item.find(' ').unwrap_or(0));
             match head {
                 "svc" | "outer" => item.to_string(),
                 "type" => item.replacen(" T ", &format!(" T{i} "), 1),
