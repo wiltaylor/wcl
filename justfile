@@ -75,10 +75,24 @@ skill-test *ARGS: require-uv cli-build
 # binary (e.g. from taiki-e/install-action in CI) otherwise defaults to ITS OWN
 # build triple, and musl + ASan don't mix.
 #
+# TARGET is `<crate>:<target>` (e.g. `wcl_wdoc:wdoc_build`); a bare target
+# name means `wcl_lang`.
+#
 # Run one cargo-fuzz target (nightly + cargo-fuzz required); pass extra flags after --
 [group('test')]
 fuzz-run TARGET *ARGS:
-    cd crates/wcl_lang && cargo +nightly fuzz run --target "$(rustc +nightly -vV | sed -n 's/^host: //p')" {{TARGET}} {{ARGS}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    entry='{{TARGET}}'
+    case "$entry" in *:*) crate="${entry%%:*}" t="${entry#*:}" ;; *) crate=wcl_lang t="$entry" ;; esac
+    cd "crates/$crate" && cargo +nightly fuzz run --target "$(rustc +nightly -vV | sed -n 's/^host: //p')" "$t" {{ARGS}}
+
+# Outside the merge bar: minutes per target, too slow for every commit. Run it
+# before a release or after touching the parser, evaluator or wdoc renderer.
+#
+# Fuzz every target for SECONDS each with no input cap (default 10 minutes)
+[group('test')]
+fuzz-soak SECONDS='600': (fuzz-sweep SECONDS '-1')
 
 # Format all code
 [group('quality')]
