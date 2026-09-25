@@ -196,7 +196,7 @@ wcl> at([10, 20, 30], 1)
 wcl> at([10, 20, 30], 3)
 eval error: wcl::eval::builtin_type
 
-  × 'at': at: index 3 out of bounds
+  × 'at': index 3 out of bounds
 
 wcl> head([10, 20, 30])
 10
@@ -343,7 +343,7 @@ TEXT
 
   h3 "Integers refuse to be wrong, but floats do not"
 
-  p "This is the comparison to take away from the section. An integer operation with no representable answer is an **error**, not a wrapped value and not a debug-build panic. A float operation with no finite answer is `inf` or `NaN`, silently, because that is what IEEE arithmetic means."
+  p "This is the comparison to take away from the section. An integer operation with no representable answer is an **error**, not a wrapped value and not a debug-build panic. A float operation with no finite answer is infinity or NaN, silently, because that is what IEEE arithmetic means."
 
   code text {
     source = <<'TEXT'
@@ -363,17 +363,19 @@ eval error: wcl::eval::arithmetic
   × operator '/' cannot divide by zero
 
 wcl> 1.0 / 0.0
-inf
+(1.0 / 0.0)
 wcl> 0.0 / 0.0
-NaN
+(0.0 / 0.0)
 TEXT
   }
+
+  p "WCL has no literal for infinity or NaN, so each prints as the division that produces it. Paste the output back in and you get the same value. [Values and primitives](lang_values#how-a-float-prints) has the rest of the printing rules."
 
   p "`2u32 - 3u32` is the one that catches people. The operands are both `u32`, the answer is −1, and `u32` has no −1, so the operation has no result. It does not widen to reach one. See the next section for why."
 
   h2 "Numeric promotion"
 
-  p "Every arithmetic and comparison operator tries the operands' **own type first**, and promotes only when that fails. The rule is two lines:"
+  p "Every arithmetic operator tries the operands' **own type first**, and promotes only when that fails. The rule is two lines:"
 
   list {
     li "**Same variant, same answer.** `u8 + u8` is `u8` arithmetic and the result is a `u8`. Nothing widens, so `255u8 + 1u8` overflows instead of answering `256`."
@@ -395,7 +397,7 @@ TEXT
 
   p "Read `2u8 + 300u32` closely: the result is neither a `u8` nor a `u32`. The operands disagreed, both went to `i128`, and `i128` is what came back. The promotion ladder has exactly these two rungs. There is no `u8` → `u16` → `u32` staircase, and a mixed pair never produces an unsigned result type."
 
-  p "`i128` is the top of the integer rung, so one mixed pair has nowhere to promote to: a `u128` larger than `i128::MAX` beside any other numeric type. The message is a type mismatch rather than an overflow, because the operator was never reached. `340282366920938463463374607431768211455u128 + 1u32` answers `operator '+' is not defined for u128 and u32`. Two `u128`s never promote at all, so they add, overflow and compare normally."
+  p "`i128` is the top of the integer rung, so one mixed pair has nowhere to promote to: a `u128` larger than `i128::MAX` beside any other numeric type. The message is a type mismatch rather than an overflow, because the operator was never reached. `340282366920938463463374607431768211455u128 + 1u32` answers `operator '+' is not defined for u128 and u32`. Two `u128`s never promote at all, so they add and overflow normally. Comparison is not arithmetic and never promotes, so `340282366920938463463374607431768211455u128 > 1u32` is simply `true`. [Comparison](#comparison) explains."
 
   p "A declared field type then converts the result on the way in, so `report.wcl` never mentions `i128` or `f64`. `cost: f64` accepts the `f64` the multiplication produced. A field declared `u32` accepts an `i128` result that fits and rejects one that does not. [Schemas](lang_schemas) covers the conversion, and [Values and primitives](lang_values) covers the numeric types themselves."
 
@@ -406,7 +408,7 @@ TEXT
 
   h2 "Comparison"
 
-  p "`==` and `!=` compare **any** two values. Same-typed values compare structurally: lists element by element, records field by field. Numbers of different types promote first. Values of unrelated kinds are unequal, and nothing errors:"
+  p "`==` and `!=` compare **any** two values. Same-typed values compare structurally: lists element by element, records field by field. Numbers of different types compare by value. Values of unrelated kinds are unequal, and nothing errors:"
 
   code text {
     source = <<'TEXT'
@@ -427,7 +429,7 @@ false
 TEXT
   }
 
-  p "`<`, `<=`, `>` and `>=` are narrower. They order numbers (promoting mixed pairs the same way) and they order `utf8` / `ascii` strings byte by byte. Everything else is a type error, including symbols, lists and booleans:"
+  p "`<`, `<=`, `>` and `>=` are narrower. They order numbers of any two types and they order `utf8` / `ascii` strings byte by byte. Everything else is a type error, including symbols, lists and booleans:"
 
   code text {
     source = <<'TEXT'
@@ -438,27 +440,57 @@ true
 wcl> :prod < :dev
 eval error: wcl::eval::type_mismatch
 
-  × operator '<>' is not defined for symbol and symbol
+  × operator '<' is not defined for symbol and symbol
 TEXT
   }
 
-  p "The message names the ordering family as `<>` rather than the operator you wrote. The two type names after it are the ones to read. Symbols are a set of names, not a scale. When the order matters, model it with a number."
+  p "The message names the operator you wrote and the two types it met. Symbols are a set of names, not a scale. When the order matters, model it with a number."
+
+  h3 "Numbers compare exactly"
+
+  p "Comparison does not use the promotion ladder. Every comparison operator reads both numbers exactly and compares the values, so mixing widths costs nothing, and the answer never depends on a rounding step. This is the same order `sort` puts numbers in:"
+
+  code text {
+    source = <<'TEXT'
+wcl> 9007199254740993 == 9007199254740992.0
+false
+wcl> 340282366920938463463374607431768211455u128 > 1u32
+true
+TEXT
+  }
+
+  p "The first line is the one a promoting comparison gets wrong. 2⁵³ + 1 has no `f64`, so widening the integer to meet the float rounds it down to 2⁵³, and the two would compare equal. They are not equal, and WCL says so."
+
+  p "**NaN is unordered.** It is not less than, equal to or greater than anything, itself included. So `<`, `<=`, `>`, `>=` and `==` are all `false` when either side is NaN, and `!=` is `true`, as IEEE 754 specifies:"
+
+  code text {
+    source = <<'TEXT'
+wcl> (0.0 / 0.0) < 1.0
+false
+wcl> (0.0 / 0.0) >= 1.0
+false
+wcl> (0.0 / 0.0) == (0.0 / 0.0)
+false
+TEXT
+  }
+
+  p "A NaN therefore fails every range guard you write, in either direction. To test for one, use `x != x`, which is `true` for NaN and nothing else."
 
   h2 "Logic"
 
-  p "`&&`, `||` and prefix `!` take booleans and nothing else. There is no truthiness: `1 && true` is a type error, and so is `!1`. The message names the offending value's type and leaves the other side as `—`:"
+  p "`&&`, `||` and prefix `!` take booleans and nothing else. There is no truthiness: `1 && true` is a type error, and so is `!1`. The message names the operator and the one operand's type that was not a `bool`:"
 
   code text {
     source = <<'TEXT'
 wcl> true && 1
 eval error: wcl::eval::type_mismatch
 
-  × operator '&&' is not defined for i64 and —
+  × operator '&&' is not defined for i64
 
 wcl> !1
 eval error: wcl::eval::type_mismatch
 
-  × operator '!' is not defined for i64 and —
+  × operator '!' is not defined for i64
 TEXT
   }
 

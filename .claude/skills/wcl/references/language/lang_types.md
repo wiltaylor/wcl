@@ -19,6 +19,36 @@ document shape are in `lang_schemas.md`.
 coerces to the identifier it spells, so `parent = "web"` and `parent = web` evaluate the same.
 That is what lets a reference be written either way.
 
+## A number must fit its numeric type
+
+A numeric field, list element or decorator slot accepts a number only if the number **fits** the
+declared type. The number is then converted to that type, so a host that declared `u8` reads a
+`u8`, never the `i64` the bare literal started as. A function parameter converts an argument
+that fits (`(fn(x: u8) -> u8 x)(7)` is `7u8`) but does not check one that does not.
+
+| Written | Declared | Result |
+| --- | --- | --- |
+| an integer in range | any integer type | accepted, converted: `200` into `u8` is `200u8` |
+| an integer out of range | any integer type | schema error: `value 300 is out of range for u8` |
+| a whole-valued float | any integer type | accepted, converted: `4.0` into `i32` is `4i32` |
+| a float with a fraction, NaN or infinity | any integer type | schema error: `value 2.5 is not a whole number, so it cannot be u8` |
+| any integer | `f32` / `f64` | accepted, rounded to the nearest float: `16777217` into `f32` is `16777216.0f32` |
+| a float | `f32` | accepted, unless a finite value overflows `f32` |
+
+```wcl
+@document
+type Cfg { port: u16  level: u8  ratio: f32  masks: list<u8> }
+
+port  = 8080       // 8080u16
+level = 300        // × field 'level' declared as u8 but value 300 is out of range for u8
+ratio = 1          // 1.0f32
+masks = [1, 256]   // × … but element [1] holds 256, which is out of range for u8
+```
+
+Aliases resolve first, so `type Port = u16` checks against `u16`. The error is a strict
+`wcl check` verdict. Reading a misfit field with `wcl get` returns the number as written
+(`300`), unconverted and without an error.
+
 ## Type references
 
 Anywhere a type is expected you may write one of these forms:

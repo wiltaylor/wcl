@@ -152,7 +152,7 @@ WCL
     li "**The exponent needs the decimal point.** `1.5e-3` is scientific notation. Bare `1e6` is not. See [the suffix slot](#the-suffix-slot) below, which is where the `e6` goes instead."
     li "**Range is checked at parse time.** `256u8` fails with `literal out of range for u8`, and `-129i8` with `literal out of range for i8`. A negative magnitude under an unsigned suffix is refused outright, whatever its size."
     li "**The suffix must agree with the shape.** `3.14u8` is `integer suffix 'u8' cannot be applied to a float literal`. `42f32` is the same complaint the other way round."
-    li "**An `f32` literal is narrowed, not rounded to what you wrote.** `3.14f32` is stored as the nearest 32-bit float and prints as `3.140000104904175f32`. Nothing is wrong. `f32` cannot hold `3.14`. Use `f64` unless the width is the point."
+    li "**An `f32` literal is narrowed, not rounded to what you wrote.** `3.14f32` is stored as the nearest 32-bit float. It prints as `3.14f32`, the shortest digits that read back as that same `f32`, but the stored value is not 3.14. Widen it and the difference shows: `3.14f32 + 0.0` is `3.140000104904175`. Nothing is wrong. `f32` cannot hold `3.14`. Use `f64` unless the width is the point."
   }
 
   h3 "The suffix slot"
@@ -170,13 +170,13 @@ WCL
 
   h2 "Numeric promotion"
 
-  p "Arithmetic and comparison accept mixed numeric types. When the two operands share a type the operation runs in that type. When they do not, both are **promoted** to a common one first. The ladder has exactly two rungs. If either side is a float, both become `f64`. Otherwise both become `i128`."
+  p "Arithmetic accepts mixed numeric types. When the two operands share a type the operation runs in that type. When they do not, both are **promoted** to a common one first. The ladder has exactly two rungs. If either side is a float, both become `f64`. Otherwise both become `i128`. Comparison accepts mixed types too, but it does not promote. It compares the two values exactly, as [Expressions and operators](lang_expressions#numbers-compare-exactly) shows."
 
   code wcl {
     source = <<'WCL'
 a = 1 + 2.0        # 3.0    — i64 and f64 meet at f64
 b = 3.0 * 2u8      # 6.0    — same rung
-c = 1u32 == 1i64   # true   — comparison promotes as well
+c = 1u32 == 1i64   # true   — comparison compares values
 d = 2u8 < 300u32   # true
 WCL
   }
@@ -192,7 +192,7 @@ WCL
 
   p "Write both suffixes when you want the narrow type enforced. Write one when you want the arithmetic to be about the number."
 
-  p "An integer operation with no representable answer is an evaluation error, never a wrapped or truncated value. Floats keep IEEE semantics instead and produce `inf` or `NaN`. All four of these live in one file:"
+  p "An integer operation with no representable answer is an evaluation error, never a wrapped or truncated value. Floats keep IEEE semantics instead and produce infinity or NaN. All four of these live in one file:"
 
   code wcl {
     filename = "arith.wcl"
@@ -225,14 +225,64 @@ wcl::eval::arithmetic
   × operator '+' cannot represent the result in i8 (overflow)
 
 $ wcl get arith.wcl c
-inf
+(1.0 / 0.0)
 
 $ wcl get arith.wcl d
-NaN
+(0.0 / 0.0)
 CONSOLE
   }
 
   p "Both of those errors are ordinary evaluation errors, so `try … catch` recovers from them like any other. See [Control flow](lang_control_flow), and [Expressions and operators](lang_expressions) for the operator set itself."
+
+  h3 "How a float prints"
+
+  p "`c` and `d` above print as expressions, not numbers. That follows from the one rule behind every float `wcl get` and `wcl parse` print: **the printed form reads back as the same value.** Most floats need nothing special for that. A few do:"
+
+  code wcl {
+    filename = "floats.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  whole: f64
+  huge:  f64
+  tiny:  f64
+  third: f32
+  inf:   f64
+  nan:   f64
+}
+
+whole = 3.0
+huge  = 1.0e300
+tiny  = 0.0000025
+third = 0.1f32
+inf   = 1.0 / 0.0
+nan   = 0.0 / 0.0
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get floats.wcl whole
+3.0
+$ wcl get floats.wcl huge
+1.0e300
+$ wcl get floats.wcl tiny
+2.5e-6
+$ wcl get floats.wcl third
+0.1f32
+$ wcl get floats.wcl inf
+(1.0 / 0.0)
+$ wcl get floats.wcl nan
+(0.0 / 0.0)
+CONSOLE
+  }
+
+  list {
+    li "**A whole float keeps its `.0`.** `3` would read back as an integer."
+    li "**Very large and very small magnitudes use exponent form.** From `1e16` up, and below `1e-5`, a float prints as `1.0e300` or `2.5e-6` rather than as 301 digits or a run of zeros. The mantissa always has a decimal point, because [the exponent needs one](#writing-a-number)."
+    li "**An `f32` prints its own shortest digits.** `0.1f32` prints as `0.1f32`, not as the digits of the `f64` it would widen to."
+    li "**Infinity and NaN print as the division that makes them.** WCL has no literal for either, so `(1.0 / 0.0)`, `(-1.0 / 0.0)` and `(0.0 / 0.0)` stand in. Paste one back into a file and it evaluates to the same value. An `f32` one keeps its width: `(1.0f32 / 0.0f32)`."
+  }
 
   h2 "Literal units"
 
