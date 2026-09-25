@@ -22,6 +22,15 @@ fn wdoc_host() -> Host {
     Host::new(wcl_wdoc::wdoc_environment(), wcl_wdoc::schema_registry())
 }
 
+/// A `file:` URI naming `name` in a fresh temp directory, which lives
+/// as long as the returned guard. A literal `file:///a.wcl` names an
+/// absolute path on Unix but only the relative `a.wcl` on Windows.
+fn scratch_uri(name: &str) -> (tempfile::TempDir, Uri) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let uri = Uri::from_file_path(dir.path().join(name)).expect("absolute path");
+    (dir, uri)
+}
+
 /// Construct an `LspService` so its inner `Backend` is wired to a
 /// real `Client` (one half of an unused in-memory channel). Tests
 /// keep the service value alive and call `LanguageServer` methods on
@@ -119,7 +128,7 @@ async fn initialize_advertises_expected_capabilities() {
 async fn formatting_emits_canonical_source() {
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///a.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("a.wcl");
     open(backend, &uri, "@schemaless foo  =   1\n").await;
     let edits = backend
         .formatting(DocumentFormattingParams {
@@ -140,7 +149,7 @@ async fn formatting_emits_canonical_source() {
 async fn completion_after_at_lists_builtin_decorators() {
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///a.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("a.wcl");
     let src = "@\ntype Trailing {\n}\n";
     open(backend, &uri, src).await;
     let resp = backend
@@ -170,7 +179,7 @@ async fn completion_after_at_lists_builtin_decorators() {
 async fn hover_on_block_kind_returns_decl_snippet() {
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///a.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("a.wcl");
     let src = "@document\ntype Root {\n  c: Config\n}\n@block(\"config\")\ntype Config {\n  region: utf8\n}\nconfig {\n  region = \"x\"\n}\n";
     open(backend, &uri, src).await;
     // Position the cursor over the lowercase `config` block kind.
@@ -271,7 +280,7 @@ async fn format_source(backend: &Backend, uri: Uri) -> String {
 async fn did_change_applies_ranged_edit() {
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///inc.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("inc.wcl");
     open(backend, &uri, "@schemaless\nfoo = 1\n").await;
     // Replace the `1` at line 1, col 6..7 with `42`.
     backend
@@ -584,7 +593,7 @@ async fn a_plain_host_serves_wcl_without_wdoc() {
 async fn did_change_full_replace_resets_doc() {
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///rep.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("rep.wcl");
     open(backend, &uri, "@schemaless\nfoo = 1\n").await;
     backend
         .did_change(DidChangeTextDocumentParams {
@@ -609,7 +618,7 @@ async fn folding_ranges_cover_blocks_and_type_decls() {
     use tower_lsp_server::ls_types::FoldingRangeParams;
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///fold.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("fold.wcl");
     let src = "type Server {\n  name: utf8\n  port: u16\n}\n\
                @schemaless web service {\n  name = \"web\"\n  nested box {\n    size = 1\n  }\n}\n\
                one_liner = 1\n";
@@ -645,7 +654,7 @@ async fn rename_rewrites_every_reference_in_one_file() {
     use tower_lsp_server::ls_types::RenameParams;
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///rn.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("rn.wcl");
     let src =
         "@schemaless base = 2\n@schemaless doubled = base * 2\n@schemaless tripled = base * 3\n";
     open(backend, &uri, src).await;
@@ -677,7 +686,7 @@ async fn rename_without_configured_root_preserves_embedded_imports() {
     use tower_lsp_server::ls_types::RenameParams;
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///embedded-rename.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("embedded-rename.wcl");
     let source = "import <wdoc.wcl>\nlet value = 7\n@schemaless result = value\n";
     open(backend, &uri, source).await;
     let edit = backend
@@ -733,7 +742,7 @@ async fn rename_rejects_an_invalid_identifier() {
     use tower_lsp_server::ls_types::RenameParams;
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///rn2.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("rn2.wcl");
     open(backend, &uri, "@schemaless base = 2\n").await;
     let res = backend
         .rename(RenameParams {
@@ -807,7 +816,7 @@ async fn rename_crosses_into_imported_file() {
 async fn signature_help_for_builtin_after_open_paren() {
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///sig.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("sig.wcl");
     let src = "@schemaless x = len(";
     open(backend, &uri, src).await;
     let help = backend
@@ -838,7 +847,7 @@ async fn signature_help_for_builtin_after_open_paren() {
 async fn signature_help_tracks_active_param_for_user_fn() {
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///sig2.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("sig2.wcl");
     let src = "fn add(a: i64, b: i64) -> i64 { a + b }\n@schemaless x = add(1, ";
     open(backend, &uri, src).await;
     let last_line = src.lines().count() as u32 - 1;
@@ -1387,7 +1396,7 @@ async fn rename_to_a_reserved_word_is_rejected() {
     use tower_lsp_server::ls_types::RenameParams;
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///reserved.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("reserved.wcl");
     let src = "@schemaless base = 2\n@schemaless doubled = base * 2\n";
     open(backend, &uri, src).await;
     for name in ["match", "none", "2x"] {
@@ -1414,7 +1423,7 @@ async fn semantic_tokens_classify_a_document() {
     use tower_lsp_server::ls_types::{SemanticTokensParams, SemanticTokensResult};
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///tokens.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("tokens.wcl");
     let src = "type Foo {}\n@schemaless x = try 1 catch e { 2 }\n";
     open(backend, &uri, src).await;
     let Some(SemanticTokensResult::Tokens(tokens)) = backend

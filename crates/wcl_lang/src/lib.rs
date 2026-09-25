@@ -81,7 +81,8 @@ pub use doc::{
     Decorator, Document, Field, FieldShape, FileLoader, InterfaceDecl, MAX_EXPANDED_BLOCKS,
     NamedArg, Registry, ResolvedType, RowView, SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit,
     SymbolSetDecl, TableView, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView,
-    UseFormView, UseItem, VariantBodyView, disk_loader, overlay_loader, system_import_key,
+    UseFormView, UseItem, VariantBodyView, canonical_path, disk_loader, overlay_loader, path_key,
+    system_import_key,
 };
 pub use edit::{PartialParse, parse_expr, parse_for_edit, parse_for_edit_recovering};
 pub use environment::{

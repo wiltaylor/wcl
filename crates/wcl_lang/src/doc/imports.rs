@@ -273,7 +273,7 @@ pub(super) fn resolve_import_path(base_dir: Option<&Path>, path: &str) -> Result
             }
         }
     };
-    dunce::canonicalize(&joined)
+    super::loader::canonical_path(&joined)
         .map_err(|e| format!("failed to resolve '{}': {e}", joined.display()))
 }
 
