@@ -471,9 +471,22 @@ CONSOLE
 
   p "Two connections over the same pair of types is a modelling decision rather than a slip, and the fix is a modelling one: separate the endpoint types, or fold the two relationships into one and let the kind symbol tell them apart."
 
-  callout "An ambiguous arrow still projects into both lists" {
-    kind = :warning
-    body  = "`check` refuses the document above, but projection is a separate mechanism and it does not arbitrate. Ask for either field and the arrow is in it: `wcl get ambiguous.wcl deps` answers `[DependsOn { destination: db, kind: :uses, source: web }]` and `wcl get ambiguous.wcl calls` answers `[TalksTo { destination: db, kind: :uses, source: web }]`. One edge, counted twice. Fix the ambiguity. Do not build on a document that only `get` will read."
+  p "Reading either field fails the same way. Projection does not pick a winner, and it does not hand back the edge twice. It refuses:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get ambiguous.wcl deps
+wcl::eval::schema_violation
+
+  × connection 'Service -> Service' matches multiple schemas: DependsOn,
+  │ TalksTo
+    ╭─[ambiguous.wcl:20:1]
+ 19 │
+ 20 │ web -> db
+    · ────┬────
+    ·     ╰── schema violation
+    ╰────
+CONSOLE
   }
 
   h3 "A kind outside the vocabulary"
@@ -498,6 +511,10 @@ CONSOLE
   }
 
   p "The symbol is checked against the schema the statement dispatched to, so this error appears only once dispatch has succeeded. A statement that fails dispatch never gets its kind checked at all."
+
+  h3 "A read runs the same checks"
+
+  p "`wcl check` is not the only thing that looks. Reading a `@connections` field checks every statement it projects from, the same four ways, and fails with the error `check` would print first. `wcl get services.wcl edges` on either broken `services.wcl` above exits 3 with the violation shown there, in the same words and with the same code. The list never comes back with the bad arrow dropped, kept, or counted twice, so a host that only reads gets the same verdict as one that checks. An arrow spliced in by an in-block `import` is reported against the imported file, on both paths."
 
   h2 "Dynamic endpoints"
 
@@ -538,7 +555,7 @@ $ wcl get dyn.wcl edges
 CONSOLE
   }
 
-  p "Two changes, and only two. `wcl check` stops reporting the unresolved operand, and the projection emits the raw identifier, `shard_0`, instead of dropping the statement. Everything else holds: the operand that _does_ resolve is still type-checked against its role, and a statement whose resolved end fits no schema is still refused."
+  p "Two changes, and only two. `wcl check` stops reporting the unresolved operand, and the projection emits the raw identifier, `shard_0`, where a connection without `@dynamic` would fail the read. Everything else holds: the operand that _does_ resolve is still type-checked against its role, and a statement whose resolved end fits no schema is still refused."
 
   p "`@dynamic` is not a looser mode to switch on while you tidy up. It moves one check out of the language and into whatever consumes the document, and the consumer then has to do it. wdoc's own edge schema is the case it exists for:"
 

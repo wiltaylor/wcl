@@ -166,7 +166,52 @@ b = 200MiB   # literal unit:  the value is 209715200, typed by the field
 WCL
   }
 
-  p "There is no third case. An unknown suffix is never an error at the literal. It becomes a unit name, and the error, if there is one, arrives when the value meets its declared type. That is why `1e6` does not mean a million: `e6` is not a numeric type, so it is a unit called `e6`, and `'e6' is not a unit of type 'f64'` is what you get. Write `1.0e6`."
+  p "There is no third case. An unknown suffix is never an error at the literal. It becomes a unit name, and the error, if there is one, arrives when the value meets its declared type. That is why `1e6` does not mean a million: `e6` is not a numeric type, so it is a unit called `e6`. A signed exponent fares worse. `2e-3` is the unit literal `2e`, a minus, and the integer `3`, so it fails as arithmetic before any type sees it:"
+
+  code wcl {
+    filename = "rates.wcl"
+    source = <<'WCL'
+@document
+type Rates {
+  big:  f64
+  tiny: f64
+}
+
+big  = 1e6
+tiny = 2e-3
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get rates.wcl big
+wcl::eval::unit_no_match
+
+  × 'e6' is not a unit of type 'f64'
+   ╭─[rates.wcl:7:1]
+ 6 │
+ 7 │ big  = 1e6
+   · ─────┬────
+   ·      ╰── unknown unit for this type
+ 8 │ tiny = 2e-3
+   ╰────
+  help: scientific notation needs a decimal point: write 1.0e6
+
+$ wcl get rates.wcl tiny
+wcl::eval::type_mismatch
+
+  × operator '-' is not defined for pending_unit and i64
+   ╭─[rates.wcl:8:8]
+ 7 │ big  = 1e6
+ 8 │ tiny = 2e-3
+   ·        ──┬─
+   ·          ╰── incompatible operands
+   ╰────
+  help: scientific notation needs a decimal point: write 2.0e-3
+CONSOLE
+  }
+
+  p "Both errors say what to write instead. `wcl check` reports only the first. A unit the field's type does not declare is a schema violation, but `2e-3` never produces a value to check, and the schema check skips a field that fails to evaluate."
 
   h2 "Numeric promotion"
 
@@ -218,11 +263,25 @@ $ wcl get arith.wcl a
 wcl::eval::arithmetic
 
   × operator '/' cannot divide by zero
+    ╭─[arith.wcl:9:5]
+  8 │
+  9 │ a = 4 / 0
+    ·     ──┬──
+    ·       ╰── no result for these operands
+ 10 │ b = 127i8 + 1i8
+    ╰────
 
 $ wcl get arith.wcl b
 wcl::eval::arithmetic
 
   × operator '+' cannot represent the result in i8 (overflow)
+    ╭─[arith.wcl:10:5]
+  9 │ a = 4 / 0
+ 10 │ b = 127i8 + 1i8
+    ·     ─────┬─────
+    ·          ╰── no result for these operands
+ 11 │ c = 4.0 / 0.0
+    ╰────
 
 $ wcl get arith.wcl c
 (1.0 / 0.0)
@@ -368,15 +427,19 @@ $ wcl get units.wcl buffer
 wcl::eval::unit_no_match
 
   × 'km' is not a unit of type 'std.ByteSize'
+    ╭─[units.wcl:11:1]
+ 10 │
+ 11 │ buffer  = 5km
+    · ──────┬──────
+    ·       ╰── unknown unit for this type
+ 12 │ radius  = 3km
+    ╰────
   help: declare it with `@unit("km", <factor>)` on the type alias, or use one
         of its declared units
 CONSOLE
   }
 
-  callout "A unit resolves when it is read, not when it is checked" {
-    kind = :warning
-    body  = "Unit resolution happens during evaluation, and fields evaluate lazily, so `wcl check` prints `OK` on the file above. `wcl get`, `wcl eval` and `wcl parse` all force the field and report it. That behaviour is the general shape of laziness rather than anything about units. [How a document evaluates](lang_evaluation) covers which errors surface when."
-  }
+  p "`wcl check` reports the same error, with the same code, and exits 2. A unit is part of the field's type, so a unit that does not fit is a schema violation like a number that does not fit, and the check and a read agree whichever runs first. The same goes for a product that does not fit, like `1.5B`, for a unit inside a list element, and for a field of a nested block. The check flags only the field the literal is written in. `label` reads `buffer` and fails with it, but it is not reported a second time."
 
   h2 "Booleans"
 

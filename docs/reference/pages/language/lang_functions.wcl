@@ -474,6 +474,13 @@ $ wcl get ghost.wcl a
 wcl::eval::unresolved_reference
 
   × unresolved reference 'ghost'
+   ╭─[ghost.wcl:4:17]
+ 3 │
+ 4 │ fn boo() -> i64 ghost
+   ·                 ──┬──
+   ·                   ╰── does not resolve
+ 5 │
+   ╰────
 CONSOLE
   }
 
