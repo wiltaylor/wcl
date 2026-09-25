@@ -89,3 +89,39 @@ page index {
     );
     assert!(html.contains("<svg"), "{html}");
 }
+
+/// A one-shape timeline page with `fields` spliced into the block.
+fn timeline_doc(fields: &str) -> String {
+    format!(
+        r##"
+page index {{
+  diagram {{ width = 560  height = 220
+    timeline {{ width = 560.0  height = 220.0
+      {fields}
+      items = [ {{ label: "A", on: "2026-02-20" }} ]
+    }}
+  }}
+}}
+"##
+    )
+}
+
+#[test]
+fn timeline_axis_stops_at_the_end_of_the_calendar() {
+    // The tick walk stepped past 9999-12-31, which `time` cannot hold.
+    let html = build_html(&timeline_doc(
+        r#"start = "9999-12-01"  end = "9999-12-31"  unit = :days"#,
+    ));
+    assert!(html.contains("wdoc-axis"), "{html}");
+}
+
+#[test]
+fn timeline_huge_every_does_not_overflow() {
+    // `every` scaled into a Duration (minutes) or months (years * 12)
+    // overflowed i64.
+    for unit in [":minutes", ":hours", ":days", ":weeks", ":months", ":years"] {
+        build_html(&timeline_doc(&format!(
+            r#"start = "2026-01-01"  end = "2026-12-31"  unit = {unit}  every = 9223372036854775807"#
+        )));
+    }
+}
