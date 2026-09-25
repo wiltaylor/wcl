@@ -1454,15 +1454,12 @@ fn build_site(
     // folders, the search index and icon sprite) rather than rewriting them.
     let write_shared = target.is_none();
 
-    // Terminal + pan/zoom assets, scoped to this site's pages, so a site
-    // that uses neither pays nothing. The `uses_*` flags drive each page's
-    // `<script>` tags, so they're computed regardless; only the asset
-    // writes are skipped on the incremental path.
-    let uses_terminals = spec
-        .pages
-        .iter()
-        .any(crate::blocks::terminal::uses_terminal);
-    if uses_terminals && write_shared {
+    // Player assets, scoped to this site's pages, so a site that uses none
+    // pays nothing. The flags drive each page's `<script>` tags, so they're
+    // computed regardless; only the asset writes are skipped on the
+    // incremental path.
+    let mut players = PlayerScripts::scan(&spec.pages);
+    if players.terminals && write_shared {
         write_terminal_assets(out_dir)?;
     }
 
@@ -1472,7 +1469,7 @@ fn build_site(
     // its pages gets the Nerd Font grid faces.
     let fonts = BundledFonts {
         book: spec.block.is_some(),
-        terminal: uses_terminals,
+        terminal: players.terminals,
     };
 
     // The page <style>: bundled theme + structured rules, scoped
@@ -1489,25 +1486,19 @@ fn build_site(
     // because a rule scoped to one site would read as dead in the others.
     scan.record_rules(&css.declared, &css.authored);
 
-    let uses_pan_zoom = spec.pages.iter().any(crate::svg::uses_pan_zoom);
-    let uses_map = spec.pages.iter().any(crate::svg::uses_map);
     // A map drives the same viewBox camera as a pan/zoom diagram, so it
     // needs the pan/zoom player too — plus its own layer/card player.
-    if (uses_pan_zoom || uses_map) && write_shared {
+    if (players.pan_zoom || players.map) && write_shared {
         write_asset(
             out_dir,
             "diagram-pan-zoom.js",
             crate::svg::DIAGRAM_PAN_ZOOM_JS,
         )?;
     }
-    if uses_map && write_shared {
+    if players.map && write_shared {
         write_asset(out_dir, "wdoc-map.js", crate::svg::WDOC_MAP_JS)?;
     }
-    let uses_dopesheet = spec
-        .pages
-        .iter()
-        .any(crate::blocks::diagram::dopesheet::uses_dopesheet);
-    if uses_dopesheet && write_shared {
+    if players.dopesheet && write_shared {
         write_asset(
             out_dir,
             "dopesheet-player.js",
@@ -1533,6 +1524,7 @@ fn build_site(
         .as_ref()
         .and_then(|b| field_bool(b, "search"))
         .unwrap_or(false);
+    players.search = search;
     let toc_nodes: Vec<TocNode> = spec.block.as_ref().map(read_toc).unwrap_or_default();
     let menu_nodes: Vec<MenuNode> = spec.block.as_ref().map(read_menu).unwrap_or_default();
     let deck_nodes: Vec<DeckSectionNode> = spec.block.as_ref().map(read_deck).unwrap_or_default();
@@ -1732,13 +1724,7 @@ fn build_site(
         pages_value: &pages_value,
         home_href,
         home_title,
-        players: PlayerScripts {
-            terminals: uses_terminals,
-            pan_zoom: uses_pan_zoom,
-            map: uses_map,
-            dopesheet: uses_dopesheet,
-            search,
-        },
+        players,
         search,
     };
 
@@ -2457,6 +2443,38 @@ struct PlayerScripts {
 }
 
 impl PlayerScripts {
+    /// The players `pages` use, from one walk per page (component bodies
+    /// included, see [`crate::render::block_tree_walk`]) that stops as
+    /// soon as every player is known to be needed. `search` is the site's
+    /// own setting, not something a page's blocks decide, so it starts off.
+    fn scan(pages: &[Block<'_>]) -> Self {
+        let mut players = PlayerScripts {
+            terminals: false,
+            pan_zoom: false,
+            map: false,
+            dopesheet: false,
+            search: false,
+        };
+        for page in pages {
+            let all_found = crate::render::block_tree_walk(page, &mut |b| {
+                match b.kind() {
+                    "terminal" => players.terminals = true,
+                    "map" => players.map = true,
+                    "dopesheet" => players.dopesheet = true,
+                    "diagram" if field_bool(b, "pan_zoom") == Some(true) => {
+                        players.pan_zoom = true;
+                    }
+                    _ => {}
+                }
+                players.terminals && players.pan_zoom && players.map && players.dopesheet
+            });
+            if all_found {
+                break;
+            }
+        }
+        players
+    }
+
     /// Append the `<script>` tags for the players this site uses. Loaded
     /// once per page; each no-ops on a page that doesn't use it. Shared
     /// verbatim by the per-page loop and the presentation deck.

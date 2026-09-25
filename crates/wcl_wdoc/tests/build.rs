@@ -7607,6 +7607,49 @@ fn pan_zoom_diagram_inside_component_ships_player_js() {
 }
 
 #[test]
+fn players_on_different_pages_each_ship() {
+    // One page holds a terminal, a later one a pan/zoom diagram inside a
+    // component body: the site-wide player scan has to keep walking after
+    // the first find, and into the component, to see both.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("c.wcl");
+    write_fixture(
+        &src,
+        "wdoc_component graph {\n  wdoc_body {\n    \
+         diagram { pan_zoom = true  width = 200  height = 120\n      \
+         process \"A\" { id = a }  process \"B\" { id = b }\n      a -> b\n    }\n  }\n}\n\
+         site s { default_template = :book  title = \"x\" }\n\
+         page shell { sites = [:s]  start = true\n  h1 \"Shell\"\n  \
+         terminal { source = \"./none.cast\" }\n}\n\
+         page plain { sites = [:s]\n  h1 \"Plain\"\n  p \"Nothing to play.\"\n}\n\
+         page graphs { sites = [:s]\n  h1 \"Graphs\"\n  graph {}\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let wdoc = out.path().join("_wdoc");
+    assert!(
+        wdoc.join("terminal-player.js").exists(),
+        "terminal player missing"
+    );
+    assert!(
+        wdoc.join("diagram-pan-zoom.js").exists(),
+        "pan/zoom player missing"
+    );
+    assert!(
+        !wdoc.join("wdoc-map.js").exists(),
+        "map player shipped without a map"
+    );
+    assert!(
+        !wdoc.join("dopesheet-player.js").exists(),
+        "dopesheet player shipped without a dopesheet"
+    );
+    // Each page loads the site's players, so the plain page carries both.
+    let plain = std::fs::read_to_string(out.path().join("plain.html")).expect("read");
+    assert!(plain.contains("_wdoc/terminal-player.js"), "{plain}");
+    assert!(plain.contains("_wdoc/diagram-pan-zoom.js"), "{plain}");
+}
+
+#[test]
 fn terminal_replay_emits_player_and_assets() {
     // A `source` recording produces frames JSON, the player wiring, and
     // writes the bundled font + player assets into `_wdoc/`.
