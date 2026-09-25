@@ -203,7 +203,7 @@ WCL
 
   p "The second series brought the legend with it, and it is the only thing that did. See [The legend](#the-legend)."
 
-  p "The chart draws bars from the **bottom of the plot area**, not from a zero line. With the default scale the two are the same thing, because the default lower bound is zero. They part company the moment you set `y_min`, and they part company badly if a value is negative. See [The scale](#the-scale)."
+  p "Each bar runs between its value and a **baseline**: zero when zero is on the scale, otherwise the scale bound nearer to it. A positive value stands up from the baseline and a negative one hangs down from it. With all-positive data the baseline is the bottom of the plot area. See [The scale](#the-scale)."
 
   h2 "Line charts"
 
@@ -291,7 +291,7 @@ WCL
 
   h2 "The scale"
 
-  p "Bar and line charts share one scale, and it fits itself to the data. The lower bound `y_min` defaults to 0. The upper bound `y_max` defaults to the largest value across **every** series, so two series always share one axis and stay comparable. Between the two the chart draws four divisions: five gridlines and five labels. That count is fixed."
+  p "Bar and line charts share one scale, and it fits itself to the data. The lower bound `y_min` defaults to 0, or to the smallest value when some value is negative. The upper bound `y_max` defaults to the largest value across **every** series, so two series always share one axis and stay comparable. Between the two the chart draws four divisions: five gridlines and five labels. That count is fixed."
 
   p "The chart rounds tick labels to two decimals, so an auto-fitted bound never prints a floating-point tail. Set either bound yourself when the reader has to judge the data against a fixed range rather than against itself:"
 
@@ -306,11 +306,11 @@ line_chart { width = 380.0  height = 220.0
 WCL
   }
 
-  p "Two things the scale does not do:"
+  p "Two things to know when you set the bounds yourself:"
 
   list {
-    li "**It does not clip.** A value above `y_max` lands above the plot area, off the top of the canvas. Nothing warns you. The line leaves. If a chart looks empty, check the bounds against the data before you check anything else."
-    li "**It does not handle negative values on its own.** With the default `y_min = 0`, a negative bar gets a negative height. Negative height is not valid SVG, so the bar renders as nothing at all. Set `y_min` below your lowest value and the bars come back, measured from the bottom of the plot area, because that is where a bar starts. There is no zero line in the drawing."
+    li "**Bars clip, lines do not.** A bar is clamped to the scale, so a bar for a value above `y_max` stops at the top of the plot area, and a value below `y_min` draws no bar. A line point outside the bounds is not clamped: it lands off the plot area, and the line leaves the canvas. Nothing warns you in either case. If a chart looks wrong, check the bounds against the data before you check anything else."
+    li "**There is no zero line in the drawing.** With negative data the bars meet at zero, but no axis marks it. The x axis stays at the bottom of the plot area. A gridline falls on zero only when the scale happens to divide there."
   }
 
   p "A flat series is safe, and it is worth knowing what it looks like. Four sevens auto-fit to an upper bound of 7, so all four bars are full height. The chart is telling you the truth: the data has no variation. Four zeros are the degenerate case: the upper bound would be zero as well, so the chart nudges it a fraction above the lower one to keep the scale from dividing by itself. Every tick then reads 0, the bars are zero high, and nothing appears. Set `y_max` when a chart has to render even with no data in it."
@@ -552,7 +552,7 @@ WCL
       | "`categories`"       | "`list<utf8>?`"       | "`1`, `2`, `3`, …"  | "x-slot labels, and the slot count" |
       | "`x_label`"          | "`utf8?`"             | "none"              | "Axis title below the category labels" |
       | "`y_label`"          | "`utf8?`"             | "none"              | "Axis title above the y spine" |
-      | "`y_min`"            | "`f64?`"              | "`0.0`"             | "Lower scale bound" |
+      | "`y_min`"            | "`f64?`"              | "`0.0`, or the data minimum when it is negative" | "Lower scale bound" |
       | "`y_max`"            | "`f64?`"              | "largest value"     | "Upper scale bound" |
       | "`x` / `y`"          | "`f64`"               | "`0.0`"             | "Position within the `diagram`" |
       | "`width` / `height`" | "`f64`"               | "`360.0` / `220.0`" | "Drawing size. Match the `diagram`" |

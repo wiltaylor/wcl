@@ -63,8 +63,9 @@ workspace-doc: require-cargo
 workspace-test: require-cargo
     cargo test --locked --workspace
 
-# One fuzz target per line in `targets`, so adding a target is a one-line
-# change that merges cleanly.
+# One fuzz target per line in `targets`, as `<crate dir>:<target>`, so adding
+# a target is a one-line change that merges cleanly. Each crate under
+# `crates/` keeps its own cargo-fuzz project in `fuzz/`.
 #
 # Bounded fuzz sweep across every target (~15s each)
 [group('test')]
@@ -72,18 +73,20 @@ fuzz-sweep: require-cargo-fuzz
     #!/usr/bin/env bash
     set -euo pipefail
     targets=(
-        parse
-        eval
-        eval_fields
-        format_round_trip
-        json_round_trip
-        set_edit_path
+        wcl_lang:parse
+        wcl_lang:eval
+        wcl_lang:eval_fields
+        wcl_lang:format_round_trip
+        wcl_lang:json_round_trip
+        wcl_lang:set_edit_path
+        wcl_wdoc:wdoc_build
     )
     host="$(rustc +nightly -vV | sed -n 's/^host: //p')"
-    cd crates/wcl_lang
-    for t in "${targets[@]}"; do
-        echo "==> fuzz $t" >&2
-        cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15
+    for entry in "${targets[@]}"; do
+        crate="${entry%%:*}"
+        t="${entry#*:}"
+        echo "==> fuzz $crate/$t" >&2
+        (cd "crates/$crate" && cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15)
     done
 
 # ── Builds the gate depends on ────────────────────────────────────────────

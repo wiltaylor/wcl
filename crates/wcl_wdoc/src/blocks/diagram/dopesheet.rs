@@ -60,7 +60,7 @@ impl Geom {
             _ => fit_count(img_w, offset_x, stride_x),
         };
         let rows = fit_count(img_h, offset_y, stride_y);
-        let total = (columns * rows).max(1);
+        let total = columns.saturating_mul(rows).max(1);
         let from = field_i64(block, "from").unwrap_or(0).clamp(0, total - 1);
         let to = match field_i64(block, "to") {
             Some(t) => t.clamp(from, total - 1),
@@ -85,7 +85,7 @@ fn fit_count(extent: i64, offset: i64, stride: i64) -> i64 {
     if stride <= 0 {
         return 1;
     }
-    ((extent - offset) / stride).max(1)
+    (extent.saturating_sub(offset) / stride).max(1)
 }
 
 /// The (column, row) of a flat frame index within the sheet grid.
@@ -132,8 +132,8 @@ pub(crate) fn render_dopesheet(
 
     // Initial window: the `from` frame.
     let (c0, r0) = frame_cell(g.from, g.columns);
-    let vx = g.offset_x + c0 * g.stride_x;
-    let vy = g.offset_y + r0 * g.stride_y;
+    let vx = g.offset_x.saturating_add(c0.saturating_mul(g.stride_x));
+    let vy = g.offset_y.saturating_add(r0.saturating_mul(g.stride_y));
 
     let loop_ = field_bool(block, "loop").unwrap_or(true);
     let autoplay = field_bool(block, "autoplay").unwrap_or(true);

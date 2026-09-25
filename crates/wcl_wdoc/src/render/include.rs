@@ -301,26 +301,22 @@ fn strip_markers(text: &str) -> String {
 
 /// Strip the indentation every non-blank line shares, so a region lifted
 /// out of a nested scope reads flush left.
+///
+/// Only ASCII spaces and tabs count as indentation. Other whitespace
+/// (U+00A0, U+3000) is multi-byte, and treating it as indent would slice a
+/// line through the middle of a character.
 fn dedent_region(text: &str) -> String {
+    let lead = |l: &str| l.bytes().take_while(|b| matches!(b, b' ' | b'\t')).count();
     let indent = text
         .lines()
         .filter(|l| !l.trim().is_empty())
-        .map(|l| l.len() - l.trim_start().len())
+        .map(lead)
         .min()
         .unwrap_or(0);
     if indent == 0 {
         return text.to_string();
     }
-    let stripped: Vec<&str> = text
-        .lines()
-        .map(|l| {
-            if l.len() >= indent {
-                &l[indent..]
-            } else {
-                l.trim_start()
-            }
-        })
-        .collect();
+    let stripped: Vec<&str> = text.lines().map(|l| &l[lead(l).min(indent)..]).collect();
     joined(&stripped)
 }
 
@@ -412,5 +408,16 @@ mod tests {
     fn dedent_ignores_blank_lines_when_measuring() {
         let region = "    a\n\n    b\n";
         assert_eq!(dedent_region(region), "a\n\nb\n");
+    }
+
+    #[test]
+    fn dedent_counts_only_ascii_indent() {
+        // Three spaces against two U+00A0 (four bytes): measuring with
+        // `trim_start` put the cut at byte 3, inside the second U+00A0.
+        let region = "   a\n\u{a0}\u{a0}b\n";
+        assert_eq!(dedent_region(region), region);
+        // Mixed ASCII then U+3000: only the ASCII run is shared indent.
+        let region = "  a\n  \u{3000}b\n";
+        assert_eq!(dedent_region(region), "a\n\u{3000}b\n");
     }
 }

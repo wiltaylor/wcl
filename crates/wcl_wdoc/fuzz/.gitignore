@@ -1,0 +1,9 @@
+target/
+artifacts/
+Cargo.lock
+
+# libFuzzer writes coverage-expanding inputs as 40-char hex hashes
+# (no file extension) into corpus/<target>/. Ignore everything in
+# corpus/, then unignore the curated seeds (anything with an extension).
+corpus/*/*
+!corpus/*/*.*

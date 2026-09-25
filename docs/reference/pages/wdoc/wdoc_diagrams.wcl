@@ -464,6 +464,8 @@ WCL
       | "`seed`"          | "1"       | "Reproducibly re-arranges the whole graph" |
   }
 
+  p "Raising `iterations` has a ceiling. Every step compares every pair of shapes, so the build caps the total at forty million pair comparisons. Up to 516 shapes the default 300 steps fit. A bigger graph gets fewer steps and a build warning that says how many it got. Past 8,944 shapes even one step is over the cap, so the build places the shapes on a plain square grid and warns instead."
+
   p "`seed` is the knob to reach for first. A force layout has no wrong answer, only a more or less readable one, and changing the seed re-rolls the arrangement without changing anything you wrote. Reach for `link_distance` and `repulsion` when the graph is systematically too tight or too loose rather than merely badly arranged."
 
   h3 "grid"
@@ -500,10 +502,12 @@ WCL
       | "Field"         | "Default"            | "Effect" |
       | "`hub`"         | "highest-degree shape" | "The shape at the centre" |
       | "`radius`"      | "auto-fit"           | "Radius of the first ring, edge to edge from the hub" |
-      | "`ring_gap`"    | "120"                | "Radius added for each ring after the first" |
+      | "`ring_gap`"    | "120"                | "Radius added for each ring after the first, and the least distance between neighbouring rings" |
       | "`start_angle`" | "the top"            | "Where each ring's first shape sits, in radians" |
       | "`node_gap`"    | "24"                 | "Minimum clearance between neighbours on a ring" |
   }
+
+  p "A ring never sits inside the ring before it. Twenty leaves around the hub make a wide first ring, and a single grandchild would fit on a much smaller circle. The layout still places it at least `ring_gap` further out than the leaves, and further again if the two rings' shapes would otherwise touch."
 
   p "`node_gap` is one field with two defaults: 24 here, 40 under `:layered`. Radial pairs well with `routing = :straight`, since a spoke has no reason to bend."
 

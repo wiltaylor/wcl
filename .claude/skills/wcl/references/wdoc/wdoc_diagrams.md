@@ -309,6 +309,11 @@ Fields: `iterations` (300), `repulsion` (9000), `link_distance` (60), `gravity` 
 and a new `seed` gives a new arrangement. Best for cyclic or undirected graphs with no
 natural rank.
 
+Work is capped at 40,000,000 node-pair visits. Past 516 nodes the build cuts
+`iterations` to fit and warns `force layout: N nodes — iterations reduced from 300 to K`. Past
+8,944 nodes it skips the simulation, lays the shapes on a square grid, and warns.
+`link_distance` below 10 still relaxes, but the starting spiral is spaced as if it were 10.
+
 ### :radial
 
 ```wcl
@@ -327,6 +332,10 @@ Fields: `hub` (defaults to the highest-degree shape), `radius` (auto-fit), `ring
 outer ring), `start_angle` in radians (`-PI/2`, i.e. top), `node_gap` as the minimum gap
 between ring neighbours. A shape's ring is its graph distance from the hub. Pair it with
 `routing = :straight` for clean spokes.
+
+Each ring sits at least `ring_gap` outside the ring before it, and far enough out that the two
+rings' boxes (plus `node_gap`) cannot touch. A crowded inner ring therefore pushes a sparse outer
+ring out with it.
 
 ## Styling shapes
 

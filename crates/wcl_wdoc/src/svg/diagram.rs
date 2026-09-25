@@ -223,7 +223,7 @@ pub(crate) fn collect_planned_children(
     out: &mut Collector,
 ) {
     let children: Vec<Block<'_>> = diagram_children(block);
-    let (offsets, widths, heights) = compute_planned_plan(block, &children);
+    let (offsets, widths, heights) = compute_planned_plan(block, &children, cctx.warnings);
     // Size each child's parent box from the plan (effective_dims), not
     // the raw width/height, so collect and render agree on circles
     // (sized by diameter) and text-grown shapes alike.
@@ -339,6 +339,7 @@ pub(crate) fn compute_layered_plan(
 pub(crate) fn compute_force_plan(
     block: &Block<'_>,
     children: &[Block<'_>],
+    warnings: &Warnings,
 ) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
     let defaults = ForceParams::default();
     // Clamp `iterations` (an unbounded value would spin the simulation
@@ -366,7 +367,7 @@ pub(crate) fn compute_force_plan(
 
     let (flow_idx, flow_nodes) = flow_nodes_of(children);
     let edges: Vec<(String, String)> = edge_id_pairs(block);
-    let flow_offsets = force::assign_force_offsets(&flow_nodes, &edges, params);
+    let flow_offsets = force::assign_force_offsets(&flow_nodes, &edges, params, warnings);
     assemble_plan(children, &flow_idx, &flow_nodes, &flow_offsets)
 }
 
@@ -433,10 +434,11 @@ fn boundary_padding_by_member(block: &Block<'_>) -> HashMap<String, f64> {
 pub(crate) fn compute_planned_plan(
     block: &Block<'_>,
     children: &[Block<'_>],
+    warnings: &Warnings,
 ) -> (Vec<(f64, f64)>, Vec<f64>, Vec<f64>) {
     let (mut offsets, widths, heights) =
         match field_symbol(block, "layout").unwrap_or_default().as_str() {
-            "force" => compute_force_plan(block, children),
+            "force" => compute_force_plan(block, children, warnings),
             "radial" => compute_radial_plan(block, children),
             _ => compute_layered_plan(block, children),
         };
@@ -590,7 +592,8 @@ fn evict_boundary_outsiders(
 /// Render children at the positions the layout plan assigned.
 pub(crate) fn render_planned_children(block: &Block<'_>, ctx: RenderCtx<'_>) -> String {
     let children: Vec<Block<'_>> = diagram_children(block);
-    let (offsets, widths, heights) = compute_planned_plan(block, &children);
+    let (offsets, widths, heights) =
+        compute_planned_plan(block, &children, ctx.patterns.warnings());
     let mut out = String::new();
     for ((child, (tx, ty)), (cw, ch)) in children
         .iter()
@@ -867,7 +870,10 @@ pub(crate) fn content_size(block: &Block<'_>) -> (f64, f64) {
             if children.is_empty() {
                 return (0.0, 0.0);
             }
-            let (offsets, widths, heights) = compute_planned_plan(block, &children);
+            // Sizing only: the collect and render passes plan the same
+            // children and record any layout warnings themselves.
+            let (offsets, widths, heights) =
+                compute_planned_plan(block, &children, &Warnings::default());
             let mut max_x = 0.0_f64;
             let mut max_y = 0.0_f64;
             for ((ox, oy), (cw, ch)) in offsets.iter().zip(widths.iter().zip(heights.iter())) {

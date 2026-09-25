@@ -114,7 +114,12 @@ fn collect_block(
     // bare `<svg>` (no `<div>` / injected CSS to lean on when embedded).
     if kind == "terminal" {
         out.push(BlockNode::Svg {
-            svg: crate::blocks::terminal::render_terminal_pdf(doc, block, base_dir),
+            svg: crate::blocks::terminal::render_terminal_pdf(
+                doc,
+                block,
+                base_dir,
+                patterns.warnings(),
+            ),
         });
         return;
     }

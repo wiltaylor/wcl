@@ -1,0 +1,10 @@
+page index {
+  diagram {
+    width = 400  height = 300
+    rect { id = a  x = 10.0  y = 10.0   width = 60.0  height = 30.0 }
+    rect { id = b  x = 10.0  y = 200.0  width = 60.0  height = 30.0 }
+    circle { id = j  cx = 300.0  cy = 115.0  r = 5.0 }
+    a -> j
+    b -> j
+  }
+}

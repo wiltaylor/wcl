@@ -9,11 +9,18 @@ use std::path::Path;
 
 use wcl_lang::Block;
 
-use crate::render::{escape_html, field_bool, field_f64};
+use crate::render::{Warnings, escape_html, field_bool, field_f64};
 
 /// Minimum frame spacing for replay (seconds): events closer than this
 /// are coalesced into one frame so a busy recording stays small.
 const MIN_FRAME_DT: f64 = 1.0 / 30.0;
+
+/// Most replay frames a recording keeps.
+const MAX_FRAMES: usize = 5_000;
+
+/// Most cells, summed over every kept frame, a recording may hold — a
+/// wide grid keeps proportionally fewer frames than `MAX_FRAMES`.
+const MAX_REPLAY_CELLS: usize = 10_000_000;
 
 /// Map the VT emulator's colour type onto this crate's.
 fn avt_color(c: avt::Color) -> Color {
@@ -87,24 +94,30 @@ pub(super) struct Cast {
 
 /// Parse an asciicast v2 recording and replay it into coalesced frames.
 /// Falls back to the block's `cols`/`rows` when the header omits a size.
-pub(super) fn parse_cast(src: &str, def_cols: usize, def_rows: usize) -> Cast {
+pub(super) fn parse_cast(src: &str, def_cols: usize, def_rows: usize, warnings: &Warnings) -> Cast {
     let mut lines = src.lines().filter(|l| !l.trim().is_empty());
+    let dim = |h: &serde_json::Value, key: &str, def: usize| {
+        h.get(key)
+            .and_then(serde_json::Value::as_u64)
+            .map_or(def as i64, |v| i64::try_from(v).unwrap_or(i64::MAX))
+    };
     let (cols, rows) = lines
         .next()
         .and_then(|h| serde_json::from_str::<serde_json::Value>(h).ok())
         .map(|h| {
-            (
-                h.get("width")
-                    .and_then(serde_json::Value::as_u64)
-                    .map_or(def_cols, |v| v as usize),
-                h.get("height")
-                    .and_then(serde_json::Value::as_u64)
-                    .map_or(def_rows, |v| v as usize),
+            clamp_dims(
+                dim(&h, "width", def_cols),
+                dim(&h, "height", def_rows),
+                "recording",
+                warnings,
             )
         })
         .unwrap_or((def_cols, def_rows));
-    let cols = cols.max(1);
-    let rows = rows.max(1);
+    // Every frame is a full-screen snapshot, so cap how many a recording
+    // keeps by their total cell count. Past the cap the emulator still
+    // consumes every event, and the final frame shows the true end screen.
+    let frame_cap = (MAX_REPLAY_CELLS / (cols * rows)).clamp(1, MAX_FRAMES);
+    let mut capped = false;
 
     let mut vt = avt::Vt::new(cols, rows);
     let mut frames: Vec<Frame> = Vec::new();
@@ -128,12 +141,22 @@ pub(super) fn parse_cast(src: &str, def_cols: usize, def_rows: usize) -> Cast {
         vt.feed_str(data);
         last_data_t = t;
         if t - last_t >= MIN_FRAME_DT {
+            if frames.len() >= frame_cap {
+                capped = true;
+                continue;
+            }
             frames.push(Frame {
                 t_ms: (t * 1000.0).max(0.0) as u32,
                 grid: snapshot(&vt, cols, rows),
             });
             last_t = t;
         }
+    }
+    if capped {
+        warnings.record(format!(
+            "terminal recording: more than {frame_cap} frames at {cols}x{rows} — later \
+             frames dropped, the replay jumps to the final screen"
+        ));
     }
     // Capture the final state so the recording ends on its last screen,
     // unless the last event already produced a frame at that time (which
@@ -253,6 +276,7 @@ pub(super) fn render_replay(
     class_attr: &str,
     style_attr: &str,
     id_attr: &str,
+    warnings: &Warnings,
 ) -> String {
     let path = match base_dir {
         Some(dir) => dir.join(src_rel),
@@ -264,7 +288,7 @@ pub(super) fn render_replay(
             escape_html(src_rel)
         );
     };
-    let cast = parse_cast(&src, def_cols, def_rows);
+    let cast = parse_cast(&src, def_cols, def_rows, warnings);
     let g = Geom::new(cast.cols, cast.rows, font_px, line_height, chrome);
     let opts = Opts {
         autoplay: field_bool(block, "autoplay").unwrap_or(false),
@@ -297,4 +321,50 @@ pub(super) fn render_replay(
          <script type=\"application/json\" class=\"term-frames\" data-for=\"{pid}\">{json}</script>\
          </div>",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cast_header_size_is_clamped() {
+        let warnings = Warnings::default();
+        let cast = parse_cast(
+            "{\"version\":2,\"width\":18446744073709551615,\"height\":4000000000}\n",
+            80,
+            24,
+            &warnings,
+        );
+        assert_eq!((cast.cols, cast.rows), (MAX_COLS, MAX_ROWS));
+        let recorded = warnings.take();
+        assert!(
+            recorded
+                .iter()
+                .any(|w| w.starts_with("terminal recording:")),
+            "{recorded:?}"
+        );
+        let grid = &cast.frames[0].grid;
+        assert_eq!(grid.cells.len(), MAX_COLS * MAX_ROWS);
+    }
+
+    #[test]
+    fn cast_frame_count_is_capped_and_ends_on_the_final_screen() {
+        let mut src = String::from("{\"version\":2,\"width\":80,\"height\":24}\n");
+        let events = MAX_FRAMES + 100;
+        for i in 0..events {
+            src.push_str(&format!("[{}.0, \"o\", \"{}\\r\\n\"]\n", i, i % 10));
+        }
+        let warnings = Warnings::default();
+        let cast = parse_cast(&src, 80, 24, &warnings);
+        // The cap, plus the final screen and the leading blank frame.
+        assert!(cast.frames.len() <= MAX_FRAMES + 2, "{}", cast.frames.len());
+        let last = cast.frames.last().expect("a frame");
+        assert_eq!(last.t_ms, (events as u32 - 1) * 1000);
+        let recorded = warnings.take();
+        assert!(
+            recorded.iter().any(|w| w.contains("later frames dropped")),
+            "{recorded:?}"
+        );
+    }
 }

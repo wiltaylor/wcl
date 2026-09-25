@@ -108,15 +108,15 @@ fn draw_variant(
 
 /// Add a cell offset to a local position.
 fn offset(base: (usize, usize), pos: (usize, usize)) -> (usize, usize) {
-    (base.0 + pos.0, base.1 + pos.1)
+    (base.0.saturating_add(pos.0), base.1.saturating_add(pos.1))
 }
 
 /// Read 1-based `row`/`col` (block field or variant payload) as a 0-based
 /// offset, clamped at the top-left.
 fn src_pos<S: ValueSource>(s: S) -> (usize, usize) {
     let read = |name: &str| s.lookup(name).as_ref().and_then(value_as_i64).unwrap_or(1);
-    let row = (read("row") - 1).max(0) as usize;
-    let col = (read("col") - 1).max(0) as usize;
+    let row = read("row").saturating_sub(1).max(0) as usize;
+    let col = read("col").saturating_sub(1).max(0) as usize;
     (row, col)
 }
 
@@ -158,8 +158,8 @@ fn draw_text(
     for (dr, line) in content.split('\n').enumerate() {
         for (dc, ch) in line.chars().enumerate() {
             grid.set(
-                row + dr,
-                col + dc,
+                row.saturating_add(dr),
+                col.saturating_add(dc),
                 Cell {
                     ch,
                     fg,

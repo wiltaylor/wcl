@@ -61,7 +61,7 @@ read and the build fails with `'at': index 0 out of bounds`.
 | `title` | — | Centred title at the top of the box. |
 | `x_label` / `y_label` | — | Axis titles. |
 | `categories` | — | One x-axis label per value slot. |
-| `y_min` | `0.0` | Lower scale bound. |
+| `y_min` | `0.0`, or the data minimum if negative | Lower scale bound. |
 | `y_max` | data maximum | Upper scale bound. |
 | `series` | required | The data. |
 | `id` / `class` | — | HTML id and style classes. |
@@ -74,8 +74,12 @@ read and the build fails with `'at': index 0 out of bounds`.
 
 ## What the frame draws
 
-- **The scale.** `y_min` defaults to 0 and `y_max` to the largest value across every series. The
-  upper bound is always nudged above the lower, so a flat series still spans a visible range.
+- **The scale.** `y_min` defaults to 0, or to the smallest value across every series when that is
+  negative, and `y_max` to the largest value. The upper bound is always nudged above the lower,
+  so a flat series still spans a visible range.
+- **Bars.** Each bar spans from its value to a baseline: 0 when 0 is within the scale, else the
+  nearer bound. Negative values hang below the baseline. Bars are clamped to the scale; line
+  points are not, so a point outside an explicit `y_min` / `y_max` leaves the plot.
 - **Y ticks.** Four divisions, each a gridline plus a value label, rounded to two decimals.
 - **Category labels.** One under each slot. With `categories` omitted, the slots take the numbers
   `1`, `2`, `3`, …, and their count comes from the first series.

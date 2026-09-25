@@ -993,7 +993,10 @@ pub(crate) fn render_block(
         // `base_dir` lets a `source` recording path resolve relative to
         // the source file.
         "terminal" => Some(crate::blocks::terminal::render_terminal(
-            doc, block, base_dir,
+            doc,
+            block,
+            base_dir,
+            patterns.warnings(),
         )),
         // Renders its body to a Markdown string (the same output the Markdown
         // backend produces) and shows it in a highlighted `code` block.

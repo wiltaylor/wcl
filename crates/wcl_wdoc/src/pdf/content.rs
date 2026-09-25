@@ -485,7 +485,8 @@ fn accent(doc: &Document, kind: Option<CalloutKind>) -> (u8, u8, u8) {
 /// keeps its default rather than painting a callout black.
 fn parse_hex(hex: &str) -> Option<(u8, u8, u8)> {
     let h = hex.strip_prefix('#')?;
-    if h.len() != 6 {
+    // Byte-length and byte slicing below: only ASCII hex digits may pass.
+    if h.len() != 6 || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     let c = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
@@ -579,5 +580,18 @@ fn collect_list(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_hex;
+
+    #[test]
+    fn parse_hex_rejects_non_ascii_without_panicking() {
+        assert_eq!(parse_hex("#bf616a"), Some((0xbf, 0x61, 0x6a)));
+        // Six bytes, but the slice at 0..2 would split the `é`.
+        assert_eq!(parse_hex("#aébcd"), None);
+        assert_eq!(parse_hex("#+f+f+f"), None);
     }
 }

@@ -38,18 +38,25 @@ let chart_all_values = fn(series: list<ChartSeries>) -> list<f64>
   flatten(map(series, fn(s: ChartSeries) -> list<f64> s.values))
 let chart_data_max = fn(series: list<ChartSeries>) -> f64
   fold(chart_all_values(series), 0.0, fn(acc: f64, v: f64) -> f64 max(acc, v))
+// Smallest value across every series, folded from 0 so an all-positive
+// chart keeps its zero baseline — the auto lower bound when `y_min` is
+// omitted.
+let chart_data_min = fn(series: list<ChartSeries>) -> f64
+  fold(chart_all_values(series), 0.0, fn(acc: f64, v: f64) -> f64 min(acc, v))
 let chart_ncat = fn(series: list<ChartSeries>) -> i64 {
   let s0 = at(series, 0);
   len(s0.values)
 }
 
 // Effective y-scale bounds, shared by the bar and line lowers. `y_min`
-// defaults to 0; `y_max` defaults to the largest data value; the upper
+// defaults to 0, or to the smallest data value when that is negative;
+// `y_max` defaults to the largest data value; the upper
 // bound is nudged above the lower so a flat series still spans a
 // non-zero range. (The params take the caller's *optional* fields as
 // non-optional per the WCL param-annotation rule — a `none` value flows
 // in and is guarded here.)
-let chart_ymin = fn(y_min: f64) -> f64 if y_min == none { 0.0 } else { y_min }
+let chart_ymin = fn(series: list<ChartSeries>, y_min: f64) -> f64
+  if y_min == none { chart_data_min(series) } else { y_min }
 let chart_ymax = fn(series: list<ChartSeries>, ymin: f64, y_max: f64) -> f64
   max(if y_max == none { chart_data_max(series) } else { y_max }, ymin + 0.000001)
 
@@ -159,17 +166,23 @@ let chart_legend = fn(px: f64, ly: f64, pw: f64, series: list<ChartSeries>) -> l
 }
 
 // Grouped bars: category i × series j, scaled to the [ymin, ymax] range.
+// Each bar spans from its value to the baseline — zero, or the nearer
+// scale bound when zero is off the scale — so a negative value hangs
+// below the baseline instead of getting a negative height. Both ends are
+// clamped to the scale, so a bar never leaves the plot area.
 let chart_bars = fn(series: list<ChartSeries>, px: f64, py: f64, pw: f64, ph: f64, ymin: f64, ymax: f64, ncat: i64) -> list<Svg>
   flatten(map(range(0, ncat), fn(i: i64) -> list<Svg>
     map(range(0, len(series)), fn(j: i64) -> Svg {
       let gw = pw / ncat;
       let bw = gw * 0.8 / len(series);
       let sj = at(series, j);
-      let v = at(sj.values, i);
-      let bh = ph * (v - ymin) / (ymax - ymin);
+      let v = clamp(at(sj.values, i), ymin, ymax);
+      let base = clamp(0.0, ymin, ymax);
+      let top = ph * (max(v, base) - ymin) / (ymax - ymin);
+      let bottom = ph * (min(v, base) - ymin) / (ymax - ymin);
       Svg::Rect {
-        x: px + gw * i + gw * 0.1 + bw * j, y: py + ph - bh,
-        width: bw, height: bh,
+        x: px + gw * i + gw * 0.1 + bw * j, y: py + ph - top,
+        width: bw, height: top - bottom,
         class: [chart_series_class(j)],
       }
     })))
@@ -328,7 +341,7 @@ type BarChart extends SvgBlock {
   connect_points: list<AnchorSide>?
 
   lower = fn(c: BarChart) -> list<Svg> {
-    let ymin = chart_ymin(c.y_min);
+    let ymin = chart_ymin(c.series, c.y_min);
     let ymax = chart_ymax(c.series, ymin, c.y_max);
     chart_xy(
       c.x, c.y, c.width, c.height, c.series,
@@ -377,7 +390,7 @@ type LineChart extends SvgBlock {
   connect_points: list<AnchorSide>?
 
   lower = fn(c: LineChart) -> list<Svg> {
-    let ymin = chart_ymin(c.y_min);
+    let ymin = chart_ymin(c.series, c.y_min);
     let ymax = chart_ymax(c.series, ymin, c.y_max);
     // `== true` (not a bare `if c.point_labels`) so an absent optional
     // bool reads as `false` rather than erroring on `none`.

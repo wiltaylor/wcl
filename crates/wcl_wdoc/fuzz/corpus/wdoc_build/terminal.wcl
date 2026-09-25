@@ -1,0 +1,7 @@
+page index {
+  terminal {
+    cols = 30  rows = 4  title = "t"
+    term_text "hi" { row = 1  col = 2  fg = "#ff5fd2" }
+    term_box { row = 2  col = 1  width = 10  height = 3  border = :rounded }
+  }
+}

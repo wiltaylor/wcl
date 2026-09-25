@@ -35,7 +35,7 @@ terminal {
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `cols`, `rows` | `i64` | Grid size (defaults `80` × `24`). A `.cast` header overrides both. |
+| `cols`, `rows` | `i64` | Grid size (defaults `80` × `24`, maximum `500` × `200`). A `.cast` header overrides both. |
 | `font_size`, `line_height` | `f64` | Cell metrics. |
 | `palette` | `symbol` | Seed colours: `:default` (dark) or `:light`. |
 | `fg`, `bg` | `utf8` | Explicit default foreground / background. |
@@ -106,6 +106,10 @@ terminal {
 ```
 
 The `.cast` header supplies `cols` / `rows`, so any values you write are overridden.
+
+A recording keeps at most 5,000 frames, fewer on a wide grid: all kept frames together hold at
+most 10,000,000 cells. Past the cap the build warns, drops the later frames, and the replay
+jumps to the final screen.
 
 ## TUI widgets
 
@@ -224,6 +228,9 @@ union TermFundamental {
   what you drew.
 - **`text` and `source` are alternatives to authored children.** Pick one way to fill a grid.
 - **A `.cast` recording sets its own `cols` / `rows`.**
+- **Size is capped at 500 × 200.** A larger `cols` / `rows`, on the block or in a `.cast`
+  header, is clamped, and the build prints `warning: terminal block: 900x30 exceeds the
+  500x200 maximum — clamped to 500x30` (`terminal recording:` for a header).
 - **`terminal` is page content, not a shape.** To place one inside a drawing, put it in a `card`
   body — the card is the diagram shape.
 - **The fonts ship in the output.** wdoc writes the Nerd Font faces into `_wdoc/` only when a

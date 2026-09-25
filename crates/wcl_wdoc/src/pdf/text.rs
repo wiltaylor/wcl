@@ -29,6 +29,11 @@ use super::svg_embed::SvgEmbedder;
 /// cosmic-text's per-glyph `metadata` slot (links use `1..OBJECT_META_BASE`).
 const OBJECT_META_BASE: usize = 1 << 24;
 
+/// Widest an inline object (icon, inline math) may sit in a line of PDF
+/// text, in ems — about one full text column. A wider one is scaled down
+/// whole, keeping its aspect ratio.
+const MAX_OBJECT_EMS: f32 = 40.0;
+
 // The bundled body/heading/mono faces (OFL, see assets/fonts/OFL-Noto.txt).
 // Both cosmic-text (via `fontdb::Source::Binary`) and krilla (via `Font::new`)
 // read these exact static slices, which keeps their glyph ids in lockstep.
@@ -420,12 +425,21 @@ impl FlattenCtx<'_> {
         let Some((tree, (tw, th))) = embedder.embed(svg) else {
             return;
         };
-        if tw <= 0.0 || th <= 0.0 {
+        if !(tw > 0.0 && th > 0.0 && tw.is_finite() && th.is_finite()) {
             return;
         }
-        // Size the object to one em tall, preserving aspect ratio.
-        let h = self.size;
-        let w = tw * (h / th);
+        // Size the object to one em tall, preserving aspect ratio — but
+        // no wider than `MAX_OBJECT_EMS`, shrinking it whole past that. The
+        // width is reserved as placeholder spaces below, so an extreme
+        // aspect ratio (`$a\hspace{99999999em}b$`) would otherwise shape
+        // hundreds of millions of them.
+        let mut h = self.size;
+        let mut w = tw * (h / th);
+        let max_w = self.size * MAX_OBJECT_EMS;
+        if w > max_w {
+            h *= max_w / w;
+            w = max_w;
+        }
         let idx = self.objects.len();
         self.objects.push(InlineObject { tree, w, h });
         // Reserve roughly `w` of horizontal space with placeholder spaces (a

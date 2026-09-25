@@ -158,8 +158,12 @@ impl Emitter<'_> {
                 out.push(image_ref(&self.svg_alt(block, "diagram"), &rel));
             }
             "terminal" => {
-                let svg =
-                    crate::blocks::terminal::render_terminal_pdf(self.doc, block, self.base_dir);
+                let svg = crate::blocks::terminal::render_terminal_pdf(
+                    self.doc,
+                    block,
+                    self.base_dir,
+                    self.patterns.warnings(),
+                );
                 let rel = self.write_svg("terminal", &svg)?;
                 out.push(image_ref(&self.svg_alt(block, "terminal"), &rel));
             }

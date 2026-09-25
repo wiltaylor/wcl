@@ -24,6 +24,7 @@
 use std::collections::HashMap;
 
 use crate::blocks::diagram::layout::layered::Node;
+use crate::render::Warnings;
 
 /// Tunable knobs for the force simulation, surfaced on `diagram` /
 /// `container` as optional WCL fields. Defaults are picked to give a
@@ -64,10 +65,31 @@ pub(crate) fn assign_force_offsets(
     nodes: &[Node],
     edges: &[(String, String)],
     params: ForceParams,
+    warnings: &Warnings,
 ) -> Vec<(f64, f64)> {
     let n = nodes.len();
     if n == 0 {
         return Vec::new();
+    }
+    // Every relaxation step and every collision sweep visits all
+    // `n (n - 1) / 2` pairs. Past the budget for even one pass, fall back
+    // to a grid; otherwise trim the step counts to fit it.
+    let pairs = n * (n - 1) / 2;
+    if pairs > MAX_PAIR_VISITS {
+        warnings.record(format!(
+            "force layout: {n} nodes is too many to relax (limit {}) — laid out on a grid",
+            max_force_nodes()
+        ));
+        return grid_offsets(nodes);
+    }
+    let pass_cap = MAX_PAIR_VISITS / pairs.max(1);
+    let iterations = params.iterations.min(pass_cap);
+    if iterations < params.iterations {
+        warnings.record(format!(
+            "force layout: {n} nodes — iterations reduced from {} to {iterations} to bound \
+             layout time",
+            params.iterations
+        ));
     }
 
     // Per-node radius from the box's diagonal half-extent: larger boxes
@@ -96,13 +118,17 @@ pub(crate) fn assign_force_offsets(
 
     // Deterministic spiral initialization, clustered near the origin so
     // nodes visibly "start in the middle" but never coincide (which
-    // would make the repulsion direction undefined).
+    // would make the repulsion direction undefined). The spacing is
+    // floored so `link_distance = 0` still spreads the spiral out: a zero
+    // radius stacks every node on the origin, where no force has a
+    // direction and nothing ever moves them apart.
     const GOLDEN_ANGLE: f64 = 2.399_963_229_728_653;
     let seed = params.seed as f64;
+    let spread = params.link_distance.max(MIN_SPIRAL_SPACING);
     let mut pos: Vec<(f64, f64)> = (0..n)
         .map(|i| {
             let angle = i as f64 * GOLDEN_ANGLE + seed;
-            let r = params.link_distance * 0.15 * ((i + 1) as f64).sqrt();
+            let r = spread * 0.15 * ((i + 1) as f64).sqrt();
             (r * angle.cos(), r * angle.sin())
         })
         .collect();
@@ -111,13 +137,13 @@ pub(crate) fn assign_force_offsets(
     const SPRING: f64 = 0.1;
     const EPS: f64 = 0.01;
     let mut temperature = params.link_distance.max(1.0) * 2.0;
-    let cooling = if params.iterations > 0 {
-        temperature / params.iterations as f64
+    let cooling = if iterations > 0 {
+        temperature / iterations as f64
     } else {
         0.0
     };
 
-    for _ in 0..params.iterations {
+    for _ in 0..iterations {
         let mut disp = vec![(0.0_f64, 0.0_f64); n];
 
         // Coulomb repulsion between every distinct pair.
@@ -193,7 +219,7 @@ pub(crate) fn assign_force_offsets(
     // already relaxed cleanly is left exactly as it was.
     const COLLIDE_MARGIN: f64 = 8.0;
     const COLLIDE_SWEEPS: usize = 200;
-    for _ in 0..COLLIDE_SWEEPS {
+    for _ in 0..COLLIDE_SWEEPS.min(pass_cap) {
         let mut moved = false;
         for i in 0..n {
             for j in (i + 1)..n {
@@ -245,6 +271,33 @@ pub(crate) fn assign_force_offsets(
         .collect()
 }
 
+/// Most node pairs the relaxation (and, separately, the collision
+/// sweeps) may visit in total. 300 default iterations fit up to 516
+/// nodes; a bigger graph gets proportionally fewer steps.
+const MAX_PAIR_VISITS: usize = 40_000_000;
+
+/// Floor on the initial spiral's spacing, in SVG units.
+const MIN_SPIRAL_SPACING: f64 = 10.0;
+
+/// Largest node count whose pairs fit [`MAX_PAIR_VISITS`] once.
+fn max_force_nodes() -> usize {
+    // n (n - 1) / 2 <= MAX_PAIR_VISITS  ⇔  n <= (1 + sqrt(1 + 8 M)) / 2
+    ((1.0 + (1.0 + 8.0 * MAX_PAIR_VISITS as f64).sqrt()) / 2.0) as usize
+}
+
+/// Fallback layout for a graph too large to relax: nodes in order on a
+/// square grid whose cells fit the largest node plus a gap, so no two
+/// boxes overlap. Offsets are top-left corners from `(0, 0)`.
+fn grid_offsets(nodes: &[Node]) -> Vec<(f64, f64)> {
+    const GAP: f64 = 20.0;
+    let cols = (nodes.len() as f64).sqrt().ceil().max(1.0) as usize;
+    let cw = nodes.iter().map(|n| n.size.0).fold(0.0, f64::max) + GAP;
+    let ch = nodes.iter().map(|n| n.size.1).fold(0.0, f64::max) + GAP;
+    (0..nodes.len())
+        .map(|i| ((i % cols) as f64 * cw, (i / cols) as f64 * ch))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,13 +336,18 @@ mod tests {
 
     #[test]
     fn empty_input_empty_output() {
-        let offsets = assign_force_offsets(&[], &[], ForceParams::default());
+        let offsets = assign_force_offsets(&[], &[], ForceParams::default(), &Warnings::default());
         assert!(offsets.is_empty());
     }
 
     #[test]
     fn single_node_at_origin() {
-        let offsets = assign_force_offsets(&[node("a")], &[], ForceParams::default());
+        let offsets = assign_force_offsets(
+            &[node("a")],
+            &[],
+            ForceParams::default(),
+            &Warnings::default(),
+        );
         assert_eq!(offsets.len(), 1);
         assert!((offsets[0].0).abs() < 1e-9);
         assert!((offsets[0].1).abs() < 1e-9);
@@ -303,8 +361,10 @@ mod tests {
             ("b".into(), "c".into()),
             ("c".into(), "a".into()),
         ];
-        let first = assign_force_offsets(&nodes, &edges, ForceParams::default());
-        let second = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let first =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
+        let second =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         assert_eq!(first, second);
     }
 
@@ -312,7 +372,8 @@ mod tests {
     fn all_coordinates_finite() {
         let nodes = vec![node("a"), node("b"), node("c"), node("d"), node("e")];
         let edges = vec![("a".into(), "b".into()), ("a".into(), "c".into())];
-        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let offsets =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         for (x, y) in offsets {
             assert!(x.is_finite() && y.is_finite());
         }
@@ -322,7 +383,8 @@ mod tests {
     fn offsets_normalized_to_origin() {
         let nodes = vec![node("a"), node("b"), node("c"), node("d")];
         let edges = vec![("a".into(), "b".into())];
-        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let offsets =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         let min_x = offsets.iter().map(|o| o.0).fold(f64::INFINITY, f64::min);
         let min_y = offsets.iter().map(|o| o.1).fold(f64::INFINITY, f64::min);
         // The extreme node's box corner sits exactly at (0, *) / (*, 0).
@@ -342,10 +404,15 @@ mod tests {
         };
         let nodes = vec![node("a"), node("b")];
 
-        let linked = assign_force_offsets(&nodes, &[("a".into(), "b".into())], params());
+        let linked = assign_force_offsets(
+            &nodes,
+            &[("a".into(), "b".into())],
+            params(),
+            &Warnings::default(),
+        );
         let d_linked = dist(linked[0], linked[1]);
 
-        let loose = assign_force_offsets(&nodes, &[], params());
+        let loose = assign_force_offsets(&nodes, &[], params(), &Warnings::default());
         let d_loose = dist(loose[0], loose[1]);
 
         assert!(
@@ -383,7 +450,8 @@ mod tests {
             ("e".into(), "a".into()),
             ("e".into(), "f".into()),
         ];
-        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let offsets =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         assert_no_overlap(&nodes, &offsets);
     }
 
@@ -406,7 +474,8 @@ mod tests {
                 edges.push(("n1".into(), format!("n{i}")));
             }
         }
-        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let offsets =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         assert_no_overlap(&nodes, &offsets);
     }
 
@@ -420,7 +489,8 @@ mod tests {
             ("c".into(), "a".into()),
             ("d".into(), "d".into()),
         ];
-        let offsets = assign_force_offsets(&nodes, &edges, ForceParams::default());
+        let offsets =
+            assign_force_offsets(&nodes, &edges, ForceParams::default(), &Warnings::default());
         assert_eq!(offsets.len(), nodes.len());
         assert!(offsets.iter().all(|(x, y)| x.is_finite() && y.is_finite()));
     }
@@ -436,6 +506,7 @@ mod tests {
                 seed: 1,
                 ..ForceParams::default()
             },
+            &Warnings::default(),
         );
         let b = assign_force_offsets(
             &nodes,
@@ -444,7 +515,55 @@ mod tests {
                 seed: 7,
                 ..ForceParams::default()
             },
+            &Warnings::default(),
         );
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn zero_link_distance_still_spreads_nodes() {
+        // `link_distance = 0` zeroed the spiral radius, so every node
+        // started (and stayed) on the origin.
+        let nodes = vec![node("a"), node("b"), node("c")];
+        let edges = vec![("a".into(), "b".into()), ("b".into(), "c".into())];
+        let params = ForceParams {
+            link_distance: 0.0,
+            ..ForceParams::default()
+        };
+        let offsets = assign_force_offsets(&nodes, &edges, params, &Warnings::default());
+        assert_no_overlap(&nodes, &offsets);
+    }
+
+    #[test]
+    fn huge_graph_falls_back_to_a_grid() {
+        let n = max_force_nodes() + 1;
+        let nodes: Vec<Node> = (0..n).map(|i| node(&format!("n{i}"))).collect();
+        let warnings = Warnings::default();
+        let offsets = assign_force_offsets(&nodes, &[], ForceParams::default(), &warnings);
+        assert_eq!(offsets.len(), n);
+        let cols = (n as f64).sqrt().ceil() as usize;
+        assert_eq!(offsets[1], (100.0, 0.0));
+        assert_eq!(offsets[cols], (0.0, 60.0));
+        let recorded = warnings.take();
+        assert!(
+            recorded.iter().any(|w| w.contains("laid out on a grid")),
+            "{recorded:?}"
+        );
+    }
+
+    #[test]
+    fn large_graph_trims_iterations_to_the_budget() {
+        // 2,000 nodes x 300 iterations would visit ~600M pairs; the
+        // budget trims it to a few dozen passes.
+        let nodes: Vec<Node> = (0..2_000).map(|i| node(&format!("n{i}"))).collect();
+        let warnings = Warnings::default();
+        let offsets = assign_force_offsets(&nodes, &[], ForceParams::default(), &warnings);
+        assert_eq!(offsets.len(), 2_000);
+        assert!(offsets.iter().all(|o| o.0.is_finite() && o.1.is_finite()));
+        let recorded = warnings.take();
+        assert!(
+            recorded.iter().any(|w| w.contains("iterations reduced")),
+            "{recorded:?}"
+        );
     }
 }

@@ -496,7 +496,12 @@ fn ticks(lo: f64, hi: f64, u: Unit, every: i64) -> Vec<(f64, String)> {
         if sc >= lo - 0.5 {
             out.push((sc, tick_label(&cur, u)));
         }
-        cur = step(&cur, u, every);
+        // A step past the calendar's range (`end = "9999-12-31"`, or a
+        // huge `every`) ends the axis rather than overflowing.
+        let Some(next) = step(&cur, u, every) else {
+            break;
+        };
+        cur = next;
     }
     out
 }
@@ -517,34 +522,37 @@ fn floor_to_unit(dt: &PrimitiveDateTime, u: Unit) -> PrimitiveDateTime {
         Unit::Days => mid(d),
         Unit::Weeks => {
             let back = d.weekday().number_days_from_monday() as i64;
-            mid(d) - Duration::days(back)
+            mid(d).checked_sub(Duration::days(back)).unwrap_or(mid(d))
         }
         Unit::Months => mid(Date::from_calendar_date(d.year(), d.month(), 1).unwrap_or(d)),
         Unit::Years => mid(Date::from_calendar_date(d.year(), Month::January, 1).unwrap_or(d)),
     }
 }
 
-/// Advance a datetime by `every` units.
-fn step(dt: &PrimitiveDateTime, u: Unit, every: i64) -> PrimitiveDateTime {
+/// Advance a datetime by `every` units. `None` once the result leaves the
+/// representable calendar, which ends the tick walk.
+fn step(dt: &PrimitiveDateTime, u: Unit, every: i64) -> Option<PrimitiveDateTime> {
+    let secs = |per: i64| every.checked_mul(per).map(Duration::seconds);
     match u {
-        Unit::Minutes => *dt + Duration::minutes(every),
-        Unit::Hours => *dt + Duration::hours(every),
-        Unit::Days => *dt + Duration::days(every),
-        Unit::Weeks => *dt + Duration::weeks(every),
+        Unit::Minutes => dt.checked_add(secs(60)?),
+        Unit::Hours => dt.checked_add(secs(3600)?),
+        Unit::Days => dt.checked_add(secs(86_400)?),
+        Unit::Weeks => dt.checked_add(secs(604_800)?),
         Unit::Months => add_months(dt, every),
-        Unit::Years => add_months(dt, every * 12),
+        Unit::Years => add_months(dt, every.checked_mul(12)?),
     }
 }
 
 /// Add months, clamping the day when the target month is shorter.
-fn add_months(dt: &PrimitiveDateTime, n: i64) -> PrimitiveDateTime {
-    let total = dt.year() as i64 * 12 + (u8::from(dt.month()) as i64 - 1) + n;
-    let ny = total.div_euclid(12) as i32;
+/// `None` when the target year is outside the calendar's range.
+fn add_months(dt: &PrimitiveDateTime, n: i64) -> Option<PrimitiveDateTime> {
+    let total = (dt.year() as i64 * 12 + (u8::from(dt.month()) as i64 - 1)).checked_add(n)?;
+    let ny = i32::try_from(total.div_euclid(12)).ok()?;
     let nm = (total.rem_euclid(12) + 1) as u8;
     let day = (dt.day()).min(days_in(ny, nm));
-    let date = Date::from_calendar_date(ny, Month::try_from(nm).unwrap_or(Month::January), day)
-        .unwrap_or_else(|_| dt.date());
-    PrimitiveDateTime::new(date, dt.time())
+    let date =
+        Date::from_calendar_date(ny, Month::try_from(nm).unwrap_or(Month::January), day).ok()?;
+    Some(PrimitiveDateTime::new(date, dt.time()))
 }
 
 /// Whether a year is a leap year.

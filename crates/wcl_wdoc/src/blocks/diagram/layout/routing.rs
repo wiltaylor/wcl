@@ -15,6 +15,8 @@
 
 use std::collections::{BinaryHeap, HashMap};
 
+use crate::render::Warnings;
+
 /// Side of a shape's bounding box that an anchor sits on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Side {
@@ -101,6 +103,13 @@ const BORDER_CLEARANCE: f64 = CELL;
 /// deliberately do *not* fall back to an obstacle-ignoring elbow — a
 /// caller that gets `None` should surface a diagnostic rather than draw
 /// a line straight through a shape.
+///
+/// The one exception is a search that runs out of budget: the three
+/// attempts share [`MAX_EXPANSIONS`] node expansions, and a route the
+/// search could neither find nor rule out within them falls back to a
+/// plain elbow between the anchors, with a render warning, rather than
+/// stalling the build on a huge grid.
+#[allow(clippy::too_many_arguments)] // the edge geometry plus the warning sink; a struct would only rename them
 pub(crate) fn route_elbow(
     src: (f64, f64),
     src_side: Side,
@@ -109,6 +118,7 @@ pub(crate) fn route_elbow(
     obstacles: &[Obstacle],
     borders: &[(f64, f64, f64, f64)],
     viewport: (f64, f64),
+    warnings: &Warnings,
 ) -> Option<Vec<(f64, f64)>> {
     // Pre-flight the grid size once so an over-cap diagram gets a
     // size diagnostic instead of the misleading "too tightly packed"
@@ -123,16 +133,54 @@ pub(crate) fn route_elbow(
         ));
         return None;
     }
+    let mut budget = MAX_EXPANSIONS;
     for pad in [PAD, 1.0, 0.0] {
         // `borders` is the same at every pad: the penalty is a soft cost,
         // independent of the obstacle-padding relaxation.
-        if let Some(path) = astar_route(
-            src, src_side, dst, dst_side, obstacles, borders, viewport, pad,
+        match astar_route(
+            src,
+            src_side,
+            dst,
+            dst_side,
+            obstacles,
+            borders,
+            viewport,
+            pad,
+            &mut budget,
         ) {
-            return Some(snap_endpoints(path, src, src_side, dst, dst_side));
+            Search::Found(path) => {
+                return Some(snap_endpoints(path, src, src_side, dst, dst_side));
+            }
+            Search::Unroutable => {}
+            Search::OutOfBudget => {
+                warnings.record(format!(
+                    "diagram edge from ({:.0}, {:.0}) to ({:.0}, {:.0}): the router gave up \
+                     after {MAX_EXPANSIONS} search steps, so it is drawn as a plain elbow that \
+                     may cross other shapes. Reduce the diagram's size or set \
+                     routing: \"straight\".",
+                    src.0, src.1, dst.0, dst.1,
+                ));
+                return Some(snap_endpoints(vec![src, dst], src, src_side, dst, dst_side));
+            }
         }
     }
     None
+}
+
+/// Most A* node expansions one edge may spend across all its padding
+/// attempts. Every route in the reference manual needs under 2,000; the
+/// cap only bites on a huge grid where the search would otherwise flood
+/// millions of cells (three times over, for an unroutable edge).
+const MAX_EXPANSIONS: usize = 200_000;
+
+/// How one A* attempt ended.
+enum Search {
+    /// A route, as grid-snapped points.
+    Found(Vec<(f64, f64)>),
+    /// The open set emptied: no route exists at this padding.
+    Unroutable,
+    /// The shared expansion budget ran out before either.
+    OutOfBudget,
 }
 
 /// Hard ceiling on the routing grid's total cell count. Beyond this
@@ -227,14 +275,24 @@ fn astar_route(
     borders: &[(f64, f64, f64, f64)],
     viewport: (f64, f64),
     pad: f64,
-) -> Option<Vec<(f64, f64)>> {
-    let (gw, gh) = grid_dims(src, dst, obstacles, viewport, pad)?;
-    let blocked = build_blocked_grid(obstacles, gw, gh, pad);
+    budget: &mut usize,
+) -> Search {
+    let Some((gw, gh)) = grid_dims(src, dst, obstacles, viewport, pad) else {
+        return Search::Unroutable;
+    };
     let start_cell = snap(src);
     let goal_cell = snap(dst);
     if start_cell == goal_cell {
-        return Some(vec![src, dst]);
+        return Search::Found(vec![src, dst]);
     }
+    // An endpoint more than a cell outside the grid has no in-grid
+    // neighbour to step to, so no route exists; bailing here also keeps
+    // the cell-index arithmetic below within `i32`.
+    let near_grid = |c: Cell| (-1..=gw).contains(&c.x) && (-1..=gh).contains(&c.y);
+    if !near_grid(start_cell) || !near_grid(goal_cell) {
+        return Search::Unroutable;
+    }
+    let blocked = build_blocked_grid(obstacles, gw, gh, pad);
     // Unblock the start and goal cells so we can enter / leave them
     // even if they sit inside an obstacle's inflated bbox. Also
     // unblock the cell *adjacent* to each — for start, the cell in
@@ -298,13 +356,17 @@ fn astar_route(
     });
 
     while let Some(OpenEntry { node, g, .. }) = open.pop() {
+        if *budget == 0 {
+            return Search::OutOfBudget;
+        }
+        *budget -= 1;
         if node.cell == goal_cell {
             // Reached goal: the final move must arrive *from* the
             // direction `goal_dir` points outward, i.e. the move
             // direction equals `(-goal_dir.0, -goal_dir.1)`.
             let arriving = (-goal_dir.0, -goal_dir.1);
             if node.dir == arriving || node.dir == (0, 0) {
-                return Some(reconstruct(&came_from, node, src, src_side, dst, dst_side));
+                return Search::Found(reconstruct(&came_from, node, src, src_side, dst, dst_side));
             }
             // Otherwise keep searching; another node-arrival from
             // the right direction may surface later.
@@ -356,7 +418,7 @@ fn astar_route(
             }
         }
     }
-    None
+    Search::Unroutable
 }
 
 /// Rasterise the obstacles into a blocked-cell bitmap, dilated by
@@ -364,17 +426,18 @@ fn astar_route(
 fn build_blocked_grid(obstacles: &[Obstacle], gw: i32, gh: i32, pad: f64) -> Vec<bool> {
     let mut grid = vec![false; (gw * gh) as usize];
     for o in obstacles {
+        // Clamp the covered cell range to the grid before walking it: an
+        // obstacle at x = -1e9 would otherwise spin through a hundred
+        // million off-grid cells per row. (`as i32` saturates, and NaN
+        // becomes 0, so the clamp sees finite bounds.)
         let (x0, y0, x1, y1) = (
-            ((o.x - pad) / CELL).floor() as i32,
-            ((o.y - pad) / CELL).floor() as i32,
-            ((o.x + o.w + pad) / CELL).ceil() as i32,
-            ((o.y + o.h + pad) / CELL).ceil() as i32,
+            (((o.x - pad) / CELL).floor() as i32).max(0),
+            (((o.y - pad) / CELL).floor() as i32).max(0),
+            (((o.x + o.w + pad) / CELL).ceil() as i32).min(gw),
+            (((o.y + o.h + pad) / CELL).ceil() as i32).min(gh),
         );
         for cy in y0..y1 {
             for cx in x0..x1 {
-                if cx < 0 || cy < 0 || cx >= gw || cy >= gh {
-                    continue;
-                }
                 grid[(cy * gw + cx) as usize] = true;
             }
         }
@@ -794,6 +857,7 @@ mod tests {
             &[],
             &[],
             (1.0e30, 1.0e30),
+            &Warnings::default(),
         );
         assert!(got.is_none());
         let err = crate::render::take_route_error().expect("size diagnostic recorded");
@@ -813,6 +877,7 @@ mod tests {
             &[],
             &[],
             (f64::NAN, 200.0),
+            &Warnings::default(),
         );
         crate::render::take_route_error();
     }
@@ -827,6 +892,7 @@ mod tests {
             &[],
             &[],
             (320.0, 200.0),
+            &Warnings::default(),
         )
         .expect("unobstructed route");
         // Start, end and no intermediate bends (or only redundant ones at the same y).
@@ -850,6 +916,7 @@ mod tests {
             }],
             &[],
             (320.0, 200.0),
+            &Warnings::default(),
         )
         .expect("route around a single obstacle");
         // At least 3 points (one bend), and at least one y differs
@@ -911,6 +978,7 @@ mod tests {
             &[box_a, box_b, box_c],
             &[],
             (320.0, 240.0),
+            &Warnings::default(),
         )
         .expect("a detour around the packed row exists");
 
@@ -966,6 +1034,7 @@ mod tests {
             &[box_b, dst_box],
             &[],
             (240.0, 240.0),
+            &Warnings::default(),
         );
         assert!(
             routed.is_none(),
@@ -1017,6 +1086,7 @@ mod tests {
             &[],
             &[],
             (520.0, 320.0),
+            &Warnings::default(),
         )
         .expect("unobstructed route");
         assert!(pts.len() >= 2, "route should not be empty");
@@ -1137,8 +1207,17 @@ mod tests {
             })
         };
         // Control: with no border, the route runs straight along y=0.
-        let bare = route_elbow(src, Side::East, dst, Side::West, &[], &[], (220.0, 220.0))
-            .expect("bare route");
+        let bare = route_elbow(
+            src,
+            Side::East,
+            dst,
+            Side::West,
+            &[],
+            &[],
+            (220.0, 220.0),
+            &Warnings::default(),
+        )
+        .expect("bare route");
         assert!(on_top(&bare), "control should run along y=0: {bare:?}");
         // With the border, the long run must leave the border line.
         let routed = route_elbow(
@@ -1149,6 +1228,7 @@ mod tests {
             &[],
             &[border],
             (220.0, 220.0),
+            &Warnings::default(),
         )
         .expect("bordered route");
         assert!(
@@ -1170,10 +1250,89 @@ mod tests {
             &[],
             &[border],
             (220.0, 220.0),
+            &Warnings::default(),
         );
         assert!(
             routed.is_some(),
             "a route that must cross a border should still exist"
+        );
+    }
+
+    #[test]
+    fn blocked_grid_clamps_far_off_grid_obstacles() {
+        // An obstacle reaching from x = -1e12 used to walk every
+        // off-grid cell of its span before the bounds check skipped it.
+        let far = Obstacle {
+            x: -1e12,
+            y: 0.0,
+            w: 1e12 + 50.0,
+            h: 20.0,
+        };
+        let grid = build_blocked_grid(&[far], 20, 10, 0.0);
+        let blocked: Vec<(i32, i32)> = (0..10)
+            .flat_map(|y| (0..20).map(move |x| (x, y)))
+            .filter(|&(x, y)| grid[(y * 20 + x) as usize])
+            .collect();
+        assert_eq!(blocked.len(), 5 * 2, "{blocked:?}");
+    }
+
+    #[test]
+    fn exhausted_search_budget_falls_back_to_a_plain_elbow() {
+        // The destination sits inside a closed ring on a ~3.6M-cell grid:
+        // unroutable, and proving it floods the whole grid at each of
+        // the three paddings. The shared budget stops that and draws a
+        // plain elbow between the anchors instead.
+        let ring = [
+            Obstacle {
+                x: 9000.0,
+                y: 8900.0,
+                w: 400.0,
+                h: 20.0,
+            },
+            Obstacle {
+                x: 9000.0,
+                y: 9280.0,
+                w: 400.0,
+                h: 20.0,
+            },
+            Obstacle {
+                x: 8980.0,
+                y: 8900.0,
+                w: 20.0,
+                h: 400.0,
+            },
+            Obstacle {
+                x: 9400.0,
+                y: 8900.0,
+                w: 20.0,
+                h: 400.0,
+            },
+        ];
+        let (src, dst) = ((70.0, 25.0), (9170.0, 9095.0));
+        let warnings = Warnings::default();
+        let pts = route_elbow(
+            src,
+            Side::East,
+            dst,
+            Side::West,
+            &ring,
+            &[],
+            (19000.0, 19000.0),
+            &warnings,
+        )
+        .expect("an out-of-budget search still yields a route");
+        assert_eq!(*pts.first().unwrap(), src);
+        assert_eq!(*pts.last().unwrap(), dst);
+        for w in pts.windows(2) {
+            assert!(
+                !diagonal(w[0], w[1]),
+                "fallback must stay orthogonal: {pts:?}"
+            );
+        }
+        let recorded = warnings.take();
+        assert!(
+            recorded.iter().any(|w| w.contains("the router gave up")),
+            "{recorded:?}"
         );
     }
 }

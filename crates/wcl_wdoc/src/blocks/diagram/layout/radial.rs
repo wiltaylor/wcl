@@ -162,6 +162,9 @@ pub(crate) fn assign_radial_offsets(
 
     // ── Place each ring ──────────────────────────────────────────────
     let mut centers: Vec<(f64, f64)> = vec![(0.0, 0.0); n];
+    // The previous ring's radius and widest member half-extent, so each
+    // ring can be pushed clear of the one inside it.
+    let mut prev: Option<(f64, f64)> = None;
     for (r, members) in rings.iter().enumerate() {
         if r == 0 {
             // The hub (or whichever node landed at distance 0) is centred.
@@ -192,7 +195,18 @@ pub(crate) fn assign_radial_offsets(
         let hub_clear = radius_of[hub] + infl(hub) + params.node_gap + max_extent;
         let fit_radius = chord_fit.max(hub_clear);
         let base = params.radius.unwrap_or(fit_radius);
-        let ring_radius = base + (r as f64 - 1.0) * params.ring_gap;
+        let mut ring_radius = base + (r as f64 - 1.0) * params.ring_gap;
+        // Each ring's fit radius comes from its own members, so a sparse
+        // ring outside a crowded one (twenty leaves, one grandchild) can
+        // fit inside it. Keep every ring at least `ring_gap` — and far
+        // enough that the two rings' boxes cannot touch — beyond the last.
+        if let Some((prev_radius, prev_extent)) = prev {
+            let step = params
+                .ring_gap
+                .max(prev_extent + max_extent + params.node_gap);
+            ring_radius = ring_radius.max(prev_radius + step);
+        }
+        prev = Some((ring_radius, max_extent));
         for (j, &i) in members.iter().enumerate() {
             let angle = params.start_angle + TAU * (j as f64) / (k as f64);
             centers[i] = (ring_radius * angle.cos(), ring_radius * angle.sin());
@@ -629,5 +643,34 @@ mod tests {
             ring_radius(&inflated),
             ring_radius(&bare)
         );
+    }
+
+    #[test]
+    fn a_sparse_outer_ring_sits_outside_a_crowded_inner_ring() {
+        // Twenty leaves crowd ring 1 out to a wide radius; ring 2 holds a
+        // single grandchild, whose own fit radius is small. Sizing each
+        // ring from its own members put ring 2 inside ring 1.
+        let mut nodes = vec![node("hub")];
+        let mut edges = Vec::new();
+        for i in 0..20 {
+            let id = format!("leaf{i}");
+            nodes.push(node(&id));
+            edges.push(("hub".to_string(), id));
+        }
+        nodes.push(node("grandchild"));
+        edges.push(("leaf0".to_string(), "grandchild".to_string()));
+        let offsets = assign_radial_offsets(&nodes, &edges, RadialParams::default());
+        let hub = center(offsets[0], nodes[0].size);
+        let dist = |i: usize| {
+            let c = center(offsets[i], nodes[i].size);
+            (c.0 - hub.0).hypot(c.1 - hub.1)
+        };
+        let ring1 = dist(1);
+        let ring2 = dist(21);
+        assert!(
+            ring2 >= ring1 + RadialParams::default().ring_gap - 1e-6,
+            "ring 2 at {ring2} is not outside ring 1 at {ring1}"
+        );
+        assert_no_overlap(&nodes, &offsets);
     }
 }

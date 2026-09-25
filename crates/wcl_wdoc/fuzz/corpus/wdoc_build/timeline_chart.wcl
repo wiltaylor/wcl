@@ -1,0 +1,12 @@
+page index {
+  diagram { width = 560  height = 480
+    timeline { width = 560.0  height = 220.0
+      start = "2026-01-01"  end = "2026-12-31"  unit = :months
+      items = [ { label: "A", on: "2026-02-20" } ]
+    }
+    bar_chart { y = 240.0  width = 400.0  height = 220.0
+      categories = ["a", "b"]
+      series = [ { name: "s", values: [10.0, -5.0] } ]
+    }
+  }
+}
