@@ -162,7 +162,8 @@ Two rules follow:
 Function values take part in the document's lazy, cached field evaluation. A field holding a
 call stays unevaluated until something reads it. A cycle between fields reports an error rather
 than looping, and calls are depth-limited, so a function that recurses without a base case
-reports a depth error rather than hanging. Each call evaluates the body in a fresh frame. See
+reports `call depth limit exceeded (max 200)` rather than hanging. The 200 levels are shared
+with the fields and `let`s the calls force, so recursion that reads fields runs out sooner. Each call evaluates the body in a fresh frame. See
 `lang_evaluation.md`.
 
 Arguments are ordinary expressions evaluated at the call. A bare record argument coerces to the

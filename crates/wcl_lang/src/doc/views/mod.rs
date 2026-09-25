@@ -30,7 +30,6 @@ pub use field::{Field, TypeField};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::OnceLock;
-use std::sync::atomic::Ordering;
 
 use crate::ast::{self, Span};
 use crate::ast::{BuiltinType, TypeRef};
@@ -39,6 +38,7 @@ use crate::value::Value;
 
 use super::cells::{DecoratorCell, FieldCell, ItemCellKind, ItemCells};
 use super::eval::EvalCtx;
+use super::expr_to_path_segments;
 use super::imports::{BlockSlice, load_import_lazily, push_loaded_imports};
 use super::lookup::{iter_blocks, iter_fields, iter_tables};
 use super::schema_check::compute_schema_errors;
@@ -50,7 +50,6 @@ use super::types::{
     is_descendant_of_walk, lookup_effective_field, same_type_decl,
 };
 use super::{Document, find_block, find_field, find_let, has_schemaless};
-use super::{expr_to_path_segments, span_to_miette};
 
 /// Join the contiguous run of line comments immediately above a
 /// declaration (its `leading_trivia`) into a single doc-comment string.

@@ -289,6 +289,8 @@ CONSOLE
 
   p "Two other cycles get their own diagnostic rather than this one. A `union` whose `extends` chain loops back on itself fails with `wcl::eval::union_cycle` at the point of construction. A user `fn` that recurses without a base case hits a nesting cap and fails with `wcl::eval::call_depth_exceeded`. Neither is a field-cell cycle, so neither is reported as one."
 
+  p "A chain that never loops back is not a cycle, but its length is capped too. Every field forced to answer another is one level deeper, and so is every `let` and every `fn` call. Evaluation nests at most **200** levels deep, which keeps it inside a small thread stack such as an editor's language server. Give a block `a0 = a1 + 1`, `a1 = a2 + 1` and so on down to `a5000 = 0`, and `wcl get chain.wcl cfg.a0` exits 3 with `evaluation depth limit exceeded (max 200)`, code `wcl::eval::depth_exceeded`. Reading `cfg.a4850` from the same file answers `150`, because that chain is short enough. The limit applies to how deep the evaluation nests, not to how big the document is. A thousand sibling fields that each read one constant are only two levels deep."
+
   h2 "How a name resolves"
 
   p "A bare identifier in an expression resolves first against its **lexical** position, the chain of blocks it is written inside, and then against the document root. The walk is innermost first, and at each level it tries the same things in the same order:"
@@ -793,7 +795,7 @@ CONSOLE
 
   h3 "Evaluation errors"
 
-  p "`EvalError` has twenty-four variants, each with a stable `wcl::eval::…` code. The full set is best read off the crate. These are the ones you will meet writing documents:"
+  p "`EvalError` has twenty-five variants, each with a stable `wcl::eval::…` code. The full set is best read off the crate. These are the ones you will meet writing documents:"
 
   table {
     rows:
@@ -809,6 +811,7 @@ CONSOLE
       | "`wcl::eval::builtin_type`"         | "A builtin got arguments of the wrong shape" |
       | "`wcl::eval::call_arity`"           | "A `fn` got the wrong number of arguments" |
       | "`wcl::eval::call_depth_exceeded`"  | "A `fn` recursed past the evaluator's nesting cap" |
+      | "`wcl::eval::depth_exceeded`"       | "Fields and `let`s referenced each other more than 200 levels deep" |
       | "`wcl::eval::match_no_arm`"         | "No `match` arm fitted the value" |
       | "`wcl::eval::unknown_variant`"      | "A `Union::Name` construction named no variant of that union" |
       | "`wcl::eval::user_error`"           | "The `error()` builtin, or a host raising through the same channel" |
