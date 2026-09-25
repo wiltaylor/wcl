@@ -34,6 +34,9 @@ allow = [
     "Unicode-3.0",
     # notify (the `wcl wdoc serve` file watcher) is public-domain dedicated.
     "CC0-1.0",
+    # borrow-or-share (via tower-lsp-server's URI type) is MIT with the
+    # attribution clause removed, so strictly more permissive than MIT.
+    "MIT-0",
 ]
 confidence-threshold = 0.9
 
