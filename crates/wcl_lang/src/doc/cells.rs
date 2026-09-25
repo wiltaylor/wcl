@@ -3,7 +3,7 @@
 //! Each AST item gets one [`ItemCells`] entry. The cell holds memoised
 //! decorator-argument values plus a discriminated payload that mirrors the
 //! AST variant ([`ItemCellKind`]). Field evaluation results are stored in
-//! [`FieldCell`] with cycle-detection. Synthesised table rows produced at
+//! [`FieldCell`]. Synthesised table rows produced at
 //! cells-build time live in [`SynthRow`] so the view layer can iterate them
 //! without re-synthesising.
 //!
@@ -17,7 +17,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use std::sync::atomic::AtomicBool;
 
 use crate::ast::{self, Span};
 use crate::diagnostics::EvalError;
@@ -25,15 +24,15 @@ use crate::symbols::SymbolIndex;
 use crate::value::Value;
 
 #[derive(Debug)]
-/// Memo for one field's value, plus the flag that turns infinite
-/// recursion into an `EvalError::Cycle` instead of a stack overflow.
+/// Memo for one field's value. Whether the field is being forced right
+/// now is tracked per thread on the evaluation stack
+/// ([`super::eval_stack`]), keyed by this cell's address, so a
+/// re-entrant force reports an `EvalError::Cycle` instead of
+/// overflowing the stack.
 pub(crate) struct FieldCell {
     /// The evaluated result, written once on first force. Errors are
     /// cached too, so a failing field reports identically on every read.
     pub(crate) value: OnceLock<Result<Value, EvalError>>,
-    /// Set while this field is being forced. A re-entrant force sees it
-    /// set and reports a cycle.
-    pub(crate) evaluating: AtomicBool,
 }
 
 impl FieldCell {
@@ -41,7 +40,6 @@ impl FieldCell {
     pub(crate) fn new() -> Self {
         Self {
             value: OnceLock::new(),
-            evaluating: AtomicBool::new(false),
         }
     }
 }
@@ -71,7 +69,7 @@ pub(crate) enum ItemCellKind {
     /// A `name = expr` field.
     Field(FieldCell),
     /// `let name = expr` item. Reuses `FieldCell` for the memoised
-    /// value + cycle-detection flag; evaluated on first name
+    /// value; evaluated on first name
     /// resolution, never as document output.
     Let(FieldCell),
     /// A block instance, whose body has cells of its own.

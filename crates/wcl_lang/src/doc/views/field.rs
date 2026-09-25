@@ -8,6 +8,7 @@
 use super::decl::resolve_child_kind_arg;
 use super::decorator::iter_decorators;
 use super::*;
+use crate::doc::eval_stack::{self, FrameKey};
 
 #[derive(Clone, Copy)]
 /// One field of a [`TypeDecl`], [`InterfaceDecl`] or record variant,
@@ -273,12 +274,11 @@ impl<'a> Field<'a> {
         c
     }
 
-    /// `true` while this field's RHS is being evaluated higher up the
-    /// (single-threaded) evaluation stack — see
-    /// [`LetView::mid_evaluation`].
+    /// `true` while this field's RHS is being evaluated higher up this
+    /// thread's evaluation stack — see [`LetView::mid_evaluation`].
     pub(in crate::doc) fn mid_evaluation(&self) -> bool {
         let cell = self.field_cell();
-        cell.value.get().is_none() && cell.evaluating.load(Ordering::Acquire)
+        cell.value.get().is_none() && eval_stack::is_active(FrameKey::cell(cell))
     }
 
     /// Decorators attached to this item, in source order.
@@ -359,17 +359,24 @@ impl<'a> Field<'a> {
                 .expect("just-set membership error")
                 .as_ref();
         }
-        if cell.evaluating.swap(true, Ordering::Acquire) {
-            let _ = cell.value.set(Err(EvalError::Cycle {
-                field: self.ast.name.clone(),
-                span: span_to_miette(self.ast.span),
-            }));
-            return cell
-                .value
-                .get()
-                .expect("cycle cell was just initialised")
-                .as_ref();
-        }
+        // A force already on this thread's stack is a cycle; one past
+        // the depth cap is refused. Either way the refusal is cached, as
+        // any other evaluation error is. Another thread forcing the same
+        // cell concurrently isn't on this stack, so it computes the
+        // value independently rather than reading as a cycle.
+        let _frame = match eval_stack::enter(FrameKey::cell(cell)) {
+            Ok(frame) => frame,
+            Err(refused) => {
+                let _ = cell
+                    .value
+                    .set(Err(refused.into_error(&self.ast.name, self.ast.span)));
+                return cell
+                    .value
+                    .get()
+                    .expect("refused cell was just initialised")
+                    .as_ref();
+            }
+        };
         // For `&T`-typed fields, evaluate the RHS as a path producing
         // a `DataRef`. If the target is a leaf `Field`, auto-deref to
         // its value. Otherwise (type / union / variant / block / …),
@@ -439,7 +446,6 @@ impl<'a> Field<'a> {
             }
             other => Ok(other),
         });
-        cell.evaluating.store(false, Ordering::Release);
         cell.value.get_or_init(|| result).as_ref()
     }
 
@@ -636,36 +642,34 @@ pub(crate) struct LetView<'a> {
 }
 
 impl<'a> LetView<'a> {
-    /// `true` while this let's RHS is being evaluated higher up the
-    /// (single-threaded) evaluation stack. Used by `scope_lookup` to
-    /// give `a = a` outward-shadowing semantics: a mid-evaluation match
-    /// is skipped so the name resolves to an outer binding instead of
-    /// the binding being defined.
+    /// `true` while this let's RHS is being evaluated higher up this
+    /// thread's evaluation stack. Used by `scope_lookup` to give `a = a`
+    /// outward-shadowing semantics: a mid-evaluation match is skipped so
+    /// the name resolves to an outer binding instead of the binding
+    /// being defined. Another thread's in-flight evaluation of the same
+    /// let doesn't count.
     pub(crate) fn mid_evaluation(&self) -> bool {
-        self.cell.value.get().is_none() && self.cell.evaluating.load(Ordering::Acquire)
+        self.cell.value.get().is_none() && eval_stack::is_active(FrameKey::cell(self.cell))
     }
 
     /// Evaluate (once) and return the bound value. Mirrors
-    /// [`Field::value`]'s cycle-detection: a re-entrant evaluation
-    /// caches and returns an `EvalError::Cycle`.
+    /// [`Field::value`]'s cycle and depth checks: a re-entrant
+    /// evaluation caches and returns an `EvalError::Cycle`.
     pub(crate) fn value(&self) -> Result<Value, EvalError> {
         let cell = self.cell;
         if let Some(cached) = cell.value.get() {
             return cached.clone();
         }
-        if cell.evaluating.swap(true, Ordering::Acquire) {
-            let _ = cell.value.set(Err(EvalError::Cycle {
-                field: self.ast.name.clone(),
-                span: span_to_miette(self.ast.span),
-            }));
-            return cell
-                .value
-                .get()
-                .expect("cycle cell was just initialised")
-                .clone();
-        }
+        let _frame = match eval_stack::enter(FrameKey::cell(cell)) {
+            Ok(frame) => frame,
+            Err(refused) => {
+                return cell
+                    .value
+                    .get_or_init(|| Err(refused.into_error(&self.ast.name, self.ast.span)))
+                    .clone();
+            }
+        };
         let result = self.doc.eval_in_scope(&self.ast.value, &self.scope);
-        cell.evaluating.store(false, Ordering::Release);
         cell.value.get_or_init(|| result).clone()
     }
 }

@@ -9,6 +9,7 @@
 use super::decl::synth_child_from_value;
 use super::decorator::iter_decorators;
 use super::*;
+use crate::doc::eval_stack::{self, FrameKey};
 
 /// Public view of an `lhs -> rhs [:sym]` connection statement.
 #[derive(Debug, Clone, Copy)]
@@ -621,14 +622,29 @@ impl<'a> Block<'a> {
             }
             let scope = self.child_scope();
             // Connection statements live in the block's own items and in
-            // any in-block import it splices in; project across both.
-            let mut values = Vec::new();
-            for src in self.realize_and_sources() {
-                values.extend(self.doc.project_connections(src.items, conn_schema, &scope));
-            }
-            let projected = Value::List(std::sync::Arc::new(values));
-            self.typed_proj_memo_insert(name, projected.clone());
-            return Some(DataRef::from_variant_value(projected));
+            // any in-block import it splices in; project across both. A
+            // label that reads this projection back while it's computing
+            // is a cycle, reported (and not memoised) like the root's.
+            let projected = eval_stack::enter(FrameKey::named(self.cells, name))
+                .map_err(|refused| refused.into_error(name, f.span()))
+                .and_then(|_frame| {
+                    let mut values = Vec::new();
+                    for src in self.realize_and_sources() {
+                        values.extend(self.doc.project_connections(
+                            src.items,
+                            conn_schema,
+                            &scope,
+                        )?);
+                    }
+                    Ok(Value::List(std::sync::Arc::new(values)))
+                });
+            return Some(match projected {
+                Ok(projected) => {
+                    self.typed_proj_memo_insert(name, projected.clone());
+                    DataRef::from_variant_value(projected)
+                }
+                Err(e) => DataRef::from_error(e),
+            });
         }
 
         // Union-typed @children: dispatch every nested block / table

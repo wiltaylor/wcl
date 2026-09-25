@@ -9,6 +9,7 @@ use crate::diagnostics::EvalError;
 use crate::value::{FnParam, FnValue, Value};
 
 use super::eval_ops::{apply_binary, apply_unary, as_bool, describe_expr, format_member_path};
+use super::eval_stack::{self, FrameKey, MAX_EVAL_DEPTH};
 use super::match_pat;
 use super::scope::Scope;
 use super::types::value_matches_declared;
@@ -16,13 +17,11 @@ use super::views::{materialise_dataref, materialise_dataref_value};
 use super::{Block, Document, expr_to_path_segments, span_of};
 use super::{DataKind, DataRef};
 
-/// Hard cap on nested user-`fn` invocations during a single evaluation.
-/// Prevents accidental recursion in a `Value::Function` body from blowing
-/// the Rust stack; surfaces as [`EvalError::CallDepthExceeded`].
-const MAX_CALL_DEPTH: usize = 256;
-
-/// Per-evaluation mutable state: the local bindings in scope and the
-/// recursion depth, threaded through expression evaluation.
+/// Per-evaluation mutable state: the local bindings in scope, threaded
+/// through expression evaluation. Recursion depth is not tracked here —
+/// a context restarts at every field a lookup forces, so the depth that
+/// guards the Rust stack lives on the thread's evaluation stack
+/// ([`eval_stack`]) instead.
 pub(crate) struct EvalCtx<'a> {
     /// Stack of name → value bindings introduced by `Block` let-bindings.
     /// Searched right-to-left so the most recent binding shadows older ones.
@@ -30,8 +29,6 @@ pub(crate) struct EvalCtx<'a> {
     /// Lexical scope of the expression's evaluation site. Used to
     /// resolve bare identifiers and `self`/`parent`.
     scope: Scope<'a>,
-    /// Current nested `Value::Function` invocation depth.
-    call_depth: usize,
 }
 
 impl<'a> EvalCtx<'a> {
@@ -40,7 +37,6 @@ impl<'a> EvalCtx<'a> {
         Self {
             locals: Vec::new(),
             scope,
-            call_depth: 0,
         }
     }
 
@@ -149,7 +145,7 @@ fn call_err_at(err: EvalError, name: String, span: Span) -> EvalError {
 /// `Caller` impl used by the evaluator to invoke `Value::Function`
 /// callbacks from inside HOF builtins. Holds a back-reference to the
 /// document and the live `EvalCtx`, so the call observes (and reuses)
-/// the surrounding evaluation's locals/scope/call_depth.
+/// the surrounding evaluation's locals and scope.
 struct EvalCaller<'a, 'c> {
     /// Document the call resolves names against.
     doc: &'a Document,
@@ -857,9 +853,11 @@ impl Document {
         if args.len() != f.params().len() {
             return Err(EvalError::call_arity(f.params().len(), args.len(), span));
         }
-        if ctx.call_depth >= MAX_CALL_DEPTH {
-            return Err(EvalError::call_depth_exceeded(MAX_CALL_DEPTH, span));
-        }
+        // A call is one frame on the thread's evaluation stack, sharing
+        // its depth cap with the fields and lets calls force in turn, so
+        // recursion through a `fn` can't blow the Rust stack.
+        let _call = eval_stack::enter(FrameKey::Call)
+            .map_err(|_| EvalError::call_depth_exceeded(MAX_EVAL_DEPTH, span))?;
         let mut frame = ctx.push_frame();
         // Lexical captures first — later pushes (params, nested let
         // bindings) shadow them on right-to-left lookup.
@@ -872,10 +870,7 @@ impl Document {
             let value = super::types::coerce_value_to_type(self, value.clone(), param.ty(), span)?;
             frame.locals.push((param.name().to_string(), value));
         }
-        frame.call_depth += 1;
-        let result = self.eval_in(&f.body, &mut frame);
-        frame.call_depth -= 1;
-        result
+        self.eval_in(&f.body, &mut frame)
     }
 
     /// Construct a [`Value::Variant`] from a parsed `Type::Variant`

@@ -484,8 +484,12 @@ pub(super) fn validate_connection_stmts(
         let ast::Item::Connection(stmt) = item else {
             continue;
         };
-        let lhs = doc.resolve_connection_operand(scope, &stmt.lhs);
-        let rhs = doc.resolve_connection_operand(scope, &stmt.rhs);
+        let lhs = doc
+            .resolve_connection_operand(scope, &stmt.lhs, stmt.lhs_span)
+            .unwrap_or(None);
+        let rhs = doc
+            .resolve_connection_operand(scope, &stmt.rhs, stmt.rhs_span)
+            .unwrap_or(None);
         let (lhs, rhs) = match (lhs, rhs) {
             (Some(lhs), Some(rhs)) => (lhs, rhs),
             (lhs, rhs) => {

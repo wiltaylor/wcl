@@ -134,12 +134,32 @@ pub enum EvalError {
 
     #[error("call depth limit exceeded (max {max})")]
     #[diagnostic(code(wcl::eval::call_depth_exceeded))]
-    /// Function calls nested deeper than the evaluator's limit —
-    /// the guard against unbounded recursion.
+    /// A `fn` call nested deeper than the evaluator's limit, which calls
+    /// share with the fields and `let`s they force — the guard against
+    /// unbounded recursion.
     CallDepthExceeded {
         /// The limit that was exceeded.
         max: usize,
         #[label("function call recurses too deeply")]
+        /// Source span the diagnostic points at.
+        span: SourceSpan,
+    },
+
+    #[error("evaluation depth limit exceeded (max {max})")]
+    #[diagnostic(
+        code(wcl::eval::depth_exceeded),
+        help(
+            "a chain of references nests deeper than the evaluator allows; break it into shorter chains"
+        )
+    )]
+    /// Field and `let` evaluations nested deeper than the evaluator's
+    /// limit (which `fn` calls count towards too) — a long chain of
+    /// references that never loops back, which would otherwise overflow
+    /// the thread's stack.
+    EvalDepthExceeded {
+        /// The limit that was exceeded.
+        max: usize,
+        #[label("evaluation nests too deeply here")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
     },
@@ -565,6 +585,14 @@ impl EvalError {
     /// Build an [`EvalError::CallDepthExceeded`].
     pub(crate) fn call_depth_exceeded(max: usize, span: crate::ast::Span) -> Self {
         Self::CallDepthExceeded {
+            max,
+            span: span_to_miette(span),
+        }
+    }
+
+    /// Build an [`EvalError::EvalDepthExceeded`].
+    pub(crate) fn eval_depth_exceeded(max: usize, span: crate::ast::Span) -> Self {
+        Self::EvalDepthExceeded {
             max,
             span: span_to_miette(span),
         }

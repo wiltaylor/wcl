@@ -149,6 +149,7 @@ fn eval_error_span(err: &EvalError) -> miette::SourceSpan {
         | EvalError::NonCallable { span }
         | EvalError::CallArity { span, .. }
         | EvalError::CallDepthExceeded { span, .. }
+        | EvalError::EvalDepthExceeded { span, .. }
         | EvalError::MatchNoArm { span }
         | EvalError::GuardNotBool { span, .. }
         | EvalError::UnknownUnion { span, .. }
@@ -180,6 +181,7 @@ fn diagnostic_code(err: &EvalError) -> &'static str {
         EvalError::NonCallable { .. } => "wcl::eval::non_callable",
         EvalError::CallArity { .. } => "wcl::eval::call_arity",
         EvalError::CallDepthExceeded { .. } => "wcl::eval::call_depth_exceeded",
+        EvalError::EvalDepthExceeded { .. } => "wcl::eval::depth_exceeded",
         EvalError::MatchNoArm { .. } => "wcl::eval::match_no_arm",
         EvalError::GuardNotBool { .. } => "wcl::eval::guard_not_bool",
         EvalError::UnknownUnion { .. } => "wcl::eval::unknown_union",
