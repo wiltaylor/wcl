@@ -229,8 +229,8 @@ $ wcl get config.wcl servers.web.port --json
 
 ## The error model
 
-Three families, all carrying a span and a `NamedSource`, all rendered by `miette` with a
-snippet and a caret.
+Three families, all carrying a span, all rendered by `miette` — with a snippet and a caret when
+the source is known (below).
 
 **`ParseError`** — lexing and parsing, plus the checks that run when a document opens: import
 resolution, import cycles, `use` targets, duplicate aliases.
@@ -270,6 +270,15 @@ names helps you read a message and search for its cause:
   `UnknownConnectionKind`, `DanglingReference`.
 - Advisory: `DocumentFieldShadow` — a **warning**, never an error. It is the only one, and
   [`lang_schemas.md`](lang_schemas.md) carries the transcript and the fix.
+
+**Which file a span counts into.** A `ParseError` carries its source. So does every
+`schema_violation`, strict (`schema_errors` / `schema_diagnostics`) or lazy (a field read): the
+file holding the offending text — root, imported file, or a file an in-block `import` spliced
+in. `EvalError::schema_source()` returns it, and `miette::Report::new(err)` renders the snippet
+against it with no source attached by the host. `schema_diagnostics()` pairs each error with the
+same source (`None` only for a library-synthesised declaration). Every *other* `EvalError`
+carries a span only; the host supplies the text. `wcl check --json` exposes the file per error
+(see [`lang_cli.md`](lang_cli.md)).
 
 ## Gotchas
 

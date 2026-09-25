@@ -826,7 +826,7 @@ CONSOLE
 
   p "Every error that names a place in a file carries a span: a byte offset and a length. That is every `SyntaxError` and every `EvalError` variant. The one exception is the I/O half of `ParseError`. A file that could not be read has no position to point at, and it carries the `std::io::Error` and nothing else. Diagnostics are `miette` types, so the code, the message, the span and its label are all structured. With a source attached, `miette` draws the pointer-under-the-line snippets above."
 
-  p "Whether you _get_ a snippet depends on whether the reporting path knows which source the span belongs to. A parse error carries its own source, so it always renders one. An evaluation error carries only the span. The evaluator raises it deep in a walk that may cross several files, so the caller has to supply the text. `wcl check` supplies it where the violation's provenance is known, as it is for a second root `@document` in one namespace:"
+  p "Whether you _get_ a snippet depends on whether the error knows which source its span belongs to. A document is a root file plus its imports, and an offset alone does not say which of them it counts into. A parse error carries its own source, so it always renders one. So does every schema violation. The check that raises it records the file the offending text was written in, whether that is the root, an imported file, or a file an in-block `import` spliced into a block. Any other evaluation error carries only the span, and the caller has to supply the text. Here is a second root `@document` in one namespace:"
 
   code wcl {
     filename = "twodocs.wcl"
@@ -867,34 +867,45 @@ twodocs.wcl: 1 schema violation
 CONSOLE
   }
 
-  p "Provenance is unknown for a violation produced recursively inside a block that may have come from an imported file. There the diagnostic prints without a snippet rather than pointing the offsets at the wrong text. The span is still there, and `--json` still reports it:"
+  p "The file a violation names is the one that holds the text, not the one you asked `wcl check` about. Save `app.wcl` beside `wrong.wcl`. It does nothing but import it:"
+
+  code wcl {
+    filename = "app.wcl"
+    source = <<'WCL'
+import "./wrong.wcl"
+WCL
+  }
+
+  p "Checking `app.wcl` reports `wrong.wcl`'s two violations. The snippets are drawn from `wrong.wcl`, and in `--json` each error names that file in its own `file` key. An imported file is named by its resolved absolute path, elided here. The top-level `file` is still the one you passed:"
 
   code console {
     source = <<'CONSOLE'
-$ wcl check wrong.wcl --json
+$ wcl check app.wcl --json
 {
   "errors": [
     {
       "code": "wcl::eval::schema_violation",
+      "file": ".../wrong.wcl",
       "length": 13,
       "message": "field 'count': value 0 is below @min(1)",
       "offset": 74
     },
     {
       "code": "wcl::eval::schema_violation",
+      "file": ".../wrong.wcl",
       "length": 14,
       "message": "field 'label' declared as utf8 but value is u32",
       "offset": 88
     }
   ],
-  "file": "wrong.wcl",
+  "file": "app.wcl",
   "ok": false,
   "warnings": []
 }
 CONSOLE
   }
 
-  p "That is the form an editor consumes: `offset` and `length` are byte positions in the named file, `code` is the stable identifier, and errors and warnings are separate arrays so an editor can style them apart. `--json` does not change the exit code."
+  p "That is the form an editor consumes: `offset` and `length` are byte positions in the error's own `file`, `code` is the stable identifier, and errors and warnings are separate arrays so an editor can style them apart. An error from a declaration the library synthesised has no file, and it has no `file` key. `--json` does not change the exit code. The language server places diagnostics the same way. It publishes each one to the file that holds its text, so a mistake in an imported file shows up in that file even when only the root is open."
 
   h2 "Which command forces what"
 

@@ -190,7 +190,21 @@ $ echo $?
 CONSOLE
   }
 
-  p "A violation names the field and the schema, points at the source, and sets exit 2:"
+  p "A violation names the field and the schema, points at the source, and sets exit 2. Take `sch.wcl`, whose schema has no `zone`:"
+
+  code wcl {
+    filename = "sch.wcl"
+    source = <<'WCL'
+@document
+type C {
+  owner: utf8
+}
+
+owner = "ops"
+zone = "eu"
+WCL
+  }
+
 
   code console {
     source = <<'CONSOLE'
@@ -214,9 +228,10 @@ $ wcl check sch.wcl --json
   "errors": [
     {
       "code": "wcl::eval::schema_violation",
-      "length": 10,
+      "file": "sch.wcl",
+      "length": 11,
       "message": "top-level field 'zone' is not declared by @document schema 'C'",
-      "offset": 45
+      "offset": 50
     }
   ],
   "file": "sch.wcl",
@@ -226,7 +241,18 @@ $ wcl check sch.wcl --json
 CONSOLE
   }
 
-  p "`offset` and `length` are byte positions into the file. An editor needs them to underline the span. A clean file gives `\"ok\": true` and two empty lists."
+  p "Each error and warning carries:"
+
+  table {
+    rows:
+      | "Key" | "Meaning" |
+      | "`code`" | "The stable diagnostic code, such as `wcl::eval::schema_violation` or `wcl::parse`." |
+      | "`message`" | "The one-line message." |
+      | "`offset`, `length`" | "The byte span of the offending text. Absent when the error names no place, such as an unreadable file." |
+      | "`file`" | "The file `offset` and `length` count into. This is the file that holds the text, so an error inside an imported file names that file, by its resolved path, rather than the one you checked. Absent when the error has no source, which happens only for a declaration the library synthesised." |
+  }
+
+  p "An editor needs the span and its `file` to underline the right text. The top-level `file` is the argument you passed, or `<stdin>`. A clean file gives `\"ok\": true` and two empty lists."
 
   callout "check is the whole gate" {
     kind = :info
