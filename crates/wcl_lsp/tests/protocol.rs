@@ -358,3 +358,88 @@ async fn a_burst_of_edits_publishes_the_latest_version_only() {
     );
     assert!(versions.len() < 5, "edits were not debounced: {versions:?}");
 }
+
+/// The zero-based `{line, character}` of the first `needle` in `text`,
+/// `into` characters in (ASCII text only).
+fn position(text: &str, needle: &str, into: usize) -> Value {
+    let offset = text.find(needle).expect("needle") + into;
+    let line = text[..offset].matches('\n').count();
+    let character = offset - text[..offset].rfind('\n').map_or(0, |i| i + 1);
+    json!({ "line": line, "character": character })
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_symlinked_workspace_is_answered_in_the_client_spelling() {
+    // The editor reaches the workspace through a symlink (as macOS
+    // reaches every temp dir: /var → /private/var). The server works in
+    // canonical paths; every URI it sends back must use the spelling the
+    // editor opened, or the editor opens a second tab or drops edits.
+    let dir = tempfile::tempdir().unwrap();
+    let real = dir.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    let main_text = "import \"./shared.wcl\"\nimport \"./data.wcl\"\n\
+                     @document type Root { title: utf8 }\ntype Wrap { c: shared.Color }\n";
+    let shared_text = "namespace shared\ntype Color { name: utf8 }\n";
+    std::fs::write(real.join("main.wcl"), main_text).unwrap();
+    std::fs::write(real.join("shared.wcl"), shared_text).unwrap();
+    std::fs::write(
+        real.join("data.wcl"),
+        "// data\n\n@missing\ntitle = \"Hi\"\n",
+    )
+    .unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    let main = uri(&link.join("main.wcl"));
+    let shared = uri(&link.join("shared.wcl"));
+    let data = uri(&link.join("data.wcl"));
+
+    let mut session = Session::start(Some(&link), json!({})).await;
+    session.open(&main, main_text).await;
+
+    // An error in a file that is not open is published under the
+    // spelling of the directory the editor knows.
+    let in_data = session.diagnostics_until(&data, |d| !d.is_empty()).await;
+    assert_eq!(in_data[0]["range"]["start"]["line"], 2, "{in_data:#?}");
+
+    // Go-to-definition into an import that is not open.
+    let at_color = json!({
+        "textDocument": { "uri": main.as_str() },
+        "position": position(main_text, "Color", 1),
+    });
+    let definition = session
+        .request("textDocument/definition", at_color.clone())
+        .await;
+    assert_eq!(definition["uri"], shared.as_str(), "{definition:#?}");
+    assert_eq!(definition["range"]["start"]["line"], 1, "{definition:#?}");
+
+    // The import opened with unsaved text: its buffer is found, and the
+    // answer names it the way it was opened.
+    let unsaved = format!("\n\n{shared_text}");
+    session.open(&shared, &unsaved).await;
+    let definition = session
+        .request("textDocument/definition", at_color.clone())
+        .await;
+    assert_eq!(definition["uri"], shared.as_str(), "{definition:#?}");
+    assert_eq!(definition["range"]["start"]["line"], 3, "{definition:#?}");
+
+    // Rename across both files edits each once, under its open URI.
+    let mut params = at_color;
+    params["newName"] = json!("Hue");
+    let edit = session.request("textDocument/rename", params).await;
+    let changes = edit["changes"].as_object().expect("changes");
+    let mut targets: Vec<&str> = changes.keys().map(String::as_str).collect();
+    targets.sort_unstable();
+    let mut expected = vec![main.as_str(), shared.as_str()];
+    expected.sort_unstable();
+    assert_eq!(targets, expected, "{edit:#?}");
+    assert_eq!(changes[shared.as_str()][0]["range"]["start"]["line"], 3);
+
+    // Nothing was ever published under the canonical spelling.
+    let canonical: Vec<&Value> = session
+        .published
+        .iter()
+        .filter(|p| p["uri"].as_str().is_some_and(|u| u.contains("/real/")))
+        .collect();
+    assert!(canonical.is_empty(), "{canonical:#?}");
+}

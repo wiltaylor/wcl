@@ -61,8 +61,8 @@ use wcl_lang::{Document, ParseError, format as wcl_format, parse_for_edit};
 
 use crate::code_actions;
 use crate::completion;
-use crate::convert::{PositionEncoding, path_to_uri, rope_char_index, uri_to_path};
-use crate::ctx::{Ctx, canonical};
+use crate::convert::{PositionEncoding, rope_char_index, uri_to_path};
+use crate::ctx::Ctx;
 use crate::diagnostics;
 use crate::folding;
 use crate::host::Host;
@@ -408,18 +408,9 @@ impl State {
             .iter()
             .map(|entry| (entry.key().clone(), entry.version, entry.rope.to_string()))
             .collect();
-        // Canonical path → open URI, so a diagnostic placed by path lands
-        // on the URI the editor opened even through a symlink.
-        let open_paths: HashMap<PathBuf, Uri> = open
-            .iter()
-            .filter_map(|(uri, _, _)| Some((canonical(&uri_to_path(uri)?), uri.clone())))
-            .collect();
-        let uri_for = |path: &Path| -> Option<Uri> {
-            open_paths
-                .get(&canonical(path))
-                .cloned()
-                .or_else(|| path_to_uri(path))
-        };
+        // A diagnostic placed by path lands on the URI the editor opened
+        // the file with, even through a symlink.
+        let uri_for = |path: &Path| ctx.uri_for(path);
 
         let mut by_uri: HashMap<Uri, Vec<Diagnostic>> = HashMap::new();
         let mut place = |uri: Uri, diagnostic: Diagnostic| {

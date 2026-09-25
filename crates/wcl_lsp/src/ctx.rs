@@ -23,6 +23,11 @@ pub(crate) struct Ctx {
     /// so a file reached through an import (canonical) and the same file
     /// opened through a symlink are recognised as one.
     opened_as: Arc<HashMap<PathBuf, PathBuf>>,
+    /// Canonical directory → the spelling an open buffer's path reaches
+    /// it by, for every directory above a buffer opened through a
+    /// symlink; deepest first. A file that is not open is reported
+    /// under the spelling its nearest such directory gives it.
+    dir_aliases: Arc<Vec<(PathBuf, PathBuf)>>,
     /// The host every document opens with.
     host: Arc<Host>,
     /// The host's system imports over an overlay of `buffers` on disk.
@@ -52,6 +57,7 @@ impl Ctx {
                 .map(|path| (canonical(path), path.clone()))
                 .collect(),
         );
+        let dir_aliases = Arc::new(dir_aliases(&opened_as));
         let overlay = {
             let buffers = Arc::clone(&buffers);
             let opened_as = Arc::clone(&opened_as);
@@ -68,6 +74,7 @@ impl Ctx {
             encoding,
             buffers,
             opened_as,
+            dir_aliases,
             loader: host.loader(overlay),
             host,
         }
@@ -101,14 +108,31 @@ impl Ctx {
             .or_else(|| std::fs::read_to_string(path).ok())
     }
 
-    /// The URI to report `path` under: the spelling its buffer was opened
-    /// with when it is open, so the editor matches it to that buffer.
+    /// The spelling to report `path` under, whichever spelling it
+    /// arrives in: the one its buffer was opened with when it is open;
+    /// else the one an open buffer's symlinked directory gives it; else
+    /// `path` unchanged. Every path sent back to the client goes through
+    /// here, so the editor matches it to the buffer it already has.
+    pub(crate) fn client_path(&self, path: &Path) -> PathBuf {
+        let real = canonical(path);
+        if let Some(opened) = self.opened_as.get(&real) {
+            return opened.clone();
+        }
+        self.dir_aliases
+            .iter()
+            .find_map(|(dir, alias)| Some(alias.join(real.strip_prefix(dir).ok()?)))
+            .unwrap_or_else(|| path.to_path_buf())
+    }
+
+    /// The URI to report `path` under: [`Ctx::client_path`] as a URI.
     pub(crate) fn uri_for(&self, path: &Path) -> Option<Uri> {
-        let path = self
-            .opened_as
-            .get(&canonical(path))
-            .map_or(path, PathBuf::as_path);
-        path_to_uri(path)
+        path_to_uri(&self.client_path(path))
+    }
+
+    /// A loader over `buffers` in place of this context's own, matching
+    /// every spelling of a path the way this context's loader does.
+    pub(crate) fn loader_over(&self, buffers: HashMap<PathBuf, String>) -> FileLoader {
+        Self::with_buffers(self.encoding, buffers, Arc::clone(&self.host)).loader()
     }
 
     /// Open `source` (named `uri`) the way the host's build would: system
@@ -138,6 +162,26 @@ fn buffer<'a>(
     buffers
         .get(path)
         .or_else(|| buffers.get(opened_as.get(&canonical(path))?))
+}
+
+/// Canonical directory → client spelling for every directory above an
+/// open buffer whose spelling differs from its canonical path, deepest
+/// first. A buffer already spelled canonically has no such directory.
+fn dir_aliases(opened_as: &HashMap<PathBuf, PathBuf>) -> Vec<(PathBuf, PathBuf)> {
+    let mut aliases: Vec<(PathBuf, PathBuf)> = Vec::new();
+    for (real, opened) in opened_as {
+        if real == opened {
+            continue;
+        }
+        for dir in opened.ancestors().skip(1) {
+            let real_dir = canonical(dir);
+            if real_dir != dir && !aliases.iter().any(|(known, _)| *known == real_dir) {
+                aliases.push((real_dir, dir.to_path_buf()));
+            }
+        }
+    }
+    aliases.sort_by_key(|(dir, _)| std::cmp::Reverse(dir.components().count()));
+    aliases
 }
 
 /// `path` with symlinks and `..` resolved, or unchanged when it does not

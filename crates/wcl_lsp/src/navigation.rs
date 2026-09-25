@@ -295,7 +295,9 @@ fn check_rename(
         }
         updated.insert(uri_to_path(&source.uri).ok_or(NOT_LOCAL)?, text);
     }
-    let loader = ctx.host().loader(wcl_lang::overlay_loader(updated.clone()));
+    // `updated` mixes the client's spellings with the import graph's
+    // canonical ones; the context's loader matches either.
+    let loader = ctx.loader_over(updated.clone());
     let checked = match root_path {
         Some(root) => Document::from_file_with_loader(root, doc.environment(), loader),
         None => Document::open_at_with_loader(
@@ -683,11 +685,40 @@ tree { @note leaf first {} selected = first }
         }
     }
 
+    /// A temporary directory and the path to reach it by: through a
+    /// symlink on unix, the way macOS reaches every temp dir (`/var` →
+    /// `/private/var`), so each platform exercises a client spelling
+    /// that differs from the canonical one.
+    fn linked_tempdir() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        #[cfg(unix)]
+        {
+            let link = dir.path().join("link");
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            (dir, link)
+        }
+        #[cfg(not(unix))]
+        (dir, real)
+    }
+
+    fn utf8_ctx(buffers: HashMap<PathBuf, String>) -> Ctx {
+        Ctx::with_buffers(
+            crate::convert::PositionEncoding::Utf8,
+            buffers,
+            crate::host::wdoc(),
+        )
+    }
+
     #[test]
     fn rename_variant_and_symbols_across_unsaved_imports() {
-        let dir = tempfile::tempdir().unwrap();
-        let main = dir.path().join("main.wcl");
-        let shared = dir.path().join("shared.wcl");
+        // The editor opened both files through a symlinked directory and
+        // keys its unsaved text by that spelling; the import graph works
+        // in canonical paths.
+        let (_dir, linked) = linked_tempdir();
+        let main = linked.join("main.wcl");
+        let shared = linked.join("shared.wcl");
         let library = "\n\nnamespace lib\nsymbol_set Color { red blue }\nunion Base { Circle { radius: i64 } }\nunion Shape extends Base { Empty none }\n";
         let source = "import \"./shared.wcl\"\nuse lib.Shape as Form\nuse lib.Color as Hue\n@document type Root { shape: lib.Shape color: Hue result: i64 }\nshape = lib.Shape::Circle { radius: 7 }\ncolor = :red\nresult = match shape { Circle { radius } => radius, _ => 0 }\n";
         std::fs::write(&main, source).unwrap();
@@ -696,20 +727,16 @@ tree { @note leaf first {} selected = first }
             ("Circle { radius:", "Round", "Round { radius:"),
             ("red\n", "scarlet", "scarlet blue"),
         ] {
-            let mut overlays =
-                std::collections::HashMap::from([(shared.clone(), library.to_string())]);
-            let doc = Document::from_file_with_loader(
-                &main,
-                &wcl_lang::Environment::new(),
-                wcl_lang::overlay_loader(overlays.clone()),
-            )
-            .unwrap();
+            let mut overlays = HashMap::from([
+                (shared.clone(), library.to_string()),
+                (main.clone(), source.to_string()),
+            ]);
+            let ctx = utf8_ctx(overlays.clone());
+            let doc =
+                Document::from_file_with_loader(&main, &wcl_lang::Environment::new(), ctx.loader())
+                    .unwrap();
             let edit = rename(
-                &Ctx::with_buffers(
-                    crate::convert::PositionEncoding::Utf8,
-                    overlays.clone(),
-                    crate::host::wdoc(),
-                ),
+                &ctx,
                 Uri::from_file_path(&main).unwrap(),
                 source,
                 source.find(needle).unwrap(),
@@ -719,8 +746,9 @@ tree { @note leaf first {} selected = first }
             )
             .unwrap()
             .unwrap();
-            overlays.insert(main.clone(), source.to_string());
             for (uri, mut edits) in edit.changes.unwrap() {
+                // Every edit targets a buffer under the spelling it was
+                // opened with.
                 let path = crate::convert::uri_to_path(&uri).unwrap();
                 let original = overlays[&path].clone();
                 let text = overlays.get_mut(&path).unwrap();
@@ -737,7 +765,7 @@ tree { @note leaf first {} selected = first }
             let after = Document::from_file_with_loader(
                 &main,
                 &wcl_lang::Environment::new(),
-                wcl_lang::overlay_loader(overlays),
+                utf8_ctx(overlays).loader(),
             )
             .unwrap();
             assert!(
@@ -749,6 +777,46 @@ tree { @note leaf first {} selected = first }
                 after.field("result").unwrap().value().unwrap(),
                 &wcl_lang::Value::I64(7)
             );
+        }
+    }
+
+    #[test]
+    fn goto_definition_reports_an_import_under_the_client_spelling() {
+        let (_dir, linked) = linked_tempdir();
+        let main = linked.join("main.wcl");
+        let shared = linked.join("shared.wcl");
+        let source = "import \"./shared.wcl\"\ntype Root { color: shared.Color }\n";
+        std::fs::write(&main, source).unwrap();
+        std::fs::write(&shared, "namespace shared\ntype Color { name: utf8 }\n").unwrap();
+        let unsaved = "\n\nnamespace shared\ntype Color { name: utf8 }\n";
+        // The import closed (its spelling derives from the importing
+        // file's directory), then open with unsaved text.
+        for (buffers, line) in [
+            (HashMap::from([(main.clone(), source.to_string())]), 1),
+            (
+                HashMap::from([
+                    (main.clone(), source.to_string()),
+                    (shared.clone(), unsaved.to_string()),
+                ]),
+                3,
+            ),
+        ] {
+            let ctx = utf8_ctx(buffers);
+            let doc =
+                Document::from_file_with_loader(&main, &wcl_lang::Environment::new(), ctx.loader())
+                    .unwrap();
+            let Some(GotoDefinitionResponse::Scalar(location)) = goto_definition(
+                &ctx,
+                Uri::from_file_path(&main).unwrap(),
+                source,
+                source.find("Color").unwrap(),
+                Some(&doc),
+                Some(&main),
+            ) else {
+                panic!("expected one location");
+            };
+            assert_eq!(location.uri, Uri::from_file_path(&shared).unwrap());
+            assert_eq!(location.range.start.line, line);
         }
     }
 
@@ -916,17 +984,17 @@ tree { @note leaf first {} selected = first }
     fn find_symbol_returns_imported_file_path() {
         // Verifies the cross-file plumbing: a Document opened from a
         // file with an `import`d sibling exposes the import's path
-        // via `find_symbol`. The LSP handler uses this to build a
-        // `Location` pointing at the imported file when go-to-def
-        // resolves a cross-file FQN.
-        let dir = tempfile::tempdir().unwrap();
-        let shared = dir.path().join("shared.wcl");
-        let main = dir.path().join("main.wcl");
+        // via `find_symbol`. The path is canonical whatever spelling
+        // the importing file was opened by; the LSP handlers map it
+        // back to the client's spelling (see
+        // `goto_definition_reports_an_import_under_the_client_spelling`).
+        let (_dir, linked) = linked_tempdir();
+        let shared = linked.join("shared.wcl");
+        let main = linked.join("main.wcl");
         std::fs::write(&shared, "namespace shared\ntype Color {\n  name: utf8\n}\n").unwrap();
         std::fs::write(&main, "import \"./shared.wcl\"\n").unwrap();
         let doc = wcl_lang::Document::from_file(&main).expect("open main");
         let hit = doc.find_symbol("shared.Color").expect("hit");
-        let target = Uri::from_file_path(hit.source_path.expect("imported path")).unwrap();
-        assert_eq!(target, Uri::from_file_path(&shared).unwrap());
+        assert_eq!(hit.source_path.expect("imported path"), canonical(&shared));
     }
 }

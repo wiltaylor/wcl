@@ -7,7 +7,7 @@
 //! a deliberate non-goal: a file that is neither imported nor open is
 //! not part of the document.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 #[allow(deprecated)] // SymbolInformation::deprecated is required by lsp-types
@@ -15,7 +15,7 @@ use tower_lsp_server::ls_types::{Location, SymbolInformation};
 use wcl_lang::{Document, SymbolRecord};
 
 use crate::convert::LineIndex;
-use crate::ctx::Ctx;
+use crate::ctx::{Ctx, canonical};
 use crate::symbols::classify;
 
 /// Hard cap on returned matches, mirroring what editors render.
@@ -49,9 +49,11 @@ pub(crate) fn workspace_symbols(
     }
 
     // Open buffers outside the graph (or all of them in per-file mode)
-    // are parsed individually, the same way the outline does.
+    // are parsed individually, the same way the outline does. A buffer
+    // opened through a symlink is in the graph under its real path.
+    let in_graph: HashSet<PathBuf> = in_graph.iter().map(|p| canonical(p)).collect();
     for (path, text) in open_buffers {
-        if in_graph.iter().any(|p| p == path) {
+        if in_graph.contains(&canonical(path)) {
             continue;
         }
         let Some(uri) = crate::convert::path_to_uri(path) else {
@@ -76,10 +78,7 @@ pub(crate) fn workspace_symbols(
     let mut texts: HashMap<&Path, String> = HashMap::new();
     for (_, path, _) in &hits {
         if !texts.contains_key(path.as_path())
-            && let Some(text) = open_buffers
-                .get(path)
-                .cloned()
-                .or_else(|| std::fs::read_to_string(path).ok())
+            && let Some(text) = ctx.text(path)
         {
             texts.insert(path, text);
         }
@@ -92,7 +91,7 @@ pub(crate) fn workspace_symbols(
     hits.iter()
         .filter_map(|(_, path, rec)| {
             let index = indexes.get(path.as_path())?;
-            let uri = crate::convert::path_to_uri(path)?;
+            let uri = ctx.uri_for(path)?;
             let (kind, container_name) = classify(&rec.kind);
             #[allow(deprecated)]
             Some(SymbolInformation {
