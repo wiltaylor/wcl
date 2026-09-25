@@ -69,7 +69,7 @@ That renders:
 | --- | --- |
 | `slot n: content` | Required. |
 | `slot n: content?` | Optional. An unfilled slot renders nothing. |
-| `slot n: content*` | Repeated. Declaring one silently makes the template a **collection** template — the whole site renders to one page. A website layout keeps every slot unrepeated. |
+| `slot n: content*` | Repeated. `slot content: content*` makes the template a **collection** template — the whole site renders to one page. On any other slot of a page template the `*` is inert: every page must fill it, as if required. A website layout keeps every slot unrepeated. |
 | `slot n: content<Kind>` | Only blocks of `Kind` may fill the slot. |
 | `slot n: content = fn(c: SlotOwner) -> list<Html> …` | A fallback used when the slot is unfilled. |
 

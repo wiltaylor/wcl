@@ -161,7 +161,7 @@ template acme {
   slot hero:    content?                # optional
   slot gallery: content<Image>?         # optional, restricted to `image` blocks
   slot footer:  content = fn(c: SlotOwner) -> list<Html> [raw("&copy; Acme")]
-  slot slide:   content*                # repeated — a collection template
+  slot slide:   content*                # repeated
   render = fn(c: TemplateCtx) -> list<Html> wdoc_website_layout(c)
 }
 WCL
@@ -172,7 +172,7 @@ WCL
   list {
     li "**The type.** For a content hole it is `content`. `content<T>` narrows what a page may put there: `T` names a block type or an interface, and a fill whose kind is neither `T` nor a descendant of it fails the build."
     li "**`?`** makes the slot optional. A page need not fill it, and `slot(c, :hero)` then places nothing."
-    li "**`*`** makes the slot _repeated_. A repeated slot turns the whole template into a **collection template**: one output page assembled from every member page's copy of that slot. The built-in `presentation` template is exactly this, with `slot content: content*`. See [Presentations](wdoc_presentations)."
+    li "**`*`** makes the slot _repeated_. Repeating the reserved `content` slot turns the whole template into a **collection template**: one output page assembled from every member page's copy of its repeated slots. The built-in `presentation` template is exactly this, with `slot content: content*`. On any other slot of a page template, such as `slide` here, the `*` changes nothing: each page must fill it like a required slot. See [Templates and layouts](wdoc_templates) and [Presentations](wdoc_presentations)."
     li "**`= expr`** gives the slot a default: a `fn(SlotOwner) -> list<Html>` that runs only when the page leaves the slot empty. A slot with a default is optional whether or not it also carries `?`."
   }
 
@@ -235,10 +235,30 @@ WCL
 
   code console {
     source = <<'CONSOLE'
-$ wcl wdoc build main.wcl --out _site
+$ wcl wdoc build main.wcl --out _site        # `slot hero` and the `hero { … }` fill removed
 wcl::eval::builtin_type
 
   × '__wdoc_slot': template references slot `hero` but does not declare it
+    ╭─[main.wcl:10:1]
+  9 │
+ 10 │ template acme {
+    · ──────┬──────
+    ·       ╰── in this `template`
+ 11 │   slot content: content
+    ╰────
+  help: the wdoc library raised this while rendering the block; the report
+        below shows where
+
+Error: wcl::eval::builtin_type
+
+  × '__wdoc_slot': template references slot `hero` but does not declare it
+     ╭─[<wcl-system>/wdoc/templates.wcl:141:3]
+ 140 │ let slot_blocks = fn(c: SlotOwner, name: symbol) -> list<BlockHandle>
+ 141 │   __wdoc_slot(c.slots, name, :blocks)
+     ·   ─────────────────┬─────────────────
+     ·                    ╰── invalid argument(s)
+ 142 │
+     ╰────
 CONSOLE
   }
 

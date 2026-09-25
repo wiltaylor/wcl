@@ -190,6 +190,73 @@ CONSOLE
 
   p "The context is also per-**site**, not per-document. `c.pages` and `c.toc` describe the site the current page belongs to. A document declaring three sites calls `render` with three different contexts."
 
+  h3 "Slots in a collection template"
+
+  p "A template that declares `slot content: content*` is a **collection template**: the build calls `render` once for the whole site and writes one `index.html`. Its slots then have two owners. The site fills every slot declared without `*`, from loose blocks inside the `site` block, and `c` holds those. Each member page fills the repeated slots, and each `PageHandle` in `c.members` holds its own copy. So `c` has no `content` to give. This template asks it for one anyway:"
+
+  code wcl {
+    filename = "reel.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+template reel {
+  slot content: content*
+  slot intro:   content?
+  render = fn(c: TemplateCtx) -> list<Html> flatten([
+    slot(c, :intro),
+    slot(c, :content),
+  ])
+}
+
+site {
+  default_template = :reel
+  intro { h1 "This week" }
+}
+
+page first  { p "First story" }
+page second { p "Second story" }
+WCL
+  }
+
+  p "The build stops and names the owner to ask. The report points at your template first, then at the library line that did the checking:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl wdoc build reel.wcl --out _site
+wcl::eval::builtin_type
+
+  × '__wdoc_slot': slot `content` is repeated, so each member page fills its
+  │ own and the template context has none; read it from a member:
+  │ `slot(m, :content)` for each `m` in `c.members`
+   ╭─[reel.wcl:3:1]
+ 2 │
+ 3 │ template reel {
+   · ──────┬──────
+   ·       ╰── in this `template`
+ 4 │   slot content: content*
+   ╰────
+  help: the wdoc library raised this while rendering the block; the report
+        below shows where
+
+Error: wcl::eval::builtin_type
+
+  × '__wdoc_slot': slot `content` is repeated, so each member page fills its
+  │ own and the template context has none; read it from a member:
+  │ `slot(m, :content)` for each `m` in `c.members`
+     ╭─[<wcl-system>/wdoc/templates.wcl:141:3]
+ 140 │ let slot_blocks = fn(c: SlotOwner, name: symbol) -> list<BlockHandle>
+ 141 │   __wdoc_slot(c.slots, name, :blocks)
+     ·   ─────────────────┬─────────────────
+     ·                    ╰── invalid argument(s)
+ 142 │
+     ╰────
+CONSOLE
+  }
+
+  p "Read the repeated slot from each member instead. Replace `slot(c, :content)` with `flatten(map(c.members, fn(m: PageHandle) -> list<Html> slot(m, :content)))` and the build writes one page holding the heading and both stories. The mistake has a mirror image: `slot(m, :intro)` on a member fails too, because the site filled `intro`, and the message tells you to use `slot(c, :intro)`."
+
+  p "Only a repeated `content` slot makes a collection template. A `*` on any other slot of an ordinary page template does not. Each page must still fill that slot, as it would a required one."
+
   h2 "Reading order with page_metadata"
 
   p "A book sidebar needs to know which chapter is current. A pagination footer needs the previous and next pages. An \"on this page\" rail needs the current page's own headings. All three are questions about position. Answer them naively and you evaluate every other page's body. That is exactly what a lazy document exists to avoid."

@@ -38,9 +38,10 @@ A template's **slot declarations** decide which of two shapes it has.
 
 - A **page template** declares no repeated slot. The renderer calls it once per page, and each
   page becomes its own `<name>.html`. `:webpage`, `:book` and `:website` are page templates.
-- A **collection template** declares at least one **repeated** slot (`content*`). The renderer
-  calls it once for the whole site and writes one `index.html`. `:presentation` is the only
-  built-in one.
+- A **collection template** declares the reserved slot repeated: `slot content: content*`. The
+  renderer calls it once for the whole site and writes one `index.html`. `:presentation` is the
+  only built-in one. A `*` on any other slot, with `content` unrepeated, does not make a
+  collection; each page must fill that slot as if it were required.
 
 Collection-ness comes from the slot contract, never from the template's name.
 
@@ -50,6 +51,30 @@ Two rules follow from that:
   names one in its own `template` field fails the build.
 - The `site` fills a collection template's **non-repeated** slots, from loose content blocks
   inside the `site` block. Each member page fills the **repeated** slots.
+
+So the slots have two owners, and each is read from its own handle:
+
+| Slot | Filled by | Read with |
+| --- | --- | --- |
+| repeated (`content*`) | each member page | `slot(m, :name)` for each `m` in `c.members` (or a `c.deck` slide) |
+| unrepeated | the `site` | `slot(c, :name)` |
+
+```wcl
+render = fn(c: TemplateCtx) -> list<Html> flatten([
+  slot(c, :intro),
+  flatten(map(c.members, fn(m: PageHandle) -> list<Html> slot(m, :content))),
+])
+```
+
+Reading a slot from the wrong owner stops the build, naming the right one:
+
+```console
+× '__wdoc_slot': slot `content` is repeated, so each member page fills its own and the template context has none; read it from a member: `slot(m, :content)` for each `m` in `c.members`
+× '__wdoc_slot': slot `intro` is filled by the site, not by each member page; read it from the template context: `slot(c, :intro)`
+```
+
+``template references slot `x` but does not declare it`` means what it says: no `slot x`
+declaration on the template at all.
 
 ## Slots
 
@@ -303,8 +328,11 @@ an id and attrs, a `Paragraph` with an id, a `Head`, a `Table`, a `Highlighted` 
   `eli`, `raw`, `inl`, `icon` or `para` shadows the standard-library one.
 - A raw heredoc's closing delimiter must sit **alone on its line**. `HTML ) ],` on one line is
   an unterminated heredoc.
-- Keep `content*` for a layout you mean to be a collection template. A repeated slot anywhere
-  else converts a page layout into one, which changes how the whole site builds.
+- Keep `content*` for a layout you mean to be a collection template. It converts a page
+  layout into one, which changes how the whole site builds.
+- A render error raised inside the library (`slot`, a part, a stdlib `lower`) is reported at
+  **your** block first (``in this `template` ``, ``in this `sequence_diagram` ``), with the
+  library line that raised it attached below. Fix your block, not the library file.
 - `render` must return `list<Html>`, not `list<Content>`. The two vocabularies both declare a
   `Paragraph` and a `Table`; a template speaks the HTML one.
 
