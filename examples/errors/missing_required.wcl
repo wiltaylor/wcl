@@ -12,3 +12,5 @@ type Config {
 
 service web {
 }
+
+// expect-exit: 2

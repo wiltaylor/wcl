@@ -34,6 +34,11 @@ service "web" {
   }
 }
 
+// A decorator name must be declared before use; `logged` takes no
+// arguments.
+@decorator("logged")
+type Logged {}
+
 @logged
 type User {
   name: utf8
