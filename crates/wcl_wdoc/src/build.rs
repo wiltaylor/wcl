@@ -860,7 +860,7 @@ fn build_inner(
     let _ = crate::render::take_route_error();
     let _ = crate::render::take_include_error();
     let _ = crate::css_lint::take_structural_uses();
-    let scan = ClassScan::default();
+    let scan = ClassScan::rooted(out_dir);
     let warnings = Warnings::default();
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
         let mut count = 0;
@@ -938,6 +938,9 @@ fn build_inner(
     // stylesheet it just generated. Only a build of *every* site can judge
     // either direction (see `css_lint`), so `--site` renders without it.
     if site_filter.is_none() {
+        // Every file is on disk now, including `file` blocks shipped
+        // mid-render, so a linked stylesheet can be read back.
+        scan.read_linked_stylesheets();
         scan.record_uses(crate::css_lint::take_structural_uses());
         warnings.extend(scan.findings());
     }
@@ -2864,7 +2867,7 @@ fn ensure_site_index(out_dir: &Path, spec: &SiteSpec<'_>) -> Result<(), BuildErr
 /// sees exactly what shipped — the one place the "scan the output" half of
 /// [`crate::css_lint`] is fed.
 fn write_html_page(path: &Path, html: &str, scan: &ClassScan) -> Result<(), BuildError> {
-    scan.record_markup(html);
+    scan.record_markup(path, html);
     fs::write(path, html).map_err(|e| BuildError::Io(e, format!("write {}", path.display())))
 }
 
