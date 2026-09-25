@@ -602,6 +602,8 @@ CONSOLE
 
   p "The server provides diagnostics, formatting, document symbols, workspace symbol search, go-to-definition and find-references across files, hover, completion, signature help, semantic tokens and schema-violation code actions. An open buffer shadows the copy on disk, so a cross-file lookup sees your unsaved edit."
 
+  p "Each error is reported in the file it comes from. A mistake inside an imported file shows up on that file, even when you do not have it open, and it clears once you fix it. Column numbers use the encoding your editor asks for: UTF-8 when the editor offers it, UTF-16 otherwise. Positions after an `é` or an emoji therefore line up in every editor."
+
   h2 "wcl wdoc build"
 
   p "Renders every `page` in a document. `--type` picks the renderer: a website, a folder of Markdown, or a PDF."

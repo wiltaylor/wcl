@@ -430,6 +430,9 @@ never logs to stderr, because that would corrupt the stdio LSP stream.
 The server provides diagnostics, formatting, document symbols, workspace symbol search,
 go-to-definition and find-references across files, hover, completion, signature help, semantic
 tokens and schema-violation code actions. An open buffer shadows the copy on disk.
+Diagnostics are published to the file they were raised in: an error inside an imported file
+lands on that file, open or not. Positions are UTF-8 when the client offers
+`general.positionEncodings: ["utf-8"]`, otherwise UTF-16.
 
 ## `wcl wdoc build`
 
