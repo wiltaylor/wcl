@@ -247,6 +247,7 @@ type CollectedSchemaErrors = Vec<(EvalError, Option<NamedSource<std::sync::Arc<s
 /// Exposed so the LSP can build cross-file `Location`s for
 /// go-to-definition without reaching into `SymbolIndex` directly.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct SymbolHit<'a> {
     /// The indexed declaration.
     pub record: &'a SymbolRecord,

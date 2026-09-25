@@ -11,6 +11,7 @@ use crate::ast::TypeRef;
 /// Hosts that need a round-trippable representation should serialize
 /// the [`TypeRef`] / declaration shape instead.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Value {
     /// A boolean.
     Bool(bool),

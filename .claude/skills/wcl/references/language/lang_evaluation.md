@@ -300,6 +300,15 @@ same source (`None` only for a library-synthesised declaration). Every *other* `
 carries a span only; the host supplies the text. `wcl check --json` exposes the file per error
 (see [`lang_cli.md`](lang_cli.md)).
 
+**Matching these in Rust.** `EvalError`, `ParseError`, `SchemaViolationKind`, `EditError`, and
+the enums that grow with the language (`Value`, the AST's `Item` / `Expr` / `Pattern` /
+`TypeRef`, `TokenKind`, `ResolvedType`, `FieldShape`, `SymbolKind`, `diff::ChangeOp`, and
+wdoc's `BuildError` / `PdfError`) are `#[non_exhaustive]`. A `match` outside the crate needs a
+`_ =>` arm, so give it one that degrades: a generic kind, the error's `Display`. The output
+structs (`SyntaxError`, `diff::Diff` / `Change` / `FieldChange` / `DiffWarning`, wdoc's
+`BuildReport`) are too: read their fields, but get them from the library rather than building
+them. The full list is in the `wcl_lang` crate docs under "API stability".
+
 ## Gotchas
 
 - `wcl parse` prints a failed value as `<error: …>` *inside* an otherwise normal-looking tree.

@@ -375,10 +375,9 @@ fn classify(rec: &SymbolRecord) -> Option<LocatedSymbol> {
         }),
         // Top-level fields and type/interface members aren't useful
         // navigation targets in this slice — they resolve to
-        // themselves at the cursor.
-        SymbolKind::Field | SymbolKind::TypeField { .. } | SymbolKind::InterfaceField { .. } => {
-            None
-        }
+        // themselves at the cursor. Neither is a symbol kind this server
+        // does not know.
+        _ => None,
     }
 }
 

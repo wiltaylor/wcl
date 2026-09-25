@@ -93,6 +93,7 @@ pub fn parse_for_edit_recovering(source: &str, name: impl Into<String>) -> Parti
 /// The result of [`parse_for_edit_recovering`]: the tree built from the
 /// items that parsed, their symbols, and the syntax errors in between.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct PartialParse {
     /// Every item that parsed, in source order.
     pub source: ast::Source,
@@ -153,6 +154,7 @@ pub fn find_field_by_span(items: &mut [Item], span: Span) -> Option<&mut Field> 
 /// may want to report differently; the ones that carry a [`ParseError`]
 /// keep it whole so it can still be rendered against its source.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum EditError {
     /// Nothing in the document answers to the path.
     #[error("no such path: {path}")]

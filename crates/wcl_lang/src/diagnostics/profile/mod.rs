@@ -26,6 +26,7 @@ use std::time::Duration;
 
 /// A snapshot of a document's profile data.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Profile {
     /// The root of the recorded call tree.
     pub root: ProfileNode,
@@ -42,6 +43,7 @@ impl Profile {
 /// specific stack from the root. Aggregated stats only — no per-call
 /// history.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ProfileNode {
     /// What this node measures.
     pub key: ProfileKey,
@@ -95,6 +97,7 @@ impl ProfileNode {
 /// What kind of operation a [`ProfileNode`] represents. Used as the
 /// child-map key, so equal-keyed sibling calls aggregate into one node.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum ProfileKey {
     /// The synthetic root of the tree.
     Root,

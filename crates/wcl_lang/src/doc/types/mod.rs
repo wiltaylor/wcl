@@ -64,6 +64,7 @@ pub(super) use unions::{format_union_variants_hint, validate_union};
 /// carrying the alias declaration, not to its target. Use
 /// [`FieldShape`] when you want the alias peeled.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ResolvedType<'a> {
     /// A builtin scalar (`utf8`, `u32`, `bool`, …).
     Builtin(BuiltinType),
@@ -129,6 +130,7 @@ pub(crate) const ALIAS_DEPTH: u8 = 8;
 ///   named `fnord` is a `Block`; `starts_with("fn")` on the rendering
 ///   says it is a function.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum FieldShape<'a> {
     /// One builtin scalar — `utf8`, `identifier`, `bool`, `u32`, …
     Scalar(BuiltinType),

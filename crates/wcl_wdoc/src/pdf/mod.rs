@@ -37,6 +37,7 @@ use crate::inline::InlinePatterns;
 
 /// Physical page size. A4 is the default; US Letter is selectable via the CLI.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[non_exhaustive]
 pub enum PageSize {
     /// ISO A4, 210 × 297 mm.
     A4,
@@ -103,6 +104,8 @@ impl Geometry {
 
 /// Errors from PDF generation. Mirrors `build::BuildError`'s shape so the CLI
 /// maps them to the same exit codes.
+#[derive(Debug)]
+#[non_exhaustive]
 pub enum PdfError {
     /// A filesystem operation failed; the `String` names the target.
     Io(std::io::Error, String),

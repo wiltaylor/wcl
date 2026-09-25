@@ -37,6 +37,7 @@ pub struct UseDecl {
 
 /// What a [`UseDecl`] brings into scope.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum UseForm {
     /// `use a.b.c` or `use a.b.c as d` — the path's last segment,
     /// optionally renamed.
@@ -178,6 +179,7 @@ pub struct UnionVariant {
 /// The payload shape a union variant *declares*. Mirrors [`VariantArgs`](super::VariantArgs),
 /// which is the constructor form.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum VariantBody {
     /// Named fields, declared inline on the variant.
     Record {

@@ -21,6 +21,7 @@ fn pdf_ok(file: &Path, out: &Path, size: PageSize) -> usize {
         Err(PdfError::Eval(r)) => panic!("pdf eval error: {r:?}"),
         Err(PdfError::BadDoc(m)) => panic!("pdf bad-doc error: {m}"),
         Err(PdfError::Render(m)) => panic!("pdf render error: {m}"),
+        Err(other) => panic!("pdf error: {other:?}"),
     }
 }
 

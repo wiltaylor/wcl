@@ -175,6 +175,8 @@ pub fn wdoc_environment() -> Environment {
 
 /// Why a site build failed. Each variant maps to a distinct CLI exit
 /// code, so the failure stays classifiable all the way out.
+#[derive(Debug)]
+#[non_exhaustive]
 pub enum BuildError {
     /// A filesystem operation failed. The `String` names what was being
     /// read or written, which the `io::Error` alone does not say.
@@ -516,6 +518,7 @@ pub fn build(file: &Path, out_dir: &Path, site_filter: Option<&str>) -> Result<u
 /// [`build_with_options`], [`markdown`](crate::markdown()) and
 /// [`pdf`](crate::pdf()).
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct BuildReport {
     /// Pages written (HTML, Markdown) or PDF files written (PDF).
     pub count: usize,
@@ -575,6 +578,7 @@ pub enum RebuildOutcome {
 /// What [`build_incremental`] did, and the warnings the pages it rendered
 /// raised.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct RebuildReport {
     /// Whether the rebuild stayed targeted or fell back to a full build.
     pub outcome: RebuildOutcome,

@@ -15,6 +15,7 @@
 /// number radix, string-delimiter choice) is reformatted canonically
 /// — only what's in this enum is preserved.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Trivia {
     /// A line comment, payload-only (the leading `#` or `//` and the
     /// trailing newline are stripped). The printer re-adds the `#`

@@ -9,6 +9,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 /// A primitive type the language provides, as opposed to one a document
 /// declares.
+#[non_exhaustive]
 pub enum BuiltinType {
     /// `bool`.
     Bool,
@@ -142,6 +143,7 @@ impl BuiltinType {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 /// A type as *written* in a declaration, before it is resolved against
 /// the document. The syntactic counterpart of `ResolvedType`.
+#[non_exhaustive]
 pub enum TypeRef {
     /// A primitive type.
     Builtin(BuiltinType),

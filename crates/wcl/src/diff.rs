@@ -60,7 +60,9 @@ pub(crate) fn render_wcl(changes: &[Change], old_label: &str, new_label: &str) -
                 }
                 out.push_str("}\n\n");
             }
-            ChangeOp::Added | ChangeOp::Removed => {
+            // Added, removed, and any whole-entity op a later `wcl_lang`
+            // adds: the op's name and the entity's record.
+            _ => {
                 out.push_str(&format!("{} {} {{\n", c.op.as_str(), quote_wcl(&c.entity)));
                 if let Some(v) = &c.entity_value {
                     out.push_str(&format!("  value = {}\n", value_to_wcl(v)));
@@ -121,13 +123,11 @@ fn value_to_wcl(v: &Value) -> String {
         | Value::Identifier(_)
         | Value::Symbol(_)
         | Value::None => v.to_string(),
-        Value::Variant { .. }
-        | Value::Tensor { .. }
-        | Value::Function(_)
-        | Value::DataPath { .. }
-        // A resolved document never carries an unresolved unit literal;
-        // quote it defensively rather than emit a non-re-parseable form.
-        | Value::PendingUnit { .. } => quote_wcl(&v.to_string()),
+        // Variants, tensors, functions and data-paths, plus any value form
+        // a later `wcl_lang` adds. A resolved document never carries an
+        // unresolved unit literal either; quote it defensively rather than
+        // emit a non-re-parseable form.
+        _ => quote_wcl(&v.to_string()),
     }
 }
 
@@ -236,7 +236,6 @@ pub(crate) fn run(old: &str, new: &str, exit_code: bool) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wcl_lang::diff::{FieldChange, FieldKind};
 
     #[test]
     fn value_to_wcl_strips_record_type_prefix() {
@@ -256,41 +255,21 @@ mod tests {
     #[test]
     fn rendered_wcl_reparses() {
         // Build a representative diff and assert the emitted WCL is
-        // well-formed (the "never emit non-parsing WCL" contract).
-        let changes = vec![
-            Change {
-                op: ChangeOp::Modified,
-                entity: "domain_entity:task".to_string(),
-                entity_value: None,
-                fields: vec![FieldChange {
-                    path: "fields.status".to_string(),
-                    kind: FieldKind::Changed,
-                    old: Some(Value::Utf8("draft".into())),
-                    new: Some(Value::Utf8("active".into())),
-                }],
-            },
-            Change {
-                op: ChangeOp::Added,
-                entity: "spec:impl".to_string(),
-                entity_value: Some(Value::Record {
-                    ty: vec!["Spec".to_string()],
-                    fields: std::sync::Arc::new(
-                        [
-                            ("id".to_string(), Value::Identifier("impl".into())),
-                            (
-                                "tags".to_string(),
-                                Value::list(vec![Value::Utf8("a".into())]),
-                            ),
-                        ]
-                        .into_iter()
-                        .collect(),
-                    ),
-                }),
-                fields: Vec::new(),
-            },
-        ];
+        // well-formed (the "never emit non-parsing WCL" contract). The
+        // changes come from real documents: `Change` is non_exhaustive, so
+        // outside `wcl_lang` it cannot be built as a literal.
+        let old = Document::open("domain_entity task {\n  status = \"draft\"\n}\n", "old.wcl")
+            .expect("old side opens");
+        let new = Document::open(
+            "domain_entity task {\n  status = \"active\"\n}\n\
+             spec impl {\n  tags = [\"a\"]\n}\n",
+            "new.wcl",
+        )
+        .expect("new side opens");
+        let changes = diff_documents(&old, &new).changes;
         let text = render_wcl(&changes, "old.wcl", "new.wcl");
         assert!(text.contains("modified \"domain_entity:task\""));
+        assert!(text.contains("field \"status\""));
         assert!(text.contains("kind = :changed"));
         assert!(text.contains("old = \"draft\""));
         assert!(text.contains("new = \"active\""));

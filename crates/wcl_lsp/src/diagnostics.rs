@@ -79,17 +79,25 @@ pub(crate) fn parse_failure(ctx: &Ctx, err: &ParseError, name: &str) -> Vec<(Ori
                 ))
             })
             .collect(),
-        ParseError::Io(io) => vec![(
-            Origin::Analysed,
-            Diagnostic {
-                range: Range::default(),
-                severity: Some(DiagnosticSeverity::ERROR),
-                code: Some(NumberOrString::String("wcl::io".into())),
-                source: Some("wcl".into()),
-                message: format!("io error: {io}"),
-                ..Default::default()
-            },
-        )],
+        // An I/O failure, or a failure kind a later `wcl_lang` adds: one
+        // diagnostic at the top of the analysed file, carrying its message.
+        _ => {
+            let code = match err {
+                ParseError::Io(_) => "wcl::io",
+                _ => "wcl::parse",
+            };
+            vec![(
+                Origin::Analysed,
+                Diagnostic {
+                    range: Range::default(),
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    code: Some(NumberOrString::String(code.into())),
+                    source: Some("wcl".into()),
+                    message: err.to_string(),
+                    ..Default::default()
+                },
+            )]
+        }
     }
 }
 

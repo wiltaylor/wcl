@@ -37,6 +37,7 @@ pub struct DataRef<'a> {
 #[derive(Clone)]
 /// What a [`DataRef`] points at. Navigation and materialisation both
 /// dispatch on this.
+#[non_exhaustive]
 pub enum DataKind<'a> {
     /// The document itself — produced by `self` at the top-level and
     /// by scope fallback. `child(name)` delegates to the same

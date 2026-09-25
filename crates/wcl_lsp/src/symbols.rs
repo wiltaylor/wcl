@@ -73,6 +73,9 @@ pub(crate) fn classify(kind: &SymbolKind) -> (LspSymbolKind, Option<String>) {
         SymbolKind::SymbolEntry { parent_fqn } => {
             (LspSymbolKind::CONSTANT, Some(parent_fqn.clone()))
         }
+        // A declaration kind a later `wcl_lang` adds still shows in the
+        // outline, under the generic kind.
+        _ => (LspSymbolKind::OBJECT, None),
     }
 }
 

@@ -37,7 +37,7 @@ pub(crate) fn decorator_target_after(items: &[Item], marker: usize) -> Option<De
 /// block bodies.
 fn target_in_items(items: &[Item], marker: usize) -> Option<DecoratorTarget> {
     for item in items {
-        if !contains(item_span(item), marker) {
+        if !contains(item.span(), marker) {
             continue;
         }
         return match item {
@@ -117,25 +117,6 @@ fn target(position: &'static str, block_kind: Option<String>) -> DecoratorTarget
 /// the item at `span`.
 fn target_anchor(span: Span) -> usize {
     span.start
-}
-
-/// The source span of any item, whatever its variant.
-fn item_span(item: &Item) -> Span {
-    match item {
-        Item::Field(node) => node.span,
-        Item::Let(node) => node.span,
-        Item::Block(node) => node.span,
-        Item::TypeDecl(node) => node.span,
-        Item::InterfaceDecl(node) => node.span,
-        Item::UnionDecl(node) => node.span,
-        Item::NamespaceDecl(node) => node.span,
-        Item::UseDecl(node) => node.span,
-        Item::SymbolSetDecl(node) => node.span,
-        Item::Import(node) => node.span,
-        Item::Table(node) => node.span,
-        Item::ConnectionDecl(node) => node.span,
-        Item::Connection(node) => node.span,
-    }
 }
 
 #[derive(Default)]
@@ -396,13 +377,9 @@ fn push_pattern_bindings<'a>(pat: &'a Pattern, out: &mut EnclosingScopes<'a>) {
             }
             VariantPatArgs::Unit => {}
         },
-        Pattern::Wildcard(_)
-        | Pattern::LiteralBool(_, _)
-        | Pattern::LiteralNumber { .. }
-        | Pattern::LiteralUtf8(_, _)
-        | Pattern::LiteralAscii(_, _)
-        | Pattern::LiteralSymbol(_, _)
-        | Pattern::LiteralNone(_) => {}
+        // Wildcards and literals bind nothing; a pattern form this server
+        // does not know is treated the same way.
+        _ => {}
     }
 }
 

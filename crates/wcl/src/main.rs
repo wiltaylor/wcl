@@ -126,7 +126,9 @@ fn open_document(file: &Path) -> Result<Document, ParseError> {
 pub(crate) fn parse_error_code(err: &ParseError) -> u8 {
     match err {
         ParseError::Io(_) => EXIT_IO,
-        ParseError::Syntax(_) => EXIT_PARSE,
+        // A syntax error, and any other failure to parse a later
+        // `wcl_lang` reports.
+        _ => EXIT_PARSE,
     }
 }
 
@@ -598,6 +600,8 @@ fn build_error_code(err: &wcl_wdoc::BuildError) -> u8 {
         wcl_wdoc::BuildError::Tileset(_) => EXIT_SCHEMA,
         wcl_wdoc::BuildError::EdgeRouting(_) => EXIT_SCHEMA,
         wcl_wdoc::BuildError::CodeInclude(_) => EXIT_EVAL,
+        // A failure kind a later `wcl_wdoc` adds: the generic build failure.
+        _ => EXIT_EVAL,
     }
 }
 
@@ -611,6 +615,8 @@ fn pdf_error_code(err: &wcl_wdoc::PdfError) -> u8 {
         wcl_wdoc::PdfError::Eval(_) => EXIT_EVAL,
         wcl_wdoc::PdfError::BadDoc(_) => EXIT_EVAL,
         wcl_wdoc::PdfError::Render(_) => EXIT_IO,
+        // A failure kind a later `wcl_wdoc` adds: the generic build failure.
+        _ => EXIT_EVAL,
     }
 }
 
@@ -1025,12 +1031,13 @@ fn run_check(file: &Path, json: bool) -> u8 {
         Err(err) => {
             let code = parse_error_code(&err);
             if json {
-                // One entry per syntax error; an I/O failure is one entry.
+                // One entry per syntax error; an I/O failure, or any other
+                // failure kind, is one entry.
                 let errors = match err {
                     ParseError::Syntax(_) => {
                         err.syntax_errors().map(|e| diagnostic_json(e)).collect()
                     }
-                    ParseError::Io(_) => vec![diagnostic_json(&err)],
+                    _ => vec![diagnostic_json(&err)],
                 };
                 println!("{}", check_report_json(&name, errors, Vec::new()));
             } else {
@@ -1186,6 +1193,12 @@ fn report_edit_error(err: EditError) -> u8 {
         EditError::Imported { .. } | EditError::FieldNotFound { .. } => {
             eprintln!("{err}");
             EXIT_IO
+        }
+        // A failure kind a later `wcl_lang` adds: its message, and the
+        // exit code of an edit that could not be applied.
+        _ => {
+            eprintln!("{err}");
+            EXIT_EVAL
         }
     }
 }

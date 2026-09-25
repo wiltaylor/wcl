@@ -19,6 +19,34 @@
 //! Two tools are built over those paths. [`edit::set_field`] finds a field
 //! through a `Document` and rewrites it through the edit path, and
 //! [`diff::diff_documents`] compares two documents by what they evaluate to.
+//!
+//! # API stability
+//!
+//! The language is pre-1.0 and still gaining forms, errors and kinds, so the
+//! enums that grow with it are `#[non_exhaustive]`. A `match` on one outside
+//! this crate needs a wildcard arm, and a new variant is then a minor
+//! release rather than a breaking one:
+//!
+//! - errors: [`EvalError`], [`ParseError`], [`SchemaViolationKind`],
+//!   [`ArithmeticFault`], [`edit::EditError`];
+//! - values and the syntax tree: [`Value`], [`ast::Item`], [`ast::Expr`],
+//!   [`ast::Pattern`], [`TypeRef`], [`BuiltinType`], [`ast::BinOp`],
+//!   [`ast::UnaryOp`], [`ast::UseForm`], [`ast::VariantBody`],
+//!   [`ast::Trivia`], [`TokenKind`], [`NumberLit`];
+//! - document views and kinds: [`ResolvedType`], [`FieldShape`],
+//!   [`DataKind`], [`ChildKind`], [`VariantBodyView`], [`UseFormView`],
+//!   [`SymbolKind`], [`ProfileKey`];
+//! - diffs: [`diff::ChangeOp`], [`diff::FieldKind`], [`diff::Skipped`].
+//!
+//! Report structs this crate builds and hosts only read —
+//! [`SyntaxError`], [`Profile`], [`ProfileNode`], [`SymbolHit`],
+//! [`PartialParse`], and [`diff::Diff`] with its [`diff::Change`],
+//! [`diff::FieldChange`] and [`diff::DiffWarning`] — are `#[non_exhaustive]`
+//! too, so they can gain fields; read their fields, but do not build or
+//! destructure them without `..`. Closed sets stay exhaustive
+//! ([`diff::Side`], the unit/positional/record argument shapes, the string
+//! encodings), and so do the AST structs and [`format::FormatConfig`], which
+//! hosts build with literals.
 
 pub mod ast;
 /// What the language reports about a run rather than computes from one:
