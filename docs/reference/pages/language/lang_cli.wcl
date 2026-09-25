@@ -89,6 +89,10 @@ CONSOLE
 
   p "Diagnostics go to **stderr** and results go to **stdout**. So `wcl get f.wcl path > value.txt` captures the value and leaves the error text on the terminal."
 
+  p "A closed output stream is not an error. When the program reading `wcl`'s stdout or stderr stops early, as `head` does in `wcl parse big.wcl | head -1`, `wcl` stops writing and exits 0. It is never killed by `SIGPIPE`, so a pipeline never sees 141, on any platform. Any other failure to write, such as a full disk behind `> out.txt`, is an I/O failure and exits 4."
+
+  p "The rule holds when the command was failing, too. `wcl check broken.wcl 2>&1 | head -1` exits 0, because the reader left before `wcl` finished writing its diagnostics. To act on the verdict, read the exit code with the output going somewhere that takes all of it: a file, `/dev/null`, or a reader that consumes everything."
+
   h2 "wcl parse"
 
   p "Parses a file, forces every field, and prints the whole evaluated document tree."

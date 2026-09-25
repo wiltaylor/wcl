@@ -413,7 +413,7 @@ WCL
   code console {
     source = <<'CONSOLE'
 $ wcl wdoc build main.wcl --out _site
-unknown template "toc chapter links to unknown page "home""
+toc chapter links to unknown page "home"
 CONSOLE
   }
 

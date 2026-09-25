@@ -16,6 +16,8 @@ wcl_lang = { workspace = true }
 # binary linking wdoc, turning the CLI's diagnostics into ASCII.
 # `fancy-no-backtrace` is the smallest set that builds without that flag.
 miette = { workspace = true, features = ["fancy-no-backtrace"] }
+# Derives `Error` for `BuildError`, `PdfError` and `ContentError`.
+thiserror = { workspace = true }
 regex = "1"
 syntect = { version = "5", default-features = false, features = ["default-fancy", "html"] }
 two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }

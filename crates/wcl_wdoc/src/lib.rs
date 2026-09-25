@@ -34,6 +34,15 @@
 //!
 //! [`build`](mod@build) drives the HTML backend end to end and holds the entry points
 //! the CLI calls.
+//!
+//! The library prints nothing: a build hands back its warnings in
+//! [`BuildReport`], its failure as a [`BuildError`], and its progress
+//! through [`BuildOptions::progress`], and the caller decides where they
+//! go. The one exception is the dev server's console log, written by
+//! the `serve` module through a writer that ignores a closed stream.
+
+// `print!` and friends panic when the stream is closed; see above.
+#![deny(clippy::print_stdout, clippy::print_stderr)]
 
 mod blocks;
 /// Site building: the HTML backend and the build entry points.
@@ -53,8 +62,9 @@ mod svg;
 mod visibility;
 
 pub use build::{
-    BuildError, BuildOptions, BuildReport, RebuildOutcome, RebuildReport, build, build_incremental,
-    build_with_options, schema_registry, wdoc_environment,
+    BuildError, BuildOptions, BuildReport, ProgressFn, RebuildOutcome, RebuildReport,
+    SchemaViolations, build, build_incremental, build_with_options, schema_registry,
+    wdoc_environment,
 };
 pub use markdown::markdown;
 pub use pdf::{PageSize, PdfError, pdf};

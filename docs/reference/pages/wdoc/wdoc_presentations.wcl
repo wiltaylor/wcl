@@ -160,7 +160,7 @@ TEXT
   code console {
     source = <<'CONSOLE'
 $ wcl wdoc build talk.wcl --out out
-unknown template "deck slide links to unknown page "missing_page""
+deck slide links to unknown page "missing_page"
 CONSOLE
   }
 

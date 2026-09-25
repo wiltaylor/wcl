@@ -24,6 +24,7 @@ use std::sync::Arc;
 
 use wcl_lang::{Block, Document, Environment, EvalError, ParseError, Value, disk_loader, from_fn};
 
+use crate::out::{err, errln, outln};
 use crate::{EXIT_EVAL, EXIT_IO, EXIT_OK, EXIT_PARSE, EXIT_SCHEMA, EXIT_USAGE};
 
 /// Built-in templates shipped with `wcl`, embedded in the binary. The
@@ -55,7 +56,7 @@ pub(crate) fn run_init(
         return EXIT_OK;
     }
     let Some(template) = template else {
-        eprintln!("error: specify a template name (or `wcl init --list` to see the built-ins)");
+        errln!("error: specify a template name (or `wcl init --list` to see the built-ins)");
         return EXIT_USAGE;
     };
     match run(&template, dest, &defines, defaults, force) {
@@ -67,22 +68,22 @@ pub(crate) fn run_init(
 /// Print the built-in templates, any user templates found under
 /// [`templates_dir`], and a usage line — the body of `wcl init --list`.
 fn list_templates() {
-    println!("Built-in templates:");
+    outln!("Built-in templates:");
     for (name, _) in BUILTIN_TEMPLATES {
-        println!("  {name}");
+        outln!("  {name}");
     }
     if let Some(dir) = templates_dir() {
         let users = user_templates();
-        println!("\nUser templates ({}):", dir.display());
+        outln!("\nUser templates ({}):", dir.display());
         if users.is_empty() {
-            println!("  (none — add one as <that dir>/<name>/{MANIFEST})");
+            outln!("  (none — add one as <that dir>/<name>/{MANIFEST})");
         } else {
             for (name, _) in &users {
-                println!("  {name}");
+                outln!("  {name}");
             }
         }
     }
-    println!(
+    outln!(
         "\nUsage: wcl init <template> [dest]   (<template> may also be a path to a .wcl file or a folder containing {MANIFEST})"
     );
 }
@@ -139,27 +140,27 @@ impl InitError {
     fn report(self) -> u8 {
         match self {
             InitError::Usage(msg) => {
-                eprintln!("error: {msg}");
+                errln!("error: {msg}");
                 EXIT_USAGE
             }
             InitError::Io(msg) => {
-                eprintln!("error: {msg}");
+                errln!("error: {msg}");
                 EXIT_IO
             }
             InitError::Parse(e) => {
-                eprintln!("{:?}", miette::Report::new(e));
+                errln!("{:?}", miette::Report::new(e));
                 EXIT_PARSE
             }
             InitError::Eval(e) => {
-                eprintln!("{:?}", miette::Report::new(e));
+                errln!("{:?}", miette::Report::new(e));
                 EXIT_EVAL
             }
             InitError::Schema(errs) => {
                 let count = errs.len();
                 for e in errs {
-                    eprintln!("{:?}", miette::Report::new(e));
+                    errln!("{:?}", miette::Report::new(e));
                 }
-                eprintln!(
+                errln!(
                     "template has {count} schema violation{}",
                     if count == 1 { "" } else { "s" }
                 );
@@ -266,9 +267,9 @@ fn run(
         created.push(rel.clone());
     }
 
-    println!("Created {} from template '{}'", dest.display(), tpl.ident);
+    outln!("Created {} from template '{}'", dest.display(), tpl.ident);
     for c in &created {
-        println!("  {c}");
+        outln!("  {c}");
     }
     Ok(())
 }
@@ -474,13 +475,12 @@ fn parse_defines(defines: &[String]) -> Result<BTreeMap<String, String>, InitErr
 /// its name) and any `default` are written to stderr — keeping stdout clean
 /// — and the reply is read from stdin. An empty reply takes the default.
 fn prompt_user(p: &Prop) -> Result<String, InitError> {
-    use std::io::Write as _;
     let label = p.prompt.clone().unwrap_or_else(|| p.name.clone());
     match &p.default {
-        Some(d) => eprint!("{label} [{d}]: "),
-        None => eprint!("{label}: "),
+        Some(d) => err!("{label} [{d}]: "),
+        None => err!("{label}: "),
     }
-    let _ = std::io::stderr().flush();
+    crate::out::flush_stderr();
     let mut line = String::new();
     std::io::stdin()
         .read_line(&mut line)
