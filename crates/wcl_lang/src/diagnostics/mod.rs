@@ -29,6 +29,6 @@ mod profile;
 
 pub use eval::EvalError;
 pub use kinds::{ArithmeticFault, SchemaViolationKind};
-pub use parse::{ParseError, SyntaxError};
+pub use parse::{MAX_SYNTAX_ERRORS, ParseError, SyntaxError};
 pub use profile::{Profile, ProfileKey, ProfileNode};
 pub(crate) use profile::{ProfileGuard, ProfileState};

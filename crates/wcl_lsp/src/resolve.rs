@@ -13,7 +13,9 @@
 //! refs, decorators, block kinds) and silent for the ones we can't
 //! (bare identifiers inside expressions).
 
-use wcl_lang::{DeclName, Document, Span, SymbolKind, SymbolRecord, ast, parse_for_edit};
+use wcl_lang::{
+    DeclName, Document, Span, SymbolKind, SymbolRecord, ast, parse_for_edit_recovering,
+};
 
 use crate::ctx::Ctx;
 use crate::scan::is_ident_byte;
@@ -249,9 +251,10 @@ pub(crate) fn locate_at(
     root_doc: Option<&Document>,
 ) -> Option<(LocatedSymbol, Span, Option<Document>)> {
     let local_doc = ctx.open(source, uri).ok();
-    // `parse_for_edit` is purely syntactic, so the AST is available even
-    // when neither doc type-checks.
-    let ast = parse_for_edit(source, uri).ok()?;
+    // The recovering parse is purely syntactic and keeps every item
+    // that parsed, so the AST is available even when neither doc
+    // type-checks or the file has syntax errors.
+    let ast = parse_for_edit_recovering(source, uri).source;
     let (sym, span) = local_doc
         .as_ref()
         .and_then(|d| locate(d, &ast, source, offset))

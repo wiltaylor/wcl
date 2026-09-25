@@ -1058,6 +1058,64 @@ fn check_json_reports_parse_error_with_span() {
     assert!(err["length"].is_u64(), "span length present: {err}");
 }
 
+/// Three items, each with one syntax error, between valid ones.
+const THREE_SYNTAX_ERRORS: &str = "a = = 1\nb = 2\nsvc {\n  c = )\n  d = 3\n}\ne = \"open\nf = 4\n";
+
+#[test]
+fn every_command_reports_every_syntax_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("bad.wcl");
+    std::fs::write(&file, THREE_SYNTAX_ERRORS).expect("write fixture");
+    for command in ["check", "parse", "fmt"] {
+        let out = wcl().arg(command).arg(&file).assert().code(1);
+        let stderr = String::from_utf8_lossy(&out.get_output().stderr).to_string();
+        for message in [
+            "expected value, found '='",
+            "expected value, found ')'",
+            "newline in string literal",
+        ] {
+            assert!(stderr.contains(message), "{command}: {message}\n{stderr}");
+        }
+        assert!(
+            out.get_output().stdout.is_empty(),
+            "{command} printed output"
+        );
+    }
+    // `fmt --in-place` refuses too, leaving the file as it was.
+    wcl()
+        .args(["fmt", "--in-place"])
+        .arg(&file)
+        .assert()
+        .code(1);
+    assert_eq!(
+        std::fs::read_to_string(&file).expect("read back"),
+        THREE_SYNTAX_ERRORS
+    );
+}
+
+#[test]
+fn check_json_lists_every_syntax_error() {
+    let out = wcl()
+        .arg("check")
+        .arg("--json")
+        .arg("-")
+        .write_stdin(THREE_SYNTAX_ERRORS)
+        .assert()
+        .code(1);
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).to_string();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    let offsets: Vec<u64> = v["errors"]
+        .as_array()
+        .expect("errors array")
+        .iter()
+        .map(|e| {
+            assert_eq!(e["code"], serde_json::json!("wcl::parse"));
+            e["offset"].as_u64().expect("offset")
+        })
+        .collect();
+    assert_eq!(offsets, vec![4, 26, 42]);
+}
+
 #[test]
 fn check_json_reports_schema_violations_with_exit_2() {
     let out = wcl()

@@ -47,13 +47,22 @@ const T_VARIABLE: u32 = 6;
 const T_ENUM_MEMBER: u32 = 7;
 
 /// Compute the delta-encoded semantic token stream for `source`, with
-/// columns and lengths counted in `encoding`. Lexing stops at the first
-/// lex error — diagnostics already report it.
+/// columns and lengths counted in `encoding`. A lex error (reported by
+/// diagnostics) leaves the rest of its line uncoloured, and lexing
+/// resumes on the next line.
 pub(crate) fn compute(source: &str, encoding: PositionEncoding) -> Vec<SemanticToken> {
     let mut tokens = Vec::new();
     let mut lex = Lexer::new(source);
     let mut prev_type: Option<TokenKind> = None;
-    while let Ok(tok) = lex.next_token() {
+    loop {
+        let tok = match lex.next_token() {
+            Ok(tok) => tok,
+            Err(err) => {
+                lex.recover(&err);
+                prev_type = None;
+                continue;
+            }
+        };
         if matches!(tok.kind, TokenKind::Eof) {
             break;
         }
@@ -291,6 +300,21 @@ mod tests {
         let types = types_emitted(src);
         assert!(types.contains(&T_KEYWORD), "no keyword in {types:?}");
         assert!(types.contains(&T_VARIABLE), "no variable in {types:?}");
+    }
+
+    #[test]
+    fn lex_error_leaves_later_lines_coloured() {
+        // The bad `~` costs the rest of line 0; line 1 is still tokenised.
+        let toks = compute("a = 1 ~ 2\nb = 3\n", PositionEncoding::Utf8);
+        let mut line = 0;
+        let lines: Vec<u32> = toks
+            .iter()
+            .map(|t| {
+                line += t.delta_line;
+                line
+            })
+            .collect();
+        assert_eq!(lines, vec![0, 0, 0, 1, 1, 1], "{toks:?}");
     }
 
     #[test]

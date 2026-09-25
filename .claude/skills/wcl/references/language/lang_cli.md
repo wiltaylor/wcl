@@ -148,6 +148,32 @@ no source (a library-synthesised declaration). Warnings carry the same keys.
 `-`, so `cat generated.wcl | wcl check -` validates a document never written to disk. `fmt -`
 does the same, and `repl` reads its expressions from stdin when it is not a TTY.
 
+A file that does not parse exits 1 with **every** syntax error, not just the first (capped at
+100). In `--json` each is its own `errors` entry, all with code `wcl::parse`:
+
+```console
+$ wcl check typos.wcl --json
+{
+  "errors": [
+    {
+      "code": "wcl::parse",
+      "length": 1,
+      "message": "expected value, found '='",
+      "offset": 77
+    },
+    {
+      "code": "wcl::parse",
+      "length": 5,
+      "message": "expected ',' or ']' in list literal, found string",
+      "offset": 121
+    }
+  ],
+  "file": "typos.wcl",
+  "ok": false,
+  "warnings": []
+}
+```
+
 ## `wcl eval` and `wcl get`
 
 `get` is an alias for `eval`. Same command.
@@ -267,6 +293,9 @@ $ wcl fmt <file> [--in-place] [--indent N] [--no-trailing-comma]
 Indentation, brace style, number radix, string-delimiter choice and spacing are normalized.
 Comments survive, blank-line groupings survive up to one blank line, and item order is never
 touched. The one authored choice it rewrites is the comment marker: `//` becomes `#`.
+
+A file with any syntax error is not formatted: `fmt` prints every syntax error on stderr,
+nothing on stdout, leaves an `--in-place` file untouched, and exits 1.
 
 ```console
 $ cat ugly.wcl

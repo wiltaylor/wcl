@@ -254,6 +254,35 @@ CONSOLE
 
   p "An editor needs the span and its `file` to underline the right text. The top-level `file` is the argument you passed, or `<stdin>`. A clean file gives `\"ok\": true` and two empty lists."
 
+  p "A file that does not parse exits 1, and `check` reports every syntax error in it, not only the first. With `--json` each one is its own entry in `errors`. `typos.wcl` from [the error model](lang_evaluation#parse-errors) has two:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check typos.wcl --json
+{
+  "errors": [
+    {
+      "code": "wcl::parse",
+      "length": 1,
+      "message": "expected value, found '='",
+      "offset": 77
+    },
+    {
+      "code": "wcl::parse",
+      "length": 5,
+      "message": "expected ',' or ']' in list literal, found string",
+      "offset": 121
+    }
+  ],
+  "file": "typos.wcl",
+  "ok": false,
+  "warnings": []
+}
+$ echo $?
+1
+CONSOLE
+  }
+
   callout "check is the whole gate" {
     kind = :info
     body  = "`wcl check` runs the parser **and** the schema validator, not only the parser. Run it in a pre-commit hook, in CI, and any time you want to know a file is good without printing it. It also takes `-` in place of a path, so `cat generated.wcl | wcl check -` validates a document that was never written to disk."
@@ -443,6 +472,8 @@ CONSOLE
   }
 
   p "One choice it does rewrite is the comment marker: `//` becomes `#`. Both forms parse. The canonical form is `#`."
+
+  p "A file with a syntax error is never formatted. `wcl fmt` prints every syntax error in it on stderr, prints nothing on stdout, leaves an `--in-place` file as it was, and exits 1."
 
   h3 "Checking format in CI"
 

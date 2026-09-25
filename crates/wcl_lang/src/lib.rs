@@ -8,7 +8,9 @@
 //! - **Editing path** — [`parse_for_edit`] returns an owned [`ast::Source`]
 //!   with public fields. Hosts inspect or mutate the AST. They then print it
 //!   back to a `.wcl` file with [`format::to_source`]. To evaluate after an
-//!   edit, reopen the file as a `Document`.
+//!   edit, reopen the file as a `Document`. [`parse_for_edit_recovering`]
+//!   is its editor-facing twin: it keeps going past syntax errors and
+//!   returns the items that parsed alongside every error.
 //!
 //! There is no AST escape hatch on `Document`; mixing edit + evaluate inside
 //! one process state would silently invalidate the document's cell caches,
@@ -40,7 +42,9 @@ mod symbols;
 mod value;
 
 pub use ast::{BuiltinType, Span, TensorDim, TypeRef};
-pub use diagnostics::{ArithmeticFault, EvalError, ParseError, SchemaViolationKind, SyntaxError};
+pub use diagnostics::{
+    ArithmeticFault, EvalError, MAX_SYNTAX_ERRORS, ParseError, SchemaViolationKind, SyntaxError,
+};
 pub use diagnostics::{Profile, ProfileKey, ProfileNode};
 pub use doc::{
     Block, ChildKind, Connection, ConnectionDecl, DataKind, DataRef, DeclName, DeclaresKind,
@@ -49,7 +53,7 @@ pub use doc::{
     TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
     VariantBodyView, disk_loader, overlay_loader, system_import_key,
 };
-pub use edit::{parse_expr, parse_for_edit};
+pub use edit::{PartialParse, parse_expr, parse_for_edit, parse_for_edit_recovering};
 pub use environment::{
     BuiltType, DecoratorBuilder, Environment, Expander, TypeBuilder, TypeFieldBuilder,
 };

@@ -1025,10 +1025,14 @@ fn run_check(file: &Path, json: bool) -> u8 {
         Err(err) => {
             let code = parse_error_code(&err);
             if json {
-                println!(
-                    "{}",
-                    check_report_json(&name, vec![diagnostic_json(&err)], Vec::new())
-                );
+                // One entry per syntax error; an I/O failure is one entry.
+                let errors = match err {
+                    ParseError::Syntax(_) => {
+                        err.syntax_errors().map(|e| diagnostic_json(e)).collect()
+                    }
+                    ParseError::Io(_) => vec![diagnostic_json(&err)],
+                };
+                println!("{}", check_report_json(&name, errors, Vec::new()));
             } else {
                 eprintln!("{:?}", miette::Report::new(err));
             }

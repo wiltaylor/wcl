@@ -1227,37 +1227,17 @@ impl<'a> Parser<'a> {
         // resets the flag, and vice versa.
         let prev_schemaless = self.in_schemaless_block;
         self.in_schemaless_block = decorator_is_schemaless(&decorators);
-        let body_result = (|| -> Result<Vec<Item>, ParseError> {
-            let mut items = Vec::new();
-            loop {
-                let p = self.peek()?;
-                match p.kind {
-                    TokenKind::RBrace => break,
-                    TokenKind::Eof => {
-                        let span = p.span;
-                        return Err(self.err(
-                            "unexpected end of file inside block",
-                            span,
-                            "expected '}'",
-                        ));
-                    }
-                    _ => {
-                        items.push(self.parse_item()?);
-                        // An inline comment after this item (carried on
-                        // the next token, including the `}`) trails it.
-                        self.attach_trailing_to_last(&mut items)?;
-                    }
-                }
-            }
-            Ok(items)
-        })();
+        let (items, rbrace) = self.parse_body_items();
         self.in_schemaless_block = prev_schemaless;
         self.block_depth -= 1;
         self.leave_recursion();
-        let items = body_result?;
-        let rbrace = self.bump()?;
         // Comments on their own lines after the last item, before `}`.
-        let trailing_trivia = rbrace.leading_trivia;
+        // A body cut short by an error has no `}` of its own, and ends
+        // at the last token it consumed.
+        let (end, trailing_trivia) = match rbrace {
+            Some(rbrace) => (rbrace.span.end, rbrace.leading_trivia),
+            None => (self.last_end, Vec::new()),
+        };
         Ok(Item::Block(Block {
             kind,
             kind_ns,
@@ -1266,7 +1246,7 @@ impl<'a> Parser<'a> {
             labels,
             items,
             decorators,
-            span: Span::new(start, rbrace.span.end),
+            span: Span::new(start, end),
             leading_trivia,
             trailing_comment: None,
             trailing_trivia,
