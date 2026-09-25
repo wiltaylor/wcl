@@ -167,7 +167,9 @@ fn messages(diagnostics: &[Value]) -> Vec<String> {
 }
 
 /// A rooted workspace whose imported file uses an undeclared decorator
-/// on its third line.
+/// on its third line. The URIs are in the tempdir's own spelling, as an
+/// editor opening that folder would name them — not canonicalised,
+/// which on macOS (`/private/var`) and Windows (long names) differs.
 fn workspace_with_broken_import() -> (tempfile::TempDir, Uri, Uri) {
     let dir = tempfile::tempdir().unwrap();
     let main = dir.path().join("main.wcl");
@@ -178,8 +180,8 @@ fn workspace_with_broken_import() -> (tempfile::TempDir, Uri, Uri) {
     )
     .unwrap();
     std::fs::write(&shared, "// shared\n\n@missing\ntitle = \"Hi\"\n").unwrap();
-    let main = uri(&std::fs::canonicalize(&main).unwrap());
-    let shared = uri(&std::fs::canonicalize(&shared).unwrap());
+    let main = uri(&main);
+    let shared = uri(&shared);
     (dir, main, shared)
 }
 
@@ -228,8 +230,8 @@ async fn every_kind_of_schema_error_in_an_import_is_published_to_that_file() {
     .unwrap();
     let main_text = "import \"./types.wcl\"\nimport \"./data.wcl\"\n";
     std::fs::write(dir.path().join("main.wcl"), main_text).unwrap();
-    let main = uri(&std::fs::canonicalize(dir.path().join("main.wcl")).unwrap());
-    let data = uri(&std::fs::canonicalize(dir.path().join("data.wcl")).unwrap());
+    let main = uri(&dir.path().join("main.wcl"));
+    let data = uri(&dir.path().join("data.wcl"));
 
     let mut session = Session::start(Some(dir.path()), json!({})).await;
     session.open(&main, main_text).await;
@@ -316,9 +318,7 @@ async fn syntax_errors_in_files_outside_the_root_graph_are_published() {
             &std::fs::read_to_string(dir.path().join("main.wcl")).unwrap(),
         )
         .await;
-    let orphan = uri(&std::fs::canonicalize(dir.path())
-        .unwrap()
-        .join("orphan.wcl"));
+    let orphan = uri(&dir.path().join("orphan.wcl"));
     session.open(&orphan, "\n@schemaless x = {\n").await;
     let diagnostics = session.diagnostics_until(&orphan, |d| !d.is_empty()).await;
     assert_eq!(diagnostics[0]["code"], "wcl::parse", "{diagnostics:#?}");
@@ -327,7 +327,7 @@ async fn syntax_errors_in_files_outside_the_root_graph_are_published() {
 #[tokio::test]
 async fn a_burst_of_edits_publishes_the_latest_version_only() {
     let dir = tempfile::tempdir().unwrap();
-    let file = uri(&std::fs::canonicalize(dir.path()).unwrap().join("burst.wcl"));
+    let file = uri(&dir.path().join("burst.wcl"));
     let mut session = Session::start(None, json!({})).await;
     session.open(&file, "@schemaless x = 1\n").await;
     session.diagnostics_until(&file, |_| true).await;
