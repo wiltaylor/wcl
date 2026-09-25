@@ -236,6 +236,10 @@ names helps you read a message and search for its cause:
 
 ## Gotchas
 
+- `wcl parse` prints a failed value as `<error: …>` *inside* an otherwise normal-looking tree.
+  The diagnostics are on stderr and the exit code is 3; a script reading only stdout sees a
+  complete tree. Values in template bodies (repeater children, a component's `wdoc_body`)
+  print as `<deferred: …>` and are not errors.
 - `wcl check` says `OK` for `n = error("boom")`. An evaluation failure during validation is
   skipped, not reported.
 - A `let` is not in the evaluated document. If you want it in the output, make it a field.
