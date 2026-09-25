@@ -1,8 +1,7 @@
 //! End-to-end tests that drive the `Backend` through `tower-lsp-server`'s
 //! `LanguageServer` trait. Diagnostics publication isn't exercised
-//! here — the underlying `diagnostics::compute` already has unit
-//! coverage and publishing depends on the in-memory `ClientSocket`
-//! which we'd otherwise need to drain.
+//! here — the client only sends notifications once the service has seen
+//! `initialized`, so `tests/protocol.rs` covers it over a real stream.
 
 use std::path::PathBuf;
 
@@ -1245,4 +1244,144 @@ async fn a_watched_file_change_rebuilds_the_root() {
             .find_symbol("shared.Color")
             .is_some()
     );
+}
+
+#[tokio::test]
+async fn references_span_the_import_graph() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    let main_src = "import \"./shared.wcl\"\ntype Wrap { a: shared.Color b: shared.Color }\n";
+    std::fs::write(&main, main_src).unwrap();
+    std::fs::write(&shared, "namespace shared\ntype Color { name: utf8 }\n").unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+    let main_uri = Uri::from_file_path(&main).unwrap();
+    open(backend, &main_uri, main_src).await;
+
+    let references = |include_declaration| {
+        backend.references(tower_lsp_server::ls_types::ReferenceParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: main_uri.clone(),
+                },
+                position: position_of(main_src, "Color", 1, 1),
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: tower_lsp_server::ls_types::ReferenceContext {
+                include_declaration,
+            },
+        })
+    };
+    let all = references(true)
+        .await
+        .expect("references")
+        .expect("some references");
+    let shared_uri = Uri::from_file_path(&shared).unwrap();
+    assert_eq!(all.len(), 3, "{all:?}");
+    let declaration = all
+        .iter()
+        .find(|l| l.uri == shared_uri)
+        .expect("declaration in shared.wcl");
+    assert_eq!(declaration.range.start, Position::new(1, 5));
+    let uses = references(false)
+        .await
+        .expect("references")
+        .expect("some references");
+    assert_eq!(uses.len(), 2, "{uses:?}");
+    assert!(uses.iter().all(|l| l.uri == main_uri));
+}
+
+#[tokio::test]
+async fn rename_to_a_reserved_word_is_rejected() {
+    use tower_lsp_server::ls_types::RenameParams;
+    let svc = service();
+    let backend = svc.inner();
+    let uri = "file:///reserved.wcl".parse::<Uri>().unwrap();
+    let src = "@schemaless base = 2\n@schemaless doubled = base * 2\n";
+    open(backend, &uri, src).await;
+    for name in ["match", "none", "2x"] {
+        let result = backend
+            .rename(RenameParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
+                    position: position_of(src, "base", 0, 1),
+                },
+                new_name: name.into(),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+            })
+            .await;
+        let error = result.expect_err(name);
+        assert!(
+            error.message.contains("not a valid WCL identifier"),
+            "{error:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn semantic_tokens_classify_a_document() {
+    use tower_lsp_server::ls_types::{SemanticTokensParams, SemanticTokensResult};
+    let svc = service();
+    let backend = svc.inner();
+    let uri = "file:///tokens.wcl".parse::<Uri>().unwrap();
+    let src = "type Foo {}\n@schemaless x = try 1 catch e { 2 }\n";
+    open(backend, &uri, src).await;
+    let Some(SemanticTokensResult::Tokens(tokens)) = backend
+        .semantic_tokens_full(SemanticTokensParams {
+            text_document: TextDocumentIdentifier { uri },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("semantic tokens")
+    else {
+        panic!("expected full tokens");
+    };
+    // Decode to (text, legend type) pairs.
+    let legend = [
+        "keyword",
+        "string",
+        "number",
+        "operator",
+        "decorator",
+        "type",
+        "variable",
+        "enumMember",
+    ];
+    let (mut line, mut col) = (0u32, 0u32);
+    let decoded: Vec<(String, &str)> = tokens
+        .data
+        .iter()
+        .map(|t| {
+            if t.delta_line > 0 {
+                line += t.delta_line;
+                col = 0;
+            }
+            col += t.delta_start;
+            let text = src.lines().nth(line as usize).unwrap();
+            let word = text[col as usize..(col + t.length) as usize].to_string();
+            (word, legend[t.token_type as usize])
+        })
+        .collect();
+    for expected in [
+        ("type", "keyword"),
+        ("Foo", "variable"),
+        ("@", "decorator"),
+        ("schemaless", "type"),
+        ("try", "keyword"),
+        ("catch", "keyword"),
+        ("1", "number"),
+    ] {
+        assert!(
+            decoded.contains(&(expected.0.to_string(), expected.1)),
+            "{expected:?} in {decoded:?}"
+        );
+    }
 }
