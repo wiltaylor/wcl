@@ -129,9 +129,14 @@ pub(super) fn lerp(a: (u8, u8, u8), b: (u8, u8, u8), t: f64) -> (u8, u8, u8) {
     (mix(a.0, b.0), mix(a.1, b.1), mix(a.2, b.2))
 }
 
-/// Parse a `#rgb` / `#rrggbb` hex colour.
+/// Parse a `#rgb` / `#rrggbb` hex colour. Anything but ASCII hex digits
+/// after the `#` is `None` — the digits are sliced by byte, so a
+/// multi-byte character must never reach the slicing.
 pub(super) fn parse_hex(s: &str) -> Option<(u8, u8, u8)> {
     let h = s.strip_prefix('#')?;
+    if !h.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
     match h.len() {
         3 => {
             let d = |i: usize| u8::from_str_radix(&h[i..=i], 16).ok().map(|v| v * 17);
@@ -190,6 +195,10 @@ mod tests {
         assert_eq!(parse_hex("#ff0000"), Some((255, 0, 0)));
         assert_eq!(parse_hex("#0f0"), Some((0, 255, 0)));
         assert_eq!(parse_hex("nope"), None);
+        // Non-ASCII after the `#` is rejected, not sliced mid-character.
+        assert_eq!(parse_hex("#é1"), None);
+        assert_eq!(parse_hex("#aébcd"), None);
+        assert_eq!(parse_hex("#+f+f+f"), None);
     }
 
     #[test]

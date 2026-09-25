@@ -55,7 +55,7 @@ fn elbow_edges_converging_on_a_small_circle_do_not_panic() {
     // arrival spread used to clamp to `by + 8 ..= by + bh - 8`, an empty
     // range on a side shorter than 16 units.
     let html = build_html(
-        r#"
+        r##"
 page index {
   diagram {
     width = 400  height = 300
@@ -68,7 +68,24 @@ page index {
     c -> j
   }
 }
-"#,
+"##,
     );
     assert_eq!(html.matches("marker-end=\"url(#wdoc-arrow)\"").count(), 3);
+}
+
+#[test]
+fn non_ascii_hex_colour_is_ignored_not_sliced() {
+    // `"#é1"` is three bytes, so it passed the `#rgb` length check and
+    // was then sliced through the middle of the `é`.
+    let html = build_html(
+        r##"
+page index {
+  terminal {
+    cols = 20  rows = 3
+    term_text "x" { row = 1  col = 1  fg = "#é1"  bg = "#aébcd" }
+  }
+}
+"##,
+    );
+    assert!(html.contains("<svg"), "{html}");
 }
