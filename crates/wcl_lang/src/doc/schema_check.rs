@@ -1327,7 +1327,7 @@ fn field_value_errors(block: &Block<'_>, declared: &TypeField<'_>, errs: &mut Ve
             format!("field '{}': {msg}", literal_field.name()),
             literal_field.span(),
         ));
-    } else if let Some(msg) = ref_violation(block.doc, &declared, value) {
+    } else if let Some(msg) = ref_violation(block.doc, declared, value) {
         errs.push(EvalError::schema_violation(
             Kind::DanglingReference,
             format!("field '{}': {msg}", literal_field.name()),
