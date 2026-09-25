@@ -695,6 +695,59 @@ wcl::parse
 CONSOLE
   }
 
+  p "The parser does not stop at the first mistake. When an item fails to parse, the parser records the error, skips ahead to where the next item begins, and carries on. One run reports every syntax error in the file, so you fix them all and run again once, not once per mistake. Save `typos.wcl`, which has two mistakes:"
+
+  code wcl {
+    filename = "typos.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  owner: utf8
+  port: u32
+  tags: list<utf8>
+}
+
+owner = = "platform"
+port  = 8080u32
+tags  = ["web" "api"]
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check typos.wcl
+wcl::parse
+
+  x expected value, found '='
+   ,-[typos.wcl:8:9]
+ 7 |
+ 8 | owner = = "platform"
+   :         |
+   :         `-- expected value
+ 9 | port  = 8080u32
+   `----
+
+Error: wcl::parse
+
+  x expected ',' or ']' in list literal, found string
+    ,-[typos.wcl:10:16]
+  9 | port  = 8080u32
+ 10 | tags  = ["web" "api"]
+    :                ^^|^^
+    :                  `-- expected ',' or ']'
+    `----
+
+$ echo $?
+1
+CONSOLE
+  }
+
+  p "The first error is the report. The ones after it are attached to it as related diagnostics, in source order. A program reading a `ParseError` gets them all from `ParseError::syntax_errors`."
+
+  p "Where the parser resumes decides whether one mistake stays one error. It resumes at the first of three places: a line that starts a new item at the same nesting level as the broken one, the `}` that closes the enclosing block, or the end of the file. It never resumes on a line inside an open list, call or block. So a missing comma in a twenty-line list is one error, not twenty. Inside a block the skip is per item, so a broken field costs only that field and its siblings still parse. A missing `}` is one error, reported at the end of the file. A file that is not WCL at all stops after 100 errors."
+
+  p "Recovery changes what is reported, not what is allowed. A file with any syntax error still has no document, and every command that opens it still exits 1. `wcl fmt` refuses to format it and prints nothing. `wcl check --json` gives each error its own entry in `errors`. The language server publishes every error, and keeps the outline and highlighting for the items that did parse."
+
   h3 "Schema violations"
 
   p "A schema violation is one `EvalError` variant carrying a `SchemaViolationKind` tag: thirty-two of them at the time of writing, covering undeclared fields, unregistered block kinds, child cardinality, duplicate ids, interface mismatches, constraint bounds, union dispatch, connection resolution and the rest. The tag is a separate value from the message on purpose: a tool acts on the tag, and only a human reads the sentence. That is how the language server offers a code action for an unknown field without pattern-matching on English."
