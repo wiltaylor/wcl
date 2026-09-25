@@ -142,7 +142,7 @@ fn syntax_diagnostic(range: Range, message: &str, label: &str) -> Diagnostic {
 /// the same way the CLI's JSON report reads them.
 fn eval_error_to_diagnostic(
     ctx: &Ctx,
-    source: &NamedSource<String>,
+    source: &NamedSource<std::sync::Arc<str>>,
     err: &EvalError,
     severity: DiagnosticSeverity,
 ) -> Diagnostic {
