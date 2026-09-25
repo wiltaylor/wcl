@@ -12,6 +12,7 @@ mod convert;
 mod ctx;
 mod diagnostics;
 mod folding;
+mod host;
 mod hover;
 mod navigation;
 mod occurrences;
@@ -24,6 +25,7 @@ mod symbols;
 mod walk;
 mod workspace;
 
+pub use host::Host;
 pub use server::Backend;
 
 use std::net::SocketAddr;
@@ -31,13 +33,13 @@ use std::path::Path;
 
 use tower_lsp_server::{LspService, Server};
 
-/// Run the language server on stdio. Blocks until the client closes
-/// the connection. Intended to be called from the `wcl lsp` CLI
-/// handler inside a tokio runtime.
-pub async fn start_stdio() {
+/// Run the language server on stdio, opening every document under
+/// `host`. Blocks until the client closes the connection. Intended to be
+/// called from the `wcl lsp` CLI handler inside a tokio runtime.
+pub async fn start_stdio(host: Host) {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    let (service, socket) = LspService::new(Backend::new);
+    let (service, socket) = LspService::new(|client| Backend::new(client, host));
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
@@ -47,12 +49,12 @@ pub async fn start_stdio() {
 /// and returns when the stream closes. This is the transport-agnostic
 /// core behind [`start_tcp`], so a host embedding the server can drive it
 /// over any stream — an in-memory duplex included.
-pub async fn serve_stream<R, W>(read: R, write: W)
+pub async fn serve_stream<R, W>(read: R, write: W, host: Host)
 where
     R: tokio::io::AsyncRead + Unpin,
     W: tokio::io::AsyncWrite,
 {
-    let (service, socket) = LspService::new(Backend::new);
+    let (service, socket) = LspService::new(|client| Backend::new(client, host));
     Server::new(read, write, socket).serve(service).await;
 }
 
@@ -62,15 +64,16 @@ where
 /// accepted connection runs on its own tokio task with a fresh
 /// [`Backend`], so connections don't share document state. Returns
 /// only if the listener errors — kill the process to stop accepting.
-pub async fn start_tcp(addr: SocketAddr) -> std::io::Result<()> {
+pub async fn start_tcp(addr: SocketAddr, host: Host) -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(%addr, "wcl-lsp listening for TCP connections");
     loop {
         let (stream, peer) = listener.accept().await?;
         tracing::info!(%peer, "wcl-lsp client connected");
+        let host = host.clone();
         tokio::spawn(async move {
             let (read, write) = tokio::io::split(stream);
-            serve_stream(read, write).await;
+            serve_stream(read, write, host).await;
             tracing::info!(%peer, "wcl-lsp client disconnected");
         });
     }

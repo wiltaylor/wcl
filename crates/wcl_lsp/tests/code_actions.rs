@@ -9,10 +9,16 @@ use tower_lsp_server::ls_types::{
     DidOpenTextDocumentParams, PartialResultParams, Position, Range, TextDocumentIdentifier,
     TextDocumentItem, Uri, WorkDoneProgressParams,
 };
-use wcl_lsp::Backend;
+use wcl_lsp::{Backend, Host};
+
+/// The wdoc host `wcl lsp` runs with, so wdoc documents open as they
+/// would in the editor.
+fn wdoc_host() -> Host {
+    Host::new(wcl_wdoc::wdoc_environment(), wcl_wdoc::schema_registry())
+}
 
 fn service() -> LspService<Backend> {
-    let (svc, _socket) = LspService::new(Backend::new);
+    let (svc, _socket) = LspService::new(|client| Backend::new(client, wdoc_host()));
     svc
 }
 

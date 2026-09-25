@@ -14,14 +14,20 @@ use tower_lsp_server::ls_types::{
     TextDocumentItem, TextDocumentPositionParams, Uri, VersionedTextDocumentIdentifier,
     WorkDoneProgressParams,
 };
-use wcl_lsp::Backend;
+use wcl_lsp::{Backend, Host};
+
+/// The wdoc host `wcl lsp` runs with, so wdoc documents open as they
+/// would in the editor.
+fn wdoc_host() -> Host {
+    Host::new(wcl_wdoc::wdoc_environment(), wcl_wdoc::schema_registry())
+}
 
 /// Construct an `LspService` so its inner `Backend` is wired to a
 /// real `Client` (one half of an unused in-memory channel). Tests
 /// keep the service value alive and call `LanguageServer` methods on
 /// the service's inner backend — no transport is driven.
 fn service() -> LspService<Backend> {
-    let (svc, _socket) = LspService::new(Backend::new);
+    let (svc, _socket) = LspService::new(|client| Backend::new(client, wdoc_host()));
     svc
 }
 
@@ -534,6 +540,43 @@ async fn root_resolves_embedded_wdoc_library() {
         root_doc.schema_errors().is_empty(),
         "wdoc blocks should validate via the embedded library: {:?}",
         root_doc.schema_errors()
+    );
+}
+
+#[tokio::test]
+async fn a_plain_host_serves_wcl_without_wdoc() {
+    // The server carries no vocabulary of its own. Under the default host
+    // a plain WCL document validates, and wdoc's system import is not
+    // there to resolve.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    std::fs::write(&main, "@document type D { port: u16 }\nport = 8080u16\n").unwrap();
+    let (svc, _socket) = LspService::new(|client| Backend::new(client, Host::default()));
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+    let root_doc = backend.root_document().expect("plain root opens");
+    assert!(root_doc.schema_errors().is_empty());
+    assert!(
+        root_doc
+            .environment()
+            .builtins()
+            .all(|(name, _)| name != "__wdoc_slot"),
+        "no wdoc builtin reaches a plain host"
+    );
+
+    std::fs::write(&main, "import <wdoc.wcl>\n").unwrap();
+    let (svc, _socket) = LspService::new(|client| Backend::new(client, Host::default()));
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+    assert!(
+        backend.root_document().is_none(),
+        "`<wdoc.wcl>` is wdoc's import, not the language's"
     );
 }
 

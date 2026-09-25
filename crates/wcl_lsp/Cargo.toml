@@ -12,7 +12,6 @@ path = "src/lib.rs"
 
 [dependencies]
 wcl_lang = { workspace = true }
-wcl_wdoc = { workspace = true }
 tower-lsp-server = { workspace = true }
 tokio = { workspace = true, features = ["time"] }
 dashmap = { workspace = true }
@@ -23,6 +22,8 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
+# Tests exercise wdoc documents; the server itself carries no wdoc.
+wcl_wdoc = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }
 tempfile = { workspace = true }
 serde_json = { workspace = true }

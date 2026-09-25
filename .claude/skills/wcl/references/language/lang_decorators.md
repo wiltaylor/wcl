@@ -231,7 +231,7 @@ wcl::eval::schema_violation
   × block 'metric_card' is missing required field 'label'
 ```
 
-Three consequences to respect:
+Four consequences to respect:
 
 1. **The derived schemas are built lazily and cached.** Deriving one evaluates the declarer's
    labels and param blocks, so it cannot happen at parse time.
@@ -243,6 +243,12 @@ Three consequences to respect:
    and schema lookup would prefer the declared type, so instances behave incoherently. The
    collision check therefore looks the kind up **without** the derived-schema fallback, so a
    declared kind cannot collide with itself. It reports the clash as `DeclaredKindCollision`.
+4. **A host may add param kinds.** Only blocks of the `params` field's child kind become
+   fields, unless the host registered an alias with `Environment::add_param_kind_alias`. The
+   `wcl` CLI carries wdoc's environment, which aliases `wdoc_slot` to `slot`. So under the CLI a
+   `wdoc_slot x` block inside a declarer whose params are `slot` blocks derives a field `x`, even
+   in a file that never imports wdoc. A library host with a plain `Environment::new()` treats it
+   as an ordinary child block.
 
 Note in the example that `metric_card` is legal inside `panel`, which declares no such child
 kind. A derived kind is marked contextual, which is the next decorator.
