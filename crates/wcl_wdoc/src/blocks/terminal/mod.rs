@@ -110,8 +110,11 @@ pub(crate) fn render_terminal(
     let preset = field_symbol(block, "palette");
     let fg_field = field_utf8(block, "fg");
     let bg_field = field_utf8(block, "bg");
-    let def_cols = field_i64(block, "cols").unwrap_or(80).max(1) as usize;
-    let def_rows = field_i64(block, "rows").unwrap_or(24).max(1) as usize;
+    let (def_cols, def_rows) = clamp_dims(
+        field_i64(block, "cols").unwrap_or(80),
+        field_i64(block, "rows").unwrap_or(24),
+        "block",
+    );
 
     // The terminal is themed by the WCL `class` system: its `class` list
     // reaches the wrapping `<div>`, so a `class { background color … }`
@@ -201,8 +204,11 @@ pub(crate) fn render_terminal_pdf(
     let preset = field_symbol(block, "palette");
     let fg_field = field_utf8(block, "fg");
     let bg_field = field_utf8(block, "bg");
-    let def_cols = field_i64(block, "cols").unwrap_or(80).max(1) as usize;
-    let def_rows = field_i64(block, "rows").unwrap_or(24).max(1) as usize;
+    let (def_cols, def_rows) = clamp_dims(
+        field_i64(block, "cols").unwrap_or(80),
+        field_i64(block, "rows").unwrap_or(24),
+        "block",
+    );
 
     // Same palette resolution as the HTML path: explicit fg/bg/preset, else
     // the terminal's referenced `class` colours, else the dark default.

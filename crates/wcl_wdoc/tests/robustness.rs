@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use tempfile::TempDir;
-use wcl_wdoc::{BuildError, build};
+use wcl_wdoc::{BuildError, build, take_render_warnings};
 
 /// Build `body` (with the stdlib import prepended) as a one-file site and
 /// return the build result plus the output directory.
@@ -124,4 +124,45 @@ fn timeline_huge_every_does_not_overflow() {
             r#"start = "2026-01-01"  end = "2026-12-31"  unit = {unit}  every = 9223372036854775807"#
         )));
     }
+}
+
+#[test]
+fn oversized_terminal_is_clamped_with_a_warning() {
+    // `cols * rows` cells used to be allocated as asked: 10^9 x 10^9
+    // overflowed or exhausted memory.
+    let html = build_html(
+        r##"
+page index {
+  terminal {
+    cols = 1000000000  rows = 1000000000
+    text = "hello"
+  }
+}
+"##,
+    );
+    // 500 columns of 8-unit cells plus the 6-unit window margins.
+    assert!(html.contains("viewBox=\"0 0 4012 "), "{html}");
+    assert!(html.contains(">h</text>"), "{html}");
+    let warnings = take_render_warnings();
+    assert!(
+        warnings.iter().any(|w| w.contains("exceeds the 500x200 maximum")),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn terminal_positions_at_the_i64_limits_do_not_overflow() {
+    // `row - 1` on i64::MIN, and `base + pos` for a widget at i64::MAX,
+    // overflowed in the cell-offset arithmetic.
+    build_html(
+        r##"
+page index {
+  terminal {
+    cols = 20  rows = 5
+    term_text "a" { row = -9223372036854775807 - 1  col = 9223372036854775807 }
+    term_box { row = 9223372036854775807  col = 9223372036854775807  width = 5  height = 3  title = "t" }
+  }
+}
+"##,
+    );
 }

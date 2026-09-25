@@ -69,7 +69,7 @@ terminal {
 WCL
   }
 
-  p "`cols` and `rows` default to `80` and `24`. The renderer draws `title` and the window chrome above the grid, and they cost no cells. To drop the title bar and its close button, set `chrome = false`. The chrome is worth keeping when the terminal stands alone, and worth dropping when you show one control in isolation, as most of the small examples below do."
+  p "`cols` and `rows` default to `80` and `24`, and top out at `500` and `200`: a larger value is clamped to the maximum and the build prints a warning. The renderer draws `title` and the window chrome above the grid, and they cost no cells. To drop the title bar and its close button, set `chrome = false`. The chrome is worth keeping when the terminal stands alone, and worth dropping when you show one control in isolation, as most of the small examples below do."
 
   p "A cell holds exactly one character. The `len` builtin counts characters too, so `len` and the grid agree when you compute a width in WCL: the padding of a button, the fill of a bar. A run of text that contains `\\n` starts a new row at the **same column**, so one `term_text` can hold a whole paragraph instead of one per line."
 
@@ -166,8 +166,8 @@ WCL
   p "Four facts about that build are worth knowing before you record:"
 
   list {
-    li "**The recording sizes the terminal.** The `width` and `height` in the cast header override `cols` and `rows`. Your block's values are only the fallback for a header that omits them."
-    li "**The build coalesces frames.** It merges events closer together than 1/30 s into one frame, so a chatty recording does not ship one screen per keystroke. The build always captures the final screen, and a recording whose first event is delayed gets a blank frame at time zero so it starts empty."
+    li "**The recording sizes the terminal.** The `width` and `height` in the cast header override `cols` and `rows`. Your block's values are only the fallback for a header that omits them. The same 500 × 200 ceiling applies to the header, with the same warning."
+    li "**The build coalesces frames.** It merges events closer together than 1/30 s into one frame, so a chatty recording does not ship one screen per keystroke. It keeps at most 5,000 frames, and fewer on a big grid, since the frames together may hold at most ten million cells. Past that limit the build warns and drops the later frames, and the replay jumps to the final screen. The build always captures the final screen, and a recording whose first event is delayed gets a blank frame at time zero so it starts empty."
     li "**`autoplay`, `loop` and `speed` are fields, not controls.** The build bakes them into the frame data. The reader gets a play button over the terminal and a play / pause / replay glyph in the title bar. There is no scrubber and no speed menu."
     li "**A missing cast fails in place, not loudly.** In an HTML build an unreadable path renders `cannot read cast: <path>` where the terminal would be. The PDF and Markdown backends do not carry that message: they fall through to an empty grid. Neither is a build error, so check a new recording in a browser build."
   }

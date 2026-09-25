@@ -60,9 +60,34 @@ pub(super) struct Grid {
     pub(super) cursor: Option<(usize, usize)>,
 }
 
+/// Widest grid a terminal renders, in cells. A larger `cols` (on the block
+/// or in a recording's header) is clamped to it.
+pub(super) const MAX_COLS: usize = 500;
+
+/// Tallest grid a terminal renders, in cells. A larger `rows` is clamped.
+pub(super) const MAX_ROWS: usize = 200;
+
+/// Clamp a requested grid size to `1..=MAX_COLS` × `1..=MAX_ROWS`,
+/// recording a render warning when either side was cut. `what` names the
+/// source of the size for the message.
+pub(super) fn clamp_dims(cols: i64, rows: i64, what: &str) -> (usize, usize) {
+    let c = cols.clamp(1, MAX_COLS as i64) as usize;
+    let r = rows.clamp(1, MAX_ROWS as i64) as usize;
+    if cols > MAX_COLS as i64 || rows > MAX_ROWS as i64 {
+        crate::render::record_render_warning(format!(
+            "terminal {what}: {cols}x{rows} exceeds the {MAX_COLS}x{MAX_ROWS} maximum — \
+             clamped to {c}x{r}"
+        ));
+    }
+    (c, r)
+}
+
 impl Grid {
-    /// A blank grid of the given size.
+    /// A blank grid of the given size, clamped to `MAX_COLS` × `MAX_ROWS`
+    /// so the cell buffer stays bounded whatever the caller asks for.
     pub(super) fn new(cols: usize, rows: usize) -> Self {
+        let cols = cols.clamp(1, MAX_COLS);
+        let rows = rows.clamp(1, MAX_ROWS);
         Grid {
             cols,
             rows,
