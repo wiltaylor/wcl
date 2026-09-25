@@ -19,6 +19,7 @@
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Arc;
 
 use miette::NamedSource;
 
@@ -85,6 +86,15 @@ impl Document {
                 DeclLoc::Synthetic(_) => None,
             })
             .collect();
+        // The file each decl was written in, for the warning's snippet.
+        // A synthesised decl has none.
+        let decl_sources: Vec<Option<NamedSource<Arc<str>>>> = locs
+            .iter()
+            .map(|loc| match *loc {
+                DeclLoc::Source { source, .. } => Some(self.named_source_for_view(sources[source])),
+                DeclLoc::Synthetic(_) => None,
+            })
+            .collect();
 
         let is_gather = |f: &TypeField<'_>| {
             f.child_kind_or_union().is_some() || f.children_kind_or_union().is_some()
@@ -112,11 +122,10 @@ impl Document {
                         continue;
                     }
                     // Anchor at the root-authored side when exactly one
-                    // side is root-authored (that span is valid against
-                    // the root source, which is what the CLI snippet
-                    // renderer and the LSP have open); otherwise at the
-                    // later declaration (in practice the schema the
-                    // user imported last).
+                    // side is root-authored (the file the user is
+                    // editing); otherwise at the later declaration (in
+                    // practice the schema the user imported last). The
+                    // warning carries the anchor's file either way.
                     let (anchor_idx, anchor_field, other, other_idx) =
                         if !a.is_imported() && b.is_imported() {
                             (ai, fa, b, bi)
@@ -127,7 +136,7 @@ impl Document {
                         continue;
                     }
                     let anchored = decls[anchor_idx];
-                    out.push(EvalError::schema_violation_named(
+                    let warning = EvalError::schema_violation_named(
                         Kind::DocumentFieldShadow,
                         format!(
                             "gather field '{name}' of @document '{anchored_fqn}'{anchored_file} \
@@ -143,7 +152,11 @@ impl Document {
                         ),
                         anchor_field.name(),
                         anchor_field.span(),
-                    ));
+                    );
+                    out.push(match &decl_sources[anchor_idx] {
+                        Some(source) => warning.with_schema_source(source),
+                        None => warning,
+                    });
                 }
             }
         }
@@ -164,9 +177,12 @@ impl Document {
             .collect()
     }
 
-    /// Strict-mode validation paired with a source when its provenance is
-    /// known. Hosts should omit a snippet for `None` rather than attach the
-    /// root document to a recursively-produced cross-file error.
+    /// Strict-mode validation, each error paired with the source its span
+    /// indexes into: the root document or the imported file the
+    /// offending text lives in. For a schema violation the pair repeats
+    /// [`EvalError::schema_source`]. `None` only for an error against a
+    /// declaration the library synthesised, which has no file; a host
+    /// renders that one without a snippet.
     pub fn schema_diagnostics(&self) -> Vec<(EvalError, Option<NamedSource<std::sync::Arc<str>>>)> {
         self.collect_schema_errors()
     }
@@ -193,7 +209,7 @@ impl Document {
         }
         for decls in by_ns.values() {
             for extra in decls.iter().filter(|d| !d.is_imported()).skip(1) {
-                out.push((
+                out.push(sourced(
                     EvalError::schema_violation(
                         Kind::MultipleDocumentSchemas,
                         format!(
@@ -204,7 +220,7 @@ impl Document {
                         ),
                         extra.span(),
                     ),
-                    Some(self.root_named_source()),
+                    &self.named_source_for_type(extra.ast),
                 ));
             }
         }
@@ -241,7 +257,7 @@ impl Document {
             }
             for ((_, kind), decls) in &by_kind {
                 for extra in decls.iter().filter(|d| !d.is_imported()).skip(1) {
-                    out.push((
+                    out.push(sourced(
                         EvalError::schema_violation(
                             Kind::DuplicateBlockKind,
                             format!(
@@ -252,7 +268,7 @@ impl Document {
                             ),
                             extra.span(),
                         ),
-                        Some(self.root_named_source()),
+                        &self.named_source_for_type(extra.ast),
                     ));
                 }
             }
@@ -278,7 +294,7 @@ impl Document {
             let Some(declarer) = self.kind_declarer(&name) else {
                 continue;
             };
-            out.push((
+            out.push(sourced(
                 EvalError::schema_violation(
                     Kind::DeclaredKindCollision,
                     format!(
@@ -289,7 +305,7 @@ impl Document {
                     ),
                     declarer.span(),
                 ),
-                Some(declarer.named_source()),
+                &declarer.named_source(),
             ));
         }
 
@@ -320,18 +336,11 @@ impl Document {
                 }
                 self.validate_root_block(&b, &schemas, &root_union_slots, &mut errors);
             }
+            // Nested checks tagged what they raised in another file (a
+            // block spliced in by an in-block `import`); the rest was
+            // written in this source.
             let source = self.named_source_for_view(src);
-            out.extend(errors.into_iter().map(|error| {
-                let is_undeclared_decorator = matches!(
-                    &error,
-                    EvalError::SchemaViolation {
-                        kind: Kind::UndeclaredDecorator,
-                        ..
-                    }
-                );
-                let error_source = is_undeclared_decorator.then(|| source.clone());
-                (error, error_source)
-            }));
+            out.extend(errors.into_iter().map(|error| sourced(error, &source)));
         }
 
         // Duplicate identity labels among top-level blocks, grouped per
@@ -355,7 +364,7 @@ impl Document {
                 out.extend(
                     crate::doc::schema_check::duplicate_id_errors(blocks.into_iter())
                         .into_iter()
-                        .map(|(error, block)| (error, Some(block.named_source()))),
+                        .map(|(error, block)| sourced(error, &block.named_source())),
                 );
             }
         }
@@ -368,7 +377,7 @@ impl Document {
             out.extend(
                 validate_union(self, u.ast)
                     .into_iter()
-                    .map(|error| (error, Some(source.clone()))),
+                    .map(|error| sourced(error, &source)),
             );
         }
 
@@ -380,11 +389,7 @@ impl Document {
                 &Scope::root(),
             );
             let source = self.named_source_for_view(src);
-            out.extend(
-                errors
-                    .into_iter()
-                    .map(|error| (error, Some(source.clone()))),
-            );
+            out.extend(errors.into_iter().map(|error| sourced(error, &source)));
         }
 
         // Applicability and cardinality share one grammar-shaped walk so
@@ -513,11 +518,7 @@ impl Document {
                 }
             }
             let source = self.named_source_for_type(declaration.ast);
-            out.extend(
-                errors
-                    .into_iter()
-                    .map(|error| (error, Some(source.clone()))),
-            );
+            out.extend(errors.into_iter().map(|error| sourced(error, &source)));
         }
 
         out
@@ -701,4 +702,16 @@ impl Document {
             out.push(e.clone());
         }
     }
+}
+
+/// Pair a violation with the source it renders against: the file it
+/// already names, else `source`, which a schema violation also adopts
+/// so the error carries it past the pair.
+fn sourced(
+    error: EvalError,
+    source: &NamedSource<Arc<str>>,
+) -> (EvalError, Option<NamedSource<Arc<str>>>) {
+    let error = error.with_schema_source(source);
+    let source = error.schema_source().unwrap_or_else(|| source.clone());
+    (error, Some(source))
 }

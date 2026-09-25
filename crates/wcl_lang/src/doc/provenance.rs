@@ -86,14 +86,58 @@ impl Document {
     /// above. A field lives at one address in one source, so a hit is
     /// the source the ordered walk would reach first.
     fn static_field_source(&self, target: *const ast::Field) -> Option<usize> {
-        let index = self.field_source_index.get_or_init(|| {
+        self.static_node_source(target as usize)
+    }
+
+    /// The source ordinal recorded for a field or block address. Fields
+    /// and blocks are distinct allocations, so one index serves both.
+    fn static_node_source(&self, address: usize) -> Option<usize> {
+        let index = self.node_source_index.get_or_init(|| {
             let mut map = HashMap::new();
             for (ordinal, src) in self.all_sources().iter().enumerate() {
-                index_field_addresses(src.items, ordinal, &mut map);
+                index_node_addresses(src.items, ordinal, &mut map);
             }
             map
         });
-        index.get(&(target as usize)).copied()
+        index.get(&address).copied()
+    }
+
+    /// The `NamedSource` of the file that declares the field `target`
+    /// points at: the root document, an eager import, or an in-block
+    /// import already forced. `None` when no source holds it — a field
+    /// the library synthesised, whose span belongs to whatever produced
+    /// it.
+    pub(super) fn source_of_field(
+        &self,
+        target: *const ast::Field,
+    ) -> Option<NamedSource<Arc<str>>> {
+        if let Some(ordinal) = self.static_field_source(target) {
+            return Some(self.named_source_for_view(self.all_sources()[ordinal]));
+        }
+        lazy_import_declaring_field(&self.ast.items, &self.cells.items, target)
+            .or_else(|| {
+                self.eager_imports
+                    .iter()
+                    .find_map(|imp| import_declaring_field(imp, target))
+            })
+            .map(import_named_source)
+    }
+
+    /// Like [`Self::source_of_field`] for a block. `None` for a block
+    /// the library synthesised (a table row, a computed child), whose
+    /// span points into the text of the block that produced it.
+    pub(super) fn source_of_block(
+        &self,
+        target: *const ast::Block,
+    ) -> Option<NamedSource<Arc<str>>> {
+        if let Some(ordinal) = self.static_node_source(target as usize) {
+            return Some(self.named_source_for_view(self.all_sources()[ordinal]));
+        }
+        named_source_for_block_in_lazy(&self.ast.items, &self.cells.items, target).or_else(|| {
+            self.eager_imports
+                .iter()
+                .find_map(|imp| named_source_in_import(imp, target))
+        })
     }
 
     /// miette source (name + text) for the root document.
@@ -119,20 +163,8 @@ impl Document {
     /// back to the root source when the block can't be located (e.g. a
     /// synthesised block that isn't backed by on-disk AST).
     pub fn named_source_for_block(&self, target: *const ast::Block) -> NamedSource<Arc<str>> {
-        if block_in_items(&self.ast.items, target) {
-            return self.root_named_source();
-        }
-        if let Some(source) =
-            named_source_for_block_in_lazy(&self.ast.items, &self.cells.items, target)
-        {
-            return source;
-        }
-        for imp in &self.eager_imports {
-            if let Some(src) = named_source_in_import(imp, target) {
-                return src;
-            }
-        }
-        self.root_named_source()
+        self.source_of_block(target)
+            .unwrap_or_else(|| self.root_named_source())
     }
 
     /// Locate the source declaring `target` and build its
@@ -290,10 +322,7 @@ fn named_source_in_import(
     target: *const ast::Block,
 ) -> Option<NamedSource<Arc<str>>> {
     if block_in_items(&imp.items, target) {
-        return Some(NamedSource::new(
-            imp.path.display().to_string(),
-            imp.source.clone(),
-        ));
+        return Some(import_named_source(imp));
     }
     if let Some(source) = named_source_for_block_in_lazy(&imp.items, &imp.cells, target) {
         return Some(source);
@@ -340,10 +369,7 @@ fn named_source_for_union_in_import(
     target: *const ast::UnionDecl,
 ) -> Option<NamedSource<Arc<str>>> {
     if union_in_items(&imp.items, target) {
-        return Some(NamedSource::new(
-            imp.path.display().to_string(),
-            imp.source.clone(),
-        ));
+        return Some(import_named_source(imp));
     }
     for child in &imp.eager_imports {
         if let Some(source) = named_source_for_union_in_import(child, target) {
@@ -359,10 +385,7 @@ fn named_source_for_type_in_import(
     target: *const ast::TypeDecl,
 ) -> Option<NamedSource<Arc<str>>> {
     if type_in_items(&import.items, target) {
-        return Some(NamedSource::new(
-            import.path.display().to_string(),
-            import.source.clone(),
-        ));
+        return Some(import_named_source(import));
     }
     for child in &import.eager_imports {
         if let Some(source) = named_source_for_type_in_import(child, target) {
@@ -372,15 +395,18 @@ fn named_source_for_type_in_import(
     None
 }
 
-/// Record the address of every field in `items`, nested blocks
-/// included, against the source `ordinal`. First recording wins.
-fn index_field_addresses(items: &[ast::Item], ordinal: usize, map: &mut HashMap<usize, usize>) {
+/// Record the address of every field and block in `items`, nested
+/// blocks included, against the source `ordinal`. First recording wins.
+fn index_node_addresses(items: &[ast::Item], ordinal: usize, map: &mut HashMap<usize, usize>) {
     for item in items {
         match item {
             ast::Item::Field(f) => {
                 map.entry(std::ptr::from_ref(f) as usize).or_insert(ordinal);
             }
-            ast::Item::Block(b) => index_field_addresses(&b.items, ordinal, map),
+            ast::Item::Block(b) => {
+                map.entry(std::ptr::from_ref(b) as usize).or_insert(ordinal);
+                index_node_addresses(&b.items, ordinal, map);
+            }
             _ => {}
         }
     }
@@ -412,86 +438,32 @@ fn field_in_items(items: &[ast::Item], target: *const ast::Field, cells: &[ItemC
 }
 
 /// Recursively search a [`LoadedImport`] (and any in-block lazy
-/// imports it owns) for `target`. The match's enclosing import's
-/// `path` is returned via the first enclosing scope that owns the
-/// item — never the deepest, so a field in shared.wcl reports
-/// shared.wcl even if it's inside a block.
-fn find_in_import(imp: &cells::LoadedImport, target: *const ast::Field) -> Option<&Path> {
-    if field_in_items(&imp.items, target, &imp.cells) {
-        return Some(&imp.path);
-    }
-    if let Some(p) = find_lazy_in_blocks(&imp.items, &imp.cells, target) {
-        return Some(p);
-    }
-    for child in &imp.eager_imports {
-        if let Some(p) = find_in_import(child, target) {
-            return Some(p);
-        }
-    }
-    None
-}
-
-/// Like [`find_in_import`] but returns the import's `file_ns`.
-fn find_field_ns_in_import(
+/// imports it owns) for `target`, returning the import that owns it —
+/// the first enclosing scope, never the deepest, so a field in
+/// shared.wcl reports shared.wcl even if it's inside a block.
+fn import_declaring_field(
     imp: &cells::LoadedImport,
     target: *const ast::Field,
-) -> Option<&[String]> {
+) -> Option<&cells::LoadedImport> {
     if field_in_items(&imp.items, target, &imp.cells) {
-        return Some(&imp.file_ns);
+        return Some(imp);
     }
-    if let Some(ns) = find_lazy_field_ns_in_blocks(&imp.items, &imp.cells, target) {
-        return Some(ns);
+    if let Some(owner) = lazy_import_declaring_field(&imp.items, &imp.cells, target) {
+        return Some(owner);
     }
-    for child in &imp.eager_imports {
-        if let Some(ns) = find_field_ns_in_import(child, target) {
-            return Some(ns);
-        }
-    }
-    None
-}
-
-/// Like [`find_lazy_in_blocks`] but returns the originating import's
-/// `file_ns` rather than its path.
-fn find_lazy_field_ns_in_blocks<'a>(
-    items: &'a [ast::Item],
-    cells: &'a [ItemCells],
-    target: *const ast::Field,
-) -> Option<&'a [String]> {
-    for (i, item) in items.iter().enumerate() {
-        let Some(cell) = cells.get(i) else { continue };
-        if let ast::Item::Block(b) = item {
-            let block_cells = match &cell.kind {
-                ItemCellKind::Block { items: inner, .. } => inner.as_slice(),
-                _ => continue,
-            };
-            for (j, inner_item) in b.items.iter().enumerate() {
-                let Some(inner_cell) = block_cells.get(j) else {
-                    continue;
-                };
-                if let ast::Item::Import(_) = inner_item
-                    && let ItemCellKind::Import { loaded, .. } = &inner_cell.kind
-                    && let Some(Ok(li)) = loaded.get()
-                    && let Some(ns) = find_field_ns_in_import(li, target)
-                {
-                    return Some(ns);
-                }
-            }
-            if let Some(ns) = find_lazy_field_ns_in_blocks(&b.items, block_cells, target) {
-                return Some(ns);
-            }
-        }
-    }
-    None
+    imp.eager_imports
+        .iter()
+        .find_map(|child| import_declaring_field(child, target))
 }
 
 /// Walk `items`+`cells` looking for `ItemCellKind::Import` cells
-/// whose lazy `loaded` slot has been forced. Each forced
-/// `LoadedImport` is searched via [`find_in_import`].
-fn find_lazy_in_blocks<'a>(
+/// whose lazy `loaded` slot has been forced, and return the import
+/// that owns `target` (searched via [`import_declaring_field`]).
+fn lazy_import_declaring_field<'a>(
     items: &'a [ast::Item],
     cells: &'a [ItemCells],
     target: *const ast::Field,
-) -> Option<&'a Path> {
+) -> Option<&'a cells::LoadedImport> {
     for (i, item) in items.iter().enumerate() {
         let Some(cell) = cells.get(i) else { continue };
         if let ast::Item::Block(b) = item {
@@ -508,17 +480,56 @@ fn find_lazy_in_blocks<'a>(
                 if let ast::Item::Import(_) = inner_item
                     && let ItemCellKind::Import { loaded, .. } = &inner_cell.kind
                     && let Some(Ok(li)) = loaded.get()
-                    && let Some(p) = find_in_import(li, target)
+                    && let Some(owner) = import_declaring_field(li, target)
                 {
-                    return Some(p);
+                    return Some(owner);
                 }
             }
-            if let Some(p) = find_lazy_in_blocks(&b.items, block_cells, target) {
-                return Some(p);
+            if let Some(owner) = lazy_import_declaring_field(&b.items, block_cells, target) {
+                return Some(owner);
             }
         }
     }
     None
+}
+
+/// The path of the import that owns `target`; see
+/// [`import_declaring_field`].
+fn find_in_import(imp: &cells::LoadedImport, target: *const ast::Field) -> Option<&Path> {
+    import_declaring_field(imp, target).map(|owner| owner.path.as_path())
+}
+
+/// Like [`find_in_import`] but returns the import's `file_ns`.
+fn find_field_ns_in_import(
+    imp: &cells::LoadedImport,
+    target: *const ast::Field,
+) -> Option<&[String]> {
+    import_declaring_field(imp, target).map(|owner| owner.file_ns.as_slice())
+}
+
+/// The path of the forced lazy import that owns `target`; see
+/// [`lazy_import_declaring_field`].
+fn find_lazy_in_blocks<'a>(
+    items: &'a [ast::Item],
+    cells: &'a [ItemCells],
+    target: *const ast::Field,
+) -> Option<&'a Path> {
+    lazy_import_declaring_field(items, cells, target).map(|owner| owner.path.as_path())
+}
+
+/// Like [`find_lazy_in_blocks`] but returns the originating import's
+/// `file_ns` rather than its path.
+fn find_lazy_field_ns_in_blocks<'a>(
+    items: &'a [ast::Item],
+    cells: &'a [ItemCells],
+    target: *const ast::Field,
+) -> Option<&'a [String]> {
+    lazy_import_declaring_field(items, cells, target).map(|owner| owner.file_ns.as_slice())
+}
+
+/// The `NamedSource` a diagnostic against an import's text renders with.
+fn import_named_source(imp: &cells::LoadedImport) -> NamedSource<Arc<str>> {
+    NamedSource::new(imp.path.display().to_string(), imp.source.clone())
 }
 
 /// A homogeneous view over one source of top-level items — either the

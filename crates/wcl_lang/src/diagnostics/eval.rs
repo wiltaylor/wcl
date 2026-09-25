@@ -21,31 +21,46 @@ use thiserror::Error;
 
 use super::{ArithmeticFault, SchemaViolationKind};
 
+/// The file a schema violation was raised in: its name and full text,
+/// so the diagnostic renders against that file rather than whichever
+/// source the host happens to have open.
+///
+/// A document is a root source plus its imports, and a span alone does
+/// not say which of them it indexes into. Carried on
+/// [`EvalError::SchemaViolation`] and read back through
+/// [`EvalError::schema_source`].
 #[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SchemaDiagnosticSource {
-    /// The name that was written.
-    name: String,
-    text: Arc<str>,
-}
+#[derive(Debug, Clone)]
+pub struct SchemaDiagnosticSource(NamedSource<Arc<str>>);
 
-// Retained for callers that attach provenance directly to a cloned
-// `SchemaViolation`; document-wide validation carries sources alongside
-// errors so it does not currently exercise these helpers.
-#[allow(dead_code)]
 impl SchemaDiagnosticSource {
-    /// Capture a `NamedSource` as owned name and text, so the
-    /// provenance can outlive the borrow it was taken from.
-    fn from_named_source(source: NamedSource<Arc<str>>) -> Self {
-        Self {
-            name: source.name().to_string(),
-            text: source.inner().clone(),
-        }
-    }
-
     /// Rebuild the `NamedSource` for rendering.
     pub(crate) fn named_source(&self) -> NamedSource<Arc<str>> {
-        NamedSource::new(&self.name, self.text.clone())
+        self.0.clone()
+    }
+}
+
+/// Two provenances are equal when they name the same file with the
+/// same text. The text is shared, so the pointer test settles almost
+/// every comparison without reading it.
+impl PartialEq for SchemaDiagnosticSource {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.name() == other.0.name()
+            && (Arc::ptr_eq(self.0.inner(), other.0.inner()) || self.0.inner() == other.0.inner())
+    }
+}
+
+impl Eq for SchemaDiagnosticSource {}
+
+impl miette::SourceCode for SchemaDiagnosticSource {
+    fn read_span<'a>(
+        &'a self,
+        span: &SourceSpan,
+        context_lines_before: usize,
+        context_lines_after: usize,
+    ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
+        self.0
+            .read_span(span, context_lines_before, context_lines_after)
     }
 }
 
@@ -340,6 +355,9 @@ pub enum EvalError {
         /// The rendered message.
         message: String,
         #[doc(hidden)]
+        #[source_code]
+        /// The file the violation was raised in, when known. Read it
+        /// through [`EvalError::schema_source`].
         origin: Option<std::sync::Arc<SchemaDiagnosticSource>>,
         #[label("schema violation")]
         /// Source span the diagnostic points at.
@@ -520,33 +538,37 @@ impl EvalError {
         }
     }
 
-    #[allow(dead_code)]
-    /// Attach provenance to a schema violation so the diagnostic can
-    /// render the offending source. A no-op on every other variant.
-    pub(crate) fn with_schema_source(self, source: NamedSource<Arc<str>>) -> Self {
-        match self {
-            Self::SchemaViolation {
-                kind,
-                detail,
-                message,
-                span,
-                ..
-            } => Self::SchemaViolation {
-                kind,
-                detail,
-                message,
-                origin: Some(std::sync::Arc::new(
-                    SchemaDiagnosticSource::from_named_source(source),
-                )),
-                span,
-            },
-            other => other,
+    /// Attach the file a schema violation was raised in, so the
+    /// diagnostic renders against that file. A no-op on every other
+    /// variant, and on a violation that already carries a source: the
+    /// check that raised it knew its file, and an enclosing check that
+    /// collects it (a parent block gathering its children's errors, a
+    /// field whose expression read an erroring field) must not
+    /// overwrite that with its own.
+    pub(crate) fn with_schema_source(mut self, source: &NamedSource<Arc<str>>) -> Self {
+        self.attach_schema_source(source);
+        self
+    }
+
+    /// In-place form of [`Self::with_schema_source`].
+    pub(crate) fn attach_schema_source(&mut self, source: &NamedSource<Arc<str>>) {
+        if let Self::SchemaViolation { origin, .. } = self
+            && origin.is_none()
+        {
+            *origin = Some(Arc::new(SchemaDiagnosticSource(source.clone())));
         }
     }
 
-    #[allow(dead_code)]
-    /// The provenance attached by [`Self::with_schema_source`], if any.
-    pub(crate) fn schema_source(&self) -> Option<NamedSource<Arc<str>>> {
+    /// The file this schema violation was raised in — the root document
+    /// or the imported file that holds the offending text — as the
+    /// `NamedSource` its span indexes into. `None` for every other
+    /// variant, and for a violation against a declaration the library
+    /// synthesised rather than read from a file.
+    ///
+    /// `EvalError`'s [`Diagnostic::source_code`] returns the same
+    /// source, so a `miette::Report` of the error renders its snippet
+    /// without the host attaching one.
+    pub fn schema_source(&self) -> Option<NamedSource<Arc<str>>> {
         match self {
             Self::SchemaViolation {
                 origin: Some(source),

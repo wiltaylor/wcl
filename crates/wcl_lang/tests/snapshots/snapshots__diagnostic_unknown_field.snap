@@ -5,7 +5,7 @@ expression: rendered
 wcl::eval::schema_violation
 
   × top-level block 'service' has no @document schema
-    ╭─[8:1]
+    ╭─[errors/unknown_field.wcl:8:1]
   7 │     
   8 │ ╭─▶ service web {
   9 │ │     region     = "us-east-1"

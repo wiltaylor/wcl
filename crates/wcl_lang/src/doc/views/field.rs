@@ -352,7 +352,7 @@ impl<'a> Field<'a> {
         if !has_schemaless(&self.ast.decorators)
             && let Some(err) = self.schema_membership_error()
         {
-            let _ = cell.value.set(Err(err));
+            let _ = cell.value.set(Err(self.sourced(err)));
             return cell
                 .value
                 .get()
@@ -446,7 +446,21 @@ impl<'a> Field<'a> {
             }
             other => Ok(other),
         });
+        let result = result.map_err(|error| self.sourced(error));
         cell.value.get_or_init(|| result).as_ref()
+    }
+
+    /// Tag a schema violation raised while reading this field with the
+    /// file the field was written in, unless it already names one (an
+    /// error read through from another field keeps that field's file).
+    fn sourced(&self, error: EvalError) -> EvalError {
+        if !matches!(error, EvalError::SchemaViolation { origin: None, .. }) {
+            return error;
+        }
+        match self.doc.source_of_field(self.ast) {
+            Some(source) => error.with_schema_source(&source),
+            None => error,
+        }
     }
 
     /// Evaluate this field against a caller-supplied type instead of the
@@ -467,8 +481,10 @@ impl<'a> Field<'a> {
     /// result.
     pub fn value_typed(&self, type_fqn: &str) -> Result<Value, EvalError> {
         let ty = TypeRef::named(type_fqn.split('.').map(str::to_string).collect());
-        let value = self.doc.eval_in_scope(&self.ast.expr, &self.scope)?;
-        coerce_value_to_type(self.doc, value, &ty, self.ast.span)
+        self.doc
+            .eval_in_scope(&self.ast.expr, &self.scope)
+            .and_then(|value| coerce_value_to_type(self.doc, value, &ty, self.ast.span))
+            .map_err(|error| self.sourced(error))
     }
 
     /// `Some(err)` if this field's name isn't accepted by the
@@ -581,14 +597,14 @@ impl<'a> Field<'a> {
                 if let Err(e) =
                     check_interface_conformance(self.doc, &iface, &target_decl, self.ast.span)
                 {
-                    return Some(Err(e));
+                    return Some(Err(self.sourced(e)));
                 }
             } else if let Some(expected) = self.doc.type_decl(&key)
                 && !same_type_decl(&expected, &target_decl)
                 && !target_decl.is_descendant_of(&expected.full_name())
             {
                 // Case B: ancestor acceptance for regular types.
-                return Some(Err(EvalError::schema_violation(
+                return Some(Err(self.sourced(EvalError::schema_violation(
                     crate::diagnostics::SchemaViolationKind::InterfaceNotImplemented,
                     format!(
                         "target type '{}' is not '{}' and does not extend it",
@@ -596,7 +612,7 @@ impl<'a> Field<'a> {
                         expected.full_name(),
                     ),
                     self.ast.span,
-                )));
+                ))));
             }
         }
         Some(Ok(target_dr))
