@@ -22,6 +22,10 @@ use crate::render::include::resolve_content;
 pub(crate) type BlockRenderer<'a> =
     dyn Fn(&[Value], Option<&str>, Option<&str>, &str) -> String + 'a;
 
+/// An eval error swallowed during lowering, paired with the source file
+/// it was raised against.
+pub(crate) type CaughtEvalError = (EvalError, NamedSource<std::sync::Arc<str>>);
+
 thread_local! {
     /// First eval error swallowed while lowering a block during the
     /// current render pass. The lowering primitives recover (a failed
@@ -32,7 +36,7 @@ thread_local! {
     /// block. First error wins; rendering is single-threaded per pass, so
     /// a thread-local is a safe document-scoped sink. Use
     /// [`scoped_eval_errors`] to bound a pass and collect what it caught.
-    static LOWER_EVAL_ERR: RefCell<Option<(EvalError, NamedSource<std::sync::Arc<str>>)>> =
+    static LOWER_EVAL_ERR: RefCell<Option<CaughtEvalError>> =
         const { RefCell::new(None) };
 
     /// First edge-routing failure recorded during the current render pass.
@@ -192,9 +196,7 @@ pub(crate) fn record_lower_error(block: &Block<'_>, err: EvalError) {
 /// the first eval error any lowering swallowed during it (and the source it
 /// belongs to), if any. Saves and restores any outer sink so nested passes
 /// compose.
-pub(crate) fn scoped_eval_errors<T>(
-    f: impl FnOnce() -> T,
-) -> (T, Option<(EvalError, NamedSource<std::sync::Arc<str>>)>) {
+pub(crate) fn scoped_eval_errors<T>(f: impl FnOnce() -> T) -> (T, Option<CaughtEvalError>) {
     let outer = LOWER_EVAL_ERR.with(|slot| slot.borrow_mut().take());
     let result = f();
     let caught = LOWER_EVAL_ERR.with(|slot| slot.borrow_mut().take());
