@@ -17,9 +17,13 @@ use crate::ctx::Ctx;
 /// that parsed (the diagnostics path surfaces the errors themselves).
 pub(crate) fn compute(ctx: &Ctx, source: &str, uri: &str) -> Vec<DocumentSymbol> {
     let index = ctx.index(source);
+    // `SymbolIndex` is hash-keyed, so its iteration order is arbitrary.
+    // An outline reads top to bottom, so order by source position.
     let to_symbols = |symbols: &SymbolIndex| {
-        symbols
-            .iter()
+        let mut records: Vec<&SymbolRecord> = symbols.iter().collect();
+        records.sort_by_key(|rec| (rec.span.start, rec.span.end));
+        records
+            .into_iter()
             .map(|rec| record_to_symbol(&index, rec))
             .collect()
     };
