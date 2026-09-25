@@ -54,8 +54,6 @@ fn build_error_displays_each_variant() {
             "read doc.wcl: no such file",
         ),
         (BuildError::Parse(snippet_report()), "unexpected token"),
-        (BuildError::Schema(1), "1 schema violation"),
-        (BuildError::Schema(3), "3 schema violations"),
         (BuildError::Eval(snippet_report()), "unexpected token"),
         (
             BuildError::BadPage("page has no name".into()),
@@ -114,8 +112,6 @@ fn pdf_error_displays_each_variant() {
             "write out.pdf: no such file",
         ),
         (PdfError::Parse(snippet_report()), "unexpected token"),
-        (PdfError::Schema(1), "1 schema violation"),
-        (PdfError::Schema(2), "2 schema violations"),
         (PdfError::Eval(snippet_report()), "unexpected token"),
         (PdfError::BadDoc("no pages".into()), "no pages"),
         (
@@ -258,4 +254,56 @@ page index { sites = [:docbook]  start = true  h1 "Home" }
         err.to_string(),
         "sidebar_footer button links to unknown page \"nope\""
     );
+}
+
+/// A page whose `h1` sets a field its schema does not declare, `n` times.
+fn schema_fixture(n: usize) -> String {
+    let heads: String = (0..n)
+        .map(|i| format!("  h1 {{ bogus{i} = 1 }}\n"))
+        .collect();
+    format!("page index {{\n{heads}}}\n")
+}
+
+#[test]
+fn a_schema_failure_carries_its_violations_and_displays_the_count() {
+    let BuildError::Schema(one) = build_err(&schema_fixture(1)) else {
+        panic!("expected a schema failure");
+    };
+    assert_eq!(one.len(), 1);
+    assert_eq!(one.to_string(), "1 schema violation");
+
+    let err = build_err(&schema_fixture(2));
+    let BuildError::Schema(two) = &err else {
+        panic!("expected a schema failure, got {err:?}");
+    };
+    assert_eq!(two.len(), 2);
+    assert_eq!(err.to_string(), "2 schema violations");
+
+    // The terminal form is each violation's report, then the count; the
+    // library printed the reports itself before, the caller does now.
+    let rendered = err.render();
+    assert!(rendered.contains("bogus0"), "{rendered}");
+    assert!(rendered.contains("bogus1"), "{rendered}");
+    assert!(rendered.ends_with("2 schema violations"), "{rendered}");
+    // As a diagnostic the violations are related, so the dev server's
+    // error page shows them rather than just the count.
+    let plain = err.render_plain();
+    assert!(plain.contains("bogus1"), "{plain}");
+    assert!(!plain.contains('\u{1b}'), "no escapes: {plain}");
+}
+
+#[test]
+fn a_pdf_schema_failure_carries_its_violations() {
+    let tmp = tempfile::TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    std::fs::write(&src, format!("import <wdoc.wcl>\n{}", schema_fixture(3)))
+        .expect("write fixture");
+    let err = wcl_wdoc::pdf(&src, &tmp.path().join("out"), None, wcl_wdoc::PageSize::A4)
+        .expect_err("a schema violation fails the pdf build");
+    let PdfError::Schema(v) = &err else {
+        panic!("expected a schema failure, got {err:?}");
+    };
+    assert_eq!(v.len(), 3);
+    assert_eq!(err.to_string(), "3 schema violations");
+    assert!(err.render().ends_with("3 schema violations"));
 }

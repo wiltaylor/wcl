@@ -24,6 +24,12 @@
 //!
 //! `wcl wdoc serve` parses its flags here; the dev server itself is
 //! [`wcl_wdoc::serve`].
+//!
+//! Nothing here prints with `print!` or `eprint!`, which panic on a closed
+//! pipe: output goes through [`out`](mod@out), which treats a closed stream as the
+//! reader being done and exits [`EXIT_OK`].
+
+#![deny(clippy::print_stdout, clippy::print_stderr)]
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -38,7 +44,10 @@ mod diff;
 mod dump;
 mod git;
 mod gitspec;
+mod out;
 mod scaffold;
+
+use out::{errln, out, outln};
 
 /// Success.
 pub(crate) const EXIT_OK: u8 = 0;
@@ -136,7 +145,7 @@ pub(crate) fn parse_error_code(err: &ParseError) -> u8 {
 /// (see [`parse_error_code`]).
 pub(crate) fn report_parse_error(err: ParseError) -> u8 {
     let code = parse_error_code(&err);
-    eprintln!("{:?}", miette::Report::new(err));
+    errln!("{:?}", miette::Report::new(err));
     code
 }
 
@@ -147,7 +156,7 @@ fn emit_profile(doc: &Document) {
         let json = dump::profile_to_json(&p);
         let rendered = serde_json::to_string_pretty(&json)
             .expect("serde_json::Value always serializes (string-keyed objects)");
-        eprintln!("{rendered}");
+        errln!("{rendered}");
     }
 }
 
@@ -459,14 +468,14 @@ fn main() -> ExitCode {
     // Validate the profiling switch once, before any work: `open_document`
     // reads it on every call and must be able to treat it as well-formed.
     if let Err(msg) = profiling_enabled() {
-        eprintln!("error: {msg}");
+        errln!("error: {msg}");
         return ExitCode::from(EXIT_USAGE);
     }
     let code = match cli.command {
         Command::Parse { file } => match open_document(&file) {
             Ok(doc) => {
                 let dump = dump::document(&doc);
-                print!("{}", dump.text);
+                out!("{}", dump.text);
                 emit_profile(&doc);
                 report_dump_errors(&file, &dump.errors)
             }
@@ -479,7 +488,7 @@ fn main() -> ExitCode {
             indent,
             no_trailing_comma,
         } => run_fmt(&file, in_place, indent, no_trailing_comma).unwrap_or_else(|msg| {
-            eprintln!("{msg}");
+            errln!("{msg}");
             EXIT_IO
         }),
         Command::Repl { file } => run_repl(file.as_deref()),
@@ -487,7 +496,7 @@ fn main() -> ExitCode {
             if let Some(log_path) = log
                 && let Err(e) = wcl_lsp::install_file_logger(&log_path)
             {
-                eprintln!("failed to open log file {}: {e}", log_path.display());
+                errln!("failed to open log file {}: {e}", log_path.display());
                 return ExitCode::from(EXIT_IO);
             }
             let rt = match build_runtime() {
@@ -498,7 +507,7 @@ fn main() -> ExitCode {
                 Some(addr) => match rt.block_on(wcl_lsp::start_tcp(addr, lsp_host())) {
                     Ok(()) => EXIT_OK,
                     Err(e) => {
-                        eprintln!("tcp listener failed: {e}");
+                        errln!("tcp listener failed: {e}");
                         EXIT_IO
                     }
                 },
@@ -509,7 +518,7 @@ fn main() -> ExitCode {
             }
         }
         Command::Set { file, path, value } => run_set(&file, &path, &value).unwrap_or_else(|msg| {
-            eprintln!("{msg}");
+            errln!("{msg}");
             EXIT_IO
         }),
         Command::Eval { file, path, json } => match open_document(&file) {
@@ -519,19 +528,19 @@ fn main() -> ExitCode {
                         Ok(v) => {
                             if json {
                                 match serde_json::to_string_pretty(&v) {
-                                    Ok(s) => println!("{s}"),
+                                    Ok(s) => outln!("{s}"),
                                     Err(e) => {
-                                        eprintln!("json serialization failed: {e}");
+                                        errln!("json serialization failed: {e}");
                                         return ExitCode::from(EXIT_EVAL);
                                     }
                                 }
                             } else {
-                                println!("{}", v);
+                                outln!("{}", v);
                             }
                             EXIT_OK
                         }
                         Err(e) => {
-                            eprintln!("{:?}", miette::Report::new(e));
+                            errln!("{:?}", miette::Report::new(e));
                             EXIT_EVAL
                         }
                     },
@@ -573,10 +582,10 @@ fn report_dump_errors(file: &Path, errors: &[wcl_lang::EvalError]) -> u8 {
         return EXIT_OK;
     }
     for err in errors {
-        eprintln!("{:?}", miette::Report::new(err.clone()));
+        errln!("{:?}", miette::Report::new(err.clone()));
     }
     let count = errors.len();
-    eprintln!(
+    errln!(
         "{}: {count} evaluation error{}",
         file.display(),
         if count == 1 { "" } else { "s" }
@@ -626,12 +635,12 @@ fn pdf_error_code(err: &wcl_wdoc::PdfError) -> u8 {
 fn report_pages(result: Result<usize, wcl_wdoc::BuildError>) -> u8 {
     match result {
         Ok(n) => {
-            println!("wrote {n} page{}", if n == 1 { "" } else { "s" });
+            outln!("wrote {n} page{}", if n == 1 { "" } else { "s" });
             EXIT_OK
         }
         Err(err) => {
             let code = build_error_code(&err);
-            err.report();
+            errln!("{}", err.render());
             code
         }
     }
@@ -645,16 +654,27 @@ fn build_runtime() -> Result<tokio::runtime::Runtime, u8> {
         .enable_all()
         .build()
         .map_err(|e| {
-            eprintln!("failed to start tokio runtime: {e}");
+            errln!("failed to start tokio runtime: {e}");
             EXIT_IO
         })
+}
+
+/// The `wcl wdoc build` progress hook: each line (`site docs (3 pages)`,
+/// `  page 1/3 index`) goes to stderr, but only when stderr is a terminal,
+/// so an interactive build can tell slow from stuck while tests, CI and
+/// piped output stay clean.
+fn print_progress(line: std::fmt::Arguments<'_>) {
+    use std::io::IsTerminal as _;
+    if std::io::stderr().is_terminal() {
+        errln!("{line}");
+    }
 }
 
 /// Print the non-fatal warnings a render pass returned (dropped diagram
 /// edges, lowerless blocks, unsized images, …).
 fn print_render_warnings(warnings: &[String]) {
     for w in warnings {
-        eprintln!("warning: {w}");
+        errln!("warning: {w}");
     }
 }
 
@@ -679,6 +699,7 @@ fn run_build(
         BuildType::Html => {
             let opts = wcl_wdoc::BuildOptions {
                 profile: profiling_enabled().unwrap_or(false),
+                progress: Some(print_progress),
             };
             let result = wcl_wdoc::build_with_options(file, out, site, &opts).map(|report| {
                 print_render_warnings(&report.warnings);
@@ -686,7 +707,7 @@ fn run_build(
                     let json = dump::profile_to_json(&p);
                     let rendered = serde_json::to_string_pretty(&json)
                         .expect("serde_json::Value always serializes (string-keyed objects)");
-                    eprintln!("{rendered}");
+                    errln!("{rendered}");
                 }
                 report.count
             });
@@ -705,12 +726,12 @@ fn run_build(
                 Ok(report) => {
                     print_render_warnings(&report.warnings);
                     let n = report.count;
-                    println!("wrote {n} pdf{}", if n == 1 { "" } else { "s" });
+                    outln!("wrote {n} pdf{}", if n == 1 { "" } else { "s" });
                     EXIT_OK
                 }
                 Err(err) => {
                     let code = pdf_error_code(&err);
-                    err.report();
+                    errln!("{}", err.render());
                     code
                 }
             }
@@ -733,7 +754,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             // what makes this check possible without reaching into clap's
             // `ArgMatches`.
             if page_size.is_some() && build_type != BuildType::Pdf {
-                eprintln!("error: --page-size applies to `--type pdf` only");
+                errln!("error: --page-size applies to `--type pdf` only");
                 return EXIT_USAGE;
             }
             run_build(&file, &out, build_type, site.as_deref(), page_size)
@@ -756,7 +777,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             match result {
                 Ok(()) => EXIT_OK,
                 Err(e) => {
-                    eprintln!("serve failed: {e}");
+                    errln!("serve failed: {e}");
                     EXIT_IO
                 }
             }
@@ -774,7 +795,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
 /// non-zero (`EXIT_EVAL`, else `EXIT_PARSE`) when any error occurred,
 /// while interactive sessions always exit `EXIT_OK`.
 fn run_repl(file: Option<&Path>) -> u8 {
-    use std::io::{BufRead, Write};
+    use std::io::BufRead;
     let doc = match file {
         Some(p) => match open_document(p) {
             Ok(d) => d,
@@ -783,7 +804,7 @@ fn run_repl(file: Option<&Path>) -> u8 {
         None => match Document::open("", "<repl>") {
             Ok(d) => d,
             Err(e) => {
-                eprintln!("{:?}", miette::Report::new(e));
+                errln!("{:?}", miette::Report::new(e));
                 return EXIT_PARSE;
             }
         },
@@ -797,15 +818,15 @@ fn run_repl(file: Option<&Path>) -> u8 {
     loop {
         let continuation = !buf.is_empty();
         if interactive {
-            print!("{}", if continuation { "... " } else { "wcl> " });
-            let _ = std::io::stdout().flush();
+            out!("{}", if continuation { "... " } else { "wcl> " });
+            out::flush_stdout();
         }
         line.clear();
         match stdin.lock().read_line(&mut line) {
             Ok(0) => break, // EOF
             Ok(_) => {}
             Err(e) => {
-                eprintln!("read error: {e}");
+                errln!("read error: {e}");
                 return EXIT_IO;
             }
         }
@@ -825,15 +846,15 @@ fn run_repl(file: Option<&Path>) -> u8 {
         let to_eval = std::mem::take(&mut buf);
         match parse_expr(to_eval.trim(), "<repl>") {
             Ok(expr) => match doc.eval_expr(&expr) {
-                Ok(value) => println!("{value}"),
+                Ok(value) => outln!("{value}"),
                 Err(e) => {
                     had_eval_err = true;
-                    eprintln!("eval error: {:?}", miette::Report::new(e));
+                    errln!("eval error: {:?}", miette::Report::new(e));
                 }
             },
             Err(e) => {
                 had_parse_err = true;
-                eprintln!("parse error: {:?}", miette::Report::new(e));
+                errln!("parse error: {:?}", miette::Report::new(e));
             }
         }
     }
@@ -965,7 +986,7 @@ fn run_check(file: &Path, json: bool) -> u8 {
         let src = match read_stdin() {
             Ok(src) => src,
             Err(msg) => {
-                eprintln!("{msg}");
+                errln!("{msg}");
                 return EXIT_IO;
             }
         };
@@ -990,7 +1011,7 @@ fn run_check(file: &Path, json: bool) -> u8 {
                     .map(|(error, _)| diagnostic_json(error))
                     .collect();
                 let warnings = warns.iter().map(|w| diagnostic_json(w)).collect();
-                println!("{}", check_report_json(&name, errors, warnings));
+                outln!("{}", check_report_json(&name, errors, warnings));
                 return if diagnostics.is_empty() {
                     EXIT_OK
                 } else {
@@ -1000,28 +1021,28 @@ fn run_check(file: &Path, json: bool) -> u8 {
             // Warnings are advisory: printed to stderr, never fatal —
             // the exit code (and `OK`) reflect errors only.
             for w in &warns {
-                eprintln!("warning: {w}");
+                errln!("warning: {w}");
             }
             if !warns.is_empty() {
                 let count = warns.len();
-                eprintln!(
+                errln!(
                     "{name}: {count} warning{}",
                     if count == 1 { "" } else { "s" }
                 );
             }
             if diagnostics.is_empty() {
-                println!("OK");
+                outln!("OK");
                 EXIT_OK
             } else {
                 let count = diagnostics.len();
                 for (error, source) in diagnostics {
                     let report = miette::Report::new(error);
                     match source {
-                        Some(source) => eprintln!("{:?}", report.with_source_code(source)),
-                        None => eprintln!("{report:?}"),
+                        Some(source) => errln!("{:?}", report.with_source_code(source)),
+                        None => errln!("{report:?}"),
                     }
                 }
-                eprintln!(
+                errln!(
                     "{name}: {count} schema violation{}",
                     if count == 1 { "" } else { "s" }
                 );
@@ -1039,9 +1060,9 @@ fn run_check(file: &Path, json: bool) -> u8 {
                     }
                     _ => vec![diagnostic_json(&err)],
                 };
-                println!("{}", check_report_json(&name, errors, Vec::new()));
+                outln!("{}", check_report_json(&name, errors, Vec::new()));
             } else {
-                eprintln!("{:?}", miette::Report::new(err));
+                errln!("{:?}", miette::Report::new(err));
             }
             code
         }
@@ -1060,7 +1081,7 @@ fn run_fmt(
     no_trailing_comma: bool,
 ) -> Result<u8, String> {
     if is_stdin(file) && in_place {
-        eprintln!("error: --in-place cannot be combined with stdin input ('-')");
+        errln!("error: --in-place cannot be combined with stdin input ('-')");
         return Ok(EXIT_USAGE);
     }
     let (src, name) = if is_stdin(file) {
@@ -1073,7 +1094,7 @@ fn run_fmt(
     let ast = match parse_for_edit(&src, name) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("{:?}", miette::Report::new(e));
+            errln!("{:?}", miette::Report::new(e));
             return Ok(EXIT_PARSE);
         }
     };
@@ -1088,7 +1109,7 @@ fn run_fmt(
     // formatter bug — refuse to write (or print) the broken text so it
     // can't land in the tree.
     if let Err(e) = verify_reparses(&formatted) {
-        eprintln!(
+        errln!(
             "internal error: `wcl fmt` produced output that fails to re-parse — \
              refusing to write. Please report this.\n{e}"
         );
@@ -1096,14 +1117,14 @@ fn run_fmt(
     }
     if in_place {
         if formatted == src {
-            eprintln!("{}: unchanged", file.display());
+            errln!("{}: unchanged", file.display());
         } else {
             write_atomic(file, &formatted)
                 .map_err(|e| format!("failed to write {}: {e}", file.display()))?;
-            eprintln!("formatted {}", file.display());
+            errln!("formatted {}", file.display());
         }
     } else {
-        print!("{formatted}");
+        out!("{formatted}");
     }
     Ok(EXIT_OK)
 }
@@ -1134,7 +1155,7 @@ fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
     let new_expr = match parse_expr(value, "<set value>") {
         Ok(e) => e,
         Err(err) => {
-            eprintln!("{:?}", miette::Report::new(err));
+            errln!("{:?}", miette::Report::new(err));
             return Ok(EXIT_PARSE);
         }
     };
@@ -1161,7 +1182,7 @@ fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
     // Confirmation goes to stderr so stdout stays clean for piping.
     // Naming the home file matters: `set` follows imports, so the
     // edited file may not be the one named on the command line.
-    eprintln!("updated {path} in {}", home_path.display());
+    errln!("updated {path} in {}", home_path.display());
     Ok(EXIT_OK)
 }
 
@@ -1175,15 +1196,15 @@ fn report_edit_error(err: EditError) -> u8 {
             EXIT_EVAL
         }
         EditError::NotAField { path, kind } => {
-            eprintln!("`set` only updates leaf field values; `{path}` resolved to a {kind}");
+            errln!("`set` only updates leaf field values; `{path}` resolved to a {kind}");
             EXIT_EVAL
         }
         EditError::InvalidValue(e) | EditError::InvalidSource(e) => {
-            eprintln!("{:?}", miette::Report::new(e));
+            errln!("{:?}", miette::Report::new(e));
             EXIT_PARSE
         }
         EditError::Unprintable(e) => {
-            eprintln!(
+            errln!(
                 "internal error: `wcl set` produced output that fails to re-parse — \
                  refusing to write. Please report this.\n{:?}",
                 miette::Report::new(e)
@@ -1191,13 +1212,13 @@ fn report_edit_error(err: EditError) -> u8 {
             EXIT_PARSE
         }
         EditError::Imported { .. } | EditError::FieldNotFound { .. } => {
-            eprintln!("{err}");
+            errln!("{err}");
             EXIT_IO
         }
         // A failure kind a later `wcl_lang` adds: its message, and the
         // exit code of an edit that could not be applied.
         _ => {
-            eprintln!("{err}");
+            errln!("{err}");
             EXIT_EVAL
         }
     }
@@ -1206,9 +1227,9 @@ fn report_edit_error(err: EditError) -> u8 {
 /// Report a dotted path that names nothing, with the typo suggestion
 /// when there is one.
 fn report_no_such_path(path: &str, suggestion: Option<String>) {
-    eprintln!("no such path: {path}");
+    errln!("no such path: {path}");
     if let Some(hint) = suggestion {
-        eprintln!("did you mean: {hint}?");
+        errln!("did you mean: {hint}?");
     }
 }
 

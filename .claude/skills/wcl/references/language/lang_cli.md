@@ -45,6 +45,12 @@ Exceptions to "same code everywhere": an interactive `wcl repl` always exits 0, 
 
 Diagnostics go to **stderr**, results to **stdout**.
 
+A closed stdout or stderr (`| head`, a reader that quits) is **not** an error: `wcl` stops
+writing and exits **0**, never 141 and never a panic, on every platform. Any other write
+failure (full disk) exits 4. Gotcha: this outranks the verdict, so
+`wcl check bad.wcl 2>&1 | head -1` exits 0 even though the file fails. Take the exit code with
+the output sent to a file or `/dev/null`, never through a reader that stops early.
+
 ## `wcl parse`
 
 ```console

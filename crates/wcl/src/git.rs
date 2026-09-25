@@ -146,7 +146,7 @@ mod tests {
     /// installed, so the tests skip rather than fail on such a machine.
     fn repo() -> Option<TempDir> {
         if Command::new("git").arg("--version").output().is_err() {
-            eprintln!("git is not installed; skipping");
+            crate::out::errln!("git is not installed; skipping");
             return None;
         }
         let dir = TempDir::new().expect("mkdir repo");

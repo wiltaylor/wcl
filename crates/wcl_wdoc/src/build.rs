@@ -191,10 +191,12 @@ pub enum BuildError {
     #[error("{0}")]
     #[diagnostic(transparent)]
     Parse(Report),
-    /// The document violated its schema. Carries the violation count;
-    /// the diagnostics themselves were already rendered.
-    #[error("{0} schema violation{s}", s = if *.0 == 1 { "" } else { "s" })]
-    Schema(usize),
+    /// The document violated its schema, or the rendering contract wdoc
+    /// holds its blocks to. Carries every violation, each with its source
+    /// attached; displays as the count.
+    #[error("{0}")]
+    #[diagnostic(transparent)]
+    Schema(SchemaViolations),
     /// A block expression failed to evaluate during rendering (e.g. an
     /// unresolved name in a page block). Carries a pre-built miette report
     /// with the source snippet attached.
@@ -251,12 +253,16 @@ pub enum BuildError {
 }
 
 impl BuildError {
-    /// Render this failure to stderr, with the source snippet attached
-    /// where the variant carries one.
-    pub fn report(&self) {
+    /// This failure as terminal text, for the caller to print: a variant
+    /// that carries source renders as its miette report (the snippet,
+    /// coloured when miette's handler chooses to), a schema failure as
+    /// each violation's report then the count, and anything else as its
+    /// `Display`. Carries no trailing newline.
+    pub fn render(&self) -> String {
         match self {
-            Self::Parse(r) | Self::Eval(r) => eprintln!("{r:?}"),
-            other => eprintln!("{other}"),
+            Self::Parse(r) | Self::Eval(r) => format!("{r:?}"),
+            Self::Schema(v) => v.render(),
+            other => other.to_string(),
         }
     }
 
@@ -276,6 +282,73 @@ impl BuildError {
         let report = Report::new(err).with_source_code(src);
         Self::Eval(report)
     }
+}
+
+/// The schema violations a build stopped on, before it rendered anything:
+/// the document's schema errors or, when it has none, the breaches of the
+/// rendering contract wdoc holds its blocks to. Each is a miette report
+/// with the entry source attached.
+///
+/// Displays as the count (`2 schema violations`). Rendered as a
+/// diagnostic, the reports are its related diagnostics.
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[error("{} schema violation{}", .reports.len(), if .reports.len() == 1 { "" } else { "s" })]
+pub struct SchemaViolations {
+    /// One report per violation, in the order found.
+    #[related]
+    reports: Vec<Report>,
+}
+
+impl SchemaViolations {
+    /// How many violations the build found.
+    pub fn len(&self) -> usize {
+        self.reports.len()
+    }
+
+    /// True when there are none. A build never fails with an empty set.
+    pub fn is_empty(&self) -> bool {
+        self.reports.is_empty()
+    }
+
+    /// Every violation, as a report with its source attached.
+    pub fn reports(&self) -> &[Report] {
+        &self.reports
+    }
+
+    /// Each report's terminal rendering, then the count line — the text
+    /// [`BuildError::render`] and [`crate::PdfError::render`] give a
+    /// schema failure.
+    pub(crate) fn render(&self) -> String {
+        let mut out = String::new();
+        for r in &self.reports {
+            out.push_str(&format!("{r:?}\n"));
+        }
+        out.push_str(&self.to_string());
+        out
+    }
+}
+
+/// The schema violations that stop `doc` from building — its schema
+/// errors, or failing those its rendering-contract breaches — attached to
+/// the entry source `user_src` read as `name`. `None` when there are none.
+pub(crate) fn schema_failure(
+    doc: &Document,
+    name: &str,
+    user_src: &str,
+) -> Option<SchemaViolations> {
+    let src = NamedSource::new(name, user_src.to_string());
+    let errs = schema_errors(doc);
+    let reports: Vec<Report> = if errs.is_empty() {
+        contract_errors(doc)
+            .into_iter()
+            .map(|r| r.with_source_code(src.clone()))
+            .collect()
+    } else {
+        errs.into_iter()
+            .map(|e| Report::new(e).with_source_code(src.clone()))
+            .collect()
+    };
+    (!reports.is_empty()).then_some(SchemaViolations { reports })
 }
 
 /// Draw `diagnostic` with miette's graphical handler and a no-colour
@@ -484,16 +557,17 @@ pub(crate) fn schema_errors(doc: &Document) -> Vec<EvalError> {
         .collect()
 }
 
-/// Emit a build-progress line to stderr, only when stderr is a
-/// terminal — an interactive `wcl wdoc build` (and `wdoc serve`) can
-/// tell a slow build from a stuck one, while tests, CI, and piped
-/// output stay clean.
-fn progress(line: std::fmt::Arguments<'_>) {
-    use std::io::IsTerminal;
-    if std::io::stderr().is_terminal() {
-        eprintln!("{line}");
+/// Hand a build-progress line to the caller's [`BuildOptions::progress`]
+/// hook, if it set one.
+fn progress(hook: Option<ProgressFn>, line: std::fmt::Arguments<'_>) {
+    if let Some(hook) = hook {
+        hook(line);
     }
 }
+
+/// A build-progress hook: called with one line (`site docs (3 pages)`,
+/// `  page 1/3 index`) as the build reaches each site and page.
+pub type ProgressFn = fn(std::fmt::Arguments<'_>);
 
 /// Render every site in `file` into `out_dir`, returning the page count.
 ///
@@ -533,6 +607,11 @@ pub struct BuildOptions {
     /// Record a call-tree profile of the document evaluation driving the
     /// build; the snapshot is returned alongside the page count.
     pub profile: bool,
+    /// Called with each progress line as the build reaches a site or a
+    /// page, so an interactive caller can tell a slow build from a stuck
+    /// one. `None` (the default) builds silently: the library never
+    /// writes to stdout or stderr itself.
+    pub progress: Option<ProgressFn>,
 }
 
 /// [`build`] with [`BuildOptions`]. Returns the page count, the build's
@@ -675,27 +754,10 @@ fn build_inner(
     }
     let doc = doc;
 
-    let errs = schema_errors(&doc);
-    if !errs.is_empty() {
-        let n = errs.len();
-        let src = NamedSource::new(name.clone(), user_src.clone());
-        for e in &errs {
-            let report = Report::new(e.clone()).with_source_code(src.clone());
-            eprintln!("{report:?}");
-        }
-        return Err(BuildError::Schema(n));
-    }
-
-    // The schema-level rendering contract (see `contract_errors`) — fail
-    // like a schema violation.
-    let reserved = contract_errors(&doc);
-    if !reserved.is_empty() {
-        let n = reserved.len();
-        let src = NamedSource::new(name.clone(), user_src.clone());
-        for r in reserved {
-            eprintln!("{:?}", r.with_source_code(src.clone()));
-        }
-        return Err(BuildError::Schema(n));
+    // Schema violations, then the schema-level rendering contract (see
+    // `contract_errors`), fail the build before anything renders.
+    if let Some(violations) = schema_failure(&doc, &name, &user_src) {
+        return Err(BuildError::Schema(violations));
     }
 
     fs::create_dir_all(out_dir)
@@ -807,6 +869,7 @@ fn build_inner(
                         &home_title,
                         Some(&site_targets),
                         &scan,
+                        opts.progress,
                     )?;
                     warnings.extend(built.warnings);
                     if built.need_full {
@@ -859,11 +922,14 @@ fn build_inner(
     let (result, eval_err) = crate::render::scoped_eval_errors(|| -> Result<usize, BuildError> {
         let mut count = 0;
         for spec in &build_set {
-            progress(format_args!(
-                "site {} ({} pages)",
-                spec.name.as_deref().unwrap_or("site"),
-                spec.pages.len()
-            ));
+            progress(
+                opts.progress,
+                format_args!(
+                    "site {} ({} pages)",
+                    spec.name.as_deref().unwrap_or("site"),
+                    spec.pages.len()
+                ),
+            );
             let (site_out, current_prefix, home_href, home_title) =
                 site_layout(spec, out_dir, multi, root_site.as_deref(), &root_title);
             fs::create_dir_all(&site_out)
@@ -880,6 +946,7 @@ fn build_inner(
                 &home_title,
                 None,
                 &scan,
+                opts.progress,
             )?;
             count += built.count;
             warnings.extend(built.warnings);
@@ -1445,6 +1512,7 @@ fn build_site(
     home_title: &str,
     target: Option<&HashSet<String>>,
     scan: &ClassScan,
+    progress_hook: Option<ProgressFn>,
 ) -> Result<SiteBuild, BuildError> {
     // File-backed code listings resolve against the directory of the
     // document being built, for as long as this site is rendering.
@@ -1756,12 +1824,15 @@ fn build_site(
             {
                 continue;
             }
-            progress(format_args!(
-                "  page {}/{} {}",
-                i + 1,
-                total,
-                page_name(page).unwrap_or_default()
-            ));
+            progress(
+                progress_hook,
+                format_args!(
+                    "  page {}/{} {}",
+                    i + 1,
+                    total,
+                    page_name(page).unwrap_or_default()
+                ),
+            );
             if let Some(entry) = build_normal_page(&ctx, page)? {
                 search_entries.push(entry);
             }

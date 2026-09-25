@@ -646,7 +646,7 @@ fn unresolved_name_in_page_block_errors() {
         Err(PdfError::Eval(_)) => {}
         Ok(BuildReport { count: n, .. }) => panic!("expected an eval error, but wrote {n} pdf(s)"),
         Err(other) => {
-            other.report();
+            eprintln!("{}", other.render());
             panic!("expected PdfError::Eval, got a different error (see above)");
         }
     }

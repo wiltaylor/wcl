@@ -116,9 +116,11 @@ pub enum PdfError {
     #[error("{0}")]
     #[diagnostic(transparent)]
     Parse(Report),
-    /// The document violated its schema; carries the violation count.
-    #[error("{0} schema violation{s}", s = if *.0 == 1 { "" } else { "s" })]
-    Schema(usize),
+    /// The document violated its schema or wdoc's rendering contract;
+    /// carries every violation and displays as the count.
+    #[error("{0}")]
+    #[diagnostic(transparent)]
+    Schema(crate::build::SchemaViolations),
     /// A block expression failed to evaluate during rendering. Carries a
     /// pre-built miette report with the source snippet attached.
     #[error("{0}")]
@@ -133,12 +135,13 @@ pub enum PdfError {
 }
 
 impl PdfError {
-    /// Render this failure to stderr, with the source snippet where the
-    /// variant carries one.
-    pub fn report(&self) {
+    /// This failure as terminal text, for the caller to print; see
+    /// [`BuildError::render`](crate::BuildError::render).
+    pub fn render(&self) -> String {
         match self {
-            Self::Parse(r) | Self::Eval(r) => eprintln!("{r:?}"),
-            other => eprintln!("{other}"),
+            Self::Parse(r) | Self::Eval(r) => format!("{r:?}"),
+            Self::Schema(v) => v.render(),
+            other => other.to_string(),
         }
     }
 
@@ -183,27 +186,10 @@ pub fn pdf(
     )
     .map_err(|e| PdfError::Parse(Report::new(e)))?;
 
-    let errs = crate::build::schema_errors(&doc);
-    if !errs.is_empty() {
-        let n = errs.len();
-        let src = NamedSource::new(name.clone(), user_src.clone());
-        for e in &errs {
-            let report = Report::new(e.clone()).with_source_code(src.clone());
-            eprintln!("{report:?}");
-        }
-        return Err(PdfError::Schema(n));
-    }
-
-    // The schema-level rendering contract (see `contract_errors`) — fail
-    // like a schema violation.
-    let reserved = crate::build::contract_errors(&doc);
-    if !reserved.is_empty() {
-        let n = reserved.len();
-        let src = NamedSource::new(name.clone(), user_src.clone());
-        for r in reserved {
-            eprintln!("{:?}", r.with_source_code(src.clone()));
-        }
-        return Err(PdfError::Schema(n));
+    // Schema violations, then the schema-level rendering contract (see
+    // `contract_errors`), fail the build before anything renders.
+    if let Some(violations) = crate::build::schema_failure(&doc, &name, &user_src) {
+        return Err(PdfError::Schema(violations));
     }
 
     let site_blocks: Vec<Block> = doc.blocks().filter(|b| b.kind() == "site").collect();

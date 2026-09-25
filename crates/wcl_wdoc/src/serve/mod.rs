@@ -32,6 +32,46 @@ use tokio::sync::mpsc::UnboundedReceiver;
 /// How long the watch loop waits for the event stream to go quiet
 /// before rebuilding — one editor save fires several notify events,
 /// which should coalesce into a single build.
+/// Write one line of the server's console log to stdout. See [`log_line`].
+macro_rules! log_out {
+    ($($arg:tt)*) => {
+        log_line(std::io::stdout().lock(), format_args!($($arg)*))
+    };
+}
+
+/// Write one line of the server's console log to stderr. See [`log_line`].
+macro_rules! log_err {
+    ($($arg:tt)*) => {
+        log_line(std::io::stderr().lock(), format_args!($($arg)*))
+    };
+}
+
+/// Write `line` and a newline to `stream`, dropping any write error. The
+/// server outlives the terminal it was started from: a closed pipe
+/// (`wcl wdoc serve | head`) or a vanished console must not stop it from
+/// serving, and there is nowhere left to report the failure anyway.
+fn log_line(mut stream: impl std::io::Write, line: std::fmt::Arguments<'_>) {
+    let _ = writeln!(stream, "{line}");
+}
+
+/// The [`BuildOptions::progress`] hook the server builds with: each
+/// progress line goes to stderr, but only when stderr is a terminal, so a
+/// piped or captured log stays free of it.
+fn log_progress(line: std::fmt::Arguments<'_>) {
+    use std::io::IsTerminal as _;
+    if std::io::stderr().is_terminal() {
+        log_err!("{line}");
+    }
+}
+
+/// The options every server build uses: [`log_progress`] as the hook.
+fn build_options() -> BuildOptions {
+    BuildOptions {
+        progress: Some(log_progress),
+        ..BuildOptions::default()
+    }
+}
+
 const QUIET_WINDOW: Duration = Duration::from_millis(150);
 
 /// How long a live-reload long-poll request parks before answering
@@ -157,32 +197,32 @@ struct RebuildReport {
 /// matched no shape id, …) to stderr.
 fn print_render_warnings(warnings: &[String]) {
     for w in warnings {
-        eprintln!("warning: {w}");
+        log_err!("warning: {w}");
     }
 }
 
 /// Run one build, report to stderr, record the outcome in `state`, and
 /// bump the live-reload generation.
 fn run_build(file: &Path, out: &Path, site: Option<&str>, state: &ServeState, rebuild: bool) {
-    let opts = BuildOptions::default();
+    let opts = build_options();
     match build_with_options(file, out, site, &opts) {
         Ok(report) => {
             print_render_warnings(&report.warnings);
             let n = report.count;
             let plural = if n == 1 { "" } else { "s" };
             if rebuild {
-                eprintln!("rebuilt: {n} page{plural}");
+                log_err!("rebuilt: {n} page{plural}");
             } else {
-                eprintln!("rendered {n} page{plural}");
+                log_err!("rendered {n} page{plural}");
             }
             *state.error.write().unwrap_or_else(|e| e.into_inner()) = None;
         }
         Err(err) => {
-            eprintln!(
+            log_err!(
                 "{} failed:",
                 if rebuild { "rebuild" } else { "initial build" }
             );
-            err.report();
+            log_err!("{}", err.render());
             *state.error.write().unwrap_or_else(|e| e.into_inner()) = Some(err.render_plain());
         }
     }
@@ -200,7 +240,7 @@ fn run_rebuild_request(
     site: Option<&str>,
     state: &ServeState,
 ) -> RebuildReport {
-    let opts = BuildOptions::default();
+    let opts = build_options();
     let changed = drain_pending(state);
     let result = if changed.is_empty() {
         build_with_options(file, out, site, &opts)
@@ -231,13 +271,13 @@ fn finish_rebuild(
     let report = match result {
         Ok((summary, warnings)) => {
             print_render_warnings(&warnings);
-            eprintln!("rebuilt: {summary}");
+            log_err!("rebuilt: {summary}");
             *state.error.write().unwrap_or_else(|e| e.into_inner()) = None;
             RebuildReport { ok: true, summary }
         }
         Err(err) => {
-            eprintln!("rebuild failed:");
-            err.report();
+            log_err!("rebuild failed:");
+            log_err!("{}", err.render());
             let plain = err.render_plain();
             *state.error.write().unwrap_or_else(|e| e.into_inner()) = Some(plain.clone());
             RebuildReport {
@@ -320,7 +360,7 @@ async fn rebuild_worker(
             // browser shows the failure page rather than stale content.
             Err(e) => {
                 let summary = format!("rebuild panicked: {e}");
-                eprintln!("{summary}");
+                log_err!("{summary}");
                 *state.error.write().unwrap_or_else(|e| e.into_inner()) = Some(summary.clone());
                 state.generation.send_modify(|g| *g += 1);
                 RebuildReport { ok: false, summary }
@@ -371,7 +411,7 @@ pub async fn serve(
     let temp_cleanup = _tempdir_guard.as_ref().map(|td| td.path().to_path_buf());
     tokio::spawn(async move {
         let _ = tokio::signal::ctrl_c().await;
-        eprintln!("\nshutting down");
+        log_err!("\nshutting down");
         if let Some(p) = temp_cleanup {
             let _ = std::fs::remove_dir_all(&p);
         }
@@ -445,7 +485,7 @@ pub async fn serve(
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .extend(changed);
-            eprintln!(
+            log_err!(
                 "{n} file change{} pending — press Enter to rebuild",
                 if n == 1 { "" } else { "s" }
             );
@@ -470,12 +510,12 @@ pub async fn serve(
         BindSpec::Fixed(a) => tokio::net::TcpListener::bind(a).await?,
     };
     let bound = listener.local_addr()?;
-    println!(
+    log_out!(
         "serving http://{bound}  (source: {}, out: {})",
         file.display(),
         out_dir.display()
     );
-    println!("auto-rebuild is off — press Enter here to rebuild after edits");
+    log_out!("auto-rebuild is off — press Enter here to rebuild after edits");
 
     // Run the server, the watcher, and the rebuild worker concurrently. None
     // completes in normal operation — they run until the Ctrl-C task above
@@ -777,7 +817,7 @@ async fn log_requests(req: axum::http::Request<Body>, next: Next) -> Response {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
     let response = next.run(req).await;
-    println!("{} {} {}", method, path, response.status().as_u16());
+    log_out!("{} {} {}", method, path, response.status().as_u16());
     response
 }
 

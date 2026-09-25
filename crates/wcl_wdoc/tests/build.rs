@@ -175,7 +175,7 @@ page index {{ p "Retired fields" }}
 
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
-        Err(BuildError::Schema(52)) => {}
+        Err(BuildError::Schema(n)) if n.len() == 52 => {}
         Err(_) => panic!("expected 52 schema violations for tag + retired fields"),
         Ok(_) => panic!("tag and retired class shorthand fields were accepted"),
     }
@@ -2322,7 +2322,9 @@ page index {
 
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
-        Err(BuildError::Schema(n)) => assert!(n >= 1, "expected at least one violation, got {n}"),
+        Err(BuildError::Schema(n)) => {
+            assert!(!n.is_empty(), "expected at least one violation, got {n}")
+        }
         Err(BuildError::Io(e, ctx)) => panic!("expected Schema, got Io({ctx}: {e})"),
         Err(BuildError::Parse(_)) => panic!("expected Schema, got Parse"),
         Err(BuildError::Eval(r)) => panic!("expected Schema, got Eval({r:?})"),
@@ -9370,7 +9372,7 @@ fn with_multisite_build(src: &str, site: Option<&str>, check: impl FnOnce(&Path)
     match build(&file, out.path(), site) {
         Ok(_) => check(out.path()),
         Err(e) => {
-            e.report();
+            eprintln!("{}", e.render());
             panic!("multi-site build failed");
         }
     }
@@ -9553,7 +9555,7 @@ fn bad_page_message(src: &str) -> String {
     match build_err(src) {
         BuildError::BadPage(msg) => msg,
         e => {
-            e.report();
+            eprintln!("{}", e.render());
             panic!("expected a BadPage error, got the error reported above");
         }
     }
@@ -11106,7 +11108,7 @@ fn unresolved_name_in_page_block_errors() {
         Err(BuildError::Eval(_)) => {}
         Ok(n) => panic!("expected an eval error, but wrote {n} page(s)"),
         Err(other) => {
-            other.report();
+            eprintln!("{}", other.render());
             panic!("expected BuildError::Eval, got a different error (see above)");
         }
     }
@@ -11196,7 +11198,7 @@ fn cross_file_eval_error_reports_imported_file() {
         }
         Ok(n) => panic!("expected an eval error, but wrote {n} page(s)"),
         Err(other) => {
-            other.report();
+            eprintln!("{}", other.render());
             panic!("expected BuildError::Eval, got a different error (see above)");
         }
     }
@@ -12292,7 +12294,7 @@ page t {
     );
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
-        Err(BuildError::Schema(n)) => assert!(n >= 1),
+        Err(BuildError::Schema(n)) => assert!(!n.is_empty()),
         Ok(n) => panic!("expected schema error, built {n} pages"),
         Err(_) => panic!("expected Schema error, got a different build error"),
     }
@@ -12320,7 +12322,7 @@ page t {
     );
     let out = TempDir::new().expect("mkdir out");
     match build(&src, out.path(), None) {
-        Err(BuildError::Schema(n)) => assert!(n >= 1),
+        Err(BuildError::Schema(n)) => assert!(!n.is_empty()),
         Ok(n) => panic!("expected schema error, built {n} pages"),
         Err(_) => panic!("expected Schema error, got a different build error"),
     }
