@@ -7,7 +7,9 @@
 //! items — identity, not equality, since two files can declare
 //! structurally identical nodes.
 
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 
 use miette::NamedSource;
 
@@ -35,6 +37,9 @@ impl Document {
     /// CLI (or other host) already has that string from
     /// `Document::from_file(path)` and doesn't need it round-tripped.
     pub(crate) fn find_field_source_path(&self, target: *const ast::Field) -> Option<&Path> {
+        if let Some(ordinal) = self.static_field_source(target) {
+            return self.all_sources()[ordinal].path;
+        }
         // Main file first — if we find it there, the answer is None.
         if field_in_items(&self.ast.items, target, &self.cells.items) {
             return None;
@@ -59,6 +64,9 @@ impl Document {
     /// isn't located in any known source — callers treat the main
     /// document as the default.
     pub(crate) fn find_field_source_ns(&self, target: *const ast::Field) -> &[String] {
+        if let Some(ordinal) = self.static_field_source(target) {
+            return self.all_sources()[ordinal].file_ns;
+        }
         if field_in_items(&self.ast.items, target, &self.cells.items) {
             return &self.file_ns;
         }
@@ -71,16 +79,33 @@ impl Document {
             .unwrap_or(&self.file_ns)
     }
 
+    /// Which of [`Self::all_sources`] declares `target`, looked up in a
+    /// field-address index built on first use. Covers the root source
+    /// and the eager imports, which are fixed once the document opens;
+    /// `None` leaves a field from a lazily-loaded import to the walks
+    /// above. A field lives at one address in one source, so a hit is
+    /// the source the ordered walk would reach first.
+    fn static_field_source(&self, target: *const ast::Field) -> Option<usize> {
+        let index = self.field_source_index.get_or_init(|| {
+            let mut map = HashMap::new();
+            for (ordinal, src) in self.all_sources().iter().enumerate() {
+                index_field_addresses(src.items, ordinal, &mut map);
+            }
+            map
+        });
+        index.get(&(target as usize)).copied()
+    }
+
     /// miette source (name + text) for the root document.
-    pub(super) fn root_named_source(&self) -> NamedSource<String> {
-        NamedSource::new(self.src.name(), self.src.inner().clone())
+    pub(super) fn root_named_source(&self) -> NamedSource<Arc<str>> {
+        self.src.clone()
     }
 
     /// The `NamedSource` a diagnostic against this source should
     /// render with.
-    pub(super) fn named_source_for_view(&self, source: SourceView<'_>) -> NamedSource<String> {
+    pub(super) fn named_source_for_view(&self, source: SourceView<'_>) -> NamedSource<Arc<str>> {
         match source.path {
-            Some(path) => NamedSource::new(path.display().to_string(), source.source.to_string()),
+            Some(path) => NamedSource::new(path.display().to_string(), source.source.clone()),
             None => self.root_named_source(),
         }
     }
@@ -93,7 +118,7 @@ impl Document {
     /// cross-file span — the cause of the `OutOfBounds` misrender). Falls
     /// back to the root source when the block can't be located (e.g. a
     /// synthesised block that isn't backed by on-disk AST).
-    pub fn named_source_for_block(&self, target: *const ast::Block) -> NamedSource<String> {
+    pub fn named_source_for_block(&self, target: *const ast::Block) -> NamedSource<Arc<str>> {
         if block_in_items(&self.ast.items, target) {
             return self.root_named_source();
         }
@@ -115,7 +140,7 @@ impl Document {
     pub(super) fn named_source_for_union(
         &self,
         target: *const ast::UnionDecl,
-    ) -> NamedSource<String> {
+    ) -> NamedSource<Arc<str>> {
         if union_in_items(&self.ast.items, target) {
             return self.root_named_source();
         }
@@ -132,7 +157,7 @@ impl Document {
     pub(super) fn named_source_for_type(
         &self,
         target: *const ast::TypeDecl,
-    ) -> NamedSource<String> {
+    ) -> NamedSource<Arc<str>> {
         if type_in_items(&self.ast.items, target) {
             return self.root_named_source();
         }
@@ -263,7 +288,7 @@ fn type_in_items(items: &[ast::Item], target: *const ast::TypeDecl) -> bool {
 fn named_source_in_import(
     imp: &cells::LoadedImport,
     target: *const ast::Block,
-) -> Option<NamedSource<String>> {
+) -> Option<NamedSource<Arc<str>>> {
     if block_in_items(&imp.items, target) {
         return Some(NamedSource::new(
             imp.path.display().to_string(),
@@ -287,7 +312,7 @@ fn named_source_for_block_in_lazy(
     items: &[ast::Item],
     cells: &[ItemCells],
     target: *const ast::Block,
-) -> Option<NamedSource<String>> {
+) -> Option<NamedSource<Arc<str>>> {
     for (item, cell) in items.iter().zip(cells) {
         match (item, &cell.kind) {
             (ast::Item::Block(block), ItemCellKind::Block { items, .. }) => {
@@ -313,7 +338,7 @@ fn named_source_for_block_in_lazy(
 fn named_source_for_union_in_import(
     imp: &cells::LoadedImport,
     target: *const ast::UnionDecl,
-) -> Option<NamedSource<String>> {
+) -> Option<NamedSource<Arc<str>>> {
     if union_in_items(&imp.items, target) {
         return Some(NamedSource::new(
             imp.path.display().to_string(),
@@ -332,7 +357,7 @@ fn named_source_for_union_in_import(
 fn named_source_for_type_in_import(
     import: &cells::LoadedImport,
     target: *const ast::TypeDecl,
-) -> Option<NamedSource<String>> {
+) -> Option<NamedSource<Arc<str>>> {
     if type_in_items(&import.items, target) {
         return Some(NamedSource::new(
             import.path.display().to_string(),
@@ -345,6 +370,20 @@ fn named_source_for_type_in_import(
         }
     }
     None
+}
+
+/// Record the address of every field in `items`, nested blocks
+/// included, against the source `ordinal`. First recording wins.
+fn index_field_addresses(items: &[ast::Item], ordinal: usize, map: &mut HashMap<usize, usize>) {
+    for item in items {
+        match item {
+            ast::Item::Field(f) => {
+                map.entry(std::ptr::from_ref(f) as usize).or_insert(ordinal);
+            }
+            ast::Item::Block(b) => index_field_addresses(&b.items, ordinal, map),
+            _ => {}
+        }
+    }
 }
 
 /// Whether `target` is one of these items or nested inside one,
@@ -493,7 +532,7 @@ pub(super) struct SourceView<'a> {
     /// Evaluation caches, index-aligned with `items`.
     pub(super) cells: &'a [ItemCells],
     /// The raw text, for rendering diagnostics against this source.
-    pub(super) source: &'a str,
+    pub(super) source: &'a Arc<str>,
     /// Namespace this source declares.
     pub(super) file_ns: &'a [String],
     /// Resolved path on disk. `None` for the root document (the host

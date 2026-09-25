@@ -135,7 +135,7 @@ impl<'a> Block<'a> {
     /// block against the correct file's snippet (a cross-file span won't
     /// line up with the root source's text). Falls back to the root
     /// source for synthesised blocks not backed by on-disk AST.
-    pub fn named_source(&self) -> miette::NamedSource<String> {
+    pub fn named_source(&self) -> miette::NamedSource<std::sync::Arc<str>> {
         self.doc.named_source_for_block(self.ast)
     }
 
@@ -414,7 +414,26 @@ impl<'a> Block<'a> {
     /// successfully-loaded import (transitively). The block's own
     /// slice is always element 0.
     pub(in crate::doc) fn realize_and_sources(&self) -> Vec<BlockSlice<'a>> {
-        let (_, items_cells) = self.block_inner();
+        let ItemCellKind::Block {
+            items: items_cells,
+            has_block_imports,
+            name_index,
+            ..
+        } = &self.cells.kind
+        else {
+            unreachable!("Block view wraps a Block cell")
+        };
+        let own = BlockSlice {
+            items: &self.ast.items,
+            cells: items_cells,
+            file_ns: self.file_ns,
+            index: name_index,
+        };
+        // Without an in-block import the body is its own only source;
+        // skip rescanning every cell for one.
+        if !has_block_imports {
+            return vec![own];
+        }
         // Force any unloaded Import cells.
         for cell in items_cells {
             if let ItemCellKind::Import {
@@ -436,11 +455,7 @@ impl<'a> Block<'a> {
                 });
             }
         }
-        let mut out = vec![BlockSlice {
-            items: &self.ast.items,
-            cells: items_cells,
-            file_ns: self.file_ns,
-        }];
+        let mut out = vec![own];
         push_loaded_imports(items_cells, &mut out);
         out
     }
@@ -463,14 +478,7 @@ impl<'a> Block<'a> {
     pub fn field(&self, name: &str) -> Option<Field<'a>> {
         let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
-            if let Some(f) = find_field(
-                src.items,
-                src.cells,
-                name,
-                self.doc,
-                src.file_ns,
-                &child_scope,
-            ) {
+            if let Some(f) = find_field(&src, name, self.doc, &child_scope) {
                 return Some(f);
             }
         }
@@ -481,14 +489,7 @@ impl<'a> Block<'a> {
     pub fn block(&self, kind: &str) -> Option<Block<'a>> {
         let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
-            if let Some(b) = find_block(
-                src.items,
-                src.cells,
-                kind,
-                self.doc,
-                src.file_ns,
-                &child_scope,
-            ) {
+            if let Some(b) = find_block(&src, kind, self.doc, &child_scope) {
                 return Some(b);
             }
         }
@@ -502,7 +503,7 @@ impl<'a> Block<'a> {
     pub(crate) fn find_let(&self, name: &str) -> Option<LetView<'a>> {
         let child_scope = self.child_scope();
         for src in self.realize_and_sources() {
-            if let Some(l) = find_let(src.items, src.cells, name, self.doc, &child_scope) {
+            if let Some(l) = find_let(&src, name, self.doc, &child_scope) {
                 return Some(l);
             }
         }

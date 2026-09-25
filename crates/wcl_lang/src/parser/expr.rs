@@ -127,9 +127,15 @@ impl<'a> Parser<'a> {
     fn parse_expr_bp_inner(&mut self, min_bp: u8) -> Result<(Expr, Span), ParseError> {
         let (mut lhs, mut span) = self.parse_prefix()?;
         loop {
-            let kind = self.peek()?.kind.clone();
+            // Classify the next token by reference: cloning it here would
+            // copy every string/number token the loop looks at.
+            let kind = &self.peek()?.kind;
+            let is_call = matches!(kind, TokenKind::LParen);
+            let is_member = matches!(kind, TokenKind::Dot);
+            let is_variant = matches!(kind, TokenKind::ColonColon);
+            let bin_op = bin_op_info(kind);
             // Postfix call: `expr(args)`.
-            if matches!(kind, TokenKind::LParen) {
+            if is_call {
                 if CALL_BP < min_bp {
                     break;
                 }
@@ -139,7 +145,7 @@ impl<'a> Parser<'a> {
                 continue;
             }
             // Postfix member access: `expr.IDENT`.
-            if matches!(kind, TokenKind::Dot) {
+            if is_member {
                 if MEMBER_BP < min_bp {
                     break;
                 }
@@ -184,7 +190,7 @@ impl<'a> Parser<'a> {
             }
             // Variant construction: `Path::Variant args?`. The LHS must
             // be a pure dotted path (Identifier / Member chain).
-            if matches!(kind, TokenKind::ColonColon) {
+            if is_variant {
                 // Variant construction binds like member access.
                 const VARIANT_BP: u8 = MEMBER_BP;
                 if VARIANT_BP < min_bp {
@@ -222,7 +228,7 @@ impl<'a> Parser<'a> {
                 span = new_span;
                 continue;
             }
-            let Some((lbp, rbp, op)) = bin_op_info(&kind) else {
+            let Some((lbp, rbp, op)) = bin_op else {
                 break;
             };
             if lbp < min_bp {
@@ -244,8 +250,7 @@ impl<'a> Parser<'a> {
 
     /// Parse a prefix operator and its operand, else an atom.
     fn parse_prefix(&mut self) -> Result<(Expr, Span), ParseError> {
-        let kind = self.peek()?.kind.clone();
-        match kind {
+        match self.peek()?.kind {
             TokenKind::Dash => {
                 let tok = self.bump()?;
                 let (operand, operand_span) = self.parse_expr_bp(UNARY_BP)?;

@@ -23,6 +23,8 @@ use crate::diagnostics::EvalError;
 use crate::symbols::SymbolIndex;
 use crate::value::Value;
 
+use super::lookup::NameIndex;
+
 #[derive(Debug)]
 /// Memo for one field's value. Whether the field is being forced right
 /// now is tracked per thread on the evaluation stack
@@ -126,12 +128,20 @@ pub(crate) enum ItemCellKind {
         /// effective field names. `scope_lookup` skips the frame's
         /// per-item scans when the resolving name is absent.
         bindable_names: std::sync::RwLock<HashMap<String, std::sync::Arc<HashSet<String>>>>,
+        /// By-name index over the body's own items, so `Block::field` /
+        /// `block` / `find_let` stay constant-time in a wide body. Built
+        /// on the first lookup that needs it.
+        name_index: OnceLock<NameIndex>,
     },
     /// A `type` declaration.
     TypeDecl {
         /// One inner Vec per `ast::TypeDecl.fields[i]`, holding cells for
         /// that field's decorators.
         field_decorators: Vec<Vec<DecoratorCell>>,
+        /// Field name to its first position in `ast::TypeDecl.fields`,
+        /// built on the first `TypeDecl::field` lookup of a wide type —
+        /// a `@document` schema is asked once per top-level field.
+        field_index: OnceLock<HashMap<String, usize>>,
     },
     /// An `interface` declaration.
     InterfaceDecl {
@@ -251,7 +261,7 @@ pub(crate) struct LoadedImport {
     /// raised against this file's spans can render their snippet against
     /// the correct source (a cross-file eval error otherwise renders
     /// against the root document's text — wrong offsets / `OutOfBounds`).
-    pub(crate) source: String,
+    pub(crate) source: std::sync::Arc<str>,
     /// Namespace the imported file declares.
     pub(crate) file_ns: Vec<String>,
     /// The imported file's top-level items.
@@ -261,6 +271,9 @@ pub(crate) struct LoadedImport {
     /// Symbols indexed within this loaded file. Paths refer to the
     /// `items`/`cells` arrays in this same struct.
     pub(crate) symbols: SymbolIndex,
+    /// By-name index over `items`, built on the first lookup through a
+    /// block that splices this file in.
+    pub(crate) name_index: OnceLock<NameIndex>,
     /// Top-level imports of the imported file, flattened in.
     pub(crate) eager_imports: Vec<LoadedImport>,
 }
@@ -357,6 +370,7 @@ impl ItemCells {
                             .iter()
                             .any(|item| matches!(item, ast::Item::Import(_))),
                         bindable_names: std::sync::RwLock::new(HashMap::new()),
+                        name_index: OnceLock::new(),
                     },
                 }
             }
@@ -368,6 +382,7 @@ impl ItemCells {
                         .iter()
                         .map(|f| make_decorator_cells(&f.decorators))
                         .collect(),
+                    field_index: OnceLock::new(),
                 },
             },
             ast::Item::InterfaceDecl(i) => Self {

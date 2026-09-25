@@ -137,7 +137,7 @@ impl PdfError {
     /// attaching the source file the error was raised against so the miette
     /// report renders the snippet against the correct text (a cross-file
     /// span won't line up with the root document's source).
-    pub(crate) fn eval(err: wcl_lang::EvalError, src: NamedSource<String>) -> Self {
+    pub(crate) fn eval(err: wcl_lang::EvalError, src: NamedSource<std::sync::Arc<str>>) -> Self {
         let report = Report::new(err).with_source_code(src);
         Self::Eval(report)
     }

@@ -12,6 +12,8 @@
 
 #![allow(unused_assignments)] // miette/thiserror derive triggers spurious lints on variant fields
 
+use std::sync::Arc;
+
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
@@ -34,7 +36,7 @@ impl ParseError {
     /// Build a [`ParseError::Syntax`] with a single primary label.
     pub(crate) fn syntax(
         message: String,
-        src: NamedSource<String>,
+        src: NamedSource<Arc<str>>,
         span: SourceSpan,
         label: String,
     ) -> Self {
@@ -53,7 +55,7 @@ impl ParseError {
     /// duplicate declaration).
     pub(crate) fn syntax_with_related(
         message: String,
-        src: NamedSource<String>,
+        src: NamedSource<Arc<str>>,
         span: SourceSpan,
         label: String,
         related_span: SourceSpan,
@@ -81,7 +83,7 @@ pub struct SyntaxError {
     pub message: String,
     #[source_code]
     /// The source text the span indexes into, for rendering.
-    pub src: NamedSource<String>,
+    pub src: NamedSource<Arc<str>>,
     #[label("{label}")]
     /// Source span the diagnostic points at.
     pub span: SourceSpan,

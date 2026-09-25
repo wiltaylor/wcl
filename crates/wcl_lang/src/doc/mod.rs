@@ -88,7 +88,7 @@ use scope::Scope;
 /// declarations — comes back as a borrowed view, not a copy.
 pub struct Document {
     /// The root source text and its name, for rendering diagnostics.
-    src: NamedSource<String>,
+    src: NamedSource<std::sync::Arc<str>>,
     /// The parsed root source.
     ast: ast::Source,
     /// Evaluation caches, shaped to mirror `ast.items`.
@@ -186,6 +186,12 @@ pub struct Document {
     /// reference count. First occurrence wins, matching the scan order
     /// it replaces.
     root_let_index: std::sync::OnceLock<HashMap<String, (usize, usize)>>,
+    /// Field address to the ordinal (in `all_sources` order) of the
+    /// source declaring it, over the root source and eager imports.
+    /// Provenance asks this for every top-level field it validates, and
+    /// a full walk per question made `@document` checks quadratic. Sound
+    /// to build once: those sources are fixed at construction time.
+    field_source_index: std::sync::OnceLock<HashMap<usize, usize>>,
     /// Memo for the root `@connections` projection in
     /// [`resolve_root_in`]: field name → projected edge list. The
     /// projection walks every source's connection statements and
@@ -234,7 +240,7 @@ impl std::fmt::Debug for Document {
 
 /// Schema errors paired with the source each should be rendered
 /// against — `None` when the error carries no file provenance.
-type CollectedSchemaErrors = Vec<(EvalError, Option<NamedSource<String>>)>;
+type CollectedSchemaErrors = Vec<(EvalError, Option<NamedSource<std::sync::Arc<str>>>)>;
 
 /// A symbol lookup result that knows which source it came from.
 /// Exposed so the LSP can build cross-file `Location`s for

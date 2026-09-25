@@ -5901,3 +5901,94 @@ fn laxify_for_tests(src: &str) -> String {
     out.push_str(&src[cursor..]);
     out
 }
+
+/// `n` filler fields, enough (at 40) to push a block body or a type past
+/// the size where by-name lookups switch from a scan to a name index.
+fn filler_fields(n: usize) -> String {
+    (0..n).map(|i| format!("filler{i} = {i}\n")).collect()
+}
+
+#[test]
+fn block_lookups_keep_first_match_and_let_shadowing_at_any_width() {
+    // The same body, narrow (scanned) and wide (indexed), must resolve
+    // every name identically: the first duplicate wins, and a `let`
+    // shadows a same-named field.
+    for filler in [0, 40] {
+        let src = format!(
+            r#"
+            b {{
+              {pad}
+              a = 1
+              a = 2
+              c = a
+              let d = 5
+              d = 7
+              e = d
+              inner {{ v = 1 }}
+              inner {{ v = 2 }}
+              w = inner.v
+            }}
+            "#,
+            pad = filler_fields(filler)
+        );
+        let doc = open(&src);
+        let b = doc.block("b").unwrap();
+        let value = |name: &str| b.field(name).unwrap().value().unwrap().clone();
+        assert_eq!(value("a"), Value::I64(1), "filler {filler}");
+        assert_eq!(value("c"), Value::I64(1), "filler {filler}");
+        assert_eq!(value("d"), Value::I64(7), "filler {filler}");
+        assert_eq!(value("e"), Value::I64(5), "filler {filler}");
+        assert_eq!(value("w"), Value::I64(1), "filler {filler}");
+        let inner = b.block("inner").unwrap();
+        assert_eq!(
+            inner.field("v").unwrap().value().unwrap(),
+            &Value::I64(1),
+            "filler {filler}"
+        );
+        assert!(b.field("missing").is_none());
+        assert!(b.block("missing").is_none());
+        assert!(b.field("inner").is_none(), "a block is not a field");
+    }
+}
+
+#[test]
+fn wide_block_own_items_shadow_its_in_block_import() {
+    let src = format!(
+        r#"
+        @schemaless outer {{
+          {pad}
+          import <lib.wcl>
+          own = 2
+          sum = shared + own
+        }}
+        "#,
+        pad = filler_fields(40)
+    );
+    let doc = open_with_libs(&src, &[("lib.wcl", "shared = 10\nown = 99\n")]);
+    let outer = doc.block("outer").unwrap();
+    assert_eq!(outer.field("own").unwrap().value().unwrap(), &Value::I64(2));
+    assert_eq!(
+        outer.field("shared").unwrap().value().unwrap(),
+        &Value::I64(10)
+    );
+    assert_eq!(
+        outer.field("sum").unwrap().value().unwrap(),
+        &Value::I64(12)
+    );
+}
+
+#[test]
+fn wide_document_schema_validates_every_top_level_field() {
+    let schema_fields: String = (0..40).map(|i| format!("f{i}: i64\n")).collect();
+    let fields: String = (0..40).map(|i| format!("f{i} = {i}\n")).collect();
+    let ok = format!("@document type Root {{\n{schema_fields}}}\n{fields}");
+    let doc = Document::open(&ok, "t").expect("open");
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    assert_eq!(doc.field("f39").unwrap().value().unwrap(), &Value::I64(39));
+
+    let bad = format!("{ok}stray = 1\n");
+    let doc = Document::open(&bad, "t").expect("open");
+    let errors = doc.schema_errors();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].to_string().contains("stray"), "{}", errors[0]);
+}
