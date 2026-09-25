@@ -224,13 +224,16 @@ mod tests {
     fn end_to_end_unknown_field_roundtrip() {
         let src = "@document\ntype Root {\n  region: utf8\n}\n@block(\"service\")\ntype Service {\n  region: utf8\n}\nservice web {\n  region = \"x\"\n  unexpected = \"boom\"\n}\n";
         let uri = "file:///t.wcl".parse::<Uri>().unwrap();
-        let diags = crate::diagnostics::compute(
+        let diags: Vec<Diagnostic> = crate::diagnostics::analyse(
             &crate::ctx::Ctx::new(Default::default()),
             src,
             uri.as_str(),
             None,
             wcl_wdoc::schema_registry().loader(wcl_lang::disk_loader()),
-        );
+        )
+        .into_iter()
+        .map(|(_, diagnostic)| diagnostic)
+        .collect();
         let resp = compute(&uri, src, &diags).expect("some actions");
         // The doc also flags the top-level `service` block, so search all
         // actions for the unknown-field fix rather than assuming order.

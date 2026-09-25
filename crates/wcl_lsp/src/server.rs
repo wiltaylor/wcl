@@ -19,26 +19,27 @@
 //! back to per-file parsing — every standalone `.wcl` file still
 //! works.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{OnceLock, RwLock};
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock, RwLock};
 
 use dashmap::DashMap;
 use ropey::Rope;
 use tower_lsp_server::jsonrpc::Result as RpcResult;
 use tower_lsp_server::ls_types::{
     CodeActionParams, CodeActionProviderCapability, CodeActionResponse, CompletionOptions,
-    CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DocumentFormattingParams, DocumentSymbolParams,
-    DocumentSymbolResponse, FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, InitializedParams, Location, MessageType, OneOf, Position,
-    ReferenceParams, RenameParams, SaveOptions, SemanticTokens, SemanticTokensFullOptions,
-    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, SignatureHelp,
-    SignatureHelpOptions, SignatureHelpParams, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, TextEdit, Uri, WorkspaceEdit,
-    WorkspaceSymbolParams, WorkspaceSymbolResponse,
+    CompletionParams, CompletionResponse, Diagnostic, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams,
+    FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
+    Location, MessageType, OneOf, Position, ReferenceParams, RenameParams, SaveOptions,
+    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
+    ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, TextEdit, Uri, WorkspaceEdit, WorkspaceSymbolParams,
+    WorkspaceSymbolResponse,
 };
 use tower_lsp_server::{Client, LanguageServer};
 use wcl_lang::{
@@ -47,7 +48,7 @@ use wcl_lang::{
 
 use crate::code_actions;
 use crate::completion;
-use crate::convert::{PositionEncoding, rope_char_index, uri_to_path};
+use crate::convert::{PositionEncoding, path_to_uri, rope_char_index, uri_to_path};
 use crate::ctx::Ctx;
 use crate::diagnostics;
 use crate::folding;
@@ -68,6 +69,15 @@ fn root_environment() -> Environment {
     wcl_wdoc::wdoc_environment()
 }
 
+/// One open editor buffer.
+#[derive(Default)]
+struct OpenDoc {
+    /// The text, kept current from incremental change events.
+    rope: Rope,
+    /// The client's version of the text, echoed on published diagnostics.
+    version: i32,
+}
+
 /// The LSP backend. Holds the open-document cache (a rope per URI,
 /// kept in sync via incremental change events) and an optional root
 /// document path resolved during `initialize`; everything else is
@@ -75,8 +85,8 @@ fn root_environment() -> Environment {
 pub struct Backend {
     /// Handle for sending notifications back to the editor.
     client: Client,
-    /// Open buffers by URI, kept current from incremental change events.
-    docs: DashMap<Uri, Rope>,
+    /// Open buffers by URI.
+    docs: DashMap<Uri, OpenDoc>,
     /// Path to the root document, when one was discovered or
     /// configured. All open files are validated against this root
     /// (with their unsaved buffers overlaid) so cross-file imports
@@ -84,6 +94,9 @@ pub struct Backend {
     root_path: RwLock<Option<PathBuf>>,
     /// Unit LSP `character` values count in, fixed by `initialize`.
     encoding: OnceLock<PositionEncoding>,
+    /// Every URI the last publish sent diagnostics for, so a file whose
+    /// errors are gone — or that left the import graph — is cleared.
+    published: Mutex<HashSet<Uri>>,
 }
 
 impl Backend {
@@ -95,6 +108,7 @@ impl Backend {
             docs: DashMap::new(),
             root_path: RwLock::new(None),
             encoding: OnceLock::new(),
+            published: Mutex::new(HashSet::new()),
         }
     }
 
@@ -112,7 +126,7 @@ impl Backend {
     /// Materialise the current text for a URI. Returns `None` when
     /// the document hasn't been opened by the client yet.
     pub(crate) fn document_text(&self, uri: &Uri) -> Option<String> {
-        self.docs.get(uri).map(|r| r.to_string())
+        self.docs.get(uri).map(|doc| doc.rope.to_string())
     }
 
     /// The buffer text plus the byte offset of `pos` within it — the
@@ -133,7 +147,7 @@ impl Backend {
         let mut out = HashMap::new();
         for entry in self.docs.iter() {
             if let Some(p) = uri_to_path(entry.key()) {
-                out.insert(p, entry.value().to_string());
+                out.insert(p, entry.value().rope.to_string());
             }
         }
         out
@@ -172,48 +186,133 @@ impl Backend {
         Document::from_file_with_loader(&path, &root_environment(), self.loader()).ok()
     }
 
-    /// Recompute diagnostics for `uri` from the cached rope and
-    /// publish them. Diagnostics are currently per-file: cross-file
-    /// errors surfaced by the root document are not attributed back
-    /// to the originating file (that needs source-path tagging on
-    /// `EvalError`, a separate change).
+    /// Recompute diagnostics for the whole workspace and publish them.
+    /// Every open file is re-published on every change, because an edit
+    /// to one file can create or clear errors in the files that import it.
+    async fn publish(&self) {
+        let batch = self.collect_diagnostics(&self.ctx());
+        for (uri, version, diagnostics) in batch {
+            self.client
+                .publish_diagnostics(uri, diagnostics, version)
+                .await;
+        }
+    }
+
+    /// Diagnostics for every open file, every file an analysis placed a
+    /// diagnostic in, and every file published last time (so stale
+    /// errors clear), each with the version of its open buffer.
     ///
-    /// When a root document is configured and `uri` is some *other*
-    /// file, only syntax errors are published: schema validation of a
-    /// fragment in isolation reports false positives for everything the
-    /// root supplies (imported `@block` declarations, document schemas,
-    /// referenced data), which would paint valid files red.
-    async fn publish(&self, uri: Uri, version: Option<i32>) {
-        let Some(source) = self.document_text(&uri) else {
-            return;
+    /// With a root document configured, the root is analysed once, its
+    /// errors are placed in the files they were raised in, and every
+    /// open buffer adds its own syntax errors. Schema-validating a
+    /// fragment in isolation would report false positives for
+    /// everything the root supplies (imported `@block` declarations,
+    /// document schemas, referenced data), so files outside the root's
+    /// import graph get syntax errors only. With no root, every open
+    /// buffer is analysed as a document of its own.
+    fn collect_diagnostics(&self, ctx: &Ctx) -> Vec<(Uri, Option<i32>, Vec<Diagnostic>)> {
+        let open: Vec<(Uri, i32, String)> = self
+            .docs
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.version, entry.rope.to_string()))
+            .collect();
+        // Canonical path → open URI, so a diagnostic placed by path lands
+        // on the URI the editor opened even through a symlink.
+        let open_paths: HashMap<PathBuf, Uri> = open
+            .iter()
+            .filter_map(|(uri, _, _)| {
+                let path = uri_to_path(uri)?;
+                Some((std::fs::canonicalize(&path).unwrap_or(path), uri.clone()))
+            })
+            .collect();
+        let uri_for = |path: &Path| -> Option<Uri> {
+            let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            open_paths
+                .get(&canonical)
+                .cloned()
+                .or_else(|| path_to_uri(path))
         };
-        let is_non_root_fragment = match (self.root_path(), uri_to_path(&uri)) {
-            (Some(root), Some(path)) => std::fs::canonicalize(&path)
-                .map(|c| c != root)
-                .unwrap_or(true),
-            (Some(_), None) => true,
-            (None, _) => false,
+
+        let mut by_uri: HashMap<Uri, Vec<Diagnostic>> = HashMap::new();
+        let mut place = |uri: Uri, diagnostic: Diagnostic| {
+            let slot = by_uri.entry(uri).or_default();
+            if !slot.contains(&diagnostic) {
+                slot.push(diagnostic);
+            }
         };
-        let base_dir = uri_to_path(&uri).and_then(|p| p.parent().map(std::path::Path::to_path_buf));
-        let ctx = self.ctx();
-        let diags = if is_non_root_fragment {
-            diagnostics::compute_syntax_only(
-                &ctx,
-                &source,
-                uri.as_str(),
-                base_dir.as_deref(),
-                self.loader(),
-            )
-        } else {
-            diagnostics::compute(
-                &ctx,
-                &source,
-                uri.as_str(),
-                base_dir.as_deref(),
-                self.loader(),
-            )
-        };
-        self.client.publish_diagnostics(uri, diags, version).await;
+        match self.root_path() {
+            Some(root) => {
+                let placed = match Document::from_file_with_loader(
+                    &root,
+                    &root_environment(),
+                    self.loader(),
+                ) {
+                    Ok(doc) => diagnostics::document(ctx, &doc),
+                    Err(e) => diagnostics::parse_failure(ctx, &e, &root.display().to_string()),
+                };
+                for (origin, diagnostic) in placed {
+                    let target = match origin {
+                        diagnostics::Origin::Analysed => uri_for(&root),
+                        diagnostics::Origin::File(path) => uri_for(&path),
+                    };
+                    if let Some(uri) = target {
+                        place(uri, diagnostic);
+                    }
+                }
+                for (uri, _, text) in &open {
+                    for diagnostic in diagnostics::syntax_only(ctx, text, uri.as_str()) {
+                        place(uri.clone(), diagnostic);
+                    }
+                }
+            }
+            None => {
+                let loader = self.loader();
+                for (uri, _, text) in &open {
+                    let base_dir = uri_to_path(uri).and_then(|p| p.parent().map(Path::to_path_buf));
+                    let placed = diagnostics::analyse(
+                        ctx,
+                        text,
+                        uri.as_str(),
+                        base_dir.as_deref(),
+                        loader.clone(),
+                    );
+                    for (origin, diagnostic) in placed {
+                        let target = match origin {
+                            diagnostics::Origin::Analysed => Some(uri.clone()),
+                            diagnostics::Origin::File(path) => uri_for(&path),
+                        };
+                        if let Some(target) = target {
+                            place(target, diagnostic);
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut published = self.published.lock().unwrap_or_else(|e| {
+            tracing::error!("published-set lock poisoned; recovering: {e}");
+            e.into_inner()
+        });
+        let versions: HashMap<&Uri, i32> = open
+            .iter()
+            .map(|(uri, version, _)| (uri, *version))
+            .collect();
+        let targets: HashSet<Uri> = open
+            .iter()
+            .map(|(uri, _, _)| uri.clone())
+            .chain(by_uri.keys().cloned())
+            .chain(published.drain())
+            .collect();
+        let mut batch = Vec::with_capacity(targets.len());
+        for uri in targets {
+            let diagnostics = by_uri.remove(&uri).unwrap_or_default();
+            if !diagnostics.is_empty() {
+                published.insert(uri.clone());
+            }
+            let version = versions.get(&uri).copied();
+            batch.push((uri, version, diagnostics));
+        }
+        batch
     }
 
     /// Resolve the root document path from `initialize` parameters.
@@ -343,24 +442,31 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri.clone();
-        self.docs
-            .insert(uri.clone(), Rope::from_str(&params.text_document.text));
-        self.publish(uri, Some(params.text_document.version)).await;
+        self.docs.insert(
+            uri,
+            OpenDoc {
+                rope: Rope::from_str(&params.text_document.text),
+                version: params.text_document.version,
+            },
+        );
+        self.publish().await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        let uri = params.text_document.uri.clone();
+        let uri = params.text_document.uri;
         // Apply every change event in order. With INCREMENTAL sync
         // the client sends one or more ranged edits per request;
         // when `range` is None it's a full-document replacement
         // (clients may still send those for large diffs).
         let encoding = self.encoding();
-        let mut rope = self.docs.entry(uri.clone()).or_default();
+        let mut doc = self.docs.entry(uri).or_default();
+        doc.version = params.text_document.version;
+        let rope = &mut doc.rope;
         for change in params.content_changes {
             match change.range {
                 Some(range) => {
-                    let start_char = rope_char_index(&rope, range.start, encoding);
-                    let end_char = rope_char_index(&rope, range.end, encoding).max(start_char);
+                    let start_char = rope_char_index(rope, range.start, encoding);
+                    let end_char = rope_char_index(rope, range.end, encoding).max(start_char);
                     rope.remove(start_char..end_char);
                     rope.insert(start_char, &change.text);
                 }
@@ -369,16 +475,15 @@ impl LanguageServer for Backend {
                 }
             }
         }
-        drop(rope);
-        self.publish(uri, Some(params.text_document.version)).await;
+        drop(doc);
+        self.publish().await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         self.docs.remove(&params.text_document.uri);
-        // Clear any stale diagnostics in the client.
-        self.client
-            .publish_diagnostics(params.text_document.uri, Vec::new(), None)
-            .await;
+        // Without its buffer the file reads from disk again, and its own
+        // diagnostics clear unless an analysis still places some there.
+        self.publish().await;
     }
 
     async fn formatting(
