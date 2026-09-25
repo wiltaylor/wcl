@@ -52,6 +52,9 @@ pub(crate) fn render_page(
          {body}</body>\n\
          </html>\n",
         title = escape_html(title),
+        // The stylesheet carries author values (class fields and CSS, theme
+        // palettes); none of them may close the element early.
+        css = escape_style_text(css),
         favicon_link = favicon_link,
         head_extra = head_extra,
         body = body,

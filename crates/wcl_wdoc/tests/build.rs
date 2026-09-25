@@ -10025,6 +10025,80 @@ page index { text { span "Hi" {} } }
 }
 
 #[test]
+fn author_values_cannot_close_the_page_style_element() {
+    // Class fields, class CSS and theme palette values all land in the
+    // page <style>. A `</style` in any of them must not end the element,
+    // while ordinary author CSS still arrives intact.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("style.wcl");
+    write_fixture(
+        &src,
+        r##"
+theme evil {
+  palette dark { bg = "#000</STYLE><script>alert(3)</script>" }
+}
+site { default_template = :webpage  theme = :evil }
+class evil {
+  fill = "red</style><script>alert(1)</script>"
+  css  = "color:#123456; content:'</style><!--<script>alert(2)</script>';"
+}
+page index { p "hi" { class = ["evil"] } }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Inside the element the values are inert text; the element must end
+    // only at the renderer's own `</style>`, after all three of them.
+    let end = html
+        .to_ascii_lowercase()
+        .find("</style")
+        .expect("style element closes");
+    for n in 1..=3 {
+        let value = format!("<script>alert({n})");
+        assert!(html[..end].contains(&value), "value {n} missing:\n{html}");
+        assert!(
+            !html[end..].contains(&value),
+            "value {n} escaped the <style> element:\n{html}"
+        );
+    }
+    assert!(!html.contains("<!--<script>"), "{html}");
+    assert!(html.contains("color:#123456;"), "author CSS lost:\n{html}");
+    assert!(html.contains("<\\/style>"), "{html}");
+    assert!(html.contains("\\3C !--"), "{html}");
+}
+
+#[test]
+fn theme_palette_colours_cannot_break_out_of_wireframe_attributes() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wf.wcl");
+    write_fixture(
+        &src,
+        r##"
+theme evil {
+  palette dark { border = "#333\" onload=\"alert(1)"  fg = "#fff\"><script>alert(2)</script>" }
+}
+site { theme = :evil }
+page index {
+  diagram { width = 200  height = 60
+    wf_button "P" {}
+  }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let svg = &html[html.find("<svg").expect("diagram svg")..];
+    assert!(
+        !svg.contains("onload=\"alert(1)"),
+        "border broke out:\n{svg}"
+    );
+    assert!(!svg.contains("<script>alert(2)"), "fg broke out:\n{svg}");
+    assert!(svg.contains("&quot; onload=&quot;alert(1)"), "{svg}");
+}
+
+#[test]
 fn bare_document_without_site_is_unthemed() {
     // No `site` block ⇒ pages render bare, with no theme variable
     // declarations. Static syntax rules may reference variables because

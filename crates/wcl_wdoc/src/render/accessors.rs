@@ -519,6 +519,33 @@ fn decode_one_ref(s: &str) -> Option<(char, usize)> {
         .map(|(name, c)| (*c, 1 + name.len()))
 }
 
+/// Make CSS safe to place inside a `<style>` element without changing
+/// what it means. The element's text ends at the first `</style` in any
+/// case, so an author value carrying one would close it and let the rest
+/// run as markup; it becomes `<\/style`, which CSS reads as the same
+/// characters. `<!--` becomes `\3C !--` for the same reason.
+pub(crate) fn escape_style_text(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(i) = rest.find('<') {
+        out.push_str(&rest[..i]);
+        rest = &rest[i..];
+        let head = rest.get(..7).unwrap_or(rest);
+        if head.eq_ignore_ascii_case("</style") {
+            out.push_str("<\\/");
+            rest = &rest[2..];
+        } else if rest.starts_with("<!--") {
+            out.push_str("\\3C !--");
+            rest = &rest[4..];
+        } else {
+            out.push('<');
+            rest = &rest[1..];
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// Escape the five characters that would otherwise be read as markup.
 pub(crate) fn escape_html(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -683,6 +710,17 @@ mod tests {
         assert!(!url_allowed("data:text/html,x", UrlUse::Image));
         assert!(url_allowed("DATA:video/mp4;base64,AA", UrlUse::Video));
         assert!(!url_allowed("data:image/png;base64,AA", UrlUse::Video));
+    }
+
+    #[test]
+    fn style_text_cannot_close_its_element() {
+        assert_eq!(
+            escape_style_text("a{x:'</style><!--'} b{y:'</STYLE'}"),
+            "a{x:'<\\/style>\\3C !--'} b{y:'<\\/STYLE'}"
+        );
+        // Ordinary CSS, including a lone `<`, is untouched.
+        let css = ".a > .b { content: '<'; color: #fff; }";
+        assert_eq!(escape_style_text(css), css);
     }
 
     #[test]
