@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use tempfile::TempDir;
-use wcl_wdoc::{BuildError, build, take_render_warnings};
+use wcl_wdoc::{BuildError, PageSize, build, pdf, take_render_warnings};
 
 /// Build `body` (with the stdlib import prepended) as a one-file site and
 /// return the build result plus the output directory.
@@ -199,7 +199,10 @@ page index {
         html.contains("y=\"172.8\" width=\"92.80000000000001\" height=\"41.2\""),
         "{html}"
     );
-    assert!(html.contains("y=\"8\" width=\"92.80000000000001\" height=\"164.8\""), "{html}");
+    assert!(
+        html.contains("y=\"8\" width=\"92.80000000000001\" height=\"164.8\""),
+        "{html}"
+    );
     assert!(bar_heights(&html).iter().all(|h| *h >= 0.0));
 }
 
@@ -277,4 +280,22 @@ page index {
         panic!("build failed: {}", describe(&e));
     }
     assert!(read_index(tmp.path()).contains("wdoc-dopesheet"));
+}
+
+#[test]
+fn extreme_aspect_inline_math_does_not_stall_the_pdf() {
+    // The PDF reserves an inline object's width as placeholder spaces;
+    // a 10^8-em-wide equation asked for hundreds of millions of them.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("doc.wcl");
+    std::fs::write(
+        &src,
+        "import <wdoc.wcl>\npage index {\n  p <<'TEX'\nWide: $a\\hspace{99999999em}b$ end.\nTEX\n}\n",
+    )
+    .expect("write fixture");
+    let out = tmp.path().join("out");
+    assert!(
+        matches!(pdf(&src, &out, None, PageSize::A4), Ok(1)),
+        "pdf build failed"
+    );
 }

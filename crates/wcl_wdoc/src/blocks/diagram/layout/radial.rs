@@ -674,4 +674,3 @@ mod tests {
         assert_no_overlap(&nodes, &offsets);
     }
 }
-
