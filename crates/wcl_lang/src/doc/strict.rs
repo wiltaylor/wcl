@@ -167,7 +167,7 @@ impl Document {
     /// Strict-mode validation paired with a source when its provenance is
     /// known. Hosts should omit a snippet for `None` rather than attach the
     /// root document to a recursively-produced cross-file error.
-    pub fn schema_diagnostics(&self) -> Vec<(EvalError, Option<NamedSource<String>>)> {
+    pub fn schema_diagnostics(&self) -> Vec<(EvalError, Option<NamedSource<std::sync::Arc<str>>>)> {
         self.collect_schema_errors()
     }
 

@@ -73,6 +73,16 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Start lexing `src` at byte offset `pos`, so token spans are
+    /// offsets into all of `src`. The parser uses this to lex an
+    /// interpolation slot in place, within the outer source.
+    pub(crate) fn starting_at(src: &'a str, pos: usize) -> Self {
+        Self {
+            pos,
+            ..Self::new(src)
+        }
+    }
+
     /// Consume and return the next token, with any preceding trivia
     /// attached. Yields [`TokenKind::Eof`] at end of input, repeatedly.
     pub fn next_token(&mut self) -> Result<Token, LexError> {

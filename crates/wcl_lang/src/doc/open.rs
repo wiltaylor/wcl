@@ -101,7 +101,7 @@ impl Document {
             .map(|set| ItemCells::build(&ast::Item::SymbolSetDecl(set.clone()), None))
             .collect();
         Ok(Self {
-            src: NamedSource::new(name, source.to_string()),
+            src: NamedSource::new(name, std::sync::Arc::from(source)),
             ast,
             cells,
             file_ns: resolved.file_ns,
@@ -223,7 +223,7 @@ impl Document {
     }
 
     /// The root source text and name, as diagnostics render it.
-    pub fn source(&self) -> &NamedSource<String> {
+    pub fn source(&self) -> &NamedSource<std::sync::Arc<str>> {
         &self.src
     }
 

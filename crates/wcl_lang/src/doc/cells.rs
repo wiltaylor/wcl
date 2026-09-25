@@ -253,7 +253,7 @@ pub(crate) struct LoadedImport {
     /// raised against this file's spans can render their snippet against
     /// the correct source (a cross-file eval error otherwise renders
     /// against the root document's text — wrong offsets / `OutOfBounds`).
-    pub(crate) source: String,
+    pub(crate) source: std::sync::Arc<str>,
     /// Namespace the imported file declares.
     pub(crate) file_ns: Vec<String>,
     /// The imported file's top-level items.

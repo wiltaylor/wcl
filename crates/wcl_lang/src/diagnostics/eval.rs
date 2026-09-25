@@ -14,6 +14,8 @@
 
 #![allow(unused_assignments)] // miette/thiserror derive triggers spurious lints on variant fields
 
+use std::sync::Arc;
+
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
@@ -24,7 +26,7 @@ use super::{ArithmeticFault, SchemaViolationKind};
 pub struct SchemaDiagnosticSource {
     /// The name that was written.
     name: String,
-    text: String,
+    text: Arc<str>,
 }
 
 // Retained for callers that attach provenance directly to a cloned
@@ -34,7 +36,7 @@ pub struct SchemaDiagnosticSource {
 impl SchemaDiagnosticSource {
     /// Capture a `NamedSource` as owned name and text, so the
     /// provenance can outlive the borrow it was taken from.
-    fn from_named_source(source: NamedSource<String>) -> Self {
+    fn from_named_source(source: NamedSource<Arc<str>>) -> Self {
         Self {
             name: source.name().to_string(),
             text: source.inner().clone(),
@@ -42,7 +44,7 @@ impl SchemaDiagnosticSource {
     }
 
     /// Rebuild the `NamedSource` for rendering.
-    pub(crate) fn named_source(&self) -> NamedSource<String> {
+    pub(crate) fn named_source(&self) -> NamedSource<Arc<str>> {
         NamedSource::new(&self.name, self.text.clone())
     }
 }
@@ -465,7 +467,7 @@ impl EvalError {
     #[allow(dead_code)]
     /// Attach provenance to a schema violation so the diagnostic can
     /// render the offending source. A no-op on every other variant.
-    pub(crate) fn with_schema_source(self, source: NamedSource<String>) -> Self {
+    pub(crate) fn with_schema_source(self, source: NamedSource<Arc<str>>) -> Self {
         match self {
             Self::SchemaViolation {
                 kind,
@@ -488,7 +490,7 @@ impl EvalError {
 
     #[allow(dead_code)]
     /// The provenance attached by [`Self::with_schema_source`], if any.
-    pub(crate) fn schema_source(&self) -> Option<NamedSource<String>> {
+    pub(crate) fn schema_source(&self) -> Option<NamedSource<Arc<str>>> {
         match self {
             Self::SchemaViolation {
                 origin: Some(source),

@@ -33,7 +33,7 @@ impl Document {
         cells: &[ItemCells],
         file_ns: &[String],
         seen_imports: &mut HashSet<PathBuf>,
-        source: &NamedSource<String>,
+        source: &NamedSource<std::sync::Arc<str>>,
         out: &mut CollectedSchemaErrors,
     ) {
         for (item, cell) in items.iter().zip(cells) {
@@ -273,7 +273,7 @@ impl Document {
         position: &str,
         block_kind: Option<&str>,
         file_ns: &[String],
-        source: &NamedSource<String>,
+        source: &NamedSource<std::sync::Arc<str>>,
         out: &mut CollectedSchemaErrors,
     ) {
         let mut errors = Vec::new();

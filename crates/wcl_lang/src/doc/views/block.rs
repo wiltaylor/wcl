@@ -134,7 +134,7 @@ impl<'a> Block<'a> {
     /// block against the correct file's snippet (a cross-file span won't
     /// line up with the root source's text). Falls back to the root
     /// source for synthesised blocks not backed by on-disk AST.
-    pub fn named_source(&self) -> miette::NamedSource<String> {
+    pub fn named_source(&self) -> miette::NamedSource<std::sync::Arc<str>> {
         self.doc.named_source_for_block(self.ast)
     }
 

@@ -87,7 +87,7 @@ use scope::Scope;
 /// declarations — comes back as a borrowed view, not a copy.
 pub struct Document {
     /// The root source text and its name, for rendering diagnostics.
-    src: NamedSource<String>,
+    src: NamedSource<std::sync::Arc<str>>,
     /// The parsed root source.
     ast: ast::Source,
     /// Evaluation caches, shaped to mirror `ast.items`.
@@ -233,7 +233,7 @@ impl std::fmt::Debug for Document {
 
 /// Schema errors paired with the source each should be rendered
 /// against — `None` when the error carries no file provenance.
-type CollectedSchemaErrors = Vec<(EvalError, Option<NamedSource<String>>)>;
+type CollectedSchemaErrors = Vec<(EvalError, Option<NamedSource<std::sync::Arc<str>>>)>;
 
 /// A symbol lookup result that knows which source it came from.
 /// Exposed so the LSP can build cross-file `Location`s for

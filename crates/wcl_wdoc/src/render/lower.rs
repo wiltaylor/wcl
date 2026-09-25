@@ -32,7 +32,7 @@ thread_local! {
     /// block. First error wins; rendering is single-threaded per pass, so
     /// a thread-local is a safe document-scoped sink. Use
     /// [`scoped_eval_errors`] to bound a pass and collect what it caught.
-    static LOWER_EVAL_ERR: RefCell<Option<(EvalError, NamedSource<String>)>> =
+    static LOWER_EVAL_ERR: RefCell<Option<(EvalError, NamedSource<std::sync::Arc<str>>)>> =
         const { RefCell::new(None) };
 
     /// First edge-routing failure recorded during the current render pass.
@@ -194,7 +194,7 @@ pub(crate) fn record_lower_error(block: &Block<'_>, err: EvalError) {
 /// compose.
 pub(crate) fn scoped_eval_errors<T>(
     f: impl FnOnce() -> T,
-) -> (T, Option<(EvalError, NamedSource<String>)>) {
+) -> (T, Option<(EvalError, NamedSource<std::sync::Arc<str>>)>) {
     let outer = LOWER_EVAL_ERR.with(|slot| slot.borrow_mut().take());
     let result = f();
     let caught = LOWER_EVAL_ERR.with(|slot| slot.borrow_mut().take());

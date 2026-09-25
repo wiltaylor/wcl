@@ -2009,3 +2009,94 @@ fn parse_else_binds_to_the_innermost_if() {
         "the inner if owns the final else",
     );
 }
+
+// ---- interpolation slot spans ------------------------------------
+
+/// The primary label's offset and length, the rendered source text, and
+/// the message of a syntax error.
+fn syntax_err_parts(err: ParseError) -> (usize, usize, String, String) {
+    match err {
+        ParseError::Syntax(e) => (
+            e.span.offset(),
+            e.span.len(),
+            e.src.inner().to_string(),
+            e.message,
+        ),
+        other => panic!("expected ParseError::Syntax, got: {other:?}"),
+    }
+}
+
+#[test]
+fn interpolation_slot_exprs_carry_outer_source_spans() {
+    let src = "a = 1\nv = $\"v ${x} and ${yy + 1}\"\n";
+    let items = parse(src).items;
+    let Expr::InterpolatedString { parts, .. } = &field(&items, "v").expr else {
+        panic!("expected an interpolated string");
+    };
+    let slots: Vec<&Expr> = parts
+        .iter()
+        .filter_map(|p| match p {
+            crate::ast::TemplatePart::Expr(e) => Some(&**e),
+            crate::ast::TemplatePart::Literal(_) => None,
+        })
+        .collect();
+    let Expr::Identifier(name, span) = slots[0] else {
+        panic!("slot 0: {:?}", slots[0]);
+    };
+    assert_eq!(name, "x");
+    assert_eq!(span.start, src.find("${x}").unwrap() + 2);
+    assert_eq!(&src[span.start..span.end], "x");
+    let Expr::Binary { lhs, span, .. } = slots[1] else {
+        panic!("slot 1: {:?}", slots[1]);
+    };
+    assert_eq!(&src[span.start..span.end], "yy + 1");
+    let Expr::Identifier(_, lhs_span) = &**lhs else {
+        panic!("lhs: {lhs:?}");
+    };
+    assert_eq!(&src[lhs_span.start..lhs_span.end], "yy");
+}
+
+#[test]
+fn interpolation_slot_error_points_into_outer_source() {
+    let src = "a = 1\nv = $\"v ${a +} w\"\n";
+    let (offset, _, text, message) = syntax_err_parts(parse_err(src));
+    assert!(message.starts_with("in interpolation slot:"), "{message}");
+    // The slot's text ends at its `}`: the error sits there, in the
+    // outer file, and renders against the whole outer source.
+    assert_eq!(offset, src.find("+}").unwrap() + 1);
+    assert_eq!(text, src);
+}
+
+#[test]
+fn interpolation_slot_lex_error_points_into_outer_source() {
+    let src = "a = 1\nv = $\"v ${a ^ 1}\"\n";
+    let (offset, len, text, message) = syntax_err_parts(parse_err(src));
+    assert!(message.starts_with("in interpolation slot:"), "{message}");
+    assert_eq!((offset, len), (src.find('^').unwrap(), 1));
+    assert_eq!(text, src);
+}
+
+#[test]
+fn interpolation_slot_trailing_tokens_label_the_slot() {
+    let src = "v = $\"${a b}\"\n";
+    let (offset, len, _, message) = syntax_err_parts(parse_err(src));
+    assert!(message.contains("unexpected token"), "{message}");
+    assert_eq!((offset, len), (src.find("${").unwrap(), "${a b}".len()));
+}
+
+#[test]
+fn nested_interpolation_slot_error_points_into_outer_source() {
+    let src = "v = $\"${ $\"${a +}\" }\"\n";
+    let (offset, _, text, message) = syntax_err_parts(parse_err(src));
+    assert!(message.starts_with("in interpolation slot:"), "{message}");
+    assert_eq!(offset, src.find("+}").unwrap() + 1);
+    assert_eq!(text, src);
+}
+
+#[test]
+fn heredoc_interpolation_slot_error_points_into_outer_source() {
+    let src = "a = 1\nv = $<<EOT\n  line ${a +}\n  EOT\n";
+    let (offset, _, text, _) = syntax_err_parts(parse_err(src));
+    assert_eq!(offset, src.find("+}").unwrap() + 1);
+    assert_eq!(text, src);
+}
