@@ -300,7 +300,9 @@ panic("invariant violated")   // abort with an unrecoverable failure → (aborts
   `split`, `chars`, `concat`, `join`, `replace`, `format`, `pad_start`, `pad_end` and `repeat`
   size their result first and fail past it — `'range': output exceeds the 1048576-element limit`,
   `'pad_start': output exceeds the 64 MiB limit` — instead of allocating. `range(0, 1048576)` is
-  the largest range.
+  the largest range. An interpolated string `$"…"` obeys the same 64 MiB cap
+  (`'interpolation': output exceeds the 64 MiB limit`), so a `fn` recursing on `$"${s}${s}"`
+  errors instead of exhausting memory. `+` is not defined on strings or lists at all.
 - **`len` counts characters, not bytes**, for a string.
 - **`at` errors on an out-of-range or negative index.** `slice` reads a negative index from the
   end (`-1` is the last element), then clamps its bounds instead of erroring.

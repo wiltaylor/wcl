@@ -35,6 +35,8 @@ mod lexer;
 mod numeric;
 /// The recursive-descent parser: tokens in, syntax tree out.
 mod parser;
+/// The remaining-stack guard under the depth caps.
+mod stack;
 /// The name index built during parsing.
 mod symbols;
 /// Runtime values produced by evaluation. The types that *describe*
@@ -48,10 +50,10 @@ pub use diagnostics::{
 pub use diagnostics::{Profile, ProfileKey, ProfileNode};
 pub use doc::{
     Block, ChildKind, Connection, ConnectionDecl, DataKind, DataRef, DeclName, DeclaresKind,
-    Decorator, Document, Field, FieldShape, FileLoader, InterfaceDecl, NamedArg, Registry,
-    ResolvedType, RowView, SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit, SymbolSetDecl, TableView,
-    TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
-    VariantBodyView, disk_loader, overlay_loader, system_import_key,
+    Decorator, Document, Field, FieldShape, FileLoader, InterfaceDecl, MAX_EXPANDED_BLOCKS,
+    NamedArg, Registry, ResolvedType, RowView, SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit,
+    SymbolSetDecl, TableView, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView,
+    UseFormView, UseItem, VariantBodyView, disk_loader, overlay_loader, system_import_key,
 };
 pub use edit::{PartialParse, parse_expr, parse_for_edit, parse_for_edit_recovering};
 pub use environment::{

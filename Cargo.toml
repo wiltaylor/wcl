@@ -40,6 +40,8 @@ serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 insta = "1"
 proptest = "1"
+# The remaining-stack guard under wcl_lang's evaluator and parser.
+stacker = "0.1"
 
 # Documentation coverage is enabled workspace-wide but NOT yet gating: the
 # backlog when it was switched on was ~2550 undocumented items (wcl_lang 1409,

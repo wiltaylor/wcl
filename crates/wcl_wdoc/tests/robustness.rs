@@ -307,3 +307,36 @@ fn extreme_aspect_inline_math_does_not_stall_the_pdf() {
         "pdf build failed"
     );
 }
+
+#[test]
+fn self_referential_component_that_fans_out_is_a_build_error() {
+    // A component instantiating itself twice stayed inside the 32-level
+    // depth cap while generating 2^32 blocks, so the build never ended.
+    // The render path now counts every block one expansion tree
+    // generates against the language's 100,000-block limit.
+    let (result, _tmp) = build_doc(
+        r##"
+wdoc_component fan {
+  wdoc_body {
+    p "level"
+    fan { }
+    fan { }
+  }
+}
+page index {
+  fan { }
+}
+"##,
+    );
+    match result {
+        Err(BuildError::Eval(report)) => {
+            let report = format!("{report:?}");
+            assert!(
+                report.contains("wcl::eval::expansion_limit") && report.contains("100000"),
+                "{report}"
+            );
+        }
+        Ok(_) => panic!("fan-out build succeeded"),
+        Err(e) => panic!("wrong error: {}", describe(&e)),
+    }
+}

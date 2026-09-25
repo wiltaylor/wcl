@@ -132,7 +132,10 @@ impl<'a> Parser<'a> {
     /// counter on the error path is unnecessary.
     pub(super) fn enter_recursion(&mut self) -> Result<(), ParseError> {
         self.recursion_depth += 1;
-        if self.recursion_depth > MAX_PARSE_DEPTH {
+        // The stack can run out before the count does — an unoptimised
+        // build's frames are several times larger — and that reports as
+        // the same limit rather than aborting.
+        if self.recursion_depth > MAX_PARSE_DEPTH || crate::stack::is_low() {
             let span = self.peek().map(|t| t.span).unwrap_or(Span::new(0, 0));
             return Err(self.err(
                 format!("nesting too deep (more than {MAX_PARSE_DEPTH} levels)"),

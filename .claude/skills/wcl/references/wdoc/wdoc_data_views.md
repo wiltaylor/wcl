@@ -107,6 +107,17 @@ one. There is no component vocabulary inside the language — see
 A `wdoc_body` is `@schemaless`, because a template's blocks only have meaning once expanded at
 an instance site (a component used inside a diagram legitimately holds `SvgBlock`s).
 
+### Expansion limits
+
+- **32 levels deep.** A component whose body instantiates itself once renders a depth marker
+  in place of content past 32 levels; the build still succeeds.
+- **100,000 generated blocks per expansion tree** — everything one authored instance or
+  repeater generates, nested components and repeaters included. Past it the build fails (exit 3)
+  with `wcl::eval::expansion_limit`: ``expanding the `@contextual` block 'fan' exceeded the
+  limit of 100000 generated blocks``. A body that instantiates itself twice doubles per level
+  and hits this, not the depth cap; so does a `wdoc_repeater` over 1,000 items nested in
+  another over 1,000.
+
 ## Repeating over data — `wdoc_repeater`
 
 ```wcl

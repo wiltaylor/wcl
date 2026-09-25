@@ -104,3 +104,50 @@ fn duplicate_fn_and_field_names_collide() {
         "fn item and field sharing a name is a duplicate declaration"
     );
 }
+
+#[test]
+fn closure_recursing_through_a_builtin_does_constant_work_per_level() {
+    // Regression: a call pushed its parameters onto the caller's locals,
+    // and a closure literal captures every local in scope, so a closure
+    // recursing back through its enclosing `fn` doubled its captures at
+    // every level — `down(26)` took about a minute. A call now sees only
+    // its own captures and parameters. 99 levels are 198 calls, just
+    // inside the 200-level cap.
+    let src = "fn down(n: i64) -> i64 \
+               if n <= 0 { 0 } else { sum(map([n - 1], fn(x: i64) -> i64 down(x))) }\n\
+               @schemaless x = down(99)\n";
+    let started = std::time::Instant::now();
+    let value = std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || {
+            let doc = Document::open(src, "limits").expect("parses");
+            doc.get("x").expect("field x").value()
+        })
+        .expect("spawn")
+        .join()
+        .expect("no panic")
+        .expect("evaluates");
+    assert_eq!(value, Value::I64(0));
+    // Exponential work would not finish at all; linear work is instant
+    // even unoptimised.
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "took {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn a_call_sees_its_captures_not_the_callers_locals() {
+    // Captures are lexical: a `fn` reads the locals where its literal
+    // was written, never the ones in force where it is called.
+    let src = "fn get_y() -> i64 y\n\
+               @schemaless x = { let y = 5; get_y() }\n\
+               @schemaless z = { let y = 1; let f = fn() -> i64 y; { let y = 2; f() } }\n";
+    let doc = Document::open(src, "limits").expect("parses");
+    assert!(doc.get("x").expect("field x").value().is_err());
+    assert_eq!(
+        doc.get("z").expect("field z").value().expect("evaluates"),
+        Value::I64(1)
+    );
+}

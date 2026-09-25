@@ -391,6 +391,15 @@ impl Document {
         if let Some(v) = Self::eval_value_literal(expr) {
             return Ok(v);
         }
+        // The counted caps can compound past what the thread's stack
+        // holds (a deeply nested `fn` body, called deep); running low
+        // reports as the depth limit rather than aborting.
+        if crate::stack::is_low() {
+            return Err(EvalError::eval_depth_exceeded(
+                MAX_EVAL_DEPTH,
+                span_of(expr),
+            ));
+        }
         match expr {
             E::InterpolatedString {
                 encoding,
@@ -487,13 +496,25 @@ impl Document {
         ctx: &mut EvalCtx<'a>,
     ) -> Result<Value, EvalError> {
         use crate::lexer::StringEncoding as Enc;
+        // The result obeys the builtins' output-size limit: a `fn` that
+        // recurses on `$"${s}${s}"` doubles a string per call, and would
+        // otherwise run the host out of memory within a few dozen calls.
+        let append = |joined: &mut String, piece: &str| -> Result<(), EvalError> {
+            crate::functions::check_output_bytes(
+                "interpolation",
+                joined.len().checked_add(piece.len()),
+            )
+            .map_err(|msg| EvalError::builtin_type("interpolation", msg, span))?;
+            joined.push_str(piece);
+            Ok(())
+        };
         let mut joined = String::new();
         for part in parts {
             match part {
-                ast::TemplatePart::Literal(s) => joined.push_str(s),
+                ast::TemplatePart::Literal(s) => append(&mut joined, s)?,
                 ast::TemplatePart::Expr(e) => {
                     let v = self.eval_in(e, ctx)?;
-                    joined.push_str(&crate::functions::format_value(&v));
+                    append(&mut joined, &crate::functions::format_value(&v))?;
                 }
             }
         }
@@ -888,15 +909,13 @@ impl Document {
         Err(EvalError::match_no_arm(span))
     }
 
-    /// Apply a `Value::Function` to the supplied argument values. Pushes
-    /// the function's parameters onto `ctx.locals`, evaluates the body in
-    /// the caller's context, and pops the frame regardless of outcome.
+    /// Apply a `Value::Function` to the supplied argument values. Swaps
+    /// `ctx.locals` for the function's captures and parameters, evaluates
+    /// the body, and restores the caller's locals regardless of outcome.
     ///
-    /// Closure semantics: the body sees its own parameters plus whatever
-    /// the caller's `ctx` has on its `locals` stack and `scope` chain.
-    /// There is no capture of the *definition-site* scope in this pass,
-    /// so a function value passed across blocks observes the *call*
-    /// site's lexical environment, not its origin.
+    /// Closure semantics: the body sees the locals captured where the
+    /// literal was written and its own parameters; document-scope names
+    /// resolve through the caller's `scope` chain at call time.
     pub(crate) fn invoke_fn_value<'a>(
         &'a self,
         f: &FnValue,
@@ -912,19 +931,24 @@ impl Document {
         // recursion through a `fn` can't blow the Rust stack.
         let _call = eval_stack::enter(FrameKey::Call)
             .map_err(|_| EvalError::call_depth_exceeded(MAX_EVAL_DEPTH, span))?;
-        let mut frame = ctx.push_frame();
-        // Lexical captures first — later pushes (params, nested let
-        // bindings) shadow them on right-to-left lookup.
-        for (name, value) in &f.captured {
-            frame.locals.push((name.clone(), value.clone()));
-        }
+        // The body's locals are its lexical captures, then its parameters
+        // — later entries shadow earlier ones on right-to-left lookup.
+        // None of the caller's locals: were they visible, every closure
+        // literal the body evaluates would capture them as well, so a
+        // closure recursing back through its enclosing `fn` would double
+        // its captures, and the work of each call, at every level.
+        let mut locals = Vec::with_capacity(f.captured.len() + args.len());
+        locals.extend(f.captured.iter().cloned());
         for (param, value) in f.params().iter().zip(args.iter()) {
             // Coerce a bare-record argument to the parameter's declared
             // union variant by shape; all other args pass through.
             let value = super::types::coerce_value_to_type(self, value.clone(), param.ty(), span)?;
-            frame.locals.push((param.name().to_string(), value));
+            locals.push((param.name().to_string(), value));
         }
-        self.eval_in(&f.body, &mut frame)
+        let caller_locals = std::mem::replace(&mut ctx.locals, locals);
+        let result = self.eval_in(&f.body, ctx);
+        ctx.locals = caller_locals;
+        result
     }
 
     /// Construct a [`Value::Variant`] from a parsed `Type::Variant`

@@ -291,6 +291,8 @@ CONSOLE
 
   p "A chain that never loops back is not a cycle, but its length is capped too. Every field forced to answer another is one level deeper, and so is every `let` and every `fn` call. Evaluation nests at most **200** levels deep, which keeps it inside a small thread stack such as an editor's language server. Give a block `a0 = a1 + 1`, `a1 = a2 + 1` and so on down to `a5000 = 0`, and `wcl get chain.wcl cfg.a0` exits 3 with `evaluation depth limit exceeded (max 200)`, code `wcl::eval::depth_exceeded`. Reading `cfg.a4850` from the same file answers `150`, because that chain is short enough. The limit applies to how deep the evaluation nests, not to how big the document is. A thousand sibling fields that each read one constant are only two levels deep."
 
+  p "The count is not the only guard. Evaluation also watches the stack of the thread doing the work, and when that runs low it stops with the same `wcl::eval::depth_exceeded` or `wcl::eval::call_depth_exceeded` diagnostic, even short of 200. A function whose body is a very deep expression, recursing close to the limit, can reach it that way on a small thread such as a language server's. The process never crashes on a deep document. It reports the depth error instead."
+
   h2 "How a name resolves"
 
   p "A bare identifier in an expression resolves first against its **lexical** position, the chain of blocks it is written inside, and then against the document root. The walk is innermost first, and at each level it tries the same things in the same order:"
