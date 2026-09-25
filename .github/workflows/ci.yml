@@ -256,7 +256,8 @@ jobs:
             bin: wcl
             suffix: linux-x86_64
           # Statically linked, for musl distributions (Alpine) and anywhere
-          # the glibc build is too new.
+          # the glibc build is too new. The tree has no C code, so rustup's
+          # bundled musl target needs no musl-tools.
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             bin: wcl
@@ -277,8 +278,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install && rustup target add ${{ matrix.target }}
-      - if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - uses: Swatinem/rust-cache@v2
         with:
           key: cli-${{ matrix.target }}
