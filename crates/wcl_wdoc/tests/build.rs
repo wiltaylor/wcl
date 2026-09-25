@@ -4206,6 +4206,133 @@ fn build_renders_link_inline() {
 }
 
 #[test]
+fn build_drops_links_with_disallowed_schemes() {
+    // `javascript:` / `data:` targets never reach an href, however they are
+    // disguised; the text stays and each drop is a render warning.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = write_inline_fixture(&tmp, "[a](javascript:void)");
+    let out = TempDir::new().expect("mkdir out");
+    // `javascript:void` has the `site:page` shape, so it is a link error
+    // (an unknown site) rather than a dropped URL.
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadLink(msgs)) => assert!(
+            msgs.iter().any(|m| m.contains("unknown site 'javascript'")),
+            "{msgs:?}"
+        ),
+        _ => panic!("expected a BadLink error for `javascript:void`"),
+    }
+
+    let src = write_inline_fixture(
+        &tmp,
+        "[b](JaVaScRiPt:x.y) [c](\\tjava\\tscript:x.y) [d](java&#115;cript:x.y) \
+         [e](data:text/html,x) [f](mailto:me@x.y) [g](#top)",
+    );
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let lower = html.to_ascii_lowercase();
+    assert!(
+        !lower.contains("script:x.y"),
+        "script href emitted:\n{html}"
+    );
+    assert!(
+        !html.contains("data:text/html"),
+        "data href emitted:\n{html}"
+    );
+    for text in ["b", "c", "d", "e"] {
+        assert!(
+            html.contains(&format!("<a class=\"link\">{text}</a>")),
+            "link {text} should keep its text without an href:\n{html}"
+        );
+    }
+    assert!(html.contains("href=\"mailto:me@x.y\""), "{html}");
+    assert!(html.contains("href=\"#top\""), "{html}");
+    let warnings = wcl_wdoc::take_render_warnings();
+    assert_eq!(
+        warnings
+            .iter()
+            .filter(|w| w.contains("disallowed URL scheme"))
+            .count(),
+        4,
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn build_drops_diagram_shape_links_with_disallowed_schemes() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("linked.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  diagram { width = 200  height = 100\n    rect { x = 10.0  y = 10.0  width = 80.0  height = 40.0  link = \" JaVaScRiPt:alert(1)\" }\n  }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(!html.contains("alert(1)"), "script link emitted:\n{html}");
+    assert!(
+        html.contains("<a><rect"),
+        "shape should stay, unlinked:\n{html}"
+    );
+    let warnings = wcl_wdoc::take_render_warnings();
+    assert!(
+        warnings.iter().any(|w| w.contains("'javascript:'")),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn element_attrs_reject_bad_names_and_script_urls() {
+    // An attribute name is emitted unescaped, so one that is not
+    // `[A-Za-z0-9_:-]+` is dropped; URL attributes share the link allowlist.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("attrs.wcl");
+    write_fixture(
+        &src,
+        r##"
+@block("probe")
+type Probe extends ContentBlock {
+  lower = fn(p: Probe) -> list<Html> [
+    Html::Element {
+      tag: "a",
+      attrs: [
+        ["x onmouseover=alert(1)", "v"],
+        ["x><script>alert(2)</script", "v"],
+        ["data-ok_1:x", "kept"],
+        ["href", "javascript:alert(3)"],
+      ],
+      children: [ Html::Raw { html: "x" } ],
+    },
+    Html::Element { tag: "img", attrs: [["src", "data:image/png;base64,AA"]], children: [] },
+  ]
+}
+site { title = "T" }
+page index { probe {} }
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(!html.contains("onmouseover"), "{html}");
+    assert!(!html.contains("<script>alert(2)"), "{html}");
+    assert!(!html.contains("alert(3)"), "{html}");
+    assert!(html.contains("<a data-ok_1:x=\"kept\">x</a>"), "{html}");
+    assert!(html.contains("src=\"data:image/png;base64,AA\""), "{html}");
+    let warnings = wcl_wdoc::take_render_warnings();
+    assert_eq!(
+        warnings
+            .iter()
+            .filter(|w| w.contains("attribute name"))
+            .count(),
+        2,
+        "{warnings:?}"
+    );
+    assert!(
+        warnings.iter().any(|w| w.contains("element <a> href")),
+        "{warnings:?}"
+    );
+}
+
+#[test]
 fn build_renders_recursive_inline() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = write_inline_fixture(&tmp, "**bold _and italic_**");
@@ -8559,6 +8686,35 @@ fn build_video(src: &str) -> (String, TempDir) {
     build_ok(&file, out.path());
     let index = std::fs::read_to_string(out.path().join("index.html")).expect("read index.html");
     (index, out)
+}
+
+#[test]
+fn build_video_drops_disallowed_source_and_poster() {
+    // The player turns `data-src` into a <video>/<iframe> src, so a script
+    // source never reaches the page; a bad poster falls back to none.
+    let src = r#"
+page index {
+  video "data:text/html,<script>alert(1)</script>" {}
+  video "https://example.com/embed/x" { poster = "javascript:alert(2)" }
+}
+"#;
+    let (index, _out) = build_video(src);
+    assert!(!index.contains("alert(1)"), "{index}");
+    assert!(!index.contains("alert(2)"), "{index}");
+    assert!(
+        index.contains("data-kind=\"generic\" data-src=\"https://example.com/embed/x\""),
+        "{index}"
+    );
+    assert!(index.contains("wdoc-video-placeholder"), "{index}");
+    let warnings = wcl_wdoc::take_render_warnings();
+    assert!(
+        warnings.iter().any(|w| w.starts_with("video source")),
+        "{warnings:?}"
+    );
+    assert!(
+        warnings.iter().any(|w| w.starts_with("video poster")),
+        "{warnings:?}"
+    );
 }
 
 #[test]

@@ -382,6 +382,143 @@ pub(crate) fn gather_inline_text(children: &[Value]) -> String {
     s
 }
 
+/// Whether `name` may be emitted as an attribute name: one or more of
+/// `A-Z a-z 0-9 _ : -`. Escaping cannot make a bad name safe — a space,
+/// `=` or `>` in it would start new markup — so a failing name is dropped.
+pub(crate) fn is_valid_attr_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '-'))
+}
+
+/// What a URL is emitted for, which decides whether a `data:` URI passes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UrlUse {
+    /// A link target (`<a href>`): no `data:` URIs.
+    Link,
+    /// An image source: `data:image/*` is allowed.
+    Image,
+    /// A video source: `data:video/*` is allowed.
+    Video,
+}
+
+/// The URL schemes any author URL may carry.
+pub(crate) const ALLOWED_URL_SCHEMES: [&str; 4] = ["http", "https", "mailto", "tel"];
+
+/// The lower-cased scheme of `url` as a browser would parse it, or `None`
+/// for a relative URL (a path, `./x`, `#frag`, `//host`). Character
+/// references are decoded, surrounding spaces and control characters
+/// trimmed, and tabs / newlines removed first, so ` JaVa&#115;cript:` and
+/// `java\tscript:` are both read as `javascript`. Also returns the text
+/// after the colon.
+pub(crate) fn url_scheme(url: &str) -> Option<(String, String)> {
+    let decoded = decode_char_refs(url);
+    let cleaned: String = decoded
+        .trim_matches(|c: char| c <= ' ')
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect();
+    let end = cleaned.find([':', '/', '?', '#'])?;
+    let scheme = &cleaned[..end];
+    let starts_alpha = scheme.starts_with(|c: char| c.is_ascii_alphabetic());
+    let valid = scheme
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    if !cleaned[end..].starts_with(':') || !starts_alpha || !valid {
+        return None;
+    }
+    Some((scheme.to_ascii_lowercase(), cleaned[end + 1..].to_string()))
+}
+
+/// Whether an author URL is safe to emit for `usage`: relative, or an
+/// allowed scheme (`http`, `https`, `mailto`, `tel`), or — for images and
+/// videos only — a `data:` URI of the matching media type.
+pub(crate) fn url_allowed(url: &str, usage: UrlUse) -> bool {
+    let Some((scheme, rest)) = url_scheme(url) else {
+        return true;
+    };
+    if ALLOWED_URL_SCHEMES.contains(&scheme.as_str()) {
+        return true;
+    }
+    let media = match usage {
+        UrlUse::Link => return false,
+        UrlUse::Image => "image/",
+        UrlUse::Video => "video/",
+    };
+    scheme == "data" && rest.trim_start().to_ascii_lowercase().starts_with(media)
+}
+
+/// The render warning for a URL [`url_allowed`] refused, naming what was
+/// dropped so the author can find it.
+pub(crate) fn disallowed_url_warning(what: &str, url: &str) -> String {
+    let scheme = url_scheme(url).map_or_else(String::new, |(s, _)| s);
+    format!(
+        "{what} '{url}' uses the disallowed URL scheme '{scheme}:' and was dropped \
+         (allowed: http, https, mailto, tel, relative paths, #fragments; \
+         data:image/* for images, data:video/* for videos)"
+    )
+}
+
+/// Decode HTML character references (`&#106;`, `&#x6A;`, and the named
+/// ones that spell URL punctuation) so a scheme cannot hide behind them.
+/// Anything unrecognised is kept as written.
+fn decode_char_refs(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find('&') {
+        out.push_str(&rest[..i]);
+        rest = &rest[i..];
+        match decode_one_ref(rest) {
+            Some((c, used)) => {
+                out.push(c);
+                rest = &rest[used..];
+            }
+            None => {
+                out.push('&');
+                rest = &rest[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Decode the character reference at the start of `s` (which begins with
+/// `&`), returning the character and the bytes it spanned.
+fn decode_one_ref(s: &str) -> Option<(char, usize)> {
+    let body = &s[1..];
+    if let Some(num) = body.strip_prefix('#') {
+        let (radix, digits, lead) = match num.strip_prefix(['x', 'X']) {
+            Some(hex) => (16, hex, 3),
+            None => (10, num, 2),
+        };
+        let len = digits
+            .find(|c: char| !c.is_digit(radix))
+            .unwrap_or(digits.len());
+        if len == 0 {
+            return None;
+        }
+        let code = u32::from_str_radix(&digits[..len], radix).ok()?;
+        let semi = usize::from(digits[len..].starts_with(';'));
+        return Some((char::from_u32(code)?, lead + len + semi));
+    }
+    const NAMED: [(&str, char); 8] = [
+        ("colon;", ':'),
+        ("Tab;", '\t'),
+        ("NewLine;", '\n'),
+        ("sol;", '/'),
+        ("amp;", '&'),
+        ("num;", '#'),
+        ("quest;", '?'),
+        ("period;", '.'),
+    ];
+    NAMED
+        .iter()
+        .find(|(name, _)| body.starts_with(name))
+        .map(|(name, c)| (*c, 1 + name.len()))
+}
+
 /// Escape the five characters that would otherwise be read as markup.
 pub(crate) fn escape_html(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -506,5 +643,55 @@ mod tests {
             classes_attr_from_names(&["a".into(), "b".into()]),
             " class=\"a b\""
         );
+    }
+
+    #[test]
+    fn url_allowed_sees_through_case_whitespace_and_entities() {
+        for bad in [
+            "javascript:alert(1)",
+            " JaVaScRiPt:alert(1)",
+            "\tjava\tscript:x",
+            "java\nscript:x",
+            "\u{1}javascript:x",
+            "java&#115;cript:x",
+            "&#x6A;avascript:x",
+            "javascript&colon;x",
+            "vbscript:x",
+            "data:text/html,x",
+            "file:///etc/passwd",
+        ] {
+            assert!(!url_allowed(bad, UrlUse::Link), "{bad:?} allowed");
+        }
+        for good in [
+            "https://e.com",
+            "HTTP://e.com",
+            "mailto:a@b.c",
+            "tel:+1",
+            "page.html",
+            "./x/y.png",
+            "../up",
+            "/abs",
+            "//cdn.e.com/x",
+            "#frag",
+            "a/b:c",
+            "?q=1:2",
+        ] {
+            assert!(url_allowed(good, UrlUse::Link), "{good:?} refused");
+        }
+        assert!(url_allowed("data:image/png;base64,AA", UrlUse::Image));
+        assert!(!url_allowed("data:image/png;base64,AA", UrlUse::Link));
+        assert!(!url_allowed("data:text/html,x", UrlUse::Image));
+        assert!(url_allowed("DATA:video/mp4;base64,AA", UrlUse::Video));
+        assert!(!url_allowed("data:image/png;base64,AA", UrlUse::Video));
+    }
+
+    #[test]
+    fn attr_names_are_restricted() {
+        for good in ["href", "data-x", "xlink:href", "aria_label", "x1"] {
+            assert!(is_valid_attr_name(good), "{good}");
+        }
+        for bad in ["", "a b", "a>b", "a=b", "a\"", "on/x", "é"] {
+            assert!(!is_valid_attr_name(bad), "{bad}");
+        }
     }
 }

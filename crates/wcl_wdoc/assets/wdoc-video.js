@@ -18,6 +18,9 @@
     var src = box.getAttribute("data-src");
     if (!src) return;
     var kind = box.getAttribute("data-kind") || "generic";
+    // Only web URLs become an <iframe>; the build never emits anything
+    // else here, and a `javascript:` src must not run if one slips in.
+    if (kind !== "local" && !/^https?:\/\//i.test(src)) return;
     var title = box.getAttribute("aria-label") || "";
 
     var el;

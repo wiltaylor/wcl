@@ -1506,6 +1506,30 @@ pub(crate) fn render_element_payload(
                     pair.get(1).and_then(value_as_str),
                 )
             {
+                // Escaping protects the value but not the name: a space or
+                // `>` in it would open new markup, so a bad name is dropped.
+                if !is_valid_attr_name(&name) {
+                    crate::render::record_render_warning(format!(
+                        "element <{tag}> attribute name '{name}' is invalid and was dropped \
+                         (names use only A-Z, a-z, 0-9, _, : and -)"
+                    ));
+                    continue;
+                }
+                // URL-valued attributes get the same scheme allowlist as links.
+                let url_use = match name.to_ascii_lowercase().as_str() {
+                    "href" | "xlink:href" | "action" | "formaction" => Some(UrlUse::Link),
+                    "src" | "poster" => Some(UrlUse::Image),
+                    _ => None,
+                };
+                if let Some(url_use) = url_use
+                    && !url_allowed(&value, url_use)
+                {
+                    crate::render::record_render_warning(disallowed_url_warning(
+                        &format!("element <{tag}> {name}"),
+                        &value,
+                    ));
+                    continue;
+                }
                 append_attr(&mut out, &name, Some(&value));
             }
         }
