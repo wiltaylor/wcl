@@ -186,7 +186,7 @@ mod tests {
             "type Widget {\n  size: i64\n}\n".to_string(),
         );
         let hits = workspace_symbols(
-            &Ctx::with_buffers(Default::default(), buffers),
+            &Ctx::with_buffers(Default::default(), buffers, crate::host::wdoc()),
             "Widg",
             None,
             None,
