@@ -31,6 +31,12 @@ test = false
 doc = false
 
 [[bin]]
+name = "eval_fields"
+path = "fuzz_targets/eval_fields.rs"
+test = false
+doc = false
+
+[[bin]]
 name = "format_round_trip"
 path = "fuzz_targets/format_round_trip.rs"
 test = false

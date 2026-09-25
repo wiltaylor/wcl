@@ -1,0 +1,160 @@
+namespace company
+
+use company.utils.Point as P
+use company.shapes.{Circle, Square as Sq}
+use company.utils
+
+# Exercises every typed literal supported by WCL today.
+#
+# Every top-level value below is `@schemaless` because this fixture
+# is a syntax showcase, not a configuration with a real schema.
+
+# Defaults
+@schemaless port  = 8080
+@schemaless ratio_default = 0.5
+
+# Signed integers
+@schemaless small = -120i8
+@schemaless mid16 = -1_000i16
+@schemaless mid32 = 100_000i32
+@schemaless big64 = 9_000_000_000_000i64
+@schemaless huge  = 170_141_183_460_469_231_731_687_303_715_884_105_727i128
+@schemaless psize = 16isize
+
+# Unsigned integers
+@schemaless byte  = 200u8
+@schemaless u16v  = 60_000u16
+@schemaless u32v  = 4_000_000_000u32
+@schemaless u64v  = 18_000_000_000_000_000_000u64
+@schemaless u128v = 340_282_366_920_938_463_463_374_607_431_768_211_455u128
+@schemaless usz   = 16usize
+
+# Bases (no suffix defaults to i64)
+@schemaless mask  = 0xFFu32
+@schemaless flags = 0b1010_1100u8
+@schemaless mode  = 0o755u16
+
+# Floats
+@schemaless ratio = 1.5f32
+@schemaless fmath = 2.0e-3
+
+# Strings
+@schemaless greet   = "hello"
+@schemaless banner  = utf8"hi"
+@schemaless name    = ascii"alpha"
+@schemaless hello16 = utf16"hello"
+@schemaless hello32 = utf32"hello"
+
+# Type declarations
+type utils.Point { x: f64 y: f64 }
+type utils.Address { street: utf8 city: utf8 }
+
+type shapes.Circle { center: P radius: f64 }
+type shapes.Square { center: P side: f64 }
+
+type User {
+  name:   utf8
+  age:    u32?
+  bio:    utf8?
+  pos:    P
+  home:   Address
+  avatar: Sq?
+  parent: &User?
+}
+
+type accounts.Admin {
+  user:  &User
+  level: u32
+}
+
+symbol_set Color {
+  red
+  green
+  blue
+}
+
+type Paint {
+  shade: Color
+  tag:   symbol
+}
+
+@schemaless shade = :red
+@schemaless tag   = :wide
+
+@block("brush")
+type Brush {
+  @inline(0)
+  id:    identifier
+  @inline(1)
+  finish: utf8?
+  @default(8080)
+  port:  u32?
+}
+
+@decorator("max_len")
+type MaxLen {
+  value: u64
+}
+
+@schemaless brush primary "matte" {
+  port = 9000
+}
+
+@schemaless brush secondary {
+}
+
+@deprecated("use NewUser instead")
+type AnnotatedUser {
+  @max(64)
+  name: utf8
+
+  @validate(min = 1, max = 200)
+  age: u32?
+}
+
+@hidden
+union Tag {
+  @internal
+  System { @min(0) priority: u8 }
+  External none
+}
+
+@ui("color picker")
+symbol_set Mood {
+  @ui_default
+  calm
+  agitated
+}
+
+type ml.Layer {
+  weights: tensor<f32, [N, 128]>
+  biases:  tensor<f32, [128]>
+}
+
+type ml.Model {
+  layers:  list<ml.Layer>
+  refs:    list<&ml.Layer>
+  nested:  list<list<f32>>
+}
+
+type Topic {
+  name: utf8
+}
+
+type Empty {}
+
+union Shape {
+  Circle { center: P radius: f64 }
+  Square { center: P side: f64 }
+  Polygon P
+  Empty   none
+}
+
+union Maybe {
+  Some { value: i32 }
+  Nothing none
+}
+
+# Reference and none values
+@schemaless owner = "wil_taylor"
+@schemaless maybe = none

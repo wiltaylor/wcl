@@ -1,0 +1,106 @@
+// Function values are first-class: bind them to fields, pass them to
+// builtins, and call them by name. This file exercises every shape of
+// call the evaluator supports today.
+//
+// Every field is `@schemaless` because this fixture exists to drive the
+// evaluator, not to model a real configuration.
+
+// ── 1. Plain function call ───────────────────────────────────────────
+// `double` is a function value stored in a top-level field. Calling
+// `double(21)` resolves the identifier to the field, sees the value is
+// a function, and invokes its body with x = 21.
+@schemaless double      = fn(x: i64) -> i64 x * 2
+@schemaless forty_two   = double(21)                        // -> 42
+
+// ── 2. Block body with let-bindings ──────────────────────────────────
+// Function bodies are full expressions, so a `{ let …; tail }` block
+// works just like in any other position.
+@schemaless hypot_sq    = fn(x: i64, y: i64) -> i64 {
+  let a = x * x;
+  let b = y * y;
+  a + b
+}
+@schemaless h25         = hypot_sq(3, 4)                    // -> 25
+
+// ── 3. Higher-order: pass a function to a builtin ────────────────────
+// `map`, `filter`, and `fold` accept a `Value::Function` as their
+// callback and apply it across the list (or tensor).
+@schemaless xs          = [1, 2, 3, 4, 5]
+@schemaless doubled     = map(xs, double)                   // -> [2,4,6,8,10]
+@schemaless evens       = filter(xs, fn(n: i64) -> bool n % 2 == 0)
+@schemaless total       = fold(xs, 0, fn(acc: i64, n: i64) -> i64 acc + n)
+
+// ── 4. Calling one named function from inside another ────────────────
+// `square` is looked up by name from inside `sum_of_squares`'s body —
+// the same scope-walk that finds top-level fields from any expression.
+@schemaless square           = fn(n: i64) -> i64 n * n
+@schemaless sum_of_squares   = fn(a: i64, b: i64) -> i64 square(a) + square(b)
+@schemaless thirteen         = sum_of_squares(2, 3)         // -> 13
+
+// ── 5. Higher-order with the named function ──────────────────────────
+// Same `square` reused as the callback, no anonymous fn needed.
+@schemaless squares     = map(xs, square)                   // -> [1,4,9,16,25]
+
+// ── 6. Function-returning function (curried, with lexical capture) ───
+// Function values capture their definition-site locals, so a `fn`
+// returned from another `fn` keeps the outer parameters in scope:
+@schemaless make_const  = fn() -> fn(i64) -> i64 fn(n: i64) -> i64 n + 1
+@schemaless incr        = make_const()
+@schemaless six         = incr(5)                           // -> 6
+
+// Classic curried adder.
+@schemaless adder       = fn(x: i64) -> fn(i64) -> i64 fn(y: i64) -> i64 x + y
+@schemaless add10       = adder(10)
+@schemaless fifteen     = add10(5)                          // -> 15
+@schemaless direct      = adder(3)(4)                       // -> 7
+
+// ── 7. Recursion (bool-returning, terminates via short-circuit) ──────
+// `n <= 0 || recurse(n-1)` short-circuits when `n` reaches 0, which is
+// the only way to terminate recursion in WCL today — there is no
+// `if`/`then`/`else` expression yet, and call arguments are eagerly
+// evaluated, so a recursive call on the RHS of `||` is the natural
+// base case.
+@schemaless reaches_zero = fn(n: i64) -> bool n <= 0 || reaches_zero(n - 1)
+@schemaless any_n_ok     = reaches_zero(50)                 // -> true
+
+// ── 8. Mutual recursion (also bool-returning) ────────────────────────
+// `is_even` and `is_odd` reference each other by name. Each recursive
+// call lands back in the evaluator, which re-resolves the identifier
+// against the document scope.
+@schemaless is_even     = fn(n: i64) -> bool n == 0 || is_odd(n - 1)
+@schemaless is_odd      = fn(n: i64) -> bool n != 0 && is_even(n - 1)
+@schemaless even_8      = is_even(8)                        // -> true
+@schemaless odd_7       = is_odd(7)                         // -> true
+
+// ── 9. "Integer recursion" via fold ──────────────────────────────────
+// You can't yet return *integers* from a recursive function that
+// terminates — there is no conditional expression to pick between
+// "base value" and "recursive call", and both arms would be evaluated
+// eagerly. Until then, `fold` over a `range` is the idiomatic way to
+// express what would otherwise be an integer recursion.
+//
+// Factorial: 5! = 120
+@schemaless factorial_5 = fold(range(1, 6), 1, fn(acc: i64, x: i64) -> i64 acc * x)
+
+// Fibonacci of n via a fold that carries a pair of accumulators.
+// The accumulator is a 2-element list [prev, curr]; on each step we
+// produce [curr, prev+curr]. After n folds, head of the result is fib(n).
+@schemaless fib = fn(n: i64) -> i64
+  head(fold(
+    range(0, n),
+    [0, 1],
+    fn(pair: list<i64>, _i: i64) -> list<i64> [head(tail(pair)), head(pair) + head(tail(pair))]
+  ))
+
+@schemaless fib_10 = fib(10)                                // -> 55
+
+// ── 10. What does NOT terminate (illustrative; do not evaluate) ──────
+// A function that always recurses, with no short-circuit, hits the
+// evaluator's 256-frame depth guard:
+//
+//     @schemaless boom = fn(n: i64) -> i64 boom(n + 1)
+//     @schemaless explode = boom(0)
+//     // -> EvalError::CallDepthExceeded { max: 256 }
+//
+// This is by design: the guard turns runaway recursion into a clean,
+// span-attached diagnostic instead of a stack overflow.
