@@ -316,16 +316,10 @@ fn check_rename(
     Ok(())
 }
 
-/// A legal WCL identifier: ASCII letter / underscore head, ASCII
-/// alphanumeric / underscore tail, and not a reserved word.
+/// A legal WCL identifier: what the lexer reads as an identifier, and
+/// not a reserved word.
 fn is_valid_identifier(s: &str) -> bool {
-    let mut chars = s.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    (first.is_ascii_alphabetic() || first == '_')
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-        && !matches!(s, "true" | "false" | "none" | "if" | "else" | "match")
+    wcl_lang::is_identifier(s) && !wcl_lang::is_keyword(s)
 }
 
 #[cfg(test)]
@@ -436,6 +430,38 @@ mod tests {
 
     fn url() -> Uri {
         "file:///test.wcl".parse::<Uri>().unwrap()
+    }
+
+    #[test]
+    fn reserved_words_are_not_valid_new_names() {
+        for word in ["true", "false", "none", "if", "else", "match"] {
+            assert!(wcl_lang::is_keyword(word), "{word}");
+            // The predicate agrees with what the lexer actually produces.
+            let token = wcl_lang::Lexer::new(word).next_token().unwrap();
+            assert!(
+                !matches!(token.kind, wcl_lang::TokenKind::Ident(_)),
+                "{word}"
+            );
+            assert!(!is_valid_identifier(word), "{word}");
+        }
+        for word in ["type", "fn", "try", "value_1", "_x"] {
+            assert!(is_valid_identifier(word), "{word}");
+        }
+        for word in ["", "1x", "a-b", "é"] {
+            assert!(!is_valid_identifier(word), "{word:?}");
+        }
+        let source = "@schemaless value = 1
+";
+        let result = rename(
+            &ctx(),
+            url(),
+            source,
+            source.find("value").unwrap(),
+            "match",
+            None,
+            None,
+        );
+        assert!(result.is_err(), "{result:?}");
     }
 
     #[test]

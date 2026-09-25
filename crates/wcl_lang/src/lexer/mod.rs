@@ -417,15 +417,7 @@ impl<'a> Lexer<'a> {
         }
 
         let span = Span::new(start, self.pos);
-        let kind = match text {
-            "true" => TokenKind::Bool(true),
-            "false" => TokenKind::Bool(false),
-            "none" => TokenKind::None,
-            "if" => TokenKind::If,
-            "else" => TokenKind::Else,
-            "match" => TokenKind::Match,
-            _ => TokenKind::Ident(text.to_string()),
-        };
+        let kind = keyword(text).unwrap_or_else(|| TokenKind::Ident(text.to_string()));
         Ok(Token::new(kind, span))
     }
 }
@@ -438,6 +430,29 @@ fn is_ident_start(c: u8) -> bool {
 /// Whether `c` may continue an identifier.
 fn is_ident_cont(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
+}
+
+/// The token a reserved word lexes as, or `None` when `text` lexes as a
+/// plain identifier.
+fn keyword(text: &str) -> Option<TokenKind> {
+    Some(match text {
+        "true" => TokenKind::Bool(true),
+        "false" => TokenKind::Bool(false),
+        "none" => TokenKind::None,
+        "if" => TokenKind::If,
+        "else" => TokenKind::Else,
+        "match" => TokenKind::Match,
+        _ => return None,
+    })
+}
+
+/// Whether `s` is a reserved word — one the lexer never hands over as an
+/// identifier, so it cannot name a field, binding or declaration.
+///
+/// Words the parser only treats specially in some positions (`type`,
+/// `fn`, `let`, `try` …) still lex as identifiers and are not reserved.
+pub fn is_keyword(s: &str) -> bool {
+    keyword(s).is_some()
 }
 
 /// Whether `s` can be written as a bare WCL identifier.

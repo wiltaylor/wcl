@@ -177,7 +177,9 @@ fn classify(kind: &TokenKind, prev: Option<&TokenKind>) -> Option<u32> {
         TokenKind::Ident(name) => {
             // Words the parser treats as soft keywords. None of these
             // are reserved `TokenKind` variants — they come through as
-            // `Ident` and we color them up here.
+            // `Ident` and we color them up here. (The reserved words —
+            // `true`, `false`, `none`, `if`, `else`, `match` — have
+            // variants of their own, matched above.)
             if matches!(
                 name.as_str(),
                 "type"
@@ -188,14 +190,14 @@ fn classify(kind: &TokenKind, prev: Option<&TokenKind>) -> Option<u32> {
                     | "connection"
                     | "fn"
                     | "let"
-                    | "in"
                     | "import"
                     | "use"
                     | "as"
                     | "namespace"
-                    | "true"
-                    | "false"
-                    | "none"
+                    | "try"
+                    | "catch"
+                    | "self"
+                    | "parent"
             ) {
                 return Some(T_KEYWORD);
             }
@@ -289,6 +291,36 @@ mod tests {
         let types = types_emitted(src);
         assert!(types.contains(&T_KEYWORD), "no keyword in {types:?}");
         assert!(types.contains(&T_VARIABLE), "no variable in {types:?}");
+    }
+
+    #[test]
+    fn soft_keywords_follow_the_parser() {
+        // `try`/`catch`, `self`/`parent` are parsed as keywords; `in` is
+        // not a keyword anywhere in the grammar and stays a name.
+        let src = "@schemaless x = try parent.y catch e { self.z }\n@schemaless in = 1\n";
+        let toks = compute(src, PositionEncoding::Utf8);
+        let mut col = 0;
+        let mut line = 0;
+        let kinds: Vec<(String, u32)> = toks
+            .iter()
+            .map(|t| {
+                if t.delta_line > 0 {
+                    line += t.delta_line;
+                    col = 0;
+                }
+                col += t.delta_start;
+                let text = src.lines().nth(line as usize).unwrap();
+                let word = &text[col as usize..(col + t.length) as usize];
+                (word.to_string(), t.token_type)
+            })
+            .collect();
+        for word in ["try", "catch", "self", "parent"] {
+            assert!(
+                kinds.contains(&(word.into(), T_KEYWORD)),
+                "{word}: {kinds:?}"
+            );
+        }
+        assert!(kinds.contains(&("in".into(), T_VARIABLE)), "{kinds:?}");
     }
 
     #[test]
