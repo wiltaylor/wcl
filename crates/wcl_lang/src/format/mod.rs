@@ -1,10 +1,10 @@
 //! Source printer for the editing path.
 //!
-//! Walks an [`ast::Source`] and produces canonical WCL source text. The
+//! Walks an [`ast::Source`](crate::ast::Source) and produces canonical WCL source text. The
 //! input is whatever came out of [`crate::parse_for_edit`] (possibly
 //! after host mutation); the output is what a host writes to disk.
 //!
-//! The two trivia kinds that [`ast::Trivia`] carries — [`Trivia::LineComment`]
+//! The two trivia kinds that [`ast::Trivia`](crate::ast::Trivia) carries — [`Trivia::LineComment`]
 //! and [`Trivia::BlankLine`] — survive round-tripping. Everything else
 //! (indentation, brace style, number radix, underscore separators,
 //! string-delimiter choice, decorator ordering vs the previous item) is

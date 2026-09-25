@@ -202,7 +202,28 @@ fn frames_json(cast: &Cast, pal: &Palette, g: &Geom, opts: &Opts) -> String {
         "speed": opts.speed,
         "frames": frames,
     });
-    payload.to_string()
+    escape_script_json(&payload.to_string())
+}
+
+/// Make serialised JSON safe to embed inside a `<script>` element.
+///
+/// A recording holds whatever the terminal printed, so `</script>` in it
+/// would close the element and let the rest run as markup. `<`, `>` and
+/// `&` become `\u` escapes (identical once parsed as JSON), as do U+2028
+/// and U+2029, which some script parsers treat as line terminators.
+fn escape_script_json(json: &str) -> String {
+    let mut out = String::with_capacity(json.len());
+    for c in json.chars() {
+        match c {
+            '<' => out.push_str("\\u003c"),
+            '>' => out.push_str("\\u003e"),
+            '&' => out.push_str("\\u0026"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// Playback options read from the `terminal` block.
@@ -240,7 +261,7 @@ pub(super) fn render_replay(
     let Ok(src) = std::fs::read_to_string(&path) else {
         return format!(
             "<div class=\"{class_attr} wdoc-terminal-error\"{id_attr}>cannot read cast: {}</div>",
-            escape_html(&path.display().to_string())
+            escape_html(src_rel)
         );
     };
     let cast = parse_cast(&src, def_cols, def_rows);

@@ -22,6 +22,10 @@ use crate::render::include::resolve_content;
 pub(crate) type BlockRenderer<'a> =
     dyn Fn(&[Value], Option<&str>, Option<&str>, &str) -> String + 'a;
 
+/// An eval error swallowed during lowering, paired with the source file
+/// it was raised against.
+pub(crate) type CaughtEvalError = (EvalError, NamedSource<std::sync::Arc<str>>);
+
 thread_local! {
     /// First eval error swallowed while lowering a block during the
     /// current render pass. The lowering primitives recover (a failed
@@ -32,7 +36,7 @@ thread_local! {
     /// block. First error wins; rendering is single-threaded per pass, so
     /// a thread-local is a safe document-scoped sink. Use
     /// [`scoped_eval_errors`] to bound a pass and collect what it caught.
-    static LOWER_EVAL_ERR: RefCell<Option<(EvalError, NamedSource<String>)>> =
+    static LOWER_EVAL_ERR: RefCell<Option<CaughtEvalError>> =
         const { RefCell::new(None) };
 
     /// First edge-routing failure recorded during the current render pass.
@@ -42,15 +46,6 @@ thread_local! {
     /// stashes a human-readable message here and the backend surfaces it as a
     /// hard `BuildError`. First message wins; see [`record_route_error`].
     static ROUTE_ERR: RefCell<Option<String>> = const { RefCell::new(None) };
-
-    /// Non-fatal warnings collected during the current render pass: a
-    /// dropped diagram edge, a block with no lowering, an image with no
-    /// usable intrinsic size, … Unlike [`ROUTE_ERR`] these don't fail the
-    /// build — the backend drains them to stderr after rendering. All
-    /// distinct messages are collected (identical ones dedup, since some
-    /// recording sites run once per pass per page or twice per diagram);
-    /// see [`record_render_warning`].
-    static RENDER_WARN: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 
     /// First file-backed listing that could not be read during the current
     /// render pass — a missing `source_file`, an anchor that isn't there, a
@@ -137,25 +132,40 @@ fn resolve_includes(node: &mut Content, block: Option<&Block<'_>>) {
     }
 }
 
-/// Record a non-fatal render warning. Identical messages dedup; distinct
-/// ones accumulate until [`take_render_warnings`] drains them.
-pub(crate) fn record_render_warning(msg: String) {
-    RENDER_WARN.with(|slot| {
-        let mut slot = slot.borrow_mut();
+/// Non-fatal warnings one render pass collects: a dropped diagram edge, a
+/// theme with no palette, an image with no usable intrinsic size, … Unlike
+/// the hard errors above they don't fail the build; the pass hands them
+/// back in its result for the caller to print.
+///
+/// A value, not a thread-local: the pass owns it and reaches it through
+/// its render context (the [`InlinePatterns`](crate::inline::InlinePatterns)
+/// every walker already carries), so whoever calls the build receives the
+/// warnings no matter which thread it ran on. Identical messages dedup,
+/// since some recording sites run once per page or twice per diagram
+/// (the layout pass and the render pass).
+#[derive(Default)]
+pub(crate) struct Warnings(RefCell<Vec<String>>);
+
+impl Warnings {
+    /// Record `msg`, unless an identical message is already recorded.
+    pub(crate) fn record(&self, msg: String) {
+        let mut slot = self.0.borrow_mut();
         if !slot.contains(&msg) {
             slot.push(msg);
         }
-    });
-}
+    }
 
-/// Record a non-fatal warning that an edge endpoint matched no shape id.
-pub(crate) fn record_edge_warning(msg: String) {
-    record_render_warning(msg);
-}
+    /// Record every message in `msgs`, deduplicating as [`Self::record`].
+    pub(crate) fn extend(&self, msgs: impl IntoIterator<Item = String>) {
+        for msg in msgs {
+            self.record(msg);
+        }
+    }
 
-/// Take and clear the render warnings recorded during the current pass.
-pub(crate) fn take_render_warnings() -> Vec<String> {
-    RENDER_WARN.with(|slot| std::mem::take(&mut *slot.borrow_mut()))
+    /// Take and clear everything recorded so far, in recording order.
+    pub(crate) fn take(&self) -> Vec<String> {
+        std::mem::take(&mut *self.0.borrow_mut())
+    }
 }
 
 /// Record an edge-routing failure (a `route_elbow` that found no obstacle-free
@@ -192,9 +202,7 @@ pub(crate) fn record_lower_error(block: &Block<'_>, err: EvalError) {
 /// the first eval error any lowering swallowed during it (and the source it
 /// belongs to), if any. Saves and restores any outer sink so nested passes
 /// compose.
-pub(crate) fn scoped_eval_errors<T>(
-    f: impl FnOnce() -> T,
-) -> (T, Option<(EvalError, NamedSource<String>)>) {
+pub(crate) fn scoped_eval_errors<T>(f: impl FnOnce() -> T) -> (T, Option<CaughtEvalError>) {
     let outer = LOWER_EVAL_ERR.with(|slot| slot.borrow_mut().take());
     let result = f();
     let caught = LOWER_EVAL_ERR.with(|slot| slot.borrow_mut().take());
@@ -337,16 +345,16 @@ pub(crate) fn lower_block(doc: &Document, block: &Block<'_>, kind: &str) -> Opti
 /// The value came out of another lowering rather than off a block, so
 /// there is no span to point a diagnostic at; a conversion failure is
 /// recorded as a render warning naming the error instead of a spanned
-/// build failure. A block's own lowering still hard-fails, via
-/// [`lower_block`].
-pub(crate) fn recursed_content(value: &Value) -> Option<Content> {
+/// build failure, into the pass's `warnings`. A block's own lowering still
+/// hard-fails, via [`lower_block`].
+pub(crate) fn recursed_content(value: &Value, warnings: &Warnings) -> Option<Content> {
     match crate::content::as_content(value)? {
         Ok(mut node) => {
             resolve_includes(&mut node, None);
             Some(node)
         }
         Err(e) => {
-            record_render_warning(format!(
+            warnings.record(format!(
                 "a lowering produced a malformed content node ({e}) — it renders as nothing"
             ));
             None

@@ -4,7 +4,9 @@
 
 .DESCRIPTION
   Downloads the Windows x86_64 `wcl` binary from a GitHub release, installs it
-  into a bin directory, and adds that directory to the user PATH.
+  into a bin directory, and adds that directory to the user PATH. The download
+  is checked against the release's SHA256SUMS first; a missing or mismatched
+  checksum aborts the install.
 
   WCL is pre-release only for now, so use -Pre (or -Version) — a plain run
   targets stable, which does not exist yet.
@@ -35,6 +37,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $Repo = 'wiltaylor/wcl'
 $SourceBuild = 'cargo install --git https://github.com/wiltaylor/wcl -p wcl --locked'
+# Where release assets are fetched from. Only tests point it elsewhere.
+$ReleasesUrl = if ($env:WCL_RELEASES_URL) { $env:WCL_RELEASES_URL } else { "https://github.com/$Repo/releases" }
 
 # ── Detect platform ─────────────────────────────────────────────────────────
 $arch = $env:PROCESSOR_ARCHITECTURE
@@ -67,16 +71,48 @@ See https://github.com/$Repo/releases
 
 $ver = $tag -replace '^v',''
 $asset = "wcl-$ver-$suffix"
-$url = "https://github.com/$Repo/releases/download/$tag/$asset"
+$base = "$ReleasesUrl/download/$tag"
+$url = "$base/$asset"
+$sumsUrl = "$base/SHA256SUMS"
 
-# ── Download + install ──────────────────────────────────────────────────────
+# ── Download + verify + install ─────────────────────────────────────────────
 Write-Host "Installing wcl $ver to $InstallDir"
-New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-$dest = Join-Path $InstallDir 'wcl.exe'
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ([IO.Path]::GetRandomFileName())
+New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 try {
-  Invoke-WebRequest -Headers $headers -Uri $url -OutFile $dest
-} catch {
-  throw "download failed: $url`nThe release may not exist or may lack a $suffix asset. See https://github.com/$Repo/releases"
+  $download = Join-Path $tmp $asset
+  $sums = Join-Path $tmp 'SHA256SUMS'
+  try {
+    Invoke-WebRequest -Headers $headers -Uri $url -OutFile $download
+  } catch {
+    throw "download failed: $url`nThe release may not exist or may lack a $suffix asset. See https://github.com/$Repo/releases"
+  }
+  try {
+    Invoke-WebRequest -Headers $headers -Uri $sumsUrl -OutFile $sums
+  } catch {
+    throw "download failed: $sumsUrl`nReleases before checksums were published cannot be verified; build from source instead:`n  $SourceBuild"
+  }
+
+  # SHA256SUMS lines are `<hex>  <file>` (a `*` before the name marks binary mode).
+  $expected = $null
+  foreach ($line in Get-Content -LiteralPath $sums) {
+    $fields = $line -split '\s+', 2
+    if ($fields.Count -eq 2 -and $fields[1].TrimStart('*') -ceq $asset) {
+      $expected = $fields[0].ToLowerInvariant()
+      break
+    }
+  }
+  if (-not $expected) { throw "SHA256SUMS has no entry for $asset - refusing to install" }
+  $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $download).Hash.ToLowerInvariant()
+  if ($actual -ne $expected) {
+    throw "checksum mismatch for $asset - refusing to install`n  expected $expected`n  got      $actual"
+  }
+
+  New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+  $dest = Join-Path $InstallDir 'wcl.exe'
+  Move-Item -Force -LiteralPath $download -Destination $dest
+} finally {
+  Remove-Item -Recurse -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
 }
 
 Write-Host "Installed: $(& $dest --version)"

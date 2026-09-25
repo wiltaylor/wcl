@@ -239,7 +239,7 @@ $ wcl get fact.wcl a
 CONSOLE
   }
 
-  p "That laziness is the same one [How a document evaluates](lang_evaluation) describes for fields, and it is why item order never matters. There is a ceiling: 256 nested calls, after which evaluation stops with `call depth limit exceeded (max 256)`."
+  p "That laziness is the same one [How a document evaluates](lang_evaluation) describes for fields, and it is why item order never matters. There is a ceiling. Evaluation nests at most 200 deep, and a call counts as one level alongside every field and `let` it forces on the way down. A call past the ceiling stops with `call depth limit exceeded (max 200)`. A `fn` with no base case therefore fails with an error instead of crashing."
 
   h2 "Function types"
 
@@ -645,7 +645,7 @@ CONSOLE
     li "**No argument or return type checking.** WCL checks the argument count and nothing else. The annotations are documentation, and the [schema](lang_schemas) catches the wrong value in the end."
     li "**Builtins are not values.** Wrap one in a literal to pass it."
     li "**No serialization.** A function value is `null` in JSON, and `fn(x: i64) -> i64 { ... }` in `wcl get`."
-    li "**A depth ceiling.** 256 nested calls, then `call depth limit exceeded (max 256)`."
+    li "**A depth ceiling.** 200 levels of nesting, with calls, fields and `let`s counted together, then `call depth limit exceeded (max 200)`."
   }
 
   h2 "Where to go next"

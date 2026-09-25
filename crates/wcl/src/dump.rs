@@ -3,27 +3,68 @@
 //! Split out of `main.rs` so the CLI entry point stays thin. All text
 //! goes through [`Out`], which centralises the two-space indentation and
 //! absorbs the (infallible) writes into a `String`, keeping the dumpers
-//! free of `.unwrap()` noise.
+//! free of `.unwrap()` noise. It also collects every evaluation error met
+//! on the way, so the caller can report them and fail rather than leave
+//! them buried in the tree as text.
+//!
+//! Template bodies are the exception. The children of a `@contextual`
+//! block (a repeater's body) and the body of a `@declares_kind` declarer (a
+//! component's `wdoc_body`) only mean something once the host's expander
+//! binds their names, so evaluating them in place fails on every loop
+//! variable and slot. Those values print as `<deferred: …>` and are not
+//! errors.
 
 use std::fmt::Write as _;
 
 use wcl_lang::{
-    Block, ConnectionDecl, DeclName, Decorator, Document, Field, Profile, ProfileKey, ProfileNode,
-    SymbolSetDecl, TypeDecl, UnionDecl, UnionVariant, UseDeclView, UseFormView, Value,
+    Block, ConnectionDecl, DeclName, Decorator, Document, EvalError, Field, Profile, ProfileKey,
+    ProfileNode, SymbolSetDecl, TypeDecl, UnionDecl, UnionVariant, UseDeclView, UseFormView, Value,
     VariantBodyView,
 };
 
+/// The built-in decorator that marks a block kind whose children are
+/// expanded by the host rather than evaluated in place.
+const CONTEXTUAL: &str = "contextual";
+
+/// What `wcl parse` prints, plus the evaluation errors behind every
+/// `<error: …>` placeholder in it, in tree order.
+pub(crate) struct Dump {
+    /// The rendered document tree.
+    pub(crate) text: String,
+    /// One entry per placeholder in [`text`](Self::text).
+    pub(crate) errors: Vec<EvalError>,
+}
+
 /// Text sink for the parse dump. Owns the buffer, indents by levels of
 /// two spaces, and never surfaces a write error (writing to a `String`
-/// is infallible).
+/// is infallible). Errors met while dumping are kept alongside.
 #[derive(Default)]
 struct Out {
     buf: String,
+    errors: Vec<EvalError>,
+    /// How many template bodies enclose the block being dumped. Non-zero
+    /// means a failed value is deferred, not an error.
+    template_depth: usize,
 }
 
 impl Out {
-    fn into_string(self) -> String {
-        self.buf
+    fn finish(self) -> Dump {
+        Dump {
+            text: self.buf,
+            errors: self.errors,
+        }
+    }
+
+    /// Record an evaluation error and return the placeholder text that
+    /// stands in for the failed value in the tree. Inside a template body
+    /// the failure is expected, so it is marked deferred and not recorded.
+    fn error(&mut self, err: EvalError) -> String {
+        if self.template_depth > 0 {
+            return format!("<deferred: {err}>");
+        }
+        let placeholder = format!("<error: {err}>");
+        self.errors.push(err);
+        placeholder
     }
 
     fn indent(&mut self, depth: usize) {
@@ -71,11 +112,12 @@ macro_rules! endln {
     ($o:expr, $($a:tt)*) => {{ $o.endln(format_args!($($a)*)); }};
 }
 
-/// Render the whole document tree as the textual form `wcl parse` prints.
-pub(crate) fn document(doc: &Document) -> String {
+/// Render the whole document tree as the textual form `wcl parse` prints,
+/// collecting the evaluation errors it had to render as placeholders.
+pub(crate) fn document(doc: &Document) -> Dump {
     let mut out = Out::default();
     dump_document(doc, &mut out);
-    out.into_string()
+    out.finish()
 }
 
 fn dump_document(doc: &Document, out: &mut Out) {
@@ -156,14 +198,14 @@ fn dump_decorators<'a>(decs: impl Iterator<Item = Decorator<'a>>, depth: usize, 
         let name = d.full_name();
         let positional: Vec<String> = match d.positional() {
             Ok(vals) => vals.iter().map(Value::to_string).collect(),
-            Err(e) => vec![format!("<error: {e}>")],
+            Err(e) => vec![out.error(e)],
         };
         let named: Vec<String> = d
             .named()
             .map(|n| {
                 let val = match n.value() {
                     Ok(v) => v.to_string(),
-                    Err(e) => format!("<error: {e}>"),
+                    Err(e) => out.error(e),
                 };
                 format!("{} = {}", n.name(), val)
             })
@@ -230,13 +272,19 @@ fn dump_field(f: &Field<'_>, depth: usize, out: &mut Out) {
     if let Some(r) = f.reference() {
         match r {
             Ok(dr) => endln!(out, "&{}", dataref_label(&dr)),
-            Err(e) => endln!(out, "<error: {e}>"),
+            Err(e) => {
+                let placeholder = out.error(e);
+                endln!(out, "{placeholder}");
+            }
         }
         return;
     }
     match f.value() {
         Ok(v) => endln!(out, "{v}"),
-        Err(e) => endln!(out, "<error: {e}>"),
+        Err(e) => {
+            let placeholder = out.error(e.clone());
+            endln!(out, "{placeholder}");
+        }
     }
 }
 
@@ -260,20 +308,44 @@ fn dump_block(b: &Block<'_>, depth: usize, out: &mut Out) {
             }
         }
         Err(e) => {
-            cont!(out, " <label error: {e}>");
+            let placeholder = out.error(e);
+            cont!(out, " {placeholder}");
         }
     }
     endln!(out, " {{");
+    // The block's own fields evaluate in place — a repeater's `each` is
+    // real — but its body may be a template (see the module docs).
     for f in b.fields() {
         dump_field(&f, depth + 1, out);
     }
+    let schema = b.schema();
+    let contextual = schema
+        .as_ref()
+        .is_some_and(|s| s.decorators().any(|d| d.full_name() == CONTEXTUAL));
+    let body_kind = schema.as_ref().and_then(template_body_kind);
     for inner in b.blocks() {
+        let template = contextual || body_kind.as_deref() == Some(inner.kind());
+        out.template_depth += usize::from(template);
         dump_block(&inner, depth + 1, out);
+        out.template_depth -= usize::from(template);
     }
+    out.template_depth += usize::from(contextual);
     for t in b.tables() {
         dump_table(&t, depth + 1, out);
     }
+    out.template_depth -= usize::from(contextual);
     line!(out, depth, "}}");
+}
+
+/// The block kind of a `@declares_kind` declarer's template body — the
+/// kind bound by the field its `body = "…"` argument names — or `None` for
+/// any other schema.
+fn template_body_kind(schema: &TypeDecl<'_>) -> Option<String> {
+    let body_field = schema.declares_kind()?.body_field?;
+    let field = schema.fields().find(|f| f.name() == body_field)?;
+    field
+        .child_block_kind()
+        .or_else(|| field.children_block_kind())
 }
 
 fn dump_table(t: &wcl_lang::TableView<'_>, depth: usize, out: &mut Out) {
@@ -287,7 +359,8 @@ fn dump_table(t: &wcl_lang::TableView<'_>, depth: usize, out: &mut Out) {
                 }
             }
             Err(e) => {
-                cont!(out, " <row error: {e}> |");
+                let placeholder = out.error(e);
+                cont!(out, " {placeholder} |");
             }
         }
         endln!(out, "");

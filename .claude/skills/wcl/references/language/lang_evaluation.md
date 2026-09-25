@@ -75,8 +75,7 @@ the document to prove that.
 
 ## Cycle detection
 
-Each field cell carries an "is being evaluated" flag. Re-entering a cell already in progress is
-an error, not a hang:
+Re-entering a field or `let` that is already being evaluated is an error, not a hang:
 
 ```wcl
 @document type Doc { a: i64?  b: i64? }
@@ -93,6 +92,31 @@ wcl::eval::cycle
 
 Unions have their own cycle check (`union_cycle`) for a variant chain that refers back to
 itself.
+
+A cycle's message names the binding where the loop closed, which depends on which field was read
+first. Reading `b` first in the file above reports `'b'`.
+
+A `Document` may be read from several threads at once. A field another thread is evaluating is
+not a cycle. The second thread computes the value itself.
+
+## Depth limit
+
+Evaluation nests at most **200** levels, counting fields, `let`s and `fn` calls together. A long
+chain that never loops still fails once it goes deeper than that:
+
+```console
+$ wcl get chain.wcl cfg.a0        # cfg { a0 = a1 + 1 ... a4999 = a5000 + 1  a5000 = 0 }
+wcl::eval::depth_exceeded
+
+  × evaluation depth limit exceeded (max 200)
+$ wcl get chain.wcl cfg.a4850     # 150 links: within the limit
+150
+```
+
+A call past the limit reports `wcl::eval::call_depth_exceeded` (`call depth limit exceeded (max
+200)`) instead. The limit is on nesting, not document size. Fix it by shortening the chain, for
+example by computing a total with `sum(...)` over a list rather than by field-to-field
+accumulation.
 
 ## Scope and lookup
 
@@ -211,10 +235,12 @@ wcl::parse
 ```
 
 **`EvalError`** — everything that happens while a value is produced. Its diagnostic codes are
-what you match on. There are 24 in all; these are the ones you will actually meet:
-`wcl::eval::cycle`, `wcl::eval::unresolved_reference`, `wcl::eval::type_mismatch`,
+what you match on. There are 27 in all; these are the ones you will actually meet:
+`wcl::eval::cycle`, `wcl::eval::depth_exceeded`, `wcl::eval::call_depth_exceeded`,
+`wcl::eval::unresolved_reference`, `wcl::eval::type_mismatch`,
 `wcl::eval::unknown_builtin`, `wcl::eval::builtin_arity`, `wcl::eval::user_error`,
-`wcl::eval::import_failed`, `wcl::eval::not_a_leaf`, `wcl::eval::missing_expander`, and
+`wcl::eval::import_failed`, `wcl::eval::not_a_leaf`, `wcl::eval::missing_expander`,
+`wcl::eval::expansion_limit`, and
 `wcl::eval::schema_violation`.
 
 **`SchemaViolationKind`** — the classification carried inside a `schema_violation`. Knowing the
@@ -236,6 +262,10 @@ names helps you read a message and search for its cause:
 
 ## Gotchas
 
+- `wcl parse` prints a failed value as `<error: …>` *inside* an otherwise normal-looking tree.
+  The diagnostics are on stderr and the exit code is 3; a script reading only stdout sees a
+  complete tree. Values in template bodies (repeater children, a component's `wdoc_body`)
+  print as `<deferred: …>` and are not errors.
 - `wcl check` says `OK` for `n = error("boom")`. An evaluation failure during validation is
   skipped, not reported.
 - A `let` is not in the evaluated document. If you want it in the output, make it a field.

@@ -170,7 +170,7 @@ fn page_size_outside_pdf_is_an_error() {
         .arg(out.path())
         .args(["--type", "html", "--page-size", "a4"])
         .assert()
-        .failure()
+        .code(64)
         .stderr(predicate::str::contains("--page-size"));
 }
 
@@ -183,7 +183,7 @@ fn removed_wdoc_subcommands_are_rejected() {
             .args(["wdoc", removed])
             .arg(relocatable_main())
             .assert()
-            .failure();
+            .code(64);
     }
 }
 

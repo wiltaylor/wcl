@@ -119,6 +119,8 @@ pub(crate) struct CollectCtx<'a> {
     pub(crate) tilesets: &'a TilesetRegistry,
     /// Images in scope.
     pub(crate) images: &'a ImageRegistry,
+    /// Where the pass records non-fatal warnings.
+    pub(crate) warnings: &'a Warnings,
 }
 
 /// The bundled pan + zoom player, written to `_wdoc/` and loaded once
@@ -160,15 +162,6 @@ pub(crate) const ARROW_MARKER: &str = "<defs><marker id=\"wdoc-arrow\" viewBox=\
     refX=\"10\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" \
     orient=\"auto-start-reverse\">\
     <path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"currentColor\" /></marker></defs>";
-
-/// `true` when `block` is an interactive (`pan_zoom`) diagram or
-/// contains one anywhere in its subtree. Drives the conditional asset
-/// write + per-page script injection (mirrors `terminal::uses_terminal`).
-pub(crate) fn uses_pan_zoom(block: &Block<'_>) -> bool {
-    crate::render::block_tree_any(block, &|b| {
-        b.kind() == "diagram" && field_bool(b, "pan_zoom") == Some(true)
-    })
-}
 
 /// `true` when `block` is, or contains, a `map`. Drives the map asset
 /// write + script injection, and (in `render_diagram`) makes a diagram

@@ -2,12 +2,12 @@
 //! with a document that triggers an unknown-field violation and
 //! confirm a quick-fix comes back.
 
-use tower_lsp::LanguageServer;
-use tower_lsp::LspService;
-use tower_lsp::lsp_types::{
+use tower_lsp_server::LanguageServer;
+use tower_lsp_server::LspService;
+use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, Diagnostic, DiagnosticSeverity,
     DidOpenTextDocumentParams, PartialResultParams, Position, Range, TextDocumentIdentifier,
-    TextDocumentItem, Url, WorkDoneProgressParams,
+    TextDocumentItem, Uri, WorkDoneProgressParams,
 };
 use wcl_lsp::Backend;
 
@@ -16,7 +16,7 @@ fn service() -> LspService<Backend> {
     svc
 }
 
-async fn open(b: &Backend, uri: &Url, text: &str) {
+async fn open(b: &Backend, uri: &Uri, text: &str) {
     b.did_open(DidOpenTextDocumentParams {
         text_document: TextDocumentItem {
             uri: uri.clone(),
@@ -32,7 +32,7 @@ async fn open(b: &Backend, uri: &Url, text: &str) {
 async fn unknown_field_code_action_round_trip() {
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///cfg.wcl").unwrap();
+    let uri = "file:///cfg.wcl".parse::<Uri>().unwrap();
     // The `bogus` field isn't on Config — the validator emits a
     // wcl::eval::schema_violation that the editor hands back via
     // `params.context.diagnostics`. We construct that diagnostic here

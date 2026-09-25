@@ -161,7 +161,7 @@ a = if 1 { "x" } else { "y" }
 $ wcl get truthy.wcl a
 wcl::eval::type_mismatch
 
-  × operator '&&' is not defined for i64 and —
+  × operator '&&' is not defined for i64
 CONSOLE
   }
 

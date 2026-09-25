@@ -1,0 +1,152 @@
+================================================================================
+literal, alternation and binding patterns (examples/branching.wcl)
+================================================================================
+
+light = match :amber {
+  :red                 => :stop,
+  :amber | :yellow     => :slow,
+  other                => other,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (match_expression
+      (symbol)
+      (match_arm
+        (symbol)
+        (symbol))
+      (match_arm
+        (symbol)
+        (symbol)
+        (symbol))
+      (match_arm
+        (identifier)
+        (identifier)))))
+
+================================================================================
+guards and wildcard (examples/branching.wcl)
+================================================================================
+
+sign = match n {
+  0          => :zero,
+  n if n > 0 => :pos,
+  _          => :neg,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (match_expression
+      (identifier)
+      (match_arm
+        (number)
+        (symbol))
+      (match_arm
+        (identifier)
+        (binary_expression
+          (identifier)
+          (number))
+        (symbol))
+      (match_arm
+        (wildcard_pattern)
+        (symbol)))))
+
+================================================================================
+variant patterns with record rest (examples/branching.wcl)
+================================================================================
+
+c1_area = match c1 {
+  Shape::Circle { radius, .. }  => radius * radius * 3.0,
+  Shape::Square { side: s }     => s * s,
+  Shape::Polygon(_)             => 0.0,
+  _                             => 0.0,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (match_expression
+      (identifier)
+      (match_arm
+        (variant_pattern
+          (dotted_name
+            (identifier))
+          (identifier)
+          (record_pattern
+            (record_pattern_field
+              (identifier))
+            (rest_pattern)))
+        (binary_expression
+          (binary_expression
+            (identifier)
+            (identifier))
+          (number)))
+      (match_arm
+        (variant_pattern
+          (dotted_name
+            (identifier))
+          (identifier)
+          (record_pattern
+            (record_pattern_field
+              (identifier)
+              (identifier))))
+        (binary_expression
+          (identifier)
+          (identifier)))
+      (match_arm
+        (variant_pattern
+          (dotted_name
+            (identifier))
+          (identifier)
+          (wildcard_pattern))
+        (number))
+      (match_arm
+        (wildcard_pattern)
+        (number)))))
+
+================================================================================
+unqualified variant and at patterns
+================================================================================
+
+kind = match v {
+  Circle(r)           => r,
+  whole @ Square { .. } => whole,
+  "text" | none | true => 1,
+  _ => 0
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (match_expression
+      (identifier)
+      (match_arm
+        (variant_pattern
+          (identifier)
+          (identifier))
+        (identifier))
+      (match_arm
+        (at_pattern
+          (identifier)
+          (variant_pattern
+            (identifier)
+            (record_pattern
+              (rest_pattern))))
+        (identifier))
+      (match_arm
+        (string)
+        (none)
+        (boolean)
+        (number))
+      (match_arm
+        (wildcard_pattern)
+        (number)))))

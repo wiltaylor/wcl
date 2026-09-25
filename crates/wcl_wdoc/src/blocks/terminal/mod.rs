@@ -89,12 +89,6 @@ const DEFAULT_LINE_HEIGHT: f64 = 1.2;
 /// Default font size in px when `font_size` is omitted.
 const DEFAULT_FONT_PX: f64 = 14.0;
 
-/// True when `block`'s subtree contains a `terminal` (so the build knows
-/// to emit the font + player assets).
-pub(crate) fn uses_terminal(block: &Block<'_>) -> bool {
-    crate::render::block_tree_any(block, &|b| b.kind() == "terminal")
-}
-
 /// Render a `@block("terminal")` to an HTML fragment: a `wdoc-terminal`
 /// `<div>` wrapping the inline-SVG grid, plus — for replay — the player
 /// controls and the frames JSON the bundled player steps through.

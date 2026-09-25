@@ -12,4 +12,5 @@ wcl::eval::schema_violation
  10 │ │     unexpected = "boom"
  11 │ ├─▶ }
     · ╰──── schema violation
+ 12 │     
     ╰────

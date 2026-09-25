@@ -10,4 +10,5 @@ wcl::eval::schema_violation
  13 │ ╭─▶ service web {
  14 │ ├─▶ }
     · ╰──── schema violation
+ 15 │     
     ╰────

@@ -1,0 +1,34 @@
+version: 2
+
+updates:
+  # Cargo workspace. One weekly PR for the semver-compatible bumps; a new
+  # major arrives as its own PR, since it usually needs code changes.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor:
+        update-types: [minor, patch]
+
+  # The cargo-fuzz crate is its own workspace with its own Cargo.lock.
+  - package-ecosystem: cargo
+    directory: /crates/wcl_lang/fuzz
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: npm
+    directory: /editors/vscode
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

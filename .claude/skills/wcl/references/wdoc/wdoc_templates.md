@@ -273,6 +273,12 @@ There are three element constructors rather than one because a WCL parameter lis
 declaration. The language has neither default nor named arguments, so every call fills every
 parameter, and `id` and `attrs` each need a name of their own.
 
+An `attrs` name must match `[A-Za-z0-9_:-]+`. Any other name (`"bad name"`, `"x>y"`) is dropped
+with a `warning:`, and the build still exits 0. A URL attribute (`href`, `src`, `xlink:href`,
+`action`, `formaction`, `poster`) keeps its value only when the scheme is `http`, `https`,
+`mailto`, `tel` or none. `src` and `poster` also take `data:image/`. A value that fails is
+dropped with a `warning:`.
+
 An empty `class` or `attrs` list emits no attribute at all. `el("li", [], kids)` renders `<li>`,
 so passing `[]` costs nothing over omitting the field. An optional field goes straight in:
 `el("p", t.class, kids)` with `t.class` unset renders as an omitted `class`.

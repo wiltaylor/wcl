@@ -2,3 +2,5 @@
 // error pointing at the unexpected end of file.
 @schemaless config {
   region = "us-east-1"
+
+// expect-exit: 1

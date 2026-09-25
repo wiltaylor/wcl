@@ -5,6 +5,10 @@ members = ["crates/wcl", "crates/wcl_lang", "crates/wcl_lsp", "crates/wcl_wdoc"]
 [workspace.package]
 version = "0.0.0"
 edition = "2024"
+# The oldest toolchain that builds the workspace: `if let` match guards in
+# wcl_lang are stable from 1.95 (1.94 rejects them). Of the dependencies,
+# krilla (1.92) sets the highest floor. Checked with `cargo +1.95.0 check`.
+rust-version = "1.95"
 license = "MIT"
 repository = "https://github.com/wiltaylor/wcl"
 
@@ -13,21 +17,25 @@ wcl_lang = { path = "crates/wcl_lang", version = "0.0.0" }
 wcl_lsp = { path = "crates/wcl_lsp", version = "0.0.0" }
 wcl_wdoc = { path = "crates/wcl_wdoc", version = "0.0.0" }
 clap = { version = "4", features = ["derive"] }
-miette = { version = "7", features = ["fancy"] }
+# Plain miette here: the graphical renderer's features are opted into per
+# crate (`fancy` in the CLI, `fancy-no-syscall` where a library renders a
+# report itself), so a consumer of wcl_lang doesn't inherit ~30 terminal crates.
+miette = "7"
 thiserror = "2"
 criterion = { version = "0.8", features = ["html_reports"] }
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
-tower-lsp = "0.20"
+tower-lsp-server = "0.23"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "net", "sync"] }
 axum = { version = "0.8", default-features = false, features = ["tokio", "http1"] }
 notify = "8"
 tower = { version = "0.5", default-features = false, features = ["util"] }
 dashmap = "6"
-ropey = "1"
+ropey = { version = "1", default-features = false, features = ["simd"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
+# `rc`: wcl_lang's `Value` serialises its `Arc`-shared lists and maps.
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 insta = "1"
@@ -54,3 +62,7 @@ missing_docs_in_private_items = "warn"
 [profile.release]
 lto = true
 codegen-units = 1
+# Drop the symbol table from shipped binaries. Panics still unwind (no
+# `panic = "abort"`): the dev server and the LSP must survive a panicking
+# request rather than die with it.
+strip = "symbols"

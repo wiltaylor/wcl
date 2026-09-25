@@ -73,6 +73,16 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Start lexing `src` at byte offset `pos`, so token spans are
+    /// offsets into all of `src`. The parser uses this to lex an
+    /// interpolation slot in place, within the outer source.
+    pub(crate) fn starting_at(src: &'a str, pos: usize) -> Self {
+        Self {
+            pos,
+            ..Self::new(src)
+        }
+    }
+
     /// Consume and return the next token, with any preceding trivia
     /// attached. Yields [`TokenKind::Eof`] at end of input, repeatedly.
     pub fn next_token(&mut self) -> Result<Token, LexError> {
@@ -417,15 +427,7 @@ impl<'a> Lexer<'a> {
         }
 
         let span = Span::new(start, self.pos);
-        let kind = match text {
-            "true" => TokenKind::Bool(true),
-            "false" => TokenKind::Bool(false),
-            "none" => TokenKind::None,
-            "if" => TokenKind::If,
-            "else" => TokenKind::Else,
-            "match" => TokenKind::Match,
-            _ => TokenKind::Ident(text.to_string()),
-        };
+        let kind = keyword(text).unwrap_or_else(|| TokenKind::Ident(text.to_string()));
         Ok(Token::new(kind, span))
     }
 }
@@ -440,11 +442,34 @@ fn is_ident_cont(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
 }
 
+/// The token a reserved word lexes as, or `None` when `text` lexes as a
+/// plain identifier.
+fn keyword(text: &str) -> Option<TokenKind> {
+    Some(match text {
+        "true" => TokenKind::Bool(true),
+        "false" => TokenKind::Bool(false),
+        "none" => TokenKind::None,
+        "if" => TokenKind::If,
+        "else" => TokenKind::Else,
+        "match" => TokenKind::Match,
+        _ => return None,
+    })
+}
+
+/// Whether `s` is a reserved word — one the lexer never hands over as an
+/// identifier, so it cannot name a field, binding or declaration.
+///
+/// Words the parser only treats specially in some positions (`type`,
+/// `fn`, `let`, `try` …) still lex as identifiers and are not reserved.
+pub fn is_keyword(s: &str) -> bool {
+    keyword(s).is_some()
+}
+
 /// Whether `s` can be written as a bare WCL identifier.
 ///
 /// Every writer that builds source needs this — the formatter deciding
 /// whether a key needs quoting, an editing UI validating a new block id.
-/// It lives here, on the lexer's own [`is_ident_start`] / [`is_ident_cont`],
+/// It lives here, on the lexer's own `is_ident_start` / `is_ident_cont`,
 /// so a caller's idea of an identifier cannot drift from what the lexer
 /// will actually accept back.
 pub fn is_identifier(s: &str) -> bool {

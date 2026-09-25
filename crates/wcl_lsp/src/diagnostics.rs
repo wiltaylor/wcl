@@ -1,110 +1,162 @@
-//! Parse + schema-validate a source string and translate the
-//! resulting errors into LSP [`Diagnostic`] values.
+//! Parse + schema-validate a document and translate the resulting
+//! errors into LSP [`Diagnostic`] values, each placed in the file its
+//! span indexes into.
+//!
+//! A document's errors are not all its own: a violation inside an
+//! imported file carries that file's source, and its span only makes
+//! sense against that text. Every conversion here therefore pairs a
+//! diagnostic with its [`Origin`] and converts the span against the
+//! text the error was raised on.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Range};
-use wcl_lang::{Document, EvalError, FileLoader, ParseError, Span};
+use miette::{Diagnostic as _, NamedSource, SourceSpan};
+use tower_lsp_server::ls_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Range};
+use wcl_lang::{Document, EvalError, ParseError, SYSTEM_IMPORT_ROOT, Span};
 
-use crate::convert::span_to_range;
+use crate::ctx::Ctx;
 
-/// Open `source` the way the wdoc build would: system imports
-/// (`import <wdoc.wcl>`) resolve through the caller's loader (the embedded
-/// registry over an overlay of open buffers), relative imports resolve
-/// against `base_dir`, and the wdoc [`Environment`](wcl_lang::Environment)
-/// supplies builtins like `page_metadata`. A bare `Document::open` would
-/// flag all three as errors in perfectly valid documents.
-fn open_document(
-    source: &str,
-    uri: &str,
-    base_dir: Option<&Path>,
-    loader: FileLoader,
-) -> Result<Document, ParseError> {
-    Document::open_at_with_loader(
-        source,
-        uri,
-        base_dir.map(Path::to_path_buf),
-        &wcl_wdoc::wdoc_environment(),
-        loader,
-    )
+/// The file a diagnostic belongs to.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum Origin {
+    /// The document that was analysed.
+    Analysed,
+    /// Another file in its import graph, by path.
+    File(PathBuf),
 }
 
-/// Compute diagnostics for `source`. Returns an empty list when the
-/// document parses and validates cleanly.
-pub(crate) fn compute(
-    source: &str,
-    uri: &str,
-    base_dir: Option<&Path>,
-    loader: FileLoader,
-) -> Vec<Diagnostic> {
-    match open_document(source, uri, base_dir, loader) {
-        Ok(doc) => doc
-            .schema_errors()
-            .into_iter()
-            .map(|e| eval_error_to_diagnostic(source, &e, DiagnosticSeverity::ERROR))
-            .chain(
-                doc.schema_warnings()
-                    .into_iter()
-                    .map(|w| eval_error_to_diagnostic(source, &w, DiagnosticSeverity::WARNING)),
-            )
-            .collect(),
-        Err(e) => parse_error_to_diagnostics(source, e),
+/// Open `source` (named `uri`) through [`Ctx::open`] and report every
+/// diagnostic it produces, each with the file it belongs to. Empty when
+/// the document parses and validates cleanly.
+pub(crate) fn analyse(ctx: &Ctx, source: &str, uri: &str) -> Vec<(Origin, Diagnostic)> {
+    match ctx.open(source, uri) {
+        Ok(doc) => document(ctx, &doc),
+        Err(e) => parse_failure(ctx, &e, uri),
     }
 }
 
-/// Syntax-only diagnostics for `source` — used for non-root files in a
-/// rooted workspace, where schema-validating the fragment in isolation
-/// reports false positives for everything the root document supplies.
-pub(crate) fn compute_syntax_only(
-    source: &str,
-    uri: &str,
-    base_dir: Option<&Path>,
-    loader: FileLoader,
-) -> Vec<Diagnostic> {
-    match open_document(source, uri, base_dir, loader) {
-        Ok(_) => Vec::new(),
-        Err(e) => parse_error_to_diagnostics(source, e),
-    }
-}
-
-/// Convert a parse failure into LSP diagnostics, including the
-/// secondary label when the error carries one.
-fn parse_error_to_diagnostics(source: &str, err: ParseError) -> Vec<Diagnostic> {
-    match err {
-        ParseError::Syntax(syntax) => {
-            vec![Diagnostic {
-                range: source_span_to_range(source, syntax.span),
-                severity: Some(DiagnosticSeverity::ERROR),
-                code: Some(NumberOrString::String("wcl::parse".into())),
-                source: Some("wcl".into()),
-                message: format!("{}: {}", syntax.message, syntax.label),
-                ..Default::default()
-            }]
+/// Schema errors and warnings of an opened document. An error whose
+/// provenance is known goes to that source; one without (the library
+/// does not yet tag every cross-file error) and every warning stay on
+/// the analysed document, as the CLI renders them.
+pub(crate) fn document(ctx: &Ctx, doc: &Document) -> Vec<(Origin, Diagnostic)> {
+    let root = doc.source();
+    let mut out = Vec::new();
+    for (error, source) in doc.schema_diagnostics() {
+        let source = source.as_ref().unwrap_or(root);
+        if let Some(origin) = origin_of(source.name(), root.name()) {
+            out.push((
+                origin,
+                eval_error_to_diagnostic(ctx, source, &error, DiagnosticSeverity::ERROR),
+            ));
         }
-        ParseError::Io(err) => {
-            vec![Diagnostic {
+    }
+    for warning in doc.schema_warnings() {
+        out.push((
+            Origin::Analysed,
+            eval_error_to_diagnostic(ctx, root, &warning, DiagnosticSeverity::WARNING),
+        ));
+    }
+    out
+}
+
+/// A document that failed to open. A syntax error carries the source it
+/// was raised on — the analysed document or an imported file — so it is
+/// placed there; an I/O failure lands at the top of the analysed file.
+pub(crate) fn parse_failure(ctx: &Ctx, err: &ParseError, name: &str) -> Vec<(Origin, Diagnostic)> {
+    match err {
+        ParseError::Syntax(syntax) => origin_of(syntax.src.name(), name)
+            .map(|origin| {
+                let range = source_span_to_range(ctx, syntax.src.inner(), syntax.span);
+                (
+                    origin,
+                    syntax_diagnostic(range, &syntax.message, &syntax.label),
+                )
+            })
+            .into_iter()
+            .collect(),
+        ParseError::Io(io) => vec![(
+            Origin::Analysed,
+            Diagnostic {
                 range: Range::default(),
                 severity: Some(DiagnosticSeverity::ERROR),
                 code: Some(NumberOrString::String("wcl::io".into())),
                 source: Some("wcl".into()),
-                message: format!("io error: {err}"),
+                message: format!("io error: {io}"),
                 ..Default::default()
-            }]
-        }
+            },
+        )],
     }
 }
 
-/// Convert one evaluation or schema error into an LSP diagnostic.
+/// Syntax-only diagnostics for `source`: a parse with no import
+/// resolution or schema validation. Used for files outside a configured
+/// root's import graph, where validating the fragment in isolation
+/// reports false positives for everything the root supplies.
+pub(crate) fn syntax_only(ctx: &Ctx, source: &str, name: &str) -> Vec<Diagnostic> {
+    match wcl_lang::parse_for_edit(source, name) {
+        Ok(_) => Vec::new(),
+        Err(ParseError::Syntax(syntax)) => {
+            let range = source_span_to_range(ctx, source, syntax.span);
+            vec![syntax_diagnostic(range, &syntax.message, &syntax.label)]
+        }
+        // `parse_for_edit` reads nothing, so it cannot fail on I/O.
+        Err(ParseError::Io(_)) => Vec::new(),
+    }
+}
+
+/// Where a diagnostic raised on the source named `name` belongs, given
+/// the analysed document is named `analysed`. Embedded system imports
+/// have no file an editor can open, so their diagnostics are dropped.
+fn origin_of(name: &str, analysed: &str) -> Option<Origin> {
+    if name == analysed {
+        return Some(Origin::Analysed);
+    }
+    let path = Path::new(name);
+    if path.starts_with(SYSTEM_IMPORT_ROOT) {
+        tracing::warn!("dropping a diagnostic raised inside system import {name}");
+        return None;
+    }
+    Some(if path.is_absolute() {
+        Origin::File(path.to_path_buf())
+    } else {
+        Origin::Analysed
+    })
+}
+
+/// The LSP form of one parse failure.
+fn syntax_diagnostic(range: Range, message: &str, label: &str) -> Diagnostic {
+    Diagnostic {
+        range,
+        severity: Some(DiagnosticSeverity::ERROR),
+        code: Some(NumberOrString::String("wcl::parse".into())),
+        source: Some("wcl".into()),
+        message: format!("{message}: {label}"),
+        ..Default::default()
+    }
+}
+
+/// Convert one evaluation or schema error raised on `source` into an
+/// LSP diagnostic. The code and span come from the error's
+/// `miette::Diagnostic` implementation — its `code()` and first label —
+/// the same way the CLI's JSON report reads them.
 fn eval_error_to_diagnostic(
-    source: &str,
+    ctx: &Ctx,
+    source: &NamedSource<std::sync::Arc<str>>,
     err: &EvalError,
     severity: DiagnosticSeverity,
 ) -> Diagnostic {
-    let span = eval_error_span(err);
+    let range = err
+        .labels()
+        .and_then(|mut labels| labels.next())
+        .map(|label| source_span_to_range(ctx, source.inner(), *label.inner()))
+        .unwrap_or_default();
     Diagnostic {
-        range: source_span_to_range(source, span),
+        range,
         severity: Some(severity),
-        code: Some(NumberOrString::String(diagnostic_code(err).into())),
+        code: err
+            .code()
+            .map(|code| NumberOrString::String(code.to_string())),
         source: Some("wcl".into()),
         message: err.to_string(),
         data: diagnostic_data(err),
@@ -128,95 +180,38 @@ fn diagnostic_data(err: &EvalError) -> Option<serde_json::Value> {
     }
 }
 
-/// Convert a byte span into the line/character range LSP wants,
-/// counting UTF-16 code units as the protocol requires.
-fn source_span_to_range(source: &str, span: miette::SourceSpan) -> Range {
+/// Convert a byte span in `text` into the line/character range LSP
+/// wants, with `character` counted in the negotiated position encoding.
+fn source_span_to_range(ctx: &Ctx, text: &str, span: SourceSpan) -> Range {
     let start = span.offset();
-    let end = start + span.len();
-    span_to_range(source, Span::new(start, end))
-}
-
-/// Pull the `SourceSpan` out of an `EvalError` variant. Every variant
-/// carries a `span` field; we mirror them here rather than reflecting
-/// via `miette::Diagnostic::labels` to avoid the dyn iterator detour
-/// and keep this exhaustive at compile time.
-fn eval_error_span(err: &EvalError) -> miette::SourceSpan {
-    match err {
-        EvalError::Cycle { span, .. }
-        | EvalError::UnknownBuiltin { span, .. }
-        | EvalError::BuiltinArity { span, .. }
-        | EvalError::BuiltinTypeMismatch { span, .. }
-        | EvalError::NonCallable { span }
-        | EvalError::CallArity { span, .. }
-        | EvalError::CallDepthExceeded { span, .. }
-        | EvalError::MatchNoArm { span }
-        | EvalError::GuardNotBool { span, .. }
-        | EvalError::UnknownUnion { span, .. }
-        | EvalError::UnknownVariant { span, .. }
-        | EvalError::VariantShapeMismatch { span, .. }
-        | EvalError::UserError { span, .. }
-        | EvalError::UnionCycle { span, .. }
-        | EvalError::TypeMismatch { span, .. }
-        | EvalError::Arithmetic { span, .. }
-        | EvalError::NotALeaf { span, .. }
-        | EvalError::ImportFailed { span, .. }
-        | EvalError::SchemaViolation { span, .. }
-        | EvalError::UnresolvedReference { span, .. }
-        | EvalError::NotAReference { span, .. }
-        | EvalError::UnitNoMatch { span, .. }
-        | EvalError::UnitWithoutType { span, .. }
-        | EvalError::MissingExpander { span, .. }
-        | EvalError::ExpansionLimit { span, .. } => *span,
-    }
-}
-
-/// The stable `wcl::…` code for an error, so a client can filter or
-/// map diagnostics without matching on message text.
-fn diagnostic_code(err: &EvalError) -> &'static str {
-    match err {
-        EvalError::Cycle { .. } => "wcl::eval::cycle",
-        EvalError::UnknownBuiltin { .. } => "wcl::eval::unknown_builtin",
-        EvalError::BuiltinArity { .. } => "wcl::eval::builtin_arity",
-        EvalError::BuiltinTypeMismatch { .. } => "wcl::eval::builtin_type",
-        EvalError::NonCallable { .. } => "wcl::eval::non_callable",
-        EvalError::CallArity { .. } => "wcl::eval::call_arity",
-        EvalError::CallDepthExceeded { .. } => "wcl::eval::call_depth_exceeded",
-        EvalError::MatchNoArm { .. } => "wcl::eval::match_no_arm",
-        EvalError::GuardNotBool { .. } => "wcl::eval::guard_not_bool",
-        EvalError::UnknownUnion { .. } => "wcl::eval::unknown_union",
-        EvalError::UnknownVariant { .. } => "wcl::eval::unknown_variant",
-        EvalError::VariantShapeMismatch { .. } => "wcl::eval::variant_shape_mismatch",
-        EvalError::UserError { .. } => "wcl::eval::user_error",
-        EvalError::UnionCycle { .. } => "wcl::eval::union_cycle",
-        EvalError::TypeMismatch { .. } => "wcl::eval::type_mismatch",
-        EvalError::Arithmetic { .. } => "wcl::eval::arithmetic",
-        EvalError::NotALeaf { .. } => "wcl::eval::not_a_leaf",
-        EvalError::ImportFailed { .. } => "wcl::eval::import_failed",
-        EvalError::SchemaViolation { .. } => "wcl::eval::schema_violation",
-        EvalError::UnresolvedReference { .. } => "wcl::eval::unresolved_reference",
-        EvalError::NotAReference { .. } => "wcl::eval::not_a_reference",
-        EvalError::UnitNoMatch { .. } => "wcl::eval::unit_no_match",
-        EvalError::UnitWithoutType { .. } => "wcl::eval::unit_without_type",
-        EvalError::MissingExpander { .. } => "wcl::eval::missing_expander",
-        EvalError::ExpansionLimit { .. } => "wcl::eval::expansion_limit",
-    }
+    ctx.index(text).range(Span::new(start, start + span.len()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tower_lsp::lsp_types::Position;
+    use tower_lsp_server::ls_types::Position;
 
-    /// The loader the live server threads in: the embedded wdoc registry
-    /// over disk (no open-buffer overlay in unit tests).
-    fn loader() -> FileLoader {
-        wcl_wdoc::schema_registry().loader(wcl_lang::disk_loader())
+    fn ctx() -> Ctx {
+        Ctx::new(Default::default())
+    }
+
+    /// Diagnostics for a single-file document, asserting none of them
+    /// was placed in another file.
+    fn compute(src: &str, name: &str) -> Vec<Diagnostic> {
+        analyse(&ctx(), src, name)
+            .into_iter()
+            .map(|(origin, diagnostic)| {
+                assert_eq!(origin, Origin::Analysed, "{diagnostic:?}");
+                diagnostic
+            })
+            .collect()
     }
 
     #[test]
     fn clean_document_has_no_diagnostics() {
         let src = "// no schema, no fields, nothing to validate\n";
-        let diags = compute(src, "test.wcl", None, loader());
+        let diags = compute(src, "test.wcl");
         assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}");
     }
 
@@ -224,24 +219,36 @@ mod tests {
     fn syntax_error_emits_one_diagnostic() {
         // Unclosed brace fixture from examples/errors.
         let src = "@schemaless config {\n  region = \"us-east-1\"\n";
-        let diags = compute(src, "test.wcl", None, loader());
-        assert_eq!(diags.len(), 1, "expected one syntax diagnostic");
-        let d = &diags[0];
-        assert_eq!(d.severity, Some(DiagnosticSeverity::ERROR));
-        assert_eq!(d.code, Some(NumberOrString::String("wcl::parse".into())));
-        assert!(d.range.start.line <= d.range.end.line);
+        for diags in [
+            compute(src, "test.wcl"),
+            syntax_only(&ctx(), src, "test.wcl"),
+        ] {
+            assert_eq!(diags.len(), 1, "expected one syntax diagnostic");
+            let d = &diags[0];
+            assert_eq!(d.severity, Some(DiagnosticSeverity::ERROR));
+            assert_eq!(d.code, Some(NumberOrString::String("wcl::parse".into())));
+            assert!(d.range.start.line <= d.range.end.line);
+        }
     }
 
     #[test]
-    fn system_import_resolves_in_both_paths() {
+    fn system_import_resolves_and_syntax_only_skips_it() {
         // `import <wdoc.wcl>` must resolve through the registry loader —
         // a bare disk loader turns it into a bogus parse error (the bug
-        // this loader threading fixed).
+        // this loader threading fixed). The syntax-only check never
+        // resolves imports at all.
         let src = "import <wdoc.wcl>\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n";
-        let diags = compute(src, "test.wcl", None, loader());
+        let diags = compute(src, "test.wcl");
         assert!(diags.is_empty(), "root path flagged: {diags:#?}");
-        let diags = compute_syntax_only(src, "test.wcl", None, loader());
+        let diags = syntax_only(&ctx(), src, "test.wcl");
         assert!(diags.is_empty(), "syntax-only path flagged: {diags:#?}");
+    }
+
+    #[test]
+    fn syntax_only_does_not_resolve_imports() {
+        let src = "import \"./does-not-exist.wcl\"\n";
+        assert!(!compute(src, "test.wcl").is_empty());
+        assert!(syntax_only(&ctx(), src, "test.wcl").is_empty());
     }
 
     #[test]
@@ -256,8 +263,47 @@ mod tests {
         )
         .unwrap();
         let main_src = "import <wdoc.wcl>\nimport \"pages.wcl\"\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n";
-        let diags = compute(main_src, "main.wcl", Some(td.path()), loader());
+        let main = crate::convert::path_to_uri(&td.path().join("main.wcl")).unwrap();
+        let diags = compute(main_src, main.as_str());
         assert!(diags.is_empty(), "rooted main flagged: {diags:#?}");
+    }
+
+    #[test]
+    fn imported_file_errors_are_placed_in_that_file() {
+        // An undeclared decorator inside an imported file carries the
+        // imported source: it is reported there, at its own line.
+        let td = tempfile::tempdir().unwrap();
+        let shared = td.path().join("shared.wcl");
+        std::fs::write(&shared, "\n\n@missing\ntitle = \"Hi\"\n").unwrap();
+        let main_src = "import \"./shared.wcl\"\n@document type Root { title: utf8 }\n";
+        let main = crate::convert::path_to_uri(&td.path().join("main.wcl")).unwrap();
+        let diags = analyse(&ctx(), main_src, main.as_str());
+        let (origin, diagnostic) = diags
+            .iter()
+            .find(|(_, d)| d.message.contains("decorator 'missing'"))
+            .expect("undeclared decorator diagnostic");
+        let Origin::File(path) = origin else {
+            panic!("placed in the analysed file: {diags:#?}")
+        };
+        assert_eq!(
+            std::fs::canonicalize(path).unwrap(),
+            std::fs::canonicalize(&shared).unwrap()
+        );
+        assert_eq!(diagnostic.range.start, Position::new(2, 1));
+    }
+
+    #[test]
+    fn imported_file_syntax_errors_are_placed_in_that_file() {
+        let td = tempfile::tempdir().unwrap();
+        let shared = td.path().join("shared.wcl");
+        std::fs::write(&shared, "\n\n\n@schemaless x = {\n").unwrap();
+        let main_src = "import \"./shared.wcl\"\n";
+        let main = crate::convert::path_to_uri(&td.path().join("main.wcl")).unwrap();
+        let diags = analyse(&ctx(), main_src, main.as_str());
+        assert_eq!(diags.len(), 1, "{diags:#?}");
+        let (origin, diagnostic) = &diags[0];
+        assert!(matches!(origin, Origin::File(_)), "{diags:#?}");
+        assert!(diagnostic.range.start.line >= 3, "{diagnostic:#?}");
     }
 
     #[test]
@@ -265,7 +311,7 @@ mod tests {
         // A root @document gather field shadowing the wdoc stdlib's
         // `pages` gather — advisory, so WARNING, not ERROR.
         let src = "import <wdoc.wcl>\n\n@block(\"part\")\ntype Part {\n  name: utf8\n}\n@document\ntype Mine {\n  @children(\"part\") pages: list<Part>\n}\n";
-        let diags = compute(src, "test.wcl", None, loader());
+        let diags = compute(src, "test.wcl");
         let warn = diags
             .iter()
             .find(|d| d.severity == Some(DiagnosticSeverity::WARNING))
@@ -287,7 +333,7 @@ mod tests {
     fn schema_violation_reports_at_field_span() {
         // Mirror examples/errors/unknown_field.wcl.
         let src = "@document\ntype Root {\n  region: utf8\n}\n@block(\"service\")\ntype Service {\n  region: utf8\n}\nservice web {\n  region = \"us-east-1\"\n  unexpected = \"boom\"\n}\n";
-        let diags = compute(src, "test.wcl", None, loader());
+        let diags = compute(src, "test.wcl");
         assert!(!diags.is_empty(), "expected at least one schema diagnostic");
         let has_unknown = diags.iter().any(|d| {
             matches!(&d.code, Some(NumberOrString::String(c)) if c == "wcl::eval::schema_violation")
@@ -305,7 +351,7 @@ mod tests {
     #[test]
     fn undeclared_decorator_reports_at_its_name() {
         let src = "@document type Root { title: utf8 }\n@missing\ntitle = \"Hello\"\n";
-        let diags = compute(src, "test.wcl", None, loader());
+        let diags = compute(src, "test.wcl");
         let diagnostic = diags
             .iter()
             .find(|diagnostic| diagnostic.message.contains("decorator 'missing'"))

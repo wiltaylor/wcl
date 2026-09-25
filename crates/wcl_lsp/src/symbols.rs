@@ -6,28 +6,30 @@
 //! entries) — that maps cleanly onto a single-level outline.
 
 #[allow(deprecated)] // DocumentSymbol::deprecated is required by lsp-types
-use tower_lsp::lsp_types::{DocumentSymbol, SymbolKind as LspSymbolKind};
-use wcl_lang::{Document, SymbolKind, SymbolRecord};
+use tower_lsp_server::ls_types::{DocumentSymbol, SymbolKind as LspSymbolKind};
+use wcl_lang::{SymbolKind, SymbolRecord};
 
-use crate::convert::span_to_range;
+use crate::convert::LineIndex;
+use crate::ctx::Ctx;
 
 /// Build a flat list of document symbols for `source`. Returns an
 /// empty vec on parse failure (the diagnostics path already surfaces
 /// the parse error).
-pub(crate) fn compute(source: &str, uri: &str) -> Vec<DocumentSymbol> {
-    let Ok(doc) = Document::open(source, uri) else {
+pub(crate) fn compute(ctx: &Ctx, source: &str, uri: &str) -> Vec<DocumentSymbol> {
+    let Ok(doc) = ctx.open(source, uri) else {
         return Vec::new();
     };
+    let index = ctx.index(source);
     doc.symbols()
         .iter()
-        .map(|rec| record_to_symbol(source, rec))
+        .map(|rec| record_to_symbol(&index, rec))
         .collect()
 }
 
 /// Convert an indexed declaration into the outline entry a client
 /// shows.
-fn record_to_symbol(source: &str, rec: &SymbolRecord) -> DocumentSymbol {
-    let range = span_to_range(source, rec.span);
+fn record_to_symbol(index: &LineIndex<'_>, rec: &SymbolRecord) -> DocumentSymbol {
+    let range = index.range(rec.span);
     let (kind, detail) = classify(&rec.kind);
     #[allow(deprecated)]
     DocumentSymbol {
@@ -80,7 +82,7 @@ mod tests {
     #[test]
     fn type_decl_and_field_appear_in_outline() {
         let src = "@document\ntype Root {\n  name: utf8\n}\nname = \"alpha\"\n";
-        let syms = compute(src, "test.wcl");
+        let syms = compute(&Ctx::new(Default::default()), src, "test.wcl");
         let names: Vec<_> = syms.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"Root"), "missing Root: {names:?}");
         assert!(names.contains(&"name"), "missing name field: {names:?}");
@@ -91,7 +93,7 @@ mod tests {
     #[test]
     fn parse_failure_yields_no_symbols() {
         let src = "type Broken {";
-        let syms = compute(src, "test.wcl");
+        let syms = compute(&Ctx::new(Default::default()), src, "test.wcl");
         assert!(syms.is_empty());
     }
 }

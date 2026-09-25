@@ -11,7 +11,7 @@ fn document(root: &Path, body: &str) -> std::path::PathBuf {
     path
 }
 
-fn assert_invalid_destination(result: Result<usize, BuildError>) {
+fn assert_invalid_destination<T>(result: Result<T, BuildError>) {
     assert!(matches!(result, Err(BuildError::Io(error, _))
         if error.kind() == std::io::ErrorKind::InvalidInput));
 }

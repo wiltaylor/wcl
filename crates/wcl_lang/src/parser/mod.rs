@@ -3,6 +3,9 @@ mod expr;
 mod pattern;
 mod types;
 
+use std::cell::OnceCell;
+use std::sync::Arc;
+
 use miette::{NamedSource, SourceSpan};
 
 use crate::ast::{Block, Expr, Item, Source, Span};
@@ -23,11 +26,10 @@ use crate::ast::{BinOp, Field, SymbolSetDecl, TypeDecl, UnaryOp, UnionDecl, UseF
 pub struct Parser<'a> {
     /// Source name, reported in diagnostics.
     file: String,
-    /// Pre-built `NamedSource` used for every diagnostic. Cloning a
-    /// `NamedSource` is cheap (its body is shared), so this is reused
-    /// across all of this parse's error sites instead of reallocating
-    /// the source string per call.
-    named_src: std::sync::Arc<NamedSource<String>>,
+    /// The `NamedSource` every diagnostic renders against, built on the
+    /// first error. Its text is an `Arc<str>`, so each further error
+    /// clones a pointer rather than copying the whole source.
+    named_src: OnceCell<NamedSource<Arc<str>>>,
     /// The full source text, retained so `parse_import_decl` can slice
     /// the raw path out of an `import <...>` between the `<` and `>`
     /// token spans (the bracketed path is not a single token).
@@ -109,13 +111,23 @@ impl<'a> Parser<'a> {
 
     /// Start parsing `src`. `file` names it in diagnostics.
     pub fn new(src: &'a str, file: impl Into<String>) -> Self {
-        let file = file.into();
-        let named_src = std::sync::Arc::new(NamedSource::new(file.clone(), src.to_string()));
+        Self::with_lexer(src, file.into(), Lexer::new(src))
+    }
+
+    /// A parser for the `${…}` slot whose text starts at byte `start` of
+    /// `src`. The lexer begins there, so spans are offsets into `src`
+    /// and diagnostics point into the outer file with no rewriting.
+    fn for_slot(src: &'a str, start: usize, file: String) -> Self {
+        Self::with_lexer(src, file, Lexer::starting_at(src, start))
+    }
+
+    /// Shared constructor behind [`Self::new`] and [`Self::for_slot`].
+    fn with_lexer(src: &'a str, file: String, lexer: Lexer<'a>) -> Self {
         Self {
             file,
-            named_src,
+            named_src: OnceCell::new(),
             src,
-            lexer: Lexer::new(src),
+            lexer,
             peeked: None,
             peeked2: None,
             file_ns: Vec::new(),
@@ -387,7 +399,7 @@ impl<'a> Parser<'a> {
                 ..
             }) => Err(ParseError::syntax_with_related(
                 msg,
-                (*self.named_src).clone(),
+                self.named_src(),
                 SourceSpan::new(
                     second_span.start.into(),
                     second_span.end - second_span.start,
@@ -753,8 +765,8 @@ impl<'a> Parser<'a> {
     /// Build an `Expr` from a `StringLit` token. Plain forms map
     /// one-to-one to the existing string-typed `Expr` variants; the
     /// interpolated form sub-parses each `${expr}` slot using a fresh
-    /// `Parser` over a leading-padded copy of the original source so
-    /// span offsets stay aligned with the outer file.
+    /// `Parser` whose lexer starts at the slot inside the outer source,
+    /// so span offsets stay aligned with the outer file.
     fn string_lit_to_expr(&mut self, lit: StringLit, _span: Span) -> Result<Expr, ParseError> {
         // Plain encodings short-circuit. Only the interpolated form
         // needs the slot-by-slot sub-parse, so destructure here rather
@@ -792,26 +804,24 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Sub-parse one `${...}` slot. Constructs a fresh parser over a
-    /// leading-padded copy of the slot text so error spans land in the
-    /// outer source's coordinates without explicit span rewriting.
+    /// Sub-parse one `${...}` slot. The lexer captured the slot text
+    /// verbatim from this source, so a fresh parser lexes it in place:
+    /// it starts just past the `${` and stops where the text ends, and
+    /// its spans are already in the outer source's coordinates.
     ///
-    /// Any error from the sub-parser is re-issued against the outer
-    /// `NamedSource` (so the rendered snippet shows the *real* file,
-    /// not the padded duplicate the sub-parser sees) and prefixed with
-    /// `"in interpolation slot:"` so the user can tell the diagnostic
-    /// came from inside a `${…}` rather than the surrounding text.
+    /// Any error from the sub-parser is re-issued against this parser's
+    /// `NamedSource` (the sub-parser only sees the text up to the slot's
+    /// end) and prefixed with `"in interpolation slot:"` so the user can
+    /// tell the diagnostic came from inside a `${…}` rather than the
+    /// surrounding text.
     fn sub_parse_slot(&mut self, text: &str, slot_span: Span) -> Result<Expr, ParseError> {
-        // Pad the slot text with spaces so the sub-parser's byte
-        // offsets line up with the outer source.
-        let padded = format!("{}{}", " ".repeat(slot_span.start + 2), text);
-        let mut sub = Parser::new(&padded, self.file.clone());
+        let start = slot_span.start + 2;
+        let end = start + text.len();
+        debug_assert_eq!(self.src.get(start..end), Some(text));
+        let mut sub = Parser::for_slot(&self.src[..end], start, self.file.clone());
         // Slots nest (`$"${ $"${…}" }"`), so the sub-parser continues
         // this parser's recursion count rather than starting afresh.
         sub.recursion_depth = self.recursion_depth;
-        // Skip the padding via the lexer's whitespace handling: the
-        // first peek/bump will land on the first real byte of the
-        // slot text. Then parse one expression.
         let (expr, _) = sub.parse_expr().map_err(|e| self.wrap_slot_error(e))?;
         self.expr_depth = self.expr_depth.max(sub.expr_depth);
         let trailing = sub.peek().map_err(|e| self.wrap_slot_error(e))?;
@@ -827,20 +837,28 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Convert a sub-parser's `ParseError` (which references the
-    /// padded slot source) into one rooted in the outer document's
+    /// Convert a sub-parser's `ParseError` (whose source stops at the
+    /// slot's end) into one rooted in the outer document's
     /// `NamedSource`, prefixing the message with the interpolation
     /// context.
     fn wrap_slot_error(&self, e: ParseError) -> ParseError {
         match e {
             ParseError::Syntax(inner) => ParseError::syntax(
                 format!("in interpolation slot: {}", inner.message),
-                (*self.named_src).clone(),
+                self.named_src(),
                 inner.span,
                 inner.label,
             ),
             other => other,
         }
+    }
+
+    /// The source every diagnostic from this parse renders against. The
+    /// text is copied once, on the first error; later calls share it.
+    fn named_src(&self) -> NamedSource<Arc<str>> {
+        self.named_src
+            .get_or_init(|| NamedSource::new(self.file.clone(), Arc::from(self.src)))
+            .clone()
     }
 
     /// Build a parse error pointing at the given span.
@@ -853,7 +871,7 @@ impl<'a> Parser<'a> {
         let len = span.len().max(1);
         ParseError::syntax(
             message.into(),
-            (*self.named_src).clone(),
+            self.named_src(),
             SourceSpan::new(span.start.into(), len),
             label.into(),
         )

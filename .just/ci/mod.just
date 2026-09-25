@@ -20,6 +20,6 @@ main:
 # own job (`just ci::fuzz-sweep`), and it is guarded so a machine without the
 # tooling says so instead of failing obscurely.
 
-# Everything a change must pass before it can merge: fmt, lint, tests, doc builds
+# Everything a change must pass before it can merge: fmt, lint, API docs, tests, doc builds
 [group('ci')]
-check: fmt-check workspace-lint workspace-test docs-build docs-relative-urls
+check: fmt-check workspace-lint workspace-doc workspace-test docs-build docs-relative-urls

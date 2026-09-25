@@ -154,7 +154,7 @@ pub(crate) fn render_html_variant_with_blocks(
                 _ => None,
             })
             .and_then(|name| patterns.style(name))
-            .map(|css| format!("<style>{css}</style>"))
+            .map(|css| format!("<style>{}</style>", escape_style_text(css)))
             .unwrap_or_default(),
         // A `Head` reached in body context renders to nothing — its
         // children are hoisted into `<head>` only when the fundamental is
@@ -177,9 +177,11 @@ pub(crate) fn render_html_variant_with_blocks(
         // A custom variant: expand it through its kind's own `lower`. What
         // that produces may be content — a user block is free to lower to
         // the semantic IR through a chain of its own variants.
-        other => lower_recurse(doc, map, other, depth, |v, d| match recursed_content(v) {
-            Some(node) => render_content(doc, &node, patterns),
-            None => render_html_variant_with_blocks(doc, v, d, patterns, block_renderer),
+        other => lower_recurse(doc, map, other, depth, |v, d| {
+            match recursed_content(v, patterns.warnings()) {
+                Some(node) => render_content(doc, &node, patterns),
+                None => render_html_variant_with_blocks(doc, v, d, patterns, block_renderer),
+            }
         }),
     }
 }

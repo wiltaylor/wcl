@@ -1,0 +1,406 @@
+================================================================================
+namespace and import (examples/imports/main.wcl)
+================================================================================
+
+namespace app
+
+import "./shared.wcl"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (namespace_decl
+    (dotted_name
+      (identifier)))
+  (import_decl
+    (string)))
+
+================================================================================
+system import
+================================================================================
+
+import <wdoc/prelude.wcl>
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (import_decl
+    (system_import_path)))
+
+================================================================================
+use forms
+================================================================================
+
+use std.math
+use std.math as m
+use std.math.{abs, max as largest,}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_decl
+    (dotted_name
+      (identifier)
+      (identifier)))
+  (use_decl
+    (dotted_name
+      (identifier)
+      (identifier))
+    (identifier))
+  (use_decl
+    (dotted_name
+      (identifier)
+      (identifier))
+    (use_list
+      (use_item
+        (identifier))
+      (use_item
+        (identifier)
+        (identifier)))))
+
+================================================================================
+type declaration with decorators (examples/tables.wcl)
+================================================================================
+
+@table("user")
+type User {
+  name:   utf8
+  age:    u32
+  active: bool
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_decl
+    (decorator
+      (dotted_name
+        (identifier))
+      (decorator_arguments
+        (string)))
+    (dotted_name
+      (identifier))
+    (field_block
+      (type_field
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier))))
+      (type_field
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier))))
+      (type_field
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier)))))))
+
+================================================================================
+type field with optional marker and inline default
+================================================================================
+
+type Service {
+  @inline(0) id: identifier
+  owner: &User?
+  replicas = 3
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_decl
+    (dotted_name
+      (identifier))
+    (field_block
+      (type_field
+        (decorator
+          (dotted_name
+            (identifier))
+          (decorator_arguments
+            (number)))
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier))))
+      (type_field
+        (identifier)
+        (reference_type
+          (named_type
+            (dotted_name
+              (identifier))))
+        (optional_marker))
+      (type_field
+        (identifier)
+        (number)))))
+
+================================================================================
+type alias (examples/literal_units.wcl)
+================================================================================
+
+@unit("kg", 1000)
+@unit("g", 1)
+type Grams = i64
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_decl
+    (decorator
+      (dotted_name
+        (identifier))
+      (decorator_arguments
+        (string)
+        (number)))
+    (decorator
+      (dotted_name
+        (identifier))
+      (decorator_arguments
+        (string)
+        (number)))
+    (dotted_name
+      (identifier))
+    (named_type
+      (dotted_name
+        (identifier)))))
+
+================================================================================
+interface and extends
+================================================================================
+
+interface Named { name: utf8 }
+
+type Person extends Named, Aged {
+  email: utf8
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (interface_decl
+    (dotted_name
+      (identifier))
+    (field_block
+      (type_field
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier))))))
+  (type_decl
+    (dotted_name
+      (identifier))
+    (extends_clause
+      (dotted_name
+        (identifier))
+      (dotted_name
+        (identifier)))
+    (field_block
+      (type_field
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier)))))))
+
+================================================================================
+union with every variant body (examples/branching.wcl)
+================================================================================
+
+union Shape {
+  Circle  { radius: f64 stroke: f64 }
+  Polygon i32
+  Empty   none
+  Tagged  &Named
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (union_decl
+    (dotted_name
+      (identifier))
+    (union_variant
+      (identifier)
+      (field_block
+        (type_field
+          (identifier)
+          (named_type
+            (dotted_name
+              (identifier))))
+        (type_field
+          (identifier)
+          (named_type
+            (dotted_name
+              (identifier))))))
+    (union_variant
+      (identifier)
+      (named_type
+        (dotted_name
+          (identifier))))
+    (union_variant
+      (identifier)
+      (none))
+    (union_variant
+      (identifier)
+      (reference_type
+        (named_type
+          (dotted_name
+            (identifier)))))))
+
+================================================================================
+union extends
+================================================================================
+
+union Extended extends Base {
+  Extra none
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (union_decl
+    (dotted_name
+      (identifier))
+    (extends_clause
+      (dotted_name
+        (identifier)))
+    (union_variant
+      (identifier)
+      (none))))
+
+================================================================================
+symbol set (examples/connections.wcl)
+================================================================================
+
+symbol_set EdgeKind { uses depends_on }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (symbol_set_decl
+    (dotted_name
+      (identifier))
+    (symbol_entry
+      (identifier))
+    (symbol_entry
+      (identifier))))
+
+================================================================================
+symbol set with decorated entries
+================================================================================
+
+symbol_set Level {
+  @doc("low") low
+  high
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (symbol_set_decl
+    (dotted_name
+      (identifier))
+    (symbol_entry
+      (decorator
+        (dotted_name
+          (identifier))
+        (decorator_arguments
+          (string)))
+      (identifier))
+    (symbol_entry
+      (identifier))))
+
+================================================================================
+connection declaration (examples/connections.wcl)
+================================================================================
+
+connection DependsOn: Service -> Service : EdgeKind
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (connection_decl
+    (dotted_name
+      (identifier))
+    (named_type
+      (dotted_name
+        (identifier)))
+    (named_type
+      (dotted_name
+        (identifier)))
+    (dotted_name
+      (identifier))))
+
+================================================================================
+let and fn items (examples/lets.wcl)
+================================================================================
+
+let base_port = 8000
+let bump      = fn(n: i64) -> i64 base_port + n
+
+fn double(x: i64) -> i64 {
+  x * 2
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_item
+    (identifier)
+    (number))
+  (let_item
+    (identifier)
+    (function_expression
+      (parameters
+        (parameter
+          (identifier)
+          (named_type
+            (dotted_name
+              (identifier)))))
+      (named_type
+        (dotted_name
+          (identifier)))
+      (binary_expression
+        (identifier)
+        (identifier))))
+  (fn_item
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier)))))
+    (named_type
+      (dotted_name
+        (identifier)))
+    (block_expression
+      (binary_expression
+        (identifier)
+        (number)))))
+
+================================================================================
+item keywords used as names
+================================================================================
+
+type = "a field named type"
+use = 1
+slot "sidebar" {}
+let {}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (string))
+  (field
+    (identifier)
+    (number))
+  (block
+    (identifier)
+    (string)
+    (block_body))
+  (block
+    (identifier)
+    (block_body)))

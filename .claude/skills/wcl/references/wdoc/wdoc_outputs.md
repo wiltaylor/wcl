@@ -130,9 +130,16 @@ rebuilt: 2 pages (full)
 
 The fallback is deliberately eager, because the failure mode of being clever here is a stale
 page that looks right. Seven kinds of change force a full build: an imported library, the page
-set, the CSS, an asset declaration, a repeater, one that pulls in an icon the sprite does
-not have yet, and a file holding a `site` block, which is why editing your
+set or its navigation, the CSS, an asset declaration, a repeater, one that pulls in an icon the
+sprite does not have yet, and a file holding a `site` block, which is why editing your
 entry document usually rebuilds everything.
+
+**Navigation is checked against `_wdoc/pages.json`.** Each full build writes every site's page
+names and first-heading titles, in order, to `<site out>/_wdoc/pages.json`. A rebuild whose list
+differs (a page added, removed, reordered, or given a new first `h1` / `chapter_header`) builds
+everything, because every other page's sidebar, page list and prev/next would go stale. An
+output directory with no `pages.json` (never fully built, or a full build that failed part-way)
+also gets a full build.
 
 **Scoping is by file, not by block.** Two pages in one `pages.wcl` are one unit: edit either
 and both re-render. The saving is in skipping the *other* fifty pages and the aggregate

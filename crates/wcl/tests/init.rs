@@ -172,7 +172,7 @@ fn init_rejects_removed_answers_flag() {
         .arg(&answers)
         .arg("--defaults")
         .assert()
-        .failure()
+        .code(64)
         .stderr(predicate::str::contains("--answers"));
 }
 

@@ -3,7 +3,7 @@
 //! Each AST item gets one [`ItemCells`] entry. The cell holds memoised
 //! decorator-argument values plus a discriminated payload that mirrors the
 //! AST variant ([`ItemCellKind`]). Field evaluation results are stored in
-//! [`FieldCell`] with cycle-detection. Synthesised table rows produced at
+//! [`FieldCell`]. Synthesised table rows produced at
 //! cells-build time live in [`SynthRow`] so the view layer can iterate them
 //! without re-synthesising.
 //!
@@ -17,23 +17,24 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use std::sync::atomic::AtomicBool;
 
 use crate::ast::{self, Span};
 use crate::diagnostics::EvalError;
 use crate::symbols::SymbolIndex;
 use crate::value::Value;
 
+use super::lookup::NameIndex;
+
 #[derive(Debug)]
-/// Memo for one field's value, plus the flag that turns infinite
-/// recursion into an `EvalError::Cycle` instead of a stack overflow.
+/// Memo for one field's value. Whether the field is being forced right
+/// now is tracked per thread on the evaluation stack
+/// ([`super::eval_stack`]), keyed by this cell's address, so a
+/// re-entrant force reports an `EvalError::Cycle` instead of
+/// overflowing the stack.
 pub(crate) struct FieldCell {
     /// The evaluated result, written once on first force. Errors are
     /// cached too, so a failing field reports identically on every read.
     pub(crate) value: OnceLock<Result<Value, EvalError>>,
-    /// Set while this field is being forced. A re-entrant force sees it
-    /// set and reports a cycle.
-    pub(crate) evaluating: AtomicBool,
 }
 
 impl FieldCell {
@@ -41,7 +42,6 @@ impl FieldCell {
     pub(crate) fn new() -> Self {
         Self {
             value: OnceLock::new(),
-            evaluating: AtomicBool::new(false),
         }
     }
 }
@@ -71,7 +71,7 @@ pub(crate) enum ItemCellKind {
     /// A `name = expr` field.
     Field(FieldCell),
     /// `let name = expr` item. Reuses `FieldCell` for the memoised
-    /// value + cycle-detection flag; evaluated on first name
+    /// value; evaluated on first name
     /// resolution, never as document output.
     Let(FieldCell),
     /// A block instance, whose body has cells of its own.
@@ -128,12 +128,20 @@ pub(crate) enum ItemCellKind {
         /// effective field names. `scope_lookup` skips the frame's
         /// per-item scans when the resolving name is absent.
         bindable_names: std::sync::RwLock<HashMap<String, std::sync::Arc<HashSet<String>>>>,
+        /// By-name index over the body's own items, so `Block::field` /
+        /// `block` / `find_let` stay constant-time in a wide body. Built
+        /// on the first lookup that needs it.
+        name_index: OnceLock<NameIndex>,
     },
     /// A `type` declaration.
     TypeDecl {
         /// One inner Vec per `ast::TypeDecl.fields[i]`, holding cells for
         /// that field's decorators.
         field_decorators: Vec<Vec<DecoratorCell>>,
+        /// Field name to its first position in `ast::TypeDecl.fields`,
+        /// built on the first `TypeDecl::field` lookup of a wide type —
+        /// a `@document` schema is asked once per top-level field.
+        field_index: OnceLock<HashMap<String, usize>>,
     },
     /// An `interface` declaration.
     InterfaceDecl {
@@ -253,7 +261,7 @@ pub(crate) struct LoadedImport {
     /// raised against this file's spans can render their snippet against
     /// the correct source (a cross-file eval error otherwise renders
     /// against the root document's text — wrong offsets / `OutOfBounds`).
-    pub(crate) source: String,
+    pub(crate) source: std::sync::Arc<str>,
     /// Namespace the imported file declares.
     pub(crate) file_ns: Vec<String>,
     /// The imported file's top-level items.
@@ -263,6 +271,9 @@ pub(crate) struct LoadedImport {
     /// Symbols indexed within this loaded file. Paths refer to the
     /// `items`/`cells` arrays in this same struct.
     pub(crate) symbols: SymbolIndex,
+    /// By-name index over `items`, built on the first lookup through a
+    /// block that splices this file in.
+    pub(crate) name_index: OnceLock<NameIndex>,
     /// Top-level imports of the imported file, flattened in.
     pub(crate) eager_imports: Vec<LoadedImport>,
 }
@@ -359,6 +370,7 @@ impl ItemCells {
                             .iter()
                             .any(|item| matches!(item, ast::Item::Import(_))),
                         bindable_names: std::sync::RwLock::new(HashMap::new()),
+                        name_index: OnceLock::new(),
                     },
                 }
             }
@@ -370,6 +382,7 @@ impl ItemCells {
                         .iter()
                         .map(|f| make_decorator_cells(&f.decorators))
                         .collect(),
+                    field_index: OnceLock::new(),
                 },
             },
             ast::Item::InterfaceDecl(i) => Self {

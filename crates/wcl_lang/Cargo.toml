@@ -2,6 +2,7 @@
 name = "wcl_lang"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "WCL language library: parser and AST"
@@ -12,8 +13,11 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
+# The snapshot tests render diagnostics through `GraphicalReportHandler`; the
+# library itself stays on plain miette.
+miette = { workspace = true, features = ["fancy-no-syscall"] }
 criterion = { workspace = true }
-tempfile = "3"
+tempfile = { workspace = true }
 serde_json = { workspace = true }
 insta = { workspace = true }
 proptest = { workspace = true }
@@ -28,6 +32,10 @@ harness = false
 
 [[bench]]
 name = "eval_scale"
+harness = false
+
+[[bench]]
+name = "wide"
 harness = false
 
 [lints]

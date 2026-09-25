@@ -50,7 +50,8 @@ more than 256 terms, or a 300-link `a.b.c…`, fails to parse with `expression t
 256 levels of operators, calls or member accesses)` (exit 1 from `wcl check`). Generated files hit
 this. Split the chain with `let` bindings, or build a list and use `sum` / `join`. `else if`
 chains and `${…}` slots nested inside one another count against the separate 128-level nesting
-cap (`nesting too deep`).
+cap (`nesting too deep`). This is a parse-time limit on one written expression, separate from
+the run-time cap of 200 nested fields, `let`s and `fn` calls (`lang_evaluation.md`).
 
 `&&`, `||` and `??` **short-circuit**. They skip the right side when the left already decides
 the answer. That is what makes `count > 0 && total / count > 5` safe and `cached ??
@@ -105,8 +106,31 @@ If you want a narrow type enforced, annotate **both** operands. Integer `/` and 
 evaluation errors; floats follow IEEE and give `inf` or `NaN`. Any of these is recoverable with
 `try` / `catch`.
 
-Comparison uses the same ladder, so cross-width comparison needs no cast. Ordering on strings is
-lexicographic. `==` on non-numeric values is structural equality.
+### Comparing numbers
+
+Comparison does **not** use the ladder. `==`, `!=`, `<`, `<=`, `>` and `>=` compare two numbers
+of any types exactly, by value, and order them the way `sort` does. No cast is needed, and no
+precision is lost on the way:
+
+```wcl
+a = 1u32 == 1.0                                          // true
+b = 340282366920938463463374607431768211455u128 > -1     // true — u128::MAX, no i128 detour
+c = 9007199254740993 == 9007199254740992.0               // false — both round to one f64
+```
+
+**NaN is unordered.** `<`, `<=`, `>` and `>=` are all `false` when either side is NaN, `==` is
+`false` even against itself, and `!=` is `true` (IEEE 754):
+
+```wcl
+d = (0.0 / 0.0) <= 1.0              // false
+e = (0.0 / 0.0) >= 1.0              // false
+f = (0.0 / 0.0) != (0.0 / 0.0)      // true
+```
+
+Ordering on strings is lexicographic between two strings of the same type. `==` on non-numeric
+values is structural equality. Any other ordered pair is an error naming the operator you wrote:
+`operator '<' is not defined for i64 and utf8`. A prefix `-` / `!` names its one operand:
+`operator '-' is not defined for utf8`.
 
 ## Member access
 

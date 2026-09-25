@@ -2,17 +2,23 @@
 //! into the records a `@connections` field gathers.
 //!
 //! An operand names a block by id, which is an ordinary name lookup —
-//! except that resolving one can re-enter the very index being built, so
-//! two thread-local guards break that cycle. See [`ConnOperandGuard`] and
-//! [`BuildingConnIndexGuard`].
+//! except that identifying a block evaluates its label, and a label can
+//! depend on a `@connections` projection, which resolves operands in
+//! turn. Each projection and the root operand index sit on the
+//! evaluation stack ([`super::eval_stack`]) while they compute, so a
+//! label that loops back into either is reported as a cycle rather than
+//! recursing forever or re-entering the index's `OnceLock` (which would
+//! deadlock).
 
 use std::collections::HashMap;
 
-use crate::ast;
+use crate::ast::{self, Span};
+use crate::diagnostics::EvalError;
 use crate::value::Value;
 
 use super::Document;
 use super::cells::{ItemCellKind, ItemCells};
+use super::eval_stack::{self, FrameKey};
 use super::imports::load_import_lazily;
 use super::scope::Scope;
 use super::types::check_interface_conformance;
@@ -23,51 +29,50 @@ impl Document {
     /// walking the scope chain looking for a block whose first label
     /// equals `name`. Falls back to the document root. Returns the
     /// label value plus the block kind so callers can dispatch.
+    ///
+    /// `Ok(None)` means no block identifies as `name`. An `Err` is a
+    /// cycle: the root fallback was reached while the root index is
+    /// being built on this thread — a block's label depends on the very
+    /// connection set this operand belongs to. `span` is the operand's.
     pub(crate) fn resolve_connection_operand(
         &self,
         scope: &Scope<'_>,
         name: &str,
-    ) -> Option<ConnOperand> {
-        // Identifying a block here means evaluating its first label / `id`
-        // field. That evaluation must not re-enter `@connections`
-        // projection (a block's identity can't depend on the connection
-        // set) — see `RESOLVING_CONN_OPERAND` in `resolve_root`. Without
-        // this guard, projection → operand resolution → label eval →
-        // projection recurses until the stack overflows.
-        let _guard = ConnOperandGuard::enter();
+        span: Span,
+    ) -> Result<Option<ConnOperand>, EvalError> {
         // Innermost scope frames first.
         for frame in scope.frames().iter().rev() {
             if let ItemCellKind::Block { items: fcells, .. } = &frame.cells.kind
                 && let Some(found) =
                     match_block_label_in_items(self, &frame.ast.items, fcells, frame.file_ns, name)
             {
-                return Some(found);
+                return Ok(Some(found));
             }
         }
         // Fall back to document root, served from a once-built index
         // (label/id value → block) that preserves the DFS first-match
         // order of the per-name walk it replaces.
-        //
-        // A re-entrant call *while the index is being built* (a label eval
-        // looped back here) must not touch the index again — re-entering its
-        // `OnceLock::get_or_init` would deadlock. The local frames above were
-        // already consulted; give up on the global fallback for this call.
-        if BUILDING_CONN_INDEX.with(std::cell::Cell::get) {
-            return None;
-        }
-        self.conn_operand_index().get(name).cloned()
+        Ok(self.conn_operand_index(name, span)?.get(name).cloned())
     }
 
     /// The root-scope operand index — see the `conn_operand_index`
-    /// field. Built under the caller's `ConnOperandGuard`, so the
-    /// label / `id` evaluations it runs can't re-enter `@connections`
-    /// projection, exactly like the per-name walk did. The
-    /// [`BuildingConnIndexGuard`] additionally stops a label eval that
-    /// loops back into operand resolution from re-entering this
-    /// `OnceLock::get_or_init` (which would deadlock).
-    fn conn_operand_index(&self) -> &HashMap<String, ConnOperand> {
-        self.conn_operand_index.get_or_init(|| {
-            let _building = BuildingConnIndexGuard::enter();
+    /// field. Building it evaluates every block's identifying label, and
+    /// a label can loop back into operand resolution; the build's frame
+    /// on the evaluation stack turns that re-entry into a cycle error
+    /// for operand `name` instead of re-entering `OnceLock::get_or_init`
+    /// (which would deadlock). A second thread asking while the first
+    /// builds simply waits for the finished index.
+    fn conn_operand_index(
+        &self,
+        name: &str,
+        span: Span,
+    ) -> Result<&HashMap<String, ConnOperand>, EvalError> {
+        if let Some(index) = self.conn_operand_index.get() {
+            return Ok(index);
+        }
+        let _frame = eval_stack::enter(FrameKey::cell(&self.conn_operand_index))
+            .map_err(|refused| refused.into_error(name, span))?;
+        Ok(self.conn_operand_index.get_or_init(|| {
             fn insert_identity(
                 map: &mut HashMap<String, ConnOperand>,
                 v: Value,
@@ -153,7 +158,7 @@ impl Document {
                 walk(self, src.items, src.cells, src.file_ns, &mut map);
             }
             map
-        })
+        }))
     }
 
     /// The schema of the block a connection operand resolved to,
@@ -168,13 +173,15 @@ impl Document {
     /// Project sibling `Item::Connection` statements through a
     /// `@connections(SchemaName)` decorator: gather every statement
     /// whose `(lhs_type, rhs_type)` matches the schema and produce a
-    /// `Value::Record` per match.
+    /// `Value::Record` per match. Fails only when an operand's
+    /// resolution is caught in a cycle — see
+    /// [`Self::resolve_connection_operand`].
     pub(crate) fn project_connections(
         &self,
         items: &[ast::Item],
         schema: ConnectionDecl<'_>,
         scope: &Scope<'_>,
-    ) -> Vec<Value> {
+    ) -> Result<Vec<Value>, EvalError> {
         let mut out: Vec<Value> = Vec::new();
         // Endpoint types resolve relative to the file that declared the
         // connection, so a namespaced library's bare `Adr` means its own
@@ -191,12 +198,13 @@ impl Document {
                 scope,
                 source_fqn.as_deref(),
                 dest_fqn.as_deref(),
-            ) else {
+            )?
+            else {
                 continue;
             };
             out.push(record);
         }
-        out
+        Ok(out)
     }
 
     /// Project one connection statement into the record shape its
@@ -208,10 +216,23 @@ impl Document {
         scope: &Scope<'_>,
         source_fqn: Option<&str>,
         dest_fqn: Option<&str>,
-    ) -> Option<Value> {
-        let lhs = self.resolve_connection_operand(scope, &stmt.lhs);
-        let rhs = self.resolve_connection_operand(scope, &stmt.rhs);
+    ) -> Result<Option<Value>, EvalError> {
+        let lhs = self.resolve_connection_operand(scope, &stmt.lhs, stmt.lhs_span)?;
+        let rhs = self.resolve_connection_operand(scope, &stmt.rhs, stmt.rhs_span)?;
+        Ok(self.connection_record(stmt, schema, lhs, rhs, source_fqn, dest_fqn))
+    }
 
+    /// The record for one connection statement whose operands are
+    /// already resolved, or `None` when the schema doesn't claim it.
+    fn connection_record(
+        &self,
+        stmt: &ast::ConnectionStmt,
+        schema: ConnectionDecl<'_>,
+        lhs: Option<ConnOperand>,
+        rhs: Option<ConnOperand>,
+        source_fqn: Option<&str>,
+        dest_fqn: Option<&str>,
+    ) -> Option<Value> {
         // Does each *resolved* operand's block type satisfy this schema's
         // source / destination role? (An unresolved operand has no AST
         // block, so it can't be type-checked — see the dynamic path below.)
@@ -423,60 +444,6 @@ fn union_admits_type(doc: &Document, union: &UnionDecl<'_>, decl: &TypeDecl<'_>)
         }
     }
     false
-}
-
-/// RAII guard that sets [`RESOLVING_CONN_OPERAND`] for its lifetime and
-/// restores the previous value on drop (so nested operand resolution
-/// stays correct).
-struct ConnOperandGuard(bool);
-
-/// RAII guard that marks the root operand index as being built — see
-/// [`BUILDING_CONN_INDEX`].
-struct BuildingConnIndexGuard(bool);
-
-thread_local! {
-    /// Set while a connection operand's identifying block label is being
-    /// evaluated. `Document::resolve_root` consults it to suppress
-    /// `@connections` projection during that window, breaking what would
-    /// otherwise be unbounded recursion (operand → label eval → projection
-    /// → operand → …).
-    pub(super) static RESOLVING_CONN_OPERAND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-
-    /// Set while the root operand index (`conn_operand_index`) is being
-    /// built. The build evaluates every block's identifying label, and a
-    /// label eval can loop back into `resolve_connection_operand`; without
-    /// this flag that re-entrant call would re-enter the index's
-    /// `OnceLock::get_or_init` and deadlock. While set, operand resolution
-    /// skips the global index (local scope frames are still consulted).
-    static BUILDING_CONN_INDEX: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-impl ConnOperandGuard {
-    /// Set the flag, remembering the previous value for `Drop`.
-    fn enter() -> Self {
-        let prev = RESOLVING_CONN_OPERAND.with(|f| f.replace(true));
-        Self(prev)
-    }
-}
-
-impl Drop for ConnOperandGuard {
-    fn drop(&mut self) {
-        RESOLVING_CONN_OPERAND.with(|f| f.set(self.0));
-    }
-}
-
-impl BuildingConnIndexGuard {
-    /// Set the flag, remembering the previous value for `Drop`.
-    fn enter() -> Self {
-        let prev = BUILDING_CONN_INDEX.with(|f| f.replace(true));
-        Self(prev)
-    }
-}
-
-impl Drop for BuildingConnIndexGuard {
-    fn drop(&mut self) {
-        BUILDING_CONN_INDEX.with(|f| f.set(self.0));
-    }
 }
 
 /// Match `name` against a block's first label, which is how a block

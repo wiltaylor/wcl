@@ -115,7 +115,7 @@ just workspace-build      # cargo build --workspace
 just workspace-test       # cargo test --workspace
 just workspace-lint       # clippy with -D warnings
 just workspace-bench      # criterion benchmarks
-just cli-run -- check examples/basic.wcl
+just cli-run check examples/basic.wcl
 ```
 
 Install + editor integrations:

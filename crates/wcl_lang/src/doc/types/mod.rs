@@ -48,8 +48,8 @@ use super::Document;
 use super::views::{ConnectionDecl, InterfaceDecl, SymbolSetDecl, TypeDecl, UnionDecl};
 
 pub(super) use inhabit::{
-    coerce_value_to_type, symbol_set_membership_error_in, value_matches_declared,
-    value_matches_type_ref,
+    coerce_value_to_type, describe_type_mismatch, symbol_set_membership_error_in,
+    value_matches_declared, value_matches_type_ref,
 };
 pub(super) use inherit::{
     build_effective_fields, build_merged_decorators, is_descendant_of_walk, lookup_effective_field,
@@ -96,7 +96,7 @@ pub enum ResolvedType<'a> {
         return_ty: Box<ResolvedType<'a>>,
     },
     /// A named reference that matches no declaration. [`Document::open`]
-    /// rejects these in source, so this only arises for a [`TypeRef`] a
+    /// rejects these in source, so this only arises for a [`TypeRef`](crate::TypeRef) a
     /// host builds itself; carries the path as written.
     ///
     /// [`Document::open`]: crate::Document::open
@@ -151,7 +151,7 @@ pub enum FieldShape<'a> {
     /// A function-valued field. The signature is not part of the shape —
     /// ask [`TypeField::resolved_type`](super::TypeField::resolved_type) for it.
     Function,
-    /// An alias chain too long or too tangled to peel ([`ALIAS_DEPTH`]),
+    /// An alias chain too long or too tangled to peel (`ALIAS_DEPTH`),
     /// carrying the link the walk stopped on. The declaration is an
     /// alias, so it is not a [`Block`](FieldShape::Block); what it stands
     /// for is unknown, so it is nothing else either. Saying so is the

@@ -492,7 +492,7 @@ WCL
       | "`eli(tag, id, cls, kids)`"   | "`Html::Element { tag, id, class, children }`" |
   }
 
-  p "`attrs` is a list of `[name, value]` pairs, for example `[[\"href\", p.href], [\"title\", p.label]]`. The renderer escapes every value. `id` takes an `identifier`, so write a literal one as a string: `eli(\"main\", \"main\", [\"site-main\"], kids)`."
+  p "`attrs` is a list of `[name, value]` pairs, for example `[[\"href\", p.href], [\"title\", p.label]]`. The renderer escapes every value. It cannot escape a name, so a name must be letters, digits, `_`, `:` and `-` only: the build drops any other attribute, `bad name` or `x>y` alike, and prints a `warning:`. The value of a URL attribute (`href`, `src`, `xlink:href`, `action`, `formaction`, `poster`) must pass the same scheme check as a link. `src` and `poster` also accept a `data:image/` URI. `id` takes an `identifier`, so write a literal one as a string: `eli(\"main\", \"main\", [\"site-main\"], kids)`."
 
   p "An empty `class` or `attrs` list emits no attribute at all, not `class=\"\"`. An unset optional passed straight through does the same: `el(\"p\", t.class, kids)` with `t.class` unset renders exactly as an omitted field does."
 

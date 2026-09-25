@@ -1,18 +1,17 @@
-//! End-to-end tests that drive the `Backend` through `tower-lsp`'s
+//! End-to-end tests that drive the `Backend` through `tower-lsp-server`'s
 //! `LanguageServer` trait. Diagnostics publication isn't exercised
-//! here — the underlying `diagnostics::compute` already has unit
-//! coverage and publishing depends on the in-memory `ClientSocket`
-//! which we'd otherwise need to drain.
+//! here — the client only sends notifications once the service has seen
+//! `initialized`, so `tests/protocol.rs` covers it over a real stream.
 
 use std::path::PathBuf;
 
-use tower_lsp::LanguageServer;
-use tower_lsp::LspService;
-use tower_lsp::lsp_types::{
+use tower_lsp_server::LanguageServer;
+use tower_lsp_server::LspService;
+use tower_lsp_server::ls_types::{
     CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     DocumentFormattingParams, FormattingOptions, HoverParams, InitializeParams,
     PartialResultParams, Position, Range, TextDocumentContentChangeEvent, TextDocumentIdentifier,
-    TextDocumentItem, TextDocumentPositionParams, Url, VersionedTextDocumentIdentifier,
+    TextDocumentItem, TextDocumentPositionParams, Uri, VersionedTextDocumentIdentifier,
     WorkDoneProgressParams,
 };
 use wcl_lsp::Backend;
@@ -26,7 +25,7 @@ fn service() -> LspService<Backend> {
     svc
 }
 
-async fn open(b: &Backend, uri: &Url, text: &str) {
+async fn open(b: &Backend, uri: &Uri, text: &str) {
     b.did_open(DidOpenTextDocumentParams {
         text_document: TextDocumentItem {
             uri: uri.clone(),
@@ -41,7 +40,7 @@ async fn open(b: &Backend, uri: &Url, text: &str) {
 struct QualifiedDecoratorFixture {
     _dir: tempfile::TempDir,
     service: LspService<Backend>,
-    main_uri: Url,
+    main_uri: Uri,
     decorator_position: Position,
     selected_schema: PathBuf,
 }
@@ -70,7 +69,7 @@ async fn qualified_decorator_fixture() -> QualifiedDecoratorFixture {
         .initialize(init_params_for(dir.path()))
         .await
         .expect("initialize");
-    let main_uri = Url::from_file_path(&main).unwrap();
+    let main_uri = Uri::from_file_path(&main).unwrap();
     open(backend, &main_uri, src).await;
     let needle_pos = src.find("note(message").unwrap();
     let line = src[..needle_pos].matches('\n').count() as u32;
@@ -114,7 +113,7 @@ async fn initialize_advertises_expected_capabilities() {
 async fn formatting_emits_canonical_source() {
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///a.wcl").unwrap();
+    let uri = "file:///a.wcl".parse::<Uri>().unwrap();
     open(backend, &uri, "@schemaless foo  =   1\n").await;
     let edits = backend
         .formatting(DocumentFormattingParams {
@@ -135,7 +134,7 @@ async fn formatting_emits_canonical_source() {
 async fn completion_after_at_lists_builtin_decorators() {
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///a.wcl").unwrap();
+    let uri = "file:///a.wcl".parse::<Uri>().unwrap();
     let src = "@\ntype Trailing {\n}\n";
     open(backend, &uri, src).await;
     let resp = backend
@@ -165,7 +164,7 @@ async fn completion_after_at_lists_builtin_decorators() {
 async fn hover_on_block_kind_returns_decl_snippet() {
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///a.wcl").unwrap();
+    let uri = "file:///a.wcl".parse::<Uri>().unwrap();
     let src = "@document\ntype Root {\n  c: Config\n}\n@block(\"config\")\ntype Config {\n  region: utf8\n}\nconfig {\n  region = \"x\"\n}\n";
     open(backend, &uri, src).await;
     // Position the cursor over the lowercase `config` block kind.
@@ -182,7 +181,7 @@ async fn hover_on_block_kind_returns_decl_snippet() {
         .await
         .expect("hover");
     let body = match resp.expect("hover present").contents {
-        tower_lsp::lsp_types::HoverContents::Markup(m) => m.value,
+        tower_lsp_server::ls_types::HoverContents::Markup(m) => m.value,
         other => panic!("expected markdown, got {other:?}"),
     };
     assert!(body.contains("block kind"), "{body}");
@@ -209,7 +208,7 @@ async fn hover_on_qualified_decorator_shows_qualified_schema() {
         .expect("hover request")
         .expect("hover present");
     let body = match response.contents {
-        tower_lsp::lsp_types::HoverContents::Markup(markup) => markup.value,
+        tower_lsp_server::ls_types::HoverContents::Markup(markup) => markup.value,
         other => panic!("expected markdown, got {other:?}"),
     };
 
@@ -225,7 +224,7 @@ async fn goto_definition_on_qualified_decorator_opens_qualified_schema() {
     let response = fixture
         .service
         .inner()
-        .goto_definition(tower_lsp::lsp_types::GotoDefinitionParams {
+        .goto_definition(tower_lsp_server::ls_types::GotoDefinitionParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier {
                     uri: fixture.main_uri.clone(),
@@ -239,17 +238,17 @@ async fn goto_definition_on_qualified_decorator_opens_qualified_schema() {
         .expect("goto request")
         .expect("definition present");
     let location = match response {
-        tower_lsp::lsp_types::GotoDefinitionResponse::Scalar(location) => location,
+        tower_lsp_server::ls_types::GotoDefinitionResponse::Scalar(location) => location,
         other => panic!("expected scalar location, got {other:?}"),
     };
 
     assert_eq!(
         location.uri,
-        Url::from_file_path(fixture.selected_schema).unwrap()
+        Uri::from_file_path(fixture.selected_schema).unwrap()
     );
 }
 
-async fn format_source(backend: &Backend, uri: Url) -> String {
+async fn format_source(backend: &Backend, uri: Uri) -> String {
     backend
         .formatting(DocumentFormattingParams {
             text_document: TextDocumentIdentifier { uri },
@@ -266,7 +265,7 @@ async fn format_source(backend: &Backend, uri: Url) -> String {
 async fn did_change_applies_ranged_edit() {
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///inc.wcl").unwrap();
+    let uri = "file:///inc.wcl".parse::<Uri>().unwrap();
     open(backend, &uri, "@schemaless\nfoo = 1\n").await;
     // Replace the `1` at line 1, col 6..7 with `42`.
     backend
@@ -298,10 +297,10 @@ async fn did_change_applies_ranged_edit() {
 /// Build an `InitializeParams` whose workspace folder points at
 /// `dir`. The first folder is what `Backend::resolve_root` checks.
 fn init_params_for(dir: &std::path::Path) -> InitializeParams {
-    use tower_lsp::lsp_types::WorkspaceFolder;
+    use tower_lsp_server::ls_types::WorkspaceFolder;
     InitializeParams {
         workspace_folders: Some(vec![WorkspaceFolder {
-            uri: Url::from_directory_path(dir).expect("dir url"),
+            uri: Uri::from_file_path(dir).expect("dir url"),
             name: "ws".into(),
         }]),
         ..Default::default()
@@ -369,7 +368,7 @@ async fn completion_surfaces_types_from_imported_files() {
         .await
         .expect("initialize");
 
-    let main_uri = Url::from_file_path(&main).unwrap();
+    let main_uri = Uri::from_file_path(&main).unwrap();
     let edited = std::fs::read_to_string(&main).unwrap();
     open(backend, &main_uri, &edited).await;
 
@@ -437,7 +436,7 @@ async fn goto_definition_crosses_into_imported_file() {
         .await
         .expect("initialize");
 
-    let shared_uri = Url::from_file_path(&shared).unwrap();
+    let shared_uri = Uri::from_file_path(&shared).unwrap();
     let shared_src = std::fs::read_to_string(&shared).unwrap();
     open(backend, &shared_uri, &shared_src).await;
 
@@ -448,7 +447,7 @@ async fn goto_definition_crosses_into_imported_file() {
     let line_start = shared_src[..needle_pos].rfind('\n').map_or(0, |p| p + 1);
     let character = (needle_pos - line_start + 2) as u32;
     let resp = backend
-        .goto_definition(tower_lsp::lsp_types::GotoDefinitionParams {
+        .goto_definition(tower_lsp_server::ls_types::GotoDefinitionParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier {
                     uri: shared_uri.clone(),
@@ -461,9 +460,9 @@ async fn goto_definition_crosses_into_imported_file() {
         .await
         .expect("goto");
 
-    let main_uri = Url::from_file_path(&main).unwrap();
+    let main_uri = Uri::from_file_path(&main).unwrap();
     let loc = match resp.expect("definition found") {
-        tower_lsp::lsp_types::GotoDefinitionResponse::Scalar(l) => l,
+        tower_lsp_server::ls_types::GotoDefinitionResponse::Scalar(l) => l,
         other => panic!("expected scalar, got {other:?}"),
     };
     assert_eq!(loc.uri, main_uri, "definition should live in main.wcl");
@@ -489,7 +488,7 @@ async fn overlay_lets_root_see_unsaved_edits_in_imported_file() {
         .expect("initialize");
 
     // Open shared.wcl with an unsaved `Color` declaration.
-    let shared_uri = Url::from_file_path(&shared).unwrap();
+    let shared_uri = Uri::from_file_path(&shared).unwrap();
     open(
         backend,
         &shared_uri,
@@ -542,7 +541,7 @@ async fn root_resolves_embedded_wdoc_library() {
 async fn did_change_full_replace_resets_doc() {
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///rep.wcl").unwrap();
+    let uri = "file:///rep.wcl".parse::<Uri>().unwrap();
     open(backend, &uri, "@schemaless\nfoo = 1\n").await;
     backend
         .did_change(DidChangeTextDocumentParams {
@@ -564,10 +563,10 @@ async fn did_change_full_replace_resets_doc() {
 
 #[tokio::test]
 async fn folding_ranges_cover_blocks_and_type_decls() {
-    use tower_lsp::lsp_types::FoldingRangeParams;
+    use tower_lsp_server::ls_types::FoldingRangeParams;
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///fold.wcl").unwrap();
+    let uri = "file:///fold.wcl".parse::<Uri>().unwrap();
     let src = "type Server {\n  name: utf8\n  port: u16\n}\n\
                @schemaless web service {\n  name = \"web\"\n  nested box {\n    size = 1\n  }\n}\n\
                one_liner = 1\n";
@@ -600,10 +599,10 @@ async fn folding_ranges_cover_blocks_and_type_decls() {
 
 #[tokio::test]
 async fn rename_rewrites_every_reference_in_one_file() {
-    use tower_lsp::lsp_types::RenameParams;
+    use tower_lsp_server::ls_types::RenameParams;
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///rn.wcl").unwrap();
+    let uri = "file:///rn.wcl".parse::<Uri>().unwrap();
     let src =
         "@schemaless base = 2\n@schemaless doubled = base * 2\n@schemaless tripled = base * 3\n";
     open(backend, &uri, src).await;
@@ -632,10 +631,10 @@ async fn rename_rewrites_every_reference_in_one_file() {
 
 #[tokio::test]
 async fn rename_without_configured_root_preserves_embedded_imports() {
-    use tower_lsp::lsp_types::RenameParams;
+    use tower_lsp_server::ls_types::RenameParams;
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///embedded-rename.wcl").unwrap();
+    let uri = "file:///embedded-rename.wcl".parse::<Uri>().unwrap();
     let source = "import <wdoc.wcl>\nlet value = 7\n@schemaless result = value\n";
     open(backend, &uri, source).await;
     let edit = backend
@@ -672,7 +671,7 @@ async fn rename_without_configured_root_preserves_embedded_imports() {
         let end = offset(edit.range.end);
         updated.replace_range(start..end, &edit.new_text);
     }
-    let path = uri.to_file_path().unwrap();
+    let path = uri.to_file_path().unwrap().into_owned();
     let loader = wcl_wdoc::schema_registry().loader(wcl_lang::overlay_loader(
         std::collections::HashMap::from([(path.clone(), updated)]),
     ));
@@ -688,10 +687,10 @@ async fn rename_without_configured_root_preserves_embedded_imports() {
 
 #[tokio::test]
 async fn rename_rejects_an_invalid_identifier() {
-    use tower_lsp::lsp_types::RenameParams;
+    use tower_lsp_server::ls_types::RenameParams;
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///rn2.wcl").unwrap();
+    let uri = "file:///rn2.wcl".parse::<Uri>().unwrap();
     open(backend, &uri, "@schemaless base = 2\n").await;
     let res = backend
         .rename(RenameParams {
@@ -711,7 +710,7 @@ async fn rename_rejects_an_invalid_identifier() {
 
 #[tokio::test]
 async fn rename_crosses_into_imported_file() {
-    use tower_lsp::lsp_types::RenameParams;
+    use tower_lsp_server::ls_types::RenameParams;
     // main.wcl uses `Color` declared in shared.wcl; renaming at the
     // use site must edit both files.
     let dir = tempfile::tempdir().expect("tempdir");
@@ -727,7 +726,7 @@ async fn rename_crosses_into_imported_file() {
         .await
         .expect("initialize");
 
-    let main_uri = Url::from_file_path(&main).unwrap();
+    let main_uri = Uri::from_file_path(&main).unwrap();
     let text = std::fs::read_to_string(&main).unwrap();
     open(backend, &main_uri, &text).await;
 
@@ -754,7 +753,7 @@ async fn rename_crosses_into_imported_file() {
         changes.contains_key(&main_uri),
         "request file edited: {changes:?}"
     );
-    let shared_uri = Url::from_file_path(&shared).unwrap();
+    let shared_uri = Uri::from_file_path(&shared).unwrap();
     let shared_edits = changes
         .get(&shared_uri)
         .unwrap_or_else(|| panic!("declaration file edited: {changes:?}"));
@@ -765,11 +764,11 @@ async fn rename_crosses_into_imported_file() {
 async fn signature_help_for_builtin_after_open_paren() {
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///sig.wcl").unwrap();
+    let uri = "file:///sig.wcl".parse::<Uri>().unwrap();
     let src = "@schemaless x = len(";
     open(backend, &uri, src).await;
     let help = backend
-        .signature_help(tower_lsp::lsp_types::SignatureHelpParams {
+        .signature_help(tower_lsp_server::ls_types::SignatureHelpParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier { uri },
                 position: Position {
@@ -796,13 +795,13 @@ async fn signature_help_for_builtin_after_open_paren() {
 async fn signature_help_tracks_active_param_for_user_fn() {
     let svc = service();
     let backend = svc.inner();
-    let uri = Url::parse("file:///sig2.wcl").unwrap();
+    let uri = "file:///sig2.wcl".parse::<Uri>().unwrap();
     let src = "fn add(a: i64, b: i64) -> i64 { a + b }\n@schemaless x = add(1, ";
     open(backend, &uri, src).await;
     let last_line = src.lines().count() as u32 - 1;
     let character = src.lines().last().unwrap().len() as u32;
     let help = backend
-        .signature_help(tower_lsp::lsp_types::SignatureHelpParams {
+        .signature_help(tower_lsp_server::ls_types::SignatureHelpParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier { uri },
                 position: Position {
@@ -843,13 +842,13 @@ async fn signature_help_resolves_fn_from_imported_file() {
         .await
         .expect("initialize");
 
-    let main_uri = Url::from_file_path(&main).unwrap();
+    let main_uri = Uri::from_file_path(&main).unwrap();
     let text = std::fs::read_to_string(&main).unwrap();
     open(backend, &main_uri, &text).await;
     let last_line = text.lines().count() as u32 - 1;
     let character = text.lines().last().unwrap().len() as u32;
     let help = backend
-        .signature_help(tower_lsp::lsp_types::SignatureHelpParams {
+        .signature_help(tower_lsp_server::ls_types::SignatureHelpParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier { uri: main_uri },
                 position: Position {
@@ -864,6 +863,16 @@ async fn signature_help_resolves_fn_from_imported_file() {
         .expect("signature_help rpc")
         .expect("cross-file fn signature found");
     assert_eq!(help.signatures[0].label, "scale(v: f64, by: f64) -> f64");
+}
+
+/// The flat symbol list inside a `workspace/symbol` response.
+fn flat_symbols(
+    response: tower_lsp_server::ls_types::WorkspaceSymbolResponse,
+) -> Vec<tower_lsp_server::ls_types::SymbolInformation> {
+    match response {
+        tower_lsp_server::ls_types::WorkspaceSymbolResponse::Flat(symbols) => symbols,
+        other => panic!("expected flat symbols, got {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -882,44 +891,47 @@ async fn workspace_symbols_span_the_import_graph() {
         .expect("initialize");
 
     let hits = backend
-        .symbol(tower_lsp::lsp_types::WorkspaceSymbolParams {
+        .symbol(tower_lsp_server::ls_types::WorkspaceSymbolParams {
             query: "Col".into(),
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
         })
         .await
         .expect("workspace/symbol rpc")
+        .map(flat_symbols)
         .expect("some hits");
-    let shared_uri = Url::from_file_path(&shared).unwrap();
+    let shared_uri = Uri::from_file_path(&shared).unwrap();
     let color = hits
         .iter()
         .find(|s| s.name == "Color")
         .expect("Color found across the graph");
     assert_eq!(color.location.uri, shared_uri);
-    assert_eq!(color.kind, tower_lsp::lsp_types::SymbolKind::CLASS);
+    assert_eq!(color.kind, tower_lsp_server::ls_types::SymbolKind::CLASS);
 
     // The empty query lists symbols from both files.
     let all = backend
-        .symbol(tower_lsp::lsp_types::WorkspaceSymbolParams {
+        .symbol(tower_lsp_server::ls_types::WorkspaceSymbolParams {
             query: String::new(),
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
         })
         .await
         .expect("workspace/symbol rpc")
+        .map(flat_symbols)
         .expect("some hits");
     assert!(all.iter().any(|s| s.name == "Local"));
     assert!(all.iter().any(|s| s.name == "Color"));
 
     // Subsequence matching: "clr" still finds Color.
     let fuzzy = backend
-        .symbol(tower_lsp::lsp_types::WorkspaceSymbolParams {
+        .symbol(tower_lsp_server::ls_types::WorkspaceSymbolParams {
             query: "clr".into(),
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
         })
         .await
         .expect("workspace/symbol rpc")
+        .map(flat_symbols)
         .expect("some hits");
     assert!(fuzzy.iter().any(|s| s.name == "Color"), "{fuzzy:?}");
 }
@@ -940,7 +952,7 @@ async fn workspace_symbols_see_unsaved_overlay_buffer() {
         .expect("initialize");
 
     // The unsaved buffer adds `Color`; disk doesn't have it.
-    let shared_uri = Url::from_file_path(&shared).unwrap();
+    let shared_uri = Uri::from_file_path(&shared).unwrap();
     open(
         backend,
         &shared_uri,
@@ -949,13 +961,14 @@ async fn workspace_symbols_see_unsaved_overlay_buffer() {
     .await;
 
     let hits = backend
-        .symbol(tower_lsp::lsp_types::WorkspaceSymbolParams {
+        .symbol(tower_lsp_server::ls_types::WorkspaceSymbolParams {
             query: "Color".into(),
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
         })
         .await
         .expect("workspace/symbol rpc")
+        .map(flat_symbols)
         .expect("some hits");
     assert!(
         hits.iter().any(|s| s.name == "Color"),
@@ -1000,4 +1013,375 @@ async fn root_document_expands_contextual_blocks() {
         .value()
         .expect("no missing-expander error");
     assert_eq!(title, wcl_lang::Value::Utf8("generated one".into()));
+}
+
+#[tokio::test]
+async fn per_file_mode_resolves_relative_and_system_imports() {
+    // No root: every request opens the buffer on its own, through the
+    // same loader and wdoc environment the diagnostics use — so a
+    // relative import and `import <wdoc.wcl>` both resolve.
+    use tower_lsp_server::ls_types::{DocumentSymbolParams, DocumentSymbolResponse};
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    std::fs::write(&shared, "namespace shared\ntype Color { name: utf8 }\n").unwrap();
+    let src = "import <wdoc.wcl>\nimport \"./shared.wcl\"\ntype Wrap { x: utf8 }\n";
+    std::fs::write(&main, src).unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    let main_uri = Uri::from_file_path(&main).unwrap();
+    open(backend, &main_uri, src).await;
+
+    let outline = backend
+        .document_symbol(DocumentSymbolParams {
+            text_document: TextDocumentIdentifier {
+                uri: main_uri.clone(),
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("document symbols");
+    let Some(DocumentSymbolResponse::Nested(symbols)) = outline else {
+        panic!("expected nested symbols, got {outline:?}");
+    };
+    assert!(symbols.iter().any(|s| s.name == "Wrap"), "{symbols:?}");
+
+    let line = 2;
+    let character = (src.lines().nth(2).unwrap().find("x: utf8").unwrap() + 3) as u32;
+    let resp = backend
+        .completion(CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: main_uri },
+                position: Position { line, character },
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: None,
+        })
+        .await
+        .expect("completion");
+    let Some(CompletionResponse::Array(items)) = resp else {
+        panic!("expected array, got {resp:?}");
+    };
+    let labels: Vec<_> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.iter().any(|l| *l == "shared.Color" || *l == "Color"),
+        "imported type in per-file mode: {labels:?}"
+    );
+}
+
+/// `(line, character)` of the `nth` occurrence of `needle` in `text`,
+/// plus `into` characters (ASCII text).
+fn position_of(text: &str, needle: &str, nth: usize, into: u32) -> Position {
+    let offset = text
+        .match_indices(needle)
+        .nth(nth)
+        .unwrap_or_else(|| panic!("{needle:?} #{nth} in {text:?}"))
+        .0;
+    let line = text[..offset].matches('\n').count() as u32;
+    let line_start = text[..offset].rfind('\n').map_or(0, |p| p + 1);
+    Position::new(line, (offset - line_start) as u32 + into)
+}
+
+#[tokio::test]
+async fn goto_definition_reads_the_target_from_its_open_buffer() {
+    // shared.wcl's unsaved buffer moves `Color` down three lines. The
+    // root is built from that buffer, so the range must be computed
+    // against it too — not against the stale file on disk.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    let main_src = "import \"./shared.wcl\"\ntype Wrap { c: shared.Color }\n";
+    std::fs::write(&main, main_src).unwrap();
+    std::fs::write(&shared, "namespace shared\ntype Color { name: utf8 }\n").unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+    let main_uri = Uri::from_file_path(&main).unwrap();
+    let shared_uri = Uri::from_file_path(&shared).unwrap();
+    open(backend, &main_uri, main_src).await;
+    open(
+        backend,
+        &shared_uri,
+        "namespace shared\n\n\n\ntype Color { name: utf8 }\n",
+    )
+    .await;
+
+    let resp = backend
+        .goto_definition(tower_lsp_server::ls_types::GotoDefinitionParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: main_uri },
+                position: position_of(main_src, "Color", 0, 1),
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("goto");
+    let tower_lsp_server::ls_types::GotoDefinitionResponse::Scalar(location) =
+        resp.expect("definition found")
+    else {
+        panic!("expected a scalar location");
+    };
+    assert_eq!(location.uri, shared_uri);
+    assert_eq!(location.range.start.line, 4, "{location:?}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn rename_through_a_symlinked_workspace_edits_each_file_once() {
+    use tower_lsp_server::ls_types::RenameParams;
+    // The root path is canonical; the editor opened main.wcl through a
+    // symlink. Both spellings name one file, which must be edited once,
+    // under the URI the editor knows.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let real = dir.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    let main_src = "type Foo { x: utf8 }\ntype Wrap { f: Foo }\n";
+    std::fs::write(real.join("main.wcl"), main_src).unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(&link))
+        .await
+        .expect("initialize");
+    let main_uri = Uri::from_file_path(link.join("main.wcl")).unwrap();
+    open(backend, &main_uri, main_src).await;
+
+    let edit = backend
+        .rename(RenameParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: main_uri.clone(),
+                },
+                position: position_of(main_src, "Foo", 0, 1),
+            },
+            new_name: "Bar".into(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        })
+        .await
+        .expect("rename ok")
+        .expect("workspace edit");
+    let changes = edit.changes.expect("changes");
+    assert_eq!(changes.len(), 1, "{changes:?}");
+    assert_eq!(changes[&main_uri].len(), 2, "{changes:?}");
+}
+
+#[tokio::test]
+async fn root_document_is_built_once_per_change() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    std::fs::write(&main, "type Local {}\n").unwrap();
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+
+    let first = backend.root_document().expect("root opens");
+    let again = backend.root_document().expect("root opens");
+    assert!(
+        std::sync::Arc::ptr_eq(&first, &again),
+        "rebuilt without a change"
+    );
+
+    let main_uri = Uri::from_file_path(&main).unwrap();
+    open(backend, &main_uri, "type Local {}\ntype Added {}\n").await;
+    let changed = backend.root_document().expect("root opens");
+    assert!(
+        !std::sync::Arc::ptr_eq(&first, &changed),
+        "stale after a change"
+    );
+    assert!(changed.find_symbol("Added").is_some());
+}
+
+#[tokio::test]
+async fn a_watched_file_change_rebuilds_the_root() {
+    // shared.wcl is not open, so only the client's file-watch event
+    // says it changed on disk.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    std::fs::write(&main, "import \"./shared.wcl\"\n").unwrap();
+    std::fs::write(&shared, "namespace shared\n").unwrap();
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+    assert!(
+        backend
+            .root_document()
+            .expect("root opens")
+            .find_symbol("shared.Color")
+            .is_none()
+    );
+
+    std::fs::write(&shared, "namespace shared\ntype Color {}\n").unwrap();
+    backend
+        .did_change_watched_files(tower_lsp_server::ls_types::DidChangeWatchedFilesParams {
+            changes: vec![tower_lsp_server::ls_types::FileEvent {
+                uri: Uri::from_file_path(&shared).unwrap(),
+                typ: tower_lsp_server::ls_types::FileChangeType::CHANGED,
+            }],
+        })
+        .await;
+    assert!(
+        backend
+            .root_document()
+            .expect("root opens")
+            .find_symbol("shared.Color")
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn references_span_the_import_graph() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    let main_src = "import \"./shared.wcl\"\ntype Wrap { a: shared.Color b: shared.Color }\n";
+    std::fs::write(&main, main_src).unwrap();
+    std::fs::write(&shared, "namespace shared\ntype Color { name: utf8 }\n").unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+    let main_uri = Uri::from_file_path(&main).unwrap();
+    open(backend, &main_uri, main_src).await;
+
+    let references = |include_declaration| {
+        backend.references(tower_lsp_server::ls_types::ReferenceParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: main_uri.clone(),
+                },
+                position: position_of(main_src, "Color", 1, 1),
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: tower_lsp_server::ls_types::ReferenceContext {
+                include_declaration,
+            },
+        })
+    };
+    let all = references(true)
+        .await
+        .expect("references")
+        .expect("some references");
+    let shared_uri = Uri::from_file_path(&shared).unwrap();
+    assert_eq!(all.len(), 3, "{all:?}");
+    let declaration = all
+        .iter()
+        .find(|l| l.uri == shared_uri)
+        .expect("declaration in shared.wcl");
+    assert_eq!(declaration.range.start, Position::new(1, 5));
+    let uses = references(false)
+        .await
+        .expect("references")
+        .expect("some references");
+    assert_eq!(uses.len(), 2, "{uses:?}");
+    assert!(uses.iter().all(|l| l.uri == main_uri));
+}
+
+#[tokio::test]
+async fn rename_to_a_reserved_word_is_rejected() {
+    use tower_lsp_server::ls_types::RenameParams;
+    let svc = service();
+    let backend = svc.inner();
+    let uri = "file:///reserved.wcl".parse::<Uri>().unwrap();
+    let src = "@schemaless base = 2\n@schemaless doubled = base * 2\n";
+    open(backend, &uri, src).await;
+    for name in ["match", "none", "2x"] {
+        let result = backend
+            .rename(RenameParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
+                    position: position_of(src, "base", 0, 1),
+                },
+                new_name: name.into(),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+            })
+            .await;
+        let error = result.expect_err(name);
+        assert!(
+            error.message.contains("not a valid WCL identifier"),
+            "{error:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn semantic_tokens_classify_a_document() {
+    use tower_lsp_server::ls_types::{SemanticTokensParams, SemanticTokensResult};
+    let svc = service();
+    let backend = svc.inner();
+    let uri = "file:///tokens.wcl".parse::<Uri>().unwrap();
+    let src = "type Foo {}\n@schemaless x = try 1 catch e { 2 }\n";
+    open(backend, &uri, src).await;
+    let Some(SemanticTokensResult::Tokens(tokens)) = backend
+        .semantic_tokens_full(SemanticTokensParams {
+            text_document: TextDocumentIdentifier { uri },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("semantic tokens")
+    else {
+        panic!("expected full tokens");
+    };
+    // Decode to (text, legend type) pairs.
+    let legend = [
+        "keyword",
+        "string",
+        "number",
+        "operator",
+        "decorator",
+        "type",
+        "variable",
+        "enumMember",
+    ];
+    let (mut line, mut col) = (0u32, 0u32);
+    let decoded: Vec<(String, &str)> = tokens
+        .data
+        .iter()
+        .map(|t| {
+            if t.delta_line > 0 {
+                line += t.delta_line;
+                col = 0;
+            }
+            col += t.delta_start;
+            let text = src.lines().nth(line as usize).unwrap();
+            let word = text[col as usize..(col + t.length) as usize].to_string();
+            (word, legend[t.token_type as usize])
+        })
+        .collect();
+    for expected in [
+        ("type", "keyword"),
+        ("Foo", "variable"),
+        ("@", "decorator"),
+        ("schemaless", "type"),
+        ("try", "keyword"),
+        ("catch", "keyword"),
+        ("1", "number"),
+    ] {
+        assert!(
+            decoded.contains(&(expected.0.to_string(), expected.1)),
+            "{expected:?} in {decoded:?}"
+        );
+    }
 }

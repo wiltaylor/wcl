@@ -1,23 +1,37 @@
 name: CI
 
+# Pushes run only for main: every other branch reaches CI through its pull
+# request, so a pushed PR branch is not tested twice.
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
     branches: [main]
+
+# Read-only by default; the one job that writes (release) asks for it.
+permissions:
+  contents: read
+
+# A newer push to a PR branch supersedes the run in flight. main never
+# cancels, and every main commit gets its own group, so a queued run carrying
+# a `pre-release: true` trailer is never dropped in favour of a later commit.
+concurrency:
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   check:
-    name: fmt + lint + test
+    name: fmt + lint + docs + test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # No toolchain action: rustup reads rust-toolchain.toml, so CI builds
+      # with exactly the pinned release (and its components) that a local
+      # checkout does. `rustup toolchain install` with no argument installs it.
+      - run: rustup toolchain install
       - uses: taiki-e/install-action@just
       - uses: Swatinem/rust-cache@v2
       # Every step below is one part of the merge bar, invoked through the
@@ -28,6 +42,7 @@ jobs:
       # needs the same cargo build and a separate job would re-pay it.
       - run: just ci::fmt-check
       - run: just ci::workspace-lint
+      - run: just ci::workspace-doc
       - run: just ci::workspace-test
       # The docs/ sites are the largest real-world wdoc consumer — building
       # them catches renderer regressions that unit tests miss, and broken
@@ -40,6 +55,82 @@ jobs:
       # Naming both here would render the sites twice — separate `just`
       # invocations don't share a dependency graph, where `just ci::check` does.
       - run: just ci::docs-relative-urls
+
+  # ── Other platforms ───────────────────────────────────────────────────────
+  # The test suite on the other two OSes the CLI ships for. Lint, docs and
+  # the site build are platform-independent, so they stay on Linux only.
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: taiki-e/install-action@just
+      - uses: Swatinem/rust-cache@v2
+      - run: just ci::workspace-test
+
+  # ── Supply chain ──────────────────────────────────────────────────────────
+  # Advisories, licenses, bans and sources, per deny.toml.
+  deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  # ── Reference coverage ────────────────────────────────────────────────────
+  # The book documents every builtin, subcommand and wdoc block kind the
+  # freshly built binary exposes.
+  docs-coverage:
+    name: reference coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: taiki-e/install-action@just
+      - uses: astral-sh/setup-uv@v6
+      - uses: Swatinem/rust-cache@v2
+      - run: just docs-coverage
+
+  # ── Editors ───────────────────────────────────────────────────────────────
+  vscode:
+    name: VS Code extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - uses: taiki-e/install-action@just
+      - run: just vscode-build
+
+  tree-sitter:
+    name: tree-sitter grammar
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/tree-sitter-wcl
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      # package.json pins tree-sitter-cli; `npx` runs that copy.
+      - run: npm install
+      - run: npx tree-sitter generate
+      # Runs the corpus under test/corpus/.
+      - run: npx tree-sitter test
 
   # ── Fuzz smoke ────────────────────────────────────────────────────────────
   # Bounded sweep over every wcl_lang fuzz target (~15s each) so parser /
@@ -118,7 +209,7 @@ jobs:
             elif echo "$SUBJECT" | grep -qE '^(fix|perf|refactor|build|ci|docs|style|test|chore|revert)(\(.+\))?:' && [[ "$BUMP" == "none" ]]; then
               BUMP="patch"
             fi
-          done < <(git log --format='%H' $RANGE)
+          done < <(git log --format='%H' "$RANGE")
           [[ "$BUMP" == "none" ]] && BUMP="patch"
 
           case "$BUMP" in
@@ -145,11 +236,12 @@ jobs:
           SUMMARY
 
   # ── CLI binaries ────────────────────────────────────────────────────────
-  # Build the `wcl` CLI for Linux + Windows (x86_64) so the release can ship
-  # downloadable binaries. Version-stamped so `wcl --version` is correct.
+  # Build the `wcl` CLI for every platform install.sh / install.ps1 serve.
+  # Version-stamped so `wcl --version` is correct. The asset suffixes are a
+  # contract with the installers — change them together.
   build-cli:
     name: Build CLI (${{ matrix.target }})
-    needs: [version, check]
+    needs: [version, check, test]
     if: needs.version.outputs.do_release == 'true'
     runs-on: ${{ matrix.os }}
     defaults:
@@ -163,24 +255,36 @@ jobs:
             target: x86_64-unknown-linux-gnu
             bin: wcl
             suffix: linux-x86_64
+          # Statically linked, for musl distributions (Alpine) and anywhere
+          # the glibc build is too new. The tree has no C code, so rustup's
+          # bundled musl target needs no musl-tools.
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            bin: wcl
+            suffix: linux-x86_64-musl
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bin: wcl
+            suffix: macos-aarch64
+          # Cross-compiled on the Apple-silicon runner; the SDK carries both.
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bin: wcl
+            suffix: macos-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bin: wcl.exe
             suffix: windows-x86_64.exe
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - run: rustup toolchain install && rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: cli-${{ matrix.target }}
       - name: Stamp version
-        run: |
-          V="${{ needs.version.outputs.version }}"
-          sed -i 's/"0\.0\.0"/"'"$V"'"/g' Cargo.toml
+        run: .github/scripts/stamp-version.sh "${{ needs.version.outputs.version }}"
       - name: Build
-        run: cargo build -p wcl --bin wcl --release --target ${{ matrix.target }}
+        run: cargo build --locked -p wcl --bin wcl --release --target ${{ matrix.target }}
       - name: Stage asset
         run: |
           V="${{ needs.version.outputs.version }}"
@@ -196,7 +300,7 @@ jobs:
   # vsce requires a plain major.minor.patch version, so we stamp the numeric core.
   package-vscode:
     name: Package VS Code (.vsix)
-    needs: [version, check]
+    needs: [version, check, vscode]
     if: needs.version.outputs.do_release == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -218,8 +322,10 @@ jobs:
           retention-days: 1
 
   # ── Release ─────────────────────────────────────────────────────────────
-  # Gather the CLI binaries + .vsix, tag the commit, and cut a GitHub
-  # pre-release with all artifacts attached.
+  # Gather the CLI binaries + .vsix, checksum them, and cut a GitHub
+  # pre-release with all of it attached. The tag is created by the release
+  # itself (`target_commitish`), so a failed release leaves no orphan tag
+  # behind to poison the next version calculation.
   release:
     name: Create GitHub pre-release
     needs: [version, build-cli, package-vscode]
@@ -227,24 +333,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    # Never cancelled: a half-created release would outlive the cancel.
+    concurrency:
+      group: release
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
           path: dist
-      - name: Tag
+          merge-multiple: true
+      # install.sh and install.ps1 verify their download against this file
+      # and refuse to install on a mismatch or a missing entry.
+      - name: Checksums
+        working-directory: dist
         run: |
-          V="${{ needs.version.outputs.version }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v$V"
-          git push origin "v$V"
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
           name: v${{ needs.version.outputs.version }}
           prerelease: true
           generate_release_notes: true
-          files: dist/**/*
+          fail_on_unmatched_files: true
+          files: dist/*

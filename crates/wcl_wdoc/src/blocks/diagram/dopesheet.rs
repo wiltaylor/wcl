@@ -213,12 +213,6 @@ pub(crate) fn dopesheet_bbox(
     (x, y, w, h)
 }
 
-/// Whether a block subtree contains a `dopesheet` (drives the per-site
-/// player-asset write + per-page script injection).
-pub(crate) fn uses_dopesheet(block: &Block<'_>) -> bool {
-    crate::render::block_tree_any(block, &|b| b.kind() == "dopesheet")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

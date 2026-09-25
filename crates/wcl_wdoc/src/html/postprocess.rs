@@ -73,26 +73,76 @@ fn heading_re() -> &'static Regex {
     })
 }
 
-/// Strip markup, leaving the text — the search index body and the
-/// fallback page title.
+/// Plain text of rendered HTML — heading and TOC text, the fallback page
+/// title, and the search index body: tags dropped, `<script>` / `<style>`
+/// contents skipped (SVG text nodes — diagram labels — survive, which is
+/// wanted), whitespace collapsed.
 pub(crate) fn plain_text(html: &str) -> String {
-    let mut out = String::with_capacity(html.len());
-    let mut in_tag = false;
-    for ch in html.chars() {
-        match ch {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => out.push(ch),
-            _ => {}
+    let mut out = String::with_capacity(html.len() / 4);
+    let mut rest = html;
+    let mut last_ws = true;
+    let mut push_text = |text: &str, out: &mut String| {
+        for ch in text.chars() {
+            if ch.is_whitespace() {
+                if !last_ws {
+                    out.push(' ');
+                    last_ws = true;
+                }
+            } else {
+                out.push(ch);
+                last_ws = false;
+            }
+        }
+    };
+    while let Some(lt) = rest.find('<') {
+        push_text(&rest[..lt], &mut out);
+        rest = &rest[lt..];
+        let lower = rest.get(..8).unwrap_or("").to_ascii_lowercase();
+        let skip_to = if lower.starts_with("<script") {
+            Some("</script>")
+        } else if lower.starts_with("<style") {
+            Some("</style>")
+        } else {
+            None
+        };
+        if let Some(close) = skip_to {
+            match find_ascii_ci(rest, close) {
+                Some(end) => rest = &rest[end + close.len()..],
+                None => rest = "",
+            }
+            continue;
+        }
+        match rest.find('>') {
+            Some(gt) => rest = &rest[gt + 1..],
+            None => rest = "",
         }
     }
-    out.replace("&amp;", "&")
-        .replace("&lt;", "<")
+    push_text(rest, &mut out);
+    // Decode the entities the HTML emitters produce, `&amp;` last: decoding
+    // it first would turn the escaped text `&amp;lt;` into `<`, not `&lt;`.
+    out.replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
+        .replace("&amp;", "&")
         .trim()
         .to_string()
+}
+
+/// Byte offset of the first match of the ASCII `needle` in `haystack`,
+/// ignoring ASCII case. Searches the bytes in place — lowercasing the rest
+/// of the page to find each `</script>` made the plain-text pass quadratic
+/// in the page size. A match starts on the needle's first (ASCII) byte, so
+/// the offset is always a char boundary.
+fn find_ascii_ci(haystack: &str, needle: &str) -> Option<usize> {
+    let needle = needle.as_bytes();
+    let first = needle.first()?.to_ascii_lowercase();
+    let bytes = haystack.as_bytes();
+    let last_start = bytes.len().checked_sub(needle.len())?;
+    (0..=last_start).find(|&i| {
+        bytes[i].to_ascii_lowercase() == first
+            && bytes[i..i + needle.len()].eq_ignore_ascii_case(needle)
+    })
 }
 
 /// Slugify heading text into an id-safe form.
@@ -167,4 +217,42 @@ pub(crate) fn process_footnotes(content: &str) -> String {
         out = out.replace(&needle, &replacement);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_ascii_ci_ignores_case_and_respects_bounds() {
+        assert_eq!(find_ascii_ci("ab</SCRIPT>", "</script>"), Some(2));
+        assert_eq!(find_ascii_ci("é</Style>", "</style>"), Some(2));
+        assert_eq!(find_ascii_ci("</scrip", "</script>"), None);
+        assert_eq!(find_ascii_ci("", "</style>"), None);
+        assert_eq!(find_ascii_ci("abc", ""), None);
+    }
+
+    #[test]
+    fn plain_text_skips_script_and_style_in_any_case() {
+        let html = "<p>a</p> <SCRIPT>x()</ScRiPt> <style>.p{}</STYLE> <p>b</p>";
+        assert_eq!(plain_text(html), "a b");
+    }
+
+    #[test]
+    fn plain_text_decodes_amp_last() {
+        // `&amp;lt;` is the escaped text `&lt;`, not a `<`.
+        assert_eq!(plain_text("<b>a &amp;lt; b</b>"), "a &lt; b");
+        assert_eq!(
+            plain_text("x &lt;y&gt; &quot;z&quot; &#39;w&#39; &amp;"),
+            "x <y> \"z\" 'w' &"
+        );
+    }
+
+    #[test]
+    fn plain_text_skips_scripts_and_collapses_whitespace() {
+        assert_eq!(
+            plain_text("<p>one\n  two</p><script>let x = 1;</script><style>.a{}</style> three"),
+            "one two three"
+        );
+    }
 }

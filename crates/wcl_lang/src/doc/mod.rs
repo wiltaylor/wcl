@@ -38,6 +38,7 @@ mod connections;
 mod decorators;
 mod eval;
 mod eval_ops;
+mod eval_stack;
 mod imports;
 mod loader;
 mod lookup;
@@ -70,8 +71,8 @@ use crate::environment::Environment;
 use crate::symbols::{SymbolIndex, SymbolKind, SymbolRecord};
 use crate::value::Value;
 use cells::{BlockCells, ItemCellKind, ItemCells, LoadedImport};
-use connections::RESOLVING_CONN_OPERAND;
 pub(crate) use connections::{ConnOperand, connection_type_matches};
+use eval_stack::FrameKey;
 use lookup::{find_block, find_field, find_let, iter_blocks, iter_fields};
 use schema_check::has_schemaless;
 use schema_lookup::{DeclLoc, DeclaredKind, block_first_label};
@@ -87,7 +88,7 @@ use scope::Scope;
 /// declarations — comes back as a borrowed view, not a copy.
 pub struct Document {
     /// The root source text and its name, for rendering diagnostics.
-    src: NamedSource<String>,
+    src: NamedSource<std::sync::Arc<str>>,
     /// The parsed root source.
     ast: ast::Source,
     /// Evaluation caches, shaped to mirror `ast.items`.
@@ -185,6 +186,12 @@ pub struct Document {
     /// reference count. First occurrence wins, matching the scan order
     /// it replaces.
     root_let_index: std::sync::OnceLock<HashMap<String, (usize, usize)>>,
+    /// Field address to the ordinal (in `all_sources` order) of the
+    /// source declaring it, over the root source and eager imports.
+    /// Provenance asks this for every top-level field it validates, and
+    /// a full walk per question made `@document` checks quadratic. Sound
+    /// to build once: those sources are fixed at construction time.
+    field_source_index: std::sync::OnceLock<HashMap<usize, usize>>,
     /// Memo for the root `@connections` projection in
     /// [`resolve_root_in`]: field name → projected edge list. The
     /// projection walks every source's connection statements and
@@ -233,7 +240,7 @@ impl std::fmt::Debug for Document {
 
 /// Schema errors paired with the source each should be rendered
 /// against — `None` when the error carries no file provenance.
-type CollectedSchemaErrors = Vec<(EvalError, Option<NamedSource<String>>)>;
+type CollectedSchemaErrors = Vec<(EvalError, Option<NamedSource<std::sync::Arc<str>>>)>;
 
 /// A symbol lookup result that knows which source it came from.
 /// Exposed so the LSP can build cross-file `Location`s for
@@ -292,7 +299,7 @@ impl Document {
         None
     }
 
-    /// Invoke a [`FnValue`] with the supplied arguments. Uses a fresh
+    /// Invoke a [`FnValue`](crate::FnValue) with the supplied arguments. Uses a fresh
     /// evaluation context rooted at the document — bodies see
     /// document-level symbols but no caller locals.
     ///
@@ -313,7 +320,7 @@ impl Document {
     /// Look up a top-level binding named `name`, expect a function
     /// value there, and invoke it with `args`. Convenience over
     /// [`Self::call_value`] when the host doesn't already hold the
-    /// [`FnValue`].
+    /// [`FnValue`](crate::FnValue).
     ///
     /// Returns a `UserError`-shaped diagnostic when the name doesn't
     /// resolve or resolves to a non-function value; otherwise
@@ -463,33 +470,45 @@ impl Document {
         // connections field declared in an imported schema when another
         // `@document` (e.g. the stdlib `Site`) sorts ahead of it.
         //
-        // Skip projection while we're resolving a connection operand's
-        // identifying label (see `RESOLVING_CONN_OPERAND`): a block label
-        // can't depend on the connection set, and re-entering projection
-        // here would recurse infinitely.
-        if !RESOLVING_CONN_OPERAND.with(std::cell::Cell::get) {
-            if let Some(hit) = self
-                .root_conn_memo
-                .read()
-                .ok()
-                .and_then(|m| m.get(name).cloned())
-            {
-                return Some(DataRef::from_variant_value(hit));
-            }
-            let schemas = self.doc_schemas_for_ns(&self.file_ns);
-            if let Some(field) = schemas.field(name)
-                && let Some(conn_schema) = field.connection_schema()
-            {
-                let mut all: Vec<Value> = Vec::new();
-                for src in self.all_sources() {
-                    all.extend(self.project_connections(src.items, conn_schema, &Scope::root()));
+        // Projecting resolves every operand's block by evaluating its
+        // label, and a label may read this very field: the projection's
+        // frame on the evaluation stack reports that as a cycle. A failed
+        // projection isn't memoised — it only fails while re-entered, so
+        // a later read outside the cycle projects normally.
+        if let Some(hit) = self
+            .root_conn_memo
+            .read()
+            .ok()
+            .and_then(|m| m.get(name).cloned())
+        {
+            return Some(DataRef::from_variant_value(hit));
+        }
+        let schemas = self.doc_schemas_for_ns(&self.file_ns);
+        if let Some(field) = schemas.field(name)
+            && let Some(conn_schema) = field.connection_schema()
+        {
+            let projected = eval_stack::enter(FrameKey::named(&self.root_conn_memo, name))
+                .map_err(|refused| refused.into_error(name, field.span()))
+                .and_then(|_frame| {
+                    let mut all: Vec<Value> = Vec::new();
+                    for src in self.all_sources() {
+                        all.extend(self.project_connections(
+                            src.items,
+                            conn_schema,
+                            &Scope::root(),
+                        )?);
+                    }
+                    Ok(Value::List(std::sync::Arc::new(all)))
+                });
+            return Some(match projected {
+                Ok(projected) => {
+                    if let Ok(mut m) = self.root_conn_memo.write() {
+                        m.insert(name.to_string(), projected.clone());
+                    }
+                    DataRef::from_variant_value(projected)
                 }
-                let projected = Value::List(std::sync::Arc::new(all));
-                if let Ok(mut m) = self.root_conn_memo.write() {
-                    m.insert(name.to_string(), projected.clone());
-                }
-                return Some(DataRef::from_variant_value(projected));
-            }
+                Err(e) => DataRef::from_error(e),
+            });
         }
         // Document-root `@children`/`@child` projection: a field declared
         // on the merged `@document` schema collects top-level blocks by
