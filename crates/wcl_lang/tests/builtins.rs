@@ -212,6 +212,32 @@ fn repeat_rejects_oversized_output_without_panicking() {
 }
 
 #[test]
+fn interpolation_obeys_the_output_limit() {
+    // Regression: `$"…"` joined its parts with no size check, so a `fn`
+    // that recursed on `$"${s}${s}"` doubled a string per call until the
+    // host ran out of memory. Interpolation now answers to the builtins'
+    // 64 MiB limit.
+    let error = eval_err("@schemaless result = { let s = repeat(\"a\", 67108864); $\"${s}b\" }");
+    assert!(
+        error.contains("\"interpolation\"") && error.contains("64 MiB limit"),
+        "{error}"
+    );
+    let error = eval_err(
+        "fn dbl(s: utf8, n: i64) -> utf8 if n <= 0 { s } else { dbl($\"${s}${s}\", n - 1) }\n\
+         @schemaless result = dbl(\"x\", 40)",
+    );
+    assert!(
+        error.contains("\"interpolation\"") && error.contains("64 MiB limit"),
+        "{error}"
+    );
+    // Exactly at the limit still builds.
+    assert_eq!(
+        eval("@schemaless result = { let s = repeat(\"a\", 67108863); len($\"${s}b\") }"),
+        Value::I64(67_108_864)
+    );
+}
+
+#[test]
 fn builtins_reject_oversized_output_without_panicking() {
     // Regression: `range` panicked with "capacity overflow" and
     // `pad_start` aborted on allocation. Every builtin that builds a

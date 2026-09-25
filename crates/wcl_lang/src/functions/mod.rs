@@ -90,7 +90,7 @@ pub(crate) const MAX_OUTPUT_ITEMS: usize = 1024 * 1024;
 
 /// Refuse a string output of `bytes` bytes (`None` when computing the
 /// size overflowed) past [`MAX_OUTPUT_BYTES`]; otherwise return it.
-fn check_output_bytes(builtin: &str, bytes: Option<usize>) -> Result<usize, String> {
+pub(crate) fn check_output_bytes(builtin: &str, bytes: Option<usize>) -> Result<usize, String> {
     match bytes {
         Some(n) if n <= MAX_OUTPUT_BYTES => Ok(n),
         _ => Err(format!(

@@ -487,13 +487,25 @@ impl Document {
         ctx: &mut EvalCtx<'a>,
     ) -> Result<Value, EvalError> {
         use crate::lexer::StringEncoding as Enc;
+        // The result obeys the builtins' output-size limit: a `fn` that
+        // recurses on `$"${s}${s}"` doubles a string per call, and would
+        // otherwise run the host out of memory within a few dozen calls.
+        let append = |joined: &mut String, piece: &str| -> Result<(), EvalError> {
+            crate::functions::check_output_bytes(
+                "interpolation",
+                joined.len().checked_add(piece.len()),
+            )
+            .map_err(|msg| EvalError::builtin_type("interpolation", msg, span))?;
+            joined.push_str(piece);
+            Ok(())
+        };
         let mut joined = String::new();
         for part in parts {
             match part {
-                ast::TemplatePart::Literal(s) => joined.push_str(s),
+                ast::TemplatePart::Literal(s) => append(&mut joined, s)?,
                 ast::TemplatePart::Expr(e) => {
                     let v = self.eval_in(e, ctx)?;
-                    joined.push_str(&crate::functions::format_value(&v));
+                    append(&mut joined, &crate::functions::format_value(&v))?;
                 }
             }
         }
