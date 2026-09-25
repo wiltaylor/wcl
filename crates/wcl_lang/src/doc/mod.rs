@@ -193,6 +193,11 @@ pub struct Document {
     /// quadratic. Sound to build once: those sources are fixed at
     /// construction time.
     node_source_index: std::sync::OnceLock<HashMap<usize, usize>>,
+    /// Like `node_source_index` for the nodes an error can be raised
+    /// under without a field of their own: `let` items and function
+    /// bodies. Built only when an error needs its file, so a document
+    /// that evaluates cleanly never walks its expressions for it.
+    expr_source_index: std::sync::OnceLock<HashMap<usize, usize>>,
     /// Memo for the root `@connections` projection in
     /// [`resolve_root_in`]: field name → projected edge list. The
     /// projection walks every source's connection statements and
@@ -494,11 +499,10 @@ impl Document {
                 .and_then(|_frame| {
                     let mut all: Vec<Value> = Vec::new();
                     for src in self.all_sources() {
-                        all.extend(self.project_connections(
-                            src.items,
-                            conn_schema,
-                            &Scope::root(),
-                        )?);
+                        let projected = self
+                            .project_connections(src.items, conn_schema, &Scope::root())
+                            .map_err(|error| error.with_origin(&self.named_source_for_view(src)))?;
+                        all.extend(projected);
                     }
                     Ok(Value::List(std::sync::Arc::new(all)))
                 });

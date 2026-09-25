@@ -27,7 +27,7 @@ fn canonical(path: &Path) -> PathBuf {
 /// The file a violation names and the text its span covers there.
 fn located(error: &EvalError) -> (PathBuf, String) {
     let source = error
-        .schema_source()
+        .origin()
         .unwrap_or_else(|| panic!("`{error}` names no source"));
     let EvalError::SchemaViolation { span, .. } = error else {
         panic!("not a schema violation: {error}")

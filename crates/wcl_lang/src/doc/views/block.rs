@@ -384,6 +384,20 @@ impl<'a> Block<'a> {
         crate::format::to_source_item(&ast::Item::Block(self.ast.clone()))
     }
 
+    /// Tag `error`, raised against the items of `slice`, with the file
+    /// they were written in: the imported file an in-block `import`
+    /// spliced in, or this block's own file.
+    fn slice_origin(&self, error: EvalError, slice: &BlockSlice<'_>) -> EvalError {
+        let source = match slice.import {
+            Some(import) => Some(crate::doc::provenance::import_named_source(import)),
+            None => self.doc.source_of_block(self.ast),
+        };
+        match source {
+            Some(source) => error.with_origin(&source),
+            None => error,
+        }
+    }
+
     /// Realise any pending block-level imports, then return one
     /// `BlockSlice` for the block's own items plus one for each
     /// successfully-loaded import (transitively). The block's own
@@ -403,6 +417,7 @@ impl<'a> Block<'a> {
             cells: items_cells,
             file_ns: self.file_ns,
             index: name_index,
+            import: None,
         };
         // Without an in-block import the body is its own only source;
         // skip rescanning every cell for one.
@@ -606,11 +621,11 @@ impl<'a> Block<'a> {
                 .and_then(|_frame| {
                     let mut values = Vec::new();
                     for src in self.realize_and_sources() {
-                        values.extend(self.doc.project_connections(
-                            src.items,
-                            conn_schema,
-                            &scope,
-                        )?);
+                        let projected = self
+                            .doc
+                            .project_connections(src.items, conn_schema, &scope)
+                            .map_err(|error| self.slice_origin(error, &src))?;
+                        values.extend(projected);
                     }
                     Ok(Value::List(std::sync::Arc::new(values)))
                 });

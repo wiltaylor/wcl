@@ -289,7 +289,7 @@ impl Document {
             &mut errors,
         );
         for error in errors {
-            let error = error.with_schema_source(source);
+            let error = error.with_origin(source);
             let duplicate = out.iter().any(|(existing, existing_source)| {
                 existing == &error
                     && existing_source

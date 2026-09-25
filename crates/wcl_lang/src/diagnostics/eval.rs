@@ -21,19 +21,18 @@ use thiserror::Error;
 
 use super::{ArithmeticFault, SchemaViolationKind};
 
-/// The file a schema violation was raised in: its name and full text,
-/// so the diagnostic renders against that file rather than whichever
-/// source the host happens to have open.
+/// The file an error was raised in: its name and full text, so the
+/// diagnostic renders against that file rather than whichever source
+/// the host happens to have open.
 ///
 /// A document is a root source plus its imports, and a span alone does
-/// not say which of them it indexes into. Carried on
-/// [`EvalError::SchemaViolation`] and read back through
-/// [`EvalError::schema_source`].
+/// not say which of them it indexes into. Carried on every
+/// [`EvalError`] variant and read back through [`EvalError::origin`].
 #[doc(hidden)]
 #[derive(Debug, Clone)]
-pub struct SchemaDiagnosticSource(NamedSource<Arc<str>>);
+pub struct DiagnosticSource(NamedSource<Arc<str>>);
 
-impl SchemaDiagnosticSource {
+impl DiagnosticSource {
     /// Rebuild the `NamedSource` for rendering.
     pub(crate) fn named_source(&self) -> NamedSource<Arc<str>> {
         self.0.clone()
@@ -43,16 +42,16 @@ impl SchemaDiagnosticSource {
 /// Two provenances are equal when they name the same file with the
 /// same text. The text is shared, so the pointer test settles almost
 /// every comparison without reading it.
-impl PartialEq for SchemaDiagnosticSource {
+impl PartialEq for DiagnosticSource {
     fn eq(&self, other: &Self) -> bool {
         self.0.name() == other.0.name()
             && (Arc::ptr_eq(self.0.inner(), other.0.inner()) || self.0.inner() == other.0.inner())
     }
 }
 
-impl Eq for SchemaDiagnosticSource {}
+impl Eq for DiagnosticSource {}
 
-impl miette::SourceCode for SchemaDiagnosticSource {
+impl miette::SourceCode for DiagnosticSource {
     fn read_span<'a>(
         &'a self,
         span: &SourceSpan,
@@ -80,6 +79,11 @@ pub enum EvalError {
     Cycle {
         /// Name of the field involved.
         field: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("evaluated recursively")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -93,6 +97,11 @@ pub enum EvalError {
     UnknownBuiltin {
         /// The name that was written.
         name: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("no builtin with this name")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -108,6 +117,11 @@ pub enum EvalError {
         expected: usize,
         /// How many were supplied.
         got: usize,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("wrong number of arguments")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -122,6 +136,11 @@ pub enum EvalError {
         name: String,
         /// The rendered message.
         message: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("invalid argument(s)")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -132,6 +151,11 @@ pub enum EvalError {
     /// The callee of a call expression evaluated to something that
     /// is not a function.
     NonCallable {
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("not callable")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -145,6 +169,11 @@ pub enum EvalError {
         expected: usize,
         /// How many were supplied.
         got: usize,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("wrong number of arguments")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -158,6 +187,11 @@ pub enum EvalError {
     CallDepthExceeded {
         /// The limit that was exceeded.
         max: usize,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("function call recurses too deeply")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -177,6 +211,11 @@ pub enum EvalError {
     EvalDepthExceeded {
         /// The limit that was exceeded.
         max: usize,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("evaluation nests too deeply here")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -187,6 +226,11 @@ pub enum EvalError {
     /// No arm of a `match` matched the scrutinee, and no arm was a
     /// catch-all.
     MatchNoArm {
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("no arm matched")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -199,6 +243,11 @@ pub enum EvalError {
     GuardNotBool {
         /// What was found instead, named as WCL spells it.
         kind: &'static str,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("guard expression is not a bool")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -211,6 +260,11 @@ pub enum EvalError {
     UnknownUnion {
         /// The path, as written in the source.
         path: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("no union with this name in scope")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -225,6 +279,11 @@ pub enum EvalError {
         union: String,
         /// Name of the variant.
         variant: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("not a variant of this union")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -240,6 +299,11 @@ pub enum EvalError {
         expected: String,
         /// How many were supplied.
         got: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("argument shape does not match the variant body")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -252,6 +316,11 @@ pub enum EvalError {
     UserError {
         /// The rendered message.
         message: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("error raised here")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -264,6 +333,11 @@ pub enum EvalError {
     UnionCycle {
         /// Fully-qualified name of the union.
         union: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("cyclic extends")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -280,6 +354,15 @@ pub enum EvalError {
         lhs_type: String,
         /// Type of the right operand, as WCL spells it.
         rhs_type: String,
+        #[help]
+        /// A likely fix, when the operands say what was meant: `2e-3`
+        /// is the literal `2e` minus `3`, not scientific notation.
+        help: Option<String>,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("incompatible operands")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -296,6 +379,11 @@ pub enum EvalError {
         op: String,
         /// Type of the offending operand, as WCL spells it.
         operand_type: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("incompatible operand")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -311,6 +399,11 @@ pub enum EvalError {
         /// Which fault, so tools can act on it without parsing the
         /// rendered message.
         fault: ArithmeticFault,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("no result for these operands")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -323,6 +416,11 @@ pub enum EvalError {
     NotALeaf {
         /// What was found instead, named as WCL spells it.
         kind: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("not a leaf")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -336,6 +434,11 @@ pub enum EvalError {
         path: String,
         /// The rendered message.
         message: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("import error")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -357,9 +460,9 @@ pub enum EvalError {
         message: String,
         #[doc(hidden)]
         #[source_code]
-        /// The file the violation was raised in, when known. Read it
-        /// through [`EvalError::schema_source`].
-        origin: Option<std::sync::Arc<SchemaDiagnosticSource>>,
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("schema violation")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -372,6 +475,11 @@ pub enum EvalError {
     UnresolvedReference {
         /// The path, as written in the source.
         path: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("does not resolve")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -384,18 +492,18 @@ pub enum EvalError {
     NotAReference {
         /// What was found instead, named as WCL spells it.
         kind: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("not a reference")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
     },
 
     #[error("'{unit}' is not a unit of type '{ty}'")]
-    #[diagnostic(
-        code(wcl::eval::unit_no_match),
-        help(
-            "declare it with `@unit(\"{unit}\", <factor>)` on the type alias, or use one of its declared units"
-        )
-    )]
+    #[diagnostic(code(wcl::eval::unit_no_match))]
     /// A unit-suffixed literal named a unit that the field's
     /// declared type does not declare via `@unit`.
     UnitNoMatch {
@@ -403,6 +511,16 @@ pub enum EvalError {
         unit: String,
         /// The type involved, as WCL spells it.
         ty: String,
+        #[help]
+        /// What to do about it: declare the unit on the type, or, when
+        /// the suffix is an exponent written without a decimal point
+        /// (`1e39`), write the number as a float (`1.0e39`).
+        help: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("unknown unit for this type")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -418,6 +536,11 @@ pub enum EvalError {
     UnitWithoutType {
         /// The unit suffix that was written.
         unit: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("needs a unit-bearing type in context")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -436,6 +559,11 @@ pub enum EvalError {
     MissingExpander {
         /// What was found instead, named as WCL spells it.
         kind: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("this block's generated children were demanded")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -456,6 +584,11 @@ pub enum EvalError {
         kind: String,
         /// Which limit, in words (`the nesting depth limit of 32`).
         limit: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
         #[label("expansion stopped here")]
         /// Source span the diagnostic points at.
         span: SourceSpan,
@@ -465,14 +598,30 @@ pub enum EvalError {
 impl EvalError {
     /// Build an [`EvalError::UnitNoMatch`], listing the units the type
     /// does declare so the message can suggest them.
+    ///
+    /// `magnitude` is the number the unit was written after, when there
+    /// is one: a suffix like `e39` after an integer is an exponent missing
+    /// its decimal point, and the help says how to write it.
     pub(crate) fn unit_no_match(
         unit: impl Into<String>,
         ty: impl Into<String>,
+        magnitude: Option<&crate::Value>,
         span: crate::ast::Span,
     ) -> Self {
+        let unit = unit.into();
+        let help = magnitude
+            .and_then(|magnitude| scientific_notation_help(magnitude, &unit))
+            .unwrap_or_else(|| {
+                format!(
+                    "declare it with `@unit(\"{unit}\", <factor>)` on the type alias, or use \
+                     one of its declared units"
+                )
+            });
         Self::UnitNoMatch {
-            unit: unit.into(),
+            unit,
             ty: ty.into(),
+            help,
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -481,6 +630,7 @@ impl EvalError {
     pub(crate) fn unit_without_type(unit: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::UnitWithoutType {
             unit: unit.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -489,6 +639,7 @@ impl EvalError {
     pub(crate) fn not_a_leaf(kind: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::NotALeaf {
             kind: kind.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -502,6 +653,7 @@ impl EvalError {
         Self::ImportFailed {
             path: path.into(),
             message: message.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -539,43 +691,102 @@ impl EvalError {
         }
     }
 
-    /// Attach the file a schema violation was raised in, so the
-    /// diagnostic renders against that file. A no-op on every other
-    /// variant, and on a violation that already carries a source: the
-    /// check that raised it knew its file, and an enclosing check that
-    /// collects it (a parent block gathering its children's errors, a
-    /// field whose expression read an erroring field) must not
-    /// overwrite that with its own.
-    pub(crate) fn with_schema_source(mut self, source: &NamedSource<Arc<str>>) -> Self {
-        self.attach_schema_source(source);
+    /// Attach the file this error was raised in, so the diagnostic
+    /// renders against that file. A no-op on an error that already
+    /// carries a source: the code that raised it knew its file, and an
+    /// enclosing scope that passes it on (a function call returning its
+    /// body's error, a parent block gathering its children's errors, a
+    /// field whose expression read an erroring field) must not overwrite
+    /// that with its own. The innermost origin wins.
+    pub(crate) fn with_origin(mut self, source: &NamedSource<Arc<str>>) -> Self {
+        self.attach_origin(source);
         self
     }
 
-    /// In-place form of [`Self::with_schema_source`].
-    pub(crate) fn attach_schema_source(&mut self, source: &NamedSource<Arc<str>>) {
-        if let Self::SchemaViolation { origin, .. } = self
-            && origin.is_none()
-        {
-            *origin = Some(Arc::new(SchemaDiagnosticSource(source.clone())));
+    /// In-place form of [`Self::with_origin`].
+    pub(crate) fn attach_origin(&mut self, source: &NamedSource<Arc<str>>) {
+        let slot = self.origin_slot();
+        if slot.is_none() {
+            *slot = Some(Arc::new(DiagnosticSource(source.clone())));
         }
     }
 
-    /// The file this schema violation was raised in — the root document
-    /// or the imported file that holds the offending text — as the
-    /// `NamedSource` its span indexes into. `None` for every other
-    /// variant, and for a violation against a declaration the library
-    /// synthesised rather than read from a file.
+    /// The file this error was raised in — the root document or the
+    /// imported file that holds the offending text — as the
+    /// `NamedSource` its span indexes into. `None` when the library does
+    /// not know it: an error against a declaration it synthesised rather
+    /// than read from a file, or one a host built itself.
     ///
     /// `EvalError`'s [`Diagnostic::source_code`] returns the same
     /// source, so a `miette::Report` of the error renders its snippet
     /// without the host attaching one.
-    pub fn schema_source(&self) -> Option<NamedSource<Arc<str>>> {
+    pub fn origin(&self) -> Option<NamedSource<Arc<str>>> {
+        self.origin_ref().map(|source| source.named_source())
+    }
+
+    /// The `origin` field, whichever variant this is.
+    fn origin_ref(&self) -> Option<&DiagnosticSource> {
         match self {
-            Self::SchemaViolation {
-                origin: Some(source),
-                ..
-            } => Some(source.named_source()),
-            _ => None,
+            Self::Cycle { origin, .. }
+            | Self::UnknownBuiltin { origin, .. }
+            | Self::BuiltinArity { origin, .. }
+            | Self::BuiltinTypeMismatch { origin, .. }
+            | Self::NonCallable { origin, .. }
+            | Self::CallArity { origin, .. }
+            | Self::CallDepthExceeded { origin, .. }
+            | Self::EvalDepthExceeded { origin, .. }
+            | Self::MatchNoArm { origin, .. }
+            | Self::GuardNotBool { origin, .. }
+            | Self::UnknownUnion { origin, .. }
+            | Self::UnknownVariant { origin, .. }
+            | Self::VariantShapeMismatch { origin, .. }
+            | Self::UserError { origin, .. }
+            | Self::UnionCycle { origin, .. }
+            | Self::TypeMismatch { origin, .. }
+            | Self::UnaryTypeMismatch { origin, .. }
+            | Self::Arithmetic { origin, .. }
+            | Self::NotALeaf { origin, .. }
+            | Self::ImportFailed { origin, .. }
+            | Self::SchemaViolation { origin, .. }
+            | Self::UnresolvedReference { origin, .. }
+            | Self::NotAReference { origin, .. }
+            | Self::UnitNoMatch { origin, .. }
+            | Self::UnitWithoutType { origin, .. }
+            | Self::MissingExpander { origin, .. }
+            | Self::ExpansionLimit { origin, .. } => origin.as_deref(),
+        }
+    }
+
+    /// Mutable access to the `origin` field, whichever variant this is.
+    fn origin_slot(&mut self) -> &mut Option<Arc<DiagnosticSource>> {
+        match self {
+            Self::Cycle { origin, .. }
+            | Self::UnknownBuiltin { origin, .. }
+            | Self::BuiltinArity { origin, .. }
+            | Self::BuiltinTypeMismatch { origin, .. }
+            | Self::NonCallable { origin, .. }
+            | Self::CallArity { origin, .. }
+            | Self::CallDepthExceeded { origin, .. }
+            | Self::EvalDepthExceeded { origin, .. }
+            | Self::MatchNoArm { origin, .. }
+            | Self::GuardNotBool { origin, .. }
+            | Self::UnknownUnion { origin, .. }
+            | Self::UnknownVariant { origin, .. }
+            | Self::VariantShapeMismatch { origin, .. }
+            | Self::UserError { origin, .. }
+            | Self::UnionCycle { origin, .. }
+            | Self::TypeMismatch { origin, .. }
+            | Self::UnaryTypeMismatch { origin, .. }
+            | Self::Arithmetic { origin, .. }
+            | Self::NotALeaf { origin, .. }
+            | Self::ImportFailed { origin, .. }
+            | Self::SchemaViolation { origin, .. }
+            | Self::UnresolvedReference { origin, .. }
+            | Self::NotAReference { origin, .. }
+            | Self::UnitNoMatch { origin, .. }
+            | Self::UnitWithoutType { origin, .. }
+            | Self::MissingExpander { origin, .. }
+            | Self::ExpansionLimit { origin, .. } => origin,
         }
     }
 
@@ -595,6 +806,7 @@ impl EvalError {
     pub(crate) fn unknown_builtin(name: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::UnknownBuiltin {
             name: name.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -610,6 +822,7 @@ impl EvalError {
             name: name.into(),
             expected,
             got,
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -636,6 +849,7 @@ impl EvalError {
         Self::BuiltinTypeMismatch {
             name,
             message,
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -643,6 +857,7 @@ impl EvalError {
     /// Build an [`EvalError::NonCallable`].
     pub(crate) fn non_callable(span: crate::ast::Span) -> Self {
         Self::NonCallable {
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -652,6 +867,7 @@ impl EvalError {
         Self::CallArity {
             expected,
             got,
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -660,6 +876,7 @@ impl EvalError {
     pub(crate) fn call_depth_exceeded(max: usize, span: crate::ast::Span) -> Self {
         Self::CallDepthExceeded {
             max,
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -668,6 +885,7 @@ impl EvalError {
     pub(crate) fn eval_depth_exceeded(max: usize, span: crate::ast::Span) -> Self {
         Self::EvalDepthExceeded {
             max,
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -675,6 +893,7 @@ impl EvalError {
     /// Build an [`EvalError::MatchNoArm`].
     pub(crate) fn match_no_arm(span: crate::ast::Span) -> Self {
         Self::MatchNoArm {
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -683,6 +902,7 @@ impl EvalError {
     pub(crate) fn guard_not_bool(kind: &'static str, span: crate::ast::Span) -> Self {
         Self::GuardNotBool {
             kind,
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -691,6 +911,7 @@ impl EvalError {
     pub(crate) fn unknown_union(path: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::UnknownUnion {
             path: path.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -704,6 +925,7 @@ impl EvalError {
         Self::UnknownVariant {
             union: union.into(),
             variant: variant.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -717,6 +939,7 @@ impl EvalError {
         Self::VariantShapeMismatch {
             expected: expected.into(),
             got: got.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -727,6 +950,7 @@ impl EvalError {
     pub fn user_error(message: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::UserError {
             message: message.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -736,6 +960,7 @@ impl EvalError {
     pub(crate) fn missing_expander(kind: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::MissingExpander {
             kind: kind.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -750,6 +975,7 @@ impl EvalError {
         Self::ExpansionLimit {
             kind: kind.into(),
             limit: limit.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -758,6 +984,7 @@ impl EvalError {
     pub(crate) fn union_cycle(union: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::UnionCycle {
             union: union.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -766,6 +993,7 @@ impl EvalError {
     pub(crate) fn unresolved_reference(path: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::UnresolvedReference {
             path: path.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -774,6 +1002,7 @@ impl EvalError {
     pub(crate) fn not_a_reference(kind: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::NotAReference {
             kind: kind.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -789,6 +1018,8 @@ impl EvalError {
             op: op.into(),
             lhs_type: lhs_type.into(),
             rhs_type: rhs_type.into(),
+            help: None,
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -802,6 +1033,7 @@ impl EvalError {
         Self::UnaryTypeMismatch {
             op: op.into(),
             operand_type: operand_type.into(),
+            origin: None,
             span: span_to_miette(span),
         }
     }
@@ -815,9 +1047,52 @@ impl EvalError {
         Self::Arithmetic {
             op: op.into(),
             fault,
+            origin: None,
             span: span_to_miette(span),
         }
     }
+
+    /// Add `text` as the help of a [`EvalError::TypeMismatch`]. Any other
+    /// variant comes back as it is.
+    pub(crate) fn with_type_mismatch_help(mut self, text: String) -> Self {
+        if let Self::TypeMismatch { help, .. } = &mut self {
+            *help = Some(text);
+        }
+        self
+    }
+}
+
+/// The help for a number whose unit suffix is really an exponent: `e39`
+/// after `1`, or `e-3` after `2`. WCL reads an exponent only after a
+/// decimal point, so `1e39` is the number `1` with the unit `e39`; the
+/// help spells the float the author meant. `None` when `exponent` is not
+/// `e`/`E`, an optional sign and digits, or `magnitude` is not an
+/// integer.
+pub(crate) fn scientific_notation_help(magnitude: &crate::Value, exponent: &str) -> Option<String> {
+    use crate::Value;
+    let signed = exponent.strip_prefix(['e', 'E'])?;
+    let digits = signed.strip_prefix(['+', '-']).unwrap_or(signed);
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let whole = match magnitude {
+        Value::I8(_)
+        | Value::I16(_)
+        | Value::I32(_)
+        | Value::I64(_)
+        | Value::I128(_)
+        | Value::Isize(_)
+        | Value::U8(_)
+        | Value::U16(_)
+        | Value::U32(_)
+        | Value::U64(_)
+        | Value::U128(_)
+        | Value::Usize(_) => magnitude.to_string(),
+        _ => return None,
+    };
+    Some(format!(
+        "scientific notation needs a decimal point: write {whole}.0{exponent}"
+    ))
 }
 
 /// Convert a byte-range [`crate::ast::Span`] into the `miette`

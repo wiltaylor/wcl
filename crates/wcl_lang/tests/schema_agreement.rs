@@ -18,9 +18,17 @@
 //! for `300` in a `u8`, `2.5` in an integer, an out-of-range list
 //! element) fails the read.
 //!
+//! So does a unit the declared type does not declare (`5km` in a `u32`,
+//! `1e39` in an `f64`) and a unit product that does not fit (`1.3B`,
+//! fractional, in a `std.ByteSize`).
+//!
 //! Every other type-level check (a string in an `i64`, variant
 //! mismatches, …) is strict-only and excluded from the comparison; one
 //! test below documents that asymmetry explicitly.
+//!
+//! Connection statements are compared too, through the field that reads
+//! them: a `@connections` projection fails with the violation the strict
+//! path reports for the statements it projects.
 //!
 //! A verdict is a (file, offset, message) triple, not an offset: both
 //! paths must also agree on *which file* a violation belongs to, and
@@ -30,6 +38,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use miette::Diagnostic;
 use proptest::prelude::*;
 use wcl_lang::{
     Block, Document, Environment, EvalError, Field, Registry, SchemaViolationKind, disk_loader,
@@ -54,10 +63,11 @@ fn is_membership_kind(kind: SchemaViolationKind) -> bool {
     )
 }
 
-/// Whether `error` is one both paths report: a membership violation, or
-/// a number that does not fit its declared type. Everything else (other
-/// type mismatches, child counts, kind registration, …) is strict-only
-/// by design and excluded from the comparison.
+/// Whether `error` is one both paths report: a membership violation, a
+/// number that does not fit its declared type, or a unit that does not.
+/// Everything else (other type mismatches, child counts, kind
+/// registration, …) is strict-only by design and excluded from the
+/// comparison.
 fn is_compared(error: &EvalError) -> bool {
     match error {
         EvalError::SchemaViolation { kind, .. } if is_membership_kind(*kind) => true,
@@ -65,9 +75,23 @@ fn is_compared(error: &EvalError) -> bool {
             kind: SchemaViolationKind::FieldTypeMismatch,
             message,
             ..
-        } => message.contains("is out of range for") || message.contains("is not a whole number"),
+        } => {
+            message.contains("is out of range for")
+                || message.contains("is not a whole number")
+                || message.contains("produces a fractional value")
+                || message.contains("product is out of range")
+        }
+        EvalError::UnitNoMatch { .. } => true,
         _ => false,
     }
+}
+
+/// Where `error`'s primary label starts.
+fn label_offset(error: &EvalError) -> Option<usize> {
+    error
+        .labels()
+        .and_then(|mut labels| labels.next())
+        .map(|label| label.offset())
 }
 
 /// Collect every literal field reachable from the document: top-level
@@ -116,8 +140,8 @@ fn field_site(doc: &Document, field: &Field<'_>) -> Site {
 /// another field's reference don't count against this one).
 fn lazy_flag(doc: &Document, field: &Field<'_>) -> Option<Verdict> {
     match field.value() {
-        Err(e @ EvalError::SchemaViolation { span, .. }) if is_compared(e) => {
-            let site = (e.schema_source()?.name().to_string(), span.offset());
+        Err(e) if is_compared(e) => {
+            let site = (e.origin()?.name().to_string(), label_offset(e)?);
             (site == field_site(doc, field)).then(|| (site, e.to_string()))
         }
         _ => None,
@@ -132,12 +156,12 @@ fn lazy_flag(doc: &Document, field: &Field<'_>) -> Option<Verdict> {
 fn strict_flags(doc: &Document, field_sites: &BTreeSet<Site>) -> BTreeSet<Verdict> {
     doc.schema_diagnostics()
         .iter()
-        .filter_map(|(e, source)| match e {
-            EvalError::SchemaViolation { span, .. } if is_compared(e) => {
-                let site = (source.as_ref()?.name().to_string(), span.offset());
-                field_sites.contains(&site).then(|| (site, e.to_string()))
+        .filter_map(|(e, source)| {
+            if !is_compared(e) {
+                return None;
             }
-            _ => None,
+            let site = (source.as_ref()?.name().to_string(), label_offset(e)?);
+            field_sites.contains(&site).then(|| (site, e.to_string()))
         })
         .collect()
 }
@@ -146,14 +170,12 @@ fn strict_flags(doc: &Document, field_sites: &BTreeSet<Site>) -> BTreeSet<Verdic
 /// source it is paired with is the one it carries.
 fn assert_strict_sources(doc: &Document, label: &str) {
     for (error, source) in doc.schema_diagnostics() {
-        if let EvalError::SchemaViolation { .. } = &error {
-            let carried = error.schema_source().map(|s| s.name().to_string());
-            let paired = source.as_ref().map(|s| s.name().to_string());
-            assert_eq!(
-                carried, paired,
-                "{label}: `{error}` carries one source and is paired with another"
-            );
-        }
+        let carried = error.origin().map(|s| s.name().to_string());
+        let paired = source.as_ref().map(|s| s.name().to_string());
+        assert_eq!(
+            carried, paired,
+            "{label}: `{error}` carries one source and is paired with another"
+        );
     }
 }
 
@@ -593,6 +615,182 @@ fn numeric_misfits_in_an_imported_file_name_that_file_on_both_paths() {
             .all(|(file, _)| Path::new(file).canonicalize().ok().as_ref() == Some(&data)),
         "both belong to data.wcl: {flagged:?}"
     );
+}
+
+#[test]
+fn unit_misfits_are_flagged_by_both_paths() {
+    // A unit the type does not declare, and a unit product that does not
+    // fit, fail the read and the check alike: top level, list element,
+    // fractional product and nested block. `1e39` is the number 1 with
+    // the unit `e39` (an exponent needs a decimal point).
+    let src = r#"
+        @document type Cfg {
+          dist: u32
+          big: f64
+          size: std.ByteSize
+          counts: list<u32>
+          fine: std.ByteSize
+          echo: u32?
+          @children("svc") svcs: list<Svc>
+        }
+        @block("svc") type Svc { @inline(0) id: identifier  weight: u32 }
+        dist = 5km
+        big = 1e39
+        size = 1.3B
+        counts = [1km]
+        fine = 2KiB
+        echo = dist
+        svc web { weight = 5km }
+    "#;
+    let flagged = assert_agreement(src);
+    assert_eq!(
+        flagged.len(),
+        5,
+        "every unit misfit, not `echo`: {flagged:?}"
+    );
+
+    let doc = open(src);
+    let strict = doc.schema_diagnostics();
+    assert_eq!(strict.len(), 5, "{strict:#?}");
+    let flagged = assert_agreement_doc(&doc, "strict path first");
+    assert_eq!(flagged.len(), 5, "{flagged:?}");
+    assert!(
+        strict
+            .iter()
+            .filter(|(e, _)| matches!(e, EvalError::UnitNoMatch { .. }))
+            .count()
+            == 4,
+        "{strict:#?}"
+    );
+    assert_eq!(
+        doc.get("size").unwrap().value().unwrap_err().to_string(),
+        "unit 'B' produces a fractional value for integer type 'std.ByteSize'"
+    );
+}
+
+#[test]
+fn unit_misfits_in_an_imported_file_name_that_file_on_both_paths() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(
+        dir.path().join("data.wcl"),
+        "dist = 5km\nserver web {\n  size = 1.3B\n}\n",
+    )
+    .unwrap();
+    let root = dir.path().join("main.wcl");
+    std::fs::write(
+        &root,
+        "@block(\"server\") type Server { size: std.ByteSize }\n\
+         @document type Root {\n  dist: u32\n  @children(\"server\") servers: list<Server>\n}\n\
+         import \"./data.wcl\"\n",
+    )
+    .unwrap();
+    let doc = Document::from_file(&root).expect("document opens");
+    let flagged = assert_agreement_doc(&doc, "unit misfits in an imported file");
+    let data = dir.path().join("data.wcl").canonicalize().unwrap();
+    assert_eq!(flagged.len(), 2, "{flagged:?}");
+    assert!(
+        flagged
+            .iter()
+            .all(|(file, _)| Path::new(file).canonicalize().ok().as_ref() == Some(&data)),
+        "both belong to data.wcl: {flagged:?}"
+    );
+}
+
+/// A graph whose `@connections` field projects from statements that
+/// break the connection schemas in each of the ways the check reports.
+const BAD_CONNECTIONS: &[(&str, &str)] = &[
+    (
+        "web -> nowhere",
+        "connection destination 'nowhere' does not name a block in scope",
+    ),
+    (
+        "nowhere -> web",
+        "connection source 'nowhere' does not name a block in scope",
+    ),
+    (
+        "web -> db :bogus",
+        "connection kind ':bogus' is not a member of 'EdgeKind'",
+    ),
+    (
+        "web -> jobs",
+        "no connection schema accepts 'Service -> Queue'",
+    ),
+];
+
+fn connection_source(statement: &str, nested: bool) -> String {
+    let schema = r#"
+        symbol_set EdgeKind { uses }
+        @block("service") type Service { @inline(0) id: identifier }
+        @block("queue") type Queue { @inline(0) id: identifier }
+        connection DependsOn: Service -> Service : EdgeKind
+        @block("graph") type Graph {
+          @inline(0) id: identifier
+          @children("service") services: list<Service>
+          @children("queue") queues: list<Queue>
+          @connections(DependsOn) edges: list<DependsOn>
+        }
+    "#;
+    if nested {
+        format!(
+            "{schema}\n@document type Cfg {{ @children(\"graph\") graphs: list<Graph> }}\n\
+             graph g {{\n  service web {{}}\n  service db {{}}\n  queue jobs {{}}\n  \
+             {statement}\n  web -> db\n}}\n"
+        )
+    } else {
+        format!(
+            "{schema}\n@document type Cfg {{\n  @children(\"service\") services: list<Service>\n  \
+             @children(\"queue\") queues: list<Queue>\n  \
+             @connections(DependsOn) edges: list<DependsOn>\n}}\n\
+             service web {{}}\nservice db {{}}\nqueue jobs {{}}\n{statement}\nweb -> db\n"
+        )
+    }
+}
+
+/// The error reading the `@connections` field of `doc` returns.
+fn connection_read_error(doc: &Document, nested: bool) -> EvalError {
+    let edges = if nested {
+        let graph = doc.blocks().next().expect("graph g");
+        graph.typed_field("edges").expect("edges projects")
+    } else {
+        doc.get("edges").expect("edges projects")
+    };
+    edges.value().expect_err("reading bad connections fails")
+}
+
+#[test]
+fn reading_connections_reports_the_violations_check_reports() {
+    for nested in [false, true] {
+        for (statement, message) in BAD_CONNECTIONS {
+            let src = connection_source(statement, nested);
+            // Read first, then check.
+            let doc = open(&src);
+            let read = connection_read_error(&doc, nested);
+            let strict = doc.schema_errors();
+            assert_eq!(read.to_string(), *message, "{statement} (nested {nested})");
+            assert!(read.origin().is_some(), "{statement}: {read:?}");
+            assert!(
+                strict.contains(&read),
+                "{statement} (nested {nested}): read {read:?} not in check {strict:#?}"
+            );
+            // Check first, then read.
+            let doc = open(&src);
+            let strict = doc.schema_errors();
+            let read = connection_read_error(&doc, nested);
+            assert!(
+                strict.contains(&read),
+                "{statement} (nested {nested}), check first: {read:?} not in {strict:#?}"
+            );
+        }
+        // The good statement alone reads back and checks clean.
+        let doc = open(&connection_source("", nested));
+        assert!(doc.schema_errors().is_empty(), "{:#?}", doc.schema_errors());
+        let edges = if nested {
+            doc.blocks().next().unwrap().typed_field("edges").unwrap()
+        } else {
+            doc.get("edges").unwrap()
+        };
+        assert!(edges.value().is_ok());
+    }
 }
 
 #[test]

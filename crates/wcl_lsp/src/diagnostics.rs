@@ -45,7 +45,7 @@ pub(crate) fn document(ctx: &Ctx, doc: &Document) -> Vec<(Origin, Diagnostic)> {
     let mut out = Vec::new();
     let schema_errors = doc.schema_diagnostics().into_iter();
     let warnings = doc.schema_warnings().into_iter().map(|warning| {
-        let source = warning.schema_source();
+        let source = warning.origin();
         (warning, source)
     });
     let tagged = schema_errors

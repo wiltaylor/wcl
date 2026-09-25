@@ -415,7 +415,12 @@ fn resolve_unit_literal(
 ) -> Result<Value, EvalError> {
     match doc.unit_factor(ty, unit) {
         Some(factor) => apply_unit_factor(doc, &magnitude, &factor, ty, unit, span),
-        None => Err(EvalError::unit_no_match(unit, ty.to_string(), span)),
+        None => Err(EvalError::unit_no_match(
+            unit,
+            ty.to_string(),
+            Some(&magnitude),
+            span,
+        )),
     }
 }
 
@@ -433,7 +438,7 @@ fn apply_unit_factor(
     use crate::ast::{BuiltinType as B, TypeRef};
     let (Some(mf), Some(ff)) = (magnitude.as_f64(), factor.as_f64()) else {
         // A non-numeric factor means the decorator isn't a real unit.
-        return Err(EvalError::unit_no_match(unit, ty.to_string(), span));
+        return Err(EvalError::unit_no_match(unit, ty.to_string(), None, span));
     };
     let int_product = magnitude
         .as_i128()

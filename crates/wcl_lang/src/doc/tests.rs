@@ -1,6 +1,6 @@
 use super::*;
 use crate::ast::TypeRef;
-use crate::diagnostics::{ArithmeticFault, ParseError};
+use crate::diagnostics::{ArithmeticFault, ParseError, SchemaViolationKind};
 
 fn open(src: &str) -> Document {
     // The strict-validation default rejects any top-level field
@@ -1319,6 +1319,7 @@ fn block_label_can_be_any_value() {
 fn cycle_error_renders() {
     let err = EvalError::Cycle {
         field: "x".into(),
+        origin: None,
         span: SourceSpan::new(0.into(), 1),
     };
     let s = format!("{}", err);
@@ -3167,15 +3168,32 @@ fn dynamic_connection_projects_when_both_operands_unresolved() {
 }
 
 #[test]
-fn non_dynamic_connection_drops_unresolved_operand() {
-    // Same shape WITHOUT `@dynamic`: the unresolved `gen_b` makes the edge
-    // record drop entirely (strict, pre-feature behaviour preserved).
+fn non_dynamic_connection_fails_the_read_on_unresolved_operand() {
+    // Same shape WITHOUT `@dynamic`: `gen_b` names no block, so reading
+    // the projection fails with the violation `wcl check` reports rather
+    // than returning the edges with that one silently dropped.
     let src = DYNAMIC_CONN_SRC.replace("@dynamic\n    ", "");
     let src = format!("{src}\n        a -> gen_b\n");
     let doc = open(&src);
+    let error = doc.field("probe").unwrap().value().unwrap_err();
     assert!(
-        edge_records(&doc).is_empty(),
-        "non-@dynamic connection should drop an unresolved-operand edge"
+        matches!(
+            error,
+            EvalError::SchemaViolation {
+                kind: SchemaViolationKind::UnknownConnectionOperand,
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+    assert_eq!(
+        error.to_string(),
+        "connection destination 'gen_b' does not name a block in scope"
+    );
+    assert!(
+        doc.schema_errors().contains(error),
+        "the read reports the strict check's violation: {:#?}",
+        doc.schema_errors()
     );
 }
 
