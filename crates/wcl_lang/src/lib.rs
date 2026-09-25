@@ -35,7 +35,9 @@ mod symbols;
 mod value;
 
 pub use ast::{BuiltinType, Span, TensorDim, TypeRef};
-pub use diagnostics::{ArithmeticFault, EvalError, ParseError, SchemaViolationKind, SyntaxError};
+pub use diagnostics::{
+    ArithmeticFault, EvalError, MAX_SYNTAX_ERRORS, ParseError, SchemaViolationKind, SyntaxError,
+};
 pub use diagnostics::{Profile, ProfileKey, ProfileNode};
 pub use doc::{
     Block, ChildKind, Connection, ConnectionDecl, DataKind, DataRef, DeclName, DeclaresKind,
@@ -44,7 +46,7 @@ pub use doc::{
     TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
     VariantBodyView, disk_loader, overlay_loader, system_import_key,
 };
-pub use edit::{parse_expr, parse_for_edit};
+pub use edit::{PartialParse, parse_expr, parse_for_edit, parse_for_edit_recovering};
 pub use environment::{
     BuiltType, DecoratorBuilder, Environment, Expander, TypeBuilder, TypeFieldBuilder,
 };

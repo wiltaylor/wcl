@@ -112,6 +112,30 @@ impl<'a> Lexer<'a> {
         Ok(tok)
     }
 
+    /// Step past the text a failed [`next_token`](Self::next_token) call
+    /// rejected, so lexing can carry on after `err`. Skips to the end of
+    /// the line the error ends on: the rest of a broken literal would
+    /// otherwise lex as a run of bogus tokens. The newline is left in
+    /// place (even one the failed token consumed), so the next token
+    /// counts as starting a new line. Always moves forward, so a caller
+    /// looping on errors terminates.
+    pub fn recover(&mut self, err: &LexError) {
+        let mut pos = self
+            .pos
+            .max(err.span.end)
+            .max(err.span.start + 1)
+            .min(self.src.len());
+        if pos > err.span.start + 1 && self.src[pos - 1] == b'\n' {
+            pos -= 1;
+        }
+        while pos < self.src.len() && self.src[pos] != b'\n' {
+            pos += 1;
+        }
+        self.pos = pos;
+        self.had_prev_token = true;
+        self.prev_open_delim = false;
+    }
+
     /// Lex one token given the first byte `c`, once trivia has already
     /// been collected. The dispatch table at the heart of the lexer.
     fn lex_after_trivia(&mut self, start: usize, c: u8) -> Result<Token, LexError> {

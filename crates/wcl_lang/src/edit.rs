@@ -18,8 +18,9 @@
 //! the positions match exactly.
 
 use crate::ast::{self, Field, Item, Span};
-use crate::diagnostics::ParseError;
+use crate::diagnostics::{ParseError, SyntaxError};
 use crate::parser;
+use crate::symbols::SymbolIndex;
 
 /// Parse a WCL source string into an owned [`ast::Source`] for inspection
 /// or mutation. The returned AST has fully `pub` fields. Hosts walk it,
@@ -38,6 +39,57 @@ pub fn parse_for_edit(source: &str, name: impl Into<String>) -> Result<ast::Sour
     parser::Parser::new(source, name)
         .parse_source()
         .map(|(src, _idx)| src)
+}
+
+/// Parse a WCL source string the way an editor needs it: past its
+/// syntax errors. Where [`parse_for_edit`] fails on the first file with
+/// any mistake, this keeps every item that parsed and reports every
+/// error it met, so a host can still outline, highlight or navigate a
+/// file that is half-typed.
+///
+/// A failed item is dropped and parsing resumes at the next item: the
+/// next line starting one at the same nesting level, or the `}` closing
+/// the body it sat in. Inside a block body this happens per item, so a
+/// broken field keeps its siblings. At most
+/// [`MAX_SYNTAX_ERRORS`](crate::MAX_SYNTAX_ERRORS) errors are collected;
+/// past that the parse stops and returns what it has.
+///
+/// For a source with no errors the tree is the one [`parse_for_edit`]
+/// returns. Like it, this does no evaluation or import resolution.
+pub fn parse_for_edit_recovering(source: &str, name: impl Into<String>) -> PartialParse {
+    let (source, symbols, errors) = parser::Parser::new(source, name).parse_source_recovering();
+    PartialParse {
+        source,
+        symbols,
+        errors,
+    }
+}
+
+/// The result of [`parse_for_edit_recovering`]: the tree built from the
+/// items that parsed, their symbols, and the syntax errors in between.
+#[derive(Debug)]
+pub struct PartialParse {
+    /// Every item that parsed, in source order.
+    pub source: ast::Source,
+    /// The declarations those items make, as
+    /// [`Document::symbols`](crate::Document::symbols) indexes them for a
+    /// file that parses.
+    pub symbols: SymbolIndex,
+    /// Every syntax error found, in source order. Empty when the source
+    /// parsed cleanly.
+    pub errors: Vec<SyntaxError>,
+}
+
+impl PartialParse {
+    /// The all-or-nothing view [`parse_for_edit`] gives: the tree when
+    /// there were no errors, otherwise one [`ParseError`] carrying them
+    /// all.
+    pub fn into_result(self) -> Result<ast::Source, ParseError> {
+        match ParseError::from_syntax_errors(self.errors) {
+            Some(err) => Err(err),
+            None => Ok(self.source),
+        }
+    }
 }
 
 /// Parse a single WCL expression from a standalone string. Returns the

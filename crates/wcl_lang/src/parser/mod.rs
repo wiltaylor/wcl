@@ -9,7 +9,7 @@ use std::sync::Arc;
 use miette::{NamedSource, SourceSpan};
 
 use crate::ast::{Block, Expr, Item, Source, Span};
-use crate::diagnostics::ParseError;
+use crate::diagnostics::{MAX_SYNTAX_ERRORS, ParseError, SyntaxError};
 use crate::lexer::{LexError, Lexer, StringLit, Token, TokenKind};
 use crate::symbols::{DuplicateSymbol, SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 
@@ -71,6 +71,44 @@ pub struct Parser<'a> {
     /// the round-trip printer can re-emit comments at their original
     /// positions. Fresh per Item: `parse_item` overwrites it on entry.
     current_item_trivia: Vec<crate::ast::Trivia>,
+    /// Syntax errors recorded so far. An item that fails to parse lands
+    /// its error here and the item loop resynchronises, so one parse
+    /// reports every mistake rather than the first.
+    errors: Vec<SyntaxError>,
+    /// Set once [`MAX_SYNTAX_ERRORS`] have been recorded: every item loop
+    /// then stops, and the parse returns what it has.
+    gave_up: bool,
+    /// Whether "unexpected end of file inside block" has been reported.
+    /// Each unclosed enclosing block meets the same end of file; the
+    /// innermost one reports it and the rest stay quiet.
+    eof_in_block_reported: bool,
+    /// The brackets (`{`, `(`, `[`) consumed and not yet closed, in the
+    /// order they opened. Recovery reads it to skip the rest of a broken
+    /// item without stopping inside a nested body or list.
+    open_delims: Vec<Delim>,
+    /// End offset of the last token consumed.
+    last_end: usize,
+}
+
+/// An opening bracket, as tracked by `Parser::open_delims`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Delim {
+    /// `{`
+    Brace,
+    /// `(`
+    Paren,
+    /// `[`
+    Bracket,
+}
+
+/// How an item loop resumed after a failed item.
+enum Resync {
+    /// At the start of the next item, the `}` closing the current body,
+    /// or end of file. The loop carries on and sees which.
+    Resumed,
+    /// The failed item consumed the `}` that closes the current body, so
+    /// the body has ended.
+    BodyClosed,
 }
 
 /// Hard cap on recursive-descent nesting — generous for real
@@ -89,8 +127,9 @@ pub(crate) const MAX_EXPR_DEPTH: u32 = 256;
 impl<'a> Parser<'a> {
     /// Enter one level of self-nesting parse recursion, erroring past
     /// [`MAX_PARSE_DEPTH`]. Pair with `leave_recursion` on success
-    /// paths (an `Err` aborts the whole parse, so unwinding the
-    /// counter there is unnecessary).
+    /// paths. An `Err` abandons the item being parsed and the item loop
+    /// restores the depth it had before the item, so unwinding the
+    /// counter on the error path is unnecessary.
     pub(super) fn enter_recursion(&mut self) -> Result<(), ParseError> {
         self.recursion_depth += 1;
         if self.recursion_depth > MAX_PARSE_DEPTH {
@@ -137,6 +176,11 @@ impl<'a> Parser<'a> {
             recursion_depth: 0,
             expr_depth: 0,
             current_item_trivia: Vec::new(),
+            errors: Vec::new(),
+            gave_up: false,
+            eof_in_block_reported: false,
+            open_delims: Vec::new(),
+            last_end: 0,
         }
     }
 
@@ -182,27 +226,200 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse a whole file, returning its items and the symbol index
-    /// built alongside them.
+    /// built alongside them. All or nothing: any syntax error fails the
+    /// parse, and the error carries every one the file has (see
+    /// [`ParseError::syntax_errors`]).
     pub fn parse_source(&mut self) -> Result<(Source, SymbolIndex), ParseError> {
+        let (source, index, errors) = self.parse_source_recovering();
+        match ParseError::from_syntax_errors(errors) {
+            Some(err) => Err(err),
+            None => Ok((source, index)),
+        }
+    }
+
+    /// Parse a whole file, recovering from syntax errors. Returns the
+    /// items that parsed, the symbol index built from them, and every
+    /// syntax error found (at most [`MAX_SYNTAX_ERRORS`]) in source
+    /// order. With no errors the tree is the one [`Self::parse_source`]
+    /// returns.
+    ///
+    /// A failed item is dropped and the parser skips to the next item
+    /// boundary (see [`Self::resync`]). Inside a block body this happens
+    /// per item, so one bad field keeps its siblings.
+    pub fn parse_source_recovering(&mut self) -> (Source, SymbolIndex, Vec<SyntaxError>) {
         let mut items = Vec::new();
-        while !matches!(self.peek()?.kind, TokenKind::Eof) {
+        while !self.gave_up {
+            match self.peek() {
+                Ok(tok) if matches!(tok.kind, TokenKind::Eof) => break,
+                Ok(_) => {}
+                Err(e) => {
+                    self.record(e);
+                    continue;
+                }
+            }
+            let (Some(item), _) = self.parse_item_or_resync() else {
+                continue;
+            };
             let item_idx = items.len();
-            let item = self.parse_item()?;
-            self.register_item(&item, item_idx)?;
+            if let Err(e) = self.register_item(&item, item_idx) {
+                self.record(e);
+            }
             items.push(item);
             // The next token's same-line comment (incl. the Eof token's,
             // on the final pass) trails the item we just pushed.
-            self.attach_trailing_to_last(&mut items)?;
+            if let Err(e) = self.attach_trailing_to_last(&mut items) {
+                self.record(e);
+            }
         }
         // Comments + blank lines after the last item, before EOF.
-        let trailing_trivia = self.peek()?.leading_trivia.clone();
-        Ok((
+        let trailing_trivia = match self.peeked.as_ref() {
+            Some(tok) if !self.gave_up => tok.leading_trivia.clone(),
+            _ => Vec::new(),
+        };
+        (
             Source {
                 items,
                 trailing_trivia,
             },
             std::mem::take(&mut self.index),
-        ))
+            std::mem::take(&mut self.errors),
+        )
+    }
+
+    /// Parse the items of a block body, whose `{` has been consumed, up
+    /// to its closing `}`, recovering from a failed item as the top
+    /// level does. Returns the items and the consumed `}`, or `None`
+    /// when the body ended without one: at end of file (reported here),
+    /// when a failed item consumed it, or when the parse gave up.
+    fn parse_body_items(&mut self) -> (Vec<Item>, Option<Token>) {
+        let mut items = Vec::new();
+        while !self.gave_up {
+            match self.peek() {
+                Ok(tok) if matches!(tok.kind, TokenKind::RBrace) => {
+                    return (items, self.bump().ok());
+                }
+                Ok(tok) if matches!(tok.kind, TokenKind::Eof) => {
+                    let span = tok.span;
+                    self.report_eof_in_block(span);
+                    return (items, None);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    self.record(e);
+                    continue;
+                }
+            }
+            match self.parse_item_or_resync() {
+                (Some(item), _) => {
+                    items.push(item);
+                    // An inline comment after this item (carried on the
+                    // next token, including the `}`) trails it.
+                    if let Err(e) = self.attach_trailing_to_last(&mut items) {
+                        self.record(e);
+                    }
+                }
+                (None, Resync::BodyClosed) => return (items, None),
+                (None, Resync::Resumed) => {}
+            }
+        }
+        (items, None)
+    }
+
+    /// Parse one item of an item loop (the top level or a block body)
+    /// whose first token has been peeked. On failure the error is
+    /// recorded, the depth counters the failed item left raised are
+    /// restored, and the stream is skipped to the next item boundary;
+    /// the item is then `None`.
+    fn parse_item_or_resync(&mut self) -> (Option<Item>, Resync) {
+        let depth = self.open_delims.len();
+        let start = self.peeked.as_ref().map_or(self.last_end, |t| t.span.start);
+        let recursion_depth = self.recursion_depth;
+        let expr_depth = self.expr_depth;
+        match self.parse_item() {
+            Ok(item) => (Some(item), Resync::Resumed),
+            Err(e) => {
+                self.record(e);
+                self.recursion_depth = recursion_depth;
+                self.expr_depth = expr_depth;
+                (None, self.resync(depth, start))
+            }
+        }
+    }
+
+    /// Skip the rest of an item that failed to parse. `depth` is how
+    /// many brackets were open when the item started, and `start` is the
+    /// offset of its first token.
+    ///
+    /// Stops, without consuming it, at the first token that is:
+    ///
+    /// - end of file;
+    /// - the `}` closing the enclosing body: one met with no `{` opened
+    ///   since the item started still open. At the top level there is
+    ///   no enclosing body, so a stray `}` is skipped;
+    /// - an identifier or `@` starting a line, with nothing opened since
+    ///   the item started still open;
+    /// - an identifier or `@` at column 0, with no `{` opened since the
+    ///   item started still open. Top-level items sit at column 0, so an
+    ///   unclosed `(` or `[` does not swallow the rest of the file.
+    ///
+    /// Lines inside an open list, call or body are never taken for a new
+    /// item. That is what keeps one mistake to one error rather than an
+    /// error per line that follows it. Lex errors met while skipping are
+    /// recorded, since each is a mistake of its own.
+    fn resync(&mut self, depth: usize, start: usize) -> Resync {
+        loop {
+            if self.gave_up {
+                return Resync::Resumed;
+            }
+            if self.open_delims.len() < depth {
+                return Resync::BodyClosed;
+            }
+            if let Err(e) = self.peek() {
+                self.record(e);
+                continue;
+            }
+            let tok = self.peeked.as_ref().expect("just peeked");
+            let opened = &self.open_delims[depth..];
+            let brace_open = opened.contains(&Delim::Brace);
+            let item_start = matches!(tok.kind, TokenKind::Ident(_) | TokenKind::At);
+            let column_zero =
+                tok.span.start == 0 || self.src.as_bytes().get(tok.span.start - 1) == Some(&b'\n');
+            let at_item = tok.span.start > start
+                && item_start
+                && (tok.preceded_by_newline || column_zero)
+                && (opened.is_empty() || (column_zero && !brace_open));
+            match tok.kind {
+                TokenKind::Eof => return Resync::Resumed,
+                TokenKind::RBrace if !brace_open && depth > 0 => return Resync::Resumed,
+                _ if at_item => return Resync::Resumed,
+                _ => {}
+            }
+            if let Err(e) = self.bump() {
+                self.record(e);
+            }
+        }
+    }
+
+    /// Record a syntax error for the parse to report. Once
+    /// [`MAX_SYNTAX_ERRORS`] are held the parse gives up.
+    fn record(&mut self, err: ParseError) {
+        if let ParseError::Syntax(syntax) = err {
+            self.errors.push(*syntax);
+        }
+        if self.errors.len() >= MAX_SYNTAX_ERRORS {
+            self.gave_up = true;
+        }
+    }
+
+    /// Report that a block body met end of file before its `}`, once
+    /// per parse: every unclosed enclosing block meets the same end of
+    /// file, and one error says it.
+    fn report_eof_in_block(&mut self, span: Span) {
+        if !self.eof_in_block_reported {
+            self.eof_in_block_reported = true;
+            let err = self.err("unexpected end of file inside block", span, "expected '}'");
+            self.record(err);
+        }
     }
 
     /// Register a freshly-parsed top-level item (and its immediate
@@ -743,17 +960,49 @@ impl<'a> Parser<'a> {
 
     /// Consume and return the next token.
     pub(super) fn bump(&mut self) -> Result<Token, ParseError> {
-        if let Some(t) = self.peeked.take() {
+        let tok = if let Some(t) = self.peeked.take() {
             self.peeked = self.peeked2.take();
-            Ok(t)
+            t
         } else {
-            self.next_lex()
+            self.next_lex()?
+        };
+        self.track_delim(&tok.kind);
+        self.last_end = tok.span.end;
+        Ok(tok)
+    }
+
+    /// Keep `open_delims` in step with a consumed token. A closer that
+    /// matches the innermost opener closes it. A `}` that does not closes
+    /// the innermost `{` and every bracket left open inside it, since a
+    /// brace ends a body and is the likelier to be meant. A stray `)` or
+    /// `]` changes nothing.
+    fn track_delim(&mut self, kind: &TokenKind) {
+        let closes = match kind {
+            TokenKind::LBrace => return self.open_delims.push(Delim::Brace),
+            TokenKind::LParen => return self.open_delims.push(Delim::Paren),
+            TokenKind::LBracket => return self.open_delims.push(Delim::Bracket),
+            TokenKind::RBrace => Delim::Brace,
+            TokenKind::RParen => Delim::Paren,
+            TokenKind::RBracket => Delim::Bracket,
+            _ => return,
+        };
+        if self.open_delims.last() == Some(&closes) {
+            self.open_delims.pop();
+        } else if closes == Delim::Brace
+            && let Some(i) = self.open_delims.iter().rposition(|d| *d == Delim::Brace)
+        {
+            self.open_delims.truncate(i);
         }
     }
 
-    /// Pull one token from the lexer, converting a lex error.
+    /// Pull one token from the lexer, converting a lex error. After an
+    /// error the lexer is moved past the rejected text, so the next pull
+    /// makes progress.
     fn next_lex(&mut self) -> Result<Token, ParseError> {
-        self.lexer.next_token().map_err(|e| self.lex_to_parse(e))
+        self.lexer.next_token().map_err(|e| {
+            self.lexer.recover(&e);
+            self.lex_to_parse(e)
+        })
     }
 
     /// Wrap a lexer error as a parse error against this source.
