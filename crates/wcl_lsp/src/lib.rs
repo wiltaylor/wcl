@@ -1,6 +1,6 @@
 //! WCL language server.
 //!
-//! Exposes a [`tower_lsp`]-based language server that wraps the
+//! Exposes a [`tower_lsp_server`]-based language server that wraps the
 //! `wcl_lang` library. The CLI's `wcl lsp` subcommand drives this via
 //! [`start_stdio`] (or [`start_tcp`] when launched against a debug
 //! client); library consumers can also construct a [`Backend`]
@@ -9,6 +9,7 @@
 mod code_actions;
 mod completion;
 mod convert;
+mod ctx;
 mod diagnostics;
 mod folding;
 mod hover;
@@ -28,7 +29,7 @@ pub use server::Backend;
 use std::net::SocketAddr;
 use std::path::Path;
 
-use tower_lsp::{LspService, Server};
+use tower_lsp_server::{LspService, Server};
 
 /// Run the language server on stdio. Blocks until the client closes
 /// the connection. Intended to be called from the `wcl lsp` CLI

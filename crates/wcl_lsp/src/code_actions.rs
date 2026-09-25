@@ -9,16 +9,16 @@
 
 use std::collections::HashMap;
 
-use tower_lsp::lsp_types::{
+use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionResponse, Diagnostic, Position,
-    Range, TextEdit, Url, WorkspaceEdit,
+    Range, TextEdit, Uri, WorkspaceEdit,
 };
 
 /// Build code actions for every diagnostic the client knows about.
 /// Returns `None` when nothing fits — clients treat that the same as
 /// an empty list.
 pub(crate) fn compute(
-    uri: &Url,
+    uri: &Uri,
     source: &str,
     diagnostics: &[Diagnostic],
 ) -> Option<CodeActionResponse> {
@@ -118,12 +118,12 @@ fn expand_to_full_lines(source: &str, range: Range) -> Range {
 /// Build one quick-fix action that replaces `range` with `new_text`.
 fn make_action(
     title: String,
-    uri: &Url,
+    uri: &Uri,
     range: Range,
     new_text: String,
     diag: Diagnostic,
 ) -> CodeAction {
-    let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+    let mut changes: HashMap<Uri, Vec<TextEdit>> = HashMap::new();
     changes.insert(uri.clone(), vec![TextEdit { range, new_text }]);
     CodeAction {
         title,
@@ -141,7 +141,7 @@ fn make_action(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tower_lsp::lsp_types::DiagnosticSeverity;
+    use tower_lsp_server::ls_types::DiagnosticSeverity;
 
     /// A diagnostic carrying the structured `{kind, name}` payload that
     /// real schema violations emit (see `crate::diagnostics`).
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn unknown_field_emits_quickfix_with_line_delete() {
         let src = "name = \"alpha\"\nunexpected = \"boom\"\nport = 8080\n";
-        let uri = Url::parse("file:///t.wcl").unwrap();
+        let uri = "file:///t.wcl".parse::<Uri>().unwrap();
         let diag = diag_with_data("UnknownField", "unexpected", 1);
         let resp = compute(&uri, src, &[diag]).expect("some actions");
         assert_eq!(resp.len(), 1);
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn disallowed_child_emits_quickfix_with_name() {
-        let uri = Url::parse("file:///t.wcl").unwrap();
+        let uri = "file:///t.wcl".parse::<Uri>().unwrap();
         let diag = diag_with_data("DisallowedChild", "badchild", 1);
         let resp = compute(&uri, "a {\n  badchild {\n  }\n}\n", &[diag]).expect("some actions");
         let CodeActionOrCommand::CodeAction(action) = &resp[0] else {
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn unrelated_diagnostic_returns_none() {
-        let uri = Url::parse("file:///t.wcl").unwrap();
+        let uri = "file:///t.wcl".parse::<Uri>().unwrap();
         let mut diag = diag_with_data("UnknownField", "x", 0);
         diag.source = Some("other".into());
         assert!(compute(&uri, "", &[diag]).is_none());
@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn wcl_diagnostic_without_data_returns_none() {
-        let uri = Url::parse("file:///t.wcl").unwrap();
+        let uri = "file:///t.wcl".parse::<Uri>().unwrap();
         let diag = Diagnostic {
             range: Range::default(),
             source: Some("wcl".into()),
@@ -223,13 +223,15 @@ mod tests {
     #[test]
     fn end_to_end_unknown_field_roundtrip() {
         let src = "@document\ntype Root {\n  region: utf8\n}\n@block(\"service\")\ntype Service {\n  region: utf8\n}\nservice web {\n  region = \"x\"\n  unexpected = \"boom\"\n}\n";
-        let uri = Url::parse("file:///t.wcl").unwrap();
-        let diags = crate::diagnostics::compute(
+        let uri = "file:///t.wcl".parse::<Uri>().unwrap();
+        let diags: Vec<Diagnostic> = crate::diagnostics::analyse(
+            &crate::ctx::Ctx::new(Default::default()),
             src,
             uri.as_str(),
-            None,
-            wcl_wdoc::schema_registry().loader(wcl_lang::disk_loader()),
-        );
+        )
+        .into_iter()
+        .map(|(_, diagnostic)| diagnostic)
+        .collect();
         let resp = compute(&uri, src, &diags).expect("some actions");
         // The doc also flags the top-level `service` block, so search all
         // actions for the unknown-field fix rather than assuming order.

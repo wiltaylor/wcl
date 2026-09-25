@@ -53,7 +53,7 @@ pub use functions::{
 };
 pub use lexer::{
     LexError, Lexer, NumberLit, StringEncoding, StringLit, StringPart, Token, TokenKind,
-    is_identifier,
+    is_identifier, is_keyword,
 };
 pub use symbols::{SymbolIndex, SymbolKind, SymbolPath, SymbolRecord};
 pub use value::{FnParam, FnValue, Value, VariantPayload};
