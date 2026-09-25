@@ -552,6 +552,7 @@ wcl::parse
 
   × expected namespace, but 'acme.base.Endpoint' names a type
    ╭─[listtype.wcl:3:1]
+ 2 │
  3 │ use acme.base.Endpoint.{host}
    · ──────────────┬──────────────
    ·               ╰── not a namespace

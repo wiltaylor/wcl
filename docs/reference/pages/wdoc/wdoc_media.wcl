@@ -420,13 +420,13 @@ wcl::eval::user_error
   × error: `file` has no :pdf implementation (it is native
   │ on :html, :markdown); remove the block or waive it here with
   │ `@except(backends = [:pdf])`
-    ╭─[main.wcl:25:3]
- 24 │
- 25 │   file "src/setup.sh" { as = "setup.sh" }
-    ·   ───────────────────┬───────────────────
-    ·                      ╰── error raised here
- 26 │ }
-    ╰────
+   ╭─[main.wcl:8:3]
+ 7 │   h1 "Helper"
+ 8 │   file "src/setup.sh"    { dir = "scripts"  as = "run setup" }
+   ·   ──────────────────────────────┬─────────────────────────────
+   ·                                 ╰── error raised here
+ 9 │   file "assets/logo.svg" { dir = "assets" }
+   ╰────
 CONSOLE
   }
 

@@ -163,15 +163,17 @@ $ wcl check typos.wcl --json
   "errors": [
     {
       "code": "wcl::parse",
+      "file": "typos.wcl",
       "length": 1,
       "message": "expected value, found '='",
-      "offset": 77
+      "offset": 92
     },
     {
       "code": "wcl::parse",
-      "length": 5,
+      "file": "typos.wcl",
+      "length": 3,
       "message": "expected ',' or ']' in list literal, found string",
-      "offset": 121
+      "offset": 119
     }
   ],
   "file": "typos.wcl",
@@ -330,8 +332,12 @@ Unix `diff` (not `wcl diff`) exits 1 on any difference, so the `&&` chain fails 
 the unified diff shows what `--in-place` would have done. Across a tree:
 
 ```console
-$ find . -name '*.wcl' -exec sh -c 'wcl fmt "$1" | diff -u "$1" -' _ {} \;
+$ find . -name '*.wcl' -exec sh -c 'for f; do wcl fmt "$f" | diff -u "$f" - || exit 1; done' _ {} + && echo "all formatted"
+all formatted
 ```
+
+Use `{} +`, not `{} \;`: `find` ignores the exit status of a `\;` command, so that form reports
+success over an unformatted tree. With `+`, the `exit 1` makes `find` itself exit non-zero.
 
 Run `wcl check` in the same job. `fmt` parses; it does not evaluate and does not run the
 schema, so a gate that runs only `fmt` proves nothing about the data.
@@ -448,6 +454,7 @@ Built-in templates:
 User templates (/home/you/.local/share/wcl/templates):
   (none — add one as <that dir>/<name>/template.wcl)
 
+Usage: wcl init <template> [dest]   (<template> may also be a path to a .wcl file or a folder containing template.wcl)
 $ wcl init book ./handbook -D name=handbook --defaults
 Created ./handbook from template 'book'
   main.wcl
@@ -500,6 +507,11 @@ $ printf '1 +* 2\n' | wcl repl
 parse error: wcl::parse
 
   × expected value, found '*'
+   ╭─[<repl>:1:4]
+ 1 │ 1 +* 2
+   ·    ┬
+   ·    ╰── expected value
+   ╰────
 $ echo $?
 1
 ```

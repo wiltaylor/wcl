@@ -383,7 +383,7 @@ WCL
 
   p "Inheritance is resolved **per role, not per palette**. A theme that extends `forge` and declares `palette dark { bg = \"#000000\" }` overrides that one colour and inherits the other thirty dark roles, the entire light palette, the fonts and the metrics. The same is true one metric at a time, and one font stack at a time. Anything the derived theme states wins; everything else falls through to the theme it extends."
 
-  p "A chain may be any depth — a house theme extends a built-in, a project theme extends the house theme — and each role resolves to the nearest link that states it. Two rules keep a chain finite:"
+  p "A chain may be several links long — a house theme extends a built-in, a project theme extends the house theme — and each role resolves to the nearest link that states it. The build follows at most sixteen themes, the one the site names included, and silently ignores any link past the sixteenth. Two rules end a chain sooner:"
 
   table {
     rows:

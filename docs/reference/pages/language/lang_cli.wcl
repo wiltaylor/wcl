@@ -115,6 +115,10 @@ owner = "platform"
 service web {
   port = 8080u32
   region = "us-east-1"
+  limits {
+    cpu = 0.5
+    memory = 536870912
+  }
 }
 service db {
   port = 5432u32
@@ -269,12 +273,14 @@ $ wcl check typos.wcl --json
   "errors": [
     {
       "code": "wcl::parse",
+      "file": "typos.wcl",
       "length": 1,
       "message": "expected value, found '='",
       "offset": 77
     },
     {
       "code": "wcl::parse",
+      "file": "typos.wcl",
       "length": 5,
       "message": "expected ',' or ']' in list literal, found string",
       "offset": 121
@@ -492,11 +498,12 @@ formatted
 CONSOLE
   }
 
-  p "The Unix `diff` exits 1 on any difference, so the `&&` chain fails the job, and the unified diff shows the reviewer exactly what `--in-place` would have done. To check a whole tree, drive the recipe with `find`:"
+  p "The Unix `diff` exits 1 on any difference, so the `&&` chain fails the job, and the unified diff shows the reviewer exactly what `--in-place` would have done. To check a whole tree, drive the recipe with `find`. End the `-exec` with `+`, not `\\;`: `find` ignores the exit status of a `\\;` command, so that form reports success whatever `diff` found."
 
   code console {
     source = <<'CONSOLE'
-$ find . -name '*.wcl' -exec sh -c 'wcl fmt "$1" | diff -u "$1" -' _ {} \; && echo "all formatted"
+$ find . -name '*.wcl' -exec sh -c 'for f; do wcl fmt "$f" | diff -u "$f" - || exit 1; done' _ {} + && echo "all formatted"
+all formatted
 CONSOLE
   }
 

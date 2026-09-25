@@ -231,6 +231,16 @@ wcl::eval::expansion_limit
 
   × expanding the `@contextual` block 'fan' exceeded the limit of 100000
   │ generated blocks
+   ╭─[fan.wcl:7:5]
+ 6 │     fan { }
+ 7 │     fan { }
+   ·     ───┬───
+   ·        ╰── expansion stopped here
+ 8 │   }
+   ╰────
+  help: a `@contextual` block that expands into itself, or nested repetitions
+        that multiply, generate blocks without bound; make the recursion stop
+        or shrink the data
 CONSOLE
   }
 
@@ -636,18 +646,31 @@ WCL
 
   p "`from` must evaluate to a body reference. Anything else is a build error naming the block:"
 
+  code wcl {
+    filename = "nope.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+page index {
+  project { from = "nope" }
+}
+WCL
+  }
+
   code console {
     source = <<'CONSOLE'
-$ wcl wdoc build fleet.wcl --out _site
+$ wcl wdoc build nope.wcl --out _site
 wcl::eval::user_error
 
   × error: `project`'s `from` did not resolve to a body reference; it must
   │ name an addressable `body` (e.g. a `@by_ref` property of the data being
   │ generated from)
-   ╭─[fleet.wcl:6:3]
- 6 │   project { from = "nope" }
+   ╭─[nope.wcl:4:3]
+ 3 │ page index {
+ 4 │   project { from = "nope" }
    ·   ────────────┬────────────
    ·               ╰── error raised here
+ 5 │ }
    ╰────
 CONSOLE
   }

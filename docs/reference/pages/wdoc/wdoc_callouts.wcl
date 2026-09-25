@@ -444,6 +444,7 @@ A backed-up queue means the drain will not finish. Watch queue_depth first.
 Footnotes
 drain. drain marks the node unschedulable and waits.
 grace. The grace period is configurable.
+...
 CONSOLE
   }
 

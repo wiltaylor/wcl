@@ -279,9 +279,16 @@ WCL
   code console {
     source = <<'CONSOLE'
 $ wcl wdoc build guide.wcl --out _site
+warning: class "lvl-2": the rendered pages carry it but no CSS rule selects it — a misspelled class name, or a hook nothing styles; declare a hook with an empty `class "lvl-2" {}` block to say so on purpose
+warning: class "lvl-3": the rendered pages carry it but no CSS rule selects it — a misspelled class name, or a hook nothing styles; declare a hook with an empty `class "lvl-3" {}` block to say so on purpose
+warning: class "nb": the rendered pages carry it but no CSS rule selects it — a misspelled class name, or a hook nothing styles; declare a hook with an empty `class "nb" {}` block to say so on purpose
+warning: class "outline": the rendered pages carry it but no CSS rule selects it — a misspelled class name, or a hook nothing styles; declare a hook with an empty `class "outline" {}` block to say so on purpose
+warning: class "pager": the rendered pages carry it but no CSS rule selects it — a misspelled class name, or a hook nothing styles; declare a hook with an empty `class "pager" {}` block to say so on purpose
 wrote 3 pages
 CONSOLE
   }
+
+  p "The warnings are the build noticing that no stylesheet selects the classes this layout emits. A real layout ships the CSS that styles them. An empty `class \"outline\" {}` hook says a class is unstyled on purpose, and silences its warning."
 
   p "The `<body>` of `_site/run.html`, reformatted for width:"
 
@@ -634,6 +641,8 @@ WCL
   code console {
     source = <<'CONSOLE'
 $ wcl wdoc build handbook.wcl --out _site
+warning: class "edit": the rendered pages carry it but no CSS rule selects it — a misspelled class name, or a hook nothing styles; declare a hook with an empty `class "edit" {}` block to say so on purpose
+warning: class "handbook-footer": the rendered pages carry it but no CSS rule selects it — a misspelled class name, or a hook nothing styles; declare a hook with an empty `class "handbook-footer" {}` block to say so on purpose
 wrote 3 pages
 CONSOLE
   }

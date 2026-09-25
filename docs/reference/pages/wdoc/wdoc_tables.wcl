@@ -199,7 +199,7 @@ WCL
     }
   }
 
-  p "The schema behind that is one interface. `Li.children` is declared `@children(ListNode)`, and `ListNode` is the interface both `Li` and `ListBlock` extend. An `li` therefore admits further `li`s, further `list`s, or a mix, and nothing else. Nesting is unbounded in depth."
+  p "The schema behind that is one interface. `Li.children` is declared `@children(ListNode)`, and `ListNode` is the interface both `Li` and `ListBlock` extend. An `li` therefore admits further `li`s, further `list`s, or a mix, and nothing else. The list itself sets no depth limit. The parser does: blocks nest at most 128 levels deep, counted from the top of the file."
 
   callout "A sublist is inside its item, not after it" {
     kind = :note

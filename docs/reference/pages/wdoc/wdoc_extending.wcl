@@ -41,7 +41,18 @@ wdoc::native
     ╭─[api.wcl:10:1]
   9 │     @block("endpoint")
  10 │ ╭─▶ type Endpoint extends ContentBlock {
+ 11 │ │     @inline(0) verb: utf8
+ 12 │ │     @inline(1) path: utf8
+ 13 │ │     summary: utf8
+ 14 │ │     id:    identifier?
+ 15 │ │     class: list<utf8>?
+ 16 │ │
+ 17 │ ├─▶ }
+    · ╰──── declared here
+ 18 │
     ╰────
+
+1 schema violation
 CONSOLE
   }
 
@@ -104,6 +115,7 @@ $ cat _site/api.html
 <h3 class="heading-3"><span class="code">GET /users</span></h3><p>List every user. Paginated by <span class="code">?page=</span>.</p>
 <h3 class="heading-3"><span class="code">POST /users</span></h3><p>Create a user.</p>
 </body>
+...
 CONSOLE
   }
 
@@ -423,6 +435,7 @@ $ cat _site/badges.html
 ...
 <p><span class="bold">written directly</span></p>
 <p><span class="bold">reached through a second lowering</span></p>
+...
 
 $ cat _md/badges.md
 **written directly**
@@ -560,6 +573,8 @@ WCL
   code console {
     source = <<'CONSOLE'
 $ wcl wdoc build comp.wcl --out _site
+warning: class "lead": the rendered pages carry it but no CSS rule selects it — a misspelled class name, or a hook nothing styles; declare a hook with an empty `class "lead" {}` block to say so on purpose
+warning: class "muted": the rendered pages carry it but no CSS rule selects it — a misspelled class name, or a hook nothing styles; declare a hook with an empty `class "muted" {}` block to say so on purpose
 wrote 1 page
 
 $ cat _site/api.html
@@ -567,8 +582,11 @@ $ cat _site/api.html
 <h1 class="heading-1">API</h1>
 <h3 class="heading-3"><span class="code">GET /users</span></h3><p class="muted">List every user.</p>
 <h3 class="heading-3"><span class="code">POST /users</span></h3><p class="lead">Create a user.</p><p>Rate limited to 10 requests a minute.</p>
+...
 CONSOLE
   }
+
+  p "The two warnings are the build noticing that no stylesheet rule selects `lead` or `muted`. They do not stop the build. Style the classes, or declare each as a hook with an empty `class \"lead\" {}` block, and they go away."
 
   p "Four things to notice. You instantiate the component **by its own name**, as a bare block. A slot with a `= value` default is optional. One without is required, and `?` after the type makes it optional with no default. `wdoc_content { }` marks where the instance's own nested blocks render, so the `p` written inside the second instance lands after the summary. And a slot reference inside the body is an ordinary expression, so `$\"${verb} ${path}\"` interpolates it."
 

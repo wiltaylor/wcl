@@ -488,6 +488,28 @@ WCL
 
   p "Every wdoc block declares **exactly one** of the two, and the build refuses anything else. Declare neither and the build says so. Claim `@native` on a block wdoc does not implement, and it says that instead:"
 
+  code wcl {
+    filename = "no-lower.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+@block("spark")
+type Spark extends TermPrimitive {
+  values: list<i64>
+  row: i64  col: i64
+}
+
+page index {
+  terminal {
+    cols = 20  rows = 1
+    spark { row = 1  col = 1  values = [1, 2, 3] }
+  }
+}
+WCL
+  }
+
+  p "`claims-native.wcl` is the same file with `@native` on the line above `type Spark`:"
+
   code console {
     source = <<'CONSOLE'
 $ wcl wdoc build no-lower.wcl --out out
@@ -496,6 +518,17 @@ wdoc::native
   × type 'Spark' declares neither a `lower` nor `@native` — a block is
   │ rendered by a WCL lowering or by wdoc's Rust dispatch, and its type must
   │ say which
+   ╭─[no-lower.wcl:4:1]
+ 3 │     @block("spark")
+ 4 │ ╭─▶ type Spark extends TermPrimitive {
+ 5 │ │     values: list<i64>
+ 6 │ │     row: i64  col: i64
+ 7 │ ├─▶ }
+   · ╰──── declared here
+ 8 │
+   ╰────
+
+1 schema violation
 
 $ wcl wdoc build claims-native.wcl --out out
 wdoc::native
@@ -503,6 +536,17 @@ wdoc::native
   × type 'Spark' declares `@native`, but wdoc implements no dispatch for
   │ "spark" — only wdoc's own blocks can be native; a user block is rendered
   │ by its `lower`
+   ╭─[claims-native.wcl:5:1]
+ 4 │     @native
+ 5 │ ╭─▶ type Spark extends TermPrimitive {
+ 6 │ │     values: list<i64>
+ 7 │ │     row: i64  col: i64
+ 8 │ ├─▶ }
+   · ╰──── declared here
+ 9 │
+   ╰────
+
+1 schema violation
 CONSOLE
   }
 

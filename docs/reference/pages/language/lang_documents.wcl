@@ -357,7 +357,7 @@ WCL
 
   h2 "Nesting"
 
-  p "A block may hold further blocks, to any depth. What is legal at each level is the schema's business, not the parser's: `@child(\"kind\")` admits one, `@children(\"kind\")` admits a list."
+  p "A block may hold further blocks, up to 128 levels deep. One more and the parser stops with `nesting too deep (more than 128 levels)`, a limit that exists to keep parsing inside the stack of the thread doing it. What is legal at each level is the schema's business, not the parser's: `@child(\"kind\")` admits one, `@children(\"kind\")` admits a list."
 
   code wcl {
     source = <<'WCL'

@@ -130,7 +130,9 @@ Page names are unique **per site**, so two sites may each hold a page named `ind
 
 `start = true` marks the site's landing page. The build copies it to `index.html`, and the page
 stays reachable at its own `<name>.html`. At most one page per site may set it. With no `start`
-page, wdoc uses a page named `index`, else the first page.
+page, a page named `index` is the landing page. A single-site build with neither writes **no**
+`index.html`; only a sub-site of a multi-site build falls back to a redirect to its first page
+(below).
 
 ### Cross-page links
 

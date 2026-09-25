@@ -267,12 +267,12 @@ WCL
 
   code console {
     source = <<'CONSOLE'
-$ wcl wdoc build listing.wcl --out _site
+$ wcl wdoc build docs/listing.wcl --out _site
 wcl::eval::user_error
 
-  × error: code block cannot read `source_file` "../src/gone.rs"
-  │ (/home/me/docs/../src/gone.rs): No such file or directory (os error 2)
-   ╭─[/home/me/docs/listing.wcl:2:14]
+  × error: code block cannot read `source_file` "../src/gone.rs" (docs/../src/
+  │ gone.rs): No such file or directory (os error 2)
+   ╭─[docs/listing.wcl:2:14]
  1 │ import <wdoc.wcl>
  2 │ page index { code rust { source_file = "../src/gone.rs" } }
    ·              ──────────────────────┬─────────────────────
