@@ -156,6 +156,9 @@ Two rules follow:
   once open, so the answer is the same either way.
 - **A parameter shadows a capture of the same name.** Captures are bound first; parameters are
   bound over them.
+- **A call never sees its caller's locals.** A name the body neither captured nor took as a
+  parameter resolves only through document scope, from the block the call sits in: `fn boo() ->
+  i64 ghost` called as `{ let ghost = 1i64; boo() }` fails with `unresolved reference 'ghost'`.
 
 ## Evaluation
 
