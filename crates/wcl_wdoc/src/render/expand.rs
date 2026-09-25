@@ -4,12 +4,12 @@
 //! (wcl_lang), which is `OnceLock`-cached per block, so the collect and
 //! render passes see byte-identical expansions.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use wcl_lang::{Block, Document, EvalError, Expander, Value};
+use wcl_lang::{Block, Document, EvalError, Expander, MAX_EXPANDED_BLOCKS, Value};
 
 use crate::inline::InlinePatterns;
 
@@ -32,10 +32,11 @@ pub(crate) fn block_tree_any<F: Fn(&Block<'_>) -> bool>(block: &Block<'_>, pred:
 /// appears in the page's raw block tree, since the page holds the instance
 /// block) still ships its JS/CSS.
 ///
-/// Crossing into a component body increments `depth`; once it passes
-/// `MAX_LOWER_DEPTH` the descent stops, bounding a self-referential
-/// component (the def's body isn't slot-expanded here, so the binding
-/// scope can't grow to trip the usual guard). Raw-subtree recursion is
+/// Each component definition's body is walked at most once per call: it
+/// is static (the def's body isn't slot-expanded here), so a second walk
+/// could find nothing the first did not. That bounds a self-referential
+/// component, and one that instantiates itself several times, which a
+/// depth cap alone would walk `k^depth` times. Raw-subtree recursion is
 /// bounded by the finite block tree. Detection-only: it reads the static
 /// definition, so — unlike [`expand_container_children`] — it evaluates
 /// no `each` / slot expressions and records no lowering errors.
@@ -43,16 +44,20 @@ pub(crate) fn block_tree_walk(
     block: &Block<'_>,
     visit: &mut dyn FnMut(&Block<'_>) -> bool,
 ) -> bool {
-    fn go(block: &Block<'_>, visit: &mut dyn FnMut(&Block<'_>) -> bool, depth: usize) -> bool {
+    fn go(
+        block: &Block<'_>,
+        visit: &mut dyn FnMut(&Block<'_>) -> bool,
+        walked: &mut HashSet<String>,
+    ) -> bool {
         visit(block)
-            || block.blocks().any(|b| go(&b, visit, depth))
-            || (depth < MAX_LOWER_DEPTH
+            || block.blocks().any(|b| go(&b, visit, walked))
+            || (walked.insert(block.kind().to_string())
                 && block
                     .doc()
                     .kind_declarer(block.kind())
-                    .is_some_and(|def| def.blocks().any(|b| go(&b, visit, depth + 1))))
+                    .is_some_and(|def| def.blocks().any(|b| go(&b, visit, walked))))
     }
-    go(block, visit, 0)
+    go(block, visit, &mut HashSet::new())
 }
 
 /// The blocks `block` generates, or `None` when it generates nothing and
@@ -66,15 +71,66 @@ pub(crate) fn block_tree_walk(
 /// is `@contextual` (it may appear wherever a `ContentBlock` may) but the
 /// renderer — not an expansion — fills it with the instance's own
 /// children, and it must survive the flatten as itself.
-fn generated_children<'a>(block: &Block<'a>) -> Option<Vec<Block<'a>>> {
-    match block.kind() {
-        "wdoc_repeater" => Some(expand_repeater_children(block)),
-        "wdoc_instance" => Some(expand_instance_children(block)),
-        kind => block
-            .doc()
-            .kind_declarer(kind)
-            .map(|def| expand_component_children(block, &def)),
+///
+/// `charged` counts the expansion against the render path's
+/// [`MAX_EXPANDED_BLOCKS`] budget. [`WdocExpander`] passes `false`: the
+/// language walk that calls it keeps its own count and reports its own
+/// [`EvalError::ExpansionLimit`].
+fn generated_children<'a>(block: &Block<'a>, charged: bool) -> Option<Vec<Block<'a>>> {
+    let generated = match block.kind() {
+        "wdoc_repeater" => repeater_children(block),
+        "wdoc_instance" => {
+            instance_target_def(block).map_or_else(Vec::new, |def| component_children(block, &def))
+        }
+        kind => component_children(block, &block.doc().kind_declarer(kind)?),
+    };
+    Some(if charged {
+        charge_expansion(block, generated)
+    } else {
+        generated
+    })
+}
+
+thread_local! {
+    /// Blocks the render path has generated in the expansion tree it is
+    /// currently inside, on this thread. See [`charge_expansion`].
+    static EXPANDED: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Count `generated` — what expanding `block` produced — against the
+/// render path's [`MAX_EXPANDED_BLOCKS`] budget, and pass it through while
+/// the budget holds.
+///
+/// The depth cap alone still lets a component that instantiates itself
+/// twice generate `2^32` blocks, so the budget bounds one expansion tree
+/// in total: it restarts at an authored generator (binding depth 0, the
+/// root of a tree) and accumulates through every nested expansion under
+/// it. Past the budget the expansion records
+/// [`EvalError::ExpansionLimit`] — the build's error — and yields
+/// nothing, so every expansion still pending in the tree ends at once.
+fn charge_expansion<'a>(block: &Block<'a>, generated: Vec<Block<'a>>) -> Vec<Block<'a>> {
+    let within = EXPANDED.with(|count| {
+        let base = if block.binding_scope_depth() == 0 {
+            0
+        } else {
+            count.get()
+        };
+        let total = base.saturating_add(generated.len());
+        count.set(total);
+        total <= MAX_EXPANDED_BLOCKS
+    });
+    if within {
+        return generated;
     }
+    record_lower_error(
+        block,
+        EvalError::expansion_limit(
+            block.kind(),
+            format!("the limit of {MAX_EXPANDED_BLOCKS} generated blocks"),
+            block.span(),
+        ),
+    );
+    Vec::new()
 }
 
 /// wdoc's [`Expander`] — the one answer to "what does this
@@ -88,7 +144,7 @@ pub struct WdocExpander;
 
 impl Expander for WdocExpander {
     fn expand<'a>(&self, block: &Block<'a>) -> Vec<Block<'a>> {
-        generated_children(block).unwrap_or_default()
+        generated_children(block, false).unwrap_or_default()
     }
 }
 
@@ -128,7 +184,7 @@ fn flatten_container_child<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
             Ok::<(), std::convert::Infallible>(())
         })
         .expect("infallible content-slot flatten");
-    } else if let Some(generated) = generated_children(&child) {
+    } else if let Some(generated) = generated_children(&child, true) {
         for child in generated {
             flatten_container_child(child, out);
         }
@@ -140,8 +196,14 @@ fn flatten_container_child<'a>(child: Block<'a>, out: &mut Vec<Block<'a>>) {
 /// Expand a `wdoc_repeater`'s body once per element of its `each` list,
 /// binding the element to the symbol named by `as` (default `it`).
 /// Returns the flattened body child blocks, each carrying the per-element
-/// binding scope. Empty when `each` doesn't evaluate to a list.
+/// binding scope. Empty when `each` doesn't evaluate to a list, or past
+/// the render path's expansion budget (see [`charge_expansion`]).
 pub(crate) fn expand_repeater_children<'a>(block: &Block<'a>) -> Vec<Block<'a>> {
+    charge_expansion(block, repeater_children(block))
+}
+
+/// [`expand_repeater_children`] without the budget.
+fn repeater_children<'a>(block: &Block<'a>) -> Vec<Block<'a>> {
     // A present `each` whose expression fails to evaluate (e.g. an
     // unresolved reference) is a genuine error — record it so the build
     // surfaces a diagnostic instead of silently expanding to nothing. A
@@ -437,11 +499,17 @@ pub(crate) fn walk_structural<'a, E>(
 /// Expand a `wdoc_component` instance's `wdoc_body` once, binding each
 /// declared `wdoc_slot` to the instance's matching field (or the slot's
 /// `default`). Returns the body child blocks under the slot bindings.
-/// Empty when the component declares no `wdoc_body`.
+/// Empty when the component declares no `wdoc_body`, or past the render
+/// path's expansion budget (see [`charge_expansion`]).
 pub(crate) fn expand_component_children<'a>(
     instance: &Block<'a>,
     def: &Block<'a>,
 ) -> Vec<Block<'a>> {
+    charge_expansion(instance, component_children(instance, def))
+}
+
+/// [`expand_component_children`] without the budget.
+fn component_children<'a>(instance: &Block<'a>, def: &Block<'a>) -> Vec<Block<'a>> {
     let mut bindings: Vec<(String, Value)> = Vec::new();
     let mut content_slots = std::collections::BTreeSet::new();
     for slot in def

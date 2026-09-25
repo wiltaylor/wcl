@@ -57,9 +57,9 @@ pub use loader::{FileLoader, Registry, disk_loader, overlay_loader};
 pub use types::{FieldShape, ResolvedType};
 pub use views::{
     Block, ChildKind, Connection, ConnectionDecl, DataKind, DataRef, DeclName, DeclaresKind,
-    Decorator, Field, InterfaceDecl, NamedArg, RowView, SymbolEntry, SymbolSetDecl, TableView,
-    TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
-    VariantBodyView,
+    Decorator, Field, InterfaceDecl, MAX_EXPANDED_BLOCKS, NamedArg, RowView, SymbolEntry,
+    SymbolSetDecl, TableView, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView,
+    UseFormView, UseItem, VariantBodyView,
 };
 pub(crate) use views::{BuiltinDecorator, LetView, UnionChildKind};
 

@@ -82,8 +82,9 @@ const MAX_EXPANSION_DEPTH: usize = 32;
 /// How many blocks one walk of nested `@contextual` expansion may
 /// generate before it fails with [`EvalError::ExpansionLimit`]. The
 /// depth cap alone still allows `k^32` blocks when every level repeats
-/// its body `k` times.
-const MAX_EXPANDED_BLOCKS: usize = 100_000;
+/// its body `k` times. Public so a host that expands blocks on its own
+/// render path (wdoc's components and repeaters) holds the same bound.
+pub const MAX_EXPANDED_BLOCKS: usize = 100_000;
 
 /// Closed set of decorator names the document layer special-cases:
 /// schema dispatch (`@block`, `@table`, `@document`, `@decorator`),

@@ -203,6 +203,39 @@ WCL
 
   p "A `wdoc_body` is declared `@schemaless`, and the reason is worth knowing. A body is a template, so its blocks mean something only once an instance expands them. A component used inside a diagram may hold diagram shapes rather than page content, and checking the body where it sits would reject that. Whether the expansion is legal is settled where the instance sits, not where the template does."
 
+  p "A body may instantiate its own component, and two limits stop that from running away. Expansion nests at most 32 levels deep, and a level past that renders a depth marker instead of content. One tree of expansions, from an instance you wrote down through everything it generates, may produce at most 100,000 blocks. A body that instantiates itself twice stays inside the depth limit while doubling at every level, so it meets the second limit, and the build fails rather than running for ever:"
+
+  code wcl {
+    filename = "fan.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+wdoc_component fan {
+  wdoc_body {
+    p "level"
+    fan { }
+    fan { }
+  }
+}
+
+page index {
+  fan { }
+}
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl wdoc build --out site fan.wcl
+wcl::eval::expansion_limit
+
+  × expanding the `@contextual` block 'fan' exceeded the limit of 100000
+  │ generated blocks
+CONSOLE
+  }
+
+  p "The build exits 3. Repeaters count towards the same 100,000, so a repeater nested inside a repeater that multiplies past it fails the same way."
+
   h3 "The derived kind schema"
 
   p "`metric { … }` is not special syntax. `WdocComponent` carries `@declares_kind`, which is the language's word for _instances of this type declare block kinds of their own_. So when you write `wdoc_component metric`, the language derives a `@block(\"metric\")` schema from that instance's slot blocks. `metric { … }` is then checked against it like any other block."

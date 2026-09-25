@@ -39,10 +39,10 @@ pub use diagnostics::{ArithmeticFault, EvalError, ParseError, SchemaViolationKin
 pub use diagnostics::{Profile, ProfileKey, ProfileNode};
 pub use doc::{
     Block, ChildKind, Connection, ConnectionDecl, DataKind, DataRef, DeclName, DeclaresKind,
-    Decorator, Document, Field, FieldShape, FileLoader, InterfaceDecl, NamedArg, Registry,
-    ResolvedType, RowView, SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit, SymbolSetDecl, TableView,
-    TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView, UseFormView, UseItem,
-    VariantBodyView, disk_loader, overlay_loader, system_import_key,
+    Decorator, Document, Field, FieldShape, FileLoader, InterfaceDecl, MAX_EXPANDED_BLOCKS,
+    NamedArg, Registry, ResolvedType, RowView, SYSTEM_IMPORT_ROOT, SymbolEntry, SymbolHit,
+    SymbolSetDecl, TableView, TypeDecl, TypeField, UnionDecl, UnionVariant, UseDeclView,
+    UseFormView, UseItem, VariantBodyView, disk_loader, overlay_loader, system_import_key,
 };
 pub use edit::{parse_expr, parse_for_edit};
 pub use environment::{

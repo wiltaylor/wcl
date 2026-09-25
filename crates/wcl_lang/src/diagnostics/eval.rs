@@ -719,7 +719,7 @@ impl EvalError {
 
     /// Build an [`EvalError::ExpansionLimit`]; `limit` names the cap in
     /// words.
-    pub(crate) fn expansion_limit(
+    pub fn expansion_limit(
         kind: impl Into<String>,
         limit: impl Into<String>,
         span: crate::ast::Span,
