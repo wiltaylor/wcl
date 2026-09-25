@@ -5,6 +5,7 @@
 //! so the two render a value identically.
 
 use super::builtin::{BuiltinFn, Caller, from_fn};
+use super::{check_output_bytes, check_output_items};
 use crate::environment::Environment;
 use crate::value::Value;
 
@@ -12,11 +13,14 @@ use crate::value::Value;
 pub(super) fn register(env: &mut Environment) {
     env.add_builtin(
         "concat",
-        from_fn(|a: String, b: String| -> String { format!("{a}{b}") })
-            .doc("Concatenate two strings into one.")
-            .param("a", "utf8", "The left-hand string.")
-            .param("b", "utf8", "The string appended after `a`.")
-            .returns("utf8", "The two strings joined together."),
+        from_fn(|a: String, b: String| -> Result<String, String> {
+            check_output_bytes("concat", a.len().checked_add(b.len()))?;
+            Ok(format!("{a}{b}"))
+        })
+        .doc("Concatenate two strings into one.")
+        .param("a", "utf8", "The left-hand string.")
+        .param("b", "utf8", "The string appended after `a`.")
+        .returns("utf8", "The two strings joined together."),
     );
     env.add_builtin(
         "format",
@@ -30,8 +34,11 @@ pub(super) fn register(env: &mut Environment) {
     );
     env.add_builtin(
         "split",
-        from_fn(|s: String, sep: String| -> Value {
-            Value::list(s.split(&sep).map(|p| Value::Utf8(p.to_string())).collect())
+        from_fn(|s: String, sep: String| -> Result<Value, String> {
+            check_output_items("split", Some(s.split(&sep).count()))?;
+            Ok(Value::list(
+                s.split(&sep).map(|p| Value::Utf8(p.to_string())).collect(),
+            ))
         })
         .doc("Split a string on every occurrence of a separator into a list of pieces.")
         .param("s", "utf8", "The string to split.")
@@ -40,20 +47,45 @@ pub(super) fn register(env: &mut Environment) {
     );
     env.add_builtin(
         "join",
-        from_fn(|parts: Vec<String>, sep: String| -> String { parts.join(&sep) })
-            .doc("Join a list of strings into one, inserting a separator between each.")
-            .param("parts", "[utf8]", "The strings to join.")
-            .param("sep", "utf8", "The separator inserted between parts.")
-            .returns("utf8", "The joined string."),
+        from_fn(
+            |parts: Vec<String>, sep: String| -> Result<String, String> {
+                let seps = sep.len().checked_mul(parts.len().saturating_sub(1));
+                let bytes = parts
+                    .iter()
+                    .try_fold(seps.unwrap_or(usize::MAX), |n, p| n.checked_add(p.len()));
+                check_output_bytes("join", seps.and(bytes))?;
+                Ok(parts.join(&sep))
+            },
+        )
+        .doc("Join a list of strings into one, inserting a separator between each.")
+        .param("parts", "[utf8]", "The strings to join.")
+        .param("sep", "utf8", "The separator inserted between parts.")
+        .returns("utf8", "The joined string."),
     );
     env.add_builtin(
         "replace",
-        from_fn(|s: String, old: String, new: String| -> String { s.replace(&old, &new) })
-            .doc("Replace every occurrence of a substring with another.")
-            .param("s", "utf8", "The string to search.")
-            .param("old", "utf8", "The substring to find.")
-            .param("new", "utf8", "The replacement substring.")
-            .returns("utf8", "The string with every match replaced."),
+        from_fn(
+            |s: String, old: String, new: String| -> Result<String, String> {
+                // An empty `old` matches between every character and at
+                // both ends.
+                let hits = if old.is_empty() {
+                    s.chars().count() + 1
+                } else {
+                    s.matches(&old).count()
+                };
+                let bytes = new
+                    .len()
+                    .checked_mul(hits)
+                    .and_then(|n| n.checked_add(s.len() - old.len() * hits));
+                check_output_bytes("replace", bytes)?;
+                Ok(s.replace(&old, &new))
+            },
+        )
+        .doc("Replace every occurrence of a substring with another.")
+        .param("s", "utf8", "The string to search.")
+        .param("old", "utf8", "The substring to find.")
+        .param("new", "utf8", "The replacement substring.")
+        .returns("utf8", "The string with every match replaced."),
     );
     env.add_builtin(
         "contains",
@@ -102,8 +134,11 @@ pub(super) fn register(env: &mut Environment) {
     );
     env.add_builtin(
         "chars",
-        from_fn(|s: String| -> Value {
-            Value::list(s.chars().map(|c| Value::Utf8(c.to_string())).collect())
+        from_fn(|s: String| -> Result<Value, String> {
+            check_output_items("chars", Some(s.chars().count()))?;
+            Ok(Value::list(
+                s.chars().map(|c| Value::Utf8(c.to_string())).collect(),
+            ))
         })
         .doc("The characters of a string as a list of one-character strings.")
         .param("s", "utf8", "The string to split into characters.")
@@ -170,7 +205,22 @@ fn pad_string(s: String, width: i64, pad: &str, at_start: bool) -> Result<String
     if have >= want {
         return Ok(s);
     }
-    let fill: String = pad.chars().cycle().take(want - have).collect();
+    // Size the output before building it: `width` is user input and
+    // may be as large as `i64::MAX`.
+    let fill_chars = want - have;
+    let pad_chars = pad.chars().count();
+    let partial: usize = pad
+        .chars()
+        .take(fill_chars % pad_chars)
+        .map(char::len_utf8)
+        .sum();
+    let bytes = (fill_chars / pad_chars)
+        .checked_mul(pad.len())
+        .and_then(|n| n.checked_add(partial))
+        .and_then(|n| n.checked_add(s.len()));
+    let who = if at_start { "pad_start" } else { "pad_end" };
+    check_output_bytes(who, bytes)?;
+    let fill: String = pad.chars().cycle().take(fill_chars).collect();
     Ok(if at_start {
         format!("{fill}{s}")
     } else {
@@ -213,6 +263,7 @@ fn format_hof(_caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String>
             };
             idx += 1;
             out.push_str(&format_value(arg));
+            check_output_bytes("format", Some(out.len()))?;
         } else if c == '}' {
             if chars.peek() == Some(&'}') {
                 chars.next();
@@ -236,17 +287,12 @@ fn format_hof(_caller: &mut dyn Caller, args: &[Value]) -> Result<Value, String>
 /// Repeat a string with checked sizing and fallible allocation.
 /// Empty strings and nonpositive counts return an empty string without allocating.
 fn repeat_pure(s: String, n: i64) -> Result<String, String> {
-    /// Per-call output limit in bytes; this does not bound total document memory.
-    const MAX_REPEAT_BYTES: usize = 64 * 1024 * 1024;
     if n <= 0 || s.is_empty() {
         return Ok(String::new());
     }
-    let size_error = || "repeat: output exceeds the 64 MiB limit".to_string();
-    let count = usize::try_from(n).map_err(|_| size_error())?;
-    let size = s.len().checked_mul(count).ok_or_else(size_error)?;
-    if size > MAX_REPEAT_BYTES {
-        return Err(size_error());
-    }
+    let count = usize::try_from(n).ok();
+    let size = check_output_bytes("repeat", count.and_then(|c| s.len().checked_mul(c)))?;
+    let count = size / s.len();
     let mut out = String::new();
     out.try_reserve_exact(size)
         .map_err(|e| format!("repeat: cannot allocate output: {e}"))?;

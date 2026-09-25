@@ -74,3 +74,39 @@ fn expect_function<'a>(
         )),
     }
 }
+
+/// Largest string, in bytes, a single builtin call may build.
+///
+/// Together with [`MAX_OUTPUT_ITEMS`] this is the one output-size limit
+/// every builtin that builds a string or list checks *before*
+/// allocating, so an argument like `range(0, 9223372036854775807)` is
+/// an error rather than a capacity-overflow panic or an allocation
+/// abort. It bounds one call, not the document's total memory.
+pub(crate) const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
+
+/// Largest list, in elements, a single builtin call may build. See
+/// [`MAX_OUTPUT_BYTES`].
+pub(crate) const MAX_OUTPUT_ITEMS: usize = 1024 * 1024;
+
+/// Refuse a string output of `bytes` bytes (`None` when computing the
+/// size overflowed) past [`MAX_OUTPUT_BYTES`]; otherwise return it.
+fn check_output_bytes(builtin: &str, bytes: Option<usize>) -> Result<usize, String> {
+    match bytes {
+        Some(n) if n <= MAX_OUTPUT_BYTES => Ok(n),
+        _ => Err(format!(
+            "{builtin}: output exceeds the {} MiB limit",
+            MAX_OUTPUT_BYTES / (1024 * 1024)
+        )),
+    }
+}
+
+/// Refuse a list output of `items` elements (`None` when computing the
+/// count overflowed) past [`MAX_OUTPUT_ITEMS`]; otherwise return it.
+fn check_output_items(builtin: &str, items: Option<usize>) -> Result<usize, String> {
+    match items {
+        Some(n) if n <= MAX_OUTPUT_ITEMS => Ok(n),
+        _ => Err(format!(
+            "{builtin}: output exceeds the {MAX_OUTPUT_ITEMS}-element limit"
+        )),
+    }
+}
