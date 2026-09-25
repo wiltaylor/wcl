@@ -144,6 +144,10 @@ mod tests {
             git(dir.path(), &full).expect("git setup command");
         };
         run(&["init", "-q"]);
+        // Windows runners set `core.autocrlf=true` globally, which makes
+        // `git archive` write `\r\n`. Pin it off so the bytes asserted below
+        // are the bytes committed.
+        run(&["config", "core.autocrlf", "false"]);
         std::fs::write(dir.path().join("a.wcl"), "x = 1\n").expect("write a.wcl");
         run(&["add", "a.wcl"]);
         run(&["commit", "-q", "-m", "one"]);

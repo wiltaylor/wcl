@@ -58,10 +58,13 @@ workspace-lint: require-clippy
 workspace-doc: require-cargo
     RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps --workspace
 
+# `--no-fail-fast` so one failing crate does not hide failures in the rest,
+# which matters most on the Windows and macOS legs where a run is slow.
+#
 # Run all tests (unit + integration)
 [group('test')]
 workspace-test: require-cargo
-    cargo test --locked --workspace
+    cargo test --locked --workspace --no-fail-fast
 
 # One fuzz target per line in `targets`, as `<crate dir>:<target>`, so adding
 # a target is a one-line change that merges cleanly. Each crate under
