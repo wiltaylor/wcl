@@ -43,7 +43,7 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
 /// revision). For a relative path we add `git rev-parse --show-prefix` (the
 /// cwd's offset within the repo) to it; for an absolute path we strip the
 /// repo root.
-pub fn repo_rel(path: &str) -> Result<(PathBuf, String), String> {
+pub(crate) fn repo_rel(path: &str) -> Result<(PathBuf, String), String> {
     let p = Path::new(path);
     let run_dir = if p.is_absolute() {
         p.parent().unwrap_or(Path::new("/")).to_path_buf()
@@ -65,27 +65,11 @@ pub fn repo_rel(path: &str) -> Result<(PathBuf, String), String> {
     }
 }
 
-/// Resolve `rev` to its full commit sha in the repo at `root` — the
-/// immutable baseline a generated change-spec (or an audit) records.
-pub fn resolve_rev(rev: &str, root: &Path) -> Result<String, String> {
-    git(
-        root,
-        &["rev-parse", "--verify", &format!("{rev}^{{commit}}")],
-    )
-}
-
-/// The commit where `a` and `b` diverged — what a `a...b` range means, and
-/// the baseline for reviewing a branch: the state the branch started from,
-/// not whatever the other branch has done since.
-pub fn merge_base(a: &str, b: &str, root: &Path) -> Result<String, String> {
-    git(root, &["merge-base", a, b])
-}
-
 /// Extract the whole tree at `rev` into a fresh temp dir via
 /// `git archive <rev> | tar -x`. The returned `TempDir` cleans itself up on
 /// drop, so the caller must hold it for as long as anything read from it is
 /// still in use.
-pub fn materialize_rev(rev: &str, root: &Path) -> Result<TempDir, String> {
+pub(crate) fn materialize_rev(rev: &str, root: &Path) -> Result<TempDir, String> {
     let tmp = TempDir::new().map_err(|e| format!("failed to create temp dir: {e}"))?;
 
     let mut archive = Command::new("git")

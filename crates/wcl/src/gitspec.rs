@@ -1,12 +1,11 @@
 //! The `<rev>:<path>` argument convention `wcl diff` accepts on either side.
 //!
-//! Classifying a CLI argument is a CLI concern and stays here; reading the
-//! tree at the named revision is [`wcl_wdoc::git`]'s, so a library that opens
-//! a document at a revision does not have to go through the binary.
+//! Classifying a CLI argument is this module's job; reading the tree at the
+//! named revision is [`crate::git`]'s.
 
 use std::path::{Path, PathBuf};
 
-pub(crate) use wcl_wdoc::git::{materialize_rev, repo_rel};
+pub(crate) use crate::git::{materialize_rev, repo_rel};
 
 /// A parsed diff input: either a working-tree path or a git revision + path.
 #[derive(Debug, PartialEq)]

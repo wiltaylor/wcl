@@ -3049,15 +3049,12 @@ name = "wcl"
 version = "0.0.0"
 dependencies = [
  "assert_cmd",
- "axum",
  "clap",
  "miette",
- "notify",
  "predicates",
  "serde_json",
  "tempfile",
  "tokio",
- "tower",
  "wcl_lang",
  "wcl_lsp",
  "wcl_wdoc",
@@ -3099,10 +3096,12 @@ name = "wcl_wdoc"
 version = "0.0.0"
 dependencies = [
  "avt",
+ "axum",
  "cosmic-text",
  "krilla",
  "krilla-svg",
  "miette",
+ "notify",
  "ratex-layout",
  "ratex-parser",
  "ratex-svg",
@@ -3112,6 +3111,8 @@ dependencies = [
  "syntect",
  "tempfile",
  "time",
+ "tokio",
+ "tower",
  "two-face",
  "usvg",
  "wcl_lang",

@@ -1,3 +1,13 @@
+//! The `wcl wdoc serve` dev server: build once, serve the output over HTTP
+//! with a live-reload script, and rebuild on request.
+//!
+//! A `notify` watcher notes which `.wcl` files changed but does not rebuild;
+//! a rebuild runs when asked (Enter on the console, or `POST
+//! /__wdoc_rebuild`), incrementally over the noted files when there are any.
+//!
+//! Compiled only with the `serve` cargo feature, which brings in axum, tokio
+//! and notify.
+
 use std::future::IntoFuture;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
@@ -5,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
+use crate::{BuildOptions, RebuildOutcome, build_incremental, build_with_options};
 use axum::Router;
 use axum::body::Body;
 use axum::extract::State;
@@ -15,7 +26,6 @@ use axum::routing::get;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use tempfile::TempDir;
 use tokio::sync::mpsc::UnboundedReceiver;
-use wcl_wdoc::{BuildOptions, RebuildOutcome, build_incremental, build_with_options};
 
 /// How long the watch loop waits for the event stream to go quiet
 /// before rebuilding — one editor save fires several notify events,
@@ -25,11 +35,11 @@ const QUIET_WINDOW: Duration = Duration::from_millis(150);
 /// How long a live-reload long-poll request parks before answering
 /// with the unchanged generation. Short enough that intermediaries
 /// don't kill the connection; the client just re-polls.
-pub(crate) const POLL_TIMEOUT: Duration = Duration::from_secs(30);
+const POLL_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The address `serve` binds to when neither `--addr` nor `auto` shifts
 /// it elsewhere. `auto` scans upward from this port.
-pub(crate) const DEFAULT_BIND: SocketAddr =
+pub const DEFAULT_BIND: SocketAddr =
     SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8080);
 
 /// How the dev server chooses its bind address.
@@ -38,7 +48,7 @@ pub(crate) const DEFAULT_BIND: SocketAddr =
 /// value is parsed as an explicit `SocketAddr` and bound as-is (hard error if
 /// the port is busy).
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum BindSpec {
+pub enum BindSpec {
     /// Scan upward from [`DEFAULT_BIND`] for a free port.
     Auto,
     /// Bind exactly this address.
@@ -60,7 +70,7 @@ impl std::str::FromStr for BindSpec {
 /// Bind a listener by scanning a fixed window of ports upward from `base`,
 /// returning the first that's free. Keeping the successfully bound listener
 /// avoids a check-then-bind race.
-pub(crate) async fn bind_auto(base: SocketAddr) -> std::io::Result<tokio::net::TcpListener> {
+async fn bind_auto(base: SocketAddr) -> std::io::Result<tokio::net::TcpListener> {
     const RANGE: u16 = 100; // scan base..base+100
     let mut last_err = None;
     for offset in 0..RANGE {
@@ -195,7 +205,7 @@ fn drain_pending(state: &ServeState) -> Vec<PathBuf> {
 /// build error.
 fn finish_rebuild(
     state: &ServeState,
-    result: Result<(String, Vec<String>), wcl_wdoc::BuildError>,
+    result: Result<(String, Vec<String>), crate::BuildError>,
 ) -> RebuildReport {
     let report = match result {
         Ok((summary, warnings)) => {
@@ -271,7 +281,8 @@ async fn rebuild_worker(
     }
 }
 
-pub(crate) async fn serve(
+/// Run the dev server for `file` until Ctrl-C, which exits the process.
+pub async fn serve(
     file: PathBuf,
     out: Option<PathBuf>,
     addr: BindSpec,
@@ -515,7 +526,7 @@ async fn handle_rebuild(State(state): State<Arc<ServeState>>) -> Response {
     }
 }
 
-pub(crate) fn json_response(status: StatusCode, value: &serde_json::Value) -> Response {
+fn json_response(status: StatusCode, value: &serde_json::Value) -> Response {
     (
         status,
         [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
@@ -524,7 +535,7 @@ pub(crate) fn json_response(status: StatusCode, value: &serde_json::Value) -> Re
         .into_response()
 }
 
-pub(crate) fn json_error(status: StatusCode, msg: &str) -> Response {
+fn json_error(status: StatusCode, msg: &str) -> Response {
     json_response(status, &serde_json::json!({ "error": msg }))
 }
 
@@ -647,7 +658,7 @@ fn resolve_path(out: &Path, rel: &str) -> PathBuf {
 }
 
 /// Map an output file's extension to a content type.
-pub(crate) fn content_type(path: &Path) -> &'static str {
+fn content_type(path: &Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()) {
         Some("html" | "htm") => "text/html; charset=utf-8",
         Some("woff2") => "font/woff2",

@@ -1957,7 +1957,6 @@ dependencies = [
  "regex",
  "serde_json",
  "syntect",
- "tempfile",
  "time",
  "two-face",
  "usvg",

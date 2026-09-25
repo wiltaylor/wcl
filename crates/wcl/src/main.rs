@@ -18,10 +18,12 @@
 //!
 //! - [`dump`] — the `wcl parse` document-tree rendering, and the
 //!   `WCL_PROFILE` call-tree JSON.
-//! - [`diff`] and [`gitspec`] — `wcl diff`, and the `<rev>:<path>`
-//!   convention it accepts on either side.
+//! - [`diff`], [`gitspec`] and [`git`] — `wcl diff`, the `<rev>:<path>`
+//!   convention it accepts on either side, and extracting a tree at a revision.
 //! - [`scaffold`] — `wcl init`, the template-driven project generator.
-//! - [`serve`] — the rebuild-on-request dev server behind `wcl wdoc serve`.
+//!
+//! `wcl wdoc serve` parses its flags here; the dev server itself is
+//! [`wcl_wdoc::serve`].
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -33,9 +35,9 @@ use wcl_lang::{
 
 mod diff;
 mod dump;
+mod git;
 mod gitspec;
 mod scaffold;
-mod serve;
 
 /// Success.
 pub(crate) const EXIT_OK: u8 = 0;
@@ -416,7 +418,7 @@ enum WdocCommand {
         /// Bind address, or `auto` to pick the first free port near 8080.
         /// Default `127.0.0.1:8080`.
         #[arg(long, default_value = "127.0.0.1:8080")]
-        addr: serve::BindSpec,
+        addr: wcl_wdoc::serve::BindSpec,
         /// Output directory. When omitted, a temp directory is used
         /// and removed on shutdown.
         #[arg(long)]
@@ -735,7 +737,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
                 Ok(rt) => rt,
                 Err(code) => return code,
             };
-            let result = rt.block_on(serve::serve(file, out, addr, site));
+            let result = rt.block_on(wcl_wdoc::serve::serve(file, out, addr, site));
             // Tear the runtime down with a bound so a stray in-flight
             // `spawn_blocking` (e.g. a `tokio::fs::read` in the static
             // handler) can never hang process exit on Ctrl-C.
