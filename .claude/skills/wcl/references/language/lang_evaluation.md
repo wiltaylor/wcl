@@ -145,6 +145,13 @@ $ wcl get chain.wcl cfg.a0        # cfg { a0 = a1 + 1 ... a4999 = a5000 + 1  a50
 wcl::eval::depth_exceeded
 
   × evaluation depth limit exceeded (max 200)
+     ╭─[chain.wcl:202:3]
+ 201 │   a199 = a200 + 1
+ 202 │   a200 = a201 + 1
+     ·   ───────┬───────
+     ·          ╰── evaluation nests too deeply here
+ 203 │   a201 = a202 + 1
+     ╰────
   help: a chain of references nests deeper than the evaluator allows; break it
         into shorter chains
 $ wcl get chain.wcl cfg.a4850     # 150 links: within the limit

@@ -281,6 +281,13 @@ $ wcl get load.wcl load
 wcl::eval::builtin_type
 
   × 'tensor': data length 2 does not match shape product 6
+    ╭─[load.wcl:11:11]
+ 10 │
+ 11 │ load    = tensor([0.4, 0.6], [2, 3])
+    ·           ─────────────┬────────────
+    ·                        ╰── invalid argument(s)
+ 12 │ shape   = tensor_shape(load)
+    ╰────
 CONSOLE
   }
 

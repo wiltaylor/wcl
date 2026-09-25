@@ -381,20 +381,82 @@ $ wcl wdoc build signup.wcl --out _site        # message "m4" to = "postmar"
 wcl::eval::user_error
 
   × error: sequence message 'm4' references unknown participant 'postmar'
+    ╭─[signup.wcl:14:3]
+ 13 │
+ 14 │   sequence_diagram {
+    ·   ────────┬───────
+    ·           ╰── in this `sequence_diagram`
+ 15 │     width = 700
+    ╰────
+  help: the wdoc library raised this while rendering the block; the report
+        below shows where
+
+Error: wcl::eval::user_error
+
+  × error: sequence message 'm4' references unknown participant 'postmar'
+     ╭─[<wcl-system>/wdoc/sequence.wcl:147:5]
+ 146 │   let xt = if index_of(ids, m.to) < 0 {
+ 147 │     error(format("sequence message '{}' references unknown participant '{}'", m.id, m.to))
+     ·     ───────────────────────────────────────────┬──────────────────────────────────────────
+     ·                                                ╰── error raised here
+ 148 │   } else {
+     ╰────
 
 $ wcl wdoc build signup.wcl --out _site        # note "n1" at = "m9"
 wcl::eval::user_error
 
   × error: note 'n1' is anchored to unknown message 'm9'
+    ╭─[signup.wcl:14:3]
+ 13 │
+ 14 │   sequence_diagram {
+    ·   ────────┬───────
+    ·           ╰── in this `sequence_diagram`
+ 15 │     width = 700
+    ╰────
+  help: the wdoc library raised this while rendering the block; the report
+        below shows where
+
+Error: wcl::eval::user_error
+
+  × error: note 'n1' is anchored to unknown message 'm9'
+     ╭─[<wcl-system>/wdoc/sequence.wcl:197:5]
+ 196 │   let y = if index_of(msg_ids, nb.at) < 0 {
+ 197 │     error(format("note '{}' is anchored to unknown message '{}'", nb.id, nb.at))
+     ·     ──────────────────────────────────────┬─────────────────────────────────────
+     ·                                           ╰── error raised here
+ 198 │   } else {
+     ╰────
 
 $ wcl wdoc build review.wcl --out _site        # transition "t3" to = "withdrawnn"
 wcl::eval::user_error
 
   × error: transition 't3' references unknown state 'withdrawnn'
+    ╭─[review.wcl:14:3]
+ 13 │
+ 14 │   state_diagram {
+    ·   ──────┬──────
+    ·         ╰── in this `state_diagram`
+ 15 │     width     = 640
+    ╰────
+  help: the wdoc library raised this while rendering the block; the report
+        below shows where
+
+Error: wcl::eval::user_error
+
+  × error: transition 't3' references unknown state 'withdrawnn'
+     ╭─[<wcl-system>/wdoc/statechart.wcl:209:5]
+ 208 │   } else if ti < 0 {
+ 209 │     error(format("transition '{}' references unknown state '{}'", t.id, t.to))
+     ·     ─────────────────────────────────────┬────────────────────────────────────
+     ·                                          ╰── error raised here
+ 210 │   } else {
+     ╰────
 CONSOLE
   }
 
   p "Each of these is a `user_error`, raised by an `error(…)` call inside the lowering, not a schema violation. The schema cannot catch them. `from`, `to`, and `at` are declared as `utf8`, and no rule in the type system says one string has to match another block's label. See [Schemas](lang_schemas) for the checks that do run before evaluation."
+
+  p "Each report comes in two parts. The first points at your `sequence_diagram` or `state_diagram` block, the one you have to edit. The second, under `Error:`, shows the line of the standard library whose check failed. The message is the same in both, and it names the child and the id you mistyped."
 
   h2 "One geometry, every backend"
 
