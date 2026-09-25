@@ -64,6 +64,9 @@ pub struct Environment {
     builtins: HashMap<String, BuiltinFn>,
     /// Expander for `@contextual` blocks, if the host registered one.
     expander: Option<Arc<dyn Expander>>,
+    /// Extra param block kinds for `@declares_kind` derivation, as
+    /// `(params kind, alias kind)` pairs.
+    param_kind_aliases: Vec<(String, String)>,
 }
 
 impl std::fmt::Debug for Environment {
@@ -73,6 +76,7 @@ impl std::fmt::Debug for Environment {
             .field("symbol_sets", &self.symbol_sets.len())
             .field("builtins", &self.builtins.keys().collect::<Vec<_>>())
             .field("expander", &self.expander.is_some())
+            .field("param_kind_aliases", &self.param_kind_aliases)
             .finish()
     }
 }
@@ -96,6 +100,7 @@ impl Environment {
             symbol_sets: Vec::new(),
             builtins: HashMap::new(),
             expander: None,
+            param_kind_aliases: Vec::new(),
         }
     }
 
@@ -121,6 +126,33 @@ impl Environment {
     pub fn set_expander(&mut self, expander: Arc<dyn Expander>) -> &mut Self {
         self.expander = Some(expander);
         self
+    }
+
+    /// Count blocks of kind `alias` as parameters wherever a
+    /// `@declares_kind` contract's params field holds `params_kind` blocks.
+    ///
+    /// Schema derivation reads a declarer's params from the field its
+    /// contract names, so only blocks of that field's child kind become
+    /// fields of the derived schema. A host that renamed its param block
+    /// and still accepts the old spelling registers the old kind here, and
+    /// the derivation reads both. Without a registration a block of the
+    /// alias kind is an ordinary child of the declarer.
+    pub fn add_param_kind_alias(
+        &mut self,
+        params_kind: impl Into<String>,
+        alias: impl Into<String>,
+    ) -> &mut Self {
+        self.param_kind_aliases
+            .push((params_kind.into(), alias.into()));
+        self
+    }
+
+    /// Whether `kind` is a registered alias for the `params_kind` param
+    /// block. See [`add_param_kind_alias`](Self::add_param_kind_alias).
+    pub(crate) fn is_param_kind_alias(&self, params_kind: &str, kind: &str) -> bool {
+        self.param_kind_aliases
+            .iter()
+            .any(|(p, a)| p == params_kind && a == kind)
     }
 
     /// The registered `@contextual` expander, if any.

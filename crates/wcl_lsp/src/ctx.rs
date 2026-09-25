@@ -10,6 +10,7 @@ use tower_lsp_server::ls_types::Uri;
 use wcl_lang::{Document, FileLoader, ParseError};
 
 use crate::convert::{LineIndex, PositionEncoding, path_to_uri, uri_to_path};
+use crate::host::Host;
 
 /// Settings and a snapshot of the open buffers, shared by one request's
 /// (or one diagnostics pass's) analysis.
@@ -22,24 +23,27 @@ pub(crate) struct Ctx {
     /// so a file reached through an import (canonical) and the same file
     /// opened through a symlink are recognised as one.
     opened_as: Arc<HashMap<PathBuf, PathBuf>>,
-    /// The embedded wdoc library over an overlay of `buffers` on disk.
+    /// The host every document opens with.
+    host: Arc<Host>,
+    /// The host's system imports over an overlay of `buffers` on disk.
     loader: FileLoader,
 }
 
 impl Ctx {
-    /// A context with no open buffers: every import reads from disk.
+    /// A context under the wdoc host with no open buffers: every import
+    /// reads from disk.
     #[cfg(test)]
     pub(crate) fn new(encoding: PositionEncoding) -> Self {
-        Self::with_buffers(encoding, HashMap::new())
+        Self::with_buffers(encoding, HashMap::new(), crate::host::wdoc())
     }
 
     /// A context whose loader serves `buffers` in place of their files
-    /// on disk, and the embedded wdoc library for `import <wdoc.wcl>`
-    /// and the other `<wdoc/…>` system imports. The snapshot is shared,
-    /// not copied.
+    /// on disk, and `host`'s registry for system imports
+    /// (`import <name.wcl>`). The snapshot is shared, not copied.
     pub(crate) fn with_buffers(
         encoding: PositionEncoding,
         buffers: impl Into<Arc<HashMap<PathBuf, String>>>,
+        host: Arc<Host>,
     ) -> Self {
         let buffers = buffers.into();
         let opened_as: Arc<HashMap<PathBuf, PathBuf>> = Arc::new(
@@ -64,8 +68,19 @@ impl Ctx {
             encoding,
             buffers,
             opened_as,
-            loader: wcl_wdoc::schema_registry().loader(overlay),
+            loader: host.loader(overlay),
+            host,
         }
+    }
+
+    /// The host every document in this context opens with.
+    pub(crate) fn host(&self) -> &Arc<Host> {
+        &self.host
+    }
+
+    /// The environment every document in this context opens with.
+    pub(crate) fn environment(&self) -> &wcl_lang::Environment {
+        self.host.environment()
     }
 
     /// The loader every document in this context opens through.
@@ -96,26 +111,20 @@ impl Ctx {
         path_to_uri(path)
     }
 
-    /// Open `source` (named `uri`) the way the wdoc build would: system
-    /// imports resolve through the embedded registry, relative imports
+    /// Open `source` (named `uri`) the way the host's build would: system
+    /// imports resolve through the host's registry, relative imports
     /// resolve against the file's directory with open buffers overlaid,
-    /// and the wdoc [`Environment`](wcl_lang::Environment) supplies
-    /// builtins like `page_metadata` and expanders for `@contextual`
-    /// kinds. A bare `Document::open` would flag all three as errors in
-    /// perfectly valid documents. Every handler opens buffers through
-    /// here so they agree with the diagnostics.
+    /// and the host's [`Environment`](wcl_lang::Environment) supplies its
+    /// builtins and the expander for `@contextual` kinds. A bare
+    /// `Document::open` would flag all three as errors in a host's valid
+    /// documents. Every handler opens buffers through here so they agree
+    /// with the diagnostics.
     pub(crate) fn open(&self, source: &str, uri: &str) -> Result<Document, ParseError> {
         let base_dir = Uri::from_str(uri)
             .ok()
             .and_then(|uri| uri_to_path(&uri))
             .and_then(|path| path.parent().map(Path::to_path_buf));
-        Document::open_at_with_loader(
-            source,
-            uri,
-            base_dir,
-            &wcl_wdoc::wdoc_environment(),
-            self.loader(),
-        )
+        Document::open_at_with_loader(source, uri, base_dir, self.environment(), self.loader())
     }
 }
 

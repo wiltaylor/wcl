@@ -14,24 +14,21 @@ path = "src/main.rs"
 [dependencies]
 wcl_lang = { workspace = true }
 wcl_lsp = { workspace = true }
-wcl_wdoc = { workspace = true }
+# `serve` is the `wcl wdoc serve` dev server.
+wcl_wdoc = { workspace = true, features = ["serve"] }
 clap = { workspace = true }
 # `fancy` renders every `miette::Report` graphically on stderr. The CLI owns
 # the terminal, so it is the one crate that turns on terminal detection.
 miette = { workspace = true, features = ["fancy"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
-# `wcl wdoc serve` dev server: axum + a notify file watcher, driven on a
-# tokio runtime (extra `fs` for the static handler, `signal` for Ctrl-C,
-# `time` for rebuild debouncing and the live-reload long-poll timeout).
-tokio = { workspace = true, features = ["fs", "signal", "time"] }
-axum = { workspace = true }
-notify = { workspace = true }
+# The runtime `wcl lsp` and `wcl wdoc serve` run on (the server itself, and
+# the features it needs, live in wcl_wdoc's `serve` feature).
+tokio = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
-tower = { workspace = true }
 
 [lints]
 workspace = true

@@ -27,7 +27,11 @@ impl Session {
     async fn start(root: Option<&Path>, capabilities: Value) -> Self {
         let (client, server) = tokio::io::duplex(1 << 20);
         let (server_read, server_write) = tokio::io::split(server);
-        tokio::spawn(wcl_lsp::serve_stream(server_read, server_write));
+        tokio::spawn(wcl_lsp::serve_stream(
+            server_read,
+            server_write,
+            wcl_lsp::Host::new(wcl_wdoc::wdoc_environment(), wcl_wdoc::schema_registry()),
+        ));
         let (read, write) = tokio::io::split(client);
         let mut session = Self {
             write,

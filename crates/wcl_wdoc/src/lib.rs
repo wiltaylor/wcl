@@ -4,8 +4,9 @@
 //! diagram + … blocks) that a user document opts into with
 //! `import <wdoc.wcl>`, and renders pages declared in user `.wcl` files to
 //! HTML / PDF / Markdown. The `wcl` CLI wires these entry points behind
-//! `wcl wdoc build` / `pdf` / `markdown` (and drives its own dev server for
-//! `wcl wdoc serve`).
+//! `wcl wdoc build` / `pdf` / `markdown`, and `wcl wdoc serve` runs the dev
+//! server in `serve` (behind the off-by-default `serve` cargo feature, so a
+//! library user does not pull in an HTTP stack).
 //!
 //! # Map
 //!
@@ -29,7 +30,7 @@
 //! What is left at the root is what belongs to no single kind: `content`
 //! (the semantic IR every backend walks), `inline` (the prose pattern
 //! engine), `native` (which kinds are rendered in Rust, and by which
-//! backends), `visibility`, `css_lint`, `page_metadata` and `git`.
+//! backends), `visibility`, `css_lint` and `page_metadata`.
 //!
 //! [`build`](mod@build) drives the HTML backend end to end and holds the entry points
 //! the CLI calls.
@@ -39,7 +40,6 @@ mod blocks;
 pub mod build;
 pub mod content;
 mod css_lint;
-pub mod git;
 mod html;
 mod inline;
 mod markdown;
@@ -47,6 +47,8 @@ mod native;
 mod page_metadata;
 pub mod pdf;
 mod render;
+#[cfg(feature = "serve")]
+pub mod serve;
 mod svg;
 mod visibility;
 

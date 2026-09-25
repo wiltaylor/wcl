@@ -410,9 +410,10 @@ fn derive_kind_schema(
     let mut fields: Vec<ast::TypeField> = Vec::new();
     let mut required: Vec<String> = Vec::new();
     if let Some(param_kind) = param_kind {
+        let env = &declarer.doc.env;
         for p in declarer
             .blocks()
-            .filter(|b| b.kind() == param_kind || (param_kind == "slot" && b.kind() == "wdoc_slot"))
+            .filter(|b| b.kind() == param_kind || env.is_param_kind_alias(&param_kind, b.kind()))
         {
             let Some(name) = block_first_label(&p) else {
                 continue;
@@ -440,8 +441,8 @@ fn derive_kind_schema(
                     .unwrap_or(TypeRef::Builtin(crate::ast::BuiltinType::Utf8)),
                 optional,
             );
-            // Legacy `wdoc_slot` declarations were deliberately untyped.
-            // Preserve that contract while typed `slot` declarations use
+            // An untyped param (`slot label`, or a host's param alias)
+            // stays deliberately permissive. Typed `slot` declarations use
             // ordinary schema checking.
             if typed.is_none() {
                 field.decorators.push(synthetic_decorator(
