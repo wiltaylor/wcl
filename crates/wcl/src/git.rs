@@ -52,7 +52,7 @@ pub(crate) fn repo_rel(path: &str) -> Result<(PathBuf, String), String> {
     };
     let root = PathBuf::from(git(&run_dir, &["rev-parse", "--show-toplevel"])?);
     if p.is_absolute() {
-        let rel = p.strip_prefix(&root).map_err(|_| {
+        let rel = strip_root(p, &run_dir, &root).ok_or_else(|| {
             format!(
                 "path '{path}' is outside the git repo at {}",
                 root.display()
@@ -61,8 +61,29 @@ pub(crate) fn repo_rel(path: &str) -> Result<(PathBuf, String), String> {
         Ok((root, rel.to_string_lossy().replace('\\', "/")))
     } else {
         let prefix = git(&run_dir, &["rev-parse", "--show-prefix"])?;
+        // Git revision paths separate with `/`; on Windows a user's
+        // relative path may use `\` (on Unix `\` is a filename byte).
+        let path = if cfg!(windows) {
+            path.replace('\\', "/")
+        } else {
+            path.to_string()
+        };
         Ok((root, format!("{prefix}{path}")))
     }
+}
+
+/// `path` relative to the repo `root` git reported. Git reports the
+/// resolved root, so a path spelled through a symlink (macOS's `/var`, a
+/// symlinked checkout) or a Windows 8.3 short name is compared by its
+/// canonical directory: `dir`, which exists (git just ran in it), while
+/// the file itself may exist only in the revision.
+fn strip_root(path: &Path, dir: &Path, root: &Path) -> Option<PathBuf> {
+    if let Ok(rel) = path.strip_prefix(root) {
+        return Some(rel.to_path_buf());
+    }
+    let dir = dunce::canonicalize(dir).ok()?;
+    let root = dunce::canonicalize(root).ok()?;
+    Some(dir.strip_prefix(root).ok()?.join(path.file_name()?))
 }
 
 /// Extract the whole tree at `rev` into a fresh temp dir via
@@ -192,22 +213,41 @@ mod tests {
         );
     }
 
-    // Unix only: on Windows the temp dir can be an 8.3 short path
-    // (`RUNNER~1`) that git reports in long form, so the prefix comparison
-    // would be testing the runner's profile path, not this function.
-    #[cfg(unix)]
     #[test]
     fn repo_rel_strips_the_root_from_an_absolute_path() {
         let Some(repo) = repo() else { return };
         // Canonical, because the temp dir may sit behind a symlink (macOS's
         // `/var` → `/private/var`) while git reports the resolved root.
-        let root = repo.path().canonicalize().expect("canonical repo root");
+        let root = dunce::canonicalize(repo.path()).expect("canonical repo root");
         let file = root.join("a.wcl");
         let (found_root, rel) = repo_rel(file.to_str().expect("utf-8 path")).expect("repo_rel");
         assert_eq!(rel, "a.wcl");
         assert_eq!(
-            found_root.canonicalize().expect("canonical found root"),
+            dunce::canonicalize(found_root).expect("canonical found root"),
             root
         );
+    }
+
+    #[test]
+    fn repo_rel_accepts_the_temp_dir_spelling_of_a_path() {
+        // The temp dir as the OS names it: behind a symlink on macOS, an
+        // 8.3 short name on Windows runners. Git reports the resolved root.
+        let Some(repo) = repo() else { return };
+        let file = repo.path().join("sub").join("b.wcl");
+        std::fs::create_dir(repo.path().join("sub")).expect("mkdir sub");
+        let (_, rel) = repo_rel(file.to_str().expect("utf-8 path")).expect("repo_rel");
+        assert_eq!(rel, "sub/b.wcl");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn repo_rel_accepts_a_path_through_a_symlink() {
+        let Some(repo) = repo() else { return };
+        let outside = tempfile::tempdir().expect("tempdir");
+        let link = outside.path().join("link");
+        std::os::unix::fs::symlink(repo.path(), &link).expect("symlink");
+        let (_, rel) =
+            repo_rel(link.join("a.wcl").to_str().expect("utf-8 path")).expect("repo_rel");
+        assert_eq!(rel, "a.wcl");
     }
 }

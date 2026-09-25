@@ -25,6 +25,7 @@ tempfile = { workspace = true }
 # The runtime `wcl lsp` and `wcl wdoc serve` run on (the server itself, and
 # the features it needs, live in wcl_wdoc's `serve` feature).
 tokio = { workspace = true }
+dunce = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
