@@ -184,3 +184,16 @@ union Content {
   @doc("Presenter-only commentary on a slide; omitted from printed output.")
   SpeakerNotes { body: list<Content> id: identifier? }
 }
+
+// The classes the HTML backend stamps on the IR variants no stdlib block
+// styles (`html/content.rs`). Columns sit side by side, as the variant
+// promises. The rest are hooks a document restyles through, left unstyled
+// on purpose.
+class "wdoc-columns" { css = "display: flex; flex-wrap: wrap; gap: 1.5rem;" }
+class "wdoc-column" { css = "flex: 1 1 0; min-width: 12rem;" }
+class "wdoc-figure" {}
+class "wdoc-terminal-static" {}
+class "wdoc-terminal-title" {}
+class "wdoc-toc" {}
+class "wdoc-toc-number" {}
+class "wdoc-speaker-notes" {}
