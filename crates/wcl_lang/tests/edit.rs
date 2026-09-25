@@ -109,12 +109,24 @@ fn set_field_refuses_a_field_from_an_import() {
     .unwrap();
     // An absolute import resolves without a base directory, so the
     // in-memory source sees the field, and `set_field` declines to edit a
-    // file it was not given.
-    let main = format!("import \"{}\"\n", shared_path.display());
+    // file it was not given. Forward slashes: a Windows path's
+    // backslashes would read as escapes inside a WCL string, and `/`
+    // separates on every platform.
+    let main = format!(
+        "import \"{}\"\n",
+        shared_path.display().to_string().replace('\\', "/")
+    );
     match edit::set_field(&main, "main.wcl", "shared.brand", "\"x\"").unwrap_err() {
         EditError::Imported { path, file } => {
             assert_eq!(path, "shared.brand");
             assert_eq!(file.file_name().unwrap(), "shared.wcl");
+            // The file the caller is told to edit is spelled plainly,
+            // never with Windows' `\\?\` verbatim prefix.
+            assert!(
+                !file.to_string_lossy().starts_with(r"\\?\"),
+                "{}",
+                file.display()
+            );
         }
         other => panic!("expected Imported, got {other:?}"),
     }

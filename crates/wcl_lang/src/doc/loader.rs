@@ -32,17 +32,20 @@ pub fn disk_loader() -> FileLoader {
 /// possible, then by raw key); anything not found in the overlay
 /// falls through to `std::fs::read_to_string`.
 ///
-/// Keys should be canonical absolute paths (`std::fs::canonicalize`)
-/// to match the way imports are resolved internally; the overlay
-/// also accepts raw keys as a convenience for callers that have
-/// not canonicalised.
+/// Keys should be canonical absolute paths to match the way imports
+/// are resolved internally. On Windows either form of a canonical path
+/// matches: `std::fs::canonicalize`'s `\\?\C:\...` or the plain
+/// `C:\...` imports resolve to. The overlay also accepts raw keys as a
+/// convenience for callers that have not canonicalised.
 pub fn overlay_loader(overlay: HashMap<PathBuf, String>) -> FileLoader {
     Arc::new(move |p: &Path| {
         if let Some(s) = overlay.get(p) {
             return Ok(s.clone());
         }
         if let Ok(canon) = std::fs::canonicalize(p)
-            && let Some(s) = overlay.get(&canon)
+            && let Some(s) = overlay
+                .get(&canon)
+                .or_else(|| overlay.get(dunce::simplified(&canon)))
         {
             return Ok(s.clone());
         }

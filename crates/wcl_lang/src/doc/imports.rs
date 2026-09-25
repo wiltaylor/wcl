@@ -253,7 +253,9 @@ fn lexical_normalize(path: &Path) -> PathBuf {
 }
 
 /// Resolve an `import "path"` literal against an optional base
-/// directory. Returns the canonicalised path on success. Returns
+/// directory. Returns the canonicalised path on success — without the
+/// `\\?\` prefix Windows' own canonicalisation adds, since this path is
+/// what diagnostics, `source_path` and an editor's URIs show. Returns
 /// `Err(_)` when there's no base directory and the path is relative,
 /// or when canonicalisation fails (file not found).
 pub(super) fn resolve_import_path(base_dir: Option<&Path>, path: &str) -> Result<PathBuf, String> {
@@ -271,7 +273,7 @@ pub(super) fn resolve_import_path(base_dir: Option<&Path>, path: &str) -> Result
             }
         }
     };
-    std::fs::canonicalize(&joined)
+    dunce::canonicalize(&joined)
         .map_err(|e| format!("failed to resolve '{}': {e}", joined.display()))
 }
 
