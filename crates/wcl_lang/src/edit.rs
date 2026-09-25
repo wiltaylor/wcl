@@ -153,7 +153,7 @@ pub fn find_field_by_span(items: &mut [Item], span: Span) -> Option<&mut Field> 
 /// Why a field edit could not be made. Each variant is a failure a host
 /// may want to report differently; the ones that carry a [`ParseError`]
 /// keep it whole so it can still be rendered against its source.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, miette::Diagnostic)]
 #[non_exhaustive]
 pub enum EditError {
     /// Nothing in the document answers to the path.
@@ -188,10 +188,13 @@ pub enum EditError {
     },
     /// The replacement value is not a single WCL expression.
     #[error("invalid value: {0}")]
+    #[diagnostic(transparent)]
     InvalidValue(#[source] ParseError),
-    /// The source being edited did not parse.
-    #[error("{0}")]
-    InvalidSource(#[source] ParseError),
+    /// The source being edited did not parse. Transparent: it displays,
+    /// sources and renders as the [`ParseError`] it carries.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidSource(ParseError),
     /// No field in the source sits at the span the document reported,
     /// so the source is not the text the document was opened from.
     #[error("no field at span {}..{} in {name}", .span.start, .span.end)]
@@ -204,6 +207,7 @@ pub enum EditError {
     /// The edited tree printed to text that does not parse. That is a
     /// formatter bug, so the text is withheld rather than returned.
     #[error("the edited source does not re-parse: {0}")]
+    #[diagnostic(transparent)]
     Unprintable(#[source] ParseError),
 }
 

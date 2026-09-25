@@ -34,3 +34,9 @@ impl Span {
         self.start == self.end
     }
 }
+
+impl From<Span> for miette::SourceSpan {
+    fn from(span: Span) -> Self {
+        (span.start, span.len()).into()
+    }
+}

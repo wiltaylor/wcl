@@ -93,6 +93,20 @@ fn overflow_errors_with_literal_span() {
 }
 
 #[test]
+fn a_lex_error_is_an_error_and_a_diagnostic_labelled_at_its_span() {
+    fn assert_error<T: std::error::Error + miette::Diagnostic + Send + Sync + 'static>() {}
+    assert_error::<LexError>();
+
+    let err = Lexer::new("200i8").next_token().unwrap_err();
+    assert_eq!(err.to_string(), err.message);
+    let labels: Vec<_> = miette::Diagnostic::labels(&err)
+        .expect("a lex error has a label")
+        .collect();
+    assert_eq!(labels.len(), 1);
+    assert_eq!((labels[0].offset(), labels[0].len()), (0, 5));
+}
+
+#[test]
 fn negative_unsigned_errors() {
     let mut lex = Lexer::new("-1u32");
     let err = lex.next_token().unwrap_err();

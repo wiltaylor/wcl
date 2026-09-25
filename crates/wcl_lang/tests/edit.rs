@@ -190,3 +190,40 @@ fn suggest_path_matches_block_kinds_and_ignores_exact_names() {
     );
     assert_eq!(edit::suggest_path(&doc, "server.port"), None);
 }
+
+/// Render `diagnostic` the way a terminal host would, without colour.
+fn render(diagnostic: &dyn miette::Diagnostic) -> String {
+    let mut out = String::new();
+    miette::GraphicalReportHandler::new_themed(miette::GraphicalTheme::unicode_nocolor())
+        .render_report(&mut out, diagnostic)
+        .expect("render");
+    out
+}
+
+#[test]
+fn an_edit_error_is_a_diagnostic_carrying_its_parse_error() {
+    fn assert_diagnostic<T: miette::Diagnostic + Send + Sync + 'static>() {}
+    assert_diagnostic::<EditError>();
+
+    // The parse-carrying variants are transparent: the code, labels and
+    // source of the inner parse error are the edit error's own.
+    let err = edit::set_field("port = =\n", "site.wcl", "port", "1").unwrap_err();
+    let diag: &dyn miette::Diagnostic = &err;
+    assert_eq!(
+        diag.code().map(|c| c.to_string()).as_deref(),
+        Some("wcl::parse")
+    );
+    assert!(diag.labels().is_some_and(|mut l| l.next().is_some()));
+    let rendered = render(&err);
+    assert!(rendered.contains("site.wcl"), "{rendered}");
+    // Rendered once, not again as its own cause.
+    assert_eq!(
+        rendered.matches("expected value, found").count(),
+        1,
+        "{rendered}"
+    );
+
+    let err = edit::set_field("@schemaless port = 80\n", "site.wcl", "port", "1 +").unwrap_err();
+    let rendered = render(&err);
+    assert!(rendered.starts_with("wcl::parse"), "{rendered}");
+}

@@ -31,13 +31,17 @@ pub use token::{NumberLit, StringEncoding, StringLit, StringPart, Token, TokenKi
 
 use strings::StringPrefix;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, thiserror::Error, miette::Diagnostic)]
+#[error("{message}")]
 /// A lexing failure — an unterminated literal, a bad escape, a numeric
-/// literal that does not fit its declared type.
+/// literal that does not fit its declared type. A
+/// [`Diagnostic`](miette::Diagnostic) whose label is [`span`](Self::span);
+/// it carries no source text, so attach one to render the snippet.
 pub struct LexError {
     /// Human-readable description of the failure.
     pub message: String,
     /// Source span of the offending text.
+    #[label]
     pub span: Span,
 }
 
