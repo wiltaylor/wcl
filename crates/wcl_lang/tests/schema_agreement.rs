@@ -13,17 +13,19 @@
 //! the contract down: for every literal field, the strict path flags a
 //! *membership* violation (`UnknownField` / `NoDocumentSchema`) at that
 //! field if and only if the lazy path reports the same violation from
-//! `Field::value()`.
+//! `Field::value()`. The same holds for the one type check a read runs:
+//! a number that does not fit its declared type (`FieldTypeMismatch`
+//! for `300` in a `u8`, `2.5` in an integer, an out-of-range list
+//! element) fails the read.
 //!
-//! Type-level checks (`FieldTypeMismatch`, variant mismatches, …) are
-//! intentionally strict-only and are excluded from the comparison; one
+//! Every other type-level check (a string in an `i64`, variant
+//! mismatches, …) is strict-only and excluded from the comparison; one
 //! test below documents that asymmetry explicitly.
 //!
-//! A verdict is a (file, offset) pair, not an offset: both paths must
-//! also agree on *which file* a violation belongs to, and that file must
-//! be the one the field was written in. Two files can hold a field at
-//! the same offset, so an offset alone would let a violation reported
-//! against the wrong file pass.
+//! A verdict is a (file, offset, message) triple, not an offset: both
+//! paths must also agree on *which file* a violation belongs to, and
+//! that file must be the one the field was written in — two files can
+//! hold a field at the same offset — and on the violation itself.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -45,13 +47,27 @@ fn open(src: &str) -> Document {
 }
 
 /// The violation kinds the *membership* checks emit on both paths.
-/// Everything else (type mismatches, child counts, kind registration,
-/// …) is strict-only by design and excluded from the comparison.
 fn is_membership_kind(kind: SchemaViolationKind) -> bool {
     matches!(
         kind,
         SchemaViolationKind::UnknownField | SchemaViolationKind::NoDocumentSchema
     )
+}
+
+/// Whether `error` is one both paths report: a membership violation, or
+/// a number that does not fit its declared type. Everything else (other
+/// type mismatches, child counts, kind registration, …) is strict-only
+/// by design and excluded from the comparison.
+fn is_compared(error: &EvalError) -> bool {
+    match error {
+        EvalError::SchemaViolation { kind, .. } if is_membership_kind(*kind) => true,
+        EvalError::SchemaViolation {
+            kind: SchemaViolationKind::FieldTypeMismatch,
+            message,
+            ..
+        } => message.contains("is out of range for") || message.contains("is not a whole number"),
+        _ => false,
+    }
 }
 
 /// Collect every literal field reachable from the document: top-level
@@ -80,6 +96,9 @@ fn collect_block_fields<'a>(block: &Block<'a>, out: &mut Vec<Field<'a>>, depth: 
 /// into, and the span's start.
 type Site = (String, usize);
 
+/// A violation as one path reports it: where it points, and what it says.
+type Verdict = (Site, String);
+
 /// The site of a field: the file it was written in (named as the
 /// document names its sources) and its span start.
 fn field_site(doc: &Document, field: &Field<'_>) -> Site {
@@ -90,33 +109,33 @@ fn field_site(doc: &Document, field: &Field<'_>) -> Site {
     (file, field.span().start)
 }
 
-/// Lazy verdict for one field: its site if `Field::value()` fails with
-/// a membership violation attributed to *this* field. The error's own
-/// source must name the field's file, and its span must start at the
-/// field (so errors merely propagated from evaluating another field's
-/// reference don't count against this one).
-fn lazy_flag(doc: &Document, field: &Field<'_>) -> Option<Site> {
+/// Lazy verdict for one field: its site and message if `Field::value()`
+/// fails with a compared violation attributed to *this* field. The
+/// error's own source must name the field's file, and its span must
+/// start at the field (so errors merely propagated from evaluating
+/// another field's reference don't count against this one).
+fn lazy_flag(doc: &Document, field: &Field<'_>) -> Option<Verdict> {
     match field.value() {
-        Err(e @ EvalError::SchemaViolation { kind, span, .. }) if is_membership_kind(*kind) => {
+        Err(e @ EvalError::SchemaViolation { span, .. }) if is_compared(e) => {
             let site = (e.schema_source()?.name().to_string(), span.offset());
-            (site == field_site(doc, field)).then_some(site)
+            (site == field_site(doc, field)).then(|| (site, e.to_string()))
         }
         _ => None,
     }
 }
 
-/// Strict verdict: the site of every membership violation in
-/// `schema_diagnostics()` that points at a known literal field (top-level
-/// blocks also produce `NoDocumentSchema`; restricting to field sites
-/// keeps the comparison field-vs-field). The site's file is the source
-/// the strict path paired the error with.
-fn strict_flags(doc: &Document, field_sites: &BTreeSet<Site>) -> BTreeSet<Site> {
+/// Strict verdict: the site and message of every compared violation in
+/// `schema_diagnostics()` that points at a known literal field
+/// (top-level blocks also produce `NoDocumentSchema`; restricting to
+/// field sites keeps the comparison field-vs-field). The site's file is
+/// the source the strict path paired the error with.
+fn strict_flags(doc: &Document, field_sites: &BTreeSet<Site>) -> BTreeSet<Verdict> {
     doc.schema_diagnostics()
         .iter()
         .filter_map(|(e, source)| match e {
-            EvalError::SchemaViolation { kind, span, .. } if is_membership_kind(*kind) => {
+            EvalError::SchemaViolation { span, .. } if is_compared(e) => {
                 let site = (source.as_ref()?.name().to_string(), span.offset());
-                field_sites.contains(&site).then_some(site)
+                field_sites.contains(&site).then(|| (site, e.to_string()))
             }
             _ => None,
         })
@@ -139,9 +158,9 @@ fn assert_strict_sources(doc: &Document, label: &str) {
 }
 
 /// Assert that the strict and lazy paths flag exactly the same set of
-/// fields with membership violations, each against the same file.
-/// Returns the agreed set of sites so callers can additionally assert
-/// on expected counts and files.
+/// fields with compared violations, each against the same file and with
+/// the same message. Returns the agreed set of sites so callers can
+/// additionally assert on expected counts and files.
 fn assert_agreement_doc(doc: &Document, label: &str) -> BTreeSet<Site> {
     let fields = collect_fields(doc);
     let field_sites: BTreeSet<Site> = fields.iter().map(|f| field_site(doc, f)).collect();
@@ -149,16 +168,16 @@ fn assert_agreement_doc(doc: &Document, label: &str) -> BTreeSet<Site> {
     // Lazy first: `value()` caches its result, and the strict walk
     // tolerates already-cached errors, so this order also exercises
     // the cache interplay between the two paths.
-    let lazy: BTreeSet<Site> = fields.iter().filter_map(|f| lazy_flag(doc, f)).collect();
+    let lazy: BTreeSet<Verdict> = fields.iter().filter_map(|f| lazy_flag(doc, f)).collect();
     let strict = strict_flags(doc, &field_sites);
     assert_strict_sources(doc, label);
 
-    let name_of = |site: &Site| {
+    let name_of = |(site, message): &Verdict| {
         fields
             .iter()
             .find(|f| field_site(doc, f) == *site)
-            .map(|f| format!("{} ({})", f.name(), site.0))
-            .unwrap_or_else(|| format!("<{} at {}>", site.0, site.1))
+            .map(|f| format!("{} ({}): {message}", f.name(), site.0))
+            .unwrap_or_else(|| format!("<{} at {}>: {message}", site.0, site.1))
     };
     let strict_only: Vec<String> = strict.difference(&lazy).map(name_of).collect();
     let lazy_only: Vec<String> = lazy.difference(&strict).map(name_of).collect();
@@ -168,7 +187,7 @@ fn assert_agreement_doc(doc: &Document, label: &str) -> BTreeSet<Site> {
          flagged by strict only: {strict_only:?}\n  \
          flagged by lazy only:   {lazy_only:?}"
     );
-    strict
+    strict.into_iter().map(|(site, _)| site).collect()
 }
 
 fn assert_agreement(src: &str) -> BTreeSet<Site> {
@@ -522,39 +541,57 @@ fn membership_errors_are_worded_identically_on_both_paths() {
 }
 
 #[test]
-fn numeric_misfits_are_strict_type_errors_and_membership_still_agrees() {
-    // A number that does not fit its declared type is a FieldTypeMismatch
-    // on the strict path. It is a *type* verdict, so the lazy path reads
-    // the value as written (it does not run type checks) — and neither
-    // path reports a membership violation.
+fn numeric_misfits_are_flagged_by_both_paths() {
+    // A number that does not fit its declared type fails the read with
+    // the FieldTypeMismatch the strict path reports, at the same field
+    // and in the same words — whichever path runs first.
     let src = r#"
-        @document type Cfg { port: u16  ratio: u8  @children("svc") svcs: list<Svc> }
+        @document type Cfg { port: u16  ratio: u8  sizes: list<u8>  label: utf8  @children("svc") svcs: list<Svc> }
         @block("svc") type Svc { weight: u8 }
         port = 70000
         ratio = 2.5
+        sizes = [1, 256]
+        label = "fits"
         svc web { weight = 256 }
     "#;
     let flagged = assert_agreement(src);
-    assert!(flagged.is_empty(), "no membership flags: {flagged:?}");
+    assert_eq!(flagged.len(), 4, "every misfit but `label`: {flagged:?}");
 
     let doc = open(src);
-    let mismatches = doc
-        .schema_errors()
-        .iter()
-        .filter(|e| {
-            matches!(
-                e,
-                EvalError::SchemaViolation {
-                    kind: SchemaViolationKind::FieldTypeMismatch,
-                    ..
-                }
-            )
-        })
-        .count();
-    assert_eq!(mismatches, 3, "{:#?}", doc.schema_errors());
+    assert_eq!(doc.schema_diagnostics().len(), 4);
+    let flagged = assert_agreement_doc(&doc, "strict path first");
+    assert_eq!(flagged.len(), 4, "{flagged:?}");
     assert_eq!(
-        doc.get("port").unwrap().value().unwrap(),
-        wcl_lang::Value::I64(70000)
+        doc.get("port").unwrap().value().unwrap_err().to_string(),
+        "field 'port' declared as u16 but value 70000 is out of range for u16"
+    );
+}
+
+#[test]
+fn numeric_misfits_in_an_imported_file_name_that_file_on_both_paths() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(
+        dir.path().join("data.wcl"),
+        "port = 70000\nserver web {\n  port = 65536\n}\n",
+    )
+    .unwrap();
+    let root = dir.path().join("main.wcl");
+    std::fs::write(
+        &root,
+        "@block(\"server\") type Server { port: u16 }\n\
+         @document type Root {\n  port: u16\n  @children(\"server\") servers: list<Server>\n}\n\
+         import \"./data.wcl\"\n",
+    )
+    .unwrap();
+    let doc = Document::from_file(&root).expect("document opens");
+    let flagged = assert_agreement_doc(&doc, "misfits in an imported file");
+    let data = dir.path().join("data.wcl").canonicalize().unwrap();
+    assert_eq!(flagged.len(), 2, "{flagged:?}");
+    assert!(
+        flagged
+            .iter()
+            .all(|(file, _)| Path::new(file).canonicalize().ok().as_ref() == Some(&data)),
+        "both belong to data.wcl: {flagged:?}"
     );
 }
 

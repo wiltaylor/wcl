@@ -446,8 +446,65 @@ impl<'a> Field<'a> {
             }
             other => Ok(other),
         });
+        // A number that did not fit the declared type came through the
+        // coercion above unconverted. Handing it back would pass `300` off
+        // as a `u8`, so the read fails with the violation `wcl check`
+        // reports for the same field.
+        let result = result.and_then(|v| match self.numeric_misfit_error(&v) {
+            Some(error) => Err(error),
+            None => Ok(v),
+        });
         let result = result.map_err(|error| self.sourced(error));
         cell.value.get_or_init(|| result).as_ref()
+    }
+
+    /// The type violation a read reports when `value` holds a number that
+    /// does not fit this field's declared type, or `None`.
+    ///
+    /// Exempt wherever the strict walk skips the value-vs-type check, so
+    /// the two paths flag the same fields: a `@schemaless` field, a field
+    /// of a `@schemaless` block, and a block field whose declaration is
+    /// `@schemaless`.
+    fn numeric_misfit_error(&self, value: &Value) -> Option<EvalError> {
+        if has_schemaless(&self.ast.decorators) {
+            return None;
+        }
+        if let Some(frame) = self.scope.frames().last()
+            && has_schemaless(&frame.ast.decorators)
+        {
+            return None;
+        }
+        let declared = self.declared_field()?;
+        if self.scope.frames().last().is_some() && has_schemaless(&declared.ast.decorators) {
+            return None;
+        }
+        let resolved = self
+            .doc
+            .resolve_alias_in(declared.type_ref(), declared.file_ns);
+        crate::doc::types::numeric_misfit_error(
+            self.name(),
+            declared.type_ref(),
+            &resolved,
+            value,
+            self.ast.span,
+        )
+    }
+
+    /// Whether `error`, returned by [`value`](Self::value), is this field's
+    /// own type violation (a number that does not fit its declared type)
+    /// rather than a failure to evaluate it. The strict walk reports that
+    /// one as the field's schema violation; any other error it leaves to
+    /// the read.
+    pub(in crate::doc) fn is_own_type_violation(&self, error: &EvalError) -> bool {
+        matches!(
+            error,
+            EvalError::SchemaViolation {
+                kind: crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
+                detail: Some(name),
+                span,
+                ..
+            } if name == self.name() && span.offset() == self.ast.span.start
+        )
     }
 
     /// Tag a schema violation raised while reading this field with the
@@ -475,7 +532,9 @@ impl<'a> Field<'a> {
     /// here.
     ///
     /// A value that isn't a unit literal passes through whatever coercion
-    /// the named type implies, exactly as a declared field would. The
+    /// the named type implies, exactly as a declared field would, and a
+    /// number that does not fit the named type is the same
+    /// [`EvalError::SchemaViolation`] a declared field reports. The
     /// result is *not* cached — `value()`'s cache keeps meaning "the
     /// schema-typed value" — so call this once per field and keep the
     /// result.
@@ -484,6 +543,19 @@ impl<'a> Field<'a> {
         self.doc
             .eval_in_scope(&self.ast.expr, &self.scope)
             .and_then(|value| coerce_value_to_type(self.doc, value, &ty, self.ast.span))
+            .and_then(|value| {
+                let resolved = self.doc.resolve_alias(&ty);
+                match crate::doc::types::numeric_misfit_error(
+                    self.name(),
+                    &ty,
+                    &resolved,
+                    &value,
+                    self.ast.span,
+                ) {
+                    Some(error) => Err(error),
+                    None => Ok(value),
+                }
+            })
             .map_err(|error| self.sourced(error))
     }
 
@@ -543,6 +615,13 @@ impl<'a> Field<'a> {
     /// it. Top-level fields and fields inside un-schema'd blocks
     /// return `None`.
     pub(in crate::doc) fn declared_type_ref(&self) -> Option<&'a TypeRef> {
+        self.declared_field().map(|field| field.type_ref())
+    }
+
+    /// The schema field declaring this field — see
+    /// [`declared_type_ref`](Self::declared_type_ref) for which schema
+    /// that is.
+    fn declared_field(&self) -> Option<TypeField<'a>> {
         if let Some(frame) = self.scope.frames().last().cloned() {
             let block = Block {
                 ast: frame.ast,
@@ -552,16 +631,13 @@ impl<'a> Field<'a> {
                 kind_override: frame.kind_override,
                 scope: Scope::root(),
             };
-            let schema = block.schema()?;
-            let schema_field = schema.field(self.name())?;
-            return Some(schema_field.type_ref());
+            return block.schema()?.field(self.name());
         }
         // Top-level field: consult the merged @document schema(s) in
         // this field's source namespace, preferring a root-authored
         // declaration over an imported one.
         let field_ns = self.doc.find_field_source_ns(self.ast);
-        let schema_field = self.doc.doc_schemas_for_ns(field_ns).field(self.name())?;
-        Some(schema_field.type_ref())
+        self.doc.doc_schemas_for_ns(field_ns).field(self.name())
     }
 
     /// For a `&T`-typed field, return the lazy navigator pointing at

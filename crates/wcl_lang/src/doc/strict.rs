@@ -36,7 +36,7 @@ use super::schema_lookup::{DeclLoc, DocSchemas};
 use super::scope::Scope;
 use super::types::variant_dispatch;
 use super::types::{
-    describe_type_mismatch, format_union_variants_hint, symbol_set_membership_error_in,
+    field_type_mismatch, format_union_variants_hint, symbol_set_membership_error_in,
     validate_union, value_matches_type_ref,
 };
 use super::views::{Block, BuiltinDecorator, DeclName, Field, TypeDecl, TypeField, UnionDecl};
@@ -549,8 +549,15 @@ impl Document {
         let Some(declared) = schemas.field(f.name()) else {
             return;
         };
-        let Ok(v) = f.value() else {
-            return;
+        let v = match f.value() {
+            Ok(v) => v,
+            // A number that does not fit fails the read itself; report
+            // the violation the read raised rather than rebuild it.
+            Err(error) if f.is_own_type_violation(error) => {
+                out.push(error.clone());
+                return;
+            }
+            Err(_) => return,
         };
         // An optional field written out as `none` is absent, not
         // ill-typed: there is no value left to check against the
@@ -593,20 +600,13 @@ impl Document {
             v,
             &self.resolve_alias_in(declared.type_ref(), declared.file_ns),
         ) {
-            EvalError::push_schema_violation(
-                out,
-                Kind::FieldTypeMismatch,
-                format!(
-                    "field '{}' declared as {} but {}",
-                    f.name(),
-                    declared.type_ref(),
-                    describe_type_mismatch(
-                        v,
-                        &self.resolve_alias_in(declared.type_ref(), declared.file_ns),
-                    ),
-                ),
+            out.push(field_type_mismatch(
+                f.name(),
+                declared.type_ref(),
+                &self.resolve_alias_in(declared.type_ref(), declared.file_ns),
+                v,
                 f.span(),
-            );
+            ));
         } else if let Some(err) = symbol_set_membership_error_in(
             self,
             &self.resolve_alias_in(declared.type_ref(), declared.file_ns),

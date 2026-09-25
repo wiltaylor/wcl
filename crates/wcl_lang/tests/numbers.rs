@@ -128,12 +128,122 @@ fn a_fitting_number_reads_back_as_its_declared_type() {
     assert_eq!(get("f"), Value::U16(8080));
 }
 
+/// The message a lazy read of `name` fails with, which must be a
+/// `FieldTypeMismatch` naming the field.
+fn read_violation(doc: &Document, name: &str) -> String {
+    match doc.get(name).expect("declared field").value() {
+        Err(EvalError::SchemaViolation {
+            kind: SchemaViolationKind::FieldTypeMismatch,
+            detail,
+            message,
+            ..
+        }) => {
+            assert_eq!(detail.as_deref(), Some(name));
+            message
+        }
+        other => panic!("reading `{name}` gave {other:?}"),
+    }
+}
+
 #[test]
-fn a_misfit_passes_through_unconverted_on_the_lazy_path() {
-    // Reading a field does not run type checks (that is `schema_errors`'
-    // job); a number that does not fit comes back as written.
-    let doc = Document::open("@document type D { a: u8 }\na = 300\n", "test").unwrap();
+fn reading_a_misfit_fails_as_the_schema_check_does() {
+    // Regression: a number that did not fit came back unconverted from a
+    // read (`300` for a `u8`), so only `wcl check` ever saw the problem.
+    let src = r#"
+        @document type D { a: u8  b: u8  c: u8  d: list<u8>  e: Port  f: f32  @children("svc") svcs: list<Svc> }
+        @block("svc") type Svc { weight: u8 }
+        type Port = u16
+        a = 300
+        b = -1
+        c = 2.5
+        d = [1, 256]
+        e = 70000
+        f = 1.0e39
+        svc web { weight = 256 }
+    "#;
+    let doc = Document::open(src, "test").unwrap();
+    let reads: Vec<String> = ["a", "b", "c", "d", "e", "f"]
+        .iter()
+        .map(|name| read_violation(&doc, name))
+        .collect();
+    assert_eq!(
+        reads,
+        vec![
+            "field 'a' declared as u8 but value 300 is out of range for u8",
+            "field 'b' declared as u8 but value -1 is out of range for u8",
+            "field 'c' declared as u8 but value 2.5 is not a whole number, so it cannot be u8",
+            "field 'd' declared as list<u8> but element [1] holds 256, which is out of range for u8",
+            "field 'e' declared as Port but value 70000 is out of range for u16",
+            "field 'f' declared as f32 but value 1.0e39 is out of range for f32",
+        ]
+    );
+    let web = doc.blocks().next().expect("svc web");
+    let weight = web.field("weight").unwrap();
+    let error = weight.value().unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "field 'weight' declared as u8 but value 256 is out of range for u8"
+    );
+    // The read tags the violation with the file the field was written in,
+    // as every other schema violation a read raises.
+    assert_eq!(
+        error.schema_source().map(|s| s.name().to_string()),
+        Some("test".into())
+    );
+    // The strict walk reports each once, with the same wording.
+    assert_eq!(
+        schema_messages(src),
+        reads
+            .iter()
+            .map(String::as_str)
+            .chain(["field 'weight' declared as u8 but value 256 is out of range for u8"])
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_misfit_read_is_exempt_where_the_schema_check_is() {
+    // `@schemaless` on the field, on its block, or on the block field's
+    // declaration opts out of the value-vs-type check on both paths, so
+    // the number reads back as written.
+    let src = r#"
+        @document type D { @children("svc") svcs: list<Svc>  a: u8 }
+        @block("svc") type Svc { @schemaless weight: u8  size: u8 }
+        @schemaless a = 300
+        svc web { weight = 256  @schemaless size = 256 }
+        @schemaless svc db { size = 256 }
+    "#;
+    let doc = Document::open(src, "test").unwrap();
     assert_eq!(doc.get("a").unwrap().value().unwrap(), Value::I64(300));
+    for block in doc.blocks() {
+        for field in block.fields() {
+            assert_eq!(field.value().unwrap(), &Value::I64(256), "{}", field.name());
+        }
+    }
+    assert!(
+        schema_messages(src).is_empty(),
+        "{:#?}",
+        schema_messages(src)
+    );
+}
+
+#[test]
+fn value_typed_rejects_a_misfit_of_the_named_type() {
+    let doc = Document::open(
+        "type Port = u16\n@schemaless block { port = 70000 }\n",
+        "test",
+    )
+    .unwrap();
+    let block = doc.blocks().next().expect("block");
+    let error = block
+        .field("port")
+        .unwrap()
+        .value_typed("Port")
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "field 'port' declared as Port but value 70000 is out of range for u16"
+    );
 }
 
 #[test]

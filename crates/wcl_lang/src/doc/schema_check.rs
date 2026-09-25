@@ -1189,6 +1189,12 @@ fn field_value_errors(block: &Block<'_>, declared: &TypeField<'_>, errs: &mut Ve
     }
     let value = match literal_field.value() {
         Ok(value) => value,
+        // A number that does not fit fails the read itself; report the
+        // violation the read raised rather than rebuild it.
+        Err(error) if literal_field.is_own_type_violation(error) => {
+            errs.push(error.clone());
+            return;
+        }
         Err(error) => {
             // A literal list whose element type is a union is static
             // authored data: failure to infer one of its record variants
@@ -1296,14 +1302,11 @@ fn field_value_errors(block: &Block<'_>, declared: &TypeField<'_>, errs: &mut Ve
 
     // Generic value-vs-type check for non-union typed fields.
     if !crate::doc::types::value_matches_type_ref(value, &resolved_ty) {
-        errs.push(EvalError::schema_violation(
-            Kind::FieldTypeMismatch,
-            format!(
-                "field '{}' declared as {} but {}",
-                literal_field.name(),
-                declared.type_ref(),
-                crate::doc::types::describe_type_mismatch(value, &resolved_ty),
-            ),
+        errs.push(crate::doc::types::field_type_mismatch(
+            literal_field.name(),
+            declared.type_ref(),
+            &resolved_ty,
+            value,
             literal_field.span(),
         ));
     } else if let Some(err) = crate::doc::types::symbol_set_membership_error_in(

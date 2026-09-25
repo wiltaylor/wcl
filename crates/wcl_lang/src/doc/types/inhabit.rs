@@ -129,35 +129,81 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
 /// cannot be u8` — searching into list elements so `[1, 256]` against
 /// `list<u8>` names the element at fault.
 pub(crate) fn describe_type_mismatch(value: &Value, ty: &TypeRef) -> String {
-    /// The index path to the first number that does not fit (empty for
-    /// the value itself), the number, and why it does not fit.
-    fn misfit(value: &Value, ty: &TypeRef) -> Option<(String, String, String)> {
-        match (value, ty) {
-            (v, TypeRef::Builtin(b)) if v.is_numeric() => {
-                let why = match fit_to_builtin(v, *b)? {
-                    Ok(_) => return None,
-                    Err(NumericMisfit::OutOfRange) => {
-                        format!("is out of range for {}", b.name())
-                    }
-                    Err(NumericMisfit::NotWhole) => {
-                        format!("is not a whole number, so it cannot be {}", b.name())
-                    }
-                };
-                Some((String::new(), v.to_string(), why))
-            }
-            (Value::List(items), TypeRef::List(inner)) => {
-                items.iter().enumerate().find_map(|(i, el)| {
-                    misfit(el, inner).map(|(path, v, why)| (format!("[{i}]{path}"), v, why))
-                })
-            }
-            _ => None,
-        }
-    }
-    match misfit(value, ty) {
+    match numeric_misfit(value, ty) {
         Some((path, v, why)) if path.is_empty() => format!("value {v} {why}"),
         Some((path, v, why)) => format!("element {path} holds {v}, which {why}"),
         None => format!("value is {}", value.type_name()),
     }
+}
+
+/// The first number in `value` that does not fit `ty` (already
+/// alias-resolved): the index path to it (empty for the value itself),
+/// the number, and why it does not fit. `None` when every number fits,
+/// or when no number in `value` meets a numeric type.
+fn numeric_misfit(value: &Value, ty: &TypeRef) -> Option<(String, String, String)> {
+    match (value, ty) {
+        (v, TypeRef::Builtin(b)) if v.is_numeric() => {
+            let why = match fit_to_builtin(v, *b)? {
+                Ok(_) => return None,
+                Err(NumericMisfit::OutOfRange) => {
+                    format!("is out of range for {}", b.name())
+                }
+                Err(NumericMisfit::NotWhole) => {
+                    format!("is not a whole number, so it cannot be {}", b.name())
+                }
+            };
+            Some((String::new(), v.to_string(), why))
+        }
+        (Value::List(items), TypeRef::List(inner)) => {
+            items.iter().enumerate().find_map(|(i, el)| {
+                numeric_misfit(el, inner).map(|(path, v, why)| (format!("[{i}]{path}"), v, why))
+            })
+        }
+        _ => None,
+    }
+}
+
+/// The violation a field raises when its value does not inhabit its
+/// declared type: `field 'port' declared as u16 but value 70000 is out
+/// of range for u16`. `declared` is the type as written, which the
+/// message names; `resolved` is its alias-resolved form, which the value
+/// is weighed against. The strict walk and a lazy read both build the
+/// error here, so they word it alike. It names the field (`detail`), which
+/// is how the strict walk recognises the error a read already cached.
+pub(crate) fn field_type_mismatch(
+    field_name: &str,
+    declared: &TypeRef,
+    resolved: &TypeRef,
+    value: &Value,
+    span: ast::Span,
+) -> EvalError {
+    EvalError::schema_violation_named(
+        crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
+        format!(
+            "field '{field_name}' declared as {declared} but {}",
+            describe_type_mismatch(value, resolved)
+        ),
+        field_name,
+        span,
+    )
+}
+
+/// [`field_type_mismatch`] when `value` holds a number that does not fit
+/// its declared numeric type — itself, or an element of a list — and
+/// otherwise `None`. The one type check a field read runs: a number that
+/// fits is converted to the declared type on read, so one that does not
+/// cannot be handed back as though it had been.
+pub(crate) fn numeric_misfit_error(
+    field_name: &str,
+    declared: &TypeRef,
+    resolved: &TypeRef,
+    value: &Value,
+    span: ast::Span,
+) -> Option<EvalError> {
+    numeric_misfit(value, resolved)?;
+    Some(field_type_mismatch(
+        field_name, declared, resolved, value, span,
+    ))
 }
 
 /// When `ty` (already alias-resolved) names a `symbol_set` and `value`
@@ -243,7 +289,9 @@ fn non_union_alias_target(doc: &Document, ty: &crate::ast::TypeRef) -> Option<cr
 /// A number converts when it fits (see `numeric::fit_to_builtin`), so a
 /// field declared `u8` and written `200` reads back as `Value::U8(200)`
 /// and an `f64` field written `520` as `Value::F64(520.0)`. A number that
-/// does not fit passes through unchanged for the schema check to report.
+/// does not fit passes through unchanged for the caller to report — a
+/// field read through [`numeric_misfit_error`], the schema check through
+/// [`field_type_mismatch`].
 ///
 /// A bare `Value::Record` becomes a `Value::Variant` when the declared
 /// type names a union, recursing through `list<…>` element types and
