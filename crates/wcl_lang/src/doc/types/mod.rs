@@ -145,7 +145,7 @@ pub enum FieldShape<'a> {
     /// A function-valued field. The signature is not part of the shape —
     /// ask [`TypeField::resolved_type`](super::TypeField::resolved_type) for it.
     Function,
-    /// An alias chain too long or too tangled to peel ([`ALIAS_DEPTH`]),
+    /// An alias chain too long or too tangled to peel (`ALIAS_DEPTH`),
     /// carrying the link the walk stopped on. The declaration is an
     /// alias, so it is not a [`Block`](FieldShape::Block); what it stands
     /// for is unknown, so it is nothing else either. Saying so is the

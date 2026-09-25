@@ -56,7 +56,7 @@ pub fn overlay_loader(overlay: HashMap<PathBuf, String>) -> FileLoader {
 /// Register files under registry-relative keys, then turn the registry
 /// into a [`FileLoader`] with [`Registry::loader`]. The resulting loader
 /// serves `<wcl-system>`-rooted virtual paths (the form
-/// [`resolve_import_path_kind`](super::imports) produces for system
+/// `resolve_import_path_kind` produces for system
 /// imports) out of the registry and delegates every other path to a
 /// fallback loader (usually [`disk_loader`]).
 ///

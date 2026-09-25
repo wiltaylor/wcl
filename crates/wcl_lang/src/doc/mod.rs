@@ -292,7 +292,7 @@ impl Document {
         None
     }
 
-    /// Invoke a [`FnValue`] with the supplied arguments. Uses a fresh
+    /// Invoke a [`FnValue`](crate::FnValue) with the supplied arguments. Uses a fresh
     /// evaluation context rooted at the document — bodies see
     /// document-level symbols but no caller locals.
     ///
@@ -313,7 +313,7 @@ impl Document {
     /// Look up a top-level binding named `name`, expect a function
     /// value there, and invoke it with `args`. Convenience over
     /// [`Self::call_value`] when the host doesn't already hold the
-    /// [`FnValue`].
+    /// [`FnValue`](crate::FnValue).
     ///
     /// Returns a `UserError`-shaped diagnostic when the name doesn't
     /// resolve or resolves to a non-function value; otherwise

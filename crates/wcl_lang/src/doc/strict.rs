@@ -48,7 +48,7 @@ impl Document {
     /// them to `Warning` severity).
     ///
     /// Currently detects **gather-field shadowing** between `@document`
-    /// schemas ([`SchemaViolationKind::DocumentFieldShadow`]): two
+    /// schemas ([`SchemaViolationKind::DocumentFieldShadow`](crate::SchemaViolationKind::DocumentFieldShadow)): two
     /// schemas that co-govern a namespace declaring the same field name
     /// where at least one side is a `@child`/`@children` gather slot.
     /// The merge (`doc_schemas_for_ns`) resolves such a name first-wins,

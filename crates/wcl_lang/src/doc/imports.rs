@@ -209,7 +209,7 @@ pub(super) fn resolve_import_path_kind(
 /// registry key is `importer` — `None` for a disk file, whose system imports
 /// resolve from the registry root.
 ///
-/// The same rule [`resolve_import_path_kind`] applies, in the vocabulary a
+/// The same rule `resolve_import_path_kind` applies, in the vocabulary a
 /// [`Registry`](super::Registry) speaks: keys, not `<wcl-system>` paths. For a
 /// caller that reads a registered file directly rather than through a loader
 /// (a library walking its own embedded parts) — so that it cannot disagree
