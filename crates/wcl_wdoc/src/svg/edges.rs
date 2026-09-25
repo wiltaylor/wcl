@@ -308,20 +308,35 @@ pub(crate) fn build_shared_anchors(
         arrivals.sort_by(|a, b| a.0.cmp(&b.0));
         let k = arrivals.len();
         let (bx, by, bw, bh) = metrics.bbox;
+        // A non-finite box has no side to spread along; its edges keep
+        // their own anchors.
+        if ![bx, by, bw, bh, base.1, base.2].iter().all(|v| v.is_finite()) {
+            continue;
+        }
         for (i, (src_id, _)) in arrivals.into_iter().enumerate() {
             let off = (i as f64 - (k as f64 - 1.0) / 2.0) * ARRIVAL_SPREAD;
             let (_, ax, ay) = base;
             let slot = match base.0 {
                 // Vertical sides spread along y, horizontal along x.
-                Side::East | Side::West => (base.0, ax, (ay + off).clamp(by + 8.0, by + bh - 8.0)),
-                Side::North | Side::South => {
-                    (base.0, (ax + off).clamp(bx + 8.0, bx + bw - 8.0), ay)
-                }
+                Side::East | Side::West => (base.0, ax, spread_within(ay + off, by, bh)),
+                Side::North | Side::South => (base.0, spread_within(ax + off, bx, bw), ay),
             };
             dests.insert((id.clone(), side, src_id), slot);
         }
     }
     (sources, dests)
+}
+
+/// Clamp an arrival slot to a side spanning `start..start + len`, kept
+/// 8 units in from each corner. A side shorter than those two margins
+/// (a small junction circle) has no room to spread, so every slot
+/// collapses onto its midpoint.
+fn spread_within(v: f64, start: f64, len: f64) -> f64 {
+    const INSET: f64 = 8.0;
+    if len < 2.0 * INSET {
+        return start + len / 2.0;
+    }
+    v.clamp(start + INSET, start + len - INSET)
 }
 
 /// Average of a point set.
