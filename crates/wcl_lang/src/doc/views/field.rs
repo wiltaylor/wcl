@@ -469,7 +469,6 @@ impl<'a> Field<'a> {
     /// applicable schema (parent block, or the document if top-level).
     /// `None` means the membership check passes.
     fn schema_membership_error(&self) -> Option<EvalError> {
-        use crate::diagnostics::SchemaViolationKind as Kind;
         match self.scope.frames().last().cloned() {
             Some(frame) => {
                 // Whole-block opt-out shadows individual fields too.
@@ -490,13 +489,9 @@ impl<'a> Field<'a> {
                     // per-instance annotation.
                     Some(schema) if schema.is_schemaless() => None,
                     Some(schema) if schema.field(self.name()).is_some() => None,
-                    Some(schema) => Some(EvalError::schema_violation(
-                        Kind::UnknownField,
-                        format!(
-                            "field '{}' is not declared by schema '{}'",
-                            self.name(),
-                            schema.name()
-                        ),
+                    Some(schema) => Some(crate::doc::schema_check::unknown_field_error(
+                        self.name(),
+                        schema.name(),
                         self.ast.span,
                     )),
                     // Inside an un-schema'd block — the enclosing
@@ -512,25 +507,11 @@ impl<'a> Field<'a> {
                 // library schemas pulled in by imports).
                 let field_ns = self.doc.find_field_source_ns(self.ast);
                 let schemas = self.doc.doc_schemas_for_ns(field_ns);
-                if schemas.is_empty() {
-                    Some(EvalError::schema_violation(
-                        Kind::NoDocumentSchema,
-                        format!("top-level field '{}' has no @document schema", self.name()),
-                        self.ast.span,
-                    ))
-                } else if schemas.declares_field(self.name()) {
-                    None
-                } else {
-                    Some(EvalError::schema_violation(
-                        Kind::UnknownField,
-                        format!(
-                            "field '{}' is not declared by @document schema '{}'",
-                            self.name(),
-                            schemas.names()
-                        ),
-                        self.ast.span,
-                    ))
-                }
+                crate::doc::schema_check::root_field_membership_error(
+                    self.name(),
+                    &schemas,
+                    self.ast.span,
+                )
             }
         }
     }

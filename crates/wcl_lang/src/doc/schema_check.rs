@@ -41,11 +41,11 @@ fn decorator_slot_value_error(
         return Some(EvalError::schema_violation_named(
             Kind::FieldTypeMismatch,
             format!(
-                "argument for decorator '@{}' slot '{}' is declared as {} but the value is {}",
+                "argument for decorator '@{}' slot '{}' is declared as {} but the {}",
                 decorator.full_name(),
                 slot.name(),
                 slot.type_ref(),
-                value.type_name(),
+                crate::doc::types::describe_type_mismatch(value, &declared_type),
             ),
             slot.name(),
             span,
@@ -623,6 +623,56 @@ fn dynamic_connection_admits(
         })
 }
 
+/// The violation for a field `schema` does not declare. Built here for
+/// both validation paths — the strict walk in `schema_errors()` and the
+/// lazy check `Field::value()` runs before evaluating — so the two word
+/// it identically.
+pub(super) fn unknown_field_error(
+    field_name: &str,
+    schema_name: &str,
+    span: ast::Span,
+) -> EvalError {
+    EvalError::schema_violation_named(
+        crate::diagnostics::SchemaViolationKind::UnknownField,
+        format!("field '{field_name}' is not declared by schema '{schema_name}'"),
+        field_name,
+        span,
+    )
+}
+
+/// The membership violation for a top-level field against the merged
+/// `@document` schema(s) of its namespace, or `None` when one of them
+/// declares it. No schema at all is `NoDocumentSchema`; schemas that
+/// don't declare the field is `UnknownField`. Shared by the strict and
+/// lazy paths, like [`unknown_field_error`].
+pub(super) fn root_field_membership_error(
+    field_name: &str,
+    schemas: &super::schema_lookup::DocSchemas<'_>,
+    span: ast::Span,
+) -> Option<EvalError> {
+    use crate::diagnostics::SchemaViolationKind as Kind;
+    if schemas.is_empty() {
+        return Some(EvalError::schema_violation_named(
+            Kind::NoDocumentSchema,
+            format!("top-level field '{field_name}' has no @document schema"),
+            field_name,
+            span,
+        ));
+    }
+    if schemas.declares_field(field_name) {
+        return None;
+    }
+    Some(EvalError::schema_violation_named(
+        Kind::UnknownField,
+        format!(
+            "top-level field '{field_name}' is not declared by @document schema '{}'",
+            schemas.names()
+        ),
+        field_name,
+        span,
+    ))
+}
+
 /// The two checks that read a block's own fields against its schema:
 /// every written field is declared (`UnknownField`), and every field the
 /// schema lists in `required_fields` is written (`MissingRequired`).
@@ -646,16 +696,7 @@ fn validate_own_fields(block: &Block<'_>, schema: &crate::doc::TypeDecl<'_>) -> 
             continue;
         }
         if !declared_field_names.contains(f.name()) {
-            errs.push(EvalError::schema_violation_named(
-                Kind::UnknownField,
-                format!(
-                    "field '{}' is not declared by schema '{}'",
-                    f.name(),
-                    schema.name()
-                ),
-                f.name(),
-                f.span(),
-            ));
+            errs.push(unknown_field_error(f.name(), schema.name(), f.span()));
         }
     }
     for required in schema.required_fields() {
@@ -932,10 +973,10 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             errs.push(EvalError::schema_violation(
                 Kind::FieldTypeMismatch,
                 format!(
-                    "field '{}' declared as {} but value is {}",
+                    "field '{}' declared as {} but {}",
                     literal_field.name(),
                     declared.type_ref(),
-                    value.type_name(),
+                    crate::doc::types::describe_type_mismatch(value, &resolved_ty),
                 ),
                 literal_field.span(),
             ));

@@ -51,7 +51,7 @@ fn quoted_refs_join_like_bare_ones() {
     let doc = Document::open(SRC, "test").expect("parse");
     assert_eq!(
         doc.get("matches").expect("path").value().expect("eval"),
-        Value::I64(2)
+        Value::U64(2)
     );
 }
 
@@ -69,7 +69,7 @@ fn string_args_coerce_on_identifier_params() {
     let doc = Document::open(SRC, "test").expect("parse");
     assert_eq!(
         doc.get("by_param").expect("path").value().expect("eval"),
-        Value::I64(2)
+        Value::U64(2)
     );
 }
 
