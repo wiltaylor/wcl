@@ -1,14 +1,14 @@
-//! Reading a document tree **at a git revision**.
+//! Reading a document tree **at a git revision**, for `wcl diff`'s
+//! `<rev>:<path>` side.
 //!
-//! Anything that compares two versions of a document — `wcl diff`'s
-//! `<rev>:<path>` side, an audit of a model at two revisions — needs the
-//! same thing: the whole tree at that revision on disk, so imports, the
-//! wdoc registry and relative paths resolve
-//! exactly like a real checkout with no special loader. [`materialize_rev`] extracts it into a temp dir
-//! (`git archive | tar`); the caller then opens the file from there normally.
+//! Comparing against a revision needs the whole tree at that revision on
+//! disk, so imports, the wdoc registry and relative paths resolve exactly like
+//! a real checkout with no special loader. [`materialize_rev`] extracts it
+//! into a temp dir (`git archive | tar`); the caller then opens the file from
+//! there normally.
 //!
 //! We shell out to the `git` binary rather than add a git crate (the project
-//! keeps its dependency list minimal). Errors are plain strings: a caller
+//! keeps its dependency list minimal). Errors are plain strings: the caller
 //! renders them beside its own diagnostics, and there is nothing here worth
 //! matching on.
 
@@ -69,13 +69,17 @@ pub(crate) fn repo_rel(path: &str) -> Result<(PathBuf, String), String> {
 /// `git archive <rev> | tar -x`. The returned `TempDir` cleans itself up on
 /// drop, so the caller must hold it for as long as anything read from it is
 /// still in use.
+///
+/// `rev` comes straight from the command line, so it follows
+/// `--end-of-options`: a revision spelled like an option (`--output=x`) is
+/// looked up as a revision and fails, rather than being obeyed as a flag.
 pub(crate) fn materialize_rev(rev: &str, root: &Path) -> Result<TempDir, String> {
     let tmp = TempDir::new().map_err(|e| format!("failed to create temp dir: {e}"))?;
 
     let mut archive = Command::new("git")
         .arg("-C")
         .arg(root)
-        .args(["archive", "--format=tar", rev])
+        .args(["archive", "--format=tar", "--end-of-options", rev])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -110,4 +114,96 @@ pub(crate) fn materialize_rev(rev: &str, root: &Path) -> Result<TempDir, String>
         ));
     }
     Ok(tmp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A throwaway repository with one file committed twice: `a.wcl` holds
+    /// `x = 1` at `HEAD~1` and `x = 2` at `HEAD`. `None` when `git` is not
+    /// installed, so the tests skip rather than fail on such a machine.
+    fn repo() -> Option<TempDir> {
+        if Command::new("git").arg("--version").output().is_err() {
+            eprintln!("git is not installed; skipping");
+            return None;
+        }
+        let dir = TempDir::new().expect("mkdir repo");
+        // Identity and signing are pinned per command, so neither a missing
+        // global identity nor a global `commit.gpgsign` changes the outcome.
+        let run = |args: &[&str]| {
+            let mut full = vec![
+                "-c",
+                "user.name=wcl test",
+                "-c",
+                "user.email=test@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+            ];
+            full.extend_from_slice(args);
+            git(dir.path(), &full).expect("git setup command");
+        };
+        run(&["init", "-q"]);
+        std::fs::write(dir.path().join("a.wcl"), "x = 1\n").expect("write a.wcl");
+        run(&["add", "a.wcl"]);
+        run(&["commit", "-q", "-m", "one"]);
+        std::fs::write(dir.path().join("a.wcl"), "x = 2\n").expect("write a.wcl");
+        run(&["commit", "-q", "-am", "two"]);
+        Some(dir)
+    }
+
+    #[test]
+    fn materialises_the_file_as_it_was_at_the_revision() {
+        let Some(repo) = repo() else { return };
+        let old = materialize_rev("HEAD~1", repo.path()).expect("materialise HEAD~1");
+        assert_eq!(
+            std::fs::read_to_string(old.path().join("a.wcl")).expect("read old a.wcl"),
+            "x = 1\n"
+        );
+        let new = materialize_rev("HEAD", repo.path()).expect("materialise HEAD");
+        assert_eq!(
+            std::fs::read_to_string(new.path().join("a.wcl")).expect("read new a.wcl"),
+            "x = 2\n"
+        );
+    }
+
+    #[test]
+    fn a_bad_revision_is_an_error_naming_it() {
+        let Some(repo) = repo() else { return };
+        let err = materialize_rev("no-such-branch", repo.path()).expect_err("bad revision");
+        assert!(err.contains("no-such-branch"), "{err}");
+    }
+
+    #[test]
+    fn an_option_shaped_revision_is_not_read_as_an_option() {
+        let Some(repo) = repo() else { return };
+        // Without `--end-of-options`, `git archive` takes this as its own
+        // `--output` flag and creates `pwned.tar` in the repo.
+        let err = materialize_rev("--output=pwned.tar", repo.path())
+            .expect_err("an option-shaped revision must not resolve");
+        assert!(err.contains("--output=pwned.tar"), "{err}");
+        assert!(
+            !repo.path().join("pwned.tar").exists(),
+            "git obeyed the revision as a flag"
+        );
+    }
+
+    // Unix only: on Windows the temp dir can be an 8.3 short path
+    // (`RUNNER~1`) that git reports in long form, so the prefix comparison
+    // would be testing the runner's profile path, not this function.
+    #[cfg(unix)]
+    #[test]
+    fn repo_rel_strips_the_root_from_an_absolute_path() {
+        let Some(repo) = repo() else { return };
+        // Canonical, because the temp dir may sit behind a symlink (macOS's
+        // `/var` → `/private/var`) while git reports the resolved root.
+        let root = repo.path().canonicalize().expect("canonical repo root");
+        let file = root.join("a.wcl");
+        let (found_root, rel) = repo_rel(file.to_str().expect("utf-8 path")).expect("repo_rel");
+        assert_eq!(rel, "a.wcl");
+        assert_eq!(
+            found_root.canonicalize().expect("canonical found root"),
+            root
+        );
+    }
 }
