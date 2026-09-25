@@ -24,9 +24,11 @@ from `crates/wcl_lang/tests/...` example fixtures.
   top-level field, `Value → JSON → serde_json::Value → JSON` must be
   byte-stable. Guards the hand-rolled `Value` serializer against key
   ordering, float formatting, and escape drift.
-- **`set_edit_path`** — parse, replace every field's RHS with `0i64`,
-  re-emit, and require the result to reparse. Guards the edit-path
-  mutation API against AST shapes the printer cannot survive.
+- **`set_edit_path`** — for up to eight fields at any depth, replace
+  the field's RHS with `0i64` through `edit::replace_field` (the call
+  behind `wcl set`) and require it to succeed, which includes the
+  result reparsing. Guards the edit API against AST shapes the printer
+  cannot survive.
 
 ## Run
 

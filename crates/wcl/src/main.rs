@@ -27,6 +27,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use wcl_lang::edit::{self, EditError};
 use wcl_lang::{
     Document, Environment, ParseError, format as wcl_format, parse_expr, parse_for_edit,
 };
@@ -524,10 +525,7 @@ fn main() -> ExitCode {
                         }
                     },
                     None => {
-                        eprintln!("no such path: {path}");
-                        if let Some(hint) = suggest_path(&doc, &path) {
-                            eprintln!("did you mean: {hint}?");
-                        }
+                        report_no_such_path(&path, edit::suggest_path(&doc, &path));
                         EXIT_EVAL
                     }
                 };
@@ -1090,52 +1088,20 @@ fn verify_reparses(src: &str) -> Result<(), String> {
     }
 }
 
-/// Drive the round-trip API to update one field. Reads `file` as a
-/// Document to find which file actually declares `path`, parses
-/// *that* file for edit, replaces the field's expression with
-/// `value` (parsed as a WCL expression), and writes the file back
-/// atomically. Lifecycle:
-///
-///   doc = Document::from_file(file)
-///   field = doc.get(path).as_field()           # leaf-only
-///   home  = field.source_path() ?? file        # follows imports
-///   ast   = parse_for_edit(home)
-///   slot  = find_field_by_span(ast, field.span)
-///   slot.expr = parse_expr(value)
-///   write_atomic(home, format::to_source(ast))
+/// Update one field through [`wcl_lang::edit`]. Opens `file` as a
+/// Document to find which file actually declares `path` (following
+/// imports), parses `value` as a WCL expression, rewrites that file's
+/// source, and writes it back atomically. Each [`EditError`] maps to the
+/// exit code of the stage that failed.
 fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
     let doc = match open_document(file) {
         Ok(d) => d,
         Err(e) => return Ok(report_parse_error(e)),
     };
-    let dr = match doc.get(path) {
-        Some(dr) => dr,
-        None => {
-            eprintln!("no such path: {path}");
-            if let Some(hint) = suggest_path(&doc, path) {
-                eprintln!("did you mean: {hint}?");
-            }
-            return Ok(EXIT_EVAL);
-        }
+    let target = match edit::locate_field(&doc, path) {
+        Ok(target) => target,
+        Err(e) => return Ok(report_edit_error(e)),
     };
-    let field = match dr.as_field() {
-        Some(f) => f,
-        None => {
-            eprintln!(
-                "`set` only updates leaf field values; `{path}` resolved to a {kind}",
-                kind = dr.kind()
-            );
-            return Ok(EXIT_EVAL);
-        }
-    };
-    let target_span = field.span();
-    // Resolve the home file. `source_path()` returns None when the
-    // field lives in the document's main source — i.e. the file the
-    // user named.
-    let home_path: PathBuf = field
-        .source_path()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| file.to_path_buf());
     let new_expr = match parse_expr(value, "<set value>") {
         Ok(e) => e,
         Err(err) => {
@@ -1143,45 +1109,72 @@ fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
             return Ok(EXIT_PARSE);
         }
     };
-    // Drop the Document borrow before we mutate the file: re-parsing
-    // the home file gives us an independent mutable AST, the new
-    // expression is already detached from any borrow.
+    // Drop the Document before touching the file: the target owns its
+    // data, and the edit re-parses the home file independently.
     drop(doc);
 
-    let src = std::fs::read_to_string(&home_path)
+    let home_path = target.file(file);
+    let src = std::fs::read_to_string(home_path)
         .map_err(|e| format!("failed to read {}: {e}", home_path.display()))?;
-    let mut ast = match parse_for_edit(&src, home_path.display().to_string()) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("{:?}", miette::Report::new(e));
-            return Ok(EXIT_PARSE);
-        }
-    };
-    let slot =
-        wcl_lang::edit::find_field_by_span(&mut ast.items, target_span).ok_or_else(|| {
-            format!(
-                "internal: could not relocate field at span {}..{} in {}",
-                target_span.start,
-                target_span.end,
-                home_path.display()
-            )
-        })?;
-    slot.expr = new_expr;
-    let formatted = wcl_format::to_source(&ast);
-    if let Err(e) = verify_reparses(&formatted) {
-        eprintln!(
-            "internal error: `wcl set` produced output that fails to re-parse — \
-             refusing to write. Please report this.\n{e}"
-        );
-        return Ok(EXIT_PARSE);
-    }
-    write_atomic(&home_path, &formatted)
+    let formatted =
+        match edit::replace_field(&src, home_path.display().to_string(), target.span, new_expr) {
+            Ok(formatted) => formatted,
+            Err(EditError::FieldNotFound { span, name }) => {
+                return Err(format!(
+                    "internal: could not relocate field at span {}..{} in {name}",
+                    span.start, span.end
+                ));
+            }
+            Err(e) => return Ok(report_edit_error(e)),
+        };
+    write_atomic(home_path, &formatted)
         .map_err(|e| format!("failed to write {}: {e}", home_path.display()))?;
     // Confirmation goes to stderr so stdout stays clean for piping.
     // Naming the home file matters: `set` follows imports, so the
     // edited file may not be the one named on the command line.
     eprintln!("updated {path} in {}", home_path.display());
     Ok(EXIT_OK)
+}
+
+/// Report a failed `wcl set` edit on stderr and return its exit code: a
+/// path that names no field is [`EXIT_EVAL`], text that does not parse is
+/// [`EXIT_PARSE`].
+fn report_edit_error(err: EditError) -> u8 {
+    match err {
+        EditError::NoSuchPath { path, suggestion } => {
+            report_no_such_path(&path, suggestion);
+            EXIT_EVAL
+        }
+        EditError::NotAField { path, kind } => {
+            eprintln!("`set` only updates leaf field values; `{path}` resolved to a {kind}");
+            EXIT_EVAL
+        }
+        EditError::InvalidValue(e) | EditError::InvalidSource(e) => {
+            eprintln!("{:?}", miette::Report::new(e));
+            EXIT_PARSE
+        }
+        EditError::Unprintable(e) => {
+            eprintln!(
+                "internal error: `wcl set` produced output that fails to re-parse — \
+                 refusing to write. Please report this.\n{:?}",
+                miette::Report::new(e)
+            );
+            EXIT_PARSE
+        }
+        EditError::Imported { .. } | EditError::FieldNotFound { .. } => {
+            eprintln!("{err}");
+            EXIT_IO
+        }
+    }
+}
+
+/// Report a dotted path that names nothing, with the typo suggestion
+/// when there is one.
+fn report_no_such_path(path: &str, suggestion: Option<String>) {
+    eprintln!("no such path: {path}");
+    if let Some(hint) = suggestion {
+        eprintln!("did you mean: {hint}?");
+    }
 }
 
 /// Write `contents` to `target` via a same-directory temp file +
@@ -1200,45 +1193,4 @@ fn write_atomic(target: &Path, contents: &str) -> std::io::Result<()> {
     tmp.persist(&target)
         .map_err(|e| std::io::Error::other(format!("rename to target failed: {e}")))?;
     Ok(())
-}
-
-/// Return the closest top-level name (Levenshtein ≤ 2) to `needle`.
-/// Matches against the first segment of dotted paths only — sufficient
-/// to surface typos in the most common case (`port` vs `ports`).
-fn suggest_path(doc: &Document, needle: &str) -> Option<String> {
-    let first = needle.split('.').next().unwrap_or(needle);
-    let mut candidates: Vec<String> = Vec::new();
-    candidates.extend(doc.fields().map(|f| f.name().to_string()));
-    candidates.extend(doc.blocks().map(|b| b.kind().to_string()));
-    candidates
-        .into_iter()
-        .filter_map(|c| {
-            let d = levenshtein(first, &c);
-            (d > 0 && d <= 2).then_some((d, c))
-        })
-        .min_by_key(|(d, _)| *d)
-        .map(|(_, c)| c)
-}
-
-fn levenshtein(a: &str, b: &str) -> usize {
-    let a: Vec<char> = a.chars().collect();
-    let b: Vec<char> = b.chars().collect();
-    let (m, n) = (a.len(), b.len());
-    if m == 0 {
-        return n;
-    }
-    if n == 0 {
-        return m;
-    }
-    let mut prev: Vec<usize> = (0..=n).collect();
-    let mut curr = vec![0usize; n + 1];
-    for i in 1..=m {
-        curr[0] = i;
-        for j in 1..=n {
-            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
-            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-    prev[n]
 }
