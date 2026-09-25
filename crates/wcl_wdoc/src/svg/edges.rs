@@ -310,7 +310,10 @@ pub(crate) fn build_shared_anchors(
         let (bx, by, bw, bh) = metrics.bbox;
         // A non-finite box has no side to spread along; its edges keep
         // their own anchors.
-        if ![bx, by, bw, bh, base.1, base.2].iter().all(|v| v.is_finite()) {
+        if ![bx, by, bw, bh, base.1, base.2]
+            .iter()
+            .all(|v| v.is_finite())
+        {
             continue;
         }
         for (i, (src_id, _)) in arrivals.into_iter().enumerate() {

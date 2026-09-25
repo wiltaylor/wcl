@@ -145,7 +145,9 @@ page index {
     assert!(html.contains(">h</text>"), "{html}");
     let warnings = take_render_warnings();
     assert!(
-        warnings.iter().any(|w| w.contains("exceeds the 500x200 maximum")),
+        warnings
+            .iter()
+            .any(|w| w.contains("exceeds the 500x200 maximum")),
         "{warnings:?}"
     );
 }
