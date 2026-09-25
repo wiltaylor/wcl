@@ -795,7 +795,7 @@ CONSOLE
 
   h3 "Evaluation errors"
 
-  p "`EvalError` has twenty-five variants, each with a stable `wcl::eval::…` code. The full set is best read off the crate. These are the ones you will meet writing documents:"
+  p "`EvalError` has twenty-six variants, each with a stable `wcl::eval::…` code. The full set is best read off the crate. These are the ones you will meet writing documents:"
 
   table {
     rows:
