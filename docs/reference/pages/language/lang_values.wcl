@@ -501,6 +501,13 @@ wcl::eval::schema_violation
 
   × field 'channel' declared as symbol_set 'Channel' but ':qa' is not one of
   │ its members
+    ╭─[channel.wcl:9:1]
+  8 │
+  9 │ channel = :qa
+    · ──────┬──────
+    ·       ╰── schema violation
+ 10 │ tag     = :anything_goes
+    ╰────
 
 channel.wcl: 1 schema violation
 CONSOLE

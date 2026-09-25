@@ -246,6 +246,13 @@ $ wcl wdoc build main.wcl --out _site
 wcl::eval::schema_violation
 
   × decorator '@except' may appear at most once on one node
+    ╭─[main.wcl:20:4]
+ 19 │   @except(backends = [:markdown])
+ 20 │   @except(backends = [:pdf])
+    ·    ───┬──
+    ·       ╰── schema violation
+ 21 │   p "NOT-MD-NOT-PDF"
+    ╰────
 
 1 schema violation
 ```

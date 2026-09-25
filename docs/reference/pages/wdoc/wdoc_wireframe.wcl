@@ -105,6 +105,13 @@ $ wcl check mock.wcl
 wcl::eval::schema_violation
 
   × block kind 'wf_button' is not allowed inside 'page'
+    ╭─[mock.wcl:10:3]
+  9 │   h1 "Checkout"
+ 10 │   wf_button "Pay"
+    ·   ───────┬───────
+    ·          ╰── schema violation
+ 11 │
+    ╰────
 
 mock.wcl: 1 schema violation
 CONSOLE

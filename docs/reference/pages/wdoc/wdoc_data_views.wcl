@@ -250,6 +250,13 @@ $ wcl check fleet.wcl        # page holds `metric { label = "Memory" }`
 wcl::eval::schema_violation
 
   × block 'metric' is missing required field 'value'
+    ╭─[fleet.wcl:61:3]
+ 60 │
+ 61 │   metric { label = "Memory" }
+    ·   ─────────────┬─────────────
+    ·                ╰── schema violation
+ 62 │
+    ╰────
 
 fleet.wcl: 1 schema violation
 
@@ -257,6 +264,13 @@ $ wcl check fleet.wcl        # page holds `metric { … colour = "red" }`
 wcl::eval::schema_violation
 
   × field 'colour' is not declared by schema 'metric'
+    ╭─[fleet.wcl:61:44]
+ 60 │
+ 61 │   metric { label = "Memory"  value = 12.0  colour = "red" }
+    ·                                            ───────┬──────
+    ·                                                   ╰── schema violation
+ 62 │
+    ╰────
 
 fleet.wcl: 1 schema violation
 CONSOLE

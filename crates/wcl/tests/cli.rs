@@ -172,7 +172,7 @@ fn check_renders_a_lazy_imported_decorator_error_against_its_source() {
 }
 
 #[test]
-fn check_omits_a_snippet_when_recursive_error_provenance_is_unknown() {
+fn check_renders_an_in_block_imported_error_against_its_fragment() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let main = tmp.path().join("main.wcl");
     let fragment = tmp.path().join("fragment.wcl");
@@ -191,6 +191,7 @@ fn check_omits_a_snippet_when_recursive_error_provenance_is_unknown() {
         .assert()
         .code(2)
         .stderr(predicate::str::contains("field 'rogue' is not declared"))
+        .stderr(predicate::str::contains("fragment.wcl:1:1]"))
         .stderr(predicate::str::contains("@document type Root").not());
 }
 
@@ -1719,4 +1720,79 @@ fn profile_env_rejects_an_unrecognized_value() {
         .assert()
         .code(64)
         .stderr(predicate::str::contains("WCL_PROFILE"));
+}
+
+// ---------------------------------------------------------------------------
+// Schema errors render against the file they were raised in.
+// ---------------------------------------------------------------------------
+
+/// A root that imports a schema and a data file whose server block has a
+/// type error, an unknown field and a missing required field.
+fn tree_with_errors_in_an_import() -> TempDir {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("types.wcl"),
+        "@block(\"server\", required_fields = [\"host\"])\n\
+         type Server {\n  port: u16\n  host: utf8\n}\n\
+         @document type Root { @children(\"server\") servers: list<Server> }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("data.wcl"),
+        "// data\n\nserver web {\n  port = \"eighty\"\n  colour = \"red\"\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("main.wcl"),
+        "import \"./types.wcl\"\nimport \"./data.wcl\"\n",
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn check_renders_an_imported_files_schema_errors_against_that_file() {
+    let dir = tree_with_errors_in_an_import();
+    wcl()
+        .arg("check")
+        .arg(dir.path().join("main.wcl"))
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("data.wcl:4:3]"))
+        .stderr(predicate::str::contains("port = \"eighty\""))
+        .stderr(predicate::str::contains("data.wcl:5:3]"))
+        .stderr(predicate::str::contains("data.wcl:3:1]"));
+}
+
+#[test]
+fn check_json_names_the_file_of_each_error() {
+    let dir = tree_with_errors_in_an_import();
+    let main = dir.path().join("main.wcl");
+    let output = wcl()
+        .args(["check", "--json"])
+        .arg(&main)
+        .assert()
+        .code(2)
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).expect("JSON report");
+    assert_eq!(report["file"], main.display().to_string());
+    let errors = report["errors"].as_array().expect("errors array");
+    assert_eq!(errors.len(), 3, "{report:#}");
+    let data = dir.path().join("data.wcl").canonicalize().unwrap();
+    let text = std::fs::read_to_string(&data).unwrap();
+    for error in errors {
+        let file = PathBuf::from(error["file"].as_str().expect("file on every error"));
+        assert_eq!(file.canonicalize().unwrap(), data, "{error:#}");
+        // The offsets index into that file's text.
+        let offset = error["offset"].as_u64().unwrap() as usize;
+        let at = &text[offset..];
+        assert!(
+            ["port", "colour", "server"]
+                .iter()
+                .any(|start| at.starts_with(start)),
+            "{error:#}"
+        );
+    }
 }

@@ -296,6 +296,13 @@ $ wcl check steps.wcl
 wcl::eval::schema_violation
 
   × field 'apply' declared as fn(i64) -> i64 but value is i64
+    ╭─[steps.wcl:14:3]
+ 13 │ step scale {
+ 14 │   apply = 3i64
+    ·   ──────┬─────
+    ·         ╰── schema violation
+ 15 │ }
+    ╰────
 
 steps.wcl: 1 schema violation
 CONSOLE

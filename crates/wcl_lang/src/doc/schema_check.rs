@@ -10,6 +10,9 @@
 //! `@schemaless` on a field exempts that field from membership checking.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
+use miette::NamedSource;
 
 use crate::ast;
 use crate::diagnostics::EvalError;
@@ -700,7 +703,12 @@ fn validate_own_fields(block: &Block<'_>, schema: &crate::doc::TypeDecl<'_>) -> 
             continue;
         }
         if !declared_field_names.contains(f.name()) {
-            errs.push(unknown_field_error(f.name(), schema.name(), f.span()));
+            let error = unknown_field_error(f.name(), schema.name(), f.span());
+            // The field may have come in through an in-block `import`.
+            errs.push(match block.doc.source_of_field(f.ast) {
+                Some(source) => error.with_schema_source(&source),
+                None => error,
+            });
         }
     }
     for required in schema.required_fields() {
@@ -719,9 +727,42 @@ fn validate_own_fields(block: &Block<'_>, schema: &crate::doc::TypeDecl<'_>) -> 
     errs
 }
 
+/// Tag each violation that does not yet know its file with `source`.
+fn attach_source(errors: &mut [EvalError], source: &NamedSource<Arc<str>>) {
+    for error in errors {
+        error.attach_schema_source(source);
+    }
+}
+
+/// Tag `errors`, raised against `block`, with the file `block` was
+/// written in — which differs from its parent's when an in-block
+/// `import` spliced it in.
+fn claim_for_block(errors: &mut [EvalError], block: &Block<'_>) {
+    if !errors.is_empty()
+        && let Some(source) = block.doc.source_of_block(block.ast)
+    {
+        attach_source(errors, &source);
+    }
+}
+
 /// Validate one block against its schema: field membership, required
 /// fields, child cardinality and constraint decorators.
-pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
+///
+/// Every violation carries the file it was raised in. A check that
+/// knows better than "this block's file" — a nested block's own
+/// errors, a field spliced in by an in-block `import` — tags its
+/// violations first; whatever is left belongs to this block's file. A
+/// synthesised block (a table row, a computed child) has no file of its
+/// own, so its violations stay untagged for the parent that produced it
+/// to claim.
+pub(super) fn compute_schema_errors(block: &Block<'_>) -> Vec<EvalError> {
+    let mut errs = block_schema_errors(block);
+    claim_for_block(&mut errs, block);
+    errs
+}
+
+/// The untagged half of [`compute_schema_errors`].
+fn block_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     use crate::diagnostics::SchemaViolationKind as Kind;
     let mut errs = Vec::new();
 
@@ -814,7 +855,9 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
                     }
                 };
                 if let Err(e) = result {
+                    let start = errs.len();
                     errs.push(e);
+                    claim_for_block(&mut errs[start..], &blk);
                 }
             }
         }
@@ -851,166 +894,15 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     //      shared with the dispatch matcher. Tensor / function /
     //      reference types stay permissive.
     for declared in schema.fields() {
-        let Some(literal_field) = block.field(declared.name()) else {
-            continue;
-        };
-        if has_schemaless(&literal_field.ast.decorators) {
-            continue;
-        }
-        // `@schemaless` on the schema's own field declaration opts every
-        // instance out of the value-vs-type check: the declared type
-        // names the intended shape, but the values are dynamic and
-        // interpreted by the consumer (e.g. a repeater's `each` input,
-        // or a computed table's stringified cells).
-        if has_schemaless(&declared.ast.decorators) {
-            continue;
-        }
-        let value = match literal_field.value() {
-            Ok(value) => value,
-            Err(error) => {
-                // A literal list whose element type is a union is static
-                // authored data: failure to infer one of its record variants
-                // is a schema error. Surface it here instead of silently
-                // accepting the field. Keep computed fields lazy — template
-                // expressions may legitimately refer to lambda bindings that
-                // do not exist until evaluation.
-                let resolved = block.doc.resolve_alias(declared.type_ref());
-                let literal_union_list = matches!(
-                    (&literal_field.ast.expr, &resolved),
-                    (
-                        ast::Expr::ListLit { .. },
-                        crate::ast::TypeRef::List(inner)
-                    ) if matches!(inner.as_ref(), crate::ast::TypeRef::Named { path, .. }
-                        if block.doc.union_fqn_for_path(path).is_some())
-                );
-                if literal_union_list {
-                    errs.push(error.clone());
-                }
-                continue;
-            }
-        };
-
-        // An optional field written out as `none` is absent, not
-        // ill-typed: there is no value left to check against the
-        // declared type, a symbol set, or a `@min`/`@non_empty` bound.
-        if declared.optional() && matches!(value, Value::None) {
-            continue;
-        }
-
-        // Computed-children splice: a `@children(kind)` / `@child(kind)`
-        // slot authored as `field = <list expr>` instead of nested
-        // blocks. The value is a list spliced into child blocks (see
-        // `Block::computed_children`); its elements are validated as
-        // nested blocks by the kind / disallowed-child walk below, so the
-        // scalar value-vs-type check doesn't apply (a list of records
-        // never "matches" a `list<BlockKind>` value type). A `@children`
-        // slot still requires a list value.
-        let is_children = declared.children_kind_or_union().is_some();
-        let is_child = declared.child_kind_or_union().is_some();
-        if is_children || is_child {
-            if is_children
-                && !matches!(
-                    value,
-                    crate::value::Value::List(_) | crate::value::Value::None
-                )
-            {
-                errs.push(EvalError::schema_violation(
-                    Kind::FieldTypeMismatch,
-                    format!(
-                        "field '{}' is a @children slot spliced from an expression, \
-                         so it must be a list, but the value is {}",
-                        literal_field.name(),
-                        value.type_name(),
-                    ),
-                    literal_field.span(),
-                ));
-            }
-            continue;
-        }
-
-        // Resolve type aliases once: a field declared with an alias
-        // (`port: Port` where `type Port = u16`) validates against the
-        // target type, and an alias of a union dispatches like the union.
-        let resolved_ty = block
-            .doc
-            .resolve_alias_in(declared.type_ref(), declared.file_ns);
-
-        // Union path — preserved verbatim.
-        if let crate::ast::TypeRef::Named { path, .. } = &resolved_ty
-            && let Some(union_decl) = block.doc.union_decl(&path.join("."))
+        let start = errs.len();
+        field_value_errors(block, &declared, &mut errs);
+        // A field spliced in by an in-block `import` was written in
+        // that file, not the block's, so its errors carry its own.
+        if errs.len() > start
+            && let Some(field) = block.field(declared.name())
+            && let Some(source) = block.doc.source_of_field(field.ast)
         {
-            let expected_fqn = union_decl.ast.name.clone();
-            if let crate::value::Value::Variant { union, variant, .. } = value
-                && union != &expected_fqn
-            {
-                errs.push(EvalError::schema_violation(
-                    Kind::VariantUnionMismatch,
-                    format!(
-                        "field '{}' declared as union '{}' but value is {}::{}",
-                        literal_field.name(),
-                        expected_fqn.join("."),
-                        union.join("."),
-                        variant,
-                    ),
-                    literal_field.span(),
-                ));
-            } else if let crate::value::Value::Record { .. } = value {
-                // A bare record that `Field::value` couldn't coerce to a
-                // variant (e.g. via a `@schemaless` bypass) — flag it
-                // rather than silently accepting an un-inferred record.
-                errs.push(EvalError::schema_violation(
-                    Kind::VariantNoMatch,
-                    format!(
-                        "field '{}' declared as union '{}' but value is an \
-                         un-inferred record (no variant matches its shape)",
-                        literal_field.name(),
-                        expected_fqn.join("."),
-                    ),
-                    literal_field.span(),
-                ));
-            }
-            continue;
-        }
-
-        // Generic value-vs-type check for non-union typed fields.
-        if !crate::doc::types::value_matches_type_ref(value, &resolved_ty) {
-            errs.push(EvalError::schema_violation(
-                Kind::FieldTypeMismatch,
-                format!(
-                    "field '{}' declared as {} but {}",
-                    literal_field.name(),
-                    declared.type_ref(),
-                    crate::doc::types::describe_type_mismatch(value, &resolved_ty),
-                ),
-                literal_field.span(),
-            ));
-        } else if let Some(err) = crate::doc::types::symbol_set_membership_error_in(
-            block.doc,
-            &resolved_ty,
-            value,
-            literal_field.name(),
-            literal_field.span(),
-            declared.file_ns,
-        ) {
-            errs.push(err);
-        } else if let Some(msg) = constraint_violation(
-            block.doc,
-            &declared.ast.decorators,
-            declared.type_ref(),
-            declared.file_ns,
-            value,
-        ) {
-            errs.push(EvalError::schema_violation(
-                Kind::ConstraintViolation,
-                format!("field '{}': {msg}", literal_field.name()),
-                literal_field.span(),
-            ));
-        } else if let Some(msg) = ref_violation(block.doc, &declared, value) {
-            errs.push(EvalError::schema_violation(
-                Kind::DanglingReference,
-                format!("field '{}': {msg}", literal_field.name()),
-                literal_field.span(),
-            ));
+            attach_source(&mut errs[start..], &source);
         }
     }
 
@@ -1157,10 +1049,13 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         // missing required param.
         if nested.is_contextual() {
             if let Some(schema) = nested.schema() {
-                errs.extend(validate_own_fields(&nested, &schema));
+                let mut own = validate_own_fields(&nested, &schema);
+                claim_for_block(&mut own, &nested);
+                errs.extend(own);
             }
             continue;
         }
+        let start = errs.len();
         errs.push(EvalError::schema_violation_named(
             Kind::DisallowedChild,
             format!(
@@ -1171,6 +1066,7 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
             nested.kind(),
             nested.span(),
         ));
+        claim_for_block(&mut errs[start..], &nested);
     }
 
     // 4. `max_children = N` on @block: total nested-block count ≤ N.
@@ -1269,4 +1165,173 @@ pub(super) fn compute_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     }
 
     errs
+}
+
+/// Value-vs-declared-type for one schema field of `block`, when the
+/// block writes it. Split out of [`compute_schema_errors`] so the
+/// violations one field raises can be tagged with the file it was
+/// written in.
+fn field_value_errors(block: &Block<'_>, declared: &TypeField<'_>, errs: &mut Vec<EvalError>) {
+    use crate::diagnostics::SchemaViolationKind as Kind;
+    let Some(literal_field) = block.field(declared.name()) else {
+        return;
+    };
+    if has_schemaless(&literal_field.ast.decorators) {
+        return;
+    }
+    // `@schemaless` on the schema's own field declaration opts every
+    // instance out of the value-vs-type check: the declared type
+    // names the intended shape, but the values are dynamic and
+    // interpreted by the consumer (e.g. a repeater's `each` input,
+    // or a computed table's stringified cells).
+    if has_schemaless(&declared.ast.decorators) {
+        return;
+    }
+    let value = match literal_field.value() {
+        Ok(value) => value,
+        Err(error) => {
+            // A literal list whose element type is a union is static
+            // authored data: failure to infer one of its record variants
+            // is a schema error. Surface it here instead of silently
+            // accepting the field. Keep computed fields lazy — template
+            // expressions may legitimately refer to lambda bindings that
+            // do not exist until evaluation.
+            let resolved = block.doc.resolve_alias(declared.type_ref());
+            let literal_union_list = matches!(
+                (&literal_field.ast.expr, &resolved),
+                (
+                    ast::Expr::ListLit { .. },
+                    crate::ast::TypeRef::List(inner)
+                ) if matches!(inner.as_ref(), crate::ast::TypeRef::Named { path, .. }
+                    if block.doc.union_fqn_for_path(path).is_some())
+            );
+            if literal_union_list {
+                errs.push(error.clone());
+            }
+            return;
+        }
+    };
+
+    // An optional field written out as `none` is absent, not
+    // ill-typed: there is no value left to check against the
+    // declared type, a symbol set, or a `@min`/`@non_empty` bound.
+    if declared.optional() && matches!(value, Value::None) {
+        return;
+    }
+
+    // Computed-children splice: a `@children(kind)` / `@child(kind)`
+    // slot authored as `field = <list expr>` instead of nested
+    // blocks. The value is a list spliced into child blocks (see
+    // `Block::computed_children`); its elements are validated as
+    // nested blocks by the kind / disallowed-child walk below, so the
+    // scalar value-vs-type check doesn't apply (a list of records
+    // never "matches" a `list<BlockKind>` value type). A `@children`
+    // slot still requires a list value.
+    let is_children = declared.children_kind_or_union().is_some();
+    let is_child = declared.child_kind_or_union().is_some();
+    if is_children || is_child {
+        if is_children
+            && !matches!(
+                value,
+                crate::value::Value::List(_) | crate::value::Value::None
+            )
+        {
+            errs.push(EvalError::schema_violation(
+                Kind::FieldTypeMismatch,
+                format!(
+                    "field '{}' is a @children slot spliced from an expression, \
+                     so it must be a list, but the value is {}",
+                    literal_field.name(),
+                    value.type_name(),
+                ),
+                literal_field.span(),
+            ));
+        }
+        return;
+    }
+
+    // Resolve type aliases once: a field declared with an alias
+    // (`port: Port` where `type Port = u16`) validates against the
+    // target type, and an alias of a union dispatches like the union.
+    let resolved_ty = block
+        .doc
+        .resolve_alias_in(declared.type_ref(), declared.file_ns);
+
+    // Union path — preserved verbatim.
+    if let crate::ast::TypeRef::Named { path, .. } = &resolved_ty
+        && let Some(union_decl) = block.doc.union_decl(&path.join("."))
+    {
+        let expected_fqn = union_decl.ast.name.clone();
+        if let crate::value::Value::Variant { union, variant, .. } = value
+            && union != &expected_fqn
+        {
+            errs.push(EvalError::schema_violation(
+                Kind::VariantUnionMismatch,
+                format!(
+                    "field '{}' declared as union '{}' but value is {}::{}",
+                    literal_field.name(),
+                    expected_fqn.join("."),
+                    union.join("."),
+                    variant,
+                ),
+                literal_field.span(),
+            ));
+        } else if let crate::value::Value::Record { .. } = value {
+            // A bare record that `Field::value` couldn't coerce to a
+            // variant (e.g. via a `@schemaless` bypass) — flag it
+            // rather than silently accepting an un-inferred record.
+            errs.push(EvalError::schema_violation(
+                Kind::VariantNoMatch,
+                format!(
+                    "field '{}' declared as union '{}' but value is an \
+                     un-inferred record (no variant matches its shape)",
+                    literal_field.name(),
+                    expected_fqn.join("."),
+                ),
+                literal_field.span(),
+            ));
+        }
+        return;
+    }
+
+    // Generic value-vs-type check for non-union typed fields.
+    if !crate::doc::types::value_matches_type_ref(value, &resolved_ty) {
+        errs.push(EvalError::schema_violation(
+            Kind::FieldTypeMismatch,
+            format!(
+                "field '{}' declared as {} but {}",
+                literal_field.name(),
+                declared.type_ref(),
+                crate::doc::types::describe_type_mismatch(value, &resolved_ty),
+            ),
+            literal_field.span(),
+        ));
+    } else if let Some(err) = crate::doc::types::symbol_set_membership_error_in(
+        block.doc,
+        &resolved_ty,
+        value,
+        literal_field.name(),
+        literal_field.span(),
+        declared.file_ns,
+    ) {
+        errs.push(err);
+    } else if let Some(msg) = constraint_violation(
+        block.doc,
+        &declared.ast.decorators,
+        declared.type_ref(),
+        declared.file_ns,
+        value,
+    ) {
+        errs.push(EvalError::schema_violation(
+            Kind::ConstraintViolation,
+            format!("field '{}': {msg}", literal_field.name()),
+            literal_field.span(),
+        ));
+    } else if let Some(msg) = ref_violation(block.doc, declared, value) {
+        errs.push(EvalError::schema_violation(
+            Kind::DanglingReference,
+            format!("field '{}': {msg}", literal_field.name()),
+            literal_field.span(),
+        ));
+    }
 }

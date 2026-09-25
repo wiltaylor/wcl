@@ -221,7 +221,14 @@ flow main { entry = missing }
 $ wcl check d.wcl
 wcl::eval::schema_violation
 
-  × field 'entry': @ref("screen") target 'missing' is not the id of any 'screen' block
+  × field 'entry': @ref("screen") target 'missing' is not the id of any
+  │ 'screen' block
+    ╭─[d.wcl:15:13]
+ 14 │ screen home {}
+ 15 │ flow main { entry = missing }
+    ·             ───────┬───────
+    ·                    ╰── schema violation
+    ╰────
 
 d.wcl: 1 schema violation
 ```

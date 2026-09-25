@@ -186,12 +186,13 @@ pub struct Document {
     /// reference count. First occurrence wins, matching the scan order
     /// it replaces.
     root_let_index: std::sync::OnceLock<HashMap<String, (usize, usize)>>,
-    /// Field address to the ordinal (in `all_sources` order) of the
-    /// source declaring it, over the root source and eager imports.
-    /// Provenance asks this for every top-level field it validates, and
-    /// a full walk per question made `@document` checks quadratic. Sound
-    /// to build once: those sources are fixed at construction time.
-    field_source_index: std::sync::OnceLock<HashMap<usize, usize>>,
+    /// Field and block address to the ordinal (in `all_sources` order)
+    /// of the source declaring it, over the root source and eager
+    /// imports. Provenance asks this for every field and block it
+    /// validates, and a full walk per question made strict checks
+    /// quadratic. Sound to build once: those sources are fixed at
+    /// construction time.
+    node_source_index: std::sync::OnceLock<HashMap<usize, usize>>,
     /// Memo for the root `@connections` projection in
     /// [`resolve_root_in`]: field name → projected edge list. The
     /// projection walks every source's connection statements and

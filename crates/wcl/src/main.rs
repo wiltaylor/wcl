@@ -911,7 +911,9 @@ fn read_stdin() -> Result<String, String> {
 }
 
 /// One diagnostic as a JSON object: `code` / `message`, plus the primary
-/// label's `offset` / `length` when the error carries a span.
+/// label's `offset` / `length` when the error carries a span, and the
+/// `file` those offsets index into when the diagnostic knows its source
+/// (an error inside an imported file names that file, not the root).
 fn diagnostic_json(diag: &dyn miette::Diagnostic) -> serde_json::Value {
     let mut obj = serde_json::Map::new();
     if let Some(code) = diag.code() {
@@ -921,6 +923,13 @@ fn diagnostic_json(diag: &dyn miette::Diagnostic) -> serde_json::Value {
     if let Some(label) = diag.labels().and_then(|mut ls| ls.next()) {
         obj.insert("offset".into(), label.offset().into());
         obj.insert("length".into(), label.len().into());
+        let file = diag
+            .source_code()
+            .and_then(|source| source.read_span(label.inner(), 0, 0).ok())
+            .and_then(|contents| contents.name().map(str::to_string));
+        if let Some(file) = file {
+            obj.insert("file".into(), file.into());
+        }
     }
     serde_json::Value::Object(obj)
 }

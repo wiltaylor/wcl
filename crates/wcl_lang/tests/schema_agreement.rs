@@ -18,6 +18,12 @@
 //! Type-level checks (`FieldTypeMismatch`, variant mismatches, …) are
 //! intentionally strict-only and are excluded from the comparison; one
 //! test below documents that asymmetry explicitly.
+//!
+//! A verdict is a (file, offset) pair, not an offset: both paths must
+//! also agree on *which file* a violation belongs to, and that file must
+//! be the one the field was written in. Two files can hold a field at
+//! the same offset, so an offset alone would let a violation reported
+//! against the wrong file pass.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -70,58 +76,89 @@ fn collect_block_fields<'a>(block: &Block<'a>, out: &mut Vec<Field<'a>>, depth: 
     }
 }
 
-/// Lazy verdict for one field: `Some(start)` if `Field::value()` fails
-/// with a membership violation attributed to *this* field (matched by
-/// span start, so errors merely propagated from evaluating another
-/// field's reference don't count against this one).
-fn lazy_flag(field: &Field<'_>) -> Option<usize> {
+/// Where a violation points: the name of the source its span indexes
+/// into, and the span's start.
+type Site = (String, usize);
+
+/// The site of a field: the file it was written in (named as the
+/// document names its sources) and its span start.
+fn field_site(doc: &Document, field: &Field<'_>) -> Site {
+    let file = match field.source_path() {
+        Some(path) => path.display().to_string(),
+        None => doc.source().name().to_string(),
+    };
+    (file, field.span().start)
+}
+
+/// Lazy verdict for one field: its site if `Field::value()` fails with
+/// a membership violation attributed to *this* field. The error's own
+/// source must name the field's file, and its span must start at the
+/// field (so errors merely propagated from evaluating another field's
+/// reference don't count against this one).
+fn lazy_flag(doc: &Document, field: &Field<'_>) -> Option<Site> {
     match field.value() {
-        Err(EvalError::SchemaViolation { kind, span, .. })
-            if is_membership_kind(*kind) && span.offset() == field.span().start =>
-        {
-            Some(field.span().start)
+        Err(e @ EvalError::SchemaViolation { kind, span, .. }) if is_membership_kind(*kind) => {
+            let site = (e.schema_source()?.name().to_string(), span.offset());
+            (site == field_site(doc, field)).then_some(site)
         }
         _ => None,
     }
 }
 
-/// Strict verdict: the span starts of every membership violation in
-/// `schema_errors()` that points at a known literal field (top-level
-/// blocks also produce `NoDocumentSchema`; restricting to field spans
-/// keeps the comparison field-vs-field).
-fn strict_flags(doc: &Document, field_starts: &BTreeSet<usize>) -> BTreeSet<usize> {
-    doc.schema_errors()
+/// Strict verdict: the site of every membership violation in
+/// `schema_diagnostics()` that points at a known literal field (top-level
+/// blocks also produce `NoDocumentSchema`; restricting to field sites
+/// keeps the comparison field-vs-field). The site's file is the source
+/// the strict path paired the error with.
+fn strict_flags(doc: &Document, field_sites: &BTreeSet<Site>) -> BTreeSet<Site> {
+    doc.schema_diagnostics()
         .iter()
-        .filter_map(|e| match e {
-            EvalError::SchemaViolation { kind, span, .. }
-                if is_membership_kind(*kind) && field_starts.contains(&span.offset()) =>
-            {
-                Some(span.offset())
+        .filter_map(|(e, source)| match e {
+            EvalError::SchemaViolation { kind, span, .. } if is_membership_kind(*kind) => {
+                let site = (source.as_ref()?.name().to_string(), span.offset());
+                field_sites.contains(&site).then_some(site)
             }
             _ => None,
         })
         .collect()
 }
 
+/// Every strict violation read from a file names that file, and the
+/// source it is paired with is the one it carries.
+fn assert_strict_sources(doc: &Document, label: &str) {
+    for (error, source) in doc.schema_diagnostics() {
+        if let EvalError::SchemaViolation { .. } = &error {
+            let carried = error.schema_source().map(|s| s.name().to_string());
+            let paired = source.as_ref().map(|s| s.name().to_string());
+            assert_eq!(
+                carried, paired,
+                "{label}: `{error}` carries one source and is paired with another"
+            );
+        }
+    }
+}
+
 /// Assert that the strict and lazy paths flag exactly the same set of
-/// fields with membership violations. Returns the agreed set (span
-/// starts) so callers can additionally assert on expected counts.
-fn assert_agreement_doc(doc: &Document, label: &str) -> BTreeSet<usize> {
+/// fields with membership violations, each against the same file.
+/// Returns the agreed set of sites so callers can additionally assert
+/// on expected counts and files.
+fn assert_agreement_doc(doc: &Document, label: &str) -> BTreeSet<Site> {
     let fields = collect_fields(doc);
-    let field_starts: BTreeSet<usize> = fields.iter().map(|f| f.span().start).collect();
+    let field_sites: BTreeSet<Site> = fields.iter().map(|f| field_site(doc, f)).collect();
 
     // Lazy first: `value()` caches its result, and the strict walk
     // tolerates already-cached errors, so this order also exercises
     // the cache interplay between the two paths.
-    let lazy: BTreeSet<usize> = fields.iter().filter_map(lazy_flag).collect();
-    let strict = strict_flags(doc, &field_starts);
+    let lazy: BTreeSet<Site> = fields.iter().filter_map(|f| lazy_flag(doc, f)).collect();
+    let strict = strict_flags(doc, &field_sites);
+    assert_strict_sources(doc, label);
 
-    let name_of = |start: &usize| {
+    let name_of = |site: &Site| {
         fields
             .iter()
-            .find(|f| f.span().start == *start)
-            .map(|f| f.name().to_string())
-            .unwrap_or_else(|| format!("<offset {start}>"))
+            .find(|f| field_site(doc, f) == *site)
+            .map(|f| format!("{} ({})", f.name(), site.0))
+            .unwrap_or_else(|| format!("<{} at {}>", site.0, site.1))
     };
     let strict_only: Vec<String> = strict.difference(&lazy).map(name_of).collect();
     let lazy_only: Vec<String> = lazy.difference(&strict).map(name_of).collect();
@@ -134,7 +171,7 @@ fn assert_agreement_doc(doc: &Document, label: &str) -> BTreeSet<usize> {
     strict
 }
 
-fn assert_agreement(src: &str) -> BTreeSet<usize> {
+fn assert_agreement(src: &str) -> BTreeSet<Site> {
     assert_agreement_doc(&open(src), "inline source")
 }
 
@@ -316,6 +353,42 @@ fn imported_library_schema_alone_governs_root_fields() {
     .expect("document opens");
     let flagged = assert_agreement_doc(&doc, "imported-only @document");
     assert_eq!(flagged.len(), 1, "only `rogue` is flagged: {flagged:?}");
+}
+
+#[test]
+fn violations_in_an_imported_file_name_that_file_on_both_paths() {
+    // `data.wcl` holds an undeclared top-level field and an undeclared
+    // block field. Both paths must report them against `data.wcl`, not
+    // the root that imported it. The root's own `rogue` sits at the
+    // same offset as `data.wcl`'s, so an offset-only verdict could not
+    // tell them apart.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(
+        dir.path().join("types.wcl"),
+        "@block(\"server\") type Server { port: u16 }\n\
+         @document type Root {\n  title: utf8\n  @children(\"server\") servers: list<Server>\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("data.wcl"),
+        "rogue = 1\nserver web {\n  port = 80\n  colour = \"red\"\n}\n",
+    )
+    .unwrap();
+    let root = dir.path().join("main.wcl");
+    std::fs::write(
+        &root,
+        "rogue = 2\nimport \"./types.wcl\"\nimport \"./data.wcl\"\n",
+    )
+    .unwrap();
+    let doc = Document::from_file(&root).expect("document opens");
+    let flagged = assert_agreement_doc(&doc, "violations in an imported file");
+    let data = dir.path().join("data.wcl").canonicalize().unwrap();
+    let in_data: Vec<&Site> = flagged
+        .iter()
+        .filter(|(file, _)| Path::new(file).canonicalize().ok().as_ref() == Some(&data))
+        .collect();
+    assert_eq!(flagged.len(), 3, "both `rogue`s and `colour`: {flagged:?}");
+    assert_eq!(in_data.len(), 2, "data.wcl's two fields: {flagged:?}");
 }
 
 #[test]

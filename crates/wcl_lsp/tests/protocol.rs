@@ -210,6 +210,48 @@ async fn imported_file_errors_are_published_to_that_file() {
 }
 
 #[tokio::test]
+async fn every_kind_of_schema_error_in_an_import_is_published_to_that_file() {
+    // A type mismatch, an unknown field, a missing required field and an
+    // out-of-range number, all in data.wcl, which is never opened.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("types.wcl"),
+        "@block(\"server\", required_fields = [\"host\"])\n\
+         type Server {\n  port: u16\n  host: utf8\n  @max(10) workers: i64\n}\n\
+         @document type Root { @children(\"server\") servers: list<Server> }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("data.wcl"),
+        "// data\n\nserver web {\n  port = \"eighty\"\n  colour = \"red\"\n  workers = 99\n}\n",
+    )
+    .unwrap();
+    let main_text = "import \"./types.wcl\"\nimport \"./data.wcl\"\n";
+    std::fs::write(dir.path().join("main.wcl"), main_text).unwrap();
+    let main = uri(&std::fs::canonicalize(dir.path().join("main.wcl")).unwrap());
+    let data = uri(&std::fs::canonicalize(dir.path().join("data.wcl")).unwrap());
+
+    let mut session = Session::start(Some(dir.path()), json!({})).await;
+    session.open(&main, main_text).await;
+
+    let in_data = session.diagnostics_until(&data, |d| d.len() == 4).await;
+    let line_of = |needle: &str| {
+        let found = in_data
+            .iter()
+            .find(|d| d["message"].as_str().unwrap_or_default().contains(needle))
+            .unwrap_or_else(|| panic!("no diagnostic mentioning {needle}: {in_data:#?}"));
+        found["range"]["start"]["line"].clone()
+    };
+    assert_eq!(line_of("'port' declared as u16"), json!(3));
+    assert_eq!(line_of("'colour' is not declared"), json!(4));
+    assert_eq!(line_of("above @max(10)"), json!(5));
+    assert_eq!(line_of("missing required field 'host'"), json!(2));
+    // None of them lands on the root.
+    let in_main = session.diagnostics_until(&main, |_| true).await;
+    assert!(in_main.is_empty(), "{in_main:#?}");
+}
+
+#[tokio::test]
 async fn editing_an_import_republishes_the_root_and_clears_fixed_files() {
     let (dir, main, shared) = workspace_with_broken_import();
     let mut session = Session::start(Some(dir.path()), json!({})).await;

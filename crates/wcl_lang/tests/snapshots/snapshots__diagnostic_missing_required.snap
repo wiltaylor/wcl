@@ -5,7 +5,7 @@ expression: rendered
 wcl::eval::schema_violation
 
   × top-level block 'service' has no @document schema
-    ╭─[13:1]
+    ╭─[errors/missing_required.wcl:13:1]
  12 │     
  13 │ ╭─▶ service web {
  14 │ ├─▶ }

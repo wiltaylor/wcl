@@ -35,27 +35,30 @@ pub(crate) fn analyse(ctx: &Ctx, source: &str, uri: &str) -> Vec<(Origin, Diagno
     }
 }
 
-/// Schema errors and warnings of an opened document. An error whose
-/// provenance is known goes to that source; one without (the library
-/// does not yet tag every cross-file error) and every warning stay on
-/// the analysed document, as the CLI renders them.
+/// Schema errors and warnings of an opened document, each placed in the
+/// file it was raised in: the library tags every violation with its
+/// source, so one inside an imported file goes to that file. The rare
+/// error with no source (raised against a declaration the library
+/// synthesised) stays on the analysed document, as the CLI renders it.
 pub(crate) fn document(ctx: &Ctx, doc: &Document) -> Vec<(Origin, Diagnostic)> {
     let root = doc.source();
     let mut out = Vec::new();
-    for (error, source) in doc.schema_diagnostics() {
+    let schema_errors = doc.schema_diagnostics().into_iter();
+    let warnings = doc.schema_warnings().into_iter().map(|warning| {
+        let source = warning.schema_source();
+        (warning, source)
+    });
+    let tagged = schema_errors
+        .map(|pair| (pair, DiagnosticSeverity::ERROR))
+        .chain(warnings.map(|pair| (pair, DiagnosticSeverity::WARNING)));
+    for ((error, source), severity) in tagged {
         let source = source.as_ref().unwrap_or(root);
         if let Some(origin) = origin_of(source.name(), root.name()) {
             out.push((
                 origin,
-                eval_error_to_diagnostic(ctx, source, &error, DiagnosticSeverity::ERROR),
+                eval_error_to_diagnostic(ctx, source, &error, severity),
             ));
         }
-    }
-    for warning in doc.schema_warnings() {
-        out.push((
-            Origin::Analysed,
-            eval_error_to_diagnostic(ctx, root, &warning, DiagnosticSeverity::WARNING),
-        ));
     }
     out
 }

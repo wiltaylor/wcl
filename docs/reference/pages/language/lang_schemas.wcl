@@ -126,14 +126,40 @@ $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × top-level field 'project' has no @document schema
+    ╭─[pipeline.wcl:19:1]
+ 18 │
+ 19 │ project = "orbit"
+    · ────────┬────────
+    ·         ╰── schema violation
+ 20 │
+    ╰────
 
 wcl::eval::schema_violation
 
   × top-level block 'stage' has no @document schema
+    ╭─[pipeline.wcl:21:1]
+ 20 │
+ 21 │ ╭─▶ stage build {
+ 22 │ │     owner = "platform"
+ 23 │ │
+ 24 │ │     step compile { run = "cargo build" }
+ 25 │ │     step test    { run = "cargo test"  timeout = 900u32 }
+ 26 │ ├─▶ }
+    · ╰──── schema violation
+ 27 │
+    ╰────
 
 wcl::eval::schema_violation
 
   × top-level block 'stage' has no @document schema
+    ╭─[pipeline.wcl:28:1]
+ 27 │
+ 28 │ ╭─▶ stage deploy {
+ 29 │ │     owner = "sre"
+ 30 │ │     step push { run = "./deploy.sh" }
+ 31 │ ├─▶ }
+    · ╰──── schema violation
+    ╰────
 
 pipeline.wcl: 3 schema violations
 CONSOLE
@@ -145,20 +171,33 @@ CONSOLE
 
   code console {
     source = <<'CONSOLE'
-# with a top-level `owner = "platform"` added
+# with a top-level `owner = "platform"` added after `project`
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × top-level field 'owner' is not declared by @document schema 'Pipeline'
+    ╭─[pipeline.wcl:27:1]
+ 26 │ project = "orbit"
+ 27 │ owner = "platform"
+    · ─────────┬────────
+    ·          ╰── schema violation
+ 28 │
+    ╰────
 
 pipeline.wcl: 1 schema violation
 
-# with a top-level `step orphan { run = "echo hi" }` added
+# with a top-level `step orphan { run = "echo hi" }` added at the end
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × block kind 'step' is not allowed at the document root by @document schema
   │ 'Pipeline'
+    ╭─[pipeline.wcl:40:1]
+ 39 │
+ 40 │ step orphan { run = "echo hi" }
+    · ───────────────┬───────────────
+    ·                ╰── schema violation
+    ╰────
 
 pipeline.wcl: 1 schema violation
 CONSOLE
@@ -170,7 +209,7 @@ CONSOLE
 
   p "`@block(\"kind\")` registers a type as a block kind. The string is the word you write before the brace. The type's fields are what may go inside it. `stage build { … }` is legal because `Stage` carries `@block(\"stage\")`, and `Stage` is what checks the body."
 
-  p "A kind with no declaration is refused. Add a `job` block to the end of `pipeline.wcl` and the block itself is the violation. Nothing in the file says what a `job` is:"
+  p "A kind with no declaration is refused. Add `job nightly { }` to the end of `pipeline.wcl` and the block itself is the violation. Nothing in the file says what a `job` is:"
 
   code console {
     source = <<'CONSOLE'
@@ -178,6 +217,12 @@ $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × block kind 'job' has no @block or @table declaration
+    ╭─[pipeline.wcl:40:1]
+ 39 │
+ 40 │ job nightly { }
+    · ───────┬───────
+    ·        ╰── schema violation
+    ╰────
 
 pipeline.wcl: 1 schema violation
 CONSOLE
@@ -309,11 +354,18 @@ WCL
 
   code console {
     source = <<'CONSOLE'
-# a `stage` written inside another `stage`
+# `stage lint { owner = "platform" }` written inside the `build` stage
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × block kind 'stage' is not allowed inside 'stage'
+    ╭─[pipeline.wcl:34:3]
+ 33 │
+ 34 │   stage lint { owner = "platform" }
+    ·   ────────────────┬────────────────
+    ·                   ╰── schema violation
+ 35 │ }
+    ╰────
 
 pipeline.wcl: 1 schema violation
 CONSOLE
@@ -333,7 +385,7 @@ CONSOLE
       | "`@block(\"stage\", required_children = [\"step\"])`" | "the type" | "At least one `step`, whichever field holds it" |
   }
 
-  p "Each one has its own message. Empty the `deploy` stage of `pipeline.wcl` and the `min = 1` fires:"
+  p "Each one has its own message. Delete the `push` step from the `deploy` stage of `pipeline.wcl` and the `min = 1` fires:"
 
   code console {
     source = <<'CONSOLE'
@@ -341,6 +393,13 @@ $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × field 'steps' requires at least 1 'step' children, found 0
+    ╭─[pipeline.wcl:35:1]
+ 34 │
+ 35 │ ╭─▶ stage deploy {
+ 36 │ │     owner = "sre"
+ 37 │ ├─▶ }
+    · ╰──── schema violation
+    ╰────
 
 pipeline.wcl: 1 schema violation
 CONSOLE
@@ -354,6 +413,24 @@ $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × block 'stage' contains 9 children (max allowed: 8)
+    ╭─[pipeline.wcl:28:1]
+ 27 │
+ 28 │ ╭─▶ stage build {
+ 29 │ │     owner = "platform"
+ 30 │ │
+ 31 │ │     step compile { run = "cargo build" }
+ 32 │ │     step test    { run = "cargo test"  timeout = 900u32 }
+ 33 │ │     step extra1 { run = "echo 1" }
+ 34 │ │     step extra2 { run = "echo 2" }
+ 35 │ │     step extra3 { run = "echo 3" }
+ 36 │ │     step extra4 { run = "echo 4" }
+ 37 │ │     step extra5 { run = "echo 5" }
+ 38 │ │     step extra6 { run = "echo 6" }
+ 39 │ │     step extra7 { run = "echo 7" }
+ 40 │ ├─▶ }
+    · ╰──── schema violation
+ 41 │
+    ╰────
 
 pipeline.wcl: 1 schema violation
 CONSOLE
@@ -391,10 +468,25 @@ $ wcl check limits.wcl
 wcl::eval::schema_violation
 
   × block 'service' is missing required child 'limits' (for field 'limits')
+    ╭─[limits.wcl:13:1]
+ 12 │
+ 13 │ service web { }
+    · ───────┬───────
+    ·        ╰── schema violation
+ 14 │
+    ╰────
 
 wcl::eval::schema_violation
 
   × field 'limits' expects a single 'limits' child, found 2
+    ╭─[limits.wcl:15:1]
+ 14 │
+ 15 │ ╭─▶ service db {
+ 16 │ │     limits { cpu = 0.5 }
+ 17 │ │     limits { cpu = 1.0 }
+ 18 │ ├─▶ }
+    · ╰──── schema violation
+    ╰────
 
 limits.wcl: 2 schema violations
 CONSOLE
@@ -467,6 +559,13 @@ $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × block 'stage' is missing required field 'owner'
+    ╭─[pipeline.wcl:35:1]
+ 34 │
+ 35 │ ╭─▶ stage deploy {
+ 36 │ │     step push { run = "./deploy.sh" }
+ 37 │ ├─▶ }
+    · ╰──── schema violation
+    ╰────
 
 pipeline.wcl: 1 schema violation
 CONSOLE
@@ -606,6 +705,16 @@ $ wcl check api.wcl
 wcl::eval::schema_violation
 
   × field 'routes' allows at most 2 'route' children, found 3
+    ╭─[api.wcl:17:1]
+ 16 │
+ 17 │ ╭─▶ api public {
+ 18 │ │     routes:
+ 19 │ │       | "GET"  | "/users" | false |
+ 20 │ │       | "POST" | "/users" | true  |
+ 21 │ │       | "HEAD" | "/users" | false |
+ 22 │ ├─▶ }
+    · ╰──── schema violation
+    ╰────
 
 api.wcl: 1 schema violation
 CONSOLE
@@ -615,11 +724,18 @@ CONSOLE
 
   code console {
     source = <<'CONSOLE'
-# `route "GET" { path = "/users" }` inside the api block
+# the pipe rows replaced by `route "GET" { path = "/users" }`
 $ wcl check api.wcl
 wcl::eval::schema_violation
 
   × table row for 'route' has 1 values, expected 3
+    ╭─[api.wcl:18:3]
+ 17 │ api public {
+ 18 │   route "GET" { path = "/users" }
+    ·   ───────────────┬───────────────
+    ·                  ╰── schema violation
+ 19 │ }
+    ╰────
 
 api.wcl: 1 schema violation
 CONSOLE
@@ -934,16 +1050,36 @@ $ wcl check fit.wcl
 wcl::eval::schema_violation
 
   × field 'level' declared as u8 but value 300 is out of range for u8
+    ╭─[fit.wcl:12:1]
+ 11 │ port  = 8080      // fits: reads back as 8080u16
+ 12 │ level = 300       // out of range for u8
+    · ─────┬─────
+    ·      ╰── schema violation
+ 13 │ retry = 2.5       // not a whole number
+    ╰────
 
 wcl::eval::schema_violation
 
   × field 'retry' declared as u8 but value 2.5 is not a whole number, so it
   │ cannot be u8
+    ╭─[fit.wcl:13:1]
+ 12 │ level = 300       // out of range for u8
+ 13 │ retry = 2.5       // not a whole number
+    · ─────┬─────
+    ·      ╰── schema violation
+ 14 │ ratio = 1         // any integer fits a float type: 1.0f32
+    ╰────
 
 wcl::eval::schema_violation
 
   × field 'masks' declared as list<u8> but element [1] holds 256, which is out
   │ of range for u8
+    ╭─[fit.wcl:16:1]
+ 15 │ whole = 4.0       // a whole-valued float fits an integer type: 4i32
+ 16 │ masks = [1, 256]  // the element at [1] does not fit
+    · ────────┬───────
+    ·         ╰── schema violation
+    ╰────
 
 fit.wcl: 3 schema violations
 CONSOLE
@@ -983,10 +1119,18 @@ CONSOLE
 
   code console {
     source = <<'CONSOLE'
+# with `zone = "eu-west"` added to the `compile` step
 $ wcl check pipeline.wcl
 wcl::eval::schema_violation
 
   × field 'zone' is not declared by schema 'Step'
+    ╭─[pipeline.wcl:31:39]
+ 30 │
+ 31 │   step compile { run = "cargo build"  zone = "eu-west" }
+    ·                                       ────────┬───────
+    ·                                               ╰── schema violation
+ 32 │   step test    { run = "cargo test"  timeout = 900u32 }
+    ╰────
 
 pipeline.wcl: 1 schema violation
 CONSOLE
@@ -1025,6 +1169,13 @@ $ wcl get pipeline.wcl stages.build.steps.compile.zone
 wcl::eval::schema_violation
 
   × field 'zone' is not declared by schema 'Step'
+    ╭─[pipeline.wcl:31:39]
+ 30 │
+ 31 │   step compile { run = "cargo build"  zone = "eu-west" }
+    ·                                       ────────┬───────
+    ·                                               ╰── schema violation
+ 32 │   step test    { run = "cargo test"  timeout = 900u32 }
+    ╰────
 CONSOLE
   }
 

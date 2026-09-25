@@ -60,6 +60,17 @@ $ wcl check r.wcl
 wcl::eval::schema_violation
 
   × block 'recipe' contains 3 children (max allowed: 2)
+    ╭─[r.wcl:11:1]
+ 10 │
+ 11 │ ╭─▶ recipe tea {
+ 12 │ │     step "boil"
+ 13 │ │     step "steep"
+ 14 │ │     step "pour"
+ 15 │ ├─▶ }
+    · ╰──── schema violation
+    ╰────
+
+r.wcl: 1 schema violation
 ```
 
 `required_fields` is the escape hatch for a field the *type* must leave optional but an instance
@@ -115,6 +126,15 @@ that kind may not share it (`DuplicateBlockId`). A label of any other type — `
   wcl::eval::schema_violation
 
     × field 'steps' requires at least 2 'step' children, found 1
+      ╭─[p.wcl:10:1]
+    9 │
+   10 │ ╭─▶ plan deploy {
+   11 │ │     step "build"
+   12 │ ├─▶ }
+      · ╰──── schema violation
+      ╰────
+
+  p.wcl: 1 schema violation
   ```
 
 - A child kind no field declares is refused outright:
@@ -245,6 +265,15 @@ wcl::eval::schema_violation
   × type 'B' declares a second root @document schema (only one root-authored
   │ @document is allowed per namespace; imported library schemas merge
   │ automatically)
+   ╭─[o.wcl:2:11]
+ 1 │ @document type A { x: i64 }
+ 2 │ @document type B { y: i64 }
+   ·           ────────┬────────
+   ·                   ╰── schema violation
+ 3 │
+   ╰────
+
+o.wcl: 1 schema violation
 ```
 
 When both a root-authored and an imported schema declare the same field name, the
@@ -285,6 +314,13 @@ $ wcl check config.wcl
 wcl::eval::schema_violation
 
   × field 'host' declared as utf8 but value is i64
+    ╭─[config.wcl:12:3]
+ 11 │ server web {
+ 12 │   host = 3
+    ·   ────┬───
+    ·       ╰── schema violation
+ 13 │ }
+    ╰────
 
 config.wcl: 1 schema violation
 ```

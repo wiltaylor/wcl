@@ -477,6 +477,12 @@ wcl::eval::schema_violation
 
   × field 'plan' declared as symbol_set 'Tier' but ':monthly' is not one of
   │ its members
+   ╭─[plans.wcl:7:1]
+ 6 │
+ 7 │ plan = :monthly
+   · ───────┬───────
+   ·        ╰── schema violation
+   ╰────
 
 plans.wcl: 1 schema violation
 CONSOLE
@@ -595,6 +601,13 @@ $ wcl check staging-bad.wcl
 wcl::eval::schema_violation
 
   × field 'tier' is not declared by schema 'Stub'
+    ╭─[staging-bad.wcl:17:3]
+ 16 │   note = "not built yet"
+ 17 │   tier = :gold
+    ·   ──────┬─────
+    ·         ╰── schema violation
+ 18 │ }
+    ╰────
 
 staging-bad.wcl: 1 schema violation
 CONSOLE

@@ -112,6 +112,12 @@ $ wcl check sch.wcl
 wcl::eval::schema_violation
 
   × top-level field 'zone' is not declared by @document schema 'C'
+   ╭─[sch.wcl:7:1]
+ 6 │ owner = "ops"
+ 7 │ zone = "eu"
+   · ─────┬─────
+   ·      ╰── schema violation
+   ╰────
 
 sch.wcl: 1 schema violation
 $ echo $?
@@ -126,9 +132,10 @@ $ wcl check sch.wcl --json
   "errors": [
     {
       "code": "wcl::eval::schema_violation",
-      "length": 10,
+      "file": "sch.wcl",
+      "length": 11,
       "message": "top-level field 'zone' is not declared by @document schema 'C'",
-      "offset": 45
+      "offset": 50
     }
   ],
   "file": "sch.wcl",
@@ -137,7 +144,13 @@ $ wcl check sch.wcl --json
 }
 ```
 
-`offset` and `length` are byte positions into the file. `check` reads stdin when the file is
+Per-error keys: `code`, `message`, `offset` / `length` (byte span; absent when there is no
+place, e.g. an unreadable file) and `file` — the file the span counts into. An error inside an
+imported file names **that** file by its resolved absolute path, not the one checked; the
+top-level `file` is always the argument (or `<stdin>`). `file` is absent only for an error with
+no source (a library-synthesised declaration). Warnings carry the same keys.
+
+`check` reads stdin when the file is
 `-`, so `cat generated.wcl | wcl check -` validates a document never written to disk. `fmt -`
 does the same, and `repl` reads its expressions from stdin when it is not a TTY.
 

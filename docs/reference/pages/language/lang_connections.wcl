@@ -597,6 +597,13 @@ wcl::eval::schema_violation
 
   × field 'steps': @ref("screen") target 'dashboard' is not the id of any
   │ 'screen' block
+    ╭─[refs.wcl:25:3]
+ 24 │   entry = login
+ 25 │   steps = [login, dashboard, profile]
+    ·   ─────────────────┬─────────────────
+    ·                    ╰── schema violation
+ 26 │ }
+    ╰────
 
 refs.wcl: 1 schema violation
 CONSOLE
@@ -611,6 +618,13 @@ wcl::eval::schema_violation
 
   × field 'steps': @ref("screen") targets 'dashboard', 'settings' name no
   │ 'screen' block
+    ╭─[refs.wcl:25:3]
+ 24 │   entry = login
+ 25 │   steps = [login, dashboard, settings]
+    ·   ──────────────────┬─────────────────
+    ·                     ╰── schema violation
+ 26 │ }
+    ╰────
 
 refs.wcl: 1 schema violation
 CONSOLE
