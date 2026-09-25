@@ -19,6 +19,12 @@ pub(crate) struct Ctx {
     pub encoding: PositionEncoding,
     /// Every open buffer with a filesystem path, as `path → text`.
     pub buffers: Arc<HashMap<PathBuf, String>>,
+    /// The URI the client opened each buffer under, keyed like
+    /// `buffers`. An open file is always reported under this URI, byte
+    /// for byte: editors compare URIs as strings, and one rebuilt from
+    /// the path can spell the same file differently (VS Code sends
+    /// `file:///c%3A/...` where a path-built URI says `C%3A`).
+    client_uris: Arc<HashMap<PathBuf, Uri>>,
     /// Canonical path of every open buffer → the path it was opened as,
     /// so a file reached through an import (canonical) and the same file
     /// opened through a symlink are recognised as one.
@@ -75,11 +81,20 @@ impl Ctx {
         Self {
             encoding,
             buffers,
+            client_uris: Arc::default(),
             opened_as,
             dir_aliases,
             loader: host.loader(overlay),
             host,
         }
+    }
+
+    /// This context, reporting each open buffer under the URI the
+    /// client opened it with: `uris` maps a buffer's path (its key in
+    /// `buffers`) to that URI.
+    pub(crate) fn with_client_uris(mut self, uris: Arc<HashMap<PathBuf, Uri>>) -> Self {
+        self.client_uris = uris;
+        self
     }
 
     /// This context, also reporting paths at or under `dir` — the
@@ -138,9 +153,14 @@ impl Ctx {
             .unwrap_or_else(|| path.to_path_buf())
     }
 
-    /// The URI to report `path` under: [`Ctx::client_path`] as a URI.
+    /// The URI to report `path` under: the URI the client opened it
+    /// with when it is open, else [`Ctx::client_path`] as a URI.
     pub(crate) fn uri_for(&self, path: &Path) -> Option<Uri> {
-        path_to_uri(&self.client_path(path))
+        let client = self.client_path(path);
+        match self.client_uris.get(&client) {
+            Some(uri) => Some(uri.clone()),
+            None => path_to_uri(&client),
+        }
     }
 
     /// A loader over `buffers` in place of this context's own, matching
@@ -207,15 +227,17 @@ fn add_dir_aliases<'a>(
     aliases.sort_by_key(|(dir, _)| std::cmp::Reverse(dir.components().count()));
 }
 
-/// `path` with symlinks and `..` resolved, or unchanged when it does not
-/// exist — the key two spellings of one file agree on.
+/// `path` with symlinks and `..` resolved, or in its
+/// [`path_key`](wcl_lang::path_key) spelling when it does not exist —
+/// the key two spellings of one file agree on.
 pub(crate) fn canonical(path: &Path) -> PathBuf {
-    canonical_existing(path).unwrap_or_else(|_| path.to_path_buf())
+    canonical_existing(path).unwrap_or_else(|_| wcl_lang::path_key(path))
 }
 
 /// `path` with symlinks and `..` resolved, as the import graph spells
-/// it: on Windows, long names in place of 8.3 short ones and no `\\?\`
-/// verbatim prefix, which a URI built from it would carry as `%3F`.
+/// it ([`wcl_lang::canonical_path`]): on Windows, long names in place
+/// of 8.3 short ones, an uppercase drive letter, and no `\\?\` verbatim
+/// prefix, which a URI built from it would carry as `%3F`.
 pub(crate) fn canonical_existing(path: &Path) -> std::io::Result<PathBuf> {
-    dunce::canonicalize(path)
+    wcl_lang::canonical_path(path)
 }
