@@ -10,6 +10,12 @@ from `crates/wcl_lang/tests/...` example fixtures.
 - **`eval`** — `Document::open(s, "fuzz")` (parser + binder + schema
   validator) must not panic; on success, `schema_errors()` is forced
   to exercise the lazy paths.
+- **`eval_fields`** — open the document, then evaluate every field,
+  `let` and block-body field expression directly with
+  `Document::eval_expr`, schema or no schema. Arbitrary input rarely
+  has a `@document` schema, so `eval` seldom reaches a builtin; this
+  target runs them. Evaluation errors are expected; panics, aborts
+  and hangs are not.
 - **`format_round_trip`** — for any `s` the parser accepts,
   `parse_for_edit → format::to_source → parse_for_edit` must succeed
   and produce a structurally equal AST. Guards against parser /

@@ -13,7 +13,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::builtin::{BuiltinFn, Caller, from_fn};
-use super::expect_function;
+use super::{check_output_items, expect_function};
 use crate::diagnostics::ArithmeticFault;
 use crate::environment::Environment;
 use crate::numeric::{NumberKey, for_each_float_numeric_variant, for_each_integer_numeric_variant};
@@ -74,7 +74,7 @@ pub(super) fn register(env: &mut Environment) {
     env.add_builtin(
         "range",
         from_fn(range_pure)
-            .doc("The half-open integer range `[start, end)` as a list.")
+            .doc("The half-open integer range `[start, end)` as a list, of at most 1,048,576 elements.")
             .param("start", "i64", "Inclusive lower bound.")
             .param("end", "i64", "Exclusive upper bound; must be >= `start`.")
             .returns(
@@ -946,6 +946,9 @@ fn range_pure(start: i64, end: i64) -> Result<Vec<i64>, String> {
             "range: end ({end}) must be greater than or equal to start ({start})"
         ));
     }
+    // `end - start` can exceed `i64::MAX`, so size it in i128.
+    let len = usize::try_from(i128::from(end) - i128::from(start)).ok();
+    check_output_items("range", len)?;
     Ok((start..end).collect())
 }
 
@@ -1053,6 +1056,11 @@ fn flatten_pure(v: Value) -> Result<Vec<Value>, String> {
             ));
         }
     };
+    let len = items.iter().try_fold(0usize, |n, inner| match inner {
+        Value::List(xs) => n.checked_add(xs.len()),
+        _ => Some(n),
+    });
+    check_output_items("flatten", len)?;
     let mut out: Vec<Value> = Vec::new();
     for inner in std::sync::Arc::unwrap_or_clone(items) {
         match inner {

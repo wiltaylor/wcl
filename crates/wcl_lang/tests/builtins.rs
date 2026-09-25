@@ -212,6 +212,54 @@ fn repeat_rejects_oversized_output_without_panicking() {
 }
 
 #[test]
+fn builtins_reject_oversized_output_without_panicking() {
+    // Regression: `range` panicked with "capacity overflow" and
+    // `pad_start` aborted on allocation. Every builtin that builds a
+    // string or list sizes its output against the shared limit first.
+    for expression in [
+        "pad_start(\"x\", 9223372036854775807, \"ab\")",
+        "pad_end(\"x\", 9223372036854775807, \"é\")",
+        "pad_start(\"x\", 67108865, \"a\")",
+        "replace(repeat(\"a\", 1048576), \"a\", repeat(\"b\", 65))",
+        "replace(repeat(\"a\", 1048576), \"\", repeat(\"b\", 65))",
+        "join([repeat(repeat(\"a\", 65536), 1024), \"b\"], \"\")",
+        "join([\"a\", \"b\"], repeat(repeat(\"-\", 65536), 1024))",
+        "concat(repeat(repeat(\"a\", 65536), 1024), \"b\")",
+        "format(\"{}{}\", repeat(repeat(\"a\", 65536), 1024), \"b\")",
+    ] {
+        let error = eval_err(&format!("@schemaless result = {expression}"));
+        assert!(error.contains("64 MiB limit"), "{expression}: {error}");
+    }
+    for expression in [
+        "range(0, 9223372036854775807)",
+        "range(-9223372036854775808, 9223372036854775807)",
+        "range(0, 1048577)",
+        "chars(repeat(\"a\", 1048577))",
+        "split(repeat(\",\", 1048576), \",\")",
+        "flatten([range(0, 1048576), [1]])",
+    ] {
+        let error = eval_err(&format!("@schemaless result = {expression}"));
+        assert!(
+            error.contains("1048576-element limit"),
+            "{expression}: {error}"
+        );
+    }
+    // Exactly at the limits still builds.
+    assert_eq!(
+        eval("@schemaless result = len(range(0, 1048576))"),
+        Value::I64(1_048_576)
+    );
+    assert_eq!(
+        eval("@schemaless result = pad_start(\"7\", 4, \"é0\")"),
+        Value::Utf8("é0é7".into())
+    );
+    assert_eq!(
+        eval("@schemaless result = replace(\"abc\", \"\", \"-\")"),
+        Value::Utf8("-a-b-c-".into())
+    );
+}
+
+#[test]
 fn list_index_of_take_drop_contains() {
     assert_eq!(
         eval("@schemaless result = index_of([10, 20, 30], 20)\n"),

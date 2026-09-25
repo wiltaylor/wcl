@@ -1122,10 +1122,13 @@ impl<'a> Block<'a> {
     /// blocks a projection sees are exactly the ones the host's own
     /// renderer sees — including the diagnostics it records on the way.
     ///
-    /// Empty for a block that is not `@contextual`, and for one past
-    /// the expansion-depth cap. Demanding the children of a `@contextual`
-    /// block with no registered expander is a hard error: the language
-    /// declines to guess at expansion semantics it does not own.
+    /// Empty for a block that is not `@contextual`. Demanding the
+    /// children of a `@contextual` block with no registered expander is
+    /// a hard error: the language declines to guess at expansion
+    /// semantics it does not own. So is expanding past the nesting-depth
+    /// cap (a self-referential expansion) or one expansion generating
+    /// more blocks than the total cap: both are
+    /// [`EvalError::ExpansionLimit`], never a silently empty slot.
     pub fn expand_children(&self) -> Result<Vec<Block<'a>>, EvalError> {
         if !self.is_contextual() {
             return Ok(Vec::new());
@@ -1133,12 +1136,24 @@ impl<'a> Block<'a> {
         // Mirrors the renderer's own recursion guard: a self-referential
         // expansion stops here rather than growing without bound.
         if self.binding_scope_depth() > MAX_EXPANSION_DEPTH {
-            return Ok(Vec::new());
+            return Err(EvalError::expansion_limit(
+                self.kind(),
+                format!("the nesting depth limit of {MAX_EXPANSION_DEPTH}"),
+                self.span(),
+            ));
         }
-        match self.doc.expander() {
-            Some(e) => Ok(e.expand(self)),
-            None => Err(EvalError::missing_expander(self.kind(), self.span())),
+        let Some(expander) = self.doc.expander() else {
+            return Err(EvalError::missing_expander(self.kind(), self.span()));
+        };
+        let children = expander.expand(self);
+        if children.len() > MAX_EXPANDED_BLOCKS {
+            return Err(EvalError::expansion_limit(
+                self.kind(),
+                format!("the limit of {MAX_EXPANDED_BLOCKS} generated blocks"),
+                self.span(),
+            ));
         }
+        Ok(children)
     }
 
     /// Lazily materialise the *computed children* of this block — the

@@ -44,6 +44,15 @@ c = a && b || c && d               // (a && b) || (c && d)
 d = -x.field                       // -(x.field) — member access binds tighter than unary
 ```
 
+**An expression is at most 256 levels deep.** Each binary operator, call, member access and
+bracket is a level, and a left-associative chain nests one level per link: `1 + 1 + … + 1` with
+more than 256 terms, or a 300-link `a.b.c…`, fails to parse with `expression too deep (more than
+256 levels of operators, calls or member accesses)` (exit 1 from `wcl check`). Generated files hit
+this. Split the chain with `let` bindings, or build a list and use `sum` / `join`. `else if`
+chains and `${…}` slots nested inside one another count against the separate 128-level nesting
+cap (`nesting too deep`). This is a parse-time limit on one written expression, separate from
+the run-time cap of 200 nested fields, `let`s and `fn` calls (`lang_evaluation.md`).
+
 `&&`, `||` and `??` **short-circuit**. They skip the right side when the left already decides
 the answer. That is what makes `count > 0 && total / count > 5` safe and `cached ??
 expensive()` cheap.

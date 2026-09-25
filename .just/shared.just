@@ -74,6 +74,7 @@ fuzz-sweep: require-cargo-fuzz
     targets=(
         parse
         eval
+        eval_fields
         format_round_trip
         json_round_trip
         set_edit_path

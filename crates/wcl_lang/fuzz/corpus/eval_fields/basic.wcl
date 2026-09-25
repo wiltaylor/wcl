@@ -1,0 +1,40 @@
+// A small WCL example used by tests and CLI demos.
+//
+// `@document` declares the schema for the document root: which
+// top-level fields are allowed and which child blocks can appear.
+
+@document
+type Config {
+  name:    utf8
+  count:   u32
+  enabled: bool
+  @child("service") service: Service
+}
+
+@block("service")
+type Service {
+  @inline(0) name: utf8
+  port: u32
+  host: utf8
+  @child("metadata") metadata: Metadata?
+}
+
+@block("metadata")
+type Metadata {
+  region: utf8
+  tier:   utf8
+}
+
+name    = "alpha"
+count   = 3u32
+enabled = true
+
+service "web" {
+  port = 8080u32
+  host = "0.0.0.0"
+
+  metadata {
+    region = "us-east-1"
+    tier   = "prod"
+  }
+}

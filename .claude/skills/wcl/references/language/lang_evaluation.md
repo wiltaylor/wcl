@@ -235,11 +235,12 @@ wcl::parse
 ```
 
 **`EvalError`** — everything that happens while a value is produced. Its diagnostic codes are
-what you match on. There are 26 in all; these are the ones you will actually meet:
+what you match on. There are 27 in all; these are the ones you will actually meet:
 `wcl::eval::cycle`, `wcl::eval::depth_exceeded`, `wcl::eval::call_depth_exceeded`,
 `wcl::eval::unresolved_reference`, `wcl::eval::type_mismatch`,
 `wcl::eval::unknown_builtin`, `wcl::eval::builtin_arity`, `wcl::eval::user_error`,
-`wcl::eval::import_failed`, `wcl::eval::not_a_leaf`, `wcl::eval::missing_expander`, and
+`wcl::eval::import_failed`, `wcl::eval::not_a_leaf`, `wcl::eval::missing_expander`,
+`wcl::eval::expansion_limit`, and
 `wcl::eval::schema_violation`.
 
 **`SchemaViolationKind`** — the classification carried inside a `schema_violation`. Knowing the

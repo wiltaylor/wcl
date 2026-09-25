@@ -421,6 +421,26 @@ pub enum EvalError {
         /// Source span the diagnostic points at.
         span: SourceSpan,
     },
+
+    #[error("expanding the `@contextual` block '{kind}' exceeded {limit}")]
+    #[diagnostic(
+        code(wcl::eval::expansion_limit),
+        help(
+            "a `@contextual` block that expands into itself, or nested repetitions that \
+             multiply, generate blocks without bound; make the recursion stop or shrink the data"
+        )
+    )]
+    /// Nested `@contextual` expansion went past the nesting-depth cap
+    /// or generated more blocks than the total cap.
+    ExpansionLimit {
+        /// The kind of the block whose expansion hit the limit.
+        kind: String,
+        /// Which limit, in words (`the nesting depth limit of 32`).
+        limit: String,
+        #[label("expansion stopped here")]
+        /// Source span the diagnostic points at.
+        span: SourceSpan,
+    },
 }
 
 impl EvalError {
@@ -693,6 +713,20 @@ impl EvalError {
     pub(crate) fn missing_expander(kind: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::MissingExpander {
             kind: kind.into(),
+            span: span_to_miette(span),
+        }
+    }
+
+    /// Build an [`EvalError::ExpansionLimit`]; `limit` names the cap in
+    /// words.
+    pub(crate) fn expansion_limit(
+        kind: impl Into<String>,
+        limit: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::ExpansionLimit {
+            kind: kind.into(),
+            limit: limit.into(),
             span: span_to_miette(span),
         }
     }

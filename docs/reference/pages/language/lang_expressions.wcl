@@ -622,6 +622,22 @@ TEXT
 
   p "The first is ordering binding **tighter** than equality: `1 < 2 == true` is `(1 < 2) == true`, which is `true`. The second is `??` binding loosest: `\"a\" ?? \"b\" == \"c\"` is `\"a\" ?? (\"b\" == \"c\")`, and since the left side is not `none` it answers `\"a\"`. The comparison never runs. Both parse exactly as the table says, and both read better with parentheses."
 
+  h3 "How long a chain can be"
+
+  p "Left-associativity means a chain nests: `1 + 1 + 1` is `(1 + 1) + 1`, and every further `+` adds a level. Member accesses and calls nest the same way, so `a.b.c` and `f()()` are two levels each. One expression may be at most **256 levels** deep, counting every operator, call, member access and bracket on the way down. A 256-term sum answers normally. A 301-term one stops the parse:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check long.wcl
+wcl::parse
+
+  × expression too deep (more than 256 levels of operators, calls or member
+  │ accesses)
+TEXT
+  }
+
+  p "The limit exists because evaluating, printing and freeing an expression each walk it one level at a time, and a deeper tree would exhaust the stack of the thread doing the walking. A generated file is the usual way to reach it. Split the chain with `let` bindings, or build a list and hand it to `sum` or `join`. This is a limit on how one expression is written, checked when the file parses. It is separate from the evaluation limit of 200 nested fields, `let`s and `fn` calls forcing one another at run time, which [How a document evaluates](lang_evaluation) covers."
+
   h2 "What is not an operator"
 
   p "Other languages make these seven spellings operators. This table gives what WCL does instead."

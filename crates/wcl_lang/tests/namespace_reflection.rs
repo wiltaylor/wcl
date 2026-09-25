@@ -194,3 +194,25 @@ type TwoModel { @children("widget") two_widgets: list<Widget> }
     assert_eq!(gather("OneModel", "one_widgets"), "one.Widget");
     assert_eq!(gather("TwoModel", "two_widgets"), "two.Widget");
 }
+
+#[test]
+fn resolving_a_host_built_ref_to_an_unknown_name_does_not_panic() {
+    // Regression: `resolve` / `resolve_in` `.expect()`ed that every
+    // named ref had been validated at open, but hosts (the LSP) build
+    // `TypeRef`s themselves.
+    let doc = Document::open("@schemaless x = 1\n", "unknown").expect("opens");
+    let missing = wcl_lang::TypeRef::named(vec!["Nope".into()]);
+    assert!(matches!(
+        doc.resolve(&missing),
+        ResolvedType::Unresolved(path) if path == ["Nope".to_string()]
+    ));
+    assert!(matches!(
+        doc.resolve_in(&missing, &["lib".to_string()]),
+        ResolvedType::Unresolved(_)
+    ));
+    let nested = wcl_lang::TypeRef::List(Box::new(missing.clone()));
+    match doc.resolve(&nested) {
+        ResolvedType::List(inner) => assert!(matches!(*inner, ResolvedType::Unresolved(_))),
+        other => panic!("expected a list, got {other:?}"),
+    }
+}

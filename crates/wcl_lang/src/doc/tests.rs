@@ -5582,6 +5582,63 @@ fn missing_expander_is_not_readable_as_an_empty_slot() {
     );
 }
 
+/// `CONTEXTUAL_SRC` with its one `loop` replaced by `depth` nested
+/// loops, each repeating its body once per element of `each`.
+fn nested_loops_src(depth: usize, each: &str) -> String {
+    let mut body = "card { title = \"leaf\" }".to_string();
+    for _ in 0..depth {
+        body = format!("loop {{ each = {each}\n {body}\n }}");
+    }
+    CONTEXTUAL_SRC.replace(
+        "  loop { each = [\"a\", \"b\"]\n    card { title = it }\n  }\n",
+        &format!("{body}\n"),
+    )
+}
+
+/// Demand `deck`'s `cards` slot, which expands every nested loop.
+fn demand_cards(src: &str) -> Result<usize, EvalError> {
+    let mut env = Environment::new();
+    env.set_expander(std::sync::Arc::new(LoopExpander));
+    let doc = Document::open_with(src, "test", &env).expect("open");
+    let deck = doc.block("deck").expect("deck block");
+    let cards = deck.typed_field("cards").expect("cards slot");
+    // A block slot is not a leaf, so `value()` only answers when the
+    // projection itself failed.
+    match cards.value() {
+        Err(e @ EvalError::ExpansionLimit { .. }) => Err(e.clone()),
+        _ => Ok(cards.len().expect("a projected slot has a length")),
+    }
+}
+
+#[test]
+fn nested_expansion_within_the_caps_generates_every_block() {
+    // 1 literal card + 2^4 generated ones.
+    assert_eq!(demand_cards(&nested_loops_src(4, "[1, 2]")), Ok(17));
+}
+
+#[test]
+fn nested_expansion_past_the_depth_cap_is_an_error_not_empty() {
+    // Regression: past MAX_EXPANSION_DEPTH the expansion silently
+    // returned no children, so the slot quietly lost them.
+    let err = demand_cards(&nested_loops_src(40, "[1]")).expect_err("depth cap fires");
+    assert!(
+        matches!(&err, EvalError::ExpansionLimit { limit, .. } if limit.contains("depth")),
+        "expected the depth limit, got {err:?}"
+    );
+}
+
+#[test]
+fn nested_expansion_fan_out_is_capped() {
+    // 10^6 generated blocks from six levels of ten: the total cap stops
+    // the walk long before that.
+    let err = demand_cards(&nested_loops_src(6, "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]"))
+        .expect_err("total cap fires");
+    assert!(
+        matches!(&err, EvalError::ExpansionLimit { limit, .. } if limit.contains("generated blocks")),
+        "expected the total limit, got {err:?}"
+    );
+}
+
 #[test]
 fn missing_expander_does_not_affect_blocks_that_generate_nothing() {
     // No expander, and no `@contextual` child: the projection is the

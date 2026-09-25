@@ -795,7 +795,7 @@ CONSOLE
 
   h3 "Evaluation errors"
 
-  p "`EvalError` has twenty-six variants, each with a stable `wcl::eval::…` code. The full set is best read off the crate. These are the ones you will meet writing documents:"
+  p "`EvalError` has twenty-seven variants, each with a stable `wcl::eval::…` code. The full set is best read off the crate. These are the ones you will meet writing documents:"
 
   table {
     rows:
@@ -817,6 +817,7 @@ CONSOLE
       | "`wcl::eval::user_error`"           | "The `error()` builtin, or a host raising through the same channel" |
       | "`wcl::eval::import_failed`"        | "An import did not resolve, or its file did not parse" |
       | "`wcl::eval::unit_without_type`"    | "A unit literal reached a sink with no declared type behind it" |
+      | "`wcl::eval::expansion_limit`"      | "Nested `@contextual` expansion went more than 32 deep or generated more than 100,000 blocks" |
   }
 
   p "One structural note, because it shows up in tooling. Two of these carry a machine-readable payload beside the sentence: an arithmetic fault says _which_ fault (divide-by-zero versus overflow, and for overflow the type it overflowed) and a schema violation carries its kind and, where it has one, the offending identifier. The rule is the same each time. Anything a program might branch on is a field, never a substring of the message."

@@ -73,10 +73,17 @@ pub(crate) fn doc_comment_from_trivia(trivia: &[ast::Trivia]) -> Option<String> 
 }
 
 /// How deep a `@contextual` block's expansion may nest before
-/// [`Block::expand_children`] stops descending. Bounds a self-referential
-/// expansion, whose block tree is otherwise unbounded; mirrors the
-/// renderer-side lowering guard.
+/// [`Block::expand_children`] refuses with
+/// [`EvalError::ExpansionLimit`]. Bounds a self-referential expansion,
+/// whose block tree is otherwise unbounded; mirrors the renderer-side
+/// lowering guard.
 const MAX_EXPANSION_DEPTH: usize = 32;
+
+/// How many blocks one walk of nested `@contextual` expansion may
+/// generate before it fails with [`EvalError::ExpansionLimit`]. The
+/// depth cap alone still allows `k^32` blocks when every level repeats
+/// its body `k` times.
+const MAX_EXPANDED_BLOCKS: usize = 100_000;
 
 /// Closed set of decorator names the document layer special-cases:
 /// schema dispatch (`@block`, `@table`, `@document`, `@decorator`),
@@ -220,17 +227,39 @@ pub trait DeclName<'a> {
 /// Collect every block of `kind` from a `@contextual` block's expansion,
 /// recursing through nested contextual blocks (a repetition's body may
 /// contain another repetition or an instance). The expansion-depth cap
-/// inside [`Block::expand_children`] bounds the recursion.
+/// inside [`Block::expand_children`] bounds the recursion, and
+/// [`MAX_EXPANDED_BLOCKS`] bounds the whole walk.
 fn push_generated_matching<'a>(
     contextual: &Block<'a>,
     kind: &str,
     out: &mut Vec<Block<'a>>,
 ) -> Result<(), EvalError> {
-    for child in contextual.expand_children()? {
+    let mut generated = 0;
+    push_generated_matching_counted(contextual, kind, out, &mut generated)
+}
+
+/// [`push_generated_matching`], counting every generated block into
+/// `generated` across the recursion.
+fn push_generated_matching_counted<'a>(
+    contextual: &Block<'a>,
+    kind: &str,
+    out: &mut Vec<Block<'a>>,
+    generated: &mut usize,
+) -> Result<(), EvalError> {
+    let children = contextual.expand_children()?;
+    *generated += children.len();
+    if *generated > MAX_EXPANDED_BLOCKS {
+        return Err(EvalError::expansion_limit(
+            contextual.kind(),
+            format!("the limit of {MAX_EXPANDED_BLOCKS} generated blocks"),
+            contextual.span(),
+        ));
+    }
+    for child in children {
         if child.kind() == kind {
             out.push(child);
         } else if child.is_contextual() {
-            push_generated_matching(&child, kind, out)?;
+            push_generated_matching_counted(&child, kind, out, generated)?;
         }
     }
     Ok(())

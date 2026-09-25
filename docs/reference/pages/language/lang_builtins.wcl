@@ -24,12 +24,13 @@ page lang_builtins {
 
   h2 "One call, one answer"
 
-  p "A builtin call is an ordinary call expression. [Expressions and operators](lang_expressions#calls) covers the syntax. Four rules govern what a builtin does with it."
+  p "A builtin call is an ordinary call expression. [Expressions and operators](lang_expressions#calls) covers the syntax. Five rules govern what a builtin does with it."
 
   list {
     li "**Arity is fixed.** Every builtin but one takes an exact number of arguments. The wrong argument count is an error at the call site, not a partially applied function. WCL has no currying."
     li "**Arguments are positional.** WCL has no keyword arguments and no defaults. A builtin that wants named options takes a record instead, so you write the option names at the call site."
     li "**Arguments are values.** WCL evaluates each one before the call, left to right. A function argument, the `fn(x: i64) -> i64 { … }` you hand to `map`, is a value like any other. See [Functions](lang_functions)."
+    li "**Output has a size limit.** A builtin that builds a string or a list sizes the result before building it, and refuses one over 64 MiB of string or 1,048,576 list elements. `range`, `flatten`, `split`, `chars`, `concat`, `join`, `replace`, `format`, `pad_start`, `pad_end` and `repeat` all check. The limit is per call. It does not cap what a document holds in total."
     li "**A failure aborts the field.** A builtin that cannot answer reports an error rather than returning a sentinel, and that error propagates out through whichever field forced it. `try body catch e => fallback` recovers one. See [Control flow](lang_control_flow)."
   }
 
@@ -673,7 +674,7 @@ fn(start: i64, end: i64) -> [i64]
 SRC
   }
 
-  p "The half-open integer range `[start, end)` as a list."
+  p "The half-open integer range `[start, end)` as a list, of at most 1,048,576 elements. A wider range is an error, `'range': output exceeds the 1048576-element limit`, rather than an attempt to allocate it."
 
   table {
     rows:

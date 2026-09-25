@@ -292,6 +292,11 @@ host's expander is a hard error naming the kind. Parsing and formatting never de
 `wcl parse` and `wcl fmt` are unaffected; anything that evaluates must open the document with
 the host environment.
 
+Nested expansion is capped two ways, and both are errors (`EvalError::ExpansionLimit`,
+`wcl::eval::expansion_limit`), never a silently empty slot: more than 32 expansions deep (a block
+that expands into itself), or one projection generating more than 100,000 blocks (repeats
+nested inside repeats multiply).
+
 ## Reading decorators back
 
 Decorators are queryable from inside the document, which is how schema-documentation generators

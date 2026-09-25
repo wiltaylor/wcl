@@ -213,32 +213,66 @@ fn glob_match(pattern: &str, path: &str) -> bool {
     segs_match(&pat, &segs)
 }
 
-/// Match compiled segments against a split path, backtracking over
-/// `**`.
+/// Match compiled segments against a split path; a `**` segment
+/// consumes any number of path segments.
 fn segs_match(pat: &[Seg], path: &[Vec<char>]) -> bool {
-    match pat.split_first() {
-        None => path.is_empty(),
-        Some((Seg::Globstar, rest)) => {
-            segs_match(rest, path) || (!path.is_empty() && segs_match(pat, &path[1..]))
-        }
-        Some((Seg::Pat(p), rest)) => match path.split_first() {
-            Some((seg, path_rest)) => seg_match(p, seg) && segs_match(rest, path_rest),
-            None => false,
+    seq_match(
+        pat,
+        path,
+        |s| matches!(s, Seg::Globstar),
+        |s, seg| match s {
+            Seg::Pat(p) => seg_match(p, seg),
+            Seg::Globstar => unreachable!("a globstar is the star element"),
         },
-    }
+    )
 }
 
-/// Match one compiled segment against one path segment, backtracking
-/// over `*`.
+/// Match one compiled segment against one path segment; a `*` consumes
+/// any run of characters.
 fn seg_match(pat: &[PatTok], text: &[char]) -> bool {
-    match pat.split_first() {
-        None => text.is_empty(),
-        Some((PatTok::Star, rest)) => (0..=text.len()).any(|k| seg_match(rest, &text[k..])),
-        Some((PatTok::Tok(t), rest)) => match text.split_first() {
-            Some((&c, text_rest)) => tok_matches(t, c) && seg_match(rest, text_rest),
-            None => false,
+    seq_match(
+        pat,
+        text,
+        |t| matches!(t, PatTok::Star),
+        |t, &c| match t {
+            PatTok::Tok(t) => tok_matches(t, c),
+            PatTok::Star => unreachable!("a star is the star element"),
         },
+    )
+}
+
+/// Whether `pat` matches all of `text`, where an `is_star` element
+/// consumes any run of `text` (including none) and every other element
+/// consumes exactly one item it `accepts`.
+///
+/// A row-by-row table over (pattern prefix, text prefix): `O(|pat| ×
+/// |text|)` time, `O(|text|)` space, and no recursion. Backtracking
+/// took exponential time on inputs like `*a*a*a*a*a*a*a*a*b` against a
+/// long run of `a`s.
+fn seq_match<P, T>(
+    pat: &[P],
+    text: &[T],
+    is_star: impl Fn(&P) -> bool,
+    accepts: impl Fn(&P, &T) -> bool,
+) -> bool {
+    // `row[j]`: the pattern prefix seen so far matches `text[..j]`.
+    let mut row = vec![false; text.len() + 1];
+    row[0] = true;
+    for p in pat {
+        if is_star(p) {
+            // Reachable from any shorter prefix: a running OR.
+            for j in 1..row.len() {
+                row[j] = row[j] || row[j - 1];
+            }
+        } else {
+            // Consume one item: shift right, filtering by `accepts`.
+            for j in (1..row.len()).rev() {
+                row[j] = row[j - 1] && accepts(p, &text[j - 1]);
+            }
+            row[0] = false;
+        }
     }
+    row[text.len()]
 }
 
 /// Whether one token matches one character.
@@ -266,53 +300,110 @@ fn glob_overlaps(a: &str, b: &str) -> bool {
 
 /// Whether two compiled segment lists have a common match.
 fn segs_intersect(a: &[Seg], b: &[Seg]) -> bool {
-    match (a.split_first(), b.split_first()) {
-        (None, None) => true,
-        (Some((Seg::Globstar, a_rest)), _) => {
-            // The globstar spans zero segments…
-            if segs_intersect(a_rest, b) {
-                return true;
-            }
-            // …or produces one more segment that b's head also covers.
-            match b.split_first() {
-                Some((Seg::Globstar, b_rest)) => segs_intersect(a, b_rest),
-                Some((Seg::Pat(p), b_rest)) => pat_nonempty(p) && segs_intersect(a, b_rest),
-                None => false,
-            }
-        }
-        (_, Some((Seg::Globstar, _))) => segs_intersect(b, a),
-        (None, Some(_)) | (Some(_), None) => false,
-        (Some((Seg::Pat(x), a_rest)), Some((Seg::Pat(y), b_rest))) => {
-            pats_intersect(x, y) && segs_intersect(a_rest, b_rest)
-        }
-    }
+    seq_intersect(
+        a,
+        b,
+        |s| matches!(s, Seg::Globstar),
+        |s| match s {
+            Seg::Pat(p) => pat_nonempty(p),
+            Seg::Globstar => true,
+        },
+        |x, y| match (x, y) {
+            (Seg::Pat(x), Seg::Pat(y)) => pats_intersect(x, y),
+            _ => unreachable!("globstars are star elements"),
+        },
+    )
 }
 
-/// Can two segment patterns match a common string? Total call weight is
-/// bounded by `len(a) + len(b)` per step, shrinking every recursion.
+/// Can two segment patterns match a common string?
 fn pats_intersect(a: &[PatTok], b: &[PatTok]) -> bool {
-    match (a.split_first(), b.split_first()) {
-        (None, None) => true,
-        (Some((PatTok::Star, a_rest)), _) => {
-            // The star matches the empty string…
-            if pats_intersect(a_rest, b) {
-                return true;
+    seq_intersect(
+        a,
+        b,
+        |t| matches!(t, PatTok::Star),
+        |t| match t {
+            PatTok::Tok(t) => tok_nonempty(t),
+            PatTok::Star => true,
+        },
+        |x, y| match (x, y) {
+            (PatTok::Tok(x), PatTok::Tok(y)) => toks_intersect(x, y),
+            _ => unreachable!("stars are star elements"),
+        },
+    )
+}
+
+/// Whether two element sequences can match a common string. An
+/// `is_star` element matches any run (including none); every other
+/// element matches one item, is satisfiable when `nonempty`, and
+/// `pair` says whether two of them share an item.
+///
+/// The recurrence: with `x` and `y` the two remaining sequences, a
+/// star at the head of `x` either matches nothing (drop it) or emits
+/// one item that `y`'s head also covers (drop `y`'s head, keep the
+/// star). A star only on `y` swaps the two sides. Two plain heads must
+/// `pair`. So a state is `(i, j, swapped)` — the suffixes `a[i..]` and
+/// `b[j..]`, in either order — and every state depends only on larger
+/// `i`/`j` or on its own swapped twin, which never depends back.
+/// Filling rows from the end is `O(|a| × |b|)` time and `O(|b|)`
+/// space with no recursion; the backtracking it replaces was
+/// exponential.
+fn seq_intersect<T>(
+    a: &[T],
+    b: &[T],
+    is_star: impl Fn(&T) -> bool,
+    nonempty: impl Fn(&T) -> bool,
+    pair: impl Fn(&T, &T) -> bool,
+) -> bool {
+    let (n, m) = (a.len(), b.len());
+    // `*_next` hold row `i + 1`, `*_row` row `i`. `straight[j]` answers
+    // `(a[i..], b[j..])`; `swapped[j]` answers `(b[j..], a[i..])`.
+    let mut straight_next = vec![false; m + 1];
+    let mut swapped_next = vec![false; m + 1];
+    let mut straight_row = vec![false; m + 1];
+    let mut swapped_row = vec![false; m + 1];
+    for i in (0..=n).rev() {
+        let a_star = i < n && is_star(&a[i]);
+        // Whether `a[i]` can emit an item to match a star on the `b` side.
+        let a_emits = i < n && (a_star || nonempty(&a[i]));
+        for j in (0..=m).rev() {
+            let b_star = j < m && is_star(&b[j]);
+            let b_emits = j < m && (b_star || nonempty(&b[j]));
+            if i == n && j == m {
+                straight_row[j] = true;
+                swapped_row[j] = true;
+                continue;
             }
-            // …or emits one more character that b's head also matches
-            // (a star matches any character, so b's head only needs to
-            // accept *some* character).
-            match b.split_first() {
-                Some((PatTok::Star, b_rest)) => pats_intersect(a, b_rest),
-                Some((PatTok::Tok(t), b_rest)) => tok_nonempty(t) && pats_intersect(a, b_rest),
-                None => false,
-            }
+            // A star heading either side: it matches nothing, or emits
+            // an item the other side's head also covers. Neither side
+            // reads its twin here, so these go first.
+            let star_straight = || straight_next[j] || (b_emits && straight_row[j + 1]);
+            let star_swapped = || swapped_row[j + 1] || (a_emits && swapped_next[j]);
+            let one_ends = i == n || j == m;
+            let (straight, swapped) = match (a_star, b_star) {
+                (true, true) => (star_straight(), star_swapped()),
+                // The star sits on one side only; the other order swaps
+                // onto it.
+                (true, false) => {
+                    let st = star_straight();
+                    (st, st)
+                }
+                (false, true) => {
+                    let sw = star_swapped();
+                    (sw, sw)
+                }
+                (false, false) if one_ends => (false, false),
+                (false, false) => (
+                    pair(&a[i], &b[j]) && straight_next[j + 1],
+                    pair(&b[j], &a[i]) && swapped_next[j + 1],
+                ),
+            };
+            straight_row[j] = straight;
+            swapped_row[j] = swapped;
         }
-        (_, Some((PatTok::Star, _))) => pats_intersect(b, a),
-        (None, Some(_)) | (Some(_), None) => false,
-        (Some((PatTok::Tok(x), a_rest)), Some((PatTok::Tok(y), b_rest))) => {
-            toks_intersect(x, y) && pats_intersect(a_rest, b_rest)
-        }
+        std::mem::swap(&mut straight_next, &mut straight_row);
+        std::mem::swap(&mut swapped_next, &mut swapped_row);
     }
+    straight_next[0]
 }
 
 /// Does the token accept at least one character?
@@ -473,5 +564,38 @@ mod tests {
         assert!(glob_overlaps("**", "**"));
         assert!(glob_overlaps("src/**/*.rs", "src/deep/nest/main.rs"));
         assert!(!glob_overlaps("src/**/*.rs", "src/deep/nest/main.md"));
+    }
+
+    #[test]
+    fn many_stars_do_not_backtrack_exponentially() {
+        // Regression: backtracking never finished on these.
+        let text = "a".repeat(95);
+        assert!(!glob_match("*a*a*a*a*a*a*a*a*b", &text));
+        assert!(glob_match("*a*a*a*a*a*a*a*a*a", &text));
+        let path = vec!["a"; 60].join("/");
+        assert!(!glob_match("**/a/**/a/**/a/**/a/**/a/**/a/**/b", &path));
+        assert!(glob_match("**/a/**/a/**/a/**/a/**/a/**/a/**/a", &path));
+        assert!(!glob_overlaps("*a*a*a*a*a*a*a*a*b", &text));
+        assert!(!glob_overlaps(
+            "*a*a*a*a*a*a*a*a*b",
+            &format!("{}c", "*a".repeat(40))
+        ));
+        assert!(glob_overlaps(
+            "*a*a*a*a*a*a*a*a*b",
+            &format!("{}*", "*a".repeat(40))
+        ));
+        assert!(!glob_overlaps(
+            "**/a/**/a/**/a/**/a/**/a/**/b",
+            &format!("{path}/c")
+        ));
+    }
+
+    #[test]
+    fn long_patterns_do_not_recurse() {
+        // Matching walks a table rather than recursing per character,
+        // so a long pattern cannot exhaust the stack.
+        let long = "a".repeat(5_000);
+        assert!(glob_match(&long, &long));
+        assert!(!glob_match(&format!("{long}b"), &long));
     }
 }

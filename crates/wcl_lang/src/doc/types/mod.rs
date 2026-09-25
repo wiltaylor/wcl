@@ -95,6 +95,12 @@ pub enum ResolvedType<'a> {
         /// The return type.
         return_ty: Box<ResolvedType<'a>>,
     },
+    /// A named reference that matches no declaration. [`Document::open`]
+    /// rejects these in source, so this only arises for a [`TypeRef`](crate::TypeRef) a
+    /// host builds itself; carries the path as written.
+    ///
+    /// [`Document::open`]: crate::Document::open
+    Unresolved(&'a [String]),
 }
 
 /// How many alias links a walk down an alias chain will peel before
@@ -152,6 +158,9 @@ pub enum FieldShape<'a> {
     /// point — a shape that guessed here would misclassify the field in
     /// exactly the silence this type exists to end.
     Unresolved(TypeDecl<'a>),
+    /// A type name that matches no declaration
+    /// ([`ResolvedType::Unresolved`]), carrying the path as written.
+    Undeclared(&'a [String]),
 }
 
 impl<'a> FieldShape<'a> {
@@ -207,6 +216,7 @@ impl<'a> FieldShape<'a> {
             ResolvedType::Reference(inner) => FieldShape::Reference(nest(inner)),
             ResolvedType::Tensor { element, .. } => FieldShape::Tensor(nest(element)),
             ResolvedType::Function { .. } => FieldShape::Function,
+            ResolvedType::Unresolved(path) => FieldShape::Undeclared(path),
         }
     }
 }
