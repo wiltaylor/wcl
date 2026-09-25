@@ -36,8 +36,9 @@ require-cargo-fuzz: require-cargo
 fmt-check: require-rustfmt
     cargo fmt --all -- --check
 
-# Lint with clippy (warnings are errors)
-#
+# Every cargo command in the gate runs `--locked`: a Cargo.lock that is out of
+# date with the manifests fails the gate instead of being silently rewritten.
+
 # The two `-A` flags exempt the documentation-coverage lints that Cargo.toml
 # enables workspace-wide. They are a backlog (~2550 items when switched on),
 # not a standard we currently meet, so gating on them would mean gating on
@@ -46,22 +47,42 @@ fmt-check: require-rustfmt
 # these two only; a plain `cargo clippy` still shows them.
 #
 # Delete both flags once the backlog is cleared — that is the whole switch.
+#
+# Lint with clippy (warnings are errors)
 [group('quality')]
 workspace-lint: require-clippy
-    cargo clippy --workspace --all-targets -- -D warnings -A missing_docs -A clippy::missing_docs_in_private_items
+    cargo clippy --locked --workspace --all-targets -- -D warnings -A missing_docs -A clippy::missing_docs_in_private_items
+
+# Build the API docs with rustdoc warnings as errors (broken intra-doc links)
+[group('quality')]
+workspace-doc: require-cargo
+    RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps --workspace
 
 # Run all tests (unit + integration)
 [group('test')]
 workspace-test: require-cargo
-    cargo test --workspace
+    cargo test --locked --workspace
 
-# Bounded fuzz sweep across every target (~15s each, ~75s total)
+# One fuzz target per line in `targets`, so adding a target is a one-line
+# change that merges cleanly.
+#
+# Bounded fuzz sweep across every target (~15s each)
 [group('test')]
 fuzz-sweep: require-cargo-fuzz
-    @host="$(rustc +nightly -vV | sed -n 's/^host: //p')"; \
-    for t in parse eval format_round_trip json_round_trip set_edit_path; do \
-        echo "==> fuzz $t" >&2; \
-        (cd crates/wcl_lang && cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
+    #!/usr/bin/env bash
+    set -euo pipefail
+    targets=(
+        parse
+        eval
+        format_round_trip
+        json_round_trip
+        set_edit_path
+    )
+    host="$(rustc +nightly -vV | sed -n 's/^host: //p')"
+    cd crates/wcl_lang
+    for t in "${targets[@]}"; do
+        echo "==> fuzz $t" >&2
+        cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15
     done
 
 # ── Builds the gate depends on ────────────────────────────────────────────
@@ -83,8 +104,8 @@ fuzz-sweep: require-cargo-fuzz
 [group('dev')]
 docs-build *ARGS: require-cargo
     rm -rf docs/_site
-    cargo run -p wcl -- wdoc build docs/landing/main.wcl --out docs/_site {{ARGS}}
-    cargo run -p wcl -- wdoc build docs/reference/main.wcl --out docs/_site/reference {{ARGS}}
+    cargo run --locked -p wcl -- wdoc build docs/landing/main.wcl --out docs/_site {{ARGS}}
+    cargo run --locked -p wcl -- wdoc build docs/reference/main.wcl --out docs/_site/reference {{ARGS}}
 
 # A build tree is relocatable: every URL in it is relative, so the tree works
 # from whatever directory it is served out of. The book relies on it — it is
