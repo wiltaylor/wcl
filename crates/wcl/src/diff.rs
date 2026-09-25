@@ -25,7 +25,7 @@ use std::collections::BTreeMap;
 
 use wcl_lang::{Block, Document, ParseError, Value};
 
-use crate::{EXIT_IO, EXIT_OK, EXIT_PARSE, gitspec, open_document};
+use crate::{EXIT_DIFFERS, EXIT_IO, EXIT_OK, gitspec, open_document, report_parse_error};
 
 /// Entity-level operation.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -140,9 +140,10 @@ pub(crate) fn diff_documents(old: &Document, new: &Document) -> Vec<Change> {
 
 /// Reify a document's top-level blocks (entities) and bare fields into a
 /// `key -> Value` map. A block reifies to its schema-projected record; the
-/// bare top-level fields reify to one `<document>` record. A block whose
-/// value can't be evaluated is skipped with a stderr note (so a partial
-/// document still diffs the rest rather than aborting).
+/// bare top-level fields reify to one `<document>` record. A block or field
+/// whose value can't be evaluated is skipped with a stderr warning (so a
+/// partial document still diffs the rest rather than aborting, and the
+/// skip is never silent).
 fn collect_entities(doc: &Document) -> BTreeMap<String, Value> {
     let mut out: BTreeMap<String, Value> = BTreeMap::new();
 
@@ -162,8 +163,16 @@ fn collect_entities(doc: &Document) -> BTreeMap<String, Value> {
     // document-level field isn't silently dropped.
     let mut doc_fields: BTreeMap<String, Value> = BTreeMap::new();
     for f in doc.fields() {
-        if let Ok(v) = f.value() {
-            doc_fields.insert(f.name().to_string(), v.clone());
+        match f.value() {
+            Ok(v) => {
+                doc_fields.insert(f.name().to_string(), v.clone());
+            }
+            Err(e) => {
+                eprintln!(
+                    "warning: field '{}' could not be evaluated, skipping: {e}",
+                    f.name()
+                );
+            }
         }
     }
     if !doc_fields.is_empty() {
@@ -432,7 +441,8 @@ fn quote_wcl(s: &str) -> String {
 /// Why opening one side of the diff failed. The two arms map to different
 /// exit codes, so the failure has to stay distinguishable up to [`run`].
 enum OpenErr {
-    /// The document was found but did not parse / evaluate.
+    /// The document did not open: a working-tree file that could not be
+    /// read, or any file that did not parse.
     Parse(ParseError),
     /// The document could not be read at all — a missing path, or a git
     /// revision that could not be materialized.
@@ -443,10 +453,7 @@ impl OpenErr {
     /// Render the failure to stderr and yield the exit code it maps to.
     fn report(self) -> u8 {
         match self {
-            OpenErr::Parse(e) => {
-                eprintln!("{:?}", miette::Report::new(e));
-                EXIT_PARSE
-            }
+            OpenErr::Parse(e) => report_parse_error(e),
             OpenErr::Io(msg) => {
                 eprintln!("{msg}");
                 EXIT_IO
@@ -482,8 +489,9 @@ fn open_spec(arg: &str) -> Result<(Document, Option<tempfile::TempDir>), OpenErr
 /// Entry point for the `diff` subcommand. Opens both sides (each a path or a
 /// `<rev>:<path>` git spec), computes the WCL-aware entity/field diff, and
 /// prints it as a WCL tree. A parse/eval/git failure on either side renders
-/// the diagnostic and yields a non-zero exit code.
-pub(crate) fn run(old: &str, new: &str) -> u8 {
+/// the diagnostic and yields a non-zero exit code. With `exit_code`, a
+/// non-empty diff exits [`EXIT_DIFFERS`] instead of [`EXIT_OK`].
+pub(crate) fn run(old: &str, new: &str, exit_code: bool) -> u8 {
     // `_old`/`_new` hold the temp dirs alive until the diff is computed.
     let (old_doc, _old) = match open_spec(old) {
         Ok(x) => x,
@@ -495,7 +503,11 @@ pub(crate) fn run(old: &str, new: &str) -> u8 {
     };
     let changes = diff_documents(&old_doc, &new_doc);
     print!("{}", render_wcl(&changes, old, new));
-    EXIT_OK
+    if exit_code && !changes.is_empty() {
+        EXIT_DIFFERS
+    } else {
+        EXIT_OK
+    }
 }
 
 #[cfg(test)]

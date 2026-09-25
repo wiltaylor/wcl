@@ -32,9 +32,32 @@ fn parse_prints_document_tree() {
         .arg(examples_dir().join("basic.wcl"))
         .assert()
         .success()
+        .stderr(predicate::str::is_empty())
         .stdout(predicate::str::contains("service \"web\" {"))
         .stdout(predicate::str::contains("name = \"alpha\""))
         .stdout(predicate::str::contains("port = 8080"));
+}
+
+/// A value that fails to evaluate keeps its placeholder in the tree, but
+/// its diagnostic goes to stderr and the command fails with 3.
+#[test]
+fn parse_reports_eval_errors_on_stderr_and_exits_3() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("bad.wcl");
+    std::fs::write(
+        &file,
+        "@document type D { a: i64  b: i64 }\na = 1\nb = 1 / 0\n",
+    )
+    .unwrap();
+    wcl()
+        .arg("parse")
+        .arg(&file)
+        .assert()
+        .code(3)
+        .stdout(predicate::str::contains("a = 1"))
+        .stdout(predicate::str::contains("b = <error: "))
+        .stderr(predicate::str::contains("cannot divide by zero"))
+        .stderr(predicate::str::contains("1 evaluation error"));
 }
 
 #[test]
@@ -171,13 +194,131 @@ fn check_omits_a_snippet_when_recursive_error_provenance_is_unknown() {
         .stderr(predicate::str::contains("@document type Root").not());
 }
 
+/// A file that cannot be read is an I/O failure (4), not a parse failure
+/// (1), and every command that opens a document agrees.
 #[test]
 fn check_reports_missing_file() {
     wcl()
         .arg("check")
         .arg("does-not-exist.wcl")
         .assert()
-        .failure();
+        .code(4);
+}
+
+#[test]
+fn every_command_maps_a_missing_file_to_exit_4() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let missing = tmp.path().join("does-not-exist.wcl");
+    let present = tmp.path().join("present.wcl");
+    std::fs::write(&present, "x = 1\n").unwrap();
+    let cases: Vec<Vec<std::ffi::OsString>> = vec![
+        vec!["check".into(), missing.clone().into()],
+        vec!["parse".into(), missing.clone().into()],
+        vec!["eval".into(), missing.clone().into(), "x".into()],
+        vec!["set".into(), missing.clone().into(), "x".into(), "2".into()],
+        vec!["fmt".into(), missing.clone().into()],
+        vec!["repl".into(), missing.clone().into()],
+        vec![
+            "diff".into(),
+            missing.clone().into(),
+            present.clone().into(),
+        ],
+        vec![
+            "diff".into(),
+            present.clone().into(),
+            missing.clone().into(),
+        ],
+    ];
+    for args in cases {
+        wcl()
+            .args(&args)
+            .write_stdin("")
+            .assert()
+            .code(4)
+            .stderr(predicate::str::is_empty().not());
+    }
+    // `--json` reports the same failure on stdout, with the same code.
+    wcl()
+        .args(["check", "--json"])
+        .arg(&missing)
+        .assert()
+        .code(4)
+        .stdout(predicate::str::contains("\"ok\": false"));
+}
+
+#[test]
+fn fmt_reports_missing_file_as_io_error() {
+    wcl()
+        .arg("fmt")
+        .arg("does-not-exist.wcl")
+        .assert()
+        .code(4)
+        .stderr(predicate::str::contains("does-not-exist.wcl"));
+}
+
+// ---------------------------------------------------------------------------
+// Usage errors: exit 64 (`EX_USAGE`), except `--help` / `--version`, which
+// print to stdout and succeed.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn unknown_flag_is_a_usage_error() {
+    wcl()
+        .args(["check", "--no-such-flag", "x.wcl"])
+        .assert()
+        .code(64)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("--no-such-flag"));
+}
+
+#[test]
+fn missing_argument_and_missing_subcommand_are_usage_errors() {
+    wcl().arg("check").assert().code(64);
+    wcl().assert().code(64);
+    wcl().arg("no-such-command").assert().code(64);
+}
+
+#[test]
+fn help_and_version_exit_zero_on_stdout() {
+    for args in [
+        vec!["--help"],
+        vec!["-h"],
+        vec!["check", "--help"],
+        vec!["help"],
+    ] {
+        wcl()
+            .args(&args)
+            .assert()
+            .code(0)
+            .stdout(predicate::str::contains("Usage"))
+            .stderr(predicate::str::is_empty());
+    }
+    wcl()
+        .arg("--version")
+        .assert()
+        .code(0)
+        .stdout(predicate::str::starts_with("wcl "));
+}
+
+#[test]
+fn init_without_a_template_is_a_usage_error() {
+    wcl()
+        .arg("init")
+        .assert()
+        .code(64)
+        .stderr(predicate::str::contains("--list"));
+}
+
+#[test]
+fn init_malformed_define_is_a_usage_error() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    wcl()
+        .args(["init", "minimal"])
+        .arg(tmp.path().join("proj"))
+        .args(["-D", "no-equals-sign", "--defaults"])
+        .assert()
+        .code(64)
+        .stderr(predicate::str::contains("key=value"));
 }
 
 #[test]
@@ -742,7 +883,7 @@ fn check_reports_non_utf8_file_as_io_error() {
     let file = tmp.path().join("bytes.wcl");
     // Bytes that are valid neither UTF-8 nor ASCII: a lone 0xFF.
     std::fs::write(&file, [0xFFu8, 0xFE, 0xFD]).expect("write fixture");
-    wcl().arg("check").arg(&file).assert().failure();
+    wcl().arg("check").arg(&file).assert().code(4);
 }
 
 #[test]
@@ -906,7 +1047,6 @@ fn check_json_reports_parse_error_with_span() {
         .arg("-")
         .write_stdin("name = \u{1}\n")
         .assert()
-        .failure()
         .code(1);
     let stdout = String::from_utf8_lossy(&out.get_output().stdout).to_string();
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
@@ -925,7 +1065,6 @@ fn check_json_reports_schema_violations_with_exit_2() {
         .arg("-")
         .write_stdin("name = \"x\"\n")
         .assert()
-        .failure()
         .code(2);
     let stdout = String::from_utf8_lossy(&out.get_output().stdout).to_string();
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
@@ -955,7 +1094,7 @@ fn fmt_rejects_in_place_with_stdin() {
         .arg("-")
         .write_stdin("x = 1\n")
         .assert()
-        .failure()
+        .code(64)
         .stderr(predicate::str::contains("--in-place"));
 }
 
@@ -1032,7 +1171,7 @@ fn diff_rejects_removed_format_flag() {
         .arg(&new)
         .args(["--format", "json"])
         .assert()
-        .failure()
+        .code(64)
         .stderr(predicate::str::contains("--format"));
 }
 
@@ -1104,6 +1243,68 @@ fn diff_ignores_formatting_only_changes() {
         .assert()
         .success()
         .stdout(predicate::str::contains("# no changes"));
+}
+
+/// `--exit-code` turns "differences found" into exit 5 — not git's 1,
+/// which `wcl` already spends on a parse failure.
+#[test]
+fn diff_exit_code_flag_reports_differences() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let old = tmp.path().join("old.wcl");
+    let same = tmp.path().join("same.wcl");
+    let new = tmp.path().join("new.wcl");
+    let broken = tmp.path().join("broken.wcl");
+    let body =
+        format!("{DIFF_SCHEMA}domain_entity \"task\" {{ name = \"Task\"  status = \"draft\" }}\n");
+    std::fs::write(&old, &body).unwrap();
+    std::fs::write(&same, &body).unwrap();
+    std::fs::write(&new, body.replace("draft", "active")).unwrap();
+    std::fs::write(&broken, "x = = 1\n").unwrap();
+
+    // Without the flag a difference still exits 0.
+    wcl().arg("diff").arg(&old).arg(&new).assert().code(0);
+    wcl()
+        .args(["diff", "--exit-code"])
+        .arg(&old)
+        .arg(&new)
+        .assert()
+        .code(5)
+        .stdout(predicate::str::contains("modified \"domain_entity:task\""));
+    wcl()
+        .args(["diff", "--exit-code"])
+        .arg(&old)
+        .arg(&same)
+        .assert()
+        .code(0)
+        .stdout(predicate::str::contains("# no changes"));
+    // Failures keep their own codes under the flag.
+    wcl()
+        .args(["diff", "--exit-code"])
+        .arg(&old)
+        .arg(&broken)
+        .assert()
+        .code(1);
+}
+
+/// A top-level field that fails to evaluate is skipped with a warning, the
+/// same as a block, rather than dropped silently.
+#[test]
+fn diff_warns_about_top_level_fields_it_cannot_evaluate() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let old = tmp.path().join("old.wcl");
+    let new = tmp.path().join("new.wcl");
+    let schema = "@document type D { a: i64  b: i64 }\n";
+    std::fs::write(&old, format!("{schema}a = 1\nb = 2\n")).unwrap();
+    std::fs::write(&new, format!("{schema}a = 1\nb = 1 / 0\n")).unwrap();
+    wcl()
+        .arg("diff")
+        .arg(&old)
+        .arg(&new)
+        .assert()
+        .code(0)
+        .stderr(predicate::str::contains(
+            "warning: field 'b' could not be evaluated, skipping",
+        ));
 }
 
 // ---------------------------------------------------------------------------
@@ -1334,6 +1535,22 @@ fn component_doc(body: &str) -> (TempDir, PathBuf) {
     (tmp, file)
 }
 
+/// A component body and a repeater body only evaluate once expanded, so
+/// `wcl parse` marks their values deferred and does not fail on them.
+#[test]
+fn parse_defers_template_bodies_instead_of_failing() {
+    for (_tmp, file) in [component_doc(COMPONENT_DOC), expander_doc()] {
+        wcl()
+            .arg("parse")
+            .arg(&file)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("<deferred: "))
+            .stdout(predicate::str::contains("<error: ").not())
+            .stderr(predicate::str::is_empty());
+    }
+}
+
 #[test]
 fn check_accepts_a_filled_component_instance() {
     let (_tmp, file) = component_doc(COMPONENT_DOC);
@@ -1394,7 +1611,7 @@ fn profile_flag_is_rejected() {
         }
         cmd.arg("--profile")
             .assert()
-            .failure()
+            .code(64)
             .stderr(predicate::str::contains("--profile"));
     }
 }
@@ -1403,7 +1620,7 @@ fn profile_flag_is_rejected() {
 fn profile_env_emits_a_profile_on_stderr() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let file = tmp.path().join("a.wcl");
-    std::fs::write(&file, "x = 1\n").unwrap();
+    std::fs::write(&file, "@document type D { x: i64 }\nx = 1\n").unwrap();
     wcl()
         .env("WCL_PROFILE", "1")
         .arg("parse")
@@ -1418,7 +1635,7 @@ fn profile_env_emits_a_profile_on_stderr() {
 fn profile_env_off_emits_nothing_extra() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let file = tmp.path().join("a.wcl");
-    std::fs::write(&file, "x = 1\n").unwrap();
+    std::fs::write(&file, "@document type D { x: i64 }\nx = 1\n").unwrap();
     for value in ["0", "false", ""] {
         wcl()
             .env("WCL_PROFILE", value)
@@ -1442,6 +1659,6 @@ fn profile_env_rejects_an_unrecognized_value() {
         .arg("parse")
         .arg(&file)
         .assert()
-        .failure()
+        .code(64)
         .stderr(predicate::str::contains("WCL_PROFILE"));
 }
