@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[allow(deprecated)] // SymbolInformation::deprecated is required by lsp-types
-use tower_lsp::lsp_types::{Location, SymbolInformation, Url};
+use tower_lsp_server::ls_types::{Location, SymbolInformation};
 use wcl_lang::{Document, SymbolRecord};
 
 use crate::convert::span_to_range;
@@ -84,7 +84,7 @@ pub(crate) fn workspace_symbols(
     hits.into_iter()
         .filter_map(|(_, path, rec)| {
             let text = text_for(&path)?;
-            let uri = Url::from_file_path(&path).ok()?;
+            let uri = crate::convert::path_to_uri(&path)?;
             let (kind, container_name) = classify(&rec.kind);
             #[allow(deprecated)]
             Some(SymbolInformation {

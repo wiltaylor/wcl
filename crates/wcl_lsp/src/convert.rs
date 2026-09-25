@@ -5,8 +5,26 @@
 //! encoding (`PositionEncodingKind::UTF8`), so `character` is a count
 //! of bytes within the line — no UTF-16 dance needed.
 
-use tower_lsp::lsp_types::{Position, Range};
+use std::path::{Path, PathBuf};
+
+use tower_lsp_server::ls_types::{Position, Range, Uri};
 use wcl_lang::Span;
+
+/// The filesystem path a `file:` URI names. `None` for any other
+/// scheme (`untitled:`, `vscode-notebook-cell:` …), which has no path
+/// on disk to import from or read back.
+pub(crate) fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
+    if !uri.scheme().as_str().eq_ignore_ascii_case("file") {
+        return None;
+    }
+    uri.to_file_path().map(std::borrow::Cow::into_owned)
+}
+
+/// The `file:` URI for an absolute path. `None` when the path is
+/// relative and cannot be canonicalised.
+pub(crate) fn path_to_uri(path: &Path) -> Option<Uri> {
+    Uri::from_file_path(path)
+}
 
 /// Translate a byte-offset [`Span`] in `source` to an LSP [`Range`].
 /// Offsets past the end of the source clamp to the final byte.

@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Range};
+use tower_lsp_server::ls_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Range};
 use wcl_lang::{Document, EvalError, FileLoader, ParseError, Span};
 
 use crate::convert::span_to_range;
@@ -203,7 +203,7 @@ fn diagnostic_code(err: &EvalError) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tower_lsp::lsp_types::Position;
+    use tower_lsp_server::ls_types::Position;
 
     /// The loader the live server threads in: the embedded wdoc registry
     /// over disk (no open-buffer overlay in unit tests).

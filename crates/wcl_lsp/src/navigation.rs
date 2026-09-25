@@ -3,7 +3,7 @@
 //! return the declaration span or collect AST occurrences with the
 //! same declaration identity.
 
-use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
+use tower_lsp_server::ls_types::{GotoDefinitionResponse, Location, Uri};
 use wcl_lang::Document;
 
 use crate::convert::span_to_range;
@@ -13,7 +13,7 @@ use crate::resolve;
 /// cursor isn't on an identifier we can resolve, or when the symbol
 /// has no AST declaration site (e.g. a builtin decorator).
 pub(crate) fn goto_definition(
-    uri: Url,
+    uri: Uri,
     source: &str,
     offset: usize,
     root_doc: Option<&Document>,
@@ -38,7 +38,7 @@ pub(crate) fn goto_definition(
                 let target = hit
                     .source_path
                     .or(root_path)
-                    .and_then(|p| Url::from_file_path(p).ok())
+                    .and_then(crate::convert::path_to_uri)
                     .unwrap_or_else(|| uri.clone());
                 (target, hit.record.span)
             }
@@ -57,9 +57,7 @@ pub(crate) fn goto_definition(
         // Read the target file lazily to compute line/col. If the
         // read fails (transient I/O), report the same as a request-
         // file range — the byte offsets still help the editor.
-        match location_uri
-            .to_file_path()
-            .ok()
+        match crate::convert::uri_to_path(&location_uri)
             .and_then(|p| std::fs::read_to_string(p).ok())
         {
             Some(text) => span_to_range(&text, span),
@@ -74,7 +72,7 @@ pub(crate) fn goto_definition(
 
 /// Find occurrences of the selected declaration in the current source snapshot.
 pub(crate) fn references(
-    uri: Url,
+    uri: Uri,
     source: &str,
     offset: usize,
     include_declaration: bool,
@@ -110,7 +108,7 @@ pub(crate) fn references(
             if path.starts_with(wcl_lang::SYSTEM_IMPORT_ROOT) {
                 continue;
             }
-            let file_uri = Url::from_file_path(&path).ok()?;
+            let file_uri = crate::convert::path_to_uri(&path)?;
             if file_uri == uri {
                 continue;
             }
@@ -142,14 +140,14 @@ pub(crate) fn references(
 /// `Err` explains an invalid new name or a target with unsupported contextual uses.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn rename(
-    uri: Url,
+    uri: Uri,
     source: &str,
     offset: usize,
     new_name: &str,
     root_doc: Option<&Document>,
     root_path: Option<&std::path::Path>,
     overlays: &std::collections::HashMap<std::path::PathBuf, String>,
-) -> Result<Option<tower_lsp::lsp_types::WorkspaceEdit>, String> {
+) -> Result<Option<tower_lsp_server::ls_types::WorkspaceEdit>, String> {
     if !is_valid_identifier(new_name) {
         return Err(format!("'{new_name}' is not a valid WCL identifier"));
     }
@@ -183,9 +181,9 @@ pub(crate) fn rename(
     ) else {
         return Ok(None);
     };
-    let mut changes: std::collections::HashMap<Url, Vec<tower_lsp::lsp_types::TextEdit>> =
+    let mut changes: std::collections::HashMap<Uri, Vec<tower_lsp_server::ls_types::TextEdit>> =
         std::collections::HashMap::new();
-    let mut seen: std::collections::HashSet<(Url, u32, u32, u32, u32)> =
+    let mut seen: std::collections::HashSet<(Uri, u32, u32, u32, u32)> =
         std::collections::HashSet::new();
     let mut snapshots =
         std::collections::HashMap::from([(uri.clone(), (source.to_string(), occurrences))]);
@@ -193,7 +191,8 @@ pub(crate) fn rename(
         if path.starts_with(wcl_lang::SYSTEM_IMPORT_ROOT) {
             continue;
         }
-        let target = Url::from_file_path(path).map_err(|_| "Rename target is not a local file")?;
+        let target =
+            crate::convert::path_to_uri(path).ok_or("Rename target is not a local file")?;
         if snapshots.contains_key(&target) {
             continue;
         }
@@ -214,10 +213,8 @@ pub(crate) fn rename(
     }
     for loc in locations {
         if !snapshots.contains_key(&loc.uri) {
-            let path = loc
-                .uri
-                .to_file_path()
-                .map_err(|_| "Rename target is not a local file")?;
+            let path =
+                crate::convert::uri_to_path(&loc.uri).ok_or("Rename target is not a local file")?;
             let text = overlays
                 .get(&path)
                 .cloned()
@@ -253,7 +250,7 @@ pub(crate) fn rename(
             changes
                 .entry(loc.uri)
                 .or_default()
-                .push(tower_lsp::lsp_types::TextEdit {
+                .push(tower_lsp_server::ls_types::TextEdit {
                     range: loc.range,
                     new_text,
                 });
@@ -269,8 +266,7 @@ pub(crate) fn rename(
     if doc.schema_errors().is_empty() {
         let mut updated = overlays.clone();
         updated.insert(
-            uri.to_file_path()
-                .map_err(|_| "Rename target is not a local file")?,
+            crate::convert::uri_to_path(&uri).ok_or("Rename target is not a local file")?,
             source.to_string(),
         );
         for (target, edits) in &changes {
@@ -284,9 +280,7 @@ pub(crate) fn rename(
                 text.replace_range(start..end, &edit.new_text);
             }
             updated.insert(
-                target
-                    .to_file_path()
-                    .map_err(|_| "Rename target is not a local file")?,
+                crate::convert::uri_to_path(target).ok_or("Rename target is not a local file")?,
                 text,
             );
         }
@@ -297,9 +291,8 @@ pub(crate) fn rename(
                 wcl_wdoc::schema_registry().loader(wcl_lang::overlay_loader(updated)),
             )
         } else {
-            let path = uri
-                .to_file_path()
-                .map_err(|_| "Rename target is not a local file")?;
+            let path =
+                crate::convert::uri_to_path(&uri).ok_or("Rename target is not a local file")?;
             Document::open_at_with_loader(
                 updated.get(&path).map(String::as_str).unwrap_or(source),
                 uri.as_str(),
@@ -313,7 +306,7 @@ pub(crate) fn rename(
             return Err(format!("Rename has unresolved contextual uses: {error}"));
         }
     }
-    Ok(Some(tower_lsp::lsp_types::WorkspaceEdit {
+    Ok(Some(tower_lsp_server::ls_types::WorkspaceEdit {
         changes: Some(changes),
         ..Default::default()
     }))
@@ -384,7 +377,7 @@ mod tests {
         )
         .unwrap();
         let refs = references(
-            Url::from_file_path(&main).unwrap(),
+            Uri::from_file_path(&main).unwrap(),
             source,
             source.find("Color").unwrap(),
             true,
@@ -395,7 +388,7 @@ mod tests {
         .unwrap();
         let declaration = refs
             .iter()
-            .find(|r| r.uri == Url::from_file_path(&shared).unwrap())
+            .find(|r| r.uri == Uri::from_file_path(&shared).unwrap())
             .unwrap();
         assert_eq!(declaration.range.start.line, 4);
         assert_eq!(declaration.range.start.character, 5);
@@ -413,7 +406,7 @@ mod tests {
         std::fs::write(&shared, "namespace ns\nunion Foo { One none }\n").unwrap();
         let doc = Document::from_file(&main).unwrap();
         let edit = rename(
-            Url::from_file_path(&main).unwrap(),
+            Uri::from_file_path(&main).unwrap(),
             source,
             source.find("Foo").unwrap(),
             "Bar",
@@ -424,13 +417,13 @@ mod tests {
         .unwrap()
         .unwrap();
         let changes = edit.changes.unwrap();
-        let local = changes.get(&Url::from_file_path(&main).unwrap()).unwrap();
+        let local = changes.get(&Uri::from_file_path(&main).unwrap()).unwrap();
         assert_eq!(local.len(), 1);
         assert_eq!(local[0].range.start.line, 1);
     }
 
-    fn url() -> Url {
-        Url::parse("file:///test.wcl").unwrap()
+    fn url() -> Uri {
+        "file:///test.wcl".parse::<Uri>().unwrap()
     }
 
     #[test]
@@ -670,7 +663,7 @@ tree { @note leaf first {} selected = first }
             )
             .unwrap();
             let edit = rename(
-                Url::from_file_path(&main).unwrap(),
+                Uri::from_file_path(&main).unwrap(),
                 source,
                 source.find(needle).unwrap(),
                 new_name,
@@ -682,7 +675,7 @@ tree { @note leaf first {} selected = first }
             .unwrap();
             overlays.insert(main.clone(), source.to_string());
             for (uri, mut edits) in edit.changes.unwrap() {
-                let path = uri.to_file_path().unwrap();
+                let path = crate::convert::uri_to_path(&uri).unwrap();
                 let original = overlays[&path].clone();
                 let text = overlays.get_mut(&path).unwrap();
                 edits.sort_by_key(|e| std::cmp::Reverse(e.range.start));
@@ -727,7 +720,7 @@ tree { @note leaf first {} selected = first }
         .unwrap();
         assert!(doc.schema_errors().is_empty());
         let edit = rename(
-            Url::from_file_path(&main).unwrap(),
+            Uri::from_file_path(&main).unwrap(),
             source,
             source.find("greeting =").unwrap(),
             "salutation",
@@ -831,7 +824,7 @@ tree { @note leaf first {} selected = first }
         // Open via `Document::from_file` so imports resolve.
         let _doc = wcl_lang::Document::from_file(&main).expect("open main");
         let main_src = std::fs::read_to_string(&main).unwrap();
-        let main_url = Url::from_file_path(&main).unwrap();
+        let main_url = Uri::from_file_path(&main).unwrap();
         // Cursor sits in the main file's import declaration on the
         // word "shared" — which is also a block kind / type name in
         // shared.wcl. References should find occurrences inside the
@@ -847,7 +840,7 @@ tree { @note leaf first {} selected = first }
             &Default::default(),
         )
         .unwrap_or_default();
-        let shared_url = Url::from_file_path(&shared).unwrap();
+        let shared_url = Uri::from_file_path(&shared).unwrap();
         let has_imported = locs.iter().any(|l| l.uri == shared_url);
         // The plumbing should fire even if the symbol resolves to
         // nothing locally — `imported_paths()` is the wcl_lang
@@ -872,7 +865,7 @@ tree { @note leaf first {} selected = first }
         std::fs::write(&main, "import \"./shared.wcl\"\n").unwrap();
         let doc = wcl_lang::Document::from_file(&main).expect("open main");
         let hit = doc.find_symbol("shared.Color").expect("hit");
-        let target = Url::from_file_path(hit.source_path.expect("imported path")).unwrap();
-        assert_eq!(target, Url::from_file_path(&shared).unwrap());
+        let target = Uri::from_file_path(hit.source_path.expect("imported path")).unwrap();
+        assert_eq!(target, Uri::from_file_path(&shared).unwrap());
     }
 }

@@ -9,7 +9,7 @@
 
 use std::collections::HashSet;
 
-use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind};
+use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind};
 use wcl_lang::{DeclName, Document, SymbolKind, parse_for_edit};
 
 use crate::resolve::preceding_non_ws;

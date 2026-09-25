@@ -6,7 +6,7 @@
 //! entries) — that maps cleanly onto a single-level outline.
 
 #[allow(deprecated)] // DocumentSymbol::deprecated is required by lsp-types
-use tower_lsp::lsp_types::{DocumentSymbol, SymbolKind as LspSymbolKind};
+use tower_lsp_server::ls_types::{DocumentSymbol, SymbolKind as LspSymbolKind};
 use wcl_lang::{Document, SymbolKind, SymbolRecord};
 
 use crate::convert::span_to_range;

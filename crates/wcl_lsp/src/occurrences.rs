@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use tower_lsp::lsp_types::Url;
+use tower_lsp_server::ls_types::Uri;
 use wcl_lang::{DeclName, Document, Lexer, ResolvedType, Span, TokenKind, ast::*};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -11,7 +11,7 @@ pub(crate) enum Identity {
     /// A fully qualified indexed name, or a schema-name category and owner.
     Global(String),
     /// The declaring source and name span of a lexical binding.
-    Local(Url, Span),
+    Local(Uri, Span),
     /// A semantic name is computed, so its declaration cannot be edited safely.
     Unresolved(String),
 }
@@ -39,7 +39,7 @@ enum ContextType {
 }
 
 /// Walk a parsed source using the workspace index and local lexical scopes.
-pub(crate) fn collect(source: &str, uri: &Url, doc: &Document) -> Option<Vec<Occurrence>> {
+pub(crate) fn collect(source: &str, uri: &Uri, doc: &Document) -> Option<Vec<Occurrence>> {
     let ast = wcl_lang::parse_for_edit(source, uri.as_str()).ok()?;
     let namespace = ast
         .items
@@ -90,7 +90,7 @@ struct Collector<'a> {
     /// Original text used to locate names without dedicated AST spans.
     source: &'a str,
     /// Source identity for lexical declarations.
-    uri: &'a Url,
+    uri: &'a Uri,
     /// Workspace declaration index.
     doc: &'a Document,
     /// Namespace declared by this source, rather than by the workspace root.
@@ -1338,7 +1338,7 @@ mod tests {
     /// Return the spellings and declaration flags for the selected binding.
     fn matching(source: &str, needle: &str) -> Vec<(String, bool)> {
         let doc = Document::open(source, "test.wcl").expect("document");
-        let uri = Url::parse("file:///test.wcl").unwrap();
+        let uri = "file:///test.wcl".parse::<Uri>().unwrap();
         let occurrences = collect(source, &uri, &doc).expect("occurrences");
         let offset = source.find(needle).expect("cursor");
         let selected = occurrences

@@ -1,4 +1,4 @@
-//! `tower_lsp` server implementation: document store + request
+//! `tower_lsp_server` server implementation: document store + request
 //! handlers. Each handler is a thin shim over the helpers in
 //! [`diagnostics`](crate::diagnostics), [`symbols`](crate::symbols),
 //! and `wcl_lang::format`.
@@ -25,8 +25,8 @@ use std::sync::RwLock;
 
 use dashmap::DashMap;
 use ropey::Rope;
-use tower_lsp::jsonrpc::Result as RpcResult;
-use tower_lsp::lsp_types::{
+use tower_lsp_server::jsonrpc::Result as RpcResult;
+use tower_lsp_server::ls_types::{
     CodeActionParams, CodeActionProviderCapability, CodeActionResponse, CompletionOptions,
     CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DocumentFormattingParams, DocumentSymbolParams,
@@ -36,18 +36,18 @@ use tower_lsp::lsp_types::{
     PositionEncodingKind, ReferenceParams, RenameParams, SaveOptions, SemanticTokens,
     SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
     SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
-    SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SymbolInformation,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    TextDocumentSyncSaveOptions, TextEdit, Url, WorkspaceEdit, WorkspaceSymbolParams,
+    SignatureHelp, SignatureHelpOptions, SignatureHelpParams, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions, TextEdit, Uri,
+    WorkspaceEdit, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
-use tower_lsp::{Client, LanguageServer};
+use tower_lsp_server::{Client, LanguageServer};
 use wcl_lang::{
     Document, Environment, FileLoader, format as wcl_format, overlay_loader, parse_for_edit,
 };
 
 use crate::code_actions;
 use crate::completion;
-use crate::convert::{full_document_range, position_to_offset};
+use crate::convert::{full_document_range, position_to_offset, uri_to_path};
 use crate::diagnostics;
 use crate::folding;
 use crate::hover as hover_impl;
@@ -75,7 +75,7 @@ pub struct Backend {
     /// Handle for sending notifications back to the editor.
     client: Client,
     /// Open buffers by URI, kept current from incremental change events.
-    docs: DashMap<Url, Rope>,
+    docs: DashMap<Uri, Rope>,
     /// Path to the root document, when one was discovered or
     /// configured. All open files are validated against this root
     /// (with their unsaved buffers overlaid) so cross-file imports
@@ -96,7 +96,7 @@ impl Backend {
 
     /// Materialise the current text for a URI. Returns `None` when
     /// the document hasn't been opened by the client yet.
-    pub(crate) fn document_text(&self, uri: &Url) -> Option<String> {
+    pub(crate) fn document_text(&self, uri: &Uri) -> Option<String> {
         self.docs.get(uri).map(|r| r.to_string())
     }
 
@@ -104,7 +104,7 @@ impl Backend {
     /// shared preamble for the position-bearing request handlers
     /// (definition / references / hover / completion). `None` when the
     /// document isn't open.
-    fn source_and_offset(&self, uri: &Url, pos: Position) -> Option<(String, usize)> {
+    fn source_and_offset(&self, uri: &Uri, pos: Position) -> Option<(String, usize)> {
         let source = self.document_text(uri)?;
         let offset = position_to_offset(&source, pos);
         Some((source, offset))
@@ -117,7 +117,7 @@ impl Backend {
     pub(crate) fn overlay_snapshot(&self) -> HashMap<PathBuf, String> {
         let mut out = HashMap::new();
         for entry in self.docs.iter() {
-            if let Ok(p) = entry.key().to_file_path() {
+            if let Some(p) = uri_to_path(entry.key()) {
                 out.insert(p, entry.value().to_string());
             }
         }
@@ -168,21 +168,18 @@ impl Backend {
     /// fragment in isolation reports false positives for everything the
     /// root supplies (imported `@block` declarations, document schemas,
     /// referenced data), which would paint valid files red.
-    async fn publish(&self, uri: Url, version: Option<i32>) {
+    async fn publish(&self, uri: Uri, version: Option<i32>) {
         let Some(source) = self.document_text(&uri) else {
             return;
         };
-        let is_non_root_fragment = match (self.root_path(), uri.to_file_path()) {
-            (Some(root), Ok(path)) => std::fs::canonicalize(&path)
+        let is_non_root_fragment = match (self.root_path(), uri_to_path(&uri)) {
+            (Some(root), Some(path)) => std::fs::canonicalize(&path)
                 .map(|c| c != root)
                 .unwrap_or(true),
-            (Some(_), Err(())) => true,
+            (Some(_), None) => true,
             (None, _) => false,
         };
-        let base_dir = uri
-            .to_file_path()
-            .ok()
-            .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+        let base_dir = uri_to_path(&uri).and_then(|p| p.parent().map(std::path::Path::to_path_buf));
         let diags = if is_non_root_fragment {
             diagnostics::compute_syntax_only(
                 &source,
@@ -205,10 +202,10 @@ impl Backend {
             .workspace_folders
             .as_ref()
             .and_then(|v| v.first())
-            .and_then(|f| f.uri.to_file_path().ok())
+            .and_then(|f| uri_to_path(&f.uri))
             .or_else(|| {
                 #[allow(deprecated)]
-                params.root_uri.as_ref().and_then(|u| u.to_file_path().ok())
+                params.root_uri.as_ref().and_then(uri_to_path)
             });
         if let Some(opts) = params.initialization_options.as_ref()
             && let Some(root) = opts.get("root").and_then(|v| v.as_str())
@@ -236,7 +233,6 @@ impl Backend {
     }
 }
 
-#[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> RpcResult<InitializeResult> {
         if let Some(p) = Backend::resolve_root(&params) {
@@ -302,6 +298,7 @@ impl LanguageServer for Backend {
                 name: "wcl-lsp".into(),
                 version: Some(env!("CARGO_PKG_VERSION").into()),
             }),
+            offset_encoding: None,
         })
     }
 
@@ -330,7 +327,7 @@ impl LanguageServer for Backend {
         // the client sends one or more ranged edits per request;
         // when `range` is None it's a full-document replacement
         // (clients may still send those for large diffs).
-        let mut rope = self.docs.entry(uri.clone()).or_insert_with(Rope::new);
+        let mut rope = self.docs.entry(uri.clone()).or_default();
         for change in params.content_changes {
             match change.range {
                 Some(range) => {
@@ -428,9 +425,7 @@ impl LanguageServer for Backend {
     async fn references(&self, params: ReferenceParams) -> RpcResult<Option<Vec<Location>>> {
         let uri = params.text_document_position.text_document.uri;
         let overlays = self.overlay_snapshot();
-        let source = uri
-            .to_file_path()
-            .ok()
+        let source = uri_to_path(&uri)
             .and_then(|p| overlays.get(&p).cloned())
             .or_else(|| self.document_text(&uri));
         let Some(source) = source else {
@@ -456,16 +451,14 @@ impl LanguageServer for Backend {
     async fn rename(&self, params: RenameParams) -> RpcResult<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri;
         let overlays = self.overlay_snapshot();
-        let source = uri
-            .to_file_path()
-            .ok()
+        let source = uri_to_path(&uri)
             .and_then(|p| overlays.get(&p).cloned())
             .or_else(|| self.document_text(&uri));
         let Some(source) = source else {
             return Ok(None);
         };
         let offset = position_to_offset(&source, params.text_document_position.position);
-        let root_path = self.root_path().or_else(|| uri.to_file_path().ok());
+        let root_path = self.root_path().or_else(|| uri_to_path(&uri));
         let root_doc = root_path.as_ref().and_then(|path| {
             let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlays.clone()));
             Document::from_file_with_loader(path, &root_environment(), loader).ok()
@@ -479,7 +472,7 @@ impl LanguageServer for Backend {
             root_path.as_deref(),
             &overlays,
         )
-        .map_err(tower_lsp::jsonrpc::Error::invalid_params)
+        .map_err(tower_lsp_server::jsonrpc::Error::invalid_params)
     }
 
     async fn hover(&self, params: HoverParams) -> RpcResult<Option<Hover>> {
@@ -526,7 +519,7 @@ impl LanguageServer for Backend {
         // the buffer's *repaired* form (open brackets closed) overlaid.
         let root_doc = self.root_document().or_else(|| {
             let root = self.root_path()?;
-            let path = uri.to_file_path().ok()?;
+            let path = uri_to_path(&uri)?;
             let mut overlay = self.overlay_snapshot();
             overlay.insert(path, signature::repair_source(&source, offset));
             let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlay));
@@ -544,14 +537,16 @@ impl LanguageServer for Backend {
     async fn symbol(
         &self,
         params: WorkspaceSymbolParams,
-    ) -> RpcResult<Option<Vec<SymbolInformation>>> {
+    ) -> RpcResult<Option<WorkspaceSymbolResponse>> {
         let root_doc = self.root_document();
         let root_path = self.root_path();
-        Ok(Some(workspace::workspace_symbols(
-            &params.query,
-            root_doc.as_ref(),
-            root_path.as_deref(),
-            &self.overlay_snapshot(),
+        Ok(Some(WorkspaceSymbolResponse::Flat(
+            workspace::workspace_symbols(
+                &params.query,
+                root_doc.as_ref(),
+                root_path.as_deref(),
+                &self.overlay_snapshot(),
+            ),
         )))
     }
 

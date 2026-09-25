@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use tower_lsp::lsp_types::{
+use tower_lsp_server::ls_types::{
     Documentation, ParameterInformation, ParameterLabel, SignatureHelp, SignatureInformation,
 };
 use wcl_lang::{Document, SymbolKind, ast, parse_for_edit};

@@ -4,7 +4,7 @@
 //! `Document`, so no import resolution runs and every span is guaranteed
 //! to be a byte range in *this* buffer.
 
-use tower_lsp::lsp_types::{FoldingRange, FoldingRangeKind};
+use tower_lsp_server::ls_types::{FoldingRange, FoldingRangeKind};
 use wcl_lang::ast::Item;
 use wcl_lang::{Span, parse_for_edit};
 

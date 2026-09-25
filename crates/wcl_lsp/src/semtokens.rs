@@ -9,7 +9,7 @@
 //! `OPERATOR` delimiters around `${...}` slots, and re-lexed semantic
 //! tokens for the slot bodies.
 
-use tower_lsp::lsp_types::{SemanticToken, SemanticTokenType};
+use tower_lsp_server::ls_types::{SemanticToken, SemanticTokenType};
 use wcl_lang::{Lexer, Span, StringLit, StringPart, TokenKind};
 
 /// Token legend in the order LSP expects: each emitted token's

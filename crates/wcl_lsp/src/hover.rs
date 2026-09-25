@@ -2,7 +2,7 @@
 //! describing the identifier under the cursor: what kind of thing it
 //! is, plus a fenced snippet of its source.
 
-use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
+use tower_lsp_server::ls_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 use wcl_lang::Document;
 
 use crate::convert::span_to_range;
