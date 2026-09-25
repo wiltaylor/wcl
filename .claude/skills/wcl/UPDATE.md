@@ -10,10 +10,10 @@ that owns it, and every behavioural claim still holds against a binary built fro
 </purpose>
 
 <baseline>
-The commit this skill was last checked against: `none`
+The commit this skill was last checked against: `18af8e57acc769064151276cd6129a021e1b4651`
 
-`none` means no check has been recorded, so step 3 runs over the whole source tree rather
-than a range of commits. Step 8 rewrites this line.
+A value of `none` would mean no check has been recorded, so step 3 would run over the whole
+source tree rather than a range of commits. Step 8 rewrites this line.
 </baseline>
 
 <sources>
@@ -86,6 +86,18 @@ Ends when every changed or unread behaviour has a reference file named against i
 <step order="4">
 Sweep the closed lists. Each command enumerates one from `HEAD`; each list must appear, member
 for member, in the reference named beside it. Run these every time, whatever the baseline says.
+
+One script checks four of the lists at once — every builtin and wdoc block kind named somewhere
+in the skill, every subcommand with its own `lang_cli.md` section, and every long flag inside
+the section of the command that takes it. It prints each gap as `not in skill: …` and exits 1
+if there is one:
+
+```sh
+python3 docs/reference/coverage.py --skill --wcl target/release/wcl
+```
+
+The per-list commands below are for reading a list in full, and for the two lists the script
+does not cover: host decorators and themes.
 
 Builtins — `references/language/lang_builtins.md`:
 

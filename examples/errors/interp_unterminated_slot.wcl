@@ -3,3 +3,5 @@
 
 @schemaless oops = $"hi ${name
 "
+
+// expect-exit: 1

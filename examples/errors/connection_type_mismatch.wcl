@@ -29,3 +29,5 @@ service "web" { port = 8080u32 }
 cache   "c1"  { size = 64u32 }
 
 web -> c1
+
+// expect-exit: 2

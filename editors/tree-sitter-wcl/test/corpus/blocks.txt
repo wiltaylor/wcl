@@ -1,0 +1,359 @@
+================================================================================
+field assignment
+================================================================================
+
+name = "alpha"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (string)))
+
+================================================================================
+block with label and body (examples/connections.wcl)
+================================================================================
+
+service "web"   { port = 8080u32 }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (identifier)
+    (string)
+    (block_body
+      (field
+        (identifier)
+        (number)))))
+
+================================================================================
+nested blocks with decorators
+================================================================================
+
+server web {
+  @deprecated
+  listener {
+    port = 443
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (identifier)
+    (identifier)
+    (block_body
+      (block
+        (decorator
+          (dotted_name
+            (identifier)))
+        (identifier)
+        (block_body
+          (field
+            (identifier)
+            (number)))))))
+
+================================================================================
+body-less blocks end at a line break (examples/wdoc/pages/about.wcl)
+================================================================================
+
+page about { sites = [:showcase]
+  h1 "About"
+
+  hr
+  text {
+    span "Back to [the overview](overview)."
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (identifier)
+    (identifier)
+    (block_body
+      (field
+        (identifier)
+        (list
+          (symbol)))
+      (block
+        (identifier)
+        (string))
+      (block
+        (identifier))
+      (block
+        (identifier)
+        (block_body
+          (block
+            (identifier)
+            (string)))))))
+
+================================================================================
+body-less block before a closing brace and a comment
+================================================================================
+
+row { hr }
+rule // no body
+item "x"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (identifier)
+    (block_body
+      (block
+        (identifier))))
+  (block
+    (identifier))
+  (comment)
+  (block
+    (identifier)
+    (string)))
+
+================================================================================
+body on the line after a comment
+================================================================================
+
+section # the body follows
+{
+  x = 1
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (identifier)
+    (comment)
+    (block_body
+      (field
+        (identifier)
+        (number)))))
+
+================================================================================
+labels of every kind
+================================================================================
+
+cell a "b" 3 true :sym none $"t-${n}" {}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (identifier)
+    (identifier)
+    (string)
+    (number)
+    (boolean)
+    (symbol)
+    (none)
+    (interpolated_string
+      (string_content)
+      (interpolation
+        (identifier)))
+    (block_body)))
+
+================================================================================
+compound identifier label
+================================================================================
+
+page getting-started/install {}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (identifier)
+    (compound_identifier)
+    (block_body)))
+
+================================================================================
+conditional block
+================================================================================
+
+feature? beta {}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (identifier)
+    (optional_marker)
+    (identifier)
+    (block_body)))
+
+================================================================================
+qualified block kind
+================================================================================
+
+wdoc.layout::page "home" {}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (qualified_kind
+      (dotted_name
+        (identifier)
+        (identifier))
+      (identifier))
+    (string)
+    (block_body)))
+
+================================================================================
+slot declarations (examples/wdoc_template.wcl)
+================================================================================
+
+template card {
+  slot content: content
+  slot title: utf8? = "Untitled"
+  slot items: block*
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (identifier)
+    (identifier)
+    (block_body
+      (slot_decl
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier))))
+      (slot_decl
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier)))
+        (optional_marker)
+        (string))
+      (slot_decl
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier)))
+        (repeat_marker)))))
+
+================================================================================
+schemaless string keys
+================================================================================
+
+@schemaless
+frontmatter {
+  "allowed-tools" = ["Read", "Grep"]
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (decorator
+      (dotted_name
+        (identifier)))
+    (identifier)
+    (block_body
+      (field
+        (string)
+        (list
+          (string)
+          (string))))))
+
+================================================================================
+table (examples/tables.wcl)
+================================================================================
+
+db production {
+  users:
+    | "alice" | 30 | true  |
+    | "bob"   | 25 | false |
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (identifier)
+    (identifier)
+    (block_body
+      (table
+        (identifier)
+        (table_row
+          (string)
+          (number)
+          (boolean))
+        (table_row
+          (string)
+          (number)
+          (boolean))))))
+
+================================================================================
+table row without trailing pipe
+================================================================================
+
+points:
+  | (3) | [4] | -2
+next = 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (table
+    (identifier)
+    (table_row
+      (parenthesized_expression
+        (number))
+      (list
+        (number))
+      (unary_expression
+        (number))))
+  (field
+    (identifier)
+    (number)))
+
+================================================================================
+connection statements (examples/connections.wcl)
+================================================================================
+
+web -> db
+web -> cache :uses
+web -> queue : publishes
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (connection
+    (identifier)
+    (identifier))
+  (connection
+    (identifier)
+    (identifier)
+    (symbol))
+  (connection
+    (identifier)
+    (identifier)
+    (symbol)))
+
+================================================================================
+comments
+================================================================================
+
+// line comment
+# hash comment
+x = 1 // trailing
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (comment)
+  (comment)
+  (field
+    (identifier)
+    (number))
+  (comment))

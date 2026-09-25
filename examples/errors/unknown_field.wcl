@@ -9,3 +9,5 @@ service web {
   region     = "us-east-1"
   unexpected = "boom"
 }
+
+// expect-exit: 2

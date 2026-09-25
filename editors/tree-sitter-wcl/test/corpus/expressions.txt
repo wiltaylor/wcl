@@ -1,0 +1,393 @@
+================================================================================
+operator precedence
+================================================================================
+
+x = 1 + 2 * 3 - 4 / 5 % 6
+y = a < b && c >= d || !e == f != g
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (binary_expression
+      (binary_expression
+        (number)
+        (binary_expression
+          (number)
+          (number)))
+      (binary_expression
+        (binary_expression
+          (number)
+          (number))
+        (number))))
+  (field
+    (identifier)
+    (binary_expression
+      (binary_expression
+        (binary_expression
+          (identifier)
+          (identifier))
+        (binary_expression
+          (identifier)
+          (identifier)))
+      (binary_expression
+        (binary_expression
+          (unary_expression
+            (identifier))
+          (identifier))
+        (identifier)))))
+
+================================================================================
+none coalescing
+================================================================================
+
+port = override ?? defaults.port ?? 8080
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (binary_expression
+      (binary_expression
+        (identifier)
+        (member_expression
+          (identifier)
+          (identifier)))
+      (number))))
+
+================================================================================
+unary operators
+================================================================================
+
+a = -x
+b = !done
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (unary_expression
+      (identifier)))
+  (field
+    (identifier)
+    (unary_expression
+      (identifier))))
+
+================================================================================
+member access, calls and numeric segments
+================================================================================
+
+buffer_label = format_unit(buffer, "std.ByteSize", "MiB")
+second = steps.1.name
+seven = adder(3)(4)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (call_expression
+      (identifier)
+      (arguments
+        (identifier)
+        (string)
+        (string))))
+  (field
+    (identifier)
+    (member_expression
+      (member_expression
+        (identifier)
+        (identifier))
+      (identifier)))
+  (field
+    (identifier)
+    (call_expression
+      (call_expression
+        (identifier)
+        (arguments
+          (number)))
+      (arguments
+        (number)))))
+
+================================================================================
+parent and self
+================================================================================
+
+total = parent.base + self.extra
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (binary_expression
+      (member_expression
+        (parent)
+        (identifier))
+      (member_expression
+        (self)
+        (identifier)))))
+
+================================================================================
+lists and records
+================================================================================
+
+sizes = [256KiB, 1MiB, 4MiB,]
+point = { x: 1, y: 2, }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (list
+      (number)
+      (number)
+      (number)))
+  (field
+    (identifier)
+    (record
+      (record_field
+        (identifier)
+        (number))
+      (record_field
+        (identifier)
+        (number)))))
+
+================================================================================
+block expression (examples/closures.wcl)
+================================================================================
+
+captured = {
+  let n = 5;
+  let f = fn(x: i64) -> i64 x + n;
+  f(3)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (block_expression
+      (let_binding
+        (identifier)
+        (number))
+      (let_binding
+        (identifier)
+        (function_expression
+          (parameters
+            (parameter
+              (identifier)
+              (named_type
+                (dotted_name
+                  (identifier)))))
+          (named_type
+            (dotted_name
+              (identifier)))
+          (binary_expression
+            (identifier)
+            (identifier))))
+      (call_expression
+        (identifier)
+        (arguments
+          (number))))))
+
+================================================================================
+function literals (examples/closures.wcl)
+================================================================================
+
+adder = fn(x: i64) -> fn(i64) -> i64 fn(y: i64) -> i64 x + y
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (function_expression
+      (parameters
+        (parameter
+          (identifier)
+          (named_type
+            (dotted_name
+              (identifier)))))
+      (function_type
+        (named_type
+          (dotted_name
+            (identifier)))
+        (named_type
+          (dotted_name
+            (identifier))))
+      (function_expression
+        (parameters
+          (parameter
+            (identifier)
+            (named_type
+              (dotted_name
+                (identifier)))))
+        (named_type
+          (dotted_name
+            (identifier)))
+        (binary_expression
+          (identifier)
+          (identifier))))))
+
+================================================================================
+if and else-if (examples/branching.wcl)
+================================================================================
+
+cmp_cat = if 0 > 0 { :pos } else if 0 < 0 { :neg } else { :zero }
+maybe   = if ready { 1 }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (if_expression
+      (binary_expression
+        (number)
+        (number))
+      (block_expression
+        (symbol))
+      (if_expression
+        (binary_expression
+          (number)
+          (number))
+        (block_expression
+          (symbol))
+        (block_expression
+          (symbol)))))
+  (field
+    (identifier)
+    (if_expression
+      (identifier)
+      (block_expression
+        (number)))))
+
+================================================================================
+if let
+================================================================================
+
+r = if let Shape::Circle { radius } = c1 { radius } else { 0.0 }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (if_expression
+      (let_condition
+        (variant_pattern
+          (dotted_name
+            (identifier))
+          (identifier)
+          (record_pattern
+            (record_pattern_field
+              (identifier))))
+        (identifier))
+      (block_expression
+        (identifier))
+      (block_expression
+        (number)))))
+
+================================================================================
+variant construction (examples/branching.wcl)
+================================================================================
+
+c1    = Shape::Circle { radius: 5.0, stroke: 0.5 }
+poly  = Shape::Polygon(7)
+empty = Shape::Empty
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (variant_expression
+      (identifier)
+      (identifier)
+      (record
+        (record_field
+          (identifier)
+          (number))
+        (record_field
+          (identifier)
+          (number)))))
+  (field
+    (identifier)
+    (variant_expression
+      (identifier)
+      (identifier)
+      (number)))
+  (field
+    (identifier)
+    (variant_expression
+      (identifier)
+      (identifier))))
+
+================================================================================
+try and catch
+================================================================================
+
+a = try parse_int(s) catch err => 0
+b = try { parse_int(s) } catch err { -1 }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (try_expression
+      (call_expression
+        (identifier)
+        (arguments
+          (identifier)))
+      (identifier)
+      (number)))
+  (field
+    (identifier)
+    (try_expression
+      (block_expression
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier))))
+      (identifier)
+      (block_expression
+        (unary_expression
+          (number))))))
+
+================================================================================
+decorator arguments
+================================================================================
+
+@range(min = 1, max = 10)
+@doc("count", 2,)
+count = 3
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (decorator
+      (dotted_name
+        (identifier))
+      (decorator_arguments
+        (named_argument
+          (identifier)
+          (number))
+        (named_argument
+          (identifier)
+          (number))))
+    (decorator
+      (dotted_name
+        (identifier))
+      (decorator_arguments
+        (string)
+        (number)))
+    (identifier)
+    (number)))

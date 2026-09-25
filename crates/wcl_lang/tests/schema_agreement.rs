@@ -424,27 +424,73 @@ fn wcl_files_under(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Every fixture in `examples/` that opens (files with syntax errors or
-/// unresolvable system imports are skipped — agreement is only defined
-/// for documents that load) must produce identical strict/lazy
-/// membership verdicts. The `examples/errors/` fixtures are valuable
+/// Documents under `examples/` that cannot open as a plain wcl
+/// document, relative to `examples/`. Agreement is only defined for
+/// documents that load, so these are skipped — and every entry must
+/// still fail to open, so the list cannot hide a fixture that has
+/// since started loading.
+const UNOPENABLE: &[&str] = &[
+    // Import `<wdoc.wcl>`, which only the wdoc registry provides.
+    "wdoc/main.wcl",
+    "wdoc_relocatable/main.wcl",
+    "wdoc_template.wcl",
+    "wdoc_website.wcl",
+    // Page fragments naming wdoc types, resolved only when
+    // `wdoc/main.wcl` imports them.
+    "wdoc/pages/data.wcl",
+    "wdoc/pages/terminal.wcl",
+];
+
+/// Whether `path` is expected not to open: listed in [`UNOPENABLE`],
+/// or an `examples/errors/` fixture declaring `// expect-exit: 1` (the
+/// parse-or-load failure code `crates/wcl/tests/examples.rs` checks).
+fn expected_unopenable(root: &Path, path: &Path) -> bool {
+    let rel = path
+        .strip_prefix(root)
+        .expect("fixture under examples/")
+        .to_string_lossy()
+        .replace('\\', "/");
+    if UNOPENABLE.contains(&rel.as_str()) {
+        return true;
+    }
+    rel.starts_with("errors/")
+        && std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+            .lines()
+            .any(|l| l.trim() == "// expect-exit: 1")
+}
+
+/// Every fixture in `examples/` must open and produce identical
+/// strict/lazy membership verdicts, except those
+/// [`expected_unopenable`]. The `examples/errors/` fixtures are valuable
 /// here precisely *because* they carry schema violations.
 #[test]
 fn examples_corpus_agrees() {
+    let root = examples_dir();
     let mut files = Vec::new();
-    wcl_files_under(&examples_dir(), &mut files);
+    wcl_files_under(&root, &mut files);
     files.sort();
     assert!(!files.is_empty(), "no .wcl fixtures found under examples/");
 
+    let listed = |path: &Path| expected_unopenable(&root, path);
+
     let mut checked = 0usize;
+    let mut unexpected = Vec::new();
     for path in &files {
-        // Guard: skip fixtures that don't open (syntax-error fixtures,
-        // documents importing <wdoc.wcl> without the wdoc registry, …).
-        if let Ok(doc) = Document::from_file(path) {
-            assert_agreement_doc(&doc, &path.display().to_string());
-            checked += 1;
+        match (Document::from_file(path), listed(path)) {
+            (Ok(doc), false) => {
+                assert_agreement_doc(&doc, &path.display().to_string());
+                checked += 1;
+            }
+            (Err(e), false) => unexpected.push(format!("{} failed to open: {e}", path.display())),
+            (Ok(_), true) => unexpected.push(format!(
+                "{} opens but is listed in UNOPENABLE — remove it from the list",
+                path.display()
+            )),
+            (Err(_), true) => {}
         }
     }
+    assert!(unexpected.is_empty(), "{}", unexpected.join("\n"));
     assert!(checked > 0, "corpus run checked no documents");
 }
 

@@ -1,5 +1,10 @@
-// `$ascii"…"` evaluated to a string containing a non-ASCII char —
-// the evaluator should reject it as a schema violation.
+// `$ascii"…"` evaluated to a string containing a non-ASCII char. The
+// file parses and passes `wcl check` (the value is only known once the
+// slot is evaluated); reading the field with `wcl get … oops` fails with
+// "interpolated ascii string contains a non-ASCII character", exit 3.
 
 @schemaless name = "café"
 @schemaless oops = $ascii"id=${name}"
+
+// expect-exit: 0
+// expect-get: oops 3
