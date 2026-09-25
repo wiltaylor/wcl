@@ -38,9 +38,24 @@ cosmic-text = { version = "0.19", default-features = false, features = ["std"] }
 # our SVG output into a `usvg::Tree` and hand it to `Surface::draw_svg`, so
 # this must stay the same usvg krilla-svg embeds (0.47) — bump them together.
 usvg = "0.47"
-# `git::materialize_rev` extracts a tree at a revision into a scratch dir
-# (tests use it too — a normal dependency serves both).
+# The `serve` feature: the `wcl wdoc serve` dev server. axum + a notify file
+# watcher, driven on a tokio runtime (extra `fs` for the static handler,
+# `signal` for Ctrl-C, `time` for rebuild debouncing and the live-reload
+# long-poll timeout), and tempfile for the default scratch output dir.
+tokio = { workspace = true, features = ["fs", "signal", "time"], optional = true }
+axum = { workspace = true, optional = true }
+notify = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+
+[features]
+# Off by default: a library user who only renders documents does not get an
+# HTTP server, an async runtime or a file watcher. The `wcl` binary enables it.
+serve = ["dep:tokio", "dep:axum", "dep:notify", "dep:tempfile"]
+
+[dev-dependencies]
 tempfile = { workspace = true }
+# Drives the dev server's router in process (`ServiceExt::oneshot`).
+tower = { workspace = true }
 
 # The build script generates the content IR from `lib/content.wcl`, so it
 # parses WCL with the real parser rather than a second, approximate one.

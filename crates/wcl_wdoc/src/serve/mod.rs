@@ -1,10 +1,23 @@
+//! The `wcl wdoc serve` dev server: build once, serve the output over HTTP
+//! with a live-reload script, and rebuild on request.
+//!
+//! A `notify` watcher notes which `.wcl` files changed but does not rebuild;
+//! a rebuild runs when asked (Enter on the console, or `POST
+//! /__wdoc_rebuild`), incrementally over the noted files when there are any.
+//! Builds run on the blocking pool, so the server keeps answering requests
+//! while one is in progress.
+//!
+//! Compiled only with the `serve` cargo feature, which brings in axum, tokio
+//! and notify.
+
 use std::future::IntoFuture;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
+use crate::{BuildOptions, RebuildOutcome, build_incremental, build_with_options};
 use axum::Router;
 use axum::body::Body;
 use axum::extract::State;
@@ -15,7 +28,6 @@ use axum::routing::get;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use tempfile::TempDir;
 use tokio::sync::mpsc::UnboundedReceiver;
-use wcl_wdoc::{BuildOptions, RebuildOutcome, build_incremental, build_with_options};
 
 /// How long the watch loop waits for the event stream to go quiet
 /// before rebuilding — one editor save fires several notify events,
@@ -25,11 +37,11 @@ const QUIET_WINDOW: Duration = Duration::from_millis(150);
 /// How long a live-reload long-poll request parks before answering
 /// with the unchanged generation. Short enough that intermediaries
 /// don't kill the connection; the client just re-polls.
-pub(crate) const POLL_TIMEOUT: Duration = Duration::from_secs(30);
+const POLL_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The address `serve` binds to when neither `--addr` nor `auto` shifts
 /// it elsewhere. `auto` scans upward from this port.
-pub(crate) const DEFAULT_BIND: SocketAddr =
+pub const DEFAULT_BIND: SocketAddr =
     SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8080);
 
 /// How the dev server chooses its bind address.
@@ -38,7 +50,7 @@ pub(crate) const DEFAULT_BIND: SocketAddr =
 /// value is parsed as an explicit `SocketAddr` and bound as-is (hard error if
 /// the port is busy).
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum BindSpec {
+pub enum BindSpec {
     /// Scan upward from [`DEFAULT_BIND`] for a free port.
     Auto,
     /// Bind exactly this address.
@@ -60,7 +72,7 @@ impl std::str::FromStr for BindSpec {
 /// Bind a listener by scanning a fixed window of ports upward from `base`,
 /// returning the first that's free. Keeping the successfully bound listener
 /// avoids a check-then-bind race.
-pub(crate) async fn bind_auto(base: SocketAddr) -> std::io::Result<tokio::net::TcpListener> {
+async fn bind_auto(base: SocketAddr) -> std::io::Result<tokio::net::TcpListener> {
     const RANGE: u16 = 100; // scan base..base+100
     let mut last_err = None;
     for offset in 0..RANGE {
@@ -90,6 +102,8 @@ catch(e){await new Promise(r=>setTimeout(r,1000))}}})();</script>";
 
 /// Shared between the rebuild loop and the request handlers.
 struct ServeState {
+    /// The output directory, canonicalised once at startup. Every file the
+    /// static handler serves must canonicalise to a path under it.
     out: PathBuf,
     /// Plain-text rendering of the most recent failed build; `None`
     /// when the last build succeeded. While set, HTML requests get a
@@ -106,6 +120,23 @@ struct ServeState {
     /// and the `/__wdoc_rebuild` endpoint both use it; the rebuild worker runs
     /// one build per request and (when asked) reports completion back.
     rebuild_tx: tokio::sync::mpsc::UnboundedSender<RebuildReq>,
+}
+
+impl ServeState {
+    /// Fresh state serving `out`, which must already exist (it is
+    /// canonicalised here, before the first request).
+    fn new(
+        out: &Path,
+        rebuild_tx: tokio::sync::mpsc::UnboundedSender<RebuildReq>,
+    ) -> std::io::Result<Self> {
+        Ok(ServeState {
+            out: std::fs::canonicalize(out)?,
+            error: RwLock::new(None),
+            generation: tokio::sync::watch::Sender::new(0),
+            pending: Mutex::new(Vec::new()),
+            rebuild_tx,
+        })
+    }
 }
 
 /// A rebuild request handed to the rebuild worker.
@@ -195,7 +226,7 @@ fn drain_pending(state: &ServeState) -> Vec<PathBuf> {
 /// build error.
 fn finish_rebuild(
     state: &ServeState,
-    result: Result<(String, Vec<String>), wcl_wdoc::BuildError>,
+    result: Result<(String, Vec<String>), crate::BuildError>,
 ) -> RebuildReport {
     let report = match result {
         Ok((summary, warnings)) => {
@@ -253,25 +284,63 @@ fn router(state: Arc<ServeState>) -> Router {
         .layer(middleware::from_fn(log_requests))
 }
 
-/// Rebuild worker: one build per request, until the request channel closes.
-/// Every request rebuilds the served site, incrementally when files are
-/// pending. Reports completion back when asked.
-async fn rebuild_worker(
+/// One rebuild of the served site, run synchronously on the blocking pool.
+/// A value rather than a call so the tests can wrap it (to hold a build
+/// open while they send requests).
+type RebuildJob = Arc<dyn Fn() -> RebuildReport + Send + Sync>;
+
+/// The [`RebuildJob`] the server runs: [`run_rebuild_request`] over `file`,
+/// which prints the build's warnings and records its outcome in `state`.
+fn rebuild_job(
     file: PathBuf,
     out: PathBuf,
     site: Option<String>,
     state: Arc<ServeState>,
+) -> RebuildJob {
+    Arc::new(move || run_rebuild_request(&file, &out, site.as_deref(), &state))
+}
+
+/// Rebuild worker: one build per request, until the request channel closes.
+/// Every request rebuilds the served site, incrementally when files are
+/// pending. Reports completion back when asked.
+///
+/// A build is synchronous and can take seconds, so it runs on the blocking
+/// pool. Run inline, it would stall the task it shares with the listener in
+/// [`serve`]'s `select!`, and no request would be answered until it finished.
+async fn rebuild_worker(
+    job: RebuildJob,
+    state: Arc<ServeState>,
     mut requests: tokio::sync::mpsc::UnboundedReceiver<RebuildReq>,
 ) {
     while let Some(req) = requests.recv().await {
-        let report = run_rebuild_request(&file, &out, site.as_deref(), &state);
+        let run = Arc::clone(&job);
+        let report = match tokio::task::spawn_blocking(move || run()).await {
+            Ok(report) => report,
+            // The build panicked. Report it like a failed build so the
+            // browser shows the failure page rather than stale content.
+            Err(e) => {
+                let summary = format!("rebuild panicked: {e}");
+                eprintln!("{summary}");
+                *state.error.write().unwrap_or_else(|e| e.into_inner()) = Some(summary.clone());
+                state.generation.send_modify(|g| *g += 1);
+                RebuildReport { ok: false, summary }
+            }
+        };
         if let Some(done) = req.done {
             let _ = done.send(report);
         }
     }
 }
 
-pub(crate) async fn serve(
+/// Run the dev server for `file` until Ctrl-C, which exits the process.
+///
+/// Builds into `out` (a temp dir removed on Ctrl-C when `None`), binds
+/// `addr`, and serves the output with the live-reload script injected into
+/// every HTML page. With `site`, only that site is built and served at `/`.
+/// A failed initial build is not fatal: HTML requests get the build-failure
+/// page until a rebuild succeeds. Returns an error only when the server
+/// cannot start (the output dir, the watcher, or the bind).
+pub async fn serve(
     file: PathBuf,
     out: Option<PathBuf>,
     addr: BindSpec,
@@ -292,10 +361,9 @@ pub(crate) async fn serve(
     };
 
     // Hard stop on Ctrl-C. A *dedicated* task owns the kill so the signal is
-    // observed even while the watch loop is mid-rebuild: `run_build` is a
-    // synchronous, non-cancellable call that blocks its worker thread, so a
-    // shutdown branch sharing the `select!` task below would never get polled
-    // until the build finished. `process::exit` tears down every thread at
+    // observed even mid-build: a build is a synchronous, non-cancellable call
+    // (the initial one below runs on this task, rebuilds on the blocking
+    // pool), so a shutdown branch could not interrupt it anyway. `process::exit` tears down every thread at
     // once (the inotify watcher, axum connections, parked reload long-polls,
     // and any in-flight build) and, by ending the process, blocks all further
     // rebuilds. It skips the TempDir guard's `Drop`, so clean the temp output
@@ -320,13 +388,7 @@ pub(crate) async fn serve(
     // console (stdin Enter) and the `/__wdoc_rebuild` endpoint send on this.
     let (rebuild_tx, rebuild_rx) = tokio::sync::mpsc::unbounded_channel::<RebuildReq>();
 
-    let state = Arc::new(ServeState {
-        out: out_dir.clone(),
-        error: RwLock::new(None),
-        generation: tokio::sync::watch::Sender::new(0),
-        pending: Mutex::new(Vec::new()),
-        rebuild_tx: rebuild_tx.clone(),
-    });
+    let state = Arc::new(ServeState::new(&out_dir, rebuild_tx.clone())?);
 
     // Initial build. Failure is non-fatal — HTML requests serve the
     // build-failure page until the next (manual) rebuild succeeds.
@@ -391,9 +453,12 @@ pub(crate) async fn serve(
     };
 
     let rebuild_loop = rebuild_worker(
-        file.clone(),
-        out_dir.clone(),
-        site.clone(),
+        rebuild_job(
+            file.clone(),
+            out_dir.clone(),
+            site.clone(),
+            Arc::clone(&state),
+        ),
         Arc::clone(&state),
         rebuild_rx,
     );
@@ -515,7 +580,7 @@ async fn handle_rebuild(State(state): State<Arc<ServeState>>) -> Response {
     }
 }
 
-pub(crate) fn json_response(status: StatusCode, value: &serde_json::Value) -> Response {
+fn json_response(status: StatusCode, value: &serde_json::Value) -> Response {
     (
         status,
         [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
@@ -524,21 +589,24 @@ pub(crate) fn json_response(status: StatusCode, value: &serde_json::Value) -> Re
         .into_response()
 }
 
-pub(crate) fn json_error(status: StatusCode, msg: &str) -> Response {
+fn json_error(status: StatusCode, msg: &str) -> Response {
     json_response(status, &serde_json::json!({ "error": msg }))
 }
 
 /// Resolve any request path to a file under the output tree and serve
 /// it. Handles `/` and directory paths (→ `index.html`), extension-less
 /// page names (→ `<name>.html`), and explicit files (`.html`, and the
-/// `_wdoc/` assets at any depth). Rejects `..` / backslash components so
-/// the dev server can't be walked outside the output directory. While
-/// the most recent build failed, HTML requests get the build-failure
-/// page instead of stale content; non-HTML assets keep serving the
-/// previous build so unrelated tabs don't lose their styling.
+/// `_wdoc/` assets at any depth). Nothing outside the output directory is
+/// ever served: the request path must pass [`is_plain_request_path`], and the
+/// file it resolves to must canonicalise to a path under the output
+/// directory (which also stops a symlink inside it pointing out). Either
+/// check failing is a bare 404. While the most recent build failed, HTML
+/// requests get the build-failure page instead of stale content; non-HTML
+/// assets keep serving the previous build so unrelated tabs don't lose their
+/// styling.
 async fn handle_static(State(state): State<Arc<ServeState>>, uri: Uri) -> Response {
     let rel = uri.path().trim_start_matches('/');
-    if rel.split('/').any(|seg| seg == ".." || seg.contains('\\')) {
+    if !is_plain_request_path(rel) {
         return StatusCode::NOT_FOUND.into_response();
     }
     let path = resolve_path(&state.out, rel);
@@ -558,7 +626,12 @@ async fn handle_static(State(state): State<Arc<ServeState>>, uri: Uri) -> Respon
                 .into_response();
         }
     }
-    match tokio::fs::read(&path).await {
+    let read = match confine(&state.out, &path).await {
+        Ok(Some(real)) => tokio::fs::read(&real).await,
+        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+        Err(e) => Err(e),
+    };
+    match read {
         Ok(mut bytes) => {
             if is_html {
                 // Appending after `</html>` is valid enough for a dev
@@ -589,6 +662,41 @@ async fn handle_static(State(state): State<Arc<ServeState>>, uri: Uri) -> Respon
         )
             .into_response(),
     }
+}
+
+/// Whether `rel` — a request path with its leading `/`s stripped, exactly as
+/// the client sent it (no percent-decoding, so `%2f` is three literal
+/// characters of a file name) — names only plain entries under the output
+/// directory.
+///
+/// Every `/`-separated segment must be a single [`Component::Normal`], so
+/// `..` and `.` are refused. A backslash or a colon is refused on every
+/// platform: on Windows `\` is a separator, `C:` is a drive prefix and
+/// `\\server\share` a UNC root, and joining any of them onto the output
+/// directory would replace it rather than extend it. Refusing them
+/// everywhere keeps the rule the same on the platform that can be tested
+/// here and the one where it matters. Empty segments (`//`, a trailing `/`)
+/// are allowed, as a path join collapses them.
+fn is_plain_request_path(rel: &str) -> bool {
+    rel.split('/').filter(|seg| !seg.is_empty()).all(|seg| {
+        if seg.contains(['\\', ':']) {
+            return false;
+        }
+        let mut parts = Path::new(seg).components();
+        matches!(
+            (parts.next(), parts.next()),
+            (Some(Component::Normal(_)), None)
+        )
+    })
+}
+
+/// Canonicalise `path` and keep it only if it lies under `out` (itself
+/// canonical). `Ok(None)` is a path that escapes, through a symlink or
+/// anything [`is_plain_request_path`] let past; an error is the
+/// canonicalisation's own, `NotFound` for a missing file.
+async fn confine(out: &Path, path: &Path) -> std::io::Result<Option<PathBuf>> {
+    let real = tokio::fs::canonicalize(path).await?;
+    Ok(real.starts_with(out).then_some(real))
 }
 
 /// Self-contained build-failure page: inline styles only, no assets
@@ -647,7 +755,7 @@ fn resolve_path(out: &Path, rel: &str) -> PathBuf {
 }
 
 /// Map an output file's extension to a content type.
-pub(crate) fn content_type(path: &Path) -> &'static str {
+fn content_type(path: &Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()) {
         Some("html" | "htm") => "text/html; charset=utf-8",
         Some("woff2") => "font/woff2",
@@ -731,6 +839,12 @@ mod tests {
         /// Lay out a two-page book (`main.wcl` + a page file each), run the
         /// initial full build, and start the rebuild worker.
         fn start() -> Self {
+            Self::start_with(|job| job)
+        }
+
+        /// [`Harness::start`], with the rebuild worker running `wrap(job)`
+        /// in place of the real rebuild job.
+        fn start_with(wrap: impl FnOnce(RebuildJob) -> RebuildJob) -> Self {
             let src = TempDir::new().expect("mkdir src");
             let out = TempDir::new().expect("mkdir out");
             let main = src.path().join("main.wcl");
@@ -753,13 +867,7 @@ mod tests {
             write_page(src.path(), "b", "Original B.");
 
             let (rebuild_tx, rebuild_rx) = tokio::sync::mpsc::unbounded_channel::<RebuildReq>();
-            let state = Arc::new(ServeState {
-                out: out.path().to_path_buf(),
-                error: RwLock::new(None),
-                generation: tokio::sync::watch::Sender::new(0),
-                pending: Mutex::new(Vec::new()),
-                rebuild_tx,
-            });
+            let state = Arc::new(ServeState::new(out.path(), rebuild_tx).expect("state"));
 
             run_build(&main, out.path(), None, &state, false);
             assert!(
@@ -767,13 +875,13 @@ mod tests {
                 "the initial build must succeed"
             );
 
-            tokio::spawn(rebuild_worker(
+            let job = rebuild_job(
                 main.clone(),
                 out.path().to_path_buf(),
                 None,
                 Arc::clone(&state),
-                rebuild_rx,
-            ));
+            );
+            tokio::spawn(rebuild_worker(wrap(job), Arc::clone(&state), rebuild_rx));
 
             let app = router(Arc::clone(&state));
             Harness {
@@ -787,23 +895,7 @@ mod tests {
         /// Drive one request through the real router, returning the status and
         /// the body as text.
         async fn send(&self, method: &str, path: &str) -> (StatusCode, String) {
-            let res = self
-                .app
-                .clone()
-                .oneshot(
-                    Request::builder()
-                        .method(method)
-                        .uri(path)
-                        .body(Body::empty())
-                        .expect("build request"),
-                )
-                .await
-                .expect("router response");
-            let status = res.status();
-            let bytes = to_bytes(res.into_body(), usize::MAX)
-                .await
-                .expect("read body");
-            (status, String::from_utf8_lossy(&bytes).into_owned())
+            send(self.app.clone(), method, path).await
         }
 
         /// `GET path`, returning the status and the body as text.
@@ -824,6 +916,26 @@ mod tests {
             let path = write_page(self.src.path(), name, body);
             self.state.pending.lock().unwrap().push(path);
         }
+    }
+
+    /// Drive one request through `app`, returning the status and the body as
+    /// text. Owns its router, so a test can spawn it and let it wait.
+    async fn send(app: Router, method: &str, path: &str) -> (StatusCode, String) {
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(path)
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("router response");
+        let status = res.status();
+        let bytes = to_bytes(res.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        (status, String::from_utf8_lossy(&bytes).into_owned())
     }
 
     /// Write `<name>.wcl` under `dir` as a one-paragraph page of the `docs`
@@ -930,5 +1042,180 @@ mod tests {
         let (status, page) = h.get("/a").await;
         assert_eq!(status, StatusCode::OK);
         assert!(page.contains("Fixed A."), "{page}");
+    }
+
+    // ── Serving while a rebuild runs ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn a_request_during_a_rebuild_is_still_served() {
+        // The rebuild job is held open until the test releases it, so the
+        // `GET` below provably lands mid-build. `#[tokio::test]` runs on one
+        // thread: a build run inline on the worker task would block that
+        // thread, and the `GET` would only be answered after the build.
+        let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let gate = (Mutex::new(started_tx), Mutex::new(release_rx));
+        let done = Arc::clone(&finished);
+        let h = Harness::start_with(move |job| {
+            Arc::new(move || {
+                let _ = gate.0.lock().unwrap().send(());
+                // Bounded, so a regression fails the assertions below
+                // instead of hanging the test run.
+                let _ = gate.1.lock().unwrap().recv_timeout(Duration::from_secs(10));
+                let report = job();
+                done.store(true, std::sync::atomic::Ordering::SeqCst);
+                report
+            })
+        });
+
+        let rebuild = tokio::spawn(send(h.app.clone(), "POST", "/__wdoc_rebuild"));
+        // Wait (without blocking the runtime thread) for the build to start.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while started_rx.try_recv().is_err() {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "rebuild never started"
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+
+        let (status, page) = h.get("/a").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(page.contains("Original A."), "{page}");
+        assert!(
+            !finished.load(std::sync::atomic::Ordering::SeqCst),
+            "the page was only served after the rebuild finished"
+        );
+
+        release_tx.send(()).expect("release the rebuild");
+        let (status, body) = rebuild.await.expect("rebuild request task");
+        assert_eq!(status, StatusCode::OK);
+        let report: serde_json::Value = serde_json::from_str(&body).expect("JSON report");
+        assert_eq!(report["ok"], serde_json::json!(true), "{report}");
+    }
+
+    // ── Nothing outside the output directory is served ───────────────────
+
+    #[test]
+    fn plain_request_paths_are_accepted() {
+        for rel in [
+            "",
+            "index.html",
+            "a",
+            "docs/a",
+            "_wdoc/app.css",
+            "docs/",
+            // `//etc/passwd` after the handler strips leading slashes: a
+            // relative path under the output dir, not the system file.
+            "etc/passwd",
+            // Not percent-decoded: three literal characters of a name.
+            "..%2fsecret",
+        ] {
+            assert!(is_plain_request_path(rel), "{rel:?} should be accepted");
+        }
+    }
+
+    #[test]
+    fn escaping_request_paths_are_refused() {
+        for rel in [
+            "..",
+            "../secret",
+            "docs/../../secret",
+            ".",
+            "./a",
+            // Windows drive paths, relative and absolute, and a stream name.
+            "C:/Windows/win.ini",
+            "C:\\Windows\\win.ini",
+            "C:",
+            "C:x",
+            "a.html:stream",
+            // A UNC root, and backslash traversal.
+            "\\\\server\\share\\x",
+            "\\etc\\passwd",
+            "docs\\..\\..\\secret",
+        ] {
+            assert!(!is_plain_request_path(rel), "{rel:?} should be refused");
+        }
+    }
+
+    /// On Windows each of these, joined onto the output dir the way
+    /// [`resolve_path`] joins, *replaces* the output dir: the reason the
+    /// rule exists. Only provable on Windows, where `Path` parses prefixes;
+    /// CI's windows-latest leg runs it.
+    #[cfg(windows)]
+    #[test]
+    fn windows_paths_would_replace_the_output_dir_if_let_through() {
+        let out = Path::new(r"D:\site\out");
+        for rel in [
+            r"C:/Windows/win.ini",
+            r"C:\Windows\win.ini",
+            r"\\server\share\x",
+        ] {
+            assert!(!out.join(rel).starts_with(out), "{rel}");
+            assert!(!is_plain_request_path(rel), "{rel}");
+        }
+    }
+
+    /// An output dir `out/` with one servable file, next to a `secret.txt`
+    /// that must never be served, behind a router with no rebuild worker.
+    struct StaticHarness {
+        root: TempDir,
+        app: Router,
+    }
+
+    impl StaticHarness {
+        fn start() -> Self {
+            let root = TempDir::new().expect("mkdir root");
+            let out = root.path().join("out");
+            std::fs::create_dir(&out).expect("mkdir out");
+            std::fs::write(out.join("inside.txt"), "inside").expect("write inside.txt");
+            std::fs::write(root.path().join("secret.txt"), "secret").expect("write secret.txt");
+            let (rebuild_tx, _) = tokio::sync::mpsc::unbounded_channel::<RebuildReq>();
+            let state = Arc::new(ServeState::new(&out, rebuild_tx).expect("state"));
+            StaticHarness {
+                root,
+                app: router(state),
+            }
+        }
+
+        async fn get(&self, path: &str) -> (StatusCode, String) {
+            send(self.app.clone(), "GET", path).await
+        }
+    }
+
+    #[tokio::test]
+    async fn requests_that_leave_the_output_dir_get_404() {
+        let h = StaticHarness::start();
+        let (status, body) = h.get("/inside.txt").await;
+        assert_eq!((status, body.as_str()), (StatusCode::OK, "inside"));
+
+        for path in [
+            "/../secret.txt",
+            "/..%2fsecret.txt",
+            "//secret.txt",
+            "/C:/secret.txt",
+            "/C:%5Csecret.txt",
+            "/%5C%5Cserver%5Cshare",
+        ] {
+            let (status, body) = h.get(path).await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+            assert!(!body.contains("\"secret\""), "{path} leaked: {body}");
+            assert_ne!(body, "secret", "{path} leaked the file");
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_symlink_out_of_the_output_dir_is_not_followed() {
+        let h = StaticHarness::start();
+        std::os::unix::fs::symlink(
+            h.root.path().join("secret.txt"),
+            h.root.path().join("out").join("link.txt"),
+        )
+        .expect("symlink");
+        let (status, body) = h.get("/link.txt").await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+        assert_ne!(body, "secret", "the symlink was followed");
     }
 }
