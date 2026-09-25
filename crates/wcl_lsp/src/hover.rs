@@ -17,11 +17,11 @@ pub(crate) fn hover(
     offset: usize,
     root_doc: Option<&Document>,
 ) -> Option<Hover> {
-    let (sym, span, local_doc) = resolve::locate_at(source, uri, offset, root_doc)?;
+    let (sym, span, local_doc) = resolve::locate_at(ctx, source, uri, offset, root_doc)?;
     // The declaration's source text is needed for the hover snippet.
     // Prefer the per-file doc (cheap, in-memory); fall back to reading
     // the declaring file off disk via the root doc's symbol hit.
-    let snippet = hover_snippet(local_doc.as_ref(), root_doc, &sym, source);
+    let snippet = hover_snippet(ctx, local_doc.as_ref(), root_doc, &sym, source);
     let docs = hover_doc_comment(local_doc.as_ref(), root_doc, &sym)
         .map(|comment| format!("\n\n{comment}"))
         .unwrap_or_default();
@@ -41,9 +41,10 @@ pub(crate) fn hover(
 }
 
 /// Slice the declaration text out of either the request file's
-/// source (local symbol) or the declaring imported file on disk
-/// (cross-file symbol).
+/// source (local symbol) or the declaring imported file — its open
+/// buffer, else the file on disk (cross-file symbol).
 fn hover_snippet(
+    ctx: &Ctx,
     local_doc: Option<&Document>,
     root_doc: Option<&Document>,
     sym: &LocatedSymbol,
@@ -59,7 +60,7 @@ fn hover_snippet(
     let fqn = sym.simple_fqn()?;
     let hit = root.find_symbol(fqn)?;
     let path = hit.source_path?;
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = ctx.text(path)?;
     text.get(hit.record.span.start..hit.record.span.end)
         .map(str::to_string)
 }

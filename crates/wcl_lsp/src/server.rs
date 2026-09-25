@@ -42,9 +42,7 @@ use tower_lsp_server::ls_types::{
     WorkspaceSymbolResponse,
 };
 use tower_lsp_server::{Client, LanguageServer};
-use wcl_lang::{
-    Document, Environment, FileLoader, format as wcl_format, overlay_loader, parse_for_edit,
-};
+use wcl_lang::{Document, Environment, format as wcl_format, parse_for_edit};
 
 use crate::code_actions;
 use crate::completion;
@@ -118,9 +116,10 @@ impl Backend {
         self.encoding.get().copied().unwrap_or_default()
     }
 
-    /// A fresh analysis context for one request.
+    /// A fresh analysis context for one request, snapshotting every
+    /// open buffer.
     fn ctx(&self) -> Ctx {
-        Ctx::new(self.encoding())
+        Ctx::with_buffers(self.encoding(), self.overlay_snapshot())
     }
 
     /// Materialise the current text for a URI. Returns `None` when
@@ -153,16 +152,6 @@ impl Backend {
         out
     }
 
-    /// Build a [`FileLoader`] that serves the embedded wdoc standard
-    /// library for `import <wdoc.wcl>` (and the other `<wdoc/…>` system
-    /// imports), falling through to an overlay of every open buffer on
-    /// top of disk. Each call snapshots `docs`; long-running consumers
-    /// should rebuild between operations. Rebuilding the registry per
-    /// call is cheap — it registers `&'static` strings.
-    pub(crate) fn loader(&self) -> FileLoader {
-        wcl_wdoc::schema_registry().loader(overlay_loader(self.overlay_snapshot()))
-    }
-
     /// Canonical path of the configured root document, if any. A
     /// poisoned lock is recovered (the guarded `Option<PathBuf>` can't
     /// be left torn) and logged — silently degrading to per-file mode
@@ -182,8 +171,13 @@ impl Backend {
     /// the root failed to parse — callers fall back to per-file
     /// parsing in that case.
     pub fn root_document(&self) -> Option<Document> {
+        self.root_document_in(&self.ctx())
+    }
+
+    /// [`Self::root_document`] against the buffers snapshotted in `ctx`.
+    fn root_document_in(&self, ctx: &Ctx) -> Option<Document> {
         let path = self.root_path()?;
-        Document::from_file_with_loader(&path, &root_environment(), self.loader()).ok()
+        Document::from_file_with_loader(&path, &root_environment(), ctx.loader()).ok()
     }
 
     /// Recompute diagnostics for the whole workspace and publish them.
@@ -242,14 +236,12 @@ impl Backend {
         };
         match self.root_path() {
             Some(root) => {
-                let placed = match Document::from_file_with_loader(
-                    &root,
-                    &root_environment(),
-                    self.loader(),
-                ) {
-                    Ok(doc) => diagnostics::document(ctx, &doc),
-                    Err(e) => diagnostics::parse_failure(ctx, &e, &root.display().to_string()),
-                };
+                let placed =
+                    match Document::from_file_with_loader(&root, &root_environment(), ctx.loader())
+                    {
+                        Ok(doc) => diagnostics::document(ctx, &doc),
+                        Err(e) => diagnostics::parse_failure(ctx, &e, &root.display().to_string()),
+                    };
                 for (origin, diagnostic) in placed {
                     let target = match origin {
                         diagnostics::Origin::Analysed => uri_for(&root),
@@ -266,16 +258,8 @@ impl Backend {
                 }
             }
             None => {
-                let loader = self.loader();
                 for (uri, _, text) in &open {
-                    let base_dir = uri_to_path(uri).and_then(|p| p.parent().map(Path::to_path_buf));
-                    let placed = diagnostics::analyse(
-                        ctx,
-                        text,
-                        uri.as_str(),
-                        base_dir.as_deref(),
-                        loader.clone(),
-                    );
+                    let placed = diagnostics::analyse(ctx, text, uri.as_str());
                     for (origin, diagnostic) in placed {
                         let target = match origin {
                             diagnostics::Origin::Analysed => Some(uri.clone()),
@@ -541,10 +525,11 @@ impl LanguageServer for Backend {
         else {
             return Ok(None);
         };
-        let root_doc = self.root_document();
+        let ctx = self.ctx();
+        let root_doc = self.root_document_in(&ctx);
         let root_path = self.root_path();
         Ok(navigation::goto_definition(
-            &self.ctx(),
+            &ctx,
             uri,
             &source,
             offset,
@@ -555,22 +540,18 @@ impl LanguageServer for Backend {
 
     async fn references(&self, params: ReferenceParams) -> RpcResult<Option<Vec<Location>>> {
         let uri = params.text_document_position.text_document.uri;
-        let overlays = self.overlay_snapshot();
+        let ctx = self.ctx();
         let source = uri_to_path(&uri)
-            .and_then(|p| overlays.get(&p).cloned())
+            .and_then(|p| ctx.buffers.get(&p).cloned())
             .or_else(|| self.document_text(&uri));
         let Some(source) = source else {
             return Ok(None);
         };
-        let ctx = self.ctx();
         let offset = ctx
             .index(&source)
             .offset(params.text_document_position.position);
         let root_path = self.root_path();
-        let root_doc = root_path.as_ref().and_then(|path| {
-            let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlays.clone()));
-            Document::from_file_with_loader(path, &root_environment(), loader).ok()
-        });
+        let root_doc = self.root_document_in(&ctx);
         Ok(navigation::references(
             &ctx,
             uri,
@@ -579,27 +560,24 @@ impl LanguageServer for Backend {
             params.context.include_declaration,
             root_doc.as_ref(),
             root_path.as_deref(),
-            &overlays,
         ))
     }
 
     async fn rename(&self, params: RenameParams) -> RpcResult<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri;
-        let overlays = self.overlay_snapshot();
+        let ctx = self.ctx();
         let source = uri_to_path(&uri)
-            .and_then(|p| overlays.get(&p).cloned())
+            .and_then(|p| ctx.buffers.get(&p).cloned())
             .or_else(|| self.document_text(&uri));
         let Some(source) = source else {
             return Ok(None);
         };
-        let ctx = self.ctx();
         let offset = ctx
             .index(&source)
             .offset(params.text_document_position.position);
         let root_path = self.root_path().or_else(|| uri_to_path(&uri));
         let root_doc = root_path.as_ref().and_then(|path| {
-            let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlays.clone()));
-            Document::from_file_with_loader(path, &root_environment(), loader).ok()
+            Document::from_file_with_loader(path, &root_environment(), ctx.loader()).ok()
         });
         navigation::rename(
             &ctx,
@@ -609,7 +587,6 @@ impl LanguageServer for Backend {
             &params.new_name,
             root_doc.as_ref(),
             root_path.as_deref(),
-            &overlays,
         )
         .map_err(tower_lsp_server::jsonrpc::Error::invalid_params)
     }
@@ -621,9 +598,10 @@ impl LanguageServer for Backend {
         else {
             return Ok(None);
         };
-        let root_doc = self.root_document();
+        let ctx = self.ctx();
+        let root_doc = self.root_document_in(&ctx);
         Ok(hover_impl::hover(
-            &self.ctx(),
+            &ctx,
             &source,
             uri.as_str(),
             offset,
@@ -638,8 +616,9 @@ impl LanguageServer for Backend {
         else {
             return Ok(None);
         };
-        let root_doc = self.root_document();
-        let items = completion::completions(&source, uri.as_str(), offset, root_doc.as_ref());
+        let ctx = self.ctx();
+        let root_doc = self.root_document_in(&ctx);
+        let items = completion::completions(&ctx, &source, uri.as_str(), offset, root_doc.as_ref());
         Ok(Some(CompletionResponse::Array(items)))
     }
 
@@ -657,20 +636,21 @@ impl LanguageServer for Backend {
         // overlay carries that unparseable text, which would fail the
         // root parse and lose cross-file resolution. Retry the root with
         // the buffer's *repaired* form (open brackets closed) overlaid.
-        let root_doc = self.root_document().or_else(|| {
+        let ctx = self.ctx();
+        let root_doc = self.root_document_in(&ctx).or_else(|| {
             let root = self.root_path()?;
             let path = uri_to_path(&uri)?;
-            let mut overlay = self.overlay_snapshot();
+            let mut overlay = (*ctx.buffers).clone();
             overlay.insert(path, signature::repair_source(&source, offset));
-            let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlay));
-            Document::from_file_with_loader(&root, &root_environment(), loader).ok()
+            let repaired = Ctx::with_buffers(ctx.encoding, overlay);
+            Document::from_file_with_loader(&root, &root_environment(), repaired.loader()).ok()
         });
         Ok(signature::signature_help(
+            &ctx,
             &source,
             uri.as_str(),
             offset,
             root_doc.as_ref(),
-            &self.overlay_snapshot(),
         ))
     }
 
@@ -678,15 +658,15 @@ impl LanguageServer for Backend {
         &self,
         params: WorkspaceSymbolParams,
     ) -> RpcResult<Option<WorkspaceSymbolResponse>> {
-        let root_doc = self.root_document();
+        let ctx = self.ctx();
+        let root_doc = self.root_document_in(&ctx);
         let root_path = self.root_path();
         Ok(Some(WorkspaceSymbolResponse::Flat(
             workspace::workspace_symbols(
-                &self.ctx(),
+                &ctx,
                 &params.query,
                 root_doc.as_ref(),
                 root_path.as_deref(),
-                &self.overlay_snapshot(),
             ),
         )))
     }

@@ -7,7 +7,7 @@
 
 #[allow(deprecated)] // DocumentSymbol::deprecated is required by lsp-types
 use tower_lsp_server::ls_types::{DocumentSymbol, SymbolKind as LspSymbolKind};
-use wcl_lang::{Document, SymbolKind, SymbolRecord};
+use wcl_lang::{SymbolKind, SymbolRecord};
 
 use crate::convert::LineIndex;
 use crate::ctx::Ctx;
@@ -16,7 +16,7 @@ use crate::ctx::Ctx;
 /// empty vec on parse failure (the diagnostics path already surfaces
 /// the parse error).
 pub(crate) fn compute(ctx: &Ctx, source: &str, uri: &str) -> Vec<DocumentSymbol> {
-    let Ok(doc) = Document::open(source, uri) else {
+    let Ok(doc) = ctx.open(source, uri) else {
         return Vec::new();
     };
     let index = ctx.index(source);

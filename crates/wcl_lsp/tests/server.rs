@@ -1015,3 +1015,60 @@ async fn root_document_expands_contextual_blocks() {
         .expect("no missing-expander error");
     assert_eq!(title, wcl_lang::Value::Utf8("generated one".into()));
 }
+
+#[tokio::test]
+async fn per_file_mode_resolves_relative_and_system_imports() {
+    // No root: every request opens the buffer on its own, through the
+    // same loader and wdoc environment the diagnostics use — so a
+    // relative import and `import <wdoc.wcl>` both resolve.
+    use tower_lsp_server::ls_types::{DocumentSymbolParams, DocumentSymbolResponse};
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    std::fs::write(&shared, "namespace shared\ntype Color { name: utf8 }\n").unwrap();
+    let src = "import <wdoc.wcl>\nimport \"./shared.wcl\"\ntype Wrap { x: utf8 }\n";
+    std::fs::write(&main, src).unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    let main_uri = Uri::from_file_path(&main).unwrap();
+    open(backend, &main_uri, src).await;
+
+    let outline = backend
+        .document_symbol(DocumentSymbolParams {
+            text_document: TextDocumentIdentifier {
+                uri: main_uri.clone(),
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("document symbols");
+    let Some(DocumentSymbolResponse::Nested(symbols)) = outline else {
+        panic!("expected nested symbols, got {outline:?}");
+    };
+    assert!(symbols.iter().any(|s| s.name == "Wrap"), "{symbols:?}");
+
+    let line = 2;
+    let character = (src.lines().nth(2).unwrap().find("x: utf8").unwrap() + 3) as u32;
+    let resp = backend
+        .completion(CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: main_uri },
+                position: Position { line, character },
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: None,
+        })
+        .await
+        .expect("completion");
+    let Some(CompletionResponse::Array(items)) = resp else {
+        panic!("expected array, got {resp:?}");
+    };
+    let labels: Vec<_> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.iter().any(|l| *l == "shared.Color" || *l == "Color"),
+        "imported type in per-file mode: {labels:?}"
+    );
+}

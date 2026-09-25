@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use miette::{Diagnostic as _, NamedSource, SourceSpan};
 use tower_lsp_server::ls_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Range};
-use wcl_lang::{Document, EvalError, FileLoader, ParseError, SYSTEM_IMPORT_ROOT, Span};
+use wcl_lang::{Document, EvalError, ParseError, SYSTEM_IMPORT_ROOT, Span};
 
 use crate::ctx::Ctx;
 
@@ -25,38 +25,11 @@ pub(crate) enum Origin {
     File(PathBuf),
 }
 
-/// Open `source` the way the wdoc build would: system imports
-/// (`import <wdoc.wcl>`) resolve through the caller's loader (the embedded
-/// registry over an overlay of open buffers), relative imports resolve
-/// against `base_dir`, and the wdoc [`Environment`](wcl_lang::Environment)
-/// supplies builtins like `page_metadata`. A bare `Document::open` would
-/// flag all three as errors in perfectly valid documents.
-fn open_document(
-    source: &str,
-    uri: &str,
-    base_dir: Option<&Path>,
-    loader: FileLoader,
-) -> Result<Document, ParseError> {
-    Document::open_at_with_loader(
-        source,
-        uri,
-        base_dir.map(Path::to_path_buf),
-        &wcl_wdoc::wdoc_environment(),
-        loader,
-    )
-}
-
-/// Open `source` and report every diagnostic it produces, each with the
-/// file it belongs to. Empty when the document parses and validates
-/// cleanly.
-pub(crate) fn analyse(
-    ctx: &Ctx,
-    source: &str,
-    uri: &str,
-    base_dir: Option<&Path>,
-    loader: FileLoader,
-) -> Vec<(Origin, Diagnostic)> {
-    match open_document(source, uri, base_dir, loader) {
+/// Open `source` (named `uri`) through [`Ctx::open`] and report every
+/// diagnostic it produces, each with the file it belongs to. Empty when
+/// the document parses and validates cleanly.
+pub(crate) fn analyse(ctx: &Ctx, source: &str, uri: &str) -> Vec<(Origin, Diagnostic)> {
+    match ctx.open(source, uri) {
         Ok(doc) => document(ctx, &doc),
         Err(e) => parse_failure(ctx, &e, uri),
     }
@@ -219,20 +192,14 @@ mod tests {
     use super::*;
     use tower_lsp_server::ls_types::Position;
 
-    /// The loader the live server threads in: the embedded wdoc registry
-    /// over disk (no open-buffer overlay in unit tests).
-    fn loader() -> FileLoader {
-        wcl_wdoc::schema_registry().loader(wcl_lang::disk_loader())
-    }
-
     fn ctx() -> Ctx {
         Ctx::new(Default::default())
     }
 
     /// Diagnostics for a single-file document, asserting none of them
     /// was placed in another file.
-    fn compute(src: &str, name: &str, base_dir: Option<&Path>) -> Vec<Diagnostic> {
-        analyse(&ctx(), src, name, base_dir, loader())
+    fn compute(src: &str, name: &str) -> Vec<Diagnostic> {
+        analyse(&ctx(), src, name)
             .into_iter()
             .map(|(origin, diagnostic)| {
                 assert_eq!(origin, Origin::Analysed, "{diagnostic:?}");
@@ -244,7 +211,7 @@ mod tests {
     #[test]
     fn clean_document_has_no_diagnostics() {
         let src = "// no schema, no fields, nothing to validate\n";
-        let diags = compute(src, "test.wcl", None);
+        let diags = compute(src, "test.wcl");
         assert!(diags.is_empty(), "expected no diagnostics, got {diags:#?}");
     }
 
@@ -253,7 +220,7 @@ mod tests {
         // Unclosed brace fixture from examples/errors.
         let src = "@schemaless config {\n  region = \"us-east-1\"\n";
         for diags in [
-            compute(src, "test.wcl", None),
+            compute(src, "test.wcl"),
             syntax_only(&ctx(), src, "test.wcl"),
         ] {
             assert_eq!(diags.len(), 1, "expected one syntax diagnostic");
@@ -271,7 +238,7 @@ mod tests {
         // this loader threading fixed). The syntax-only check never
         // resolves imports at all.
         let src = "import <wdoc.wcl>\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n";
-        let diags = compute(src, "test.wcl", None);
+        let diags = compute(src, "test.wcl");
         assert!(diags.is_empty(), "root path flagged: {diags:#?}");
         let diags = syntax_only(&ctx(), src, "test.wcl");
         assert!(diags.is_empty(), "syntax-only path flagged: {diags:#?}");
@@ -280,7 +247,7 @@ mod tests {
     #[test]
     fn syntax_only_does_not_resolve_imports() {
         let src = "import \"./does-not-exist.wcl\"\n";
-        assert!(!compute(src, "test.wcl", None).is_empty());
+        assert!(!compute(src, "test.wcl").is_empty());
         assert!(syntax_only(&ctx(), src, "test.wcl").is_empty());
     }
 
@@ -296,7 +263,8 @@ mod tests {
         )
         .unwrap();
         let main_src = "import <wdoc.wcl>\nimport \"pages.wcl\"\n\npage index {\n  title = \"Hi\"\n\n  h1 \"Hi\"\n}\n";
-        let diags = compute(main_src, "main.wcl", Some(td.path()));
+        let main = crate::convert::path_to_uri(&td.path().join("main.wcl")).unwrap();
+        let diags = compute(main_src, main.as_str());
         assert!(diags.is_empty(), "rooted main flagged: {diags:#?}");
     }
 
@@ -308,7 +276,8 @@ mod tests {
         let shared = td.path().join("shared.wcl");
         std::fs::write(&shared, "\n\n@missing\ntitle = \"Hi\"\n").unwrap();
         let main_src = "import \"./shared.wcl\"\n@document type Root { title: utf8 }\n";
-        let diags = analyse(&ctx(), main_src, "main.wcl", Some(td.path()), loader());
+        let main = crate::convert::path_to_uri(&td.path().join("main.wcl")).unwrap();
+        let diags = analyse(&ctx(), main_src, main.as_str());
         let (origin, diagnostic) = diags
             .iter()
             .find(|(_, d)| d.message.contains("decorator 'missing'"))
@@ -329,7 +298,8 @@ mod tests {
         let shared = td.path().join("shared.wcl");
         std::fs::write(&shared, "\n\n\n@schemaless x = {\n").unwrap();
         let main_src = "import \"./shared.wcl\"\n";
-        let diags = analyse(&ctx(), main_src, "main.wcl", Some(td.path()), loader());
+        let main = crate::convert::path_to_uri(&td.path().join("main.wcl")).unwrap();
+        let diags = analyse(&ctx(), main_src, main.as_str());
         assert_eq!(diags.len(), 1, "{diags:#?}");
         let (origin, diagnostic) = &diags[0];
         assert!(matches!(origin, Origin::File(_)), "{diags:#?}");
@@ -341,7 +311,7 @@ mod tests {
         // A root @document gather field shadowing the wdoc stdlib's
         // `pages` gather — advisory, so WARNING, not ERROR.
         let src = "import <wdoc.wcl>\n\n@block(\"part\")\ntype Part {\n  name: utf8\n}\n@document\ntype Mine {\n  @children(\"part\") pages: list<Part>\n}\n";
-        let diags = compute(src, "test.wcl", None);
+        let diags = compute(src, "test.wcl");
         let warn = diags
             .iter()
             .find(|d| d.severity == Some(DiagnosticSeverity::WARNING))
@@ -363,7 +333,7 @@ mod tests {
     fn schema_violation_reports_at_field_span() {
         // Mirror examples/errors/unknown_field.wcl.
         let src = "@document\ntype Root {\n  region: utf8\n}\n@block(\"service\")\ntype Service {\n  region: utf8\n}\nservice web {\n  region = \"us-east-1\"\n  unexpected = \"boom\"\n}\n";
-        let diags = compute(src, "test.wcl", None);
+        let diags = compute(src, "test.wcl");
         assert!(!diags.is_empty(), "expected at least one schema diagnostic");
         let has_unknown = diags.iter().any(|d| {
             matches!(&d.code, Some(NumberOrString::String(c)) if c == "wcl::eval::schema_violation")
@@ -381,7 +351,7 @@ mod tests {
     #[test]
     fn undeclared_decorator_reports_at_its_name() {
         let src = "@document type Root { title: utf8 }\n@missing\ntitle = \"Hello\"\n";
-        let diags = compute(src, "test.wcl", None);
+        let diags = compute(src, "test.wcl");
         let diagnostic = diags
             .iter()
             .find(|diagnostic| diagnostic.message.contains("decorator 'missing'"))

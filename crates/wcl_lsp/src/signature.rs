@@ -14,14 +14,12 @@
 //! cross-file through the root document), and local `let f = fn(…)`
 //! closures in scope.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-
 use tower_lsp_server::ls_types::{
     Documentation, ParameterInformation, ParameterLabel, SignatureHelp, SignatureInformation,
 };
 use wcl_lang::{Document, SymbolKind, ast, parse_for_edit};
 
+use crate::ctx::Ctx;
 use crate::resolve::{dotted_form, word_at};
 use crate::scan::is_ident_byte;
 use crate::walk;
@@ -36,7 +34,7 @@ pub(crate) struct CallContext {
     pub active_param: u32,
 }
 
-/// Compute signature help at `offset`. `open_buffers` lets a cross-file
+/// Compute signature help at `offset`. The context's open buffers let a cross-file
 /// `fn` declaration render from its unsaved editor state.
 ///
 /// A buffer mid-call (`x = add(1, |`) doesn't parse, so the symbol
@@ -44,21 +42,22 @@ pub(crate) struct CallContext {
 /// with its open brackets closed (see [`repair_source`]) — whenever the
 /// buffer itself won't open.
 pub(crate) fn signature_help(
+    ctx: &Ctx,
     source: &str,
     uri: &str,
     offset: usize,
     root_doc: Option<&Document>,
-    open_buffers: &HashMap<PathBuf, String>,
 ) -> Option<SignatureHelp> {
     let call = enclosing_call(source, offset)?;
     let repaired = repair_source(source, offset);
-    let local_doc = Document::open(source, uri)
-        .or_else(|_| Document::open(&repaired, uri))
+    let local_doc = ctx
+        .open(source, uri)
+        .or_else(|_| ctx.open(&repaired, uri))
         .ok();
     let sig = [local_doc.as_ref(), root_doc]
         .into_iter()
         .flatten()
-        .find_map(|doc| resolve_signature(doc, &repaired, offset, &call, open_buffers))?;
+        .find_map(|doc| resolve_signature(ctx, doc, &repaired, offset, &call))?;
     let params = sig.parameters.as_ref().map_or(0, Vec::len) as u32;
     Some(SignatureHelp {
         active_signature: Some(0),
@@ -213,11 +212,11 @@ fn callee_before(source: &str, paren: usize) -> Option<String> {
 /// `text` is the parseable form of the edited buffer (the repaired
 /// source when the buffer itself is mid-edit).
 fn resolve_signature(
+    ctx: &Ctx,
     doc: &Document,
     text: &str,
     offset: usize,
     call: &CallContext,
-    open_buffers: &HashMap<PathBuf, String>,
 ) -> Option<SignatureInformation> {
     if !call.callee.contains('.')
         && let Some((_, builtin)) = doc
@@ -276,10 +275,7 @@ fn resolve_signature(
             // Declared in an imported file — render from its overlay
             // text when the file is open, else from disk.
             Some(path) => {
-                let text = open_buffers
-                    .get(path)
-                    .cloned()
-                    .or_else(|| std::fs::read_to_string(path).ok())?;
+                let text = ctx.text(path)?;
                 fn_item_signature(&text, &short, item_index)
             }
         };
@@ -458,8 +454,14 @@ mod tests {
     #[test]
     fn builtin_signature_resolves_with_param_offsets() {
         let src = "x = clamp(";
-        let help = signature_help(src, "test.wcl", src.len(), None, &HashMap::new())
-            .expect("builtin help");
+        let help = signature_help(
+            &Ctx::new(Default::default()),
+            src,
+            "test.wcl",
+            src.len(),
+            None,
+        )
+        .expect("builtin help");
         let sig = &help.signatures[0];
         assert!(sig.label.starts_with("clamp("), "{}", sig.label);
         let params = sig.parameters.as_ref().expect("params");
@@ -478,8 +480,14 @@ mod tests {
     #[test]
     fn user_fn_item_signature_tracks_active_param() {
         let src = "fn add(a: i64, b: i64) -> i64 { a + b }\nx = add(1, ";
-        let help = signature_help(src, "test.wcl", src.len(), None, &HashMap::new())
-            .expect("fn item help");
+        let help = signature_help(
+            &Ctx::new(Default::default()),
+            src,
+            "test.wcl",
+            src.len(),
+            None,
+        )
+        .expect("fn item help");
         let sig = &help.signatures[0];
         assert_eq!(sig.label, "add(a: i64, b: i64) -> i64");
         assert_eq!(help.active_parameter, Some(1));
@@ -488,8 +496,14 @@ mod tests {
     #[test]
     fn local_closure_signature_resolves() {
         let src = "x = {\n  let scale = fn(v: f64) -> f64 v * 2.0;\n  scale(";
-        let help = signature_help(src, "test.wcl", src.len(), None, &HashMap::new())
-            .expect("closure help");
+        let help = signature_help(
+            &Ctx::new(Default::default()),
+            src,
+            "test.wcl",
+            src.len(),
+            None,
+        )
+        .expect("closure help");
         assert!(help.signatures[0].label.starts_with("scale(v: f64)"));
     }
 }

@@ -228,8 +228,6 @@ mod tests {
             &crate::ctx::Ctx::new(Default::default()),
             src,
             uri.as_str(),
-            None,
-            wcl_wdoc::schema_registry().loader(wcl_lang::disk_loader()),
         )
         .into_iter()
         .map(|(_, diagnostic)| diagnostic)

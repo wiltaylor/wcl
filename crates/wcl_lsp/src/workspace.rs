@@ -28,8 +28,8 @@ pub(crate) fn workspace_symbols(
     query: &str,
     root_doc: Option<&Document>,
     root_path: Option<&Path>,
-    open_buffers: &HashMap<PathBuf, String>,
 ) -> Vec<SymbolInformation> {
+    let open_buffers: &HashMap<PathBuf, String> = &ctx.buffers;
     // (score, path, record) triples; resolved to locations only for the
     // entries that survive the cap.
     let mut hits: Vec<(u32, PathBuf, SymbolRecord)> = Vec::new();
@@ -54,7 +54,10 @@ pub(crate) fn workspace_symbols(
         if in_graph.iter().any(|p| p == path) {
             continue;
         }
-        let Ok(doc) = Document::open(text, &path.display().to_string()) else {
+        let Some(uri) = crate::convert::path_to_uri(path) else {
+            continue;
+        };
+        let Ok(doc) = ctx.open(text, uri.as_str()) else {
             continue;
         };
         for rec in doc.symbols().iter() {
@@ -182,7 +185,12 @@ mod tests {
             PathBuf::from("/tmp/standalone.wcl"),
             "type Widget {\n  size: i64\n}\n".to_string(),
         );
-        let hits = workspace_symbols(&Ctx::new(Default::default()), "Widg", None, None, &buffers);
+        let hits = workspace_symbols(
+            &Ctx::with_buffers(Default::default(), buffers),
+            "Widg",
+            None,
+            None,
+        );
         // The member `Widget.size` also matches through its FQN, but
         // the short-name prefix hit ranks first.
         assert!(!hits.is_empty());

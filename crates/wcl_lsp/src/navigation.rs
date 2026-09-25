@@ -23,7 +23,7 @@ pub(crate) fn goto_definition(
     // Per-file open often fails when the file references cross-file
     // types — that's fine, `locate_at` falls back to the root doc for
     // resolution and hands back the (possibly-`None`) per-file doc.
-    let (sym, _, local_doc) = resolve::locate_at(source, uri.as_str(), offset, root_doc)?;
+    let (sym, _, local_doc) = resolve::locate_at(ctx, source, uri.as_str(), offset, root_doc)?;
     // Cross-file: if the resolved FQN lives in an imported source,
     // surface that file's URI instead of the request URI. Prefer
     // the root doc's symbol index when present (it sees every
@@ -72,7 +72,6 @@ pub(crate) fn goto_definition(
 }
 
 /// Find occurrences of the selected declaration in the current source snapshot.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn references(
     ctx: &Ctx,
     uri: Uri,
@@ -81,10 +80,9 @@ pub(crate) fn references(
     include_declaration: bool,
     root_doc: Option<&Document>,
     root_path: Option<&std::path::Path>,
-    overlays: &std::collections::HashMap<std::path::PathBuf, String>,
 ) -> Option<Vec<Location>> {
     let local_doc = if root_doc.is_none() {
-        Document::open(source, uri.as_str()).ok()
+        ctx.open(source, uri.as_str()).ok()
     } else {
         None
     };
@@ -115,10 +113,7 @@ pub(crate) fn references(
             if file_uri == uri {
                 continue;
             }
-            let text = overlays
-                .get(&path)
-                .cloned()
-                .or_else(|| std::fs::read_to_string(&path).ok())?;
+            let text = ctx.text(&path)?;
             let occurrences = crate::occurrences::collect(&text, &file_uri, doc)?;
             sources.push((file_uri, text, occurrences));
         }
@@ -151,13 +146,12 @@ pub(crate) fn rename(
     new_name: &str,
     root_doc: Option<&Document>,
     root_path: Option<&std::path::Path>,
-    overlays: &std::collections::HashMap<std::path::PathBuf, String>,
 ) -> Result<Option<tower_lsp_server::ls_types::WorkspaceEdit>, String> {
     if !is_valid_identifier(new_name) {
         return Err(format!("'{new_name}' is not a valid WCL identifier"));
     }
     let local_doc = if root_doc.is_none() {
-        Document::open(source, uri.as_str()).ok()
+        ctx.open(source, uri.as_str()).ok()
     } else {
         None
     };
@@ -175,16 +169,8 @@ pub(crate) fn rename(
         return Ok(None);
     };
     let identity = selected.identity.clone();
-    let Some(locations) = references(
-        ctx,
-        uri.clone(),
-        source,
-        offset,
-        true,
-        root_doc,
-        root_path,
-        overlays,
-    ) else {
+    let Some(locations) = references(ctx, uri.clone(), source, offset, true, root_doc, root_path)
+    else {
         return Ok(None);
     };
     let mut changes: std::collections::HashMap<Uri, Vec<tower_lsp_server::ls_types::TextEdit>> =
@@ -202,11 +188,7 @@ pub(crate) fn rename(
         if snapshots.contains_key(&target) {
             continue;
         }
-        let text = overlays
-            .get(path)
-            .cloned()
-            .or_else(|| std::fs::read_to_string(path).ok())
-            .ok_or("Cannot read rename target")?;
+        let text = ctx.text(path).ok_or("Cannot read rename target")?;
         let occurrences =
             crate::occurrences::collect(&text, &target, doc).ok_or("Cannot parse rename target")?;
         snapshots.insert(target, (text, occurrences));
@@ -221,11 +203,7 @@ pub(crate) fn rename(
         if !snapshots.contains_key(&loc.uri) {
             let path =
                 crate::convert::uri_to_path(&loc.uri).ok_or("Rename target is not a local file")?;
-            let text = overlays
-                .get(&path)
-                .cloned()
-                .or_else(|| std::fs::read_to_string(path).ok())
-                .ok_or("Cannot read rename target")?;
+            let text = ctx.text(&path).ok_or("Cannot read rename target")?;
             let occurrences = crate::occurrences::collect(&text, &loc.uri, doc)
                 .ok_or("Cannot parse rename target")?;
             snapshots.insert(loc.uri.clone(), (text, occurrences));
@@ -270,7 +248,7 @@ pub(crate) fn rename(
         return Err("The selected name has no editable authored declaration".into());
     }
     if doc.schema_errors().is_empty() {
-        let mut updated = overlays.clone();
+        let mut updated = (*ctx.buffers).clone();
         updated.insert(
             crate::convert::uri_to_path(&uri).ok_or("Rename target is not a local file")?,
             source.to_string(),
@@ -346,7 +324,6 @@ mod tests {
             "numbers",
             None,
             None,
-            &Default::default(),
         )
         .unwrap()
         .unwrap();
@@ -385,14 +362,13 @@ mod tests {
         )
         .unwrap();
         let refs = references(
-            &ctx(),
+            &Ctx::with_buffers(crate::convert::PositionEncoding::Utf8, overlays.clone()),
             Uri::from_file_path(&main).unwrap(),
             source,
             source.find("Color").unwrap(),
             true,
             Some(&doc),
             Some(&main),
-            &overlays,
         )
         .unwrap();
         let declaration = refs
@@ -422,7 +398,6 @@ mod tests {
             "Bar",
             Some(&doc),
             Some(&main),
-            &Default::default(),
         )
         .unwrap()
         .unwrap();
@@ -474,7 +449,6 @@ mod tests {
                 "replacement",
                 None,
                 None,
-                &Default::default(),
             );
             assert!(matches!(result, Ok(Some(_))), "{cursor}: {result:?}");
         }
@@ -495,7 +469,6 @@ mod tests {
             name,
             None,
             None,
-            &Default::default(),
         )
         .unwrap()
         .unwrap();
@@ -654,7 +627,6 @@ tree { @note leaf first {} selected = first }
                     "renamed",
                     None,
                     None,
-                    &Default::default()
                 )
                 .is_err(),
                 "{source}"
@@ -684,14 +656,13 @@ tree { @note leaf first {} selected = first }
             )
             .unwrap();
             let edit = rename(
-                &ctx(),
+                &Ctx::with_buffers(crate::convert::PositionEncoding::Utf8, overlays.clone()),
                 Uri::from_file_path(&main).unwrap(),
                 source,
                 source.find(needle).unwrap(),
                 new_name,
                 Some(&doc),
                 Some(&main),
-                &overlays,
             )
             .unwrap()
             .unwrap();
@@ -749,7 +720,6 @@ tree { @note leaf first {} selected = first }
             "salutation",
             Some(&doc),
             Some(&main),
-            &Default::default(),
         )
         .unwrap()
         .unwrap();
@@ -777,18 +747,9 @@ tree { @note leaf first {} selected = first }
             source.find("\"Foo\"").unwrap() + 1,
         ] {
             assert!(
-                rename(
-                    &ctx(),
-                    url(),
-                    source,
-                    cursor,
-                    "Bar",
-                    None,
-                    None,
-                    &Default::default()
-                )
-                .unwrap()
-                .is_none()
+                rename(&ctx(), url(), source, cursor, "Bar", None, None,)
+                    .unwrap()
+                    .is_none()
             );
         }
     }
@@ -815,17 +776,7 @@ tree { @note leaf first {} selected = first }
         let src = "@document\ntype Root {\n  v: Foo\n}\n@block(\"foo\")\ntype Foo {\n  x: utf8\n}\nfoo {\n  x = \"a\"\n}\nfoo {\n  x = \"b\"\n}\n";
         // Cursor on the type-ref "Foo" in `v: Foo`.
         let cursor = src.find("v: Foo").unwrap() + 3;
-        let locs = references(
-            &ctx(),
-            url(),
-            src,
-            cursor,
-            true,
-            None,
-            None,
-            &Default::default(),
-        )
-        .expect("some refs");
+        let locs = references(&ctx(), url(), src, cursor, true, None, None).expect("some refs");
         // Should include the declaration "type Foo" and the "v: Foo" use,
         // but not the lowercase block kind "foo".
         assert_eq!(locs.len(), 2, "found: {locs:#?}");
@@ -836,28 +787,8 @@ tree { @note leaf first {} selected = first }
         let src =
             "@document\ntype Root {\n  v: Foo\n}\n@block(\"foo\")\ntype Foo {\n  x: utf8\n}\n";
         let cursor = src.find("v: Foo").unwrap() + 3;
-        let with_decl = references(
-            &ctx(),
-            url(),
-            src,
-            cursor,
-            true,
-            None,
-            None,
-            &Default::default(),
-        )
-        .unwrap();
-        let no_decl = references(
-            &ctx(),
-            url(),
-            src,
-            cursor,
-            false,
-            None,
-            None,
-            &Default::default(),
-        )
-        .unwrap();
+        let with_decl = references(&ctx(), url(), src, cursor, true, None, None).unwrap();
+        let no_decl = references(&ctx(), url(), src, cursor, false, None, None).unwrap();
         assert_eq!(with_decl.len(), no_decl.len() + 1);
     }
 
@@ -889,7 +820,6 @@ tree { @note leaf first {} selected = first }
             true,
             None,
             None,
-            &Default::default(),
         )
         .unwrap_or_default();
         let shared_url = Uri::from_file_path(&shared).unwrap();

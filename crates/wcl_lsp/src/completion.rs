@@ -12,6 +12,7 @@ use std::collections::HashSet;
 use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind};
 use wcl_lang::{DeclName, Document, SymbolKind, parse_for_edit};
 
+use crate::ctx::Ctx;
 use crate::resolve::preceding_non_ws;
 use crate::walk;
 
@@ -45,6 +46,7 @@ const BUILTIN_TYPES: &[&str] = &[
 /// Completion items for the cursor position: decorators after an
 /// `@`, otherwise the type names in scope.
 pub(crate) fn completions(
+    ctx: &Ctx,
     source: &str,
     uri: &str,
     offset: usize,
@@ -56,11 +58,11 @@ pub(crate) fn completions(
     // (namespace, top-level fields). When a root document is also
     // available it contributes cross-file type / decorator / field
     // completions.
-    let local_doc = Document::open(source, uri).ok();
+    let local_doc = ctx.open(source, uri).ok();
     match preceding_non_ws(source, offset) {
         Some(b'@') => {
             let fallback_doc = (local_doc.is_none() && root_doc.is_none())
-                .then(|| Document::open("", uri).expect("empty completion document opens"));
+                .then(|| ctx.open("", uri).expect("empty completion document opens"));
             let mut context = decorator_context(source, uri, offset);
             if let Some(target) = &context
                 && let Some(kind) = target.block_kind.as_deref()
@@ -271,7 +273,13 @@ mod tests {
         let src =
             "@decorator(\"max_len\")\ntype MaxLen {\n  value: u64\n}\n@\ntype Trailing {\n}\n";
         let cursor = src.find("\n@\n").unwrap() + 2; // just past the `@`
-        let labs = labels(completions(src, "test.wcl", cursor, None));
+        let labs = labels(completions(
+            &Ctx::new(Default::default()),
+            src,
+            "test.wcl",
+            cursor,
+            None,
+        ));
         assert!(labs.iter().any(|l| l == "block"), "{labs:?}");
         assert!(labs.iter().any(|l| l == "connections"), "{labs:?}");
         assert!(labs.iter().any(|l| l == "max_len"), "{labs:?}");
@@ -289,7 +297,13 @@ mod tests {
         );
         let root = Document::open_with("", "root.wcl", &env).expect("root document opens");
 
-        let labs = labels(completions("@", "test.wcl", 1, Some(&root)));
+        let labs = labels(completions(
+            &Ctx::new(Default::default()),
+            "@",
+            "test.wcl",
+            1,
+            Some(&root),
+        ));
 
         assert!(labs.iter().any(|l| l == "fresh"), "{labs:?}");
     }
@@ -307,7 +321,13 @@ mod tests {
         )
         .expect("root document opens");
         let src = "@\ntype Target {}\n";
-        let labs = labels(completions(src, "test.wcl", 1, Some(&root)));
+        let labs = labels(completions(
+            &Ctx::new(Default::default()),
+            src,
+            "test.wcl",
+            1,
+            Some(&root),
+        ));
 
         assert!(labs.iter().any(|l| l == "type_only"), "{labs:?}");
         assert!(!labs.iter().any(|l| l == "block_only"), "{labs:?}");
@@ -327,7 +347,13 @@ mod tests {
         .expect("root document opens");
         let src = "@type_only\n@\ntype Target {}\n";
         let cursor = src.find("\n@\n").unwrap() + 2;
-        let labs = labels(completions(src, "test.wcl", cursor, Some(&root)));
+        let labs = labels(completions(
+            &Ctx::new(Default::default()),
+            src,
+            "test.wcl",
+            cursor,
+            Some(&root),
+        ));
 
         assert!(labs.iter().any(|l| l == "type_only"), "{labs:?}");
         assert!(!labs.iter().any(|l| l == "block_only"), "{labs:?}");
@@ -350,7 +376,13 @@ mod tests {
             type Target {}
         "#;
         let cursor = src.rfind('@').unwrap() + 1;
-        let labs = labels(completions(src, "test.wcl", cursor, Some(&root)));
+        let labs = labels(completions(
+            &Ctx::new(Default::default()),
+            src,
+            "test.wcl",
+            cursor,
+            Some(&root),
+        ));
 
         assert!(labs.iter().any(|l| l == "shared"), "{labs:?}");
     }
@@ -366,6 +398,7 @@ mod tests {
         )
         .expect("root document opens");
         let labs = labels(completions(
+            &Ctx::new(Default::default()),
             "@\ntype Target {}\n",
             "test.wcl",
             1,
@@ -391,7 +424,13 @@ mod tests {
             "root.wcl",
         )
         .expect("root document opens");
-        let labs = labels(completions("@\nvm guest {}\n", "test.wcl", 1, Some(&root)));
+        let labs = labels(completions(
+            &Ctx::new(Default::default()),
+            "@\nvm guest {}\n",
+            "test.wcl",
+            1,
+            Some(&root),
+        ));
 
         assert!(labs.iter().any(|l| l == "vm_only"), "{labs:?}");
         assert!(!labs.iter().any(|l| l == "network_only"), "{labs:?}");
@@ -411,7 +450,13 @@ mod tests {
         .expect("root document opens");
 
         for src in ["@\n???", "@\nunknown_kind target {}\n"] {
-            let labs = labels(completions(src, "test.wcl", 1, Some(&root)));
+            let labs = labels(completions(
+                &Ctx::new(Default::default()),
+                src,
+                "test.wcl",
+                1,
+                Some(&root),
+            ));
             assert!(labs.iter().any(|l| l == "type_only"), "{src:?}: {labs:?}");
             assert!(labs.iter().any(|l| l == "block_only"), "{src:?}: {labs:?}");
             assert!(!labs.is_empty(), "{src:?}: fallback must never be empty");
@@ -425,7 +470,13 @@ mod tests {
         // the builtins-only fallback. Use complete source to be safe:
         let src = "@document\ntype Root {\n  v: utf8\n}\ntype Other {\n  v: Root\n}\n";
         let cursor = src.find("v: Root").unwrap() + 2; // just past the `:`
-        let labs = labels(completions(src, "test.wcl", cursor, None));
+        let labs = labels(completions(
+            &Ctx::new(Default::default()),
+            src,
+            "test.wcl",
+            cursor,
+            None,
+        ));
         assert!(labs.iter().any(|l| l == "utf8"), "{labs:?}");
         assert!(labs.iter().any(|l| l == "Root"), "{labs:?}");
     }
@@ -436,7 +487,13 @@ mod tests {
         // scope; `host` is a top-level field; `len` is a builtin.
         let src = "host = \"a\"\nx = {\n  let helper = 1;\n  he\n}\n";
         let cursor = src.find("  he\n").unwrap() + 4;
-        let labs = labels(completions(src, "test.wcl", cursor, None));
+        let labs = labels(completions(
+            &Ctx::new(Default::default()),
+            src,
+            "test.wcl",
+            cursor,
+            None,
+        ));
         assert!(labs.iter().any(|l| l == "helper"), "{labs:?}");
         assert!(labs.iter().any(|l| l == "host"), "{labs:?}");
         assert!(labs.iter().any(|l| l == "len"), "{labs:?}");
@@ -446,7 +503,13 @@ mod tests {
     fn no_trigger_lists_function_params() {
         let src = "x = fn (input: i32) -> i32 { in }\n";
         let cursor = src.find("{ in ").unwrap() + 2;
-        let labs = labels(completions(src, "test.wcl", cursor, None));
+        let labs = labels(completions(
+            &Ctx::new(Default::default()),
+            src,
+            "test.wcl",
+            cursor,
+            None,
+        ));
         assert!(labs.iter().any(|l| l == "input"), "{labs:?}");
     }
 }
