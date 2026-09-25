@@ -16,6 +16,7 @@
 use wcl_lang::diff::{Change, ChangeOp, diff_documents};
 use wcl_lang::{Document, ParseError, Value};
 
+use crate::out::{errln, out};
 use crate::{EXIT_DIFFERS, EXIT_IO, EXIT_OK, gitspec, open_document, report_parse_error};
 
 // ---------------------------------------------------------------------------
@@ -173,7 +174,7 @@ impl OpenErr {
         match self {
             OpenErr::Parse(e) => report_parse_error(e),
             OpenErr::Io(msg) => {
-                eprintln!("{msg}");
+                errln!("{msg}");
                 EXIT_IO
             }
         }
@@ -222,10 +223,14 @@ pub(crate) fn run(old: &str, new: &str, exit_code: bool) -> u8 {
         Err(e) => return e.report(),
     };
     let diff = diff_documents(&old_doc, &new_doc);
+    let rendered = render_wcl(&diff.changes, old, new);
+    // Release the git temp dirs before writing: a closed pipe ends the
+    // process from inside a write, which would skip their `Drop`.
+    drop((old_doc, new_doc, _old, _new));
     for warning in &diff.warnings {
-        eprintln!("warning: {warning}");
+        errln!("warning: {warning}");
     }
-    print!("{}", render_wcl(&diff.changes, old, new));
+    out!("{rendered}");
     if exit_code && !diff.is_empty() {
         EXIT_DIFFERS
     } else {

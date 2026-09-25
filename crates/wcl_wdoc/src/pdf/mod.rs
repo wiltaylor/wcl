@@ -103,37 +103,53 @@ impl Geometry {
 }
 
 /// Errors from PDF generation. Mirrors `build::BuildError`'s shape so the CLI
-/// maps them to the same exit codes.
-#[derive(Debug)]
+/// maps them to the same exit codes, and like it is a
+/// [`Diagnostic`](miette::Diagnostic) whose report-carrying variants are
+/// transparent.
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
 #[non_exhaustive]
 pub enum PdfError {
     /// A filesystem operation failed; the `String` names the target.
-    Io(std::io::Error, String),
+    #[error("{1}: {0}")]
+    Io(#[source] std::io::Error, String),
     /// The entry document did not parse.
+    #[error("{0}")]
+    #[diagnostic(transparent)]
     Parse(Report),
-    /// The document violated its schema; carries the violation count.
-    Schema(usize),
+    /// The document violated its schema or wdoc's rendering contract;
+    /// carries every violation and displays as the count.
+    #[error("{0}")]
+    #[diagnostic(transparent)]
+    Schema(crate::build::SchemaViolations),
     /// A block expression failed to evaluate during rendering. Carries a
     /// pre-built miette report with the source snippet attached.
+    #[error("{0}")]
+    #[diagnostic(transparent)]
     Eval(Report),
     /// The document is structurally unsuitable for PDF output.
+    #[error("{0}")]
     BadDoc(String),
     /// The PDF writer failed while producing output.
+    #[error("pdf render failed: {0}")]
     Render(String),
 }
 
 impl PdfError {
-    /// Render this failure to stderr, with the source snippet where the
-    /// variant carries one.
-    pub fn report(&self) {
+    /// This failure as terminal text, for the caller to print; see
+    /// [`BuildError::render`](crate::BuildError::render).
+    pub fn render(&self) -> String {
         match self {
-            Self::Io(e, ctx) => eprintln!("{ctx}: {e}"),
-            Self::Parse(r) => eprintln!("{r:?}"),
-            Self::Schema(n) => eprintln!("{n} schema violation{}", if *n == 1 { "" } else { "s" }),
-            Self::Eval(r) => eprintln!("{r:?}"),
-            Self::BadDoc(msg) => eprintln!("{msg}"),
-            Self::Render(msg) => eprintln!("pdf render failed: {msg}"),
+            Self::Parse(r) | Self::Eval(r) => format!("{r:?}"),
+            Self::Schema(v) => v.render(),
+            other => other.to_string(),
         }
+    }
+
+    /// Render this error to a plain string (no ANSI escapes), drawn as
+    /// its [`Diagnostic`](miette::Diagnostic) so a parse or evaluation
+    /// failure keeps its source snippet.
+    pub fn render_plain(&self) -> String {
+        crate::build::render_plain_diagnostic(self)
     }
 
     /// Wrap a render-time evaluation failure into a `PdfError::Eval`,
@@ -170,27 +186,10 @@ pub fn pdf(
     )
     .map_err(|e| PdfError::Parse(Report::new(e)))?;
 
-    let errs = crate::build::schema_errors(&doc);
-    if !errs.is_empty() {
-        let n = errs.len();
-        let src = NamedSource::new(name.clone(), user_src.clone());
-        for e in &errs {
-            let report = Report::new(e.clone()).with_source_code(src.clone());
-            eprintln!("{report:?}");
-        }
-        return Err(PdfError::Schema(n));
-    }
-
-    // The schema-level rendering contract (see `contract_errors`) — fail
-    // like a schema violation.
-    let reserved = crate::build::contract_errors(&doc);
-    if !reserved.is_empty() {
-        let n = reserved.len();
-        let src = NamedSource::new(name.clone(), user_src.clone());
-        for r in reserved {
-            eprintln!("{:?}", r.with_source_code(src.clone()));
-        }
-        return Err(PdfError::Schema(n));
+    // Schema violations, then the schema-level rendering contract (see
+    // `contract_errors`), fail the build before anything renders.
+    if let Some(violations) = crate::build::schema_failure(&doc, &name, &user_src) {
+        return Err(PdfError::Schema(violations));
     }
 
     let site_blocks: Vec<Block> = doc.blocks().filter(|b| b.kind() == "site").collect();

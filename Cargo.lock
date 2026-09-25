@@ -3113,7 +3113,6 @@ name = "wcl_lang"
 version = "0.0.0"
 dependencies = [
  "criterion",
- "dunce",
  "insta",
  "miette",
  "proptest",
@@ -3129,7 +3128,6 @@ name = "wcl_lsp"
 version = "0.0.0"
 dependencies = [
  "dashmap",
- "dunce",
  "miette",
  "ropey",
  "serde_json",
@@ -3161,6 +3159,7 @@ dependencies = [
  "serde_json",
  "syntect",
  "tempfile",
+ "thiserror 2.0.19",
  "time",
  "tokio",
  "tower",

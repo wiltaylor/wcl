@@ -56,7 +56,7 @@ pub(crate) fn workspace_symbols(
         if in_graph.contains(&canonical(path)) {
             continue;
         }
-        let Some(uri) = crate::convert::path_to_uri(path) else {
+        let Some(uri) = ctx.uri_for(path) else {
             continue;
         };
         let Ok(doc) = ctx.open(text, uri.as_str()) else {

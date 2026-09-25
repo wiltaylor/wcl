@@ -369,6 +369,20 @@ Two exemptions, both structural:
 - **Generator vocabularies.** Syntax highlighting mints one class per grammar scope (`tok-…`)
   and one per language (`language-…`) — open-ended sets no stylesheet can declare.
 
+**Linked and raw CSS declares names too.** After the build writes every file, the lint reads
+each `<link rel="stylesheet">` whose href lands in the output folder: `site.stylesheets`,
+`site.fonts`, `wdoc_head_stylesheet(…)`, pointing at an `assets` copy, a shipped `file`, or a
+root-relative `/path`. It also reads every raw `<style>` body (`wdoc_head_raw`, a template's
+`raw(…)`). Their selectors' class names count as **declared, never authored**:
+
+- A class styled only there does not warn.
+- An unused rule there is not reported, so linking a CSS framework is safe.
+- `@media`/`@supports` preludes, `@keyframes` steps and `/* */` comments are not read as
+  selectors.
+- An **external** href (`https://…`, `//host/…`, `data:`) or one with no file behind it is
+  **not checked**. It declares nothing and warns about nothing, so a class styled only by a CDN
+  stylesheet still warns. Declare it with an empty `class` block.
+
 For a class you emit on purpose and style nowhere (a hook for a script, or a name a reader may
 restyle), say so: **an empty `class` block declares the name and emits no CSS.**
 

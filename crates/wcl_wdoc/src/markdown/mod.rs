@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-use miette::{NamedSource, Report};
+use miette::Report;
 use wcl_lang::{Block, Document, disk_loader};
 
 use crate::blocks::diagram::tileset::TilesetRegistry;
@@ -56,27 +56,10 @@ pub fn markdown(
     )
     .map_err(|e| BuildError::Parse(Report::new(e)))?;
 
-    let errs = crate::build::schema_errors(&doc);
-    if !errs.is_empty() {
-        let n = errs.len();
-        let src = NamedSource::new(name.clone(), user_src.clone());
-        for e in &errs {
-            let report = Report::new(e.clone()).with_source_code(src.clone());
-            eprintln!("{report:?}");
-        }
-        return Err(BuildError::Schema(n));
-    }
-
-    // The schema-level rendering contract (see `contract_errors`) — fail
-    // like a schema violation.
-    let reserved = crate::build::contract_errors(&doc);
-    if !reserved.is_empty() {
-        let n = reserved.len();
-        let src = NamedSource::new(name.clone(), user_src.clone());
-        for r in reserved {
-            eprintln!("{:?}", r.with_source_code(src.clone()));
-        }
-        return Err(BuildError::Schema(n));
+    // Schema violations, then the schema-level rendering contract (see
+    // `contract_errors`), fail the build before anything renders.
+    if let Some(violations) = crate::build::schema_failure(&doc, &name, &user_src) {
+        return Err(BuildError::Schema(violations));
     }
 
     fs::create_dir_all(out_dir)

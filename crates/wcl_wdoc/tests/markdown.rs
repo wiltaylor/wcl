@@ -373,7 +373,7 @@ fn lowerless_block_fails_the_build() {
     );
     let out = tmp.path().join("out");
     match markdown(&src, &out, None) {
-        Err(BuildError::Schema(n)) => assert_eq!(n, 1, "one contract violation"),
+        Err(BuildError::Schema(n)) => assert_eq!(n.len(), 1, "one contract violation"),
         Ok(BuildReport { count: n, .. }) => {
             panic!("expected a schema error, but wrote {n} page(s)")
         }
@@ -418,7 +418,7 @@ fn unresolved_name_in_page_block_errors() {
         Err(BuildError::Eval(_)) => {}
         Ok(BuildReport { count: n, .. }) => panic!("expected an eval error, but wrote {n} page(s)"),
         Err(other) => {
-            other.report();
+            eprintln!("{}", other.render());
             panic!("expected BuildError::Eval, got a different error (see above)");
         }
     }

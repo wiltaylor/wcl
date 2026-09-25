@@ -70,9 +70,13 @@ workspace-test: require-cargo
 # a target is a one-line change that merges cleanly. Each crate under
 # `crates/` keeps its own cargo-fuzz project in `fuzz/`.
 #
+# SECONDS bounds each target's run and RUNS caps its inputs (-1 = no cap).
+# The defaults are CI's smoke pass; `just fuzz-soak` reuses this list for
+# long runs.
+#
 # Bounded fuzz sweep across every target (~15s each)
 [group('test')]
-fuzz-sweep: require-cargo-fuzz
+fuzz-sweep SECONDS='15' RUNS='2000': require-cargo-fuzz
     #!/usr/bin/env bash
     set -euo pipefail
     targets=(
@@ -89,7 +93,7 @@ fuzz-sweep: require-cargo-fuzz
         crate="${entry%%:*}"
         t="${entry#*:}"
         echo "==> fuzz $crate/$t" >&2
-        (cd "crates/$crate" && cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15)
+        (cd "crates/$crate" && cargo +nightly fuzz run --target "$host" "$t" -- -runs={{RUNS}} -max_total_time={{SECONDS}})
     done
 
 # ── Builds the gate depends on ────────────────────────────────────────────

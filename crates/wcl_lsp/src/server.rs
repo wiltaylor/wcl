@@ -102,8 +102,9 @@ struct OpenDoc {
 /// per-file parsing without reparsing the root.
 type RootResult = Result<Arc<Document>, Arc<ParseError>>;
 
-/// Every open buffer with a filesystem path, as `path → text`.
-type Buffers = Arc<HashMap<PathBuf, String>>;
+/// Every open buffer with a filesystem path, as `path → text`, and the
+/// URI the client opened each one under, as `path → URI`.
+type Buffers = (Arc<HashMap<PathBuf, String>>, Arc<HashMap<PathBuf, Uri>>);
 
 /// Diagnostics to publish: each file with the version of its open
 /// buffer (`None` for a file that is not open).
@@ -335,27 +336,30 @@ impl State {
         let buffers = {
             let mut cache = lock(&self.buffers);
             match cache.as_ref() {
-                Some(cached) if cached.generation == generation => Arc::clone(&cached.value),
+                Some(cached) if cached.generation == generation => cached.value.clone(),
                 _ => {
-                    let buffers: Buffers = Arc::new(
-                        self.docs
-                            .iter()
-                            .filter_map(|entry| {
-                                Some((uri_to_path(entry.key())?, entry.rope.to_string()))
-                            })
-                            .collect(),
-                    );
+                    let mut texts = HashMap::new();
+                    let mut uris = HashMap::new();
+                    for entry in self.docs.iter() {
+                        if let Some(path) = uri_to_path(entry.key()) {
+                            texts.insert(path.clone(), entry.rope.to_string());
+                            uris.insert(path, entry.key().clone());
+                        }
+                    }
+                    let buffers: Buffers = (Arc::new(texts), Arc::new(uris));
                     *cache = Some(Cached {
                         generation,
-                        value: Arc::clone(&buffers),
+                        value: buffers.clone(),
                     });
                     buffers
                 }
             }
         };
+        let (texts, uris) = buffers;
         Snapshot {
             generation,
-            ctx: Ctx::with_buffers(self.encoding(), buffers, Arc::clone(&self.host))
+            ctx: Ctx::with_buffers(self.encoding(), texts, Arc::clone(&self.host))
+                .with_client_uris(uris)
                 .with_workspace(self.workspace_dir.get().map(PathBuf::as_path)),
         }
     }

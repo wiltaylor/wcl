@@ -25,6 +25,12 @@ impl Session {
     /// Start a server and run `initialize` / `initialized` against it,
     /// with `root` as the workspace folder when given.
     async fn start(root: Option<&Path>, capabilities: Value) -> Self {
+        Self::start_at(root.map(uri).as_ref(), capabilities).await
+    }
+
+    /// Start a server with the workspace folder named by `folder`, in
+    /// whatever spelling the URI has.
+    async fn start_at(folder: Option<&Uri>, capabilities: Value) -> Self {
         let (client, server) = tokio::io::duplex(1 << 20);
         let (server_read, server_write) = tokio::io::split(server);
         tokio::spawn(wcl_lsp::serve_stream(
@@ -39,7 +45,7 @@ impl Session {
             next_id: 1,
             published: Vec::new(),
         };
-        let folders = root.map(|dir| json!([{ "uri": uri(dir).as_str(), "name": "ws" }]));
+        let folders = folder.map(|dir| json!([{ "uri": dir.as_str(), "name": "ws" }]));
         session
             .request(
                 "initialize",
@@ -442,4 +448,55 @@ async fn a_symlinked_workspace_is_answered_in_the_client_spelling() {
         .filter(|p| p["uri"].as_str().is_some_and(|u| u.contains("/real/")))
         .collect();
     assert!(canonical.is_empty(), "{canonical:#?}");
+}
+
+#[tokio::test]
+async fn an_open_file_is_answered_under_the_exact_uri_the_client_sent() {
+    // Editors spell URIs their own way: VS Code sends `file:///c%3A/...`
+    // on Windows where a URI built from the path says `C%3A`. A needless
+    // escape (`%2D` for `-`) stands in here for any such difference.
+    // The root's analysis and the buffer's own syntax check both report
+    // on the open file; they must go out as one versioned notification
+    // under the client's spelling, since two notifications for one file
+    // under two spellings overwrite each other in the editor.
+    let dir = tempfile::tempdir().unwrap();
+    let ws = dir.path().join("my-ws");
+    std::fs::create_dir(&ws).unwrap();
+    let main_text = "@missing\ntitle = \"Hi\"\n@document type Root { title: utf8 }\n";
+    std::fs::write(ws.join("main.wcl"), main_text).unwrap();
+    let respelled = uri(&ws.join("main.wcl"));
+    let folder: Uri = format!("{}/my%2Dws", uri(dir.path()).as_str())
+        .parse()
+        .unwrap();
+    let main: Uri = format!("{}/main.wcl", folder.as_str()).parse().unwrap();
+    assert_ne!(main, respelled);
+
+    let mut session = Session::start_at(Some(&folder), json!({})).await;
+    session.open(&main, main_text).await;
+    let in_main = session.diagnostics_until(&main, |d| !d.is_empty()).await;
+    assert!(
+        messages(&in_main)
+            .iter()
+            .any(|m| m.contains("decorator 'missing'")),
+        "{in_main:#?}"
+    );
+    // Give a second, differently spelled publish time to (wrongly) arrive.
+    let _ = tokio::time::timeout(Duration::from_millis(500), async {
+        loop {
+            session.pump().await;
+        }
+    })
+    .await;
+    let versioned: Vec<&Value> = session
+        .published
+        .iter()
+        .filter(|p| !p["version"].is_null())
+        .collect();
+    assert_eq!(versioned.len(), 1, "{:#?}", session.published);
+    assert_eq!(versioned[0]["uri"], main.as_str());
+    assert!(
+        session.published.iter().all(|p| p["uri"] == main.as_str()),
+        "{:#?}",
+        session.published
+    );
 }

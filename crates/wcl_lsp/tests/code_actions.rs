@@ -17,6 +17,15 @@ fn wdoc_host() -> Host {
     Host::new(wcl_wdoc::wdoc_environment(), wcl_wdoc::schema_registry())
 }
 
+/// A `file:` URI naming `name` in a fresh temp directory, which lives
+/// as long as the returned guard. A literal `file:///a.wcl` names an
+/// absolute path on Unix but only the relative `a.wcl` on Windows.
+fn scratch_uri(name: &str) -> (tempfile::TempDir, Uri) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let uri = Uri::from_file_path(dir.path().join(name)).expect("absolute path");
+    (dir, uri)
+}
+
 fn service() -> LspService<Backend> {
     let (svc, _socket) = LspService::new(|client| Backend::new(client, wdoc_host()));
     svc
@@ -38,7 +47,7 @@ async fn open(b: &Backend, uri: &Uri, text: &str) {
 async fn unknown_field_code_action_round_trip() {
     let svc = service();
     let backend = svc.inner();
-    let uri = "file:///cfg.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("cfg.wcl");
     // The `bogus` field isn't on Config — the validator emits a
     // wcl::eval::schema_violation that the editor hands back via
     // `params.context.diagnostics`. We construct that diagnostic here

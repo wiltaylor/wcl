@@ -19,6 +19,15 @@ fn wdoc_host() -> Host {
     Host::new(wcl_wdoc::wdoc_environment(), wcl_wdoc::schema_registry())
 }
 
+/// A `file:` URI naming `name` in a fresh temp directory, which lives
+/// as long as the returned guard. A literal `file:///a.wcl` names an
+/// absolute path on Unix but only the relative `a.wcl` on Windows.
+fn scratch_uri(name: &str) -> (tempfile::TempDir, Uri) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let uri = Uri::from_file_path(dir.path().join(name)).expect("absolute path");
+    (dir, uri)
+}
+
 /// A backend initialised with a client offering `offered` position
 /// encodings (`None` omits the capability, as VS Code does).
 async fn initialized(offered: Option<Vec<PositionEncodingKind>>) -> LspService<Backend> {
@@ -142,7 +151,7 @@ async fn incremental_edit_after_multibyte_characters() {
     ] {
         let service = initialized(offered).await;
         let backend = service.inner();
-        let uri = "file:///enc.wcl".parse::<Uri>().unwrap();
+        let (_dir, uri) = scratch_uri("enc.wcl");
         open(backend, &uri, &format!("{line}\n")).await;
         let (utf16_col, utf8_col) = columns(line, "x\"");
         let col = if utf8 { utf8_col } else { utf16_col };
@@ -162,7 +171,7 @@ async fn incremental_edit_after_multibyte_characters() {
 async fn a_mid_character_edit_snaps_instead_of_panicking() {
     let service = initialized(None).await;
     let backend = service.inner();
-    let uri = "file:///snap.wcl".parse::<Uri>().unwrap();
+    let (_dir, uri) = scratch_uri("snap.wcl");
     open(backend, &uri, "@schemaless  s = \"😀\"\n").await;
     // UTF-16 column 19 is between the two halves of the surrogate pair.
     replace(
@@ -187,7 +196,7 @@ async fn hover_range_counts_in_the_negotiated_unit() {
     ] {
         let service = initialized(offered).await;
         let backend = service.inner();
-        let uri = "file:///hover.wcl".parse::<Uri>().unwrap();
+        let (_dir, uri) = scratch_uri("hover.wcl");
         open(backend, &uri, &src).await;
         let (utf16_col, utf8_col) = columns(line, "config");
         let col = if utf8 { utf8_col } else { utf16_col };
@@ -217,7 +226,7 @@ async fn semantic_tokens_count_in_the_negotiated_unit() {
     ] {
         let service = initialized(offered).await;
         let backend = service.inner();
-        let uri = "file:///sem.wcl".parse::<Uri>().unwrap();
+        let (_dir, uri) = scratch_uri("sem.wcl");
         open(backend, &uri, &format!("{line}\n")).await;
         let Some(SemanticTokensResult::Tokens(tokens)) = backend
             .semantic_tokens_full(SemanticTokensParams {

@@ -306,6 +306,8 @@ WCL
 
   p "Two things it deliberately does not judge. **The bundled rules.** wdoc's stylesheet ships the whole built-in vocabulary and your document uses a slice of it, so an unused library rule is another document's rule, not dead code. **Generator vocabularies.** Syntax highlighting mints one class per grammar scope (`tok-…`) and one per language (`language-…`), an open-ended set no stylesheet could ever declare."
 
+  p "**CSS you wrote outside wdoc counts too.** A page can link a stylesheet through the site's `stylesheets` or `fonts`, or through a layout's `wdoc_head_stylesheet`, and it can carry a raw `<style>`. Once the build has written every file, the lint reads each linked stylesheet that lands inside the output folder: a file copied by `assets`, a file shipped by a `file` block, or a root-relative href such as `/assets/site.css`. It reads every raw `<style>` body as well. The class names in their selectors then count as declared, while `@media` conditions, `@keyframes` steps and comments do not. A class that only such a file styles raises no warning, and a rule in the file that no page uses is not reported, because the file might be a whole framework. The lint skips an external URL and a path with no file behind it. It can't see what they style, so a class that only they style still gets the first warning."
+
   p "The remaining case is a class you emit **on purpose** and style nowhere: a hook for a script, or a name you want a reader to be able to restyle. Nothing in the markup tells that apart from a typo, so you say it in the source: **an empty `class` block declares the name and emits no CSS.**"
 
   code wcl {
