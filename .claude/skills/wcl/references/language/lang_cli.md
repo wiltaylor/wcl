@@ -24,15 +24,24 @@ the detail for one command.
 
 ## Exit codes
 
-Five codes, meaning the same thing in every command.
+Seven codes, meaning the same thing in every command.
 
 | Code | Name | Means |
 | --- | --- | --- |
-| 0 | OK | The command did what it was asked. |
-| 1 | Parse | The source did not parse. Also reported when the entry file cannot be read at all. |
+| 0 | OK | The command did what it was asked. `--help` and `--version` too (they print to stdout). |
+| 1 | Parse | The source did not parse. |
 | 2 | Schema | The document parsed, but it violates its own schema. |
-| 3 | Eval | Evaluation failed — an unresolved name, a type mismatch, a path resolving to nothing, a refused block. |
-| 4 | I/O | The document was good; writing the output, copying an asset or reaching the disk was not. |
+| 3 | Eval | Evaluation failed — an unresolved name, a type mismatch, a path resolving to nothing, a refused block. Also `wcl parse` when any value in the tree failed. |
+| 4 | I/O | A file could not be read or written: the input is missing, unreadable or not UTF-8 (every command), or writing output, copying an asset or reaching the disk failed. |
+| 5 | Differs | Only `wcl diff --exit-code`: the documents differ. |
+| 64 | Usage | The command line was wrong (`EX_USAGE`). |
+
+What counts as usage (64): an unknown command or flag, a missing argument, no subcommand
+at all, `--page-size` without `--type pdf`, `fmt --in-place -`, `init` with no template,
+a `-D` with no `=`, and a `WCL_PROFILE` value other than `1`/`true`/`0`/`false`/empty.
+
+Exceptions to "same code everywhere": an interactive `wcl repl` always exits 0, and
+`wcl wdoc serve` keeps serving after a failed initial build.
 
 Diagnostics go to **stderr**, results to **stdout**.
 
@@ -62,6 +71,28 @@ service web {
 `parse` prints **everything in scope**, including the language's own decorator declarations
 (`@block`, `@children`, `@inline`, …) and the `std` unit types. Your items follow them in
 source order; pipe through `tail` when you want only the data.
+
+A value that fails to evaluate prints as `<error: …>` in the tree; its diagnostic goes to
+stderr, a count line follows, and the exit code is 3. Check the exit code before trusting a
+piped tree — stdout looks complete either way.
+
+```console
+$ wcl parse split.wcl 2>/dev/null | tail -1
+each = <error: operator '/' cannot divide by zero>
+$ wcl parse split.wcl >/dev/null
+wcl::eval::arithmetic
+
+  × operator '/' cannot divide by zero
+
+split.wcl: 1 evaluation error
+$ echo $?
+3
+```
+
+Values inside a template body — the children of a `@contextual` block such as
+`wdoc_repeater`, and the body of a `@declares_kind` declarer such as a component's
+`wdoc_body` — print as `<deferred: …>` and do not count: their names bind only at
+expansion.
 
 ## `wcl check`
 
@@ -253,8 +284,8 @@ $ wcl fmt config.wcl | diff -u config.wcl - && echo "formatted"
 formatted
 ```
 
-`diff` exits non-zero on any difference, so the `&&` chain fails the job and the unified diff
-shows what `--in-place` would have done. Across a tree:
+Unix `diff` (not `wcl diff`) exits 1 on any difference, so the `&&` chain fails the job and
+the unified diff shows what `--in-place` would have done. Across a tree:
 
 ```console
 $ find . -name '*.wcl' -exec sh -c 'wcl fmt "$1" | diff -u "$1" -' _ {} \;
@@ -266,13 +297,24 @@ schema, so a gate that runs only `fmt` proves nothing about the data.
 ## `wcl diff`
 
 ```console
-$ wcl diff <old> <new>
+$ wcl diff <old> <new> [--exit-code]
 ```
 
 | Argument | Meaning |
 | --- | --- |
 | `<old>` | The base document — a path, or a `<rev>:<path>` git specifier. |
 | `<new>` | The new document — a path, or a `<rev>:<path>` git specifier. |
+| `--exit-code` | Exit **5** when the documents differ, 0 when not. Without it, a diff that ran exits 0 either way. |
+
+`--exit-code` is `git diff --exit-code` with a different number: 1 is already "a side did not
+parse", so "differs" is 5. Errors keep their own codes (1, 3, 4, 64) under the flag.
+
+```console
+$ wcl diff --exit-code inventory.wcl inv2.wcl >/dev/null; echo $?
+5
+$ wcl diff --exit-code inventory.wcl inventory.wcl >/dev/null; echo $?
+0
+```
 
 Not `diff(1)`. It compares the **evaluated** documents with imports resolved, so it reports
 changes in the data rather than in the text. Each top-level block is an entity keyed
@@ -299,6 +341,12 @@ own, so `wcl check` on one reports `modified` as an undeclared block kind; suppl
 
 A formatting-only edit produces **no diff at all**. Neither does a comment edit, a reordering,
 or a rewrite that moves a field into an import.
+
+A block or top-level field that fails to evaluate on either side is dropped from the
+comparison with a stderr line — `warning: entity '<key>' could not be evaluated, skipping` or
+`warning: field '<name>' could not be evaluated, skipping` — and does not change the exit code.
+A top-level field fails whenever the document declares no `@document` schema, so diff files
+that have one.
 
 ### Reading a revision out of git
 
@@ -343,6 +391,8 @@ $ wcl init --list
 | `--defaults` | Never prompt: use each property's default, and fail on one that has none. |
 | `--force` | Write into the destination even if it exists and is not empty. |
 | `--list` | List the templates and exit. |
+
+No `<template>` (without `--list`) or a `-D` lacking `=` exits 64.
 
 ```console
 $ wcl init --list
@@ -443,7 +493,7 @@ $ wcl wdoc build <file> --out <dir> [--type html|markdown|pdf] [--site NAME] [--
 | `--out <dir>` | — | Output directory. Created if missing. **Required.** |
 | `--type` | `html` | Which renderer to run: `html`, `markdown` (alias `md`) or `pdf`. |
 | `--site <name>` | every site | Build only this site, flat at `<out>`. See below — the "omitted" behaviour depends on `--type`. |
-| `--page-size` | `a4` | `a4` or `letter`. **`--type pdf` only** — passing it with any other type is an error. |
+| `--page-size` | `a4` | `a4` or `letter`. **`--type pdf` only** — passing it with any other type exits 64. |
 
 One command, three renderers over the same evaluated document.
 

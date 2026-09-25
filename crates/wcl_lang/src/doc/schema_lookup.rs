@@ -239,7 +239,7 @@ impl Document {
     /// back to the declaration it came from — the params it takes and the
     /// body it expands to.
     ///
-    /// Served from the once-built [`declared_kinds`](Self::declared_kinds)
+    /// Served from the once-built `declared_kinds`
     /// index — a host's expander consults this for every nested block, so
     /// a per-call label-evaluating scan over all top-level blocks would be
     /// O(blocks²) across a build.

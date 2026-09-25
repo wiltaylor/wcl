@@ -1,0 +1,24 @@
+@block("service")
+# <- attribute
+#^^^^^ attribute
+type Service {
+# <- keyword.type
+#    ^^^^^^^ type.definition
+  port: u32
+  # <- property
+  #     ^^^ type
+}
+
+service "web" {
+# <- tag
+#       ^^^^^ string
+  port = try parse(p) catch e => 8080u32
+  #      ^^^ keyword.exception
+  #          ^^^^^ function.call
+  #                   ^^^^^ keyword.exception
+  #                                ^^^^^^^ number
+  size = 4MiB ?? none
+  #      ^^^^ number
+  #           ^^ operator
+  #              ^^^^ constant.builtin
+}

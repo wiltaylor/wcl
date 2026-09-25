@@ -222,7 +222,7 @@ pub struct Token {
     /// next Item it builds so the source printer can re-emit them in
     /// roughly the original position. Same-line trailing comments
     /// after a token end up here as the *next* token's leading trivia
-    /// — a known simplification, see [`ast::Trivia`].
+    /// — a known simplification, see [`ast::Trivia`](crate::ast::Trivia).
     pub leading_trivia: Vec<Trivia>,
     /// A line comment that appeared AFTER the previous token, on the
     /// same line as it (before any intervening newline). Diverted here

@@ -17,6 +17,15 @@ percentage: the audit matches `h2` section titles only, and this manual
 documents a builtin as an `h3` under a semantic group, which reads better and
 is invisible to that rule.
 
+`--skill` runs the same surface, plus every long flag of every command,
+against the agent skill in `.claude/skills/wcl/` instead: each builtin and
+block kind must be named somewhere in the skill's markdown, each command must
+have its own section in `lang_cli.md`, and each flag must appear inside the
+section of the command that takes it.
+
+`--wcl <path>` picks the binary to ask (default: `wcl` on `PATH`), so CI can
+point it at a freshly built `target/debug/wcl`.
+
 Every fact comes from the binary and the crate rather than from a list kept
 here, so a builtin added to `wcl_lang` shows up the next time this runs.
 """
@@ -26,6 +35,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -33,6 +43,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PAGES = ROOT / "docs" / "reference" / "pages"
 STDLIB = ROOT / "crates" / "wcl_wdoc" / "lib"
+SKILL = ROOT / ".claude" / "skills" / "wcl"
+SKILL_CLI = SKILL / "references" / "language" / "lang_cli.md"
+
+# The `wcl` binary every query runs. `main` replaces it with `--wcl`.
+WCL = "wcl"
+
+# Clap adds these to every command; they document themselves.
+UNIVERSAL_FLAGS = {"--help", "--version"}
 
 # Reachable only from a host that installs them, so no chapter documents them
 # as a builtin of the language. `Builtins the host adds` covers the pair in
@@ -47,7 +65,7 @@ NOT_A_COMMAND = {"help", "wdoc"}
 def builtins() -> list[str]:
     """Every builtin, straight out of the language's own reflection."""
     out = subprocess.run(
-        ["wcl", "repl"], input="builtin_names()\n",
+        [WCL, "repl"], input="builtin_names()\n",
         capture_output=True, text=True, check=True,
     ).stdout
     names = re.findall(r'"([^"]+)"', out)
@@ -59,7 +77,7 @@ def builtins() -> list[str]:
 def commands() -> list[str]:
     """Every `wcl` subcommand, plus the two `wcl wdoc` leaves."""
     top = subprocess.run(
-        ["wcl", "--help"], capture_output=True, text=True, check=True
+        [WCL, "--help"], capture_output=True, text=True, check=True
     ).stdout
     block = top.split("Commands:", 1)[1].split("\n\n", 1)[0]
     names = [
@@ -68,7 +86,7 @@ def commands() -> list[str]:
     found = [f"wcl {name}" for name in names if name not in NOT_A_COMMAND]
 
     sub = subprocess.run(
-        ["wcl", "wdoc", "--help"], capture_output=True, text=True, check=True
+        [WCL, "wdoc", "--help"], capture_output=True, text=True, check=True
     ).stdout
     if "Commands:" in sub:
         block = sub.split("Commands:", 1)[1].split("\n\n", 1)[0]
@@ -181,15 +199,99 @@ def check() -> int:
     return status
 
 
+def flags(command: str) -> list[str]:
+    """Every long flag `wcl <command> --help` lists, bar clap's own."""
+    argv = [WCL, *command.split()[1:], "--help"]
+    out = subprocess.run(argv, capture_output=True, text=True, check=True).stdout
+    options = out.split("Options:", 1)[1] if "Options:" in out else ""
+    found = set(re.findall(r"^\s+(?:-\w, )?(--[a-z][a-z0-9-]*)", options, re.M))
+    return sorted(found - UNIVERSAL_FLAGS)
+
+
+def skill_text() -> str:
+    """Every markdown file in the skill, concatenated."""
+    return "\n".join(p.read_text() for p in sorted(SKILL.rglob("*.md")))
+
+
+def cli_sections() -> dict[str, str]:
+    """`lang_cli.md` split into its `##` sections, keyed by every
+    `` `wcl …` `` command the heading names."""
+    sections: dict[str, str] = {}
+    for chunk in re.split(r"^## ", SKILL_CLI.read_text(), flags=re.M)[1:]:
+        heading = chunk.split("\n", 1)[0]
+        for name in re.findall(r"`(wcl [a-z][\w -]*?)`", heading):
+            sections[name] = chunk
+    return sections
+
+
+def skill_check() -> int:
+    """Report what the product exposes and the skill never names."""
+    text = skill_text()
+    sections = cli_sections()
+
+    def named(name: str) -> bool:
+        return re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", text) is not None
+
+    every = surface()
+    commands_ = [s["path"] for s in every if s["kind"] == "command"]
+    rows: list[tuple[str, list[str], list[str]]] = [
+        ("symbol", [s["path"] for s in every if s["kind"] == "symbol"], []),
+        ("block", [s["path"] for s in every if s["kind"] == "block"], []),
+        ("command", commands_, []),
+        ("flag", [f"{c} {f}" for c in commands_ for f in flags(c)], []),
+    ]
+    for kind, want, missing in rows:
+        for path in want:
+            if kind in ("symbol", "block"):
+                ok = named(path)
+            elif kind == "command":
+                ok = path in sections
+            else:
+                command, flag = path.rsplit(" ", 1)
+                ok = re.search(
+                    rf"(?<![\w-]){re.escape(flag)}(?![\w-])",
+                    sections.get(command, ""),
+                ) is not None
+            if not ok:
+                missing.append(path)
+
+    status = 0
+    for kind, want, missing in rows:
+        have = len(want) - len(missing)
+        pct = 100.0 * have / len(want) if want else 100.0
+        mark = "ok " if not missing else "GAP"
+        print(f"{mark} {kind:8} {have:4}/{len(want):<4} {pct:5.1f}%")
+        for path in missing:
+            print(f"       not in skill: {path}")
+        if missing:
+            status = 1
+    return status
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    global WCL
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--check", action="store_true",
         help="compare the surface with the manual's headings and report gaps",
     )
+    mode.add_argument(
+        "--skill", action="store_true",
+        help="compare the surface and every CLI flag with the wcl skill and report gaps",
+    )
+    parser.add_argument(
+        "--wcl", default=None, metavar="PATH",
+        help="the wcl binary to query (default: `wcl` on PATH)",
+    )
     args = parser.parse_args()
+    WCL = args.wcl or shutil.which("wcl") or sys.exit("no `wcl` on PATH; pass --wcl <path>")
     if args.check:
         sys.exit(check())
+    if args.skill:
+        sys.exit(skill_check())
     for entry in surface():
         print(json.dumps(entry))
 

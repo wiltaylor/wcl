@@ -10,8 +10,9 @@
 //! layer wdoc's embedded schemas and builtins over the language's own — so
 //! `import <wdoc.wcl>` resolves under `wcl check` and `wcl repl` exactly as
 //! it does under `wcl wdoc build`, with no file on disk. And every
-//! subcommand reports through the same exit codes, [`EXIT_OK`] through
-//! [`EXIT_IO`], which are the tool's contract with the scripts that call it.
+//! subcommand reports through the same exit codes — [`EXIT_OK`] through
+//! [`EXIT_DIFFERS`], plus [`EXIT_USAGE`] — which are the tool's contract
+//! with the scripts that call it.
 //!
 //! # Map
 //!
@@ -20,7 +21,7 @@
 //! - [`diff`] and [`gitspec`] — `wcl diff`, and the `<rev>:<path>`
 //!   convention it accepts on either side.
 //! - [`scaffold`] — `wcl init`, the template-driven project generator.
-//! - [`serve`] — the watch-and-rebuild dev server behind `wcl wdoc serve`.
+//! - [`serve`] — the rebuild-on-request dev server behind `wcl wdoc serve`.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -44,8 +45,18 @@ pub(crate) const EXIT_PARSE: u8 = 1;
 pub(crate) const EXIT_SCHEMA: u8 = 2;
 /// Evaluation failed (a bad path, a failing expression, a render error).
 pub(crate) const EXIT_EVAL: u8 = 3;
-/// An I/O or environment failure unrelated to the document's contents.
+/// An I/O or environment failure unrelated to the document's contents,
+/// including an input file that is missing or unreadable.
 pub(crate) const EXIT_IO: u8 = 4;
+/// `wcl diff --exit-code` found differences. Not 1 (git's choice) because 1
+/// already means a side failed to parse, and a script must be able to tell
+/// "these differ" from "one of these is broken".
+pub(crate) const EXIT_DIFFERS: u8 = 5;
+/// The command line itself was wrong: an unknown flag, a missing or
+/// conflicting argument, a malformed `WCL_PROFILE`. 64 is BSD `sysexits.h`'s
+/// `EX_USAGE`, far enough from the codes above that a script can tell "you
+/// called me wrong" from anything the document did.
+pub(crate) const EXIT_USAGE: u8 = 64;
 
 /// Environment variable that turns on the call-tree profiler. Deliberately
 /// not a CLI flag: profiling exists to debug `wcl` itself, so it stays out
@@ -99,6 +110,24 @@ fn open_document(file: &Path) -> Result<Document, ParseError> {
     Ok(doc)
 }
 
+/// The exit code for a document that could not be opened: [`EXIT_IO`] when
+/// the file could not be read at all (missing, unreadable, not UTF-8),
+/// [`EXIT_PARSE`] when it was read but did not parse.
+pub(crate) fn parse_error_code(err: &ParseError) -> u8 {
+    match err {
+        ParseError::Io(_) => EXIT_IO,
+        ParseError::Syntax(_) => EXIT_PARSE,
+    }
+}
+
+/// Render a failure to open a document on stderr and yield its exit code
+/// (see [`parse_error_code`]).
+pub(crate) fn report_parse_error(err: ParseError) -> u8 {
+    let code = parse_error_code(&err);
+    eprintln!("{:?}", miette::Report::new(err));
+    code
+}
+
 /// Print the recorded call-tree profile as JSON on stderr, if profiling was
 /// on and the document collected one. Stderr keeps stdout clean for piping.
 fn emit_profile(doc: &Document) {
@@ -123,15 +152,17 @@ struct Cli {
 /// the `--help` text, so they are written for users of the tool.
 #[derive(Subcommand)]
 enum Command {
-    /// Parse a WCL file and print the resulting document tree (forces evaluation).
+    /// Parse a WCL file and print the resulting document tree (forces
+    /// evaluation). A value that fails to evaluate prints as `<error: …>`
+    /// in the tree, its diagnostic goes to stderr, and the command exits 3.
     Parse {
         /// Path to a WCL source file.
         file: PathBuf,
     },
     /// Parse a WCL file, then validate the result against its schemas.
-    /// Prints `OK` when both pass. Exits 1 on a parse failure and 2 on
-    /// a schema violation. Warnings go to stderr and never change the
-    /// exit code.
+    /// Prints `OK` when both pass. Exits 1 on a parse failure, 2 on a
+    /// schema violation and 4 when the file cannot be read. Warnings go
+    /// to stderr and never change the exit code.
     Check {
         /// Path to a WCL source file, or `-` to read from stdin
         /// (relative imports then resolve against the current
@@ -272,8 +303,8 @@ enum Command {
         list: bool,
     },
     /// WCL-driven static site generator. Use `wcl wdoc build` for a
-    /// one-shot render and `wcl wdoc serve` for a watch-rebuild dev
-    /// server.
+    /// one-shot render and `wcl wdoc serve` for a dev server that rebuilds
+    /// on request.
     Wdoc {
         #[command(subcommand)]
         cmd: WdocCommand,
@@ -292,11 +323,18 @@ enum Command {
     ///   wcl diff old.wcl new.wcl
     ///   wcl diff HEAD~1:config.wcl config.wcl
     ///   wcl diff main:a.wcl feature:a.wcl
+    ///   wcl diff --exit-code old.wcl new.wcl
     Diff {
         /// Old (base) document — a path or `<rev>:<path>` git specifier.
         old: String,
         /// New document — a path or `<rev>:<path>` git specifier.
         new: String,
+        /// Exit 5 when the documents differ and 0 when they do not, like
+        /// `git diff --exit-code` but with a code no failure uses (git's 1
+        /// is `wcl`'s parse failure). Without the flag a successful diff
+        /// exits 0 either way.
+        #[arg(long = "exit-code")]
+        exit_code: bool,
     },
 }
 
@@ -391,24 +429,36 @@ enum WdocCommand {
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => {
+            // `--help` and `--version` arrive here too: clap prints those to
+            // stdout and they succeed. Everything else is a usage error,
+            // printed to stderr. A failed print (a closed pipe) changes
+            // neither outcome.
+            let _ = err.print();
+            return ExitCode::from(if err.use_stderr() {
+                EXIT_USAGE
+            } else {
+                EXIT_OK
+            });
+        }
+    };
     // Validate the profiling switch once, before any work: `open_document`
     // reads it on every call and must be able to treat it as well-formed.
     if let Err(msg) = profiling_enabled() {
         eprintln!("error: {msg}");
-        return ExitCode::from(EXIT_IO);
+        return ExitCode::from(EXIT_USAGE);
     }
     let code = match cli.command {
         Command::Parse { file } => match open_document(&file) {
             Ok(doc) => {
-                print!("{}", dump::document(&doc));
+                let dump = dump::document(&doc);
+                print!("{}", dump.text);
                 emit_profile(&doc);
-                EXIT_OK
+                report_dump_errors(&file, &dump.errors)
             }
-            Err(err) => {
-                eprintln!("{:?}", miette::Report::new(err));
-                EXIT_PARSE
-            }
+            Err(err) => report_parse_error(err),
         },
         Command::Check { file, json } => run_check(&file, json),
         Command::Fmt {
@@ -484,10 +534,7 @@ fn main() -> ExitCode {
                 emit_profile(&doc);
                 exit
             }
-            Err(err) => {
-                eprintln!("{:?}", miette::Report::new(err));
-                EXIT_PARSE
-            }
+            Err(err) => report_parse_error(err),
         },
         Command::Init {
             template,
@@ -498,9 +545,34 @@ fn main() -> ExitCode {
             list,
         } => scaffold::run_init(template, dest, define, defaults, force, list),
         Command::Wdoc { cmd } => run_wdoc(cmd),
-        Command::Diff { old, new } => diff::run(&old, &new),
+        Command::Diff {
+            old,
+            new,
+            exit_code,
+        } => diff::run(&old, &new, exit_code),
     };
     ExitCode::from(code)
+}
+
+/// Report the values `wcl parse` could not evaluate. The tree on stdout
+/// keeps an `<error: …>` placeholder where each one sits; the diagnostics
+/// themselves go to stderr, and any of them fails the command with
+/// [`EXIT_EVAL`] so a script piping the tree cannot mistake a
+/// half-evaluated document for a clean one.
+fn report_dump_errors(file: &Path, errors: &[wcl_lang::EvalError]) -> u8 {
+    if errors.is_empty() {
+        return EXIT_OK;
+    }
+    for err in errors {
+        eprintln!("{:?}", miette::Report::new(err.clone()));
+    }
+    let count = errors.len();
+    eprintln!(
+        "{}: {count} evaluation error{}",
+        file.display(),
+        if count == 1 { "" } else { "s" }
+    );
+    EXIT_EVAL
 }
 
 /// Map a wdoc `BuildError` to a CLI exit code. Shared by the `html` and
@@ -649,7 +721,7 @@ fn run_wdoc(cmd: WdocCommand) -> u8 {
             // `ArgMatches`.
             if page_size.is_some() && build_type != BuildType::Pdf {
                 eprintln!("error: --page-size applies to `--type pdf` only");
-                return EXIT_IO;
+                return EXIT_USAGE;
             }
             run_build(&file, &out, build_type, site.as_deref(), page_size)
         }
@@ -693,10 +765,7 @@ fn run_repl(file: Option<&Path>) -> u8 {
     let doc = match file {
         Some(p) => match open_document(p) {
             Ok(d) => d,
-            Err(e) => {
-                eprintln!("{:?}", miette::Report::new(e));
-                return EXIT_PARSE;
-            }
+            Err(e) => return report_parse_error(e),
         },
         None => match Document::open("", "<repl>") {
             Ok(d) => d,
@@ -938,6 +1007,7 @@ fn run_check(file: &Path, json: bool) -> u8 {
             }
         }
         Err(err) => {
+            let code = parse_error_code(&err);
             if json {
                 println!(
                     "{}",
@@ -946,15 +1016,16 @@ fn run_check(file: &Path, json: bool) -> u8 {
             } else {
                 eprintln!("{:?}", miette::Report::new(err));
             }
-            EXIT_PARSE
+            code
         }
     }
 }
 
 /// Drive `parse_for_edit → format::to_source` and either print the
 /// result to stdout or atomically overwrite the input file. Returns
-/// the exit code (`EXIT_OK` on success, `EXIT_PARSE` on parse failure)
-/// or an error message describing an I/O failure.
+/// the exit code (`EXIT_OK` on success, `EXIT_PARSE` on parse failure,
+/// `EXIT_USAGE` for `--in-place` with stdin) or an error message describing
+/// an I/O failure.
 fn run_fmt(
     file: &Path,
     in_place: bool,
@@ -962,7 +1033,8 @@ fn run_fmt(
     no_trailing_comma: bool,
 ) -> Result<u8, String> {
     if is_stdin(file) && in_place {
-        return Err("--in-place cannot be combined with stdin input ('-')".to_string());
+        eprintln!("error: --in-place cannot be combined with stdin input ('-')");
+        return Ok(EXIT_USAGE);
     }
     let (src, name) = if is_stdin(file) {
         (read_stdin()?, "<stdin>".to_string())
@@ -1034,10 +1106,7 @@ fn verify_reparses(src: &str) -> Result<(), String> {
 fn run_set(file: &Path, path: &str, value: &str) -> Result<u8, String> {
     let doc = match open_document(file) {
         Ok(d) => d,
-        Err(e) => {
-            eprintln!("{:?}", miette::Report::new(e));
-            return Ok(EXIT_PARSE);
-        }
+        Err(e) => return Ok(report_parse_error(e)),
     };
     let dr = match doc.get(path) {
         Some(dr) => dr,

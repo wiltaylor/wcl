@@ -22,6 +22,7 @@ use crate::diagnostics::EvalError;
 use crate::value::{Value, VariantPayload};
 
 use crate::doc::Document;
+use crate::numeric::{NumericMisfit, fit_to_builtin};
 
 use super::unions::path_matches_suffix;
 use super::variant_dispatch::match_record_variant_by_shape;
@@ -76,11 +77,15 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
         // `Value` doesn't carry, so stay permissive.
         (Value::Symbol(_), TypeRef::Named { .. }) => true,
         (Value::None, _) => false, // None doesn't satisfy any concrete type
-        // Numeric values satisfy any numeric builtin type: the evaluator
-        // promotes numerics (an `f64` field authored as `520` holds an
-        // i64 literal), so an exact-variant check here would flag values
-        // the eval path accepts.
-        (v, TypeRef::Builtin(b)) if v.is_numeric() && b.is_numeric() => true,
+        // A number satisfies a numeric builtin when it *fits* — an integer
+        // in range, a whole-valued float for an integer type, anything for
+        // a float type — rather than when its variant matches: a `u8`
+        // field authored as `200` holds an `i64` literal until
+        // `coerce_value_to_type` narrows it. `300`, `-1` and `2.5` do not
+        // fit `u8` and are rejected here. See `numeric::fit_to_builtin`.
+        (v, TypeRef::Builtin(b)) if v.is_numeric() && b.is_numeric() => {
+            matches!(fit_to_builtin(v, *b), Some(Ok(_)))
+        }
         // Variant value against a named union type: compare FQN.
         (Value::Variant { union, .. }, TypeRef::Named { path, .. }) => {
             path_matches_suffix(path, union)
@@ -111,6 +116,47 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
         // `&T` fields evaluate to a `Value::DataPath` (lazy navigator).
         (Value::DataPath { .. }, TypeRef::Reference(_)) => true,
         _ => false,
+    }
+}
+
+/// Describe why `value` fails [`value_matches_type_ref`] against `ty`
+/// (already alias-resolved), as the tail of a "declared as T but …"
+/// diagnostic.
+///
+/// Usually that is just the value's type (`value is utf8`). A number that
+/// has the right kind but does not fit gets the reason instead — `value
+/// 300 is out of range for u8`, `value 2.5 is not a whole number, so it
+/// cannot be u8` — searching into list elements so `[1, 256]` against
+/// `list<u8>` names the element at fault.
+pub(crate) fn describe_type_mismatch(value: &Value, ty: &TypeRef) -> String {
+    /// The index path to the first number that does not fit (empty for
+    /// the value itself), the number, and why it does not fit.
+    fn misfit(value: &Value, ty: &TypeRef) -> Option<(String, String, String)> {
+        match (value, ty) {
+            (v, TypeRef::Builtin(b)) if v.is_numeric() => {
+                let why = match fit_to_builtin(v, *b)? {
+                    Ok(_) => return None,
+                    Err(NumericMisfit::OutOfRange) => {
+                        format!("is out of range for {}", b.name())
+                    }
+                    Err(NumericMisfit::NotWhole) => {
+                        format!("is not a whole number, so it cannot be {}", b.name())
+                    }
+                };
+                Some((String::new(), v.to_string(), why))
+            }
+            (Value::List(items), TypeRef::List(inner)) => {
+                items.iter().enumerate().find_map(|(i, el)| {
+                    misfit(el, inner).map(|(path, v, why)| (format!("[{i}]{path}"), v, why))
+                })
+            }
+            _ => None,
+        }
+    }
+    match misfit(value, ty) {
+        Some((path, v, why)) if path.is_empty() => format!("value {v} {why}"),
+        Some((path, v, why)) => format!("element {path} holds {v}, which {why}"),
+        None => format!("value is {}", value.type_name()),
     }
 }
 
@@ -159,18 +205,45 @@ pub(crate) fn symbol_set_membership_error_in(
 fn type_may_coerce(doc: &Document, ty: &crate::ast::TypeRef) -> bool {
     use crate::ast::{BuiltinType, TypeRef};
     match ty {
-        TypeRef::Named { path, .. } => doc.union_fqn_for_path(path).is_some(),
+        TypeRef::Named { path, .. } => {
+            doc.union_fqn_for_path(path).is_some()
+                || non_union_alias_target(doc, ty).is_some_and(|t| type_may_coerce(doc, &t))
+        }
         TypeRef::List(inner) => type_may_coerce(doc, inner),
         // Strings coerce to identifiers on identifier-declared slots
         // (quoted refs join like bare ones — see `str == id` templates).
         TypeRef::Builtin(BuiltinType::Identifier) => true,
+        // Numbers narrow or widen to the declared numeric type.
+        TypeRef::Builtin(b) => b.is_numeric(),
         _ => false,
     }
 }
 
+/// What a named, non-union type aliases, when that is something other
+/// than another name (`type Port = u16` gives `u16`). `None` for a
+/// union, a record type, or an alias that doesn't resolve.
+fn non_union_alias_target(doc: &Document, ty: &crate::ast::TypeRef) -> Option<crate::ast::TypeRef> {
+    use crate::ast::TypeRef;
+    let TypeRef::Named { path, .. } = ty else {
+        return None;
+    };
+    if doc.union_fqn_for_path(path).is_some() {
+        return None;
+    }
+    match doc.resolve_alias(ty) {
+        TypeRef::Named { .. } => None,
+        resolved => Some(resolved),
+    }
+}
+
 /// Coerce a value towards a declared type: resolve a pending unit,
-/// shape-infer a bare record into a union variant, and recurse into
-/// list elements.
+/// convert a number to the declared numeric type, shape-infer a bare
+/// record into a union variant, and recurse into list elements.
+///
+/// A number converts when it fits (see `numeric::fit_to_builtin`), so a
+/// field declared `u8` and written `200` reads back as `Value::U8(200)`
+/// and an `f64` field written `520` as `Value::F64(520.0)`. A number that
+/// does not fit passes through unchanged for the schema check to report.
 ///
 /// A bare `Value::Record` becomes a `Value::Variant` when the declared
 /// type names a union, recursing through `list<…>` element types and
@@ -210,7 +283,19 @@ pub(crate) fn coerce_value_to_type(
             return Ok(value);
         }
     }
+    // A named alias of something other than a union (`type Port = u16`,
+    // `type Bytes = list<u8>`) coerces as its target. Units were resolved
+    // against the alias itself above, since the `@unit` lives there.
+    if let Some(target) = non_union_alias_target(doc, ty) {
+        return coerce_value_to_type(doc, value, &target, span);
+    }
     match (value, ty) {
+        (v, TypeRef::Builtin(b)) if v.is_numeric() && b.is_numeric() => {
+            Ok(match fit_to_builtin(&v, *b) {
+                Some(Ok(fitted)) => fitted,
+                _ => v,
+            })
+        }
         // Identifier-declared slot: a string coerces to the identifier it
         // names, so quoted and bare refs evaluate identically (mirrors the
         // field-eval rule in `views.rs`). Other values pass through.

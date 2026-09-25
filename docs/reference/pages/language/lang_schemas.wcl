@@ -439,6 +439,8 @@ $ wcl get checks.wcl checks.ready.probes
 CONSOLE
   }
 
+  p "A schema may hold a kind-string slot and a union slot side by side. Then the kind string wins: a nested block whose kind a `@child(\"…\")` or `@children(\"…\")` slot names belongs to that slot, and only the blocks no kind-string slot claims go to the union. In a `check` that also declared `@child(\"owner\") owner: Owner`, an `owner { … }` block would be the owner, not a probe that failed to match."
+
   p "Neither `http` nor `shell` carries a `@block` declaration, and neither needs one. `url` matched `Http`, `cmd` matched `Shell`. A bare record in a union-typed field goes through the same shape-based dispatch. [Lists, tensors and records](lang_collections#bare-records-become-union-variants) covers the matching rule. [Types](lang_types) covers unions and interfaces."
 
   h2 "required_fields: what an instance must write"
@@ -900,6 +902,81 @@ CONSOLE
     body  = "The damage lands where the field is _iterated_. A wdoc template writing `each = services` renders the wrong blocks, or fails at build time with `unresolved reference`. That is long after `wcl check` said `OK`, and the build error names no collision. So a schema built to compose with a large library names its gathers away from the obvious word: `sw_components`, not `components`. A library gather field and a document gather field sharing a name is a rename, not a debugging session. Heed the warning."
   }
 
+  h2 "A number must fit its type"
+
+  p "A field declared with a numeric type takes a number only if the number **fits** that type. Every integer literal you write starts as an `i64` and every decimal as an `f64`, so the check is about the value, not the literal's type: `200` fits `u8`, and `300` does not. Save this as `fit.wcl`:"
+
+  code wcl {
+    filename = "fit.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  port:   u16
+  level:  u8
+  retry:  u8
+  ratio:  f32
+  whole:  i32
+  masks:  list<u8>
+}
+
+port  = 8080      // fits: reads back as 8080u16
+level = 300       // out of range for u8
+retry = 2.5       // not a whole number
+ratio = 1         // any integer fits a float type: 1.0f32
+whole = 4.0       // a whole-valued float fits an integer type: 4i32
+masks = [1, 256]  // the element at [1] does not fit
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check fit.wcl
+wcl::eval::schema_violation
+
+  × field 'level' declared as u8 but value 300 is out of range for u8
+
+wcl::eval::schema_violation
+
+  × field 'retry' declared as u8 but value 2.5 is not a whole number, so it
+  │ cannot be u8
+
+wcl::eval::schema_violation
+
+  × field 'masks' declared as list<u8> but element [1] holds 256, which is out
+  │ of range for u8
+
+fit.wcl: 3 schema violations
+CONSOLE
+  }
+
+  p "The rule has four cases:"
+
+  list {
+    li "**An integer into an integer type** fits when it lies in the type's range. `-1` does not fit any unsigned type."
+    li "**A float into an integer type** fits when it is whole-valued and in range. `4.0` is accepted as `4`, because nothing is lost. `2.5`, NaN and infinity are refused."
+    li "**An integer into a float type** always fits. A value with more significant bits than the float holds rounds to the nearest one: `16777217` into `f32` is `16777216.0f32`."
+    li "**A float into a float type** fits, unless a finite `f64` is too large for `f32`."
+  }
+
+  p "A number that fits is **converted** to the declared type on the way in, so the host that declared `u16` reads a `u16`:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get fit.wcl port
+8080u16
+$ wcl get fit.wcl ratio
+1.0f32
+$ wcl get fit.wcl whole
+4i32
+$ wcl get fit.wcl level
+300
+CONSOLE
+  }
+
+  p "The last line is the lazy path at work. Reading a field checks that the field is declared, not that its value fits. The fit is `wcl check`'s verdict, so `level` comes back as the `300` you wrote, unconverted. [How a validation error reads](#how-a-validation-error-reads) says more about the two paths."
+
+  p "A type alias checks as the type it names, so `port: Port` with `type Port = u16` refuses `70000`. A decorator argument is held to its slot's type the same way: `@level(300)` against a `u8` slot fails with `argument for decorator '@level' slot 'n' is declared as u8 but the value 300 is out of range for u8`. A function parameter converts an argument that fits, so `(fn(x: u8) -> u8 x)(7)` is `7u8`, but it is not a schema slot. An argument that does not fit is passed as written."
+
   h2 "How a validation error reads"
 
   p "Every schema failure is one `wcl::eval::schema_violation` with one sentence. The sentence names the thing, the rule and the schema, and nothing else:"
@@ -928,6 +1005,8 @@ CONSOLE
       | "`block kind 'k' is not allowed inside 'p'`" | "No `@child` / `@children` slot on `p` admits it" |
       | "`field 'x' is not declared by schema 'T'`" | "Unknown field inside a block" |
       | "`field 'x' declared as u32 but value is utf8`" | "Value does not match the declared type" |
+      | "`field 'x' declared as u8 but value 300 is out of range for u8`" | "[A number that does not fit](#a-number-must-fit-its-type)" |
+      | "`field 'x' declared as u8 but value 2.5 is not a whole number, so it cannot be u8`" | "A fraction for an integer type" |
       | "`block 'k' is missing required field 'x'`" | "`required_fields`" |
       | "`field 'x' requires at least N 'k' children, found M`" | "`@children(min = N)`" |
       | "`field 'x' allows at most N 'k' children, found M`" | "`@children(max = N)`" |

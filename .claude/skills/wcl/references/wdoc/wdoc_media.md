@@ -84,6 +84,11 @@ click, so a page with ten embeds loads none of them. YouTube and Vimeo URLs are 
 embedded as privacy-respecting iframes; any other `http(s)` URL is embedded verbatim, and a
 URL ending in a video extension plays natively.
 
+A video `source` must be a path, an `http(s)` URL or `data:video/…`, and a `poster` a path, an
+`http(s)` URL or `data:image/…`. Any other scheme (`javascript:`, `data:text/html`) prints a
+`warning:` and exits 0: a bad source renders no video, and a bad poster falls back to the
+YouTube thumbnail or the placeholder.
+
 Per target:
 
 | Target | What you get |

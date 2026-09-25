@@ -2797,7 +2797,7 @@ fn build_normal_page(
     // Index the page's own content (not the template shell, so nav
     // chrome doesn't match every query). The title is the first `h1`
     // when the page has one, else the page name.
-    let text = html_to_text(&content);
+    let text = crate::html::plain_text(&content);
     let title = rendered.page_heading.unwrap_or_else(|| page_name.clone());
     Ok(Some(SearchEntry {
         href: format!("{page_name}.html"),
@@ -2825,84 +2825,6 @@ impl SearchEntry {
             "text": self.text,
         })
     }
-}
-
-/// Plain text of rendered HTML for the search index: tags dropped,
-/// `<script>` / `<style>` contents skipped (SVG text nodes — diagram
-/// labels — survive, which is wanted), whitespace collapsed.
-fn html_to_text(html: &str) -> String {
-    let mut out = String::with_capacity(html.len() / 4);
-    let mut rest = html;
-    let mut last_ws = true;
-    while let Some(lt) = rest.find('<') {
-        for ch in rest[..lt].chars() {
-            if ch.is_whitespace() {
-                if !last_ws {
-                    out.push(' ');
-                    last_ws = true;
-                }
-            } else {
-                out.push(ch);
-                last_ws = false;
-            }
-        }
-        rest = &rest[lt..];
-        let lower = rest.get(..8).unwrap_or("").to_ascii_lowercase();
-        let skip_to = if lower.starts_with("<script") {
-            Some("</script>")
-        } else if lower.starts_with("<style") {
-            Some("</style>")
-        } else {
-            None
-        };
-        if let Some(close) = skip_to {
-            match find_ascii_ci(rest, close) {
-                Some(end) => rest = &rest[end + close.len()..],
-                None => break,
-            }
-            continue;
-        }
-        match rest.find('>') {
-            Some(gt) => rest = &rest[gt + 1..],
-            None => break,
-        }
-    }
-    for ch in rest.chars() {
-        if ch.is_whitespace() {
-            if !last_ws {
-                out.push(' ');
-                last_ws = true;
-            }
-        } else {
-            out.push(ch);
-            last_ws = false;
-        }
-    }
-    // Decode the entities the HTML emitters produce, so the index (and
-    // the widget, which sets textContent) shows `&`, not `&amp;`.
-    let decoded = out
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&amp;", "&");
-    decoded.trim().to_string()
-}
-
-/// Byte offset of the first match of the ASCII `needle` in `haystack`,
-/// ignoring ASCII case. Searches the bytes in place — lowercasing the rest
-/// of the page to find each `</script>` made the search-text pass quadratic
-/// in the page size. A match starts on the needle's first (ASCII) byte, so
-/// the offset is always a char boundary.
-fn find_ascii_ci(haystack: &str, needle: &str) -> Option<usize> {
-    let needle = needle.as_bytes();
-    let first = needle.first()?.to_ascii_lowercase();
-    let bytes = haystack.as_bytes();
-    let last_start = bytes.len().checked_sub(needle.len())?;
-    (0..=last_start).find(|&i| {
-        bytes[i].to_ascii_lowercase() == first
-            && bytes[i..i + needle.len()].eq_ignore_ascii_case(needle)
-    })
 }
 
 /// The bundled client-side search widget (see `assets/wdoc-search.js`).
@@ -3335,21 +3257,6 @@ fn collect_duplicate_id(block: &Block<'_>, seen: &mut HashSet<String>) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn find_ascii_ci_ignores_case_and_respects_bounds() {
-        assert_eq!(find_ascii_ci("ab</SCRIPT>", "</script>"), Some(2));
-        assert_eq!(find_ascii_ci("é</Style>", "</style>"), Some(2));
-        assert_eq!(find_ascii_ci("</scrip", "</script>"), None);
-        assert_eq!(find_ascii_ci("", "</style>"), None);
-        assert_eq!(find_ascii_ci("abc", ""), None);
-    }
-
-    #[test]
-    fn search_text_skips_script_and_style_in_any_case() {
-        let html = "<p>a</p> <SCRIPT>x()</ScRiPt> <style>.p{}</STYLE> <p>b</p>";
-        assert_eq!(html_to_text(html), "a b");
-    }
 
     /// Every `.woff2` a stdlib `@font-face` rule names must be in one of the
     /// two file tables, and every table entry must have a rule. A face

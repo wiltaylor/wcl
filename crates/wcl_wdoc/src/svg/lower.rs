@@ -80,8 +80,8 @@ pub(crate) fn render_svg_variant(
                 .collect();
             match (map_utf8(map, "href"), links) {
                 (Some(href), Some(patterns)) => format!(
-                    "<a href=\"{}\">{inner}</a>",
-                    escape_html(&patterns.resolve_href(&href))
+                    "<a{}>{inner}</a>",
+                    crate::inline::href_attr(&patterns.resolve_href(&href))
                 ),
                 _ => inner,
             }

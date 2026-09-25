@@ -779,6 +779,34 @@ fn slice_clamps_and_works_on_strings_and_lists() {
 }
 
 #[test]
+fn slice_negative_indices_count_from_the_end() {
+    // Regression: negative indices used to clamp to 0, so `-2` meant the
+    // start of the list rather than two from the end.
+    assert_eq!(
+        eval("@schemaless result = slice([1, 2, 3, 4], -2, 4)\n"),
+        Value::List(std::sync::Arc::new(vec![Value::I64(3), Value::I64(4)]))
+    );
+    assert_eq!(
+        eval("@schemaless result = slice(\"hello\", 1, -1)\n"),
+        Value::Utf8("ell".into())
+    );
+    // Past the front still clamps.
+    assert_eq!(
+        eval("@schemaless result = slice(\"hi\", -9, 1)\n"),
+        Value::Utf8("h".into())
+    );
+}
+
+#[test]
+fn slice_keeps_an_ascii_string_ascii() {
+    // Regression: slicing an `ascii` string returned `utf8`.
+    assert_eq!(
+        eval("@schemaless result = slice(ascii\"hello\", 0, 2)\n"),
+        Value::Ascii("he".into())
+    );
+}
+
+#[test]
 fn chars_repeat_and_padding() {
     assert_eq!(
         eval("@schemaless result = chars(\"hi\")\n"),

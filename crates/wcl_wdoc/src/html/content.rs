@@ -260,6 +260,7 @@ pub(crate) fn render_content(doc: &Document, node: &Content, patterns: &InlinePa
                     class: class.as_deref().unwrap_or(&[]),
                 },
                 patterns.videos(),
+                patterns.warnings(),
             );
             wrap_caption(doc, out, caption.as_deref(), patterns)
         }

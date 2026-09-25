@@ -157,6 +157,7 @@ fn eval_error_span(err: &EvalError) -> miette::SourceSpan {
         | EvalError::UserError { span, .. }
         | EvalError::UnionCycle { span, .. }
         | EvalError::TypeMismatch { span, .. }
+        | EvalError::UnaryTypeMismatch { span, .. }
         | EvalError::Arithmetic { span, .. }
         | EvalError::NotALeaf { span, .. }
         | EvalError::ImportFailed { span, .. }
@@ -187,7 +188,9 @@ fn diagnostic_code(err: &EvalError) -> &'static str {
         EvalError::VariantShapeMismatch { .. } => "wcl::eval::variant_shape_mismatch",
         EvalError::UserError { .. } => "wcl::eval::user_error",
         EvalError::UnionCycle { .. } => "wcl::eval::union_cycle",
-        EvalError::TypeMismatch { .. } => "wcl::eval::type_mismatch",
+        EvalError::TypeMismatch { .. } | EvalError::UnaryTypeMismatch { .. } => {
+            "wcl::eval::type_mismatch"
+        }
         EvalError::Arithmetic { .. } => "wcl::eval::arithmetic",
         EvalError::NotALeaf { .. } => "wcl::eval::not_a_leaf",
         EvalError::ImportFailed { .. } => "wcl::eval::import_failed",

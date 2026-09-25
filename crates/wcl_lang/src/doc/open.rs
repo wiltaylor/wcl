@@ -35,7 +35,7 @@ impl Document {
         Self::open_at(source, name, None, env)
     }
 
-    /// Variant of [`open_with`] that accepts a base directory for
+    /// Variant of [`open_with`](Self::open_with) that accepts a base directory for
     /// resolving relative `import` paths. Hosts that synthesise
     /// source in memory (e.g. wdoc prepending a schema) call this
     /// directly so the source's own imports still resolve relative
@@ -49,9 +49,9 @@ impl Document {
         Self::open_at_with_loader(source, name, base_dir, env, loader::disk_loader())
     }
 
-    /// Like [`open_at`] but uses a caller-supplied [`FileLoader`] for
+    /// Like [`open_at`](Self::open_at) but uses a caller-supplied [`FileLoader`] for
     /// every imported file. Hosts that maintain in-memory buffers
-    /// (e.g. the LSP) pass an [`overlay_loader`] so unsaved edits
+    /// (e.g. the LSP) pass an [`overlay_loader`](crate::overlay_loader) so unsaved edits
     /// participate in import resolution.
     pub fn open_at_with_loader(
         source: &str,
@@ -201,16 +201,16 @@ impl Document {
         Self::from_file_with_loader(path, &Environment::new(), loader::disk_loader())
     }
 
-    /// Like [`from_file`] but also accepts a custom `Environment`. Use
+    /// Like [`from_file`](Self::from_file) but also accepts a custom `Environment`. Use
     /// this when the host registers built-ins or schema types.
     pub fn from_file_with(path: &Path, env: &Environment) -> Result<Self, ParseError> {
         Self::from_file_with_loader(path, env, loader::disk_loader())
     }
 
-    /// [`from_file_with`] plus a caller-supplied [`FileLoader`]. The
+    /// [`from_file_with`](Self::from_file_with) plus a caller-supplied [`FileLoader`]. The
     /// loader is consulted for the root file *and* every transitive
     /// import (eager + lazy in-block). Use this with
-    /// [`overlay_loader`] to make a long-running host's open buffers
+    /// [`overlay_loader`](crate::overlay_loader) to make a long-running host's open buffers
     /// shadow disk contents.
     pub fn from_file_with_loader(
         path: &Path,

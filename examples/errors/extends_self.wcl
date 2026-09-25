@@ -2,3 +2,5 @@
 type Loop extends Loop {
   x: i64
 }
+
+// expect-exit: 1

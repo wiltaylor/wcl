@@ -43,10 +43,10 @@ document through `wcl check`, `wcl get` and `wcl wdoc build`.
 ## The language — `LANGUAGE`
 
 - [`lang_documents.md`](references/language/lang_documents.md) — a `.wcl` file as a document: fields, blocks, labels, nesting, tables, `self` and `parent`, `let` items.
-- [`lang_values.md`](references/language/lang_values.md) — numbers and their suffixes, literal units, booleans, symbols, strings, interpolation, heredocs, `none`.
+- [`lang_values.md`](references/language/lang_values.md) — numbers and their suffixes, how a float prints, literal units, booleans, symbols, strings, interpolation, heredocs, `none`.
 - [`lang_collections.md`](references/language/lang_collections.md) — list and tensor literals, record literals, field access, bare-record coercion to a union variant.
-- [`lang_types.md`](references/language/lang_types.md) — type aliases, unions, interfaces, optionals, symbol sets, reference types, the type constraints.
-- [`lang_expressions.md`](references/language/lang_expressions.md) — member access, indexing, calls, operator precedence, numeric promotion, the `??` operator.
+- [`lang_types.md`](references/language/lang_types.md) — which numbers fit a numeric type, type aliases, unions, interfaces, optionals, symbol sets, reference types, the type constraints.
+- [`lang_expressions.md`](references/language/lang_expressions.md) — member access, indexing, calls, operator precedence, numeric promotion, exact number comparison and NaN, the `??` operator.
 - [`lang_control_flow.md`](references/language/lang_control_flow.md) — `if` / `else`, `match`, `if let`, block expressions, `let` bindings, `try` / `catch`.
 - [`lang_functions.md`](references/language/lang_functions.md) — function literals, `fn` items, function types, higher-order functions, closures and capture.
 - [`lang_namespaces.md`](references/language/lang_namespaces.md) — `namespace` and `use`, qualified kind names, disk and system imports, how they resolve.

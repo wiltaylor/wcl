@@ -1,0 +1,218 @@
+================================================================================
+numbers with type suffixes and bases
+================================================================================
+
+a = 8080u32
+b = 0xFF_u8
+c = 0b1010
+d = 0o755
+e = 1_000_000
+f = 3.14f32
+g = 6.02e23
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (number)))
+
+================================================================================
+literal units (examples/literal_units.wcl)
+================================================================================
+
+buffer   = 4MiB
+iso_disk = 2GB
+radius   = 3km
+timeout  = 30s
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (number)))
+
+================================================================================
+booleans, none and symbols
+================================================================================
+
+a = true
+b = false
+c = none
+d = :ready
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (boolean))
+  (field
+    (identifier)
+    (boolean))
+  (field
+    (identifier)
+    (none))
+  (field
+    (identifier)
+    (symbol)))
+
+================================================================================
+plain and encoded strings
+================================================================================
+
+a = "tab\tquote\""
+b = ascii"plain"
+c = utf16"wide"
+d = utf32"wider"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (string))
+  (field
+    (identifier)
+    (string))
+  (field
+    (identifier)
+    (string))
+  (field
+    (identifier)
+    (string)))
+
+================================================================================
+interpolated strings (examples/interpolation.wcl)
+================================================================================
+
+greeting = $"Hello, ${name}! You have ${count + 1u32} item(s)."
+ascii_id = $ascii"id=${name}"
+price    = $"costs $5 # not a comment \n"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (interpolated_string
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (binary_expression
+          (identifier)
+          (number)))
+      (string_content)))
+  (field
+    (identifier)
+    (interpolated_string
+      (string_content)
+      (interpolation
+        (identifier))))
+  (field
+    (identifier)
+    (interpolated_string
+      (string_content)
+      (string_content)
+      (string_content)
+      (escape_sequence))))
+
+================================================================================
+heredocs (examples/heredoc.wcl)
+================================================================================
+
+message = <<END
+  Hello, world.
+
+  Goodbye, world.
+  END
+
+plain = ascii<<EOF
+  plain ASCII only
+  EOF
+
+raw = <<'TEX'
+  \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}  % no ${interpolation} here
+  TEX
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (heredoc))
+  (field
+    (identifier)
+    (heredoc))
+  (field
+    (identifier)
+    (heredoc)))
+
+================================================================================
+interpolated heredoc (examples/interpolation.wcl)
+================================================================================
+
+body = $<<EOF
+  name=${name}
+  count=${count * 10u32}
+  EOF
+after = 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (heredoc))
+  (field
+    (identifier)
+    (number)))
+
+================================================================================
+heredoc as a block label
+================================================================================
+
+pre <<CODE
+  fn main() {}
+  CODE
+next = 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (block
+    (identifier)
+    (heredoc))
+  (field
+    (identifier)
+    (number)))

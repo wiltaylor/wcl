@@ -163,7 +163,7 @@ pub enum SchemaViolationKind {
     /// (`@child`/`@children`). The merged document schema resolves the
     /// name to only one declaration, so the other schema's gathered
     /// blocks silently vanish from templates iterating the field.
-    /// Reported by [`Document::schema_warnings`], never by
+    /// Reported by [`Document::schema_warnings`](crate::Document::schema_warnings), never by
     /// `schema_errors` — merging is a designed feature and existing
     /// documents must keep building.
     DocumentFieldShadow,

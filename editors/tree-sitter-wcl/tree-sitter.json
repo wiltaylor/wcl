@@ -1,0 +1,30 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "wcl",
+      "camelcase": "Wcl",
+      "scope": "source.wcl",
+      "path": ".",
+      "file-types": ["wcl"],
+      "highlights": "queries/highlights.scm",
+      "injection-regex": "^wcl$"
+    }
+  ],
+  "metadata": {
+    "version": "0.0.1",
+    "license": "MIT",
+    "description": "Tree-sitter grammar for the WCL configuration language.",
+    "links": {
+      "repository": "https://github.com/wiltaylor/wcl"
+    }
+  },
+  "bindings": {
+    "c": false,
+    "go": false,
+    "node": false,
+    "python": false,
+    "rust": false,
+    "swift": false
+  }
+}

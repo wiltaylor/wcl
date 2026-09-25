@@ -444,7 +444,7 @@ fn is_ident_cont(c: u8) -> bool {
 ///
 /// Every writer that builds source needs this — the formatter deciding
 /// whether a key needs quoting, an editing UI validating a new block id.
-/// It lives here, on the lexer's own [`is_ident_start`] / [`is_ident_cont`],
+/// It lives here, on the lexer's own `is_ident_start` / `is_ident_cont`,
 /// so a caller's idea of an identifier cannot drift from what the lexer
 /// will actually accept back.
 pub fn is_identifier(s: &str) -> bool {

@@ -54,8 +54,9 @@ j = -5              // unary minus
 
 ### Numeric promotion
 
-Arithmetic and comparison widen mixed operands to a common type, so cross-width and
-integer/float mixing need no cast.
+Arithmetic widens mixed operands to a common type, so cross-width and integer/float mixing
+need no cast. Comparison needs no cast either, but it does not widen: it compares the two
+numbers exactly (see `lang_expressions.md`).
 
 ```wcl
 a = 1 + 2.0        // i64 widened to f64 → 3.0
@@ -76,9 +77,24 @@ are evaluation errors. Floats keep IEEE semantics and give `inf` or `NaN` instea
 
 ```wcl
 a = 4 / 0                       // error: cannot divide by zero
-b = 4.0 / 0.0                   // inf
+b = 4.0 / 0.0                   // infinity — prints as (1.0 / 0.0)
 c = try 4 / 0 catch e { 0 }     // recoverable like any evaluation error
 ```
+
+### How a float prints
+
+`wcl get`, `wcl parse` and error messages print a float so it re-parses to the same value:
+
+| Value | Prints as |
+| --- | --- |
+| a whole number | `3.0` — always a `.0`, so it stays a float |
+| magnitude ≥ `1e16` or < `1e-5` | exponent form with a fraction: `1.0e300`, `2.5e-7` |
+| an `f32` | its own shortest digits plus the suffix: `0.1f32` |
+| infinity | `(1.0 / 0.0)`, or `(-1.0 / 0.0)` |
+| NaN | `(0.0 / 0.0)` |
+
+WCL has no literal for infinity or NaN, so they print as the division that produces them.
+An `f32` one keeps its width: `(1.0f32 / 0.0f32)`.
 
 Operator-level detail is in `lang_expressions.md`.
 

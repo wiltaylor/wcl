@@ -4,3 +4,5 @@
 @schemaless message = ascii<<END
 hello ✓ world
 END
+
+// expect-exit: 1

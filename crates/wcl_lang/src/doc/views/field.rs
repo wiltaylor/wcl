@@ -87,7 +87,7 @@ impl<'a> TypeField<'a> {
     /// If this field carries an `@child("kind")` decorator, returns the
     /// nested block kind it binds. Returns `None` when the decorator
     /// is absent OR when its positional arg names a union type rather
-    /// than a string kind (use [`child_kind_or_union`] for the union
+    /// than a string kind (use [`child_kind_or_union`](Self::child_kind_or_union) for the union
     /// case).
     pub fn child_block_kind(&self) -> Option<String> {
         match self.child_kind_or_union()? {
@@ -98,7 +98,7 @@ impl<'a> TypeField<'a> {
 
     /// If this field carries an `@children("kind", min?, max?)`
     /// decorator, returns the nested block kind it binds. Returns
-    /// `None` for the union form — use [`children_kind_or_union`].
+    /// `None` for the union form — use [`children_kind_or_union`](Self::children_kind_or_union).
     pub fn children_block_kind(&self) -> Option<String> {
         match self.children_kind_or_union()? {
             ChildKind::Kind(s) => Some(s),
@@ -160,7 +160,7 @@ impl<'a> TypeField<'a> {
         }
     }
 
-    /// Like [`children_block_kind`] but borrows directly from the AST
+    /// Like [`children_block_kind`](Self::children_block_kind) but borrows directly from the AST
     /// — useful when callers need a `&'a str` (e.g. to plug into a
     /// `Block::kind_override`). `None` if the decorator isn't present
     /// or the positional arg isn't a string literal.
@@ -469,7 +469,6 @@ impl<'a> Field<'a> {
     /// applicable schema (parent block, or the document if top-level).
     /// `None` means the membership check passes.
     fn schema_membership_error(&self) -> Option<EvalError> {
-        use crate::diagnostics::SchemaViolationKind as Kind;
         match self.scope.frames().last().cloned() {
             Some(frame) => {
                 // Whole-block opt-out shadows individual fields too.
@@ -490,13 +489,9 @@ impl<'a> Field<'a> {
                     // per-instance annotation.
                     Some(schema) if schema.is_schemaless() => None,
                     Some(schema) if schema.field(self.name()).is_some() => None,
-                    Some(schema) => Some(EvalError::schema_violation(
-                        Kind::UnknownField,
-                        format!(
-                            "field '{}' is not declared by schema '{}'",
-                            self.name(),
-                            schema.name()
-                        ),
+                    Some(schema) => Some(crate::doc::schema_check::unknown_field_error(
+                        self.name(),
+                        schema.name(),
                         self.ast.span,
                     )),
                     // Inside an un-schema'd block — the enclosing
@@ -512,25 +507,11 @@ impl<'a> Field<'a> {
                 // library schemas pulled in by imports).
                 let field_ns = self.doc.find_field_source_ns(self.ast);
                 let schemas = self.doc.doc_schemas_for_ns(field_ns);
-                if schemas.is_empty() {
-                    Some(EvalError::schema_violation(
-                        Kind::NoDocumentSchema,
-                        format!("top-level field '{}' has no @document schema", self.name()),
-                        self.ast.span,
-                    ))
-                } else if schemas.declares_field(self.name()) {
-                    None
-                } else {
-                    Some(EvalError::schema_violation(
-                        Kind::UnknownField,
-                        format!(
-                            "field '{}' is not declared by @document schema '{}'",
-                            self.name(),
-                            schemas.names()
-                        ),
-                        self.ast.span,
-                    ))
-                }
+                crate::doc::schema_check::root_field_membership_error(
+                    self.name(),
+                    &schemas,
+                    self.ast.span,
+                )
             }
         }
     }

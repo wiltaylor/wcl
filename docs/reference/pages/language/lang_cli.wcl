@@ -52,17 +52,40 @@ CONSOLE
 
   h2 "Exit codes"
 
-  p "`wcl` has five exit codes, and each one means the same thing in every command. A script can branch on them without reading any output:"
+  p "`wcl` has seven exit codes, and each one means the same thing in every command. A script can branch on them without reading any output:"
 
   table {
     rows:
-      | "Code" | "Name"   | "Means" |
-      | "0"    | "OK"     | "The command did what it was asked." |
-      | "1"    | "Parse"  | "The source did not parse. Also reported when the entry file cannot be read at all." |
-      | "2"    | "Schema" | "The document parsed, but it violates its own schema." |
-      | "3"    | "Eval"   | "Evaluation failed: an unresolved name, a type mismatch, a path that resolves to nothing, a refused block." |
-      | "4"    | "I/O"    | "The document was good. Writing the output, copying an asset or reaching the disk was not." |
+      | "Code" | "Name"    | "Means" |
+      | "0"    | "OK"      | "The command did what it was asked." |
+      | "1"    | "Parse"   | "The source did not parse." |
+      | "2"    | "Schema"  | "The document parsed, but it violates its own schema." |
+      | "3"    | "Eval"    | "Evaluation failed: an unresolved name, a type mismatch, a path that resolves to nothing, a refused block." |
+      | "4"    | "I/O"     | "A file could not be read or written. The input is missing, unreadable or not UTF-8, or writing the output, copying an asset or reaching the disk failed." |
+      | "5"    | "Differs" | "Only from `wcl diff --exit-code`: the two documents differ." |
+      | "64"   | "Usage"   | "The command line was wrong: an unknown command or flag, a missing argument, a flag that does not apply, or a bad `WCL_PROFILE` value." |
   }
+
+  p "A missing input file is an I/O failure, not a parse failure. Every command reports it as 4, so a script can tell \"there is no file\" from \"the file is broken\"."
+
+  p "Usage errors take 64, the `EX_USAGE` code from BSD's `sysexits.h`, so that they cannot be mistaken for anything a document did. `--help` and `--version` are not errors: they print to stdout and exit 0."
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check --jsn inventory.wcl
+error: unexpected argument '--jsn' found
+
+  tip: a similar argument exists: '--json'
+
+Usage: wcl check --json <FILE>
+
+For more information, try '--help'.
+$ echo $?
+64
+CONSOLE
+  }
+
+  p "Two codes need care. `wcl diff` spends 5, rather than git's 1, on \"the documents differ\", because 1 already means one side failed to parse. And `wcl repl` exits 0 from an interactive session whatever happened in it, as its own section explains."
 
   p "Diagnostics go to **stderr** and results go to **stdout**. So `wcl get f.wcl path > value.txt` captures the value and leaves the error text on the terminal."
 
@@ -102,7 +125,44 @@ CONSOLE
 
   p "The `...` stands for real output. `parse` prints **everything in scope**. That includes the language's own decorator declarations (`@block`, `@children`, `@inline`, …) and the `std` unit types, because the document can see those declarations too. Your own items follow them, in source order. To print only the data, pipe the output through `tail`."
 
-  p "`parse` forces the document, so it is also the blunt way to make every lazy field run. If a field would raise an evaluation error, `parse` raises it here. [How a document evaluates](lang_evaluation) covers what forcing means and what the profiler measures."
+  p "`parse` forces the document, so it is also the blunt way to make every lazy field run. A value that fails to evaluate still takes its place in the tree, as an `<error: …>` placeholder, so you can see where it sits. Its diagnostic goes to stderr, and `parse` exits 3 when there was any. Save `split.wcl`:"
+
+  code wcl {
+    filename = "split.wcl"
+    source = <<'WCL'
+@document
+type Split {
+  total: u32
+  parts: u32
+  each: u32
+}
+
+total = 12u32
+parts = 0u32
+each = total / parts
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl parse split.wcl 2>/dev/null | tail -3
+total = 12u32
+parts = 0u32
+each = <error: operator '/' cannot divide by zero>
+$ wcl parse split.wcl >/dev/null
+wcl::eval::arithmetic
+
+  × operator '/' cannot divide by zero
+
+split.wcl: 1 evaluation error
+$ echo $?
+3
+CONSOLE
+  }
+
+  p "A script that pipes `wcl parse` into another tool should check that exit code. The tree on stdout looks complete either way."
+
+  p "A template body is the exception. The children of a `wdoc_repeater` and the `wdoc_body` of a component have no meaning until they are expanded, because their names bind only then. `parse` prints their values as `<deferred: …>` and does not count them as errors. [How a document evaluates](lang_evaluation) covers what forcing means and what the profiler measures."
 
   h2 "wcl check"
 
@@ -369,7 +429,7 @@ formatted
 CONSOLE
   }
 
-  p "`diff` exits non-zero on any difference, so the `&&` chain fails the job, and the unified diff shows the reviewer exactly what `--in-place` would have done. To check a whole tree, drive the recipe with `find`:"
+  p "The Unix `diff` exits 1 on any difference, so the `&&` chain fails the job, and the unified diff shows the reviewer exactly what `--in-place` would have done. To check a whole tree, drive the recipe with `find`:"
 
   code console {
     source = <<'CONSOLE'
@@ -390,15 +450,16 @@ CONSOLE
 
   code console {
     source = <<'CONSOLE'
-$ wcl diff <old> <new>
+$ wcl diff <old> <new> [--exit-code]
 CONSOLE
   }
 
   table {
     rows:
-      | "Argument"   | "Meaning" |
-      | "`<old>`"    | "The base document: a path, or a `<rev>:<path>` git specifier." |
-      | "`<new>`"    | "The new document: a path, or a `<rev>:<path>` git specifier." |
+      | "Argument"      | "Meaning" |
+      | "`<old>`"       | "The base document: a path, or a `<rev>:<path>` git specifier." |
+      | "`<new>`"       | "The new document: a path, or a `<rev>:<path>` git specifier." |
+      | "`--exit-code`" | "Exit 5 when the documents differ, 0 when they do not. Without it, a diff that ran exits 0 either way." |
   }
 
   p "`wcl diff` is not `diff(1)`. It compares the **evaluated** documents, with imports resolved, so it reports changes in the data rather than in the text. Each top-level block is an entity keyed `kind:label`. `diff` reports a nested field edit by path, and recurses into lists by index."
@@ -421,6 +482,25 @@ CONSOLE
   p "The output is itself WCL, and that is the whole point: a change set is a document, so anything that reads WCL reads a diff and `wcl parse` reads it back. There is no second output format, because a consumer that wants the diff structurally already parses WCL. That is how it came to have two documents to compare. One caveat: a change set carries no schema of its own, so `wcl check` on one reports `modified` as an undeclared block kind. To validate a change set, declare `modified`, `removed`, `added` and `field` yourself."
 
   p "A formatting-only edit produces **no diff at all**, because the values did not change. Neither does a comment edit, a reordering, or a rewrite that moves a field into an import. That property is what makes `wcl diff` useful in review."
+
+  p "A block or a top-level field that fails to evaluate on either side is left out of the comparison. `diff` names each one on stderr, as `warning: field 'b' could not be evaluated, skipping`, so a half-evaluated document cannot pass for an unchanged one without a word."
+
+  h3 "Failing a job on a change"
+
+  p "`--exit-code` makes the answer scriptable, in the manner of `git diff --exit-code`. The code for \"they differ\" is 5, not git's 1, because 1 already means that one side did not parse. A job can therefore tell a change from a broken file:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl diff --exit-code inventory.wcl inv2.wcl > changes.wcl
+$ echo $?
+5
+$ wcl diff --exit-code inventory.wcl inventory.wcl
+# wcl diff inventory.wcl -> inventory.wcl — generated
+# no changes
+$ echo $?
+0
+CONSOLE
+  }
 
   h3 "Reading a revision out of git"
 
@@ -469,6 +549,8 @@ CONSOLE
       | "`--force`"       | "Write into the destination even if it exists and is not empty." |
       | "`--list`"        | "List the templates and exit." |
   }
+
+  p "`wcl init` with no template, or a `-D` with no `=`, is a usage error and exits 64."
 
   p "Start with `--list`. It shows the built-in templates, your own templates, and the directory those user templates live in:"
 
@@ -619,7 +701,7 @@ CONSOLE
       | "`--out <dir>`"   | "—"          | "Output directory. Created if missing. **Required.**" |
       | "`--type`"        | "`html`"     | "Which renderer to run: `html`, `markdown` (alias `md`) or `pdf`." |
       | "`--site <name>`" | "every site" | "Build only this site, flat at `<out>`. The effect of omitting this flag depends on `--type`. See below." |
-      | "`--page-size`"   | "`a4`"       | "`a4` or `letter`. **`--type pdf` only.** Passing it with another type is an error." |
+      | "`--page-size`"   | "`a4`"       | "`a4` or `letter`. **`--type pdf` only.** Passing it with another type is a usage error (exit 64)." |
   }
 
   code console {

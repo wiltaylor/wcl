@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use wcl_lang::{Block, Document, Environment, EvalError, ParseError, Value, disk_loader, from_fn};
 
-use crate::{EXIT_EVAL, EXIT_IO, EXIT_OK, EXIT_PARSE, EXIT_SCHEMA};
+use crate::{EXIT_EVAL, EXIT_IO, EXIT_OK, EXIT_PARSE, EXIT_SCHEMA, EXIT_USAGE};
 
 /// Built-in templates shipped with `wcl`, embedded in the binary. The
 /// first element of each pair is the name used on the command line
@@ -56,7 +56,7 @@ pub(crate) fn run_init(
     }
     let Some(template) = template else {
         eprintln!("error: specify a template name (or `wcl init --list` to see the built-ins)");
-        return EXIT_IO;
+        return EXIT_USAGE;
     };
     match run(&template, dest, &defines, defaults, force) {
         Ok(()) => EXIT_OK,
@@ -127,6 +127,8 @@ fn user_templates() -> Vec<(String, PathBuf)> {
 
 /// A failure during scaffolding, tagged with the matching CLI exit code.
 enum InitError {
+    /// The command line was malformed (a `-D` without `=`).
+    Usage(String),
     Io(String),
     Parse(ParseError),
     Eval(EvalError),
@@ -136,6 +138,10 @@ enum InitError {
 impl InitError {
     fn report(self) -> u8 {
         match self {
+            InitError::Usage(msg) => {
+                eprintln!("error: {msg}");
+                EXIT_USAGE
+            }
             InitError::Io(msg) => {
                 eprintln!("error: {msg}");
                 EXIT_IO
@@ -458,7 +464,7 @@ fn parse_defines(defines: &[String]) -> Result<BTreeMap<String, String>, InitErr
     for d in defines {
         let (k, v) = d
             .split_once('=')
-            .ok_or_else(|| InitError::Io(format!("invalid `-D {d}`: expected key=value")))?;
+            .ok_or_else(|| InitError::Usage(format!("invalid `-D {d}`: expected key=value")))?;
         map.insert(k.to_string(), v.to_string());
     }
     Ok(map)

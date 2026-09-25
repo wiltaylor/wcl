@@ -3,3 +3,5 @@
 type Wrapper {
   cfg: Missing
 }
+
+// expect-exit: 1
