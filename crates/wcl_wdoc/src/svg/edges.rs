@@ -63,6 +63,7 @@ pub(crate) fn render_edges(
     positions: &ShapePositions,
     borders: &[(f64, f64, f64, f64)],
     viewport: (f64, f64),
+    warnings: &Warnings,
 ) -> (String, Vec<(f64, f64, f64, f64)>) {
     let mut items: Vec<Value> = Vec::new();
     gather_edges_recursive(block, &mut items);
@@ -98,6 +99,7 @@ pub(crate) fn render_edges(
             straight,
             &source_overrides,
             &dest_overrides,
+            warnings,
         ) {
             planned.push(plan);
         }
@@ -394,6 +396,7 @@ pub(crate) fn plan_edge(
     straight: bool,
     source_overrides: &AnchorMap,
     dest_overrides: &DestAnchorMap,
+    warnings: &Warnings,
 ) -> Option<(EdgePath, EdgeStyle)> {
     let Value::Record { fields, .. } = value else {
         return None;
@@ -410,7 +413,7 @@ pub(crate) fn plan_edge(
         } else {
             &source_id
         };
-        crate::render::record_edge_warning(format!(
+        warnings.record(format!(
             "diagram edge {source_id} → {dest_id}: endpoint '{missing}' matches no shape id"
         ));
         return None;

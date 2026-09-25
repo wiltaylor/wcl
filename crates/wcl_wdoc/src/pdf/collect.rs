@@ -120,7 +120,7 @@ fn collect_block(
     }
     // A page-level raster image: load the source bytes for embedding.
     if kind == "image" {
-        if let Some(node) = collect_image(block, base_dir) {
+        if let Some(node) = collect_image(block, base_dir, patterns.warnings()) {
             out.push(node);
         }
         return;
@@ -288,7 +288,7 @@ fn walk_block_variant(
         // rendered in the book and nowhere else.
         other => {
             for v in crate::render::expand_custom_variant(doc, map, other) {
-                match crate::render::recursed_content(&v) {
+                match crate::render::recursed_content(&v, patterns.warnings()) {
                     Some(node) => content::collect_content(doc, &node, patterns, base_dir, out),
                     None => walk_block_variant(doc, &v, depth + 1, patterns, base_dir, out),
                 }
@@ -427,7 +427,11 @@ fn collect_table(doc: &Document, block: &Block<'_>, patterns: &InlinePatterns) -
 
 /// Load a page-level `image` block's source file for raster embedding. Skips
 /// remote (`http(s):`) and `data:` sources and unreadable paths.
-fn collect_image(block: &Block<'_>, base_dir: Option<&Path>) -> Option<BlockNode> {
+fn collect_image(
+    block: &Block<'_>,
+    base_dir: Option<&Path>,
+    warnings: &crate::render::Warnings,
+) -> Option<BlockNode> {
     let source = match block.labels().ok()?.into_iter().next()? {
         Value::Utf8(s) | Value::Ascii(s) => s,
         _ => return None,
@@ -437,6 +441,7 @@ fn collect_image(block: &Block<'_>, base_dir: Option<&Path>) -> Option<BlockNode
         base_dir,
         field_f64(block, "width").map(|v| v as f32),
         field_f64(block, "height").map(|v| v as f32),
+        warnings,
     )
 }
 
@@ -448,6 +453,7 @@ pub(super) fn image_node(
     base_dir: Option<&Path>,
     disp_w: Option<f32>,
     disp_h: Option<f32>,
+    warnings: &crate::render::Warnings,
 ) -> Option<BlockNode> {
     if source.starts_with("http://")
         || source.starts_with("https://")
@@ -464,7 +470,7 @@ pub(super) fn image_node(
         Err(e) => {
             // HTML/Markdown fail later when the asset copy errors, but the
             // PDF never copies — without this the image just vanishes.
-            crate::render::record_render_warning(format!(
+            warnings.record(format!(
                 "image \"{source}\": cannot read {} ({e}) — it is missing from the PDF",
                 path.display()
             ));

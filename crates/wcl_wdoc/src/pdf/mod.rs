@@ -144,13 +144,14 @@ impl PdfError {
 }
 
 /// Render `file` to one PDF per `site` in `out_dir`. Returns the number of
-/// PDFs written. `site_filter` restricts rendering to a single named site.
+/// PDFs written and the pass's warnings. `site_filter` restricts rendering
+/// to a single named site.
 pub fn pdf(
     file: &Path,
     out_dir: &Path,
     site_filter: Option<&str>,
     page_size: PageSize,
-) -> Result<usize, PdfError> {
+) -> Result<crate::build::BuildReport, PdfError> {
     let user_src = fs::read_to_string(file)
         .map_err(|e| PdfError::Io(e, format!("read {}", file.display())))?;
     let name = file.display().to_string();
@@ -288,7 +289,6 @@ pub fn pdf(
     // an earlier pass so stale messages can't leak into this one.
     let _ = crate::render::take_route_error();
     let _ = crate::render::take_include_error();
-    let _ = crate::render::take_render_warnings();
     let _ = svg_embed::take_embed_error();
     // File-backed code listings resolve against the document's directory.
     let _doc_dir = crate::render::DocDirGuard::set(base_dir.as_deref());
@@ -430,7 +430,11 @@ pub fn pdf(
     if let Some(msg) = svg_embed::take_embed_error() {
         return Err(PdfError::Render(msg));
     }
-    result
+    Ok(crate::build::BuildReport {
+        count: result?,
+        warnings: patterns.warnings().take(),
+        profile: None,
+    })
 }
 
 /// Order a site's pages for a continuous PDF: the `start` page first, then

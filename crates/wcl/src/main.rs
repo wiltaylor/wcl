@@ -565,10 +565,10 @@ fn build_runtime() -> Result<tokio::runtime::Runtime, u8> {
         })
 }
 
-/// Drain and print the non-fatal warnings the most recent render pass
-/// collected (dropped diagram edges, lowerless blocks, unsized images, …).
-fn print_render_warnings() {
-    for w in wcl_wdoc::take_render_warnings() {
+/// Print the non-fatal warnings a render pass returned (dropped diagram
+/// edges, lowerless blocks, unsized images, …).
+fn print_render_warnings(warnings: &[String]) {
+    for w in warnings {
         eprintln!("warning: {w}");
     }
 }
@@ -595,33 +595,31 @@ fn run_build(
             let opts = wcl_wdoc::BuildOptions {
                 profile: profiling_enabled().unwrap_or(false),
             };
-            let result = wcl_wdoc::build_with_options(file, out, site, &opts);
-            if result.is_ok() {
-                print_render_warnings();
-            }
-            let result = result.map(|(n, p)| {
-                if let Some(p) = p {
+            let result = wcl_wdoc::build_with_options(file, out, site, &opts).map(|report| {
+                print_render_warnings(&report.warnings);
+                if let Some(p) = report.profile {
                     let json = dump::profile_to_json(&p);
                     let rendered = serde_json::to_string_pretty(&json)
                         .expect("serde_json::Value always serializes (string-keyed objects)");
                     eprintln!("{rendered}");
                 }
-                n
+                report.count
             });
             report_pages(result)
         }
         BuildType::Markdown => {
-            let result = wcl_wdoc::markdown(file, out, site);
-            if result.is_ok() {
-                print_render_warnings();
-            }
+            let result = wcl_wdoc::markdown(file, out, site).map(|report| {
+                print_render_warnings(&report.warnings);
+                report.count
+            });
             report_pages(result)
         }
         BuildType::Pdf => {
             let page_size = page_size.unwrap_or(PdfPageSize::A4);
             match wcl_wdoc::pdf(file, out, site, page_size.into()) {
-                Ok(n) => {
-                    print_render_warnings();
+                Ok(report) => {
+                    print_render_warnings(&report.warnings);
+                    let n = report.count;
                     println!("wrote {n} pdf{}", if n == 1 { "" } else { "s" });
                     EXIT_OK
                 }

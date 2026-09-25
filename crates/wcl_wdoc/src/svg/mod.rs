@@ -119,6 +119,8 @@ pub(crate) struct CollectCtx<'a> {
     pub(crate) tilesets: &'a TilesetRegistry,
     /// Images in scope.
     pub(crate) images: &'a ImageRegistry,
+    /// Where the pass records non-fatal warnings.
+    pub(crate) warnings: &'a Warnings,
 }
 
 /// The bundled pan + zoom player, written to `_wdoc/` and loaded once
