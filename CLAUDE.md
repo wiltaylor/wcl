@@ -34,11 +34,11 @@ to be more rich than markdown and allows generation of documents over data store
 - `crates/wcl` — the `wcl` binary that ships with wcl. This houses the following:
     - General tools for working with wcl files.
     - LSP server for working with WCL files (called by plugins).
-    - WDOC code for templating, validation, building, serving etc.
+    - WDOC commands (templating, validation, building, serving etc.), wired to `wcl_wdoc`.
 - `crates/wcl_lsp` — the code for the LSP server that is run by the cli.
 - `crates/wcl_wdoc` — the library crate behind wdoc itself. Keep all wdoc specific code in
     here so clients who are just interested in wcl don't get the extra code.
-- `crates/wcl_lang/fuzz` — `cargo-fuzz` tests to help find bugs in the code.
+- `crates/wcl_lang/fuzz` and `crates/wcl_wdoc/fuzz` — `cargo-fuzz` tests to help find bugs in the code.
 - `editors/vscode` — VSCode extention for wcl.
 - `editors/tree-sitter-wcl` — a tree-sitter grammar for wcl.
 - `examples/` — examples of using wcl and used by tests.
