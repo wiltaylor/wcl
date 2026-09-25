@@ -7,6 +7,7 @@
 //! items — identity, not equality, since two files can declare
 //! structurally identical nodes.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -36,6 +37,9 @@ impl Document {
     /// CLI (or other host) already has that string from
     /// `Document::from_file(path)` and doesn't need it round-tripped.
     pub(crate) fn find_field_source_path(&self, target: *const ast::Field) -> Option<&Path> {
+        if let Some(ordinal) = self.static_field_source(target) {
+            return self.all_sources()[ordinal].path;
+        }
         // Main file first — if we find it there, the answer is None.
         if field_in_items(&self.ast.items, target, &self.cells.items) {
             return None;
@@ -60,6 +64,9 @@ impl Document {
     /// isn't located in any known source — callers treat the main
     /// document as the default.
     pub(crate) fn find_field_source_ns(&self, target: *const ast::Field) -> &[String] {
+        if let Some(ordinal) = self.static_field_source(target) {
+            return self.all_sources()[ordinal].file_ns;
+        }
         if field_in_items(&self.ast.items, target, &self.cells.items) {
             return &self.file_ns;
         }
@@ -70,6 +77,23 @@ impl Document {
         }
         find_lazy_field_ns_in_blocks(&self.ast.items, &self.cells.items, target)
             .unwrap_or(&self.file_ns)
+    }
+
+    /// Which of [`Self::all_sources`] declares `target`, looked up in a
+    /// field-address index built on first use. Covers the root source
+    /// and the eager imports, which are fixed once the document opens;
+    /// `None` leaves a field from a lazily-loaded import to the walks
+    /// above. A field lives at one address in one source, so a hit is
+    /// the source the ordered walk would reach first.
+    fn static_field_source(&self, target: *const ast::Field) -> Option<usize> {
+        let index = self.field_source_index.get_or_init(|| {
+            let mut map = HashMap::new();
+            for (ordinal, src) in self.all_sources().iter().enumerate() {
+                index_field_addresses(src.items, ordinal, &mut map);
+            }
+            map
+        });
+        index.get(&(target as usize)).copied()
     }
 
     /// miette source (name + text) for the root document.
@@ -346,6 +370,20 @@ fn named_source_for_type_in_import(
         }
     }
     None
+}
+
+/// Record the address of every field in `items`, nested blocks
+/// included, against the source `ordinal`. First recording wins.
+fn index_field_addresses(items: &[ast::Item], ordinal: usize, map: &mut HashMap<usize, usize>) {
+    for item in items {
+        match item {
+            ast::Item::Field(f) => {
+                map.entry(std::ptr::from_ref(f) as usize).or_insert(ordinal);
+            }
+            ast::Item::Block(b) => index_field_addresses(&b.items, ordinal, map),
+            _ => {}
+        }
+    }
 }
 
 /// Whether `target` is one of these items or nested inside one,

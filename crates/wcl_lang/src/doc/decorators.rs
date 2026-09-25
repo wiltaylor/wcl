@@ -93,7 +93,10 @@ impl Document {
                         source,
                         out,
                     );
-                    let ItemCellKind::TypeDecl { field_decorators } = &cell.kind else {
+                    let ItemCellKind::TypeDecl {
+                        field_decorators, ..
+                    } = &cell.kind
+                    else {
                         unreachable!("type declaration has type cells")
                     };
                     for (field, decorator_cells) in declaration.fields.iter().zip(field_decorators)

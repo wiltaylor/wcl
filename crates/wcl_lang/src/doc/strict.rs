@@ -412,7 +412,10 @@ impl Document {
                 &[],
                 &mut errors,
             );
-            let ItemCellKind::TypeDecl { field_decorators } = &cells.kind else {
+            let ItemCellKind::TypeDecl {
+                field_decorators, ..
+            } = &cells.kind
+            else {
                 unreachable!("synthetic type cells mirror the declaration")
             };
             for (field, decorator_cells) in declaration.fields.iter().zip(field_decorators) {

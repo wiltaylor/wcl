@@ -695,10 +695,36 @@ impl<'a> DeclName<'a> for TypeDecl<'a> {
 impl<'a> TypeDecl<'a> {
     /// Decorator caches for this declaration's fields, one entry per field.
     fn field_decorator_cells(&self) -> &'a [Vec<DecoratorCell>] {
-        let ItemCellKind::TypeDecl { field_decorators } = &self.cells.kind else {
+        let ItemCellKind::TypeDecl {
+            field_decorators, ..
+        } = &self.cells.kind
+        else {
             unreachable!("TypeDecl view wraps a TypeDecl cell")
         };
         field_decorators
+    }
+
+    /// Position of the first directly-declared field named `name`. A
+    /// narrow type is scanned; a wide one answers from a name index
+    /// kept in its cell, so validating every field of a large
+    /// `@document` schema stays linear.
+    fn field_position(&self, name: &str) -> Option<usize> {
+        const INDEX_MIN_FIELDS: usize = 16;
+        let fields = &self.ast.fields;
+        let ItemCellKind::TypeDecl { field_index, .. } = &self.cells.kind else {
+            unreachable!("TypeDecl view wraps a TypeDecl cell")
+        };
+        if fields.len() < INDEX_MIN_FIELDS {
+            return fields.iter().position(|f| f.name == name);
+        }
+        let index = field_index.get_or_init(|| {
+            let mut map = std::collections::HashMap::new();
+            for (i, f) in fields.iter().enumerate() {
+                map.entry(f.name.clone()).or_insert(i);
+            }
+            map
+        });
+        index.get(name).copied()
     }
 
     /// Decorators attached to this item, in source order.
@@ -950,18 +976,13 @@ impl<'a> TypeDecl<'a> {
 
     /// The directly-declared field with this name, if any.
     pub fn field(&self, name: &str) -> Option<TypeField<'a>> {
-        let cells = self.field_decorator_cells();
-        self.ast
-            .fields
-            .iter()
-            .enumerate()
-            .find(|(_, f)| f.name == name)
-            .map(|(i, f)| TypeField {
-                ast: f,
-                decorator_cells: &cells[i],
-                doc: self.doc,
-                file_ns: self.file_ns,
-            })
+        let i = self.field_position(name)?;
+        Some(TypeField {
+            ast: &self.ast.fields[i],
+            decorator_cells: &self.field_decorator_cells()[i],
+            doc: self.doc,
+            file_ns: self.file_ns,
+        })
     }
 
     /// Names of parent types/interfaces this type extends, in
