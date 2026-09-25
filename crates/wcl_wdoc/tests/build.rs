@@ -8856,6 +8856,34 @@ fn wireframe_class_paint_and_raw_color_are_baked_onto_widget() {
 }
 
 #[test]
+fn wireframe_class_colours_cannot_break_out_of_their_attribute() {
+    // A class colour carrying a `"` is escaped into the SVG attribute, so
+    // it cannot close the attribute and add its own.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wf.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  diagram { width = 200  height = 60\n    wf_button \"P\" { class = [\"evil\"] }\n  }\n}\nclass evil { fill = \"red\\\" onload=\\\"alert(1)\"  stroke = \"blue\\\"><script>x</script>\"  css = \"color:x\\\" onclick=\\\"y;\" }\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    // Only the SVG matters here: the class also lands verbatim in the
+    // page stylesheet, which is author CSS by design.
+    let svg = &html[html.find("<svg").expect("diagram svg")..];
+    assert!(!svg.contains("onload=\"alert(1)"), "fill broke out:\n{svg}");
+    assert!(
+        !svg.contains("<script>x</script>"),
+        "stroke broke out:\n{svg}"
+    );
+    assert!(!svg.contains("onclick=\"y"), "color broke out:\n{svg}");
+    assert!(
+        html.contains("fill=\"red&quot; onload=&quot;alert(1)\""),
+        "fill not escaped in place:\n{html}"
+    );
+}
+
+#[test]
 fn wireframe_widgets_share_the_diagram_svg() {
     // Two widgets in one diagram render into the diagram's SVG — there's no
     // per-widget `wdoc-wireframe` wrapper any more; both draw their text.

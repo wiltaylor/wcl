@@ -1538,12 +1538,16 @@ fn baseline(top: f64, h: f64) -> f64 {
 
 /// A widget's baked theme from its `class` list (first class that sets each
 /// field wins). Empty when no class supplies an override.
+///
+/// The colours are author text baked straight into SVG attributes, so each
+/// is escaped here: a `"` in a class colour must not close the attribute.
 fn theme_of(doc: &Document, block: &Block<'_>) -> Theme {
     let classes = field_utf8_list(block, "class");
+    let attr = |v: Option<String>| v.map(|v| escape_html(&v));
     Theme {
-        bg: class_field(doc, &classes, "fill"),
-        fg: class_css_property(doc, &classes, "color"),
-        border: class_field(doc, &classes, "stroke"),
+        bg: attr(class_field(doc, &classes, "fill")),
+        fg: attr(class_css_property(doc, &classes, "color")),
+        border: attr(class_field(doc, &classes, "stroke")),
     }
 }
 
