@@ -9,6 +9,7 @@
 mod code_actions;
 mod completion;
 mod convert;
+mod ctx;
 mod diagnostics;
 mod folding;
 mod hover;

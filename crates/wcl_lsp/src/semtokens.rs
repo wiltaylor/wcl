@@ -12,6 +12,8 @@
 use tower_lsp_server::ls_types::{SemanticToken, SemanticTokenType};
 use wcl_lang::{Lexer, Span, StringLit, StringPart, TokenKind};
 
+use crate::convert::{LineIndex, PositionEncoding};
+
 /// Token legend in the order LSP expects: each emitted token's
 /// `token_type` is an index into this list. Add new categories at the
 /// end so older clients don't reinterpret existing indices.
@@ -44,10 +46,10 @@ const T_VARIABLE: u32 = 6;
 /// Symbol literals.
 const T_ENUM_MEMBER: u32 = 7;
 
-/// Compute the delta-encoded semantic token stream for `source`. On
-/// lex failure, returns an empty stream — diagnostics already report
-/// the underlying error.
-pub(crate) fn compute(source: &str) -> Vec<SemanticToken> {
+/// Compute the delta-encoded semantic token stream for `source`, with
+/// columns and lengths counted in `encoding`. Lexing stops at the first
+/// lex error — diagnostics already report it.
+pub(crate) fn compute(source: &str, encoding: PositionEncoding) -> Vec<SemanticToken> {
     let mut tokens = Vec::new();
     let mut lex = Lexer::new(source);
     let mut prev_type: Option<TokenKind> = None;
@@ -65,7 +67,7 @@ pub(crate) fn compute(source: &str) -> Vec<SemanticToken> {
         }
         prev_type = Some(tok.kind);
     }
-    delta_encode(source, &tokens)
+    delta_encode(&LineIndex::new(source, encoding), source, &tokens)
 }
 
 /// Walk the parts of an interpolated string literal and emit
@@ -239,15 +241,18 @@ fn classify(kind: &TokenKind, prev: Option<&TokenKind>) -> Option<u32> {
 /// Convert a sorted list of absolute-position `Raw` tokens into the
 /// LSP delta encoding: each token is `(delta_line, delta_start_char,
 /// length, token_type, token_modifiers)`, where deltas are relative
-/// to the previous emitted token. Columns are UTF-8 byte offsets
-/// within the line (we advertise UTF-8 position encoding).
-fn delta_encode(source: &str, raws: &[Raw]) -> Vec<SemanticToken> {
+/// to the previous emitted token. Columns and lengths count code units
+/// of the negotiated position encoding.
+fn delta_encode(index: &LineIndex<'_>, source: &str, raws: &[Raw]) -> Vec<SemanticToken> {
     let mut out = Vec::with_capacity(raws.len());
     let mut prev_line: u32 = 0;
     let mut prev_col: u32 = 0;
     for r in raws {
-        let pos = crate::convert::offset_to_position(source, r.span.start);
-        let length = (r.span.end - r.span.start) as u32;
+        let pos = index.position(r.span.start);
+        let length = index
+            .encoding()
+            .units(source.get(r.span.start..r.span.end).unwrap_or_default())
+            as u32;
         let delta_line = pos.line - prev_line;
         let delta_start = if delta_line == 0 {
             pos.character - prev_col
@@ -272,7 +277,10 @@ mod tests {
     use super::*;
 
     fn types_emitted(source: &str) -> Vec<u32> {
-        compute(source).into_iter().map(|t| t.token_type).collect()
+        compute(source, PositionEncoding::Utf8)
+            .into_iter()
+            .map(|t| t.token_type)
+            .collect()
     }
 
     #[test]
@@ -286,7 +294,7 @@ mod tests {
     #[test]
     fn decorator_marker_and_name() {
         let src = "@block(\"x\")\ntype Y {}\n";
-        let toks = compute(src);
+        let toks = compute(src, PositionEncoding::Utf8);
         // First emitted token should be the `@` decorator marker.
         assert_eq!(toks[0].token_type, T_DECORATOR);
         // The very next token (Ident "block" after `@`) should be a type.
@@ -305,7 +313,7 @@ mod tests {
     fn interpolated_string_colors_slot_contents() {
         let src = "x = $\"hello ${y + 1}\"\n";
         // Find what types appear between the slot's `${` and `}`.
-        let toks = compute(src);
+        let toks = compute(src, PositionEncoding::Utf8);
         // We expect: variable color for `y`, operator for `+`, number for `1`.
         let types: Vec<u32> = toks.iter().map(|t| t.token_type).collect();
         assert!(types.contains(&T_STRING), "no STRING in {types:?}");
@@ -317,7 +325,7 @@ mod tests {
     #[test]
     fn delta_encoding_is_relative() {
         let src = "a = 1\nb = 2\n";
-        let toks = compute(src);
+        let toks = compute(src, PositionEncoding::Utf8);
         // First token (Ident "a") sits at line 0, col 0.
         assert_eq!(toks[0].delta_line, 0);
         assert_eq!(toks[0].delta_start, 0);

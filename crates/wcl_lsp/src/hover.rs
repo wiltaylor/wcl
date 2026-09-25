@@ -5,12 +5,13 @@
 use tower_lsp_server::ls_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 use wcl_lang::Document;
 
-use crate::convert::span_to_range;
+use crate::ctx::Ctx;
 use crate::resolve::{self, LocatedSymbol};
 
 /// Hover content for the cursor position: what the symbol under it
 /// is, plus its doc comment when it has one.
 pub(crate) fn hover(
+    ctx: &Ctx,
     source: &str,
     uri: &str,
     offset: usize,
@@ -35,7 +36,7 @@ pub(crate) fn hover(
             kind: MarkupKind::Markdown,
             value: body,
         }),
-        range: Some(span_to_range(source, span)),
+        range: Some(ctx.index(source).range(span)),
     })
 }
 
@@ -91,7 +92,8 @@ mod tests {
     fn hover_on_block_kind_includes_decl_snippet() {
         let src = "@document\ntype Root {\n  c: Config\n}\n@block(\"config\")\ntype Config {\n  region: utf8\n}\nconfig {\n  region = \"x\"\n}\n";
         let cursor = src.find("config {").unwrap() + 2;
-        let h = hover(src, "test.wcl", cursor, None).expect("hover present");
+        let h = hover(&Ctx::new(Default::default()), src, "test.wcl", cursor, None)
+            .expect("hover present");
         let HoverContents::Markup(m) = h.contents else {
             panic!("expected markup")
         };
@@ -108,7 +110,8 @@ type Deploy { @inline(0) target: utf8 }
 type Target {}
 "#;
         let cursor = src.rfind("deploy").expect("decorator use") + 2;
-        let h = hover(src, "test.wcl", cursor, None).expect("hover present");
+        let h = hover(&Ctx::new(Default::default()), src, "test.wcl", cursor, None)
+            .expect("hover present");
         let HoverContents::Markup(markup) = h.contents else {
             panic!("expected markup")
         };
@@ -121,6 +124,6 @@ type Target {}
     fn hover_returns_none_on_whitespace() {
         let src = "type Foo {\n}\n";
         let cursor = 4; // a space
-        assert!(hover(src, "test.wcl", cursor, None).is_none());
+        assert!(hover(&Ctx::new(Default::default()), src, "test.wcl", cursor, None).is_none());
     }
 }

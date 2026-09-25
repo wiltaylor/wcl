@@ -6,13 +6,14 @@
 use tower_lsp_server::ls_types::{GotoDefinitionResponse, Location, Uri};
 use wcl_lang::Document;
 
-use crate::convert::span_to_range;
+use crate::ctx::Ctx;
 use crate::resolve;
 
 /// Go-to-definition for `(uri, offset)`. Returns `None` when the
 /// cursor isn't on an identifier we can resolve, or when the symbol
 /// has no AST declaration site (e.g. a builtin decorator).
 pub(crate) fn goto_definition(
+    ctx: &Ctx,
     uri: Uri,
     source: &str,
     offset: usize,
@@ -52,7 +53,7 @@ pub(crate) fn goto_definition(
     // file matches; otherwise emit a zero-based range and let the
     // editor open the file to the offset.
     let range = if location_uri == uri {
-        span_to_range(source, span)
+        ctx.index(source).range(span)
     } else {
         // Read the target file lazily to compute line/col. If the
         // read fails (transient I/O), report the same as a request-
@@ -60,8 +61,8 @@ pub(crate) fn goto_definition(
         match crate::convert::uri_to_path(&location_uri)
             .and_then(|p| std::fs::read_to_string(p).ok())
         {
-            Some(text) => span_to_range(&text, span),
-            None => span_to_range(source, span),
+            Some(text) => ctx.index(&text).range(span),
+            None => ctx.index(source).range(span),
         }
     };
     Some(GotoDefinitionResponse::Scalar(Location {
@@ -71,7 +72,9 @@ pub(crate) fn goto_definition(
 }
 
 /// Find occurrences of the selected declaration in the current source snapshot.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn references(
+    ctx: &Ctx,
     uri: Uri,
     source: &str,
     offset: usize,
@@ -122,11 +125,12 @@ pub(crate) fn references(
     }
     let mut out = Vec::new();
     for (file_uri, text, occurrences) in sources {
+        let index = ctx.index(&text);
         for occurrence in occurrences {
             if occurrence.identity == identity && (include_declaration || !occurrence.declaration) {
                 out.push(Location {
                     uri: file_uri.clone(),
-                    range: span_to_range(&text, occurrence.span),
+                    range: index.range(occurrence.span),
                 });
             }
         }
@@ -140,6 +144,7 @@ pub(crate) fn references(
 /// `Err` explains an invalid new name or a target with unsupported contextual uses.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn rename(
+    ctx: &Ctx,
     uri: Uri,
     source: &str,
     offset: usize,
@@ -171,6 +176,7 @@ pub(crate) fn rename(
     };
     let identity = selected.identity.clone();
     let Some(locations) = references(
+        ctx,
         uri.clone(),
         source,
         offset,
@@ -227,7 +233,7 @@ pub(crate) fn rename(
         let (text, occurrences) = &snapshots[&loc.uri];
         let occurrence = occurrences
             .iter()
-            .find(|o| o.identity == identity && span_to_range(text, o.span) == loc.range)
+            .find(|o| o.identity == identity && ctx.index(text).range(o.span) == loc.range)
             .ok_or("Rename target changed")?;
         if occurrences
             .iter()
@@ -272,11 +278,12 @@ pub(crate) fn rename(
         for (target, edits) in &changes {
             let original = &snapshots[target].0;
             let mut text = original.clone();
+            let index = ctx.index(original);
             let mut ordered: Vec<_> = edits.iter().collect();
             ordered.sort_by_key(|e| std::cmp::Reverse(e.range.start));
             for edit in ordered {
-                let start = crate::convert::position_to_offset(original, edit.range.start);
-                let end = crate::convert::position_to_offset(original, edit.range.end);
+                let start = index.offset(edit.range.start);
+                let end = index.offset(edit.range.end);
                 text.replace_range(start..end, &edit.new_text);
             }
             updated.insert(
@@ -332,6 +339,7 @@ mod tests {
     fn rename_preserves_evaluation_with_indexing_interpolation_and_shadowing() {
         let source = "@schemaless values = [2, 3]\n@schemaless result = $\"values: ${at(values, 0) + (fn(values: i64) -> i64 { values })(4)}\"\n";
         let edit = rename(
+            &ctx(),
             url(),
             source,
             source.find("values").unwrap(),
@@ -347,8 +355,8 @@ mod tests {
         edits.sort_by_key(|e| std::cmp::Reverse(e.range.start));
         let mut updated = source.to_string();
         for edit in edits {
-            let start = crate::convert::position_to_offset(source, edit.range.start);
-            let end = crate::convert::position_to_offset(source, edit.range.end);
+            let start = utf8(source).offset(edit.range.start);
+            let end = utf8(source).offset(edit.range.end);
             updated.replace_range(start..end, &edit.new_text);
         }
         let before = Document::open(source, "before.wcl").unwrap();
@@ -377,6 +385,7 @@ mod tests {
         )
         .unwrap();
         let refs = references(
+            &ctx(),
             Uri::from_file_path(&main).unwrap(),
             source,
             source.find("Color").unwrap(),
@@ -406,6 +415,7 @@ mod tests {
         std::fs::write(&shared, "namespace ns\nunion Foo { One none }\n").unwrap();
         let doc = Document::from_file(&main).unwrap();
         let edit = rename(
+            &ctx(),
             Uri::from_file_path(&main).unwrap(),
             source,
             source.find("Foo").unwrap(),
@@ -420,6 +430,14 @@ mod tests {
         let local = changes.get(&Uri::from_file_path(&main).unwrap()).unwrap();
         assert_eq!(local.len(), 1);
         assert_eq!(local[0].range.start.line, 1);
+    }
+
+    fn ctx() -> Ctx {
+        Ctx::new(crate::convert::PositionEncoding::Utf8)
+    }
+
+    fn utf8(text: &str) -> crate::convert::LineIndex<'_> {
+        crate::convert::LineIndex::new(text, crate::convert::PositionEncoding::Utf8)
     }
 
     fn url() -> Uri {
@@ -449,6 +467,7 @@ mod tests {
         for (source, cursor) in cases {
             Document::open(source, "test.wcl").expect("valid rename fixture");
             let result = rename(
+                &ctx(),
                 url(),
                 source,
                 source.find(cursor).unwrap(),
@@ -469,6 +488,7 @@ mod tests {
             before.schema_errors()
         );
         let edit = rename(
+            &ctx(),
             url(),
             source,
             source.find(needle).unwrap(),
@@ -483,8 +503,8 @@ mod tests {
         edits.sort_by_key(|e| std::cmp::Reverse(e.range.start));
         let mut updated = source.to_string();
         for edit in edits {
-            let start = crate::convert::position_to_offset(source, edit.range.start);
-            let end = crate::convert::position_to_offset(source, edit.range.end);
+            let start = utf8(source).offset(edit.range.start);
+            let end = utf8(source).offset(edit.range.end);
             updated.replace_range(start..end, &edit.new_text);
         }
         let document = Document::open(&updated, "renamed.wcl").unwrap();
@@ -627,6 +647,7 @@ tree { @note leaf first {} selected = first }
         ] {
             assert!(
                 rename(
+                    &ctx(),
                     url(),
                     source,
                     source.find(needle).unwrap(),
@@ -663,6 +684,7 @@ tree { @note leaf first {} selected = first }
             )
             .unwrap();
             let edit = rename(
+                &ctx(),
                 Uri::from_file_path(&main).unwrap(),
                 source,
                 source.find(needle).unwrap(),
@@ -680,8 +702,8 @@ tree { @note leaf first {} selected = first }
                 let text = overlays.get_mut(&path).unwrap();
                 edits.sort_by_key(|e| std::cmp::Reverse(e.range.start));
                 for edit in edits {
-                    let start = crate::convert::position_to_offset(&original, edit.range.start);
-                    let end = crate::convert::position_to_offset(&original, edit.range.end);
+                    let start = utf8(&original).offset(edit.range.start);
+                    let end = utf8(&original).offset(edit.range.end);
                     text.replace_range(start..end, &edit.new_text);
                 }
             }
@@ -720,6 +742,7 @@ tree { @note leaf first {} selected = first }
         .unwrap();
         assert!(doc.schema_errors().is_empty());
         let edit = rename(
+            &ctx(),
             Uri::from_file_path(&main).unwrap(),
             source,
             source.find("greeting =").unwrap(),
@@ -755,6 +778,7 @@ tree { @note leaf first {} selected = first }
         ] {
             assert!(
                 rename(
+                    &ctx(),
                     url(),
                     source,
                     cursor,
@@ -773,7 +797,7 @@ tree { @note leaf first {} selected = first }
     fn goto_jumps_to_block_kind_decl() {
         let src = "@document\ntype Root {\n  c: Config\n}\n@block(\"config\")\ntype Config {\n  region: utf8\n}\nconfig {\n  region = \"x\"\n}\n";
         let cursor = src.find("config {").unwrap() + 2;
-        let resp = goto_definition(url(), src, cursor, None, None).expect("def found");
+        let resp = goto_definition(&ctx(), url(), src, cursor, None, None).expect("def found");
         let GotoDefinitionResponse::Scalar(loc) = resp else {
             panic!("expected scalar")
         };
@@ -781,7 +805,7 @@ tree { @note leaf first {} selected = first }
         // form. We assert the range starts somewhere before `type Config`
         // and includes that line.
         let type_kw = src.find("type Config").unwrap();
-        let decl_start = crate::convert::offset_to_position(src, type_kw);
+        let decl_start = utf8(src).position(type_kw);
         assert!(loc.range.start <= decl_start);
         assert!(loc.range.end > decl_start);
     }
@@ -791,8 +815,17 @@ tree { @note leaf first {} selected = first }
         let src = "@document\ntype Root {\n  v: Foo\n}\n@block(\"foo\")\ntype Foo {\n  x: utf8\n}\nfoo {\n  x = \"a\"\n}\nfoo {\n  x = \"b\"\n}\n";
         // Cursor on the type-ref "Foo" in `v: Foo`.
         let cursor = src.find("v: Foo").unwrap() + 3;
-        let locs = references(url(), src, cursor, true, None, None, &Default::default())
-            .expect("some refs");
+        let locs = references(
+            &ctx(),
+            url(),
+            src,
+            cursor,
+            true,
+            None,
+            None,
+            &Default::default(),
+        )
+        .expect("some refs");
         // Should include the declaration "type Foo" and the "v: Foo" use,
         // but not the lowercase block kind "foo".
         assert_eq!(locs.len(), 2, "found: {locs:#?}");
@@ -803,10 +836,28 @@ tree { @note leaf first {} selected = first }
         let src =
             "@document\ntype Root {\n  v: Foo\n}\n@block(\"foo\")\ntype Foo {\n  x: utf8\n}\n";
         let cursor = src.find("v: Foo").unwrap() + 3;
-        let with_decl =
-            references(url(), src, cursor, true, None, None, &Default::default()).unwrap();
-        let no_decl =
-            references(url(), src, cursor, false, None, None, &Default::default()).unwrap();
+        let with_decl = references(
+            &ctx(),
+            url(),
+            src,
+            cursor,
+            true,
+            None,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
+        let no_decl = references(
+            &ctx(),
+            url(),
+            src,
+            cursor,
+            false,
+            None,
+            None,
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(with_decl.len(), no_decl.len() + 1);
     }
 
@@ -831,6 +882,7 @@ tree { @note leaf first {} selected = first }
         // imported file even though the main file has none.
         let cursor = main_src.find("shared.wcl").unwrap() + 2;
         let locs = references(
+            &ctx(),
             main_url.clone(),
             &main_src,
             cursor,

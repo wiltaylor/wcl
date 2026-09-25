@@ -8,7 +8,7 @@ use tower_lsp_server::ls_types::{FoldingRange, FoldingRangeKind};
 use wcl_lang::ast::Item;
 use wcl_lang::{Span, parse_for_edit};
 
-use crate::convert::offset_to_position;
+use crate::convert::{LineIndex, PositionEncoding};
 
 /// Compute folding ranges for `source`. Returns an empty vec on parse
 /// failure (the diagnostics path already surfaces the parse error).
@@ -16,25 +16,27 @@ pub(crate) fn compute(source: &str, uri: &str) -> Vec<FoldingRange> {
     let Ok(ast) = parse_for_edit(source, uri.to_string()) else {
         return Vec::new();
     };
+    // Folding ranges carry lines only, so the column encoding is moot.
+    let index = LineIndex::new(source, PositionEncoding::Utf8);
     let mut out = Vec::new();
-    walk_items(&ast.items, source, &mut out);
+    walk_items(&ast.items, &index, &mut out);
     out
 }
 
 /// Collect a folding range for every multi-line item, recursing into
 /// block bodies.
-fn walk_items(items: &[Item], source: &str, out: &mut Vec<FoldingRange>) {
+fn walk_items(items: &[Item], index: &LineIndex<'_>, out: &mut Vec<FoldingRange>) {
     for item in items {
         match item {
             Item::Block(b) => {
-                push_span(b.span, source, out);
-                walk_items(&b.items, source, out);
+                push_span(b.span, index, out);
+                walk_items(&b.items, index, out);
             }
-            Item::TypeDecl(t) => push_span(t.span, source, out),
-            Item::InterfaceDecl(i) => push_span(i.span, source, out),
-            Item::UnionDecl(u) => push_span(u.span, source, out),
-            Item::SymbolSetDecl(s) => push_span(s.span, source, out),
-            Item::Table(t) => push_span(t.span, source, out),
+            Item::TypeDecl(t) => push_span(t.span, index, out),
+            Item::InterfaceDecl(i) => push_span(i.span, index, out),
+            Item::UnionDecl(u) => push_span(u.span, index, out),
+            Item::SymbolSetDecl(s) => push_span(s.span, index, out),
+            Item::Table(t) => push_span(t.span, index, out),
             _ => {}
         }
     }
@@ -43,9 +45,9 @@ fn walk_items(items: &[Item], source: &str, out: &mut Vec<FoldingRange>) {
 /// Emit a folding range when the span covers more than one line. The
 /// end position lands on the closing brace's line (span end is
 /// exclusive), so editors keep the `}` visible when collapsed.
-fn push_span(span: Span, source: &str, out: &mut Vec<FoldingRange>) {
-    let start = offset_to_position(source, span.start);
-    let end = offset_to_position(source, span.end.saturating_sub(1));
+fn push_span(span: Span, index: &LineIndex<'_>, out: &mut Vec<FoldingRange>) {
+    let start = index.position(span.start);
+    let end = index.position(span.end.saturating_sub(1));
     if end.line > start.line {
         out.push(FoldingRange {
             start_line: start.line,

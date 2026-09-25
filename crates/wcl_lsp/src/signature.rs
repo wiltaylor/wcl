@@ -77,7 +77,7 @@ pub(crate) fn signature_help(
 /// and the caller degrades gracefully.
 pub(crate) fn repair_source(source: &str, offset: usize) -> String {
     let bytes = source.as_bytes();
-    let end = offset.min(bytes.len());
+    let end = source.floor_char_boundary(offset);
     let mut closers = Vec::new();
     let mut i = 0;
     while i < end {
@@ -416,6 +416,15 @@ mod tests {
             assert_eq!(call.callee, callee, "callee in {src:?}");
             assert_eq!(call.active_param, param, "active param in {src:?}");
         }
+    }
+
+    #[test]
+    fn repair_at_a_mid_character_offset_snaps_back() {
+        // Byte 13 falls inside the two-byte `é`; slicing there used to panic.
+        let src = "x = clamp(\"a\u{e9}b\", ";
+        let offset = src.find('\u{e9}').unwrap() + 1;
+        assert_eq!(repair_source(src, offset), "x = clamp(\"a)\n");
+        assert_eq!(call_at(src, "\", ").expect("call found").active_param, 1);
     }
 
     #[test]

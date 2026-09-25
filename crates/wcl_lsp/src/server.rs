@@ -21,7 +21,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{OnceLock, RwLock};
 
 use dashmap::DashMap;
 use ropey::Rope;
@@ -33,12 +33,12 @@ use tower_lsp_server::ls_types::{
     DocumentSymbolResponse, FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability,
     GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
     InitializeParams, InitializeResult, InitializedParams, Location, MessageType, OneOf, Position,
-    PositionEncodingKind, ReferenceParams, RenameParams, SaveOptions, SemanticTokens,
-    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
-    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
-    SignatureHelp, SignatureHelpOptions, SignatureHelpParams, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions, TextEdit, Uri,
-    WorkspaceEdit, WorkspaceSymbolParams, WorkspaceSymbolResponse,
+    ReferenceParams, RenameParams, SaveOptions, SemanticTokens, SemanticTokensFullOptions,
+    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, SignatureHelp,
+    SignatureHelpOptions, SignatureHelpParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, TextEdit, Uri, WorkspaceEdit,
+    WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 use tower_lsp_server::{Client, LanguageServer};
 use wcl_lang::{
@@ -47,7 +47,8 @@ use wcl_lang::{
 
 use crate::code_actions;
 use crate::completion;
-use crate::convert::{full_document_range, position_to_offset, uri_to_path};
+use crate::convert::{PositionEncoding, rope_char_index, uri_to_path};
+use crate::ctx::Ctx;
 use crate::diagnostics;
 use crate::folding;
 use crate::hover as hover_impl;
@@ -81,6 +82,8 @@ pub struct Backend {
     /// (with their unsaved buffers overlaid) so cross-file imports
     /// resolve.
     root_path: RwLock<Option<PathBuf>>,
+    /// Unit LSP `character` values count in, fixed by `initialize`.
+    encoding: OnceLock<PositionEncoding>,
 }
 
 impl Backend {
@@ -91,7 +94,19 @@ impl Backend {
             client,
             docs: DashMap::new(),
             root_path: RwLock::new(None),
+            encoding: OnceLock::new(),
         }
+    }
+
+    /// The negotiated position encoding — UTF-16, the protocol default,
+    /// until `initialize` has run.
+    fn encoding(&self) -> PositionEncoding {
+        self.encoding.get().copied().unwrap_or_default()
+    }
+
+    /// A fresh analysis context for one request.
+    fn ctx(&self) -> Ctx {
+        Ctx::new(self.encoding())
     }
 
     /// Materialise the current text for a URI. Returns `None` when
@@ -106,7 +121,7 @@ impl Backend {
     /// document isn't open.
     fn source_and_offset(&self, uri: &Uri, pos: Position) -> Option<(String, usize)> {
         let source = self.document_text(uri)?;
-        let offset = position_to_offset(&source, pos);
+        let offset = self.ctx().index(&source).offset(pos);
         Some((source, offset))
     }
 
@@ -180,15 +195,23 @@ impl Backend {
             (None, _) => false,
         };
         let base_dir = uri_to_path(&uri).and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+        let ctx = self.ctx();
         let diags = if is_non_root_fragment {
             diagnostics::compute_syntax_only(
+                &ctx,
                 &source,
                 uri.as_str(),
                 base_dir.as_deref(),
                 self.loader(),
             )
         } else {
-            diagnostics::compute(&source, uri.as_str(), base_dir.as_deref(), self.loader())
+            diagnostics::compute(
+                &ctx,
+                &source,
+                uri.as_str(),
+                base_dir.as_deref(),
+                self.loader(),
+            )
         };
         self.client.publish_diagnostics(uri, diags, version).await;
     }
@@ -235,6 +258,10 @@ impl Backend {
 
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> RpcResult<InitializeResult> {
+        let encoding = PositionEncoding::negotiate(&params.capabilities);
+        if self.encoding.set(encoding).is_err() {
+            tracing::warn!("initialize received twice; keeping the first position encoding");
+        }
         if let Some(p) = Backend::resolve_root(&params) {
             match self.root_path.write() {
                 Ok(mut guard) => *guard = Some(p),
@@ -246,7 +273,7 @@ impl LanguageServer for Backend {
         }
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
-                position_encoding: Some(PositionEncodingKind::UTF8),
+                position_encoding: Some(self.encoding().kind()),
                 text_document_sync: Some(TextDocumentSyncCapability::Options(
                     TextDocumentSyncOptions {
                         open_close: Some(true),
@@ -327,15 +354,13 @@ impl LanguageServer for Backend {
         // the client sends one or more ranged edits per request;
         // when `range` is None it's a full-document replacement
         // (clients may still send those for large diffs).
+        let encoding = self.encoding();
         let mut rope = self.docs.entry(uri.clone()).or_default();
         for change in params.content_changes {
             match change.range {
                 Some(range) => {
-                    let text = rope.to_string();
-                    let start = crate::convert::position_to_offset(&text, range.start);
-                    let end = crate::convert::position_to_offset(&text, range.end);
-                    let start_char = rope.byte_to_char(start);
-                    let end_char = rope.byte_to_char(end);
+                    let start_char = rope_char_index(&rope, range.start, encoding);
+                    let end_char = rope_char_index(&rope, range.end, encoding).max(start_char);
                     rope.remove(start_char..end_char);
                     rope.insert(start_char, &change.text);
                 }
@@ -373,7 +398,7 @@ impl LanguageServer for Backend {
             return Ok(Some(Vec::new()));
         }
         Ok(Some(vec![TextEdit {
-            range: full_document_range(&source),
+            range: self.ctx().index(&source).full_range(),
             new_text: formatted,
         }]))
     }
@@ -386,7 +411,7 @@ impl LanguageServer for Backend {
         let Some(source) = self.document_text(&uri) else {
             return Ok(None);
         };
-        let syms = symbols::compute(&source, uri.as_str());
+        let syms = symbols::compute(&self.ctx(), &source, uri.as_str());
         Ok(Some(DocumentSymbolResponse::Nested(syms)))
     }
 
@@ -414,6 +439,7 @@ impl LanguageServer for Backend {
         let root_doc = self.root_document();
         let root_path = self.root_path();
         Ok(navigation::goto_definition(
+            &self.ctx(),
             uri,
             &source,
             offset,
@@ -431,13 +457,17 @@ impl LanguageServer for Backend {
         let Some(source) = source else {
             return Ok(None);
         };
-        let offset = position_to_offset(&source, params.text_document_position.position);
+        let ctx = self.ctx();
+        let offset = ctx
+            .index(&source)
+            .offset(params.text_document_position.position);
         let root_path = self.root_path();
         let root_doc = root_path.as_ref().and_then(|path| {
             let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlays.clone()));
             Document::from_file_with_loader(path, &root_environment(), loader).ok()
         });
         Ok(navigation::references(
+            &ctx,
             uri,
             &source,
             offset,
@@ -457,13 +487,17 @@ impl LanguageServer for Backend {
         let Some(source) = source else {
             return Ok(None);
         };
-        let offset = position_to_offset(&source, params.text_document_position.position);
+        let ctx = self.ctx();
+        let offset = ctx
+            .index(&source)
+            .offset(params.text_document_position.position);
         let root_path = self.root_path().or_else(|| uri_to_path(&uri));
         let root_doc = root_path.as_ref().and_then(|path| {
             let loader = wcl_wdoc::schema_registry().loader(overlay_loader(overlays.clone()));
             Document::from_file_with_loader(path, &root_environment(), loader).ok()
         });
         navigation::rename(
+            &ctx,
             uri,
             &source,
             offset,
@@ -484,6 +518,7 @@ impl LanguageServer for Backend {
         };
         let root_doc = self.root_document();
         Ok(hover_impl::hover(
+            &self.ctx(),
             &source,
             uri.as_str(),
             offset,
@@ -542,6 +577,7 @@ impl LanguageServer for Backend {
         let root_path = self.root_path();
         Ok(Some(WorkspaceSymbolResponse::Flat(
             workspace::workspace_symbols(
+                &self.ctx(),
                 &params.query,
                 root_doc.as_ref(),
                 root_path.as_deref(),
@@ -558,7 +594,7 @@ impl LanguageServer for Backend {
         let Some(source) = self.document_text(&uri) else {
             return Ok(None);
         };
-        let data = semtokens::compute(&source);
+        let data = semtokens::compute(&source, self.encoding());
         Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
             result_id: None,
             data,
