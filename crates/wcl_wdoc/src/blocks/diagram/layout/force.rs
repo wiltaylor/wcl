@@ -69,6 +69,26 @@ pub(crate) fn assign_force_offsets(
     if n == 0 {
         return Vec::new();
     }
+    // Every relaxation step and every collision sweep visits all
+    // `n (n - 1) / 2` pairs. Past the budget for even one pass, fall back
+    // to a grid; otherwise trim the step counts to fit it.
+    let pairs = n * (n - 1) / 2;
+    if pairs > MAX_PAIR_VISITS {
+        crate::render::record_render_warning(format!(
+            "force layout: {n} nodes is too many to relax (limit {}) — laid out on a grid",
+            max_force_nodes()
+        ));
+        return grid_offsets(nodes);
+    }
+    let pass_cap = MAX_PAIR_VISITS / pairs.max(1);
+    let iterations = params.iterations.min(pass_cap);
+    if iterations < params.iterations {
+        crate::render::record_render_warning(format!(
+            "force layout: {n} nodes — iterations reduced from {} to {iterations} to bound \
+             layout time",
+            params.iterations
+        ));
+    }
 
     // Per-node radius from the box's diagonal half-extent: larger boxes
     // repel harder and connected boxes settle edge-to-edge rather than
@@ -96,13 +116,17 @@ pub(crate) fn assign_force_offsets(
 
     // Deterministic spiral initialization, clustered near the origin so
     // nodes visibly "start in the middle" but never coincide (which
-    // would make the repulsion direction undefined).
+    // would make the repulsion direction undefined). The spacing is
+    // floored so `link_distance = 0` still spreads the spiral out: a zero
+    // radius stacks every node on the origin, where no force has a
+    // direction and nothing ever moves them apart.
     const GOLDEN_ANGLE: f64 = 2.399_963_229_728_653;
     let seed = params.seed as f64;
+    let spread = params.link_distance.max(MIN_SPIRAL_SPACING);
     let mut pos: Vec<(f64, f64)> = (0..n)
         .map(|i| {
             let angle = i as f64 * GOLDEN_ANGLE + seed;
-            let r = params.link_distance * 0.15 * ((i + 1) as f64).sqrt();
+            let r = spread * 0.15 * ((i + 1) as f64).sqrt();
             (r * angle.cos(), r * angle.sin())
         })
         .collect();
@@ -111,13 +135,13 @@ pub(crate) fn assign_force_offsets(
     const SPRING: f64 = 0.1;
     const EPS: f64 = 0.01;
     let mut temperature = params.link_distance.max(1.0) * 2.0;
-    let cooling = if params.iterations > 0 {
-        temperature / params.iterations as f64
+    let cooling = if iterations > 0 {
+        temperature / iterations as f64
     } else {
         0.0
     };
 
-    for _ in 0..params.iterations {
+    for _ in 0..iterations {
         let mut disp = vec![(0.0_f64, 0.0_f64); n];
 
         // Coulomb repulsion between every distinct pair.
@@ -193,7 +217,7 @@ pub(crate) fn assign_force_offsets(
     // already relaxed cleanly is left exactly as it was.
     const COLLIDE_MARGIN: f64 = 8.0;
     const COLLIDE_SWEEPS: usize = 200;
-    for _ in 0..COLLIDE_SWEEPS {
+    for _ in 0..COLLIDE_SWEEPS.min(pass_cap) {
         let mut moved = false;
         for i in 0..n {
             for j in (i + 1)..n {
@@ -242,6 +266,33 @@ pub(crate) fn assign_force_offsets(
                 quant(p.1 - node.size.1 / 2.0 - min_y),
             )
         })
+        .collect()
+}
+
+/// Most node pairs the relaxation (and, separately, the collision
+/// sweeps) may visit in total. 300 default iterations fit up to ~360
+/// nodes; a bigger graph gets proportionally fewer steps.
+const MAX_PAIR_VISITS: usize = 40_000_000;
+
+/// Floor on the initial spiral's spacing, in SVG units.
+const MIN_SPIRAL_SPACING: f64 = 10.0;
+
+/// Largest node count whose pairs fit [`MAX_PAIR_VISITS`] once.
+fn max_force_nodes() -> usize {
+    // n (n - 1) / 2 <= MAX_PAIR_VISITS  ⇔  n <= (1 + sqrt(1 + 8 M)) / 2
+    ((1.0 + (1.0 + 8.0 * MAX_PAIR_VISITS as f64).sqrt()) / 2.0) as usize
+}
+
+/// Fallback layout for a graph too large to relax: nodes in order on a
+/// square grid whose cells fit the largest node plus a gap, so no two
+/// boxes overlap. Offsets are top-left corners from `(0, 0)`.
+fn grid_offsets(nodes: &[Node]) -> Vec<(f64, f64)> {
+    const GAP: f64 = 20.0;
+    let cols = (nodes.len() as f64).sqrt().ceil().max(1.0) as usize;
+    let cw = nodes.iter().map(|n| n.size.0).fold(0.0, f64::max) + GAP;
+    let ch = nodes.iter().map(|n| n.size.1).fold(0.0, f64::max) + GAP;
+    (0..nodes.len())
+        .map(|i| ((i % cols) as f64 * cw, (i / cols) as f64 * ch))
         .collect()
 }
 
@@ -446,5 +497,46 @@ mod tests {
             },
         );
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn zero_link_distance_still_spreads_nodes() {
+        // `link_distance = 0` zeroed the spiral radius, so every node
+        // started (and stayed) on the origin.
+        let nodes = vec![node("a"), node("b"), node("c")];
+        let edges = vec![("a".into(), "b".into()), ("b".into(), "c".into())];
+        let params = ForceParams {
+            link_distance: 0.0,
+            ..ForceParams::default()
+        };
+        let offsets = assign_force_offsets(&nodes, &edges, params);
+        assert_no_overlap(&nodes, &offsets);
+    }
+
+    #[test]
+    fn huge_graph_falls_back_to_a_grid() {
+        let n = max_force_nodes() + 1;
+        let nodes: Vec<Node> = (0..n).map(|i| node(&format!("n{i}"))).collect();
+        let offsets = assign_force_offsets(&nodes, &[], ForceParams::default());
+        assert_eq!(offsets.len(), n);
+        let cols = (n as f64).sqrt().ceil() as usize;
+        assert_eq!(offsets[1], (100.0, 0.0));
+        assert_eq!(offsets[cols], (0.0, 60.0));
+        let _ = crate::render::take_render_warnings();
+    }
+
+    #[test]
+    fn large_graph_trims_iterations_to_the_budget() {
+        // 2,000 nodes x 300 iterations would visit ~600M pairs; the
+        // budget trims it to a few dozen passes.
+        let nodes: Vec<Node> = (0..2_000).map(|i| node(&format!("n{i}"))).collect();
+        let offsets = assign_force_offsets(&nodes, &[], ForceParams::default());
+        assert_eq!(offsets.len(), 2_000);
+        assert!(offsets.iter().all(|o| o.0.is_finite() && o.1.is_finite()));
+        let warnings = crate::render::take_render_warnings();
+        assert!(
+            warnings.iter().any(|w| w.contains("iterations reduced")),
+            "{warnings:?}"
+        );
     }
 }
