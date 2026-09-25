@@ -23,9 +23,10 @@ pub(crate) fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
 }
 
 /// The `file:` URI for an absolute path. `None` when the path is
-/// relative and cannot be canonicalised.
+/// relative. A Windows verbatim path (`\\?\C:\...`) is sent in its
+/// plain form: no editor opens `file:///%3F/C%3A/...`.
 pub(crate) fn path_to_uri(path: &Path) -> Option<Uri> {
-    Uri::from_file_path(path)
+    Uri::from_file_path(dunce::simplified(path))
 }
 
 /// The unit an LSP `character` counts. Negotiated once, in
@@ -312,5 +313,28 @@ mod tests {
             ])),
             PositionEncoding::Utf8
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_verbatim_path_is_sent_in_its_plain_spelling() {
+        let verbatim = path_to_uri(Path::new(r"\\?\C:\Users\me\main.wcl")).unwrap();
+        let plain = path_to_uri(Path::new(r"C:\Users\me\main.wcl")).unwrap();
+        assert_eq!(verbatim, plain);
+        assert!(!verbatim.as_str().contains("%3F"), "{}", verbatim.as_str());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_canonical_path_has_no_verbatim_prefix() {
+        let dir = std::env::temp_dir();
+        let canonical = crate::ctx::canonical(&dir);
+        assert!(
+            !canonical.as_os_str().to_string_lossy().starts_with(r"\\?\"),
+            "{}",
+            canonical.display()
+        );
+        let uri = path_to_uri(&canonical).unwrap();
+        assert!(!uri.as_str().contains("%3F"), "{}", uri.as_str());
     }
 }

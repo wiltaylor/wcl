@@ -138,6 +138,10 @@ struct State {
     /// (with their unsaved buffers overlaid) so cross-file imports
     /// resolve.
     root_path: RwLock<Option<PathBuf>>,
+    /// The workspace folder as the client named it at `initialize`.
+    /// Paths under it go back to the client in that spelling, not the
+    /// canonical one the import graph uses.
+    workspace_dir: OnceLock<PathBuf>,
     /// Unit LSP `character` values count in, fixed by `initialize`.
     encoding: OnceLock<PositionEncoding>,
     /// Bumped after every change to the buffers or the files under them.
@@ -177,6 +181,7 @@ impl Backend {
                 host: Arc::new(host),
                 docs: DashMap::new(),
                 root_path: RwLock::new(None),
+                workspace_dir: OnceLock::new(),
                 encoding: OnceLock::new(),
                 generation: AtomicU64::new(0),
                 buffers: Mutex::new(None),
@@ -242,12 +247,10 @@ impl Backend {
         }
     }
 
-    /// Resolve the root document path from `initialize` parameters.
-    /// Falls back to `<first-workspace-folder>/main.wcl` when no
-    /// `initializationOptions.root` is supplied. Returns `None` if
-    /// neither path yields an existing file on disk.
-    fn resolve_root(params: &InitializeParams) -> Option<PathBuf> {
-        let workspace_dir = params
+    /// The first workspace folder, else the deprecated `rootUri`, as a
+    /// path in the client's spelling.
+    fn workspace_dir(params: &InitializeParams) -> Option<PathBuf> {
+        params
             .workspace_folders
             .as_ref()
             .and_then(|v| v.first())
@@ -255,7 +258,15 @@ impl Backend {
             .or_else(|| {
                 #[allow(deprecated)]
                 params.root_uri.as_ref().and_then(uri_to_path)
-            });
+            })
+    }
+
+    /// Resolve the root document path from `initialize` parameters.
+    /// Falls back to `<first-workspace-folder>/main.wcl` when no
+    /// `initializationOptions.root` is supplied. Returns `None` if
+    /// neither path yields an existing file on disk.
+    fn resolve_root(params: &InitializeParams) -> Option<PathBuf> {
+        let workspace_dir = Backend::workspace_dir(params);
         if let Some(opts) = params.initialization_options.as_ref()
             && let Some(root) = opts.get("root").and_then(|v| v.as_str())
         {
@@ -269,13 +280,13 @@ impl Backend {
                     .unwrap_or(candidate)
             };
             if resolved.is_file() {
-                return std::fs::canonicalize(&resolved).ok();
+                return crate::ctx::canonical_existing(&resolved).ok();
             }
         }
         if let Some(dir) = workspace_dir {
             let main = dir.join("main.wcl");
             if main.is_file() {
-                return std::fs::canonicalize(&main).ok();
+                return crate::ctx::canonical_existing(&main).ok();
             }
         }
         None
@@ -344,7 +355,8 @@ impl State {
         };
         Snapshot {
             generation,
-            ctx: Ctx::with_buffers(self.encoding(), buffers, Arc::clone(&self.host)),
+            ctx: Ctx::with_buffers(self.encoding(), buffers, Arc::clone(&self.host))
+                .with_workspace(self.workspace_dir.get().map(PathBuf::as_path)),
         }
     }
 
@@ -504,6 +516,11 @@ impl LanguageServer for Backend {
         let encoding = PositionEncoding::negotiate(&params.capabilities);
         if self.state.encoding.set(encoding).is_err() {
             tracing::warn!("initialize received twice; keeping the first position encoding");
+        }
+        if let Some(dir) = Backend::workspace_dir(&params)
+            && self.state.workspace_dir.set(dir).is_err()
+        {
+            tracing::warn!("initialize received twice; keeping the first workspace folder");
         }
         if let Some(p) = Backend::resolve_root(&params) {
             match self.state.root_path.write() {

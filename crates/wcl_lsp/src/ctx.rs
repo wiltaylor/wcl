@@ -23,10 +23,12 @@ pub(crate) struct Ctx {
     /// so a file reached through an import (canonical) and the same file
     /// opened through a symlink are recognised as one.
     opened_as: Arc<HashMap<PathBuf, PathBuf>>,
-    /// Canonical directory → the spelling an open buffer's path reaches
-    /// it by, for every directory above a buffer opened through a
-    /// symlink; deepest first. A file that is not open is reported
-    /// under the spelling its nearest such directory gives it.
+    /// Canonical directory → the spelling the client reaches it by, for
+    /// every directory above an open buffer (or at or above the
+    /// workspace folder) whose spelling differs from its canonical path:
+    /// through a symlink, or an 8.3 short name on Windows. Deepest first.
+    /// A file that is not open is reported under the spelling its
+    /// nearest such directory gives it.
     dir_aliases: Arc<Vec<(PathBuf, PathBuf)>>,
     /// The host every document opens with.
     host: Arc<Host>,
@@ -78,6 +80,18 @@ impl Ctx {
             loader: host.loader(overlay),
             host,
         }
+    }
+
+    /// This context, also reporting paths at or under `dir` — the
+    /// workspace folder as the client named it — in the client's
+    /// spelling. An open buffer's spelling wins where both apply.
+    pub(crate) fn with_workspace(mut self, dir: Option<&Path>) -> Self {
+        if let Some(dir) = dir {
+            let mut aliases = (*self.dir_aliases).clone();
+            add_dir_aliases(&mut aliases, dir.ancestors());
+            self.dir_aliases = Arc::new(aliases);
+        }
+        self
     }
 
     /// The host every document in this context opens with.
@@ -170,22 +184,38 @@ fn buffer<'a>(
 fn dir_aliases(opened_as: &HashMap<PathBuf, PathBuf>) -> Vec<(PathBuf, PathBuf)> {
     let mut aliases: Vec<(PathBuf, PathBuf)> = Vec::new();
     for (real, opened) in opened_as {
-        if real == opened {
-            continue;
+        if real != opened {
+            add_dir_aliases(&mut aliases, opened.ancestors().skip(1));
         }
-        for dir in opened.ancestors().skip(1) {
-            let real_dir = canonical(dir);
-            if real_dir != dir && !aliases.iter().any(|(known, _)| *known == real_dir) {
-                aliases.push((real_dir, dir.to_path_buf()));
-            }
+    }
+    aliases
+}
+
+/// Add canonical directory → client spelling to `aliases` for each of
+/// `dirs` whose spelling differs from its canonical path and whose
+/// canonical path has no alias yet, keeping the list deepest first.
+fn add_dir_aliases<'a>(
+    aliases: &mut Vec<(PathBuf, PathBuf)>,
+    dirs: impl Iterator<Item = &'a Path>,
+) {
+    for dir in dirs {
+        let real_dir = canonical(dir);
+        if real_dir != dir && !aliases.iter().any(|(known, _)| *known == real_dir) {
+            aliases.push((real_dir, dir.to_path_buf()));
         }
     }
     aliases.sort_by_key(|(dir, _)| std::cmp::Reverse(dir.components().count()));
-    aliases
 }
 
 /// `path` with symlinks and `..` resolved, or unchanged when it does not
 /// exist — the key two spellings of one file agree on.
 pub(crate) fn canonical(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    canonical_existing(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// `path` with symlinks and `..` resolved, as the import graph spells
+/// it: on Windows, long names in place of 8.3 short ones and no `\\?\`
+/// verbatim prefix, which a URI built from it would carry as `%3F`.
+pub(crate) fn canonical_existing(path: &Path) -> std::io::Result<PathBuf> {
+    dunce::canonicalize(path)
 }

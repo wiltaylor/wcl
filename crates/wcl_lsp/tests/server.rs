@@ -979,6 +979,47 @@ async fn workspace_symbols_span_the_import_graph() {
     assert!(fuzzy.iter().any(|s| s.name == "Color"), "{fuzzy:?}");
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn workspace_symbols_answer_a_symlinked_workspace_in_its_spelling() {
+    // No buffer is open, so the workspace folder is the only spelling
+    // the client has given (macOS tempdirs live under /var, a symlink
+    // to /private/var; Windows ones under an 8.3 short name).
+    let dir = tempfile::tempdir().expect("tempdir");
+    let real = dir.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    std::fs::write(real.join("main.wcl"), "import \"./shared.wcl\"\n").unwrap();
+    std::fs::write(
+        real.join("shared.wcl"),
+        "namespace shared\ntype Color { name: utf8 }\n",
+    )
+    .unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(&link))
+        .await
+        .expect("initialize");
+    let hits = backend
+        .symbol(tower_lsp_server::ls_types::WorkspaceSymbolParams {
+            query: "Color".into(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .expect("workspace/symbol rpc")
+        .map(flat_symbols)
+        .expect("some hits");
+    let color = hits.iter().find(|s| s.name == "Color").expect("Color");
+    assert_eq!(
+        color.location.uri,
+        Uri::from_file_path(link.join("shared.wcl")).unwrap()
+    );
+}
+
 #[tokio::test]
 async fn workspace_symbols_see_unsaved_overlay_buffer() {
     let dir = tempfile::tempdir().expect("tempdir");

@@ -180,8 +180,10 @@ mod tests {
     #[test]
     fn open_buffer_symbols_searchable_without_a_root() {
         let mut buffers = HashMap::new();
+        // Absolute on every platform (a bare `/tmp/...` has no drive on
+        // Windows, so it has no `file:` URI); the file need not exist.
         buffers.insert(
-            PathBuf::from("/tmp/standalone.wcl"),
+            std::env::temp_dir().join("standalone.wcl"),
             "type Widget {\n  size: i64\n}\n".to_string(),
         );
         let hits = workspace_symbols(
