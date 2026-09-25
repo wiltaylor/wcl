@@ -10,9 +10,9 @@ use crate::ast::{
 use crate::diagnostics::ParseError;
 use crate::lexer::{NumberLit, TokenKind};
 
-use super::Parser;
 use super::describe;
 use super::pattern::{collect_binding_names, pattern_span};
+use super::{MAX_EXPR_DEPTH, Parser};
 
 impl<'a> Parser<'a> {
     /// Literal-only value parser. Used by contexts that intentionally accept
@@ -115,27 +115,69 @@ impl<'a> Parser<'a> {
     /// Pratt-parse an expression, stopping at any operator binding looser
     /// than `min_bp`. Guards recursion depth.
     fn parse_expr_bp(&mut self, min_bp: u8) -> Result<(Expr, Span), ParseError> {
-        self.enter_recursion()?;
-        let result = self.parse_expr_bp_inner(min_bp);
-        if result.is_ok() {
-            self.leave_recursion();
-        }
-        result
+        let outer = self.enter_expr_level()?;
+        let (expr, span, depth) = self.parse_expr_bp_inner(min_bp)?;
+        self.leave_expr_level(outer, depth);
+        Ok((expr, span))
     }
 
-    /// The body of the Pratt loop, without the depth guard.
-    fn parse_expr_bp_inner(&mut self, min_bp: u8) -> Result<(Expr, Span), ParseError> {
+    /// Enter one nested expression level: guards parse recursion and
+    /// zeroes `expr_depth`, so on `leave_expr_level` it holds the
+    /// deepest expression this level itself nested. Returns the
+    /// enclosing level's `expr_depth`, to hand back to
+    /// `leave_expr_level`. A pair of calls rather than a closure so a
+    /// level costs no extra stack frame.
+    fn enter_expr_level(&mut self) -> Result<u32, ParseError> {
+        self.enter_recursion()?;
+        Ok(std::mem::take(&mut self.expr_depth))
+    }
+
+    /// Leave a level entered by `enter_expr_level`, folding the tree
+    /// `depth` of the expression it built into the enclosing level.
+    fn leave_expr_level(&mut self, outer: u32, depth: u32) {
+        self.expr_depth = outer.max(depth);
+        self.leave_recursion();
+    }
+
+    /// The error for an expression past [`MAX_EXPR_DEPTH`]. `span` is
+    /// the expression built so far.
+    #[cold]
+    fn expr_too_deep(&self, span: Span) -> ParseError {
+        self.err(
+            format!(
+                "expression too deep (more than {MAX_EXPR_DEPTH} levels of operators, calls \
+                 or member accesses)"
+            ),
+            span,
+            "split this expression, e.g. with `let` bindings",
+        )
+    }
+
+    /// The body of the Pratt loop, without the recursion guard. Returns
+    /// the expression's tree depth alongside it: a flat chain
+    /// (`1 + 1 + …`, `a.b.c…`, `f()()…`) builds a tree as deep as it
+    /// is long without recursing here, so its length is capped by depth
+    /// rather than by [`MAX_PARSE_DEPTH`](super::MAX_PARSE_DEPTH).
+    fn parse_expr_bp_inner(&mut self, min_bp: u8) -> Result<(Expr, Span, u32), ParseError> {
         let (mut lhs, mut span) = self.parse_prefix()?;
+        let mut depth = self.expr_depth + 1;
         loop {
+            // One check covers every way the loop below deepens the
+            // tree, keeping this recursive frame small.
+            if depth > MAX_EXPR_DEPTH {
+                return Err(self.expr_too_deep(span));
+            }
             let kind = self.peek()?.kind.clone();
             // Postfix call: `expr(args)`.
             if matches!(kind, TokenKind::LParen) {
                 if CALL_BP < min_bp {
                     break;
                 }
+                self.expr_depth = 0;
                 let (call_expr, call_span) = self.parse_call_tail(lhs, span)?;
                 lhs = call_expr;
                 span = call_span;
+                depth = depth.max(self.expr_depth) + 1;
                 continue;
             }
             // Postfix member access: `expr.IDENT`.
@@ -143,43 +185,10 @@ impl<'a> Parser<'a> {
                 if MEMBER_BP < min_bp {
                     break;
                 }
-                self.bump()?; // '.'
-                let name_tok = self.bump()?;
-                let name = match name_tok.kind {
-                    TokenKind::Ident(s) => s,
-                    // An integer segment addresses a block by a numeric
-                    // `@inline(0)` label (`steps.1` → the step labelled 1 — a
-                    // label match, NOT positional indexing). Suffix-free, to
-                    // match `Value::as_path_segment`. A float has no label
-                    // meaning and stays an error.
-                    TokenKind::Number(ref n) => {
-                        match crate::numeric::numeric_as_path_segment!(n, NumberLit) {
-                            Some(seg) => seg,
-                            None => {
-                                return Err(self.err(
-                                    "expected identifier or integer after '.', found a float"
-                                        .to_string(),
-                                    name_tok.span,
-                                    "expected identifier",
-                                ));
-                            }
-                        }
-                    }
-                    other => {
-                        return Err(self.err(
-                            format!("expected identifier after '.', found {}", describe(&other)),
-                            name_tok.span,
-                            "expected identifier",
-                        ));
-                    }
-                };
-                let new_span = Span::new(span.start, name_tok.span.end);
-                lhs = Expr::Member {
-                    recv: Box::new(lhs),
-                    name,
-                    span: new_span,
-                };
-                span = new_span;
+                let (member, member_span) = self.parse_member_tail(lhs, span)?;
+                lhs = member;
+                span = member_span;
+                depth += 1;
                 continue;
             }
             // Variant construction: `Path::Variant args?`. The LHS must
@@ -190,36 +199,11 @@ impl<'a> Parser<'a> {
                 if VARIANT_BP < min_bp {
                     break;
                 }
-                let Some(type_path) = flatten_path_expr(&lhs) else {
-                    let p = self.peek()?;
-                    let span = p.span;
-                    return Err(self.err(
-                        "'::' is only valid after a type path",
-                        span,
-                        "expected a type name on the left of '::'",
-                    ));
-                };
-                self.bump()?; // '::'
-                let v_tok = self.bump()?;
-                let TokenKind::Ident(v_name) = v_tok.kind else {
-                    return Err(self.err(
-                        format!(
-                            "expected variant name after '::', found {}",
-                            describe(&v_tok.kind)
-                        ),
-                        v_tok.span,
-                        "expected variant name",
-                    ));
-                };
-                let (args, args_end) = self.parse_variant_args(v_tok.span.end)?;
-                let new_span = Span::new(span.start, args_end);
-                lhs = Expr::Variant {
-                    type_path,
-                    variant: v_name,
-                    args,
-                    span: new_span,
-                };
-                span = new_span;
+                self.expr_depth = 0;
+                let (variant, variant_span) = self.parse_variant_tail(lhs, span)?;
+                lhs = variant;
+                span = variant_span;
+                depth = depth.max(self.expr_depth) + 1;
                 continue;
             }
             let Some((lbp, rbp, op)) = bin_op_info(&kind) else {
@@ -229,6 +213,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             self.bump()?; // consume operator
+            self.expr_depth = 0;
             let (rhs, rhs_span) = self.parse_expr_bp(rbp)?;
             let new_span = Span::new(span.start, rhs_span.end);
             lhs = Expr::Binary {
@@ -238,8 +223,90 @@ impl<'a> Parser<'a> {
                 span: new_span,
             };
             span = new_span;
+            depth = depth.max(self.expr_depth) + 1;
         }
-        Ok((lhs, span))
+        Ok((lhs, span, depth))
+    }
+
+    /// Parse `.IDENT` after `lhs`, whose span is `span`. Kept out of
+    /// the Pratt loop so its locals don't widen that recursive frame.
+    fn parse_member_tail(&mut self, lhs: Expr, span: Span) -> Result<(Expr, Span), ParseError> {
+        self.bump()?; // '.'
+        let name_tok = self.bump()?;
+        let name = match name_tok.kind {
+            TokenKind::Ident(s) => s,
+            // An integer segment addresses a block by a numeric
+            // `@inline(0)` label (`steps.1` → the step labelled 1 — a
+            // label match, NOT positional indexing). Suffix-free, to
+            // match `Value::as_path_segment`. A float has no label
+            // meaning and stays an error.
+            TokenKind::Number(ref n) => {
+                match crate::numeric::numeric_as_path_segment!(n, NumberLit) {
+                    Some(seg) => seg,
+                    None => {
+                        return Err(self.err(
+                            "expected identifier or integer after '.', found a float".to_string(),
+                            name_tok.span,
+                            "expected identifier",
+                        ));
+                    }
+                }
+            }
+            other => {
+                return Err(self.err(
+                    format!("expected identifier after '.', found {}", describe(&other)),
+                    name_tok.span,
+                    "expected identifier",
+                ));
+            }
+        };
+        let new_span = Span::new(span.start, name_tok.span.end);
+        Ok((
+            Expr::Member {
+                recv: Box::new(lhs),
+                name,
+                span: new_span,
+            },
+            new_span,
+        ))
+    }
+
+    /// Parse `::Variant args?` after the type path `lhs`, whose span is
+    /// `span`. Kept out of the Pratt loop so its locals don't widen
+    /// that recursive frame.
+    fn parse_variant_tail(&mut self, lhs: Expr, span: Span) -> Result<(Expr, Span), ParseError> {
+        let Some(type_path) = flatten_path_expr(&lhs) else {
+            let p = self.peek()?;
+            let span = p.span;
+            return Err(self.err(
+                "'::' is only valid after a type path",
+                span,
+                "expected a type name on the left of '::'",
+            ));
+        };
+        self.bump()?; // '::'
+        let v_tok = self.bump()?;
+        let TokenKind::Ident(v_name) = v_tok.kind else {
+            return Err(self.err(
+                format!(
+                    "expected variant name after '::', found {}",
+                    describe(&v_tok.kind)
+                ),
+                v_tok.span,
+                "expected variant name",
+            ));
+        };
+        let (args, args_end) = self.parse_variant_args(v_tok.span.end)?;
+        let new_span = Span::new(span.start, args_end);
+        Ok((
+            Expr::Variant {
+                type_path,
+                variant: v_name,
+                args,
+                span: new_span,
+            },
+            new_span,
+        ))
     }
 
     /// Parse a prefix operator and its operand, else an atom.
@@ -381,7 +448,16 @@ impl<'a> Parser<'a> {
     /// token.
     fn parse_if_or_block(&mut self) -> Result<(Expr, Span), ParseError> {
         if matches!(self.peek()?.kind, TokenKind::If) {
-            self.parse_if_expr()
+            // An `else if` chain nests without passing through the
+            // Pratt loop, so each link counts as its own level.
+            let outer = self.enter_expr_level()?;
+            let (expr, span) = self.parse_if_expr()?;
+            let depth = self.expr_depth + 1;
+            if depth > MAX_EXPR_DEPTH {
+                return Err(self.expr_too_deep(span));
+            }
+            self.leave_expr_level(outer, depth);
+            Ok((expr, span))
         } else {
             self.parse_block_expr()
         }

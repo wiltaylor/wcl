@@ -385,210 +385,75 @@ impl Document {
 
     /// Evaluate one expression in the given context — the core of the
     /// evaluator, dispatching on the expression's form.
+    ///
+    /// Every recursive form's body lives in its own helper, so this
+    /// frame stays small: evaluation recurses once per tree level, and
+    /// the parser's `MAX_EXPR_DEPTH` is sized against the frame cost
+    /// here on a 2 MiB stack.
     fn eval_in<'a>(&'a self, expr: &ast::Expr, ctx: &mut EvalCtx<'a>) -> Result<Value, EvalError> {
         use ast::Expr as E;
         if let Some(v) = Self::eval_value_literal(expr) {
             return Ok(v);
         }
-        Ok(match expr {
+        match expr {
             E::InterpolatedString {
                 encoding,
                 parts,
                 span,
-            } => {
-                use crate::lexer::StringEncoding as Enc;
-                let mut joined = String::new();
-                for part in parts {
-                    match part {
-                        ast::TemplatePart::Literal(s) => joined.push_str(s),
-                        ast::TemplatePart::Expr(e) => {
-                            let v = self.eval_in(e, ctx)?;
-                            joined.push_str(&crate::functions::format_value(&v));
-                        }
-                    }
-                }
-                return match encoding {
-                    Enc::Utf8 => Ok(Value::Utf8(joined)),
-                    Enc::Ascii => {
-                        if joined.chars().any(|c| (c as u32) >= 0x80) {
-                            Err(EvalError::schema_violation(
-                                crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
-                                "interpolated ascii string contains a non-ASCII character",
-                                *span,
-                            ))
-                        } else {
-                            Ok(Value::Ascii(joined))
-                        }
-                    }
-                    Enc::Utf16 => Ok(Value::Utf16(joined.encode_utf16().collect())),
-                    Enc::Utf32 => Ok(Value::Utf32(joined.chars().collect())),
-                };
-            }
-            E::Function(f) => {
-                let params: Vec<FnParam> = f
-                    .params
-                    .iter()
-                    .map(|p| FnParam::new(p.name.clone(), p.ty.clone()))
-                    .collect();
-                // Snapshot surrounding locals as the function value's
-                // lexical capture. Document-scope identifiers (fields,
-                // blocks, …) resolve at call time, so they don't need
-                // snapshotting.
-                let captured = ctx.locals.clone();
-                Value::Function(
-                    FnValue::new(params, f.return_ty.clone(), f.body.clone())
-                        .with_captures(captured),
-                )
-            }
-            E::Identifier(name, _) => {
-                // Locals (let-binding scope) shadow scope-walked names.
-                if let Some(v) = ctx.lookup(name) {
-                    return Ok(v.clone());
-                }
-                let dr = self
-                    .scope_lookup(&ctx.scope, name)
-                    .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr)))??;
-                return materialise_dataref_value(dr, vec![name.clone()], span_of(expr));
-            }
+            } => self.eval_interpolated(*encoding, parts, *span, ctx),
+            E::Function(f) => Ok(Self::eval_function_lit(f, ctx)),
+            E::Identifier(name, _) => self.eval_identifier(name, expr, ctx),
             E::SelfKw(span) => {
                 let dr = self.self_dataref(&ctx.scope);
-                return materialise_dataref(dr, *span);
+                materialise_dataref(dr, *span)
             }
             E::ParentKw(span) => {
                 let dr = self.parent_dataref(&ctx.scope).ok_or_else(|| {
                     EvalError::unresolved_reference("parent at document root", *span)
                 })?;
-                return materialise_dataref(dr, *span);
+                materialise_dataref(dr, *span)
             }
-            E::Member {
-                recv: _,
-                name: _,
-                span,
-            } => {
-                let dr = self.eval_to_dataref(expr, ctx)?;
-                let segments = bound_data_path_segments(expr, ctx)
-                    .or_else(|| expr_to_path_segments(expr))
-                    .unwrap_or_default();
-                return materialise_dataref_value(dr, segments, *span);
-            }
-            E::Paren { inner, .. } => return self.eval_in(inner, ctx),
+            E::Member { span, .. } => self.eval_member(expr, *span, ctx),
+            E::Paren { inner, .. } => self.eval_in(inner, ctx),
             E::Unary { op, operand, span } => {
                 let v = self.eval_in(operand, ctx)?;
-                return apply_unary(*op, v, *span);
+                apply_unary(*op, v, *span)
             }
-            E::Binary { op, lhs, rhs, span } => {
-                // `a ?? b`: the left value unless it is `none` — the
-                // right side only evaluates when needed.
-                if matches!(op, ast::BinOp::Coalesce) {
-                    let l = self.eval_in(lhs, ctx)?;
-                    if !matches!(l, Value::None) {
-                        return Ok(l);
-                    }
-                    return self.eval_in(rhs, ctx);
-                }
-                // Short-circuit logical ops.
-                if matches!(op, ast::BinOp::And | ast::BinOp::Or) {
-                    let l = self.eval_in(lhs, ctx)?;
-                    let lb = as_bool(&l, *op, *span)?;
-                    let short =
-                        matches!(op, ast::BinOp::And) && !lb || matches!(op, ast::BinOp::Or) && lb;
-                    if short {
-                        return Ok(Value::Bool(lb));
-                    }
-                    let r = self.eval_in(rhs, ctx)?;
-                    let rb = as_bool(&r, *op, *span)?;
-                    return Ok(Value::Bool(rb));
-                }
-                let l = self.eval_in(lhs, ctx)?;
-                let r = self.eval_in(rhs, ctx)?;
-                return apply_binary(*op, l, r, *span);
-            }
+            E::Binary { op, lhs, rhs, span } => self.eval_binary(*op, lhs, rhs, *span, ctx),
             E::Call {
                 callee, args, span, ..
-            } => {
-                return self.eval_call(callee, args, *span, ctx);
-            }
-            E::Block { lets, tail, .. } => {
-                return self.eval_block(lets, tail, ctx);
-            }
-            E::ListLit { elements, .. } => {
-                let mut out = Vec::with_capacity(elements.len());
-                for e in elements {
-                    out.push(self.eval_in(e, ctx)?);
-                }
-                Value::List(std::sync::Arc::new(out))
-            }
-            E::Record { fields, .. } => {
-                // A bare record literal evaluates to an anonymous
-                // `Value::Record`. When the surrounding context declares
-                // a union type, the consumer (field materialisation,
-                // variant args, fn-call args) coerces it to the matching
-                // `Value::Variant` by shape via `coerce_value_to_type`.
-                let mut map = std::collections::BTreeMap::new();
-                for f in fields {
-                    map.insert(f.name.clone(), self.eval_in(&f.value, ctx)?);
-                }
-                Value::Record {
-                    ty: Vec::new(),
-                    fields: std::sync::Arc::new(map),
-                }
-            }
+            } => self.eval_call(callee, args, *span, ctx),
+            E::Block { lets, tail, .. } => self.eval_block(lets, tail, ctx),
+            E::ListLit { elements, .. } => self.eval_list_lit(elements, ctx),
+            E::Record { fields, .. } => self.eval_record_lit(fields, ctx),
             E::If {
                 cond,
                 then_block,
                 else_block,
                 span,
-            } => {
-                let c = self.eval_in(cond, ctx)?;
-                let b = as_bool(&c, ast::BinOp::And, *span)?;
-                return match (b, else_block) {
-                    (true, _) => self.eval_in(then_block, ctx),
-                    // No `else`: the untaken branch is `none`.
-                    (false, None) => Ok(Value::None),
-                    (false, Some(e)) => self.eval_in(e, ctx),
-                };
-            }
+            } => self.eval_if(cond, then_block, else_block.as_deref(), *span, ctx),
             E::IfLet {
                 pattern,
                 scrut,
                 then_block,
                 else_block,
                 ..
-            } => {
-                return self.eval_if_let(pattern, scrut, then_block, else_block, ctx);
-            }
+            } => self.eval_if_let(pattern, scrut, then_block, else_block, ctx),
             E::Try {
                 body,
                 binder,
                 handler,
                 ..
-            } => {
-                // Catches every evaluation error from the body —
-                // builtin failures, cycles, propagated field errors —
-                // binding its rendered message to the catch name.
-                return match self.eval_in(body, ctx) {
-                    Ok(v) => Ok(v),
-                    Err(e) => {
-                        let msg = Value::Utf8(e.to_string());
-                        let mut frame = ctx.push_frame();
-                        frame.locals.push((binder.clone(), msg));
-                        self.eval_in(handler, &mut frame)
-                    }
-                };
-            }
+            } => self.eval_try(body, binder, handler, ctx),
             E::Match {
                 scrut, arms, span, ..
-            } => {
-                return self.eval_match(scrut, arms, *span, ctx);
-            }
+            } => self.eval_match(scrut, arms, *span, ctx),
             E::Variant {
                 type_path,
                 variant,
                 args,
                 span,
-            } => {
-                return self.build_variant(type_path, variant, args, *span, ctx);
-            }
+            } => self.build_variant(type_path, variant, args, *span, ctx),
             // Trivial value literals were handled by `eval_value_literal`
             // at the top of this function.
             E::Bool(_)
@@ -613,7 +478,197 @@ impl Document {
             | E::Symbol(..)
             | E::None
             | E::UnitLiteral { .. } => unreachable!("handled by eval_value_literal"),
+        }
+    }
+
+    /// `E::InterpolatedString` arm. Joins the literal parts with each
+    /// slot's formatted value, then encodes the result.
+    fn eval_interpolated<'a>(
+        &'a self,
+        encoding: crate::lexer::StringEncoding,
+        parts: &[ast::TemplatePart],
+        span: Span,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        use crate::lexer::StringEncoding as Enc;
+        let mut joined = String::new();
+        for part in parts {
+            match part {
+                ast::TemplatePart::Literal(s) => joined.push_str(s),
+                ast::TemplatePart::Expr(e) => {
+                    let v = self.eval_in(e, ctx)?;
+                    joined.push_str(&crate::functions::format_value(&v));
+                }
+            }
+        }
+        match encoding {
+            Enc::Utf8 => Ok(Value::Utf8(joined)),
+            Enc::Ascii => {
+                if joined.chars().any(|c| (c as u32) >= 0x80) {
+                    Err(EvalError::schema_violation(
+                        crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
+                        "interpolated ascii string contains a non-ASCII character",
+                        span,
+                    ))
+                } else {
+                    Ok(Value::Ascii(joined))
+                }
+            }
+            Enc::Utf16 => Ok(Value::Utf16(joined.encode_utf16().collect())),
+            Enc::Utf32 => Ok(Value::Utf32(joined.chars().collect())),
+        }
+    }
+
+    /// `E::Identifier` arm. Locals (let-binding scope) shadow
+    /// scope-walked names.
+    fn eval_identifier<'a>(
+        &'a self,
+        name: &str,
+        expr: &ast::Expr,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        if let Some(v) = ctx.lookup(name) {
+            return Ok(v.clone());
+        }
+        let dr = self
+            .scope_lookup(&ctx.scope, name)
+            .ok_or_else(|| EvalError::unresolved_reference(name, span_of(expr)))??;
+        materialise_dataref_value(dr, vec![name.to_string()], span_of(expr))
+    }
+
+    /// `E::Member` arm. Resolves the whole dotted path to a data
+    /// reference, then materialises it.
+    fn eval_member<'a>(
+        &'a self,
+        expr: &ast::Expr,
+        span: Span,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        let dr = self.eval_to_dataref(expr, ctx)?;
+        let segments = bound_data_path_segments(expr, ctx)
+            .or_else(|| expr_to_path_segments(expr))
+            .unwrap_or_default();
+        materialise_dataref_value(dr, segments, span)
+    }
+
+    /// `E::Binary` arm, including the short-circuiting operators.
+    fn eval_binary<'a>(
+        &'a self,
+        op: ast::BinOp,
+        lhs: &ast::Expr,
+        rhs: &ast::Expr,
+        span: Span,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        // `a ?? b`: the left value unless it is `none` — the
+        // right side only evaluates when needed.
+        if matches!(op, ast::BinOp::Coalesce) {
+            let l = self.eval_in(lhs, ctx)?;
+            if !matches!(l, Value::None) {
+                return Ok(l);
+            }
+            return self.eval_in(rhs, ctx);
+        }
+        // Short-circuit logical ops.
+        if matches!(op, ast::BinOp::And | ast::BinOp::Or) {
+            let l = self.eval_in(lhs, ctx)?;
+            let lb = as_bool(&l, op, span)?;
+            let short = matches!(op, ast::BinOp::And) && !lb || matches!(op, ast::BinOp::Or) && lb;
+            if short {
+                return Ok(Value::Bool(lb));
+            }
+            let r = self.eval_in(rhs, ctx)?;
+            let rb = as_bool(&r, op, span)?;
+            return Ok(Value::Bool(rb));
+        }
+        let l = self.eval_in(lhs, ctx)?;
+        let r = self.eval_in(rhs, ctx)?;
+        apply_binary(op, l, r, span)
+    }
+
+    /// `E::ListLit` arm.
+    fn eval_list_lit<'a>(
+        &'a self,
+        elements: &[ast::Expr],
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        let out = self.eval_args(elements, ctx)?;
+        Ok(Value::List(std::sync::Arc::new(out)))
+    }
+
+    /// `E::Record` arm. A bare record literal evaluates to an anonymous
+    /// `Value::Record`. When the surrounding context declares a union
+    /// type, the consumer (field materialisation, variant args, fn-call
+    /// args) coerces it to the matching `Value::Variant` by shape via
+    /// `coerce_value_to_type`.
+    fn eval_record_lit<'a>(
+        &'a self,
+        fields: &[ast::NamedArg],
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        let mut map = std::collections::BTreeMap::new();
+        for f in fields {
+            map.insert(f.name.clone(), self.eval_in(&f.value, ctx)?);
+        }
+        Ok(Value::Record {
+            ty: Vec::new(),
+            fields: std::sync::Arc::new(map),
         })
+    }
+
+    /// `E::If` arm.
+    fn eval_if<'a>(
+        &'a self,
+        cond: &ast::Expr,
+        then_block: &ast::Expr,
+        else_block: Option<&ast::Expr>,
+        span: Span,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        let c = self.eval_in(cond, ctx)?;
+        let b = as_bool(&c, ast::BinOp::And, span)?;
+        match (b, else_block) {
+            (true, _) => self.eval_in(then_block, ctx),
+            // No `else`: the untaken branch is `none`.
+            (false, None) => Ok(Value::None),
+            (false, Some(e)) => self.eval_in(e, ctx),
+        }
+    }
+
+    /// `E::Try` arm. Catches every evaluation error from the body —
+    /// builtin failures, cycles, propagated field errors — binding its
+    /// rendered message to the catch name.
+    fn eval_try<'a>(
+        &'a self,
+        body: &ast::Expr,
+        binder: &str,
+        handler: &ast::Expr,
+        ctx: &mut EvalCtx<'a>,
+    ) -> Result<Value, EvalError> {
+        match self.eval_in(body, ctx) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                let msg = Value::Utf8(e.to_string());
+                let mut frame = ctx.push_frame();
+                frame.locals.push((binder.to_string(), msg));
+                self.eval_in(handler, &mut frame)
+            }
+        }
+    }
+
+    /// `E::Function` arm. Snapshots surrounding locals as the function
+    /// value's lexical capture. Document-scope identifiers (fields,
+    /// blocks, …) resolve at call time, so they don't need snapshotting.
+    fn eval_function_lit(f: &ast::FunctionLit, ctx: &EvalCtx<'_>) -> Value {
+        let params: Vec<FnParam> = f
+            .params
+            .iter()
+            .map(|p| FnParam::new(p.name.clone(), p.ty.clone()))
+            .collect();
+        let captured = ctx.locals.clone();
+        Value::Function(
+            FnValue::new(params, f.return_ty.clone(), f.body.clone()).with_captures(captured),
+        )
     }
 
     /// Evaluate every argument expression left-to-right. Pulled out

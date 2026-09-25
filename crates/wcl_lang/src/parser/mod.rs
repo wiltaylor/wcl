@@ -58,6 +58,11 @@ pub struct Parser<'a> {
     /// the stack — anything taking untrusted input (`wcl check`, the
     /// LSP, `wdoc serve` mid-edit) can hit this.
     recursion_depth: u32,
+    /// Tree depth of the deepest expression finished at the current
+    /// nesting level. Threaded bottom-up by the expression parser so a
+    /// flat chain (`1 + 1 + …`) is capped at [`MAX_EXPR_DEPTH`] even
+    /// though parsing it never recurses.
+    expr_depth: u32,
     /// Trivia (comments + blank lines) captured at the start of the
     /// current `parse_item` call. Each sub-parser drains this via
     /// `take_item_trivia()` when it builds the final Item struct, so
@@ -72,6 +77,12 @@ pub struct Parser<'a> {
 /// inflation under fuzzing): each paren level costs a few KiB of
 /// frames across parse_expr_bp → parse_prefix → the paren arm.
 pub(crate) const MAX_PARSE_DEPTH: u32 = 128;
+
+/// Hard cap on the depth of one expression tree. Evaluating, printing
+/// and dropping an expression all recurse once per level, so a long
+/// flat chain (`1 + 1 + …`, `a.b.c…`, `f()()…`) must stop here rather
+/// than abort the process on a small (2 MiB) stack.
+pub(crate) const MAX_EXPR_DEPTH: u32 = 256;
 
 impl<'a> Parser<'a> {
     /// Enter one level of self-nesting parse recursion, erroring past
@@ -112,6 +123,7 @@ impl<'a> Parser<'a> {
             block_depth: 0,
             in_schemaless_block: false,
             recursion_depth: 0,
+            expr_depth: 0,
             current_item_trivia: Vec::new(),
         }
     }
@@ -743,7 +755,7 @@ impl<'a> Parser<'a> {
     /// interpolated form sub-parses each `${expr}` slot using a fresh
     /// `Parser` over a leading-padded copy of the original source so
     /// span offsets stay aligned with the outer file.
-    fn string_lit_to_expr(&self, lit: StringLit, _span: Span) -> Result<Expr, ParseError> {
+    fn string_lit_to_expr(&mut self, lit: StringLit, _span: Span) -> Result<Expr, ParseError> {
         // Plain encodings short-circuit. Only the interpolated form
         // needs the slot-by-slot sub-parse, so destructure here rather
         // than splitting into a helper that leaves an unreachable arm.
@@ -789,15 +801,19 @@ impl<'a> Parser<'a> {
     /// not the padded duplicate the sub-parser sees) and prefixed with
     /// `"in interpolation slot:"` so the user can tell the diagnostic
     /// came from inside a `${…}` rather than the surrounding text.
-    fn sub_parse_slot(&self, text: &str, slot_span: Span) -> Result<Expr, ParseError> {
+    fn sub_parse_slot(&mut self, text: &str, slot_span: Span) -> Result<Expr, ParseError> {
         // Pad the slot text with spaces so the sub-parser's byte
         // offsets line up with the outer source.
         let padded = format!("{}{}", " ".repeat(slot_span.start + 2), text);
         let mut sub = Parser::new(&padded, self.file.clone());
+        // Slots nest (`$"${ $"${…}" }"`), so the sub-parser continues
+        // this parser's recursion count rather than starting afresh.
+        sub.recursion_depth = self.recursion_depth;
         // Skip the padding via the lexer's whitespace handling: the
         // first peek/bump will land on the first real byte of the
         // slot text. Then parse one expression.
         let (expr, _) = sub.parse_expr().map_err(|e| self.wrap_slot_error(e))?;
+        self.expr_depth = self.expr_depth.max(sub.expr_depth);
         let trailing = sub.peek().map_err(|e| self.wrap_slot_error(e))?;
         match &trailing.kind {
             TokenKind::Eof => Ok(expr),
