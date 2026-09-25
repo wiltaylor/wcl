@@ -388,6 +388,7 @@ pub(crate) fn pick_closest_pair(
 }
 
 /// Plan one edge: pick its anchors, then route between them.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn plan_edge(
     value: &Value,
     positions: &ShapePositions,
