@@ -53,7 +53,7 @@ document through `wcl check`, `wcl get` and `wcl wdoc build`.
 - [`lang_schemas.md`](references/language/lang_schemas.md) — the schema decorators that declare a document shape, and how document schemas compose per namespace.
 - [`lang_decorators.md`](references/language/lang_decorators.md) — what a decorator is, the authored and host-declared vocabularies, `@declares_kind`, reading decorators back.
 - [`lang_connections.md`](references/language/lang_connections.md) — `connection` declarations, connection statements, `@connections`, reference integrity.
-- [`lang_evaluation.md`](references/language/lang_evaluation.md) — the evaluate-and-edit split, lazy fields, cycle detection, JSON serialization, the error model.
+- [`lang_evaluation.md`](references/language/lang_evaluation.md) — the evaluate-and-edit split, lazy fields, cycle detection, the 200-level depth limit, JSON serialization, the error model.
 - [`lang_builtins.md`](references/language/lang_builtins.md) — every builtin by category, with its signature, parameters, return value and an example.
 - [`lang_cli.md`](references/language/lang_cli.md) — every `wcl` subcommand, its flags and its exit codes.
 
