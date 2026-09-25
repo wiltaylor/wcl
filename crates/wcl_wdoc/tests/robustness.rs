@@ -225,3 +225,56 @@ page index {
     assert_eq!(heights[0], 0.0);
     assert_eq!(heights[1], 206.0);
 }
+
+/// A 256x256 PNG header: signature plus IHDR, all wdoc reads for sizing.
+fn fake_png() -> Vec<u8> {
+    let mut v = b"\x89PNG\r\n\x1a\n".to_vec();
+    v.extend_from_slice(&[0, 0, 0, 13]);
+    v.extend_from_slice(b"IHDR");
+    v.extend_from_slice(&256u32.to_be_bytes());
+    v.extend_from_slice(&256u32.to_be_bytes());
+    v.extend_from_slice(&[8, 6, 0, 0, 0]);
+    v
+}
+
+#[test]
+fn sprite_sheet_geometry_at_the_i64_limits_does_not_overflow() {
+    // `img_w - 2 * margin + spacing` (tileset) and `offset + col * stride`
+    // / `columns * rows` (dopesheet) overflowed on extreme fields.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(tmp.path().join("sheet.png"), fake_png()).expect("write sheet");
+    let src = tmp.path().join("doc.wcl");
+    std::fs::write(
+        &src,
+        r##"import <wdoc.wcl>
+tileset world {
+  source       = "sheet.png"
+  tile_width   = 64
+  tile_height  = 64
+  image_width  = 256
+  image_height = 256
+  margin       = 9223372036854775807
+  spacing      = 9223372036854775807
+}
+page index {
+  diagram {
+    width = 128  height = 64
+    tilemap { set = "world"  tiles = [ [ 0, 1 ] ] }
+    dopesheet {
+      source = "sheet.png"
+      frame_width = 1  frame_height = 1
+      columns = 9223372036854775807
+      stride_x = 9223372036854775807
+      offset_x = 9223372036854775807
+      from = 5
+    }
+  }
+}
+"##,
+    )
+    .expect("write fixture");
+    if let Err(e) = build(&src, &tmp.path().join("out"), None) {
+        panic!("build failed: {}", describe(&e));
+    }
+    assert!(read_index(tmp.path()).contains("wdoc-dopesheet"));
+}

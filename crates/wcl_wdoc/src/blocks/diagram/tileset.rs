@@ -143,10 +143,16 @@ impl TilesetRegistry {
             };
 
             // `columns` defaults to as many whole tiles as fit across
-            // the sheet (accounting for margin + spacing).
+            // the sheet (accounting for margin + spacing). Saturating, so
+            // an absurd `margin` / `spacing` yields one column, not an
+            // overflow.
             let columns = match field_i64(&block, "columns") {
                 Some(c) if c > 0 => c,
-                _ => ((img_w - 2 * margin + spacing) / (tile_w + spacing)).max(1),
+                _ => (img_w
+                    .saturating_sub(margin.saturating_mul(2))
+                    .saturating_add(spacing)
+                    / tile_w.saturating_add(spacing))
+                .max(1),
             };
 
             let ext = src_path
