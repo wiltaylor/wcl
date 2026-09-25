@@ -130,8 +130,10 @@ site web {
 }
 ```
 
-The build emits each href **verbatim**. It never resolves or rewrites one. A copied asset, a
-shipped `file` and an absolute URL therefore all behave the same way.
+The build emits each href **verbatim**. It never rewrites one, and a missing file does not fail
+the build. A copied asset, a shipped `file` and an absolute URL therefore all link the same way.
+The class lint does read a linked stylesheet that lands in the output folder, so its classes
+count as styled; an external URL is not checked (see `wdoc_styling.md`, "The class lint").
 
 `assets` copies a folder verbatim and recursively, resolved against the document. It also takes
 an externally-built bundle — point it at a Vite or webpack `dist/` and reference the hashed

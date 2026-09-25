@@ -66,6 +66,85 @@ pub(crate) fn selector_classes(selector: &str) -> BTreeSet<String> {
     out
 }
 
+/// At-rules whose body is a list of rules, so the selectors inside still
+/// declare class names. Every other at-rule body (`@font-face`, `@page`,
+/// `@keyframes` with its `12.5%` steps) holds no selector and is skipped.
+const GROUPING_AT_RULES: &[&str] = &[
+    "media",
+    "supports",
+    "container",
+    "layer",
+    "scope",
+    "document",
+    "-moz-document",
+    "starting-style",
+];
+
+/// Every class name a whole stylesheet's selectors target — the class-lint
+/// reading of CSS the build did not generate: a file a `<link>` names, or a
+/// raw `<style>` body. Comments are dropped, each rule's selector prelude
+/// goes through [`selector_classes`], and an at-rule prelude never does, so
+/// `@media (min-width: 1.5em)` names no class `5em`. Nested rules count.
+pub(crate) fn stylesheet_classes(css: &str) -> BTreeSet<String> {
+    /// What the innermost open `{` holds.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Body {
+        /// Rules: the top level, or a grouping at-rule's body.
+        Rules,
+        /// A style rule's declarations, which may nest further rules.
+        Declarations,
+        /// An at-rule body with no selectors in it, to its matching `}`.
+        Opaque,
+    }
+    let mut out = BTreeSet::new();
+    let mut stack: Vec<Body> = Vec::new();
+    let mut prelude = String::new();
+    let mut lex = SelectorScan::default();
+    let mut i = 0;
+    while let Some(ch) = css[i..].chars().next() {
+        let at = i;
+        i += ch.len_utf8();
+        if lex.quote.is_none() && !lex.escaped && css[at..].starts_with("/*") {
+            i = css[at + 2..]
+                .find("*/")
+                .map_or(css.len(), |end| at + 2 + end + 2);
+            continue;
+        }
+        if !lex.observe(ch) || !matches!(ch, '{' | '}' | ';') {
+            prelude.push(ch);
+            continue;
+        }
+        if ch == '{' {
+            let context = stack.last().copied().unwrap_or(Body::Rules);
+            let head = prelude.trim();
+            let body = if context == Body::Opaque {
+                Body::Opaque
+            } else if let Some(at_rule) = head.strip_prefix('@') {
+                let name = at_rule
+                    .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+                    .next()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                if GROUPING_AT_RULES.contains(&name.as_str()) {
+                    Body::Rules
+                } else {
+                    Body::Opaque
+                }
+            } else {
+                out.extend(selector_classes(head));
+                Body::Declarations
+            };
+            stack.push(body);
+        } else if ch == '}' {
+            stack.pop();
+        }
+        // `;` ends a declaration or a statement at-rule (`@import`).
+        prelude.clear();
+        lex = SelectorScan::default();
+    }
+    out
+}
+
 /// Emit a CSS rule body for a `@block("class")` instance.
 /// Returns `None` if the block doesn't have an inline name.
 /// Build the CSS declaration string for one styling block (a `class`
@@ -519,7 +598,7 @@ fn push_spaced_css(out: &mut String, prop: &str, value: Option<&str>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{has_line_comment, selector_classes};
+    use super::{has_line_comment, selector_classes, stylesheet_classes};
 
     fn classes(selector: &str) -> Vec<String> {
         selector_classes(selector).into_iter().collect()
@@ -538,6 +617,46 @@ mod tests {
         // that starts no name (a decimal, a stray) yields nothing.
         assert_eq!(classes("[data-x=\".ghost\"].real"), ["real"]);
         assert!(classes("li::marker").is_empty());
+    }
+
+    fn sheet(css: &str) -> Vec<String> {
+        stylesheet_classes(css).into_iter().collect()
+    }
+
+    #[test]
+    fn stylesheet_classes_reads_selectors_and_skips_declarations() {
+        // A `.` in a declaration value (`1.5rem`, a URL) is not a selector.
+        assert_eq!(
+            sheet(".bar { margin: 1.5rem; background: url(a.png); }\nh1, .hero .title { x: y }"),
+            ["bar", "hero", "title"]
+        );
+    }
+
+    #[test]
+    fn stylesheet_classes_skips_at_rule_preludes_and_comments() {
+        // The `@media` prelude names no class `5em`; the rules inside it do.
+        assert_eq!(
+            sheet("@media (min-width: 1.5em) { .wide { a: b } }"),
+            ["wide"]
+        );
+        assert_eq!(sheet("/* .ghost { } */ .real { }"), ["real"]);
+        // Keyframe steps and font-face bodies hold no selectors.
+        assert!(
+            sheet("@keyframes k { 12.5% { a: b } } @font-face { src: url(x.woff2); }").is_empty()
+        );
+        assert!(sheet("@import url(\"a.css\"); @charset \"utf-8\";").is_empty());
+    }
+
+    #[test]
+    fn stylesheet_classes_reads_nested_rules_and_ignores_quoted_braces() {
+        assert_eq!(
+            sheet(".card { content: \"{ .no }\"; &.open { a: b } .inner { c: d } }"),
+            ["card", "inner", "open"]
+        );
+        assert_eq!(
+            sheet("@supports (display: grid) { @media print { .grid { a: b } } }"),
+            ["grid"]
+        );
     }
 
     #[test]

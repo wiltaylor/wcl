@@ -39,3 +39,8 @@ type FileObj extends ContentBlock {
   @doc("Optional style classes (HTML target, when `as` renders a link).")
   class: list<utf8>?
 }
+
+// The link an `as` renders (and the IR's `Content::File`) carries
+// `wdoc-file`: a hook a document restyles download links through,
+// unstyled by default.
+class "wdoc-file" {}

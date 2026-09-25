@@ -439,6 +439,10 @@ let site_menu = fn(entries: list<MenuEntry>, current_href: utf8) -> list<Html>
           flatten([ [menu_entry(e, current_href)], site_menu(e.children, current_href) ])))) ]
   }
 
+// A dropdown parent's `<li>` carries `has-submenu`: a hook for a document
+// restyling its navbar. The dropdown itself is styled through `.menu`.
+class "has-submenu" {}
+
 // One-time click-toggle script for the navbar dropdowns: a single
 // delegated document listener flips `open` on the clicked toggle's
 // `<li>` (closing any open item that isn't an ancestor, so nested

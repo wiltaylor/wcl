@@ -38,6 +38,16 @@
 //! would otherwise warn in every document. A new one shows up on the repo's
 //! own `just docs-build`, which is a gate part.
 //!
+//! **CSS the build did not generate declares names too.** A page links a
+//! stylesheet (`site.stylesheets`, `fonts`, a layout's
+//! `wdoc_head_stylesheet`) or carries a raw `<style>`; either one styles
+//! classes no `class` block mentions. Once the build has written every
+//! file, each `<link rel="stylesheet">` whose href lands inside the output
+//! tree is read, and the class names its selectors target join the
+//! *declared* set — never the authored one, so a framework stylesheet's
+//! unused rules are not dead code. An href the build cannot read (a URL,
+//! a path to nothing) is not judged: it declares nothing and says nothing.
+//!
 //! The lint runs over the **union of all a document's sites**, never one
 //! site's build: a document may declare several sites, one page set per
 //! site, and a rule scoped to one site would otherwise read as dead in
@@ -45,7 +55,12 @@
 //! re-render) therefore does not lint at all.
 
 use std::cell::RefCell;
-use std::collections::BTreeSet;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeSet, HashSet};
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
+
+use crate::html::stylesheet_classes;
 
 /// The prefix of every generator-emitted class family — today, syntax
 /// highlighting's one class per grammar scope and one per code language.
@@ -104,15 +119,86 @@ pub(crate) struct ClassScan {
     /// Class names selected by a rule the document itself authors, and that
     /// actually emits CSS. Only these can be reported unused.
     authored: RefCell<BTreeSet<String>>,
+    /// The output root a root-relative href (`/site.css`) resolves against;
+    /// `None` leaves such an href unread.
+    root: Option<PathBuf>,
+    /// Files the pages link as stylesheets, resolved against the output
+    /// tree. Read once the build has written everything.
+    linked: RefCell<BTreeSet<PathBuf>>,
+    /// Hashes of the raw `<style>` bodies already read: every page embeds
+    /// the site stylesheet, so each distinct body is read once.
+    inline_seen: RefCell<HashSet<u64>>,
 }
 
 impl ClassScan {
-    /// Record the classes one rendered page carries.
-    pub(crate) fn record_markup(&self, html: &str) {
-        let mut used = self.used.borrow_mut();
-        for name in markup_classes(html) {
-            if !used.contains(name) {
-                used.insert(name.to_string());
+    /// A scan for a build writing into `root`, so a root-relative
+    /// stylesheet href can be read back.
+    pub(crate) fn rooted(root: &Path) -> Self {
+        ClassScan {
+            root: Some(root.to_path_buf()),
+            ..ClassScan::default()
+        }
+    }
+
+    /// Record one rendered page written to `page`: the classes its markup
+    /// carries, the class names its raw `<style>` bodies declare, and the
+    /// stylesheets it links.
+    pub(crate) fn record_markup(&self, page: &Path, html: &str) {
+        let markup = scan_page(html);
+        {
+            let mut used = self.used.borrow_mut();
+            for name in markup.classes {
+                if !used.contains(name) {
+                    used.insert(name.to_string());
+                }
+            }
+        }
+        for body in markup.styles {
+            let mut hasher = DefaultHasher::new();
+            body.hash(&mut hasher);
+            if self.inline_seen.borrow_mut().insert(hasher.finish()) {
+                self.declared.borrow_mut().extend(stylesheet_classes(body));
+            }
+        }
+        let mut linked = self.linked.borrow_mut();
+        for href in markup.stylesheets {
+            if let Some(path) = self.resolve_href(page, href) {
+                linked.insert(path);
+            }
+        }
+    }
+
+    /// Where a linked stylesheet's `href` lands in the output tree, or
+    /// `None` for one outside it: a URL, a protocol-relative `//host/…`,
+    /// or a root-relative path with no known root.
+    fn resolve_href(&self, page: &Path, href: &str) -> Option<PathBuf> {
+        let href = unescape_attr(href);
+        let path = href.split(['?', '#']).next().unwrap_or_default();
+        if path.is_empty() || path.starts_with("//") {
+            return None;
+        }
+        // A scheme (`https:`, `data:`) names something outside the tree.
+        if path
+            .find(':')
+            .is_some_and(|colon| !path[..colon].contains('/'))
+        {
+            return None;
+        }
+        match path.strip_prefix('/') {
+            Some(rooted) => Some(self.root.as_ref()?.join(rooted)),
+            None => Some(page.parent()?.join(path)),
+        }
+    }
+
+    /// Read every linked stylesheet the build wrote, adding the class names
+    /// its selectors target to the declared set. Call once every file of the
+    /// build is on disk; a file that cannot be read declares nothing.
+    pub(crate) fn read_linked_stylesheets(&self) {
+        let linked = std::mem::take(&mut *self.linked.borrow_mut());
+        let mut declared = self.declared.borrow_mut();
+        for path in linked {
+            if let Ok(css) = std::fs::read_to_string(&path) {
+                declared.extend(stylesheet_classes(&css));
             }
         }
     }
@@ -162,15 +248,26 @@ impl ClassScan {
     }
 }
 
-/// Every class name the `class` attributes of `html` carry.
+/// What one rendered page says about classes.
+#[derive(Default)]
+struct PageMarkup<'a> {
+    /// Every class name the `class` attributes carry.
+    classes: Vec<&'a str>,
+    /// The `href` of every `<link rel="stylesheet">`, still HTML-escaped.
+    stylesheets: Vec<&'a str>,
+    /// The body of every `<style>` element.
+    styles: Vec<&'a str>,
+}
+
+/// Scan one rendered page's markup.
 ///
 /// A tag-aware scan rather than a search for `class="`: page text and code
 /// samples are full of the string, and `<script>` / `<style>` bodies are not
 /// markup at all. Both quote forms are accepted, because raw-HTML template
 /// chrome is authored by hand.
-fn markup_classes(html: &str) -> Vec<&str> {
+fn scan_page(html: &str) -> PageMarkup<'_> {
     let bytes = html.as_bytes();
-    let mut out = Vec::new();
+    let mut out = PageMarkup::default();
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] != b'<' {
@@ -194,14 +291,34 @@ fn markup_classes(html: &str) -> Vec<&str> {
             Some(end) => i + end + 1,
             None => break,
         };
-        collect_class_attrs(&html[name_end..tag_end], &mut out);
+        let attrs = &html[name_end..tag_end];
+        let mut class_values = Vec::new();
+        collect_attr_values(attrs, "class", &mut class_values);
+        for value in class_values {
+            out.classes.extend(value.split_ascii_whitespace());
+        }
+        if tag == "link" {
+            let mut rel = Vec::new();
+            collect_attr_values(attrs, "rel", &mut rel);
+            if rel
+                .iter()
+                .flat_map(|value| value.split_ascii_whitespace())
+                .any(|token| token.eq_ignore_ascii_case("stylesheet"))
+            {
+                collect_attr_values(attrs, "href", &mut out.stylesheets);
+            }
+        }
         // A raw-text element's body is script or CSS, never markup.
         if matches!(tag.as_str(), "script" | "style") {
             let close = format!("</{tag}");
-            i = match html[tag_end..].to_ascii_lowercase().find(&close) {
+            let end = match html[tag_end..].to_ascii_lowercase().find(&close) {
                 Some(end) => tag_end + end,
                 None => break,
             };
+            if tag == "style" {
+                out.styles.push(&html[tag_end..end]);
+            }
+            i = end;
             continue;
         }
         i = tag_end;
@@ -209,13 +326,12 @@ fn markup_classes(html: &str) -> Vec<&str> {
     out
 }
 
-/// Collect the values of every `class` attribute in one tag's attribute
-/// text, split into names.
-fn collect_class_attrs<'a>(attrs: &'a str, out: &mut Vec<&'a str>) {
+/// Collect the value of every `name` attribute in one tag's attribute text.
+fn collect_attr_values<'a>(attrs: &'a str, name: &str, out: &mut Vec<&'a str>) {
     let mut rest = attrs;
-    while let Some(at) = rest.find("class") {
-        let after = &rest[at + "class".len()..];
-        // `class` must be a whole attribute name: preceded by a separator
+    while let Some(at) = rest.find(name) {
+        let after = &rest[at + name.len()..];
+        // `name` must be a whole attribute name: preceded by a separator
         // and followed by `=` (allowing space either side).
         let preceded_ok = rest[..at]
             .chars()
@@ -235,9 +351,20 @@ fn collect_class_attrs<'a>(attrs: &'a str, out: &mut Vec<&'a str>) {
         let Some(end) = body.find(quote) else {
             return;
         };
-        out.extend(body[..end].split_ascii_whitespace());
+        out.push(&body[..end]);
         rest = &body[end + 1..];
     }
+}
+
+/// Undo the HTML escaping wdoc applies to an attribute value, so an href
+/// reads as the path it names.
+fn unescape_attr(value: &str) -> String {
+    value
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
 }
 
 #[cfg(test)]
@@ -248,9 +375,13 @@ mod tests {
         names.iter().map(|s| s.to_string()).collect()
     }
 
+    fn markup_classes(html: &str) -> Vec<&str> {
+        scan_page(html).classes
+    }
+
     fn scan(used: &str, declared: &[&str], authored: &[&str]) -> ClassScan {
         let scan = ClassScan::default();
-        scan.record_markup(used);
+        scan.record_markup(Path::new("index.html"), used);
         scan.record_rules(&set(declared), &set(authored));
         scan
     }
@@ -327,7 +458,75 @@ mod tests {
             &set(["deck-title"].as_slice()),
             &set(["deck-title"].as_slice()),
         );
-        scan.record_markup("<h1 class=\"deck-title\">x</h1>");
+        scan.record_markup(Path::new("index.html"), "<h1 class=\"deck-title\">x</h1>");
+        assert!(scan.findings().is_empty(), "{:?}", scan.findings());
+    }
+
+    #[test]
+    fn page_scan_finds_linked_stylesheets_and_style_bodies() {
+        let html = "<link rel=\"stylesheet\" href=\"assets/site.css\">\
+                    <link rel=\"icon\" href=\"favicon.svg\">\
+                    <link rel='preload stylesheet' href='b.css?v=1'>\
+                    <style>.inline { a: b }</style>";
+        let page = scan_page(html);
+        assert_eq!(page.stylesheets, vec!["assets/site.css", "b.css?v=1"]);
+        assert_eq!(page.styles, vec![".inline { a: b }"]);
+    }
+
+    #[test]
+    fn an_href_outside_the_output_tree_is_not_resolved() {
+        let page = Path::new("out").join("index.html");
+        let rooted = ClassScan::rooted(Path::new("out"));
+        for external in [
+            "https://cdn.example/x.css",
+            "//cdn.example/x.css",
+            "data:text/css,.a{}",
+            "",
+        ] {
+            assert_eq!(rooted.resolve_href(&page, external), None, "{external}");
+        }
+        assert_eq!(
+            rooted.resolve_href(&page, "assets/site.css?v=2#top"),
+            Some(Path::new("out").join("assets/site.css"))
+        );
+        assert_eq!(
+            rooted.resolve_href(&page, "/site.css"),
+            Some(Path::new("out").join("site.css"))
+        );
+        // Without a known root, a root-relative href is not judged.
+        assert_eq!(ClassScan::default().resolve_href(&page, "/site.css"), None);
+    }
+
+    #[test]
+    fn a_linked_stylesheet_declares_but_does_not_author() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        std::fs::write(
+            dir.path().join("site.css"),
+            "@media (min-width: 1.5em) { .bar { a: b } } .spare { c: d }",
+        )
+        .expect("write css");
+        let scan = ClassScan::rooted(dir.path());
+        scan.record_markup(
+            &dir.path().join("index.html"),
+            "<link rel=\"stylesheet\" href=\"site.css\">\
+             <link rel=\"stylesheet\" href=\"missing.css\">\
+             <link rel=\"stylesheet\" href=\"https://cdn.example/x.css\">\
+             <p class=\"bar\">x</p><p class=\"barr\">y</p>",
+        );
+        scan.read_linked_stylesheets();
+        // `.spare` is unused yet not reported: a linked rule is not authored.
+        let findings = scan.findings();
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].contains("\"barr\""), "{findings:?}");
+    }
+
+    #[test]
+    fn a_raw_style_body_declares_its_classes() {
+        let scan = ClassScan::default();
+        scan.record_markup(
+            Path::new("index.html"),
+            "<style>.hero { a: b }</style><div class=\"hero\">x</div>",
+        );
         assert!(scan.findings().is_empty(), "{:?}", scan.findings());
     }
 }

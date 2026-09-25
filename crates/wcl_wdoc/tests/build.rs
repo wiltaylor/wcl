@@ -13740,6 +13740,149 @@ page b { sites = [:two]  text { span "b" {} } }
     assert!(warnings.is_empty(), "{warnings:?}");
 }
 
+/// Build `src` beside the extra `files` (relative path, contents) and
+/// return the class-lint warnings it left.
+fn class_lint_warnings_with_files(src: &str, files: &[(&str, &str)]) -> Vec<String> {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    for (rel, contents) in files {
+        let path = tmp.path().join(rel);
+        std::fs::create_dir_all(path.parent().expect("a parent dir")).expect("mkdir");
+        std::fs::write(&path, contents).expect("write fixture file");
+    }
+    let file = tmp.path().join("lint.wcl");
+    write_fixture(&file, src);
+    let out = TempDir::new().expect("mkdir out");
+    build_report(&file, out.path())
+        .warnings
+        .into_iter()
+        .filter(|w| w.starts_with("class \""))
+        .collect()
+}
+
+#[test]
+fn class_lint_is_silent_over_every_stdlib_component() {
+    // Every class the stdlib stamps into a page is either styled or declared
+    // as a hook beside its emitter, so no document pays for one. This page
+    // reaches the emitters the showcase below does not: a `file` link, a
+    // navbar dropdown, and the IR variants a user block lowers to.
+    let src = r#"
+@block("every_content")
+type EveryContent extends ContentBlock {
+  @inline(0) label: utf8
+  lower = fn(b: EveryContent) -> list<Content> [
+    Content::Columns { columns: [[Content::Paragraph { text: "left" }], [Content::Paragraph { text: "right" }]] },
+    Content::Image { source: "pic.svg", caption: "A figure" },
+    Content::File { path: "notes.txt", label: "The notes" },
+    Content::Terminal { lines: ["$ ls"], title: "shell" },
+    Content::Toc { entries: [{ depth: 0, title: "Top", target: "index", number: "1" }], title: "Contents" },
+    Content::SpeakerNotes { body: [Content::Paragraph { text: "psst" }] },
+  ]
+}
+site main {
+  default_template = :webpage
+  root = true
+  menu {
+    item "Home" { page = index }
+    item "More" { item "Other" { page = other } }
+  }
+}
+page index {
+  file "notes.txt" { as = "Download the notes" }
+  every_content "all"
+}
+page other { text { span "other" {} } }
+"#;
+    let warnings = class_lint_warnings_with_files(
+        src,
+        &[
+            ("notes.txt", "shipped\n"),
+            (
+                "pic.svg",
+                "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"4\" height=\"4\"/>",
+            ),
+        ],
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    // The showcase exercises the rest: every template but `website`,
+    // diagrams, charts, maps, timelines, dopesheets, terminals and their
+    // replay, wireframes, video, math, icons and a presentation deck.
+    let showcase = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("examples")
+        .join("wdoc")
+        .join("main.wcl");
+    let out = TempDir::new().expect("mkdir out");
+    let warnings: Vec<String> = build_report(&showcase, out.path())
+        .warnings
+        .into_iter()
+        .filter(|w| w.starts_with("class \""))
+        .collect();
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+/// A `website` site linking `assets/site.css`, whose page carries `class`.
+fn linked_stylesheet_site(class: &str, stylesheets: &str) -> String {
+    format!(
+        r#"
+site acme {{
+  default_template = :website
+  root        = true
+  assets      = ["assets"]
+  stylesheets = {stylesheets}
+}}
+page index {{
+  callout "Heads up" {{ class = ["{class}"]  body = "Mind the gap." }}
+}}
+"#
+    )
+}
+
+/// A stylesheet styling `.bar` inside a media query whose prelude holds a
+/// decimal, plus a rule the page never uses.
+const LINKED_CSS: &str = "/* .ghost { } */\n\
+                          @media (min-width: 1.5em) { .bar { color: red; } }\n\
+                          .unused-by-this-page { color: blue; }\n";
+
+#[test]
+fn class_lint_counts_a_linked_stylesheet_as_declaring() {
+    let files = [("assets/site.css", LINKED_CSS)];
+    // `.bar` is styled by the linked file, so the page's use is fine, and
+    // the file's unused rule is not the document's dead code.
+    let warnings = class_lint_warnings_with_files(
+        &linked_stylesheet_site("bar", r#"["assets/site.css"]"#),
+        &files,
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    // A misspelling still warns, and the `@media` prelude and the comment
+    // declared no class of their own (`5em`, `ghost`).
+    for typo in ["barr", "5em", "ghost"] {
+        let warnings = class_lint_warnings_with_files(
+            &linked_stylesheet_site(typo, r#"["assets/site.css"]"#),
+            &files,
+        );
+        assert_eq!(warnings.len(), 1, "{typo}: {warnings:?}");
+        assert!(warnings[0].contains(&format!("\"{typo}\"")), "{warnings:?}");
+    }
+}
+
+#[test]
+fn class_lint_does_not_judge_a_stylesheet_it_cannot_read() {
+    // An external URL and a path to nothing declare nothing and raise no
+    // warning of their own: the class the page uses is reported, as before.
+    let warnings = class_lint_warnings_with_files(
+        &linked_stylesheet_site(
+            "bar",
+            r#"["https://cdn.example/site.css", "assets/missing.css"]"#,
+        ),
+        &[("assets/other.css", ".bar { color: red; }")],
+    );
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("\"bar\""), "{warnings:?}");
+}
+
 #[test]
 fn an_imported_class_rule_wins_over_the_theme() {
     // Origin is where a block was declared, not which file the build read

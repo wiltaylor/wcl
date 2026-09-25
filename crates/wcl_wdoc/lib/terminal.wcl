@@ -128,6 +128,9 @@ class "term-chrome-bar" { css = "fill: currentColor; opacity: 0.08;" }
 // the title bar, `term-cells` the character grid the replay player rewrites.
 class "term-chrome" {}
 class "term-cells" {}
+// The replay's frame data rides in a `<script class="term-frames">` the
+// player finds by class; it is data, so nothing styles it.
+class "term-frames" {}
 class "term-title" { css = "fill: currentColor; opacity: 0.6; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.75em;" }
 class "term-close" { css = "stroke: currentColor; opacity: 0.55; stroke-width: 1.5; stroke-linecap: round;" }
 class "term-close" {
