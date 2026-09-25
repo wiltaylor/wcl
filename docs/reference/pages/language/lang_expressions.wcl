@@ -638,6 +638,8 @@ TEXT
 
   p "The limit exists because evaluating, printing and freeing an expression each walk it one level at a time, and a deeper tree would exhaust the stack of the thread doing the walking. A generated file is the usual way to reach it. Split the chain with `let` bindings, or build a list and hand it to `sum` or `join`. This is a limit on how one expression is written, checked when the file parses. It is separate from the evaluation limit of 200 nested fields, `let`s and `fn` calls forcing one another at run time, which [How a document evaluates](lang_evaluation) covers."
 
+  p "Brackets, `if` bodies and `${…}` slots nested inside one another count against a second parse limit of **128 levels**, reported as `nesting too deep`. Either parse limit can also fire sooner on a thread with little stack, such as a language server's, where the same message replaces what would otherwise be a crash."
+
   h2 "What is not an operator"
 
   p "Other languages make these seven spellings operators. This table gives what WCL does instead."

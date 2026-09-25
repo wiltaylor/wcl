@@ -84,23 +84,17 @@ fn long_else_if_chain_errors_instead_of_overflowing() {
 #[test]
 fn nested_interpolation_errors_instead_of_overflowing() {
     // Each `${…}` slot used to start a fresh parser with its own
-    // recursion count, so nesting was unbounded. Unoptimised parse
-    // frames at the 128-level nesting cap outgrow 2 MiB, so this one
-    // runs on a larger stack; the point is that the cap now fires.
+    // recursion count, so nesting was unbounded.
     let n = 5_000;
     let src = format!(
         "@schemaless x = {}1{}\n",
         "$\"${".repeat(n),
         "}\"".repeat(n)
     );
-    let err = std::thread::Builder::new()
-        .stack_size(16 * 1024 * 1024)
-        .spawn(move || wcl_lang::parse_for_edit(&src, "limits").map(|_| ()))
-        .expect("spawn")
-        .join()
-        .expect("no panic")
-        .expect_err("a cap fires");
-    assert!(err.to_string().contains("too deep"), "got: {err}");
+    on_small_stack(move || {
+        let err = wcl_lang::parse_for_edit(&src, "limits").expect_err("a cap fires");
+        assert!(err.to_string().contains("too deep"), "got: {err}");
+    });
 }
 
 // The deepest trees the parser accepts, in each shape, must still
@@ -143,4 +137,62 @@ fn ordinary_long_expressions_still_parse() {
     // A long but realistic chain stays well inside the cap.
     assert_ok(format!("@schemaless x = 1{}\n", " + 1".repeat(200)));
     assert_ok(format!("@schemaless x = \"a\"{}\n", " + \"b\"".repeat(200)));
+}
+
+/// Run `exercise` on a 2 MiB thread and accept either outcome a cap
+/// allows: a clean parse and evaluation, or a depth diagnostic. Anything
+/// else — above all a stack overflow, which aborts the test binary —
+/// fails.
+fn assert_ok_or_too_deep(src: String) {
+    on_small_stack(move || {
+        if let Some(err) = exercise(&src) {
+            assert!(err.contains("too deep"), "got: {err}");
+        }
+    });
+}
+
+#[test]
+fn nesting_at_the_cap_ends_cleanly_on_a_small_stack() {
+    // Unoptimised parse frames outgrew 2 MiB at about 80 nested `${…}`
+    // or `if` levels, well inside the 128-level nesting cap; the
+    // remaining-stack guard reports the nesting limit instead. An
+    // optimised build parses all of them.
+    let n = 127;
+    assert_ok_or_too_deep(format!(
+        "@schemaless x = {}1{}\n",
+        "$\"${".repeat(n),
+        "}\"".repeat(n)
+    ));
+    assert_ok_or_too_deep(format!(
+        "@schemaless x = {}1{}\n",
+        "if true { ".repeat(n),
+        " }".repeat(n)
+    ));
+    assert_ok_or_too_deep(format!(
+        "@schemaless x = {}1{}\n",
+        "(".repeat(n),
+        ")".repeat(n)
+    ));
+}
+
+#[test]
+fn deep_fn_body_called_deep_errors_instead_of_overflowing() {
+    // The 256-level expression cap and the 200-level evaluation cap
+    // multiply: a body nested near the first, recursing near the second,
+    // outgrew 2 MiB. The remaining-stack guard turns the overflow into
+    // the depth error; with stack to spare it evaluates.
+    let src = format!(
+        "fn f(n: i64) -> i64 if n <= 0 {{ 0 }} else {{ f(n - 1){} }}\n\
+         @schemaless x = f(199)\n",
+        " + 1".repeat(240)
+    );
+    on_small_stack(move || {
+        let doc = Document::open(&src, "limits").expect("parses");
+        if let Err(err) = doc.get("x").expect("field x").value() {
+            assert!(
+                err.to_string().contains("depth limit exceeded"),
+                "got: {err}"
+            );
+        }
+    });
 }

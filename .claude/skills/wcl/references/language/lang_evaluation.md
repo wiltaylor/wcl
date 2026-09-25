@@ -118,6 +118,11 @@ A call past the limit reports `wcl::eval::call_depth_exceeded` (`call depth limi
 example by computing a total with `sum(...)` over a list rather than by field-to-field
 accumulation.
 
+The same two errors also fire **before** 200 when the thread's real stack runs low: a small
+thread (the LSP's 2 MiB workers), an unoptimised build, or a `fn` whose body is a very deep
+expression recursing close to the cap. Evaluation never overflows the stack; it reports the
+depth error.
+
 ## Scope and lookup
 
 A bare identifier inside a block resolves by walking the enclosing block frames innermost to

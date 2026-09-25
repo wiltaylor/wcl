@@ -50,8 +50,10 @@ more than 256 terms, or a 300-link `a.b.c…`, fails to parse with `expression t
 256 levels of operators, calls or member accesses)` (exit 1 from `wcl check`). Generated files hit
 this. Split the chain with `let` bindings, or build a list and use `sum` / `join`. `else if`
 chains and `${…}` slots nested inside one another count against the separate 128-level nesting
-cap (`nesting too deep`). This is a parse-time limit on one written expression, separate from
-the run-time cap of 200 nested fields, `let`s and `fn` calls (`lang_evaluation.md`).
+cap (`nesting too deep (more than 128 levels)`). Either parse cap can fire sooner on a thread
+short of stack (the LSP's 2 MiB workers, an unoptimised build) with the same message, instead
+of a crash. This is a parse-time limit on one written expression, separate from the run-time
+cap of 200 nested fields, `let`s and `fn` calls (`lang_evaluation.md`).
 
 `&&`, `||` and `??` **short-circuit**. They skip the right side when the left already decides
 the answer. That is what makes `count > 0 && total / count > 5` safe and `cached ??

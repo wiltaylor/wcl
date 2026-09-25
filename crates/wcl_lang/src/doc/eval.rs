@@ -391,6 +391,15 @@ impl Document {
         if let Some(v) = Self::eval_value_literal(expr) {
             return Ok(v);
         }
+        // The counted caps can compound past what the thread's stack
+        // holds (a deeply nested `fn` body, called deep); running low
+        // reports as the depth limit rather than aborting.
+        if crate::stack::is_low() {
+            return Err(EvalError::eval_depth_exceeded(
+                MAX_EVAL_DEPTH,
+                span_of(expr),
+            ));
+        }
         match expr {
             E::InterpolatedString {
                 encoding,

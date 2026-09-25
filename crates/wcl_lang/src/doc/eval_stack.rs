@@ -87,7 +87,8 @@ impl Drop for EvalFrame {
 pub(crate) enum Refused {
     /// The key is already on this thread's stack.
     Cycle,
-    /// The stack is at [`MAX_EVAL_DEPTH`].
+    /// The stack is at [`MAX_EVAL_DEPTH`], or the thread's Rust stack is
+    /// running low.
     TooDeep,
 }
 
@@ -113,7 +114,10 @@ pub(crate) fn enter(key: FrameKey) -> Result<EvalFrame, Refused> {
         if key != FrameKey::Call && s.contains(&key) {
             return Err(Refused::Cycle);
         }
-        if s.len() >= MAX_EVAL_DEPTH {
+        // Short of the cap, a thread whose stack is running low (a small
+        // thread, an unoptimised build, deeply nested expressions between
+        // frames) is as full as one at it.
+        if s.len() >= MAX_EVAL_DEPTH || crate::stack::is_low() {
             return Err(Refused::TooDeep);
         }
         s.push(key);

@@ -28,6 +28,8 @@ mod lexer;
 mod numeric;
 /// The recursive-descent parser: tokens in, syntax tree out.
 mod parser;
+/// The remaining-stack guard under the depth caps.
+mod stack;
 /// The name index built during parsing.
 mod symbols;
 /// Runtime values produced by evaluation. The types that *describe*
