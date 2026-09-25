@@ -319,8 +319,10 @@ impl Document {
     }
 
     /// Resolve a [`TypeRef`] to either its built-in tag or the user-declared
-    /// [`TypeDecl`] / [`UnionDecl`] it points to. `Named` refs are validated
-    /// at [`Document::open`], so the lookup never fails here.
+    /// [`TypeDecl`] / [`UnionDecl`] it points to. `Named` refs in the
+    /// source are validated at [`Document::open`]; a `TypeRef` built by a
+    /// host that names nothing declared resolves to
+    /// [`ResolvedType::Unresolved`].
     ///
     /// Names resolve from the document's ROOT namespace. A reference written
     /// inside a namespaced file must resolve from *that* namespace instead —
@@ -340,9 +342,9 @@ impl Document {
         match t {
             TypeRef::Builtin(b) => ResolvedType::Builtin(*b),
             TypeRef::Named { path, .. } => {
-                let fqn = self
-                    .resolve_path_in(path, file_ns)
-                    .expect("named ref validated at Document::open");
+                let Some(fqn) = self.resolve_path_in(path, file_ns) else {
+                    return ResolvedType::Unresolved(path);
+                };
                 let fqn_dotted = fqn.join(".");
                 if let Some(decl) = self.type_decl(&fqn_dotted) {
                     ResolvedType::Named(decl)
@@ -352,11 +354,10 @@ impl Document {
                     ResolvedType::Union(union)
                 } else if let Some(ss) = self.symbol_set(&fqn_dotted) {
                     ResolvedType::SymbolSet(ss)
+                } else if let Some(conn) = self.connection_decl(&fqn_dotted) {
+                    ResolvedType::Connection(conn)
                 } else {
-                    ResolvedType::Connection(
-                        self.connection_decl(&fqn_dotted)
-                            .expect("named ref validated at Document::open"),
-                    )
+                    ResolvedType::Unresolved(path)
                 }
             }
             TypeRef::Reference(inner) => {
