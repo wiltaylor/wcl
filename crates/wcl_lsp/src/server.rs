@@ -18,36 +18,51 @@
 //! all visible everywhere. When no root is found, the server falls
 //! back to per-file parsing — every standalone `.wcl` file still
 //! works.
+//!
+//! ## Work scheduling
+//!
+//! Every open, change or close of a buffer (and every change the client
+//! reports to a watched file) starts a new *generation*. The snapshot of
+//! open buffers and the evaluated root document are cached per
+//! generation, so they are built at most once per change however many
+//! requests follow it. Handlers run on the blocking pool, off the
+//! protocol loop; a request the client cancels is dropped when its
+//! result arrives. Diagnostics wait until edits pause for
+//! [`DIAGNOSTICS_DEBOUNCE`], and a pass that a newer change overtakes is
+//! abandoned rather than published.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
+use std::time::Duration;
 
 use dashmap::DashMap;
 use ropey::Rope;
-use tower_lsp_server::jsonrpc::Result as RpcResult;
+use tokio::task::JoinHandle;
+use tower_lsp_server::jsonrpc::{Error as RpcError, Result as RpcResult};
 use tower_lsp_server::ls_types::{
     CodeActionParams, CodeActionProviderCapability, CodeActionResponse, CompletionOptions,
     CompletionParams, CompletionResponse, Diagnostic, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams,
-    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams,
-    FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-    Location, MessageType, OneOf, Position, ReferenceParams, RenameParams, SaveOptions,
-    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
-    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
-    ServerCapabilities, ServerInfo, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    TextDocumentSyncSaveOptions, TextEdit, Uri, WorkspaceEdit, WorkspaceSymbolParams,
-    WorkspaceSymbolResponse,
+    DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, FoldingRange,
+    FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
+    InitializeResult, InitializedParams, Location, MessageType, OneOf, ReferenceParams,
+    RenameParams, SaveOptions, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, SignatureHelp,
+    SignatureHelpOptions, SignatureHelpParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, TextEdit, Uri, WorkspaceEdit,
+    WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 use tower_lsp_server::{Client, LanguageServer};
-use wcl_lang::{Document, Environment, format as wcl_format, parse_for_edit};
+use wcl_lang::{Document, Environment, ParseError, format as wcl_format, parse_for_edit};
 
 use crate::code_actions;
 use crate::completion;
 use crate::convert::{PositionEncoding, path_to_uri, rope_char_index, uri_to_path};
-use crate::ctx::Ctx;
+use crate::ctx::{Ctx, canonical};
 use crate::diagnostics;
 use crate::folding;
 use crate::hover as hover_impl;
@@ -57,14 +72,29 @@ use crate::signature;
 use crate::symbols;
 use crate::workspace;
 
+/// How long edits must pause before diagnostics are recomputed. Typing
+/// produces a change per keystroke; analysing each one would queue work
+/// the next keystroke makes stale.
+const DIAGNOSTICS_DEBOUNCE: Duration = Duration::from_millis(150);
+
 /// Environment for a root-document parse: the wdoc one, so `@contextual`
 /// block kinds (`wdoc_repeater`, component instances) expand through
 /// wdoc's expander and its builtins (`page_metadata`, `__wdoc_slot`)
 /// resolve. A bare `Environment::new()` would make every projection over a
 /// repeater a hard error and paint valid documents red. Mirrors what
-/// [`crate::diagnostics`] opens with.
+/// [`Ctx::open`] opens with.
 fn root_environment() -> Environment {
     wcl_wdoc::wdoc_environment()
+}
+
+/// Lock `mutex`, recovering (and logging) a poisoned one: every value
+/// guarded here is a cache or a set that a panicking holder cannot leave
+/// torn.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|e| {
+        tracing::error!("lock poisoned; recovering: {e}");
+        e.into_inner()
+    })
 }
 
 /// One open editor buffer.
@@ -76,13 +106,38 @@ struct OpenDoc {
     version: i32,
 }
 
-/// The LSP backend. Holds the open-document cache (a rope per URI,
-/// kept in sync via incremental change events) and an optional root
-/// document path resolved during `initialize`; everything else is
-/// computed on demand from `wcl_lang`.
-pub struct Backend {
-    /// Handle for sending notifications back to the editor.
-    client: Client,
+/// The root document as evaluated for one generation. A parse failure
+/// is kept too: diagnostics report it, and requests fall back to
+/// per-file parsing without reparsing the root.
+type RootResult = Result<Arc<Document>, Arc<ParseError>>;
+
+/// Every open buffer with a filesystem path, as `path → text`.
+type Buffers = Arc<HashMap<PathBuf, String>>;
+
+/// Diagnostics to publish: each file with the version of its open
+/// buffer (`None` for a file that is not open).
+type Batch = Vec<(Uri, Option<i32>, Vec<Diagnostic>)>;
+
+/// A value computed for one generation of the open buffers.
+struct Cached<T> {
+    /// The generation the value was computed for.
+    generation: u64,
+    /// The value.
+    value: T,
+}
+
+/// A consistent view for one piece of work: an analysis context over
+/// the open buffers of one generation.
+struct Snapshot {
+    /// The generation the buffers were taken at.
+    generation: u64,
+    /// Encoding plus the buffer snapshot and its loader.
+    ctx: Ctx,
+}
+
+/// Everything the handlers share. Lives behind an `Arc` so work can move
+/// to the blocking pool.
+struct State {
     /// Open buffers by URI.
     docs: DashMap<Uri, OpenDoc>,
     /// Path to the root document, when one was discovered or
@@ -92,9 +147,29 @@ pub struct Backend {
     root_path: RwLock<Option<PathBuf>>,
     /// Unit LSP `character` values count in, fixed by `initialize`.
     encoding: OnceLock<PositionEncoding>,
+    /// Bumped after every change to the buffers or the files under them.
+    generation: AtomicU64,
+    /// Every buffer with a filesystem path, as `path → text`.
+    buffers: Mutex<Option<Cached<Buffers>>>,
+    /// The evaluated root document.
+    root: Mutex<Option<Cached<RootResult>>>,
     /// Every URI the last publish sent diagnostics for, so a file whose
     /// errors are gone — or that left the import graph — is cleared.
     published: Mutex<HashSet<Uri>>,
+}
+
+/// The LSP backend. Holds the open-document cache (a rope per URI,
+/// kept in sync via incremental change events) and an optional root
+/// document path resolved during `initialize`; everything else is
+/// computed on demand from `wcl_lang` and cached per generation.
+pub struct Backend {
+    /// Handle for sending notifications back to the editor.
+    client: Client,
+    /// State shared with work on the blocking pool.
+    state: Arc<State>,
+    /// The pending or running diagnostics pass, aborted when a newer
+    /// change schedules another.
+    diagnostics: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl Backend {
@@ -103,200 +178,72 @@ impl Backend {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            docs: DashMap::new(),
-            root_path: RwLock::new(None),
-            encoding: OnceLock::new(),
-            published: Mutex::new(HashSet::new()),
+            state: Arc::new(State {
+                docs: DashMap::new(),
+                root_path: RwLock::new(None),
+                encoding: OnceLock::new(),
+                generation: AtomicU64::new(0),
+                buffers: Mutex::new(None),
+                root: Mutex::new(None),
+                published: Mutex::new(HashSet::new()),
+            }),
+            diagnostics: Mutex::new(None),
         }
     }
 
-    /// The negotiated position encoding — UTF-16, the protocol default,
-    /// until `initialize` has run.
-    fn encoding(&self) -> PositionEncoding {
-        self.encoding.get().copied().unwrap_or_default()
-    }
-
-    /// A fresh analysis context for one request, snapshotting every
-    /// open buffer.
-    fn ctx(&self) -> Ctx {
-        Ctx::with_buffers(self.encoding(), self.overlay_snapshot())
-    }
-
-    /// Materialise the current text for a URI. Returns `None` when
-    /// the document hasn't been opened by the client yet.
-    pub(crate) fn document_text(&self, uri: &Uri) -> Option<String> {
-        self.docs.get(uri).map(|doc| doc.rope.to_string())
-    }
-
-    /// The buffer text plus the byte offset of `pos` within it — the
-    /// shared preamble for the position-bearing request handlers
-    /// (definition / references / hover / completion). `None` when the
-    /// document isn't open.
-    fn source_and_offset(&self, uri: &Uri, pos: Position) -> Option<(String, usize)> {
-        let source = self.document_text(uri)?;
-        let offset = self.ctx().index(&source).offset(pos);
-        Some((source, offset))
-    }
-
-    /// Snapshot of every open buffer as `path → text`. Used to build
-    /// an overlay [`FileLoader`] so root-document parses see unsaved
-    /// edits. URIs that don't map to a filesystem path are silently
-    /// skipped.
-    pub(crate) fn overlay_snapshot(&self) -> HashMap<PathBuf, String> {
-        let mut out = HashMap::new();
-        for entry in self.docs.iter() {
-            if let Some(p) = uri_to_path(entry.key()) {
-                out.insert(p, entry.value().rope.to_string());
-            }
-        }
-        out
-    }
-
-    /// Canonical path of the configured root document, if any. A
-    /// poisoned lock is recovered (the guarded `Option<PathBuf>` can't
-    /// be left torn) and logged — silently degrading to per-file mode
-    /// would break cross-file resolution with no indication why.
+    /// Canonical path of the configured root document, if any.
     pub fn root_path(&self) -> Option<PathBuf> {
-        match self.root_path.read() {
-            Ok(g) => g.clone(),
-            Err(e) => {
-                tracing::error!("root_path lock poisoned; recovering: {e}");
-                e.into_inner().clone()
-            }
-        }
+        self.state.root_path()
     }
 
-    /// Parse the root document (if configured) with the current
-    /// overlay applied. Returns `None` when no root is configured or
-    /// the root failed to parse — callers fall back to per-file
-    /// parsing in that case.
-    pub fn root_document(&self) -> Option<Document> {
-        self.root_document_in(&self.ctx())
+    /// The root document (if configured) evaluated with the current
+    /// buffers overlaid. `None` when no root is configured or the root
+    /// failed to parse — callers fall back to per-file parsing then.
+    /// Cached until the next change; call from a context that may block.
+    pub fn root_document(&self) -> Option<Arc<Document>> {
+        self.state.root_document(&self.state.snapshot())
     }
 
-    /// [`Self::root_document`] against the buffers snapshotted in `ctx`.
-    fn root_document_in(&self, ctx: &Ctx) -> Option<Document> {
-        let path = self.root_path()?;
-        Document::from_file_with_loader(&path, &root_environment(), ctx.loader()).ok()
-    }
-
-    /// Recompute diagnostics for the whole workspace and publish them.
-    /// Every open file is re-published on every change, because an edit
-    /// to one file can create or clear errors in the files that import it.
-    async fn publish(&self) {
-        let batch = self.collect_diagnostics(&self.ctx());
-        for (uri, version, diagnostics) in batch {
-            self.client
-                .publish_diagnostics(uri, diagnostics, version)
-                .await;
-        }
-    }
-
-    /// Diagnostics for every open file, every file an analysis placed a
-    /// diagnostic in, and every file published last time (so stale
-    /// errors clear), each with the version of its open buffer.
-    ///
-    /// With a root document configured, the root is analysed once, its
-    /// errors are placed in the files they were raised in, and every
-    /// open buffer adds its own syntax errors. Schema-validating a
-    /// fragment in isolation would report false positives for
-    /// everything the root supplies (imported `@block` declarations,
-    /// document schemas, referenced data), so files outside the root's
-    /// import graph get syntax errors only. With no root, every open
-    /// buffer is analysed as a document of its own.
-    fn collect_diagnostics(&self, ctx: &Ctx) -> Vec<(Uri, Option<i32>, Vec<Diagnostic>)> {
-        let open: Vec<(Uri, i32, String)> = self
-            .docs
-            .iter()
-            .map(|entry| (entry.key().clone(), entry.version, entry.rope.to_string()))
-            .collect();
-        // Canonical path → open URI, so a diagnostic placed by path lands
-        // on the URI the editor opened even through a symlink.
-        let open_paths: HashMap<PathBuf, Uri> = open
-            .iter()
-            .filter_map(|(uri, _, _)| {
-                let path = uri_to_path(uri)?;
-                Some((std::fs::canonicalize(&path).unwrap_or(path), uri.clone()))
+    /// Run `work` against the shared state on the blocking pool. A
+    /// panic in it becomes an internal error for this request alone.
+    async fn run<T, F>(&self, work: F) -> RpcResult<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&State) -> T + Send + 'static,
+    {
+        let state = Arc::clone(&self.state);
+        tokio::task::spawn_blocking(move || work(&state))
+            .await
+            .map_err(|e| {
+                tracing::error!("request failed: {e}");
+                RpcError::internal_error()
             })
-            .collect();
-        let uri_for = |path: &Path| -> Option<Uri> {
-            let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-            open_paths
-                .get(&canonical)
-                .cloned()
-                .or_else(|| path_to_uri(path))
-        };
+    }
 
-        let mut by_uri: HashMap<Uri, Vec<Diagnostic>> = HashMap::new();
-        let mut place = |uri: Uri, diagnostic: Diagnostic| {
-            let slot = by_uri.entry(uri).or_default();
-            if !slot.contains(&diagnostic) {
-                slot.push(diagnostic);
+    /// Record a change to the buffers (or the files under them) and
+    /// schedule a diagnostics pass once edits pause.
+    fn changed(&self) {
+        self.state.generation.fetch_add(1, Ordering::SeqCst);
+        let state = Arc::clone(&self.state);
+        let client = self.client.clone();
+        let task = tokio::spawn(async move {
+            tokio::time::sleep(DIAGNOSTICS_DEBOUNCE).await;
+            let generation = state.generation();
+            let worker = Arc::clone(&state);
+            let batch = tokio::task::spawn_blocking(move || worker.collect_diagnostics(generation));
+            let Ok(Some(batch)) = batch.await else {
+                return;
+            };
+            if state.generation() != generation {
+                return;
             }
-        };
-        match self.root_path() {
-            Some(root) => {
-                let placed =
-                    match Document::from_file_with_loader(&root, &root_environment(), ctx.loader())
-                    {
-                        Ok(doc) => diagnostics::document(ctx, &doc),
-                        Err(e) => diagnostics::parse_failure(ctx, &e, &root.display().to_string()),
-                    };
-                for (origin, diagnostic) in placed {
-                    let target = match origin {
-                        diagnostics::Origin::Analysed => uri_for(&root),
-                        diagnostics::Origin::File(path) => uri_for(&path),
-                    };
-                    if let Some(uri) = target {
-                        place(uri, diagnostic);
-                    }
-                }
-                for (uri, _, text) in &open {
-                    for diagnostic in diagnostics::syntax_only(ctx, text, uri.as_str()) {
-                        place(uri.clone(), diagnostic);
-                    }
-                }
+            for (uri, version, diagnostics) in batch {
+                client.publish_diagnostics(uri, diagnostics, version).await;
             }
-            None => {
-                for (uri, _, text) in &open {
-                    let placed = diagnostics::analyse(ctx, text, uri.as_str());
-                    for (origin, diagnostic) in placed {
-                        let target = match origin {
-                            diagnostics::Origin::Analysed => Some(uri.clone()),
-                            diagnostics::Origin::File(path) => uri_for(&path),
-                        };
-                        if let Some(target) = target {
-                            place(target, diagnostic);
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut published = self.published.lock().unwrap_or_else(|e| {
-            tracing::error!("published-set lock poisoned; recovering: {e}");
-            e.into_inner()
         });
-        let versions: HashMap<&Uri, i32> = open
-            .iter()
-            .map(|(uri, version, _)| (uri, *version))
-            .collect();
-        let targets: HashSet<Uri> = open
-            .iter()
-            .map(|(uri, _, _)| uri.clone())
-            .chain(by_uri.keys().cloned())
-            .chain(published.drain())
-            .collect();
-        let mut batch = Vec::with_capacity(targets.len());
-        for uri in targets {
-            let diagnostics = by_uri.remove(&uri).unwrap_or_default();
-            if !diagnostics.is_empty() {
-                published.insert(uri.clone());
-            }
-            let version = versions.get(&uri).copied();
-            batch.push((uri, version, diagnostics));
+        if let Some(previous) = lock(&self.diagnostics).replace(task) {
+            previous.abort();
         }
-        batch
     }
 
     /// Resolve the root document path from `initialize` parameters.
@@ -339,14 +286,237 @@ impl Backend {
     }
 }
 
+impl State {
+    /// The current generation.
+    fn generation(&self) -> u64 {
+        self.generation.load(Ordering::SeqCst)
+    }
+
+    /// The negotiated position encoding — UTF-16, the protocol default,
+    /// until `initialize` has run.
+    fn encoding(&self) -> PositionEncoding {
+        self.encoding.get().copied().unwrap_or_default()
+    }
+
+    /// Canonical path of the configured root document, if any. A
+    /// poisoned lock is recovered (the guarded `Option<PathBuf>` can't
+    /// be left torn) and logged — silently degrading to per-file mode
+    /// would break cross-file resolution with no indication why.
+    fn root_path(&self) -> Option<PathBuf> {
+        match self.root_path.read() {
+            Ok(g) => g.clone(),
+            Err(e) => {
+                tracing::error!("root_path lock poisoned; recovering: {e}");
+                e.into_inner().clone()
+            }
+        }
+    }
+
+    /// Materialise the current text for a URI. Returns `None` when
+    /// the document hasn't been opened by the client yet.
+    fn document_text(&self, uri: &Uri) -> Option<String> {
+        self.docs.get(uri).map(|doc| doc.rope.to_string())
+    }
+
+    /// An analysis context over the current buffers. The buffer map is
+    /// built once per generation and shared by every request in it.
+    fn snapshot(&self) -> Snapshot {
+        // Read the generation before the buffers: a change landing in
+        // between is then at worst cached under the older generation,
+        // which the next request rebuilds.
+        let generation = self.generation();
+        let buffers = {
+            let mut cache = lock(&self.buffers);
+            match cache.as_ref() {
+                Some(cached) if cached.generation == generation => Arc::clone(&cached.value),
+                _ => {
+                    let buffers: Buffers = Arc::new(
+                        self.docs
+                            .iter()
+                            .filter_map(|entry| {
+                                Some((uri_to_path(entry.key())?, entry.rope.to_string()))
+                            })
+                            .collect(),
+                    );
+                    *cache = Some(Cached {
+                        generation,
+                        value: Arc::clone(&buffers),
+                    });
+                    buffers
+                }
+            }
+        };
+        Snapshot {
+            generation,
+            ctx: Ctx::with_buffers(self.encoding(), buffers),
+        }
+    }
+
+    /// The root document evaluated over `snapshot`'s buffers, or `None`
+    /// when no root is configured. Evaluated once per generation: the
+    /// lock is held while building, so concurrent requests wait for the
+    /// one build instead of repeating it.
+    fn root(&self, snapshot: &Snapshot) -> Option<RootResult> {
+        let path = self.root_path()?;
+        let mut cache = lock(&self.root);
+        if let Some(cached) = cache.as_ref()
+            && cached.generation == snapshot.generation
+        {
+            return Some(cached.value.clone());
+        }
+        let value =
+            Document::from_file_with_loader(&path, &root_environment(), snapshot.ctx.loader())
+                .map(Arc::new)
+                .map_err(Arc::new);
+        if cache
+            .as_ref()
+            .is_none_or(|cached| cached.generation < snapshot.generation)
+        {
+            *cache = Some(Cached {
+                generation: snapshot.generation,
+                value: value.clone(),
+            });
+        }
+        Some(value)
+    }
+
+    /// The root document when it parses.
+    fn root_document(&self, snapshot: &Snapshot) -> Option<Arc<Document>> {
+        self.root(snapshot)?.ok()
+    }
+
+    /// Diagnostics for every open file, every file an analysis placed a
+    /// diagnostic in, and every file published last time (so stale
+    /// errors clear), each with the version of its open buffer. `None`
+    /// once a change newer than `generation` makes the pass stale.
+    ///
+    /// With a root document configured, the root is analysed once, its
+    /// errors are placed in the files they were raised in, and every
+    /// open buffer adds its own syntax errors. Schema-validating a
+    /// fragment in isolation would report false positives for
+    /// everything the root supplies (imported `@block` declarations,
+    /// document schemas, referenced data), so files outside the root's
+    /// import graph get syntax errors only. With no root, every open
+    /// buffer is analysed as a document of its own.
+    fn collect_diagnostics(&self, generation: u64) -> Option<Batch> {
+        let snapshot = self.snapshot();
+        if snapshot.generation != generation {
+            return None;
+        }
+        let ctx = &snapshot.ctx;
+        let open: Vec<(Uri, i32, String)> = self
+            .docs
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.version, entry.rope.to_string()))
+            .collect();
+        // Canonical path → open URI, so a diagnostic placed by path lands
+        // on the URI the editor opened even through a symlink.
+        let open_paths: HashMap<PathBuf, Uri> = open
+            .iter()
+            .filter_map(|(uri, _, _)| Some((canonical(&uri_to_path(uri)?), uri.clone())))
+            .collect();
+        let uri_for = |path: &Path| -> Option<Uri> {
+            open_paths
+                .get(&canonical(path))
+                .cloned()
+                .or_else(|| path_to_uri(path))
+        };
+
+        let mut by_uri: HashMap<Uri, Vec<Diagnostic>> = HashMap::new();
+        let mut place = |uri: Uri, diagnostic: Diagnostic| {
+            let slot = by_uri.entry(uri).or_default();
+            if !slot.contains(&diagnostic) {
+                slot.push(diagnostic);
+            }
+        };
+        match (self.root_path(), self.root(&snapshot)) {
+            (Some(root), Some(result)) => {
+                let placed = match &result {
+                    Ok(doc) => diagnostics::document(ctx, doc),
+                    Err(e) => diagnostics::parse_failure(ctx, e, &root.display().to_string()),
+                };
+                for (origin, diagnostic) in placed {
+                    let target = match origin {
+                        diagnostics::Origin::Analysed => uri_for(&root),
+                        diagnostics::Origin::File(path) => uri_for(&path),
+                    };
+                    if let Some(uri) = target {
+                        place(uri, diagnostic);
+                    }
+                }
+                for (uri, _, text) in &open {
+                    for diagnostic in diagnostics::syntax_only(ctx, text, uri.as_str()) {
+                        place(uri.clone(), diagnostic);
+                    }
+                }
+            }
+            _ => {
+                for (uri, _, text) in &open {
+                    if self.generation() != generation {
+                        return None;
+                    }
+                    for (origin, diagnostic) in diagnostics::analyse(ctx, text, uri.as_str()) {
+                        let target = match origin {
+                            diagnostics::Origin::Analysed => Some(uri.clone()),
+                            diagnostics::Origin::File(path) => uri_for(&path),
+                        };
+                        if let Some(target) = target {
+                            place(target, diagnostic);
+                        }
+                    }
+                }
+            }
+        }
+        if self.generation() != generation {
+            return None;
+        }
+
+        let mut published = lock(&self.published);
+        let versions: HashMap<&Uri, i32> = open
+            .iter()
+            .map(|(uri, version, _)| (uri, *version))
+            .collect();
+        let targets: HashSet<Uri> = open
+            .iter()
+            .map(|(uri, _, _)| uri.clone())
+            .chain(by_uri.keys().cloned())
+            .chain(published.drain())
+            .collect();
+        let mut batch = Vec::with_capacity(targets.len());
+        for uri in targets {
+            let diagnostics = by_uri.remove(&uri).unwrap_or_default();
+            if !diagnostics.is_empty() {
+                published.insert(uri.clone());
+            }
+            let version = versions.get(&uri).copied();
+            batch.push((uri, version, diagnostics));
+        }
+        Some(batch)
+    }
+
+    /// The buffer text plus a fresh snapshot and the byte offset of
+    /// `pos` — the shared preamble for the position-bearing request
+    /// handlers. `None` when the document isn't open.
+    fn source_at(
+        &self,
+        uri: &Uri,
+        pos: tower_lsp_server::ls_types::Position,
+    ) -> Option<(String, Snapshot, usize)> {
+        let source = self.document_text(uri)?;
+        let snapshot = self.snapshot();
+        let offset = snapshot.ctx.index(&source).offset(pos);
+        Some((source, snapshot, offset))
+    }
+}
+
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> RpcResult<InitializeResult> {
         let encoding = PositionEncoding::negotiate(&params.capabilities);
-        if self.encoding.set(encoding).is_err() {
+        if self.state.encoding.set(encoding).is_err() {
             tracing::warn!("initialize received twice; keeping the first position encoding");
         }
         if let Some(p) = Backend::resolve_root(&params) {
-            match self.root_path.write() {
+            match self.state.root_path.write() {
                 Ok(mut guard) => *guard = Some(p),
                 Err(e) => {
                     tracing::error!("root_path lock poisoned; recovering: {e}");
@@ -356,7 +526,7 @@ impl LanguageServer for Backend {
         }
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
-                position_encoding: Some(self.encoding().kind()),
+                position_encoding: Some(self.state.encoding().kind()),
                 text_document_sync: Some(TextDocumentSyncCapability::Options(
                     TextDocumentSyncOptions {
                         open_close: Some(true),
@@ -421,29 +591,30 @@ impl LanguageServer for Backend {
     }
 
     async fn shutdown(&self) -> RpcResult<()> {
+        if let Some(pending) = lock(&self.diagnostics).take() {
+            pending.abort();
+        }
         Ok(())
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        let uri = params.text_document.uri.clone();
-        self.docs.insert(
-            uri,
+        self.state.docs.insert(
+            params.text_document.uri,
             OpenDoc {
                 rope: Rope::from_str(&params.text_document.text),
                 version: params.text_document.version,
             },
         );
-        self.publish().await;
+        self.changed();
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        let uri = params.text_document.uri;
         // Apply every change event in order. With INCREMENTAL sync
         // the client sends one or more ranged edits per request;
         // when `range` is None it's a full-document replacement
         // (clients may still send those for large diffs).
-        let encoding = self.encoding();
-        let mut doc = self.docs.entry(uri).or_default();
+        let encoding = self.state.encoding();
+        let mut doc = self.state.docs.entry(params.text_document.uri).or_default();
         doc.version = params.text_document.version;
         let rope = &mut doc.rope;
         for change in params.content_changes {
@@ -460,14 +631,20 @@ impl LanguageServer for Backend {
             }
         }
         drop(doc);
-        self.publish().await;
+        self.changed();
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        self.docs.remove(&params.text_document.uri);
         // Without its buffer the file reads from disk again, and its own
         // diagnostics clear unless an analysis still places some there.
-        self.publish().await;
+        self.state.docs.remove(&params.text_document.uri);
+        self.changed();
+    }
+
+    async fn did_change_watched_files(&self, _: DidChangeWatchedFilesParams) {
+        // A file under the open buffers changed on disk (a branch switch,
+        // another tool): everything cached from it is stale.
+        self.changed();
     }
 
     async fn formatting(
@@ -475,21 +652,21 @@ impl LanguageServer for Backend {
         params: DocumentFormattingParams,
     ) -> RpcResult<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
-        let Some(source) = self.document_text(&uri) else {
-            return Ok(None);
-        };
-        let Ok(ast) = parse_for_edit(&source, uri.as_str()) else {
-            // Parse failed — diagnostics already surface the error.
-            return Ok(None);
-        };
-        let formatted = wcl_format::to_source(&ast);
-        if formatted == source {
-            return Ok(Some(Vec::new()));
-        }
-        Ok(Some(vec![TextEdit {
-            range: self.ctx().index(&source).full_range(),
-            new_text: formatted,
-        }]))
+        self.run(move |state| {
+            let source = state.document_text(&uri)?;
+            // A parse failure is already surfaced by the diagnostics.
+            let ast = parse_for_edit(&source, uri.as_str()).ok()?;
+            let formatted = wcl_format::to_source(&ast);
+            if formatted == source {
+                return Some(Vec::new());
+            }
+            let range = crate::convert::LineIndex::new(&source, state.encoding()).full_range();
+            Some(vec![TextEdit {
+                range,
+                new_text: formatted,
+            }])
+        })
+        .await
     }
 
     async fn document_symbol(
@@ -497,11 +674,12 @@ impl LanguageServer for Backend {
         params: DocumentSymbolParams,
     ) -> RpcResult<Option<DocumentSymbolResponse>> {
         let uri = params.text_document.uri;
-        let Some(source) = self.document_text(&uri) else {
-            return Ok(None);
-        };
-        let syms = symbols::compute(&self.ctx(), &source, uri.as_str());
-        Ok(Some(DocumentSymbolResponse::Nested(syms)))
+        self.run(move |state| {
+            let source = state.document_text(&uri)?;
+            let symbols = symbols::compute(&state.snapshot().ctx, &source, uri.as_str());
+            Some(DocumentSymbolResponse::Nested(symbols))
+        })
+        .await
     }
 
     async fn folding_range(
@@ -509,166 +687,176 @@ impl LanguageServer for Backend {
         params: FoldingRangeParams,
     ) -> RpcResult<Option<Vec<FoldingRange>>> {
         let uri = params.text_document.uri;
-        let Some(source) = self.document_text(&uri) else {
-            return Ok(None);
-        };
-        Ok(Some(folding::compute(&source, uri.as_str())))
+        self.run(move |state| {
+            let source = state.document_text(&uri)?;
+            Some(folding::compute(&source, uri.as_str()))
+        })
+        .await
     }
 
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
     ) -> RpcResult<Option<GotoDefinitionResponse>> {
-        let uri = params.text_document_position_params.text_document.uri;
-        let Some((source, offset)) =
-            self.source_and_offset(&uri, params.text_document_position_params.position)
-        else {
-            return Ok(None);
-        };
-        let ctx = self.ctx();
-        let root_doc = self.root_document_in(&ctx);
-        let root_path = self.root_path();
-        Ok(navigation::goto_definition(
-            &ctx,
-            uri,
-            &source,
-            offset,
-            root_doc.as_ref(),
-            root_path.as_deref(),
-        ))
+        let position = params.text_document_position_params;
+        self.run(move |state| {
+            let uri = position.text_document.uri;
+            let (source, snapshot, offset) = state.source_at(&uri, position.position)?;
+            let root_doc = state.root_document(&snapshot);
+            let root_path = state.root_path();
+            navigation::goto_definition(
+                &snapshot.ctx,
+                uri,
+                &source,
+                offset,
+                root_doc.as_deref(),
+                root_path.as_deref(),
+            )
+        })
+        .await
     }
 
     async fn references(&self, params: ReferenceParams) -> RpcResult<Option<Vec<Location>>> {
-        let uri = params.text_document_position.text_document.uri;
-        let ctx = self.ctx();
-        let source = uri_to_path(&uri)
-            .and_then(|p| ctx.buffers.get(&p).cloned())
-            .or_else(|| self.document_text(&uri));
-        let Some(source) = source else {
-            return Ok(None);
-        };
-        let offset = ctx
-            .index(&source)
-            .offset(params.text_document_position.position);
-        let root_path = self.root_path();
-        let root_doc = self.root_document_in(&ctx);
-        Ok(navigation::references(
-            &ctx,
-            uri,
-            &source,
-            offset,
-            params.context.include_declaration,
-            root_doc.as_ref(),
-            root_path.as_deref(),
-        ))
+        let position = params.text_document_position;
+        let include_declaration = params.context.include_declaration;
+        self.run(move |state| {
+            let uri = position.text_document.uri;
+            let (source, snapshot, offset) = state.source_at(&uri, position.position)?;
+            let root_doc = state.root_document(&snapshot);
+            let root_path = state.root_path();
+            navigation::references(
+                &snapshot.ctx,
+                uri,
+                &source,
+                offset,
+                include_declaration,
+                root_doc.as_deref(),
+                root_path.as_deref(),
+            )
+        })
+        .await
     }
 
     async fn rename(&self, params: RenameParams) -> RpcResult<Option<WorkspaceEdit>> {
-        let uri = params.text_document_position.text_document.uri;
-        let ctx = self.ctx();
-        let source = uri_to_path(&uri)
-            .and_then(|p| ctx.buffers.get(&p).cloned())
-            .or_else(|| self.document_text(&uri));
-        let Some(source) = source else {
-            return Ok(None);
-        };
-        let offset = ctx
-            .index(&source)
-            .offset(params.text_document_position.position);
-        let root_path = self.root_path().or_else(|| uri_to_path(&uri));
-        let root_doc = root_path.as_ref().and_then(|path| {
-            Document::from_file_with_loader(path, &root_environment(), ctx.loader()).ok()
-        });
-        navigation::rename(
-            &ctx,
-            uri,
-            &source,
-            offset,
-            &params.new_name,
-            root_doc.as_ref(),
-            root_path.as_deref(),
-        )
-        .map_err(tower_lsp_server::jsonrpc::Error::invalid_params)
+        let position = params.text_document_position;
+        let new_name = params.new_name;
+        self.run(move |state| {
+            let uri = position.text_document.uri;
+            let Some((source, snapshot, offset)) = state.source_at(&uri, position.position) else {
+                return Ok(None);
+            };
+            // With no root the request file anchors the rename, opened
+            // from its buffer like any other file.
+            let (root_doc, root_path) = match state.root_path() {
+                Some(root) => (state.root_document(&snapshot), Some(root)),
+                None => {
+                    let path = uri_to_path(&uri);
+                    let doc = path.as_ref().and_then(|path| {
+                        Document::from_file_with_loader(
+                            path,
+                            &root_environment(),
+                            snapshot.ctx.loader(),
+                        )
+                        .ok()
+                        .map(Arc::new)
+                    });
+                    (doc, path)
+                }
+            };
+            navigation::rename(
+                &snapshot.ctx,
+                uri,
+                &source,
+                offset,
+                &new_name,
+                root_doc.as_deref(),
+                root_path.as_deref(),
+            )
+        })
+        .await?
+        .map_err(RpcError::invalid_params)
     }
 
     async fn hover(&self, params: HoverParams) -> RpcResult<Option<Hover>> {
-        let uri = params.text_document_position_params.text_document.uri;
-        let Some((source, offset)) =
-            self.source_and_offset(&uri, params.text_document_position_params.position)
-        else {
-            return Ok(None);
-        };
-        let ctx = self.ctx();
-        let root_doc = self.root_document_in(&ctx);
-        Ok(hover_impl::hover(
-            &ctx,
-            &source,
-            uri.as_str(),
-            offset,
-            root_doc.as_ref(),
-        ))
+        let position = params.text_document_position_params;
+        self.run(move |state| {
+            let uri = position.text_document.uri;
+            let (source, snapshot, offset) = state.source_at(&uri, position.position)?;
+            let root_doc = state.root_document(&snapshot);
+            hover_impl::hover(
+                &snapshot.ctx,
+                &source,
+                uri.as_str(),
+                offset,
+                root_doc.as_deref(),
+            )
+        })
+        .await
     }
 
     async fn completion(&self, params: CompletionParams) -> RpcResult<Option<CompletionResponse>> {
-        let uri = params.text_document_position.text_document.uri;
-        let Some((source, offset)) =
-            self.source_and_offset(&uri, params.text_document_position.position)
-        else {
-            return Ok(None);
-        };
-        let ctx = self.ctx();
-        let root_doc = self.root_document_in(&ctx);
-        let items = completion::completions(&ctx, &source, uri.as_str(), offset, root_doc.as_ref());
-        Ok(Some(CompletionResponse::Array(items)))
+        let position = params.text_document_position;
+        self.run(move |state| {
+            let uri = position.text_document.uri;
+            let (source, snapshot, offset) = state.source_at(&uri, position.position)?;
+            let root_doc = state.root_document(&snapshot);
+            let items = completion::completions(
+                &snapshot.ctx,
+                &source,
+                uri.as_str(),
+                offset,
+                root_doc.as_deref(),
+            );
+            Some(CompletionResponse::Array(items))
+        })
+        .await
     }
 
     async fn signature_help(
         &self,
         params: SignatureHelpParams,
     ) -> RpcResult<Option<SignatureHelp>> {
-        let uri = params.text_document_position_params.text_document.uri;
-        let Some((source, offset)) =
-            self.source_and_offset(&uri, params.text_document_position_params.position)
-        else {
-            return Ok(None);
-        };
-        // The buffer is usually mid-call (that's why help fired) and the
-        // overlay carries that unparseable text, which would fail the
-        // root parse and lose cross-file resolution. Retry the root with
-        // the buffer's *repaired* form (open brackets closed) overlaid.
-        let ctx = self.ctx();
-        let root_doc = self.root_document_in(&ctx).or_else(|| {
-            let root = self.root_path()?;
-            let path = uri_to_path(&uri)?;
-            let mut overlay = (*ctx.buffers).clone();
-            overlay.insert(path, signature::repair_source(&source, offset));
-            let repaired = Ctx::with_buffers(ctx.encoding, overlay);
-            Document::from_file_with_loader(&root, &root_environment(), repaired.loader()).ok()
-        });
-        Ok(signature::signature_help(
-            &ctx,
-            &source,
-            uri.as_str(),
-            offset,
-            root_doc.as_ref(),
-        ))
+        let position = params.text_document_position_params;
+        self.run(move |state| {
+            let uri = position.text_document.uri;
+            let (source, snapshot, offset) = state.source_at(&uri, position.position)?;
+            let ctx = &snapshot.ctx;
+            // The buffer is usually mid-call (that's why help fired) and
+            // the overlay carries that unparseable text, which would fail
+            // the root parse and lose cross-file resolution. Retry the
+            // root with the buffer's *repaired* form (open brackets
+            // closed) overlaid.
+            let root_doc = state.root_document(&snapshot).or_else(|| {
+                let root = state.root_path()?;
+                let path = uri_to_path(&uri)?;
+                let mut overlay = (*ctx.buffers).clone();
+                overlay.insert(path, signature::repair_source(&source, offset));
+                let repaired = Ctx::with_buffers(ctx.encoding, overlay);
+                Document::from_file_with_loader(&root, &root_environment(), repaired.loader())
+                    .ok()
+                    .map(Arc::new)
+            });
+            signature::signature_help(ctx, &source, uri.as_str(), offset, root_doc.as_deref())
+        })
+        .await
     }
 
     async fn symbol(
         &self,
         params: WorkspaceSymbolParams,
     ) -> RpcResult<Option<WorkspaceSymbolResponse>> {
-        let ctx = self.ctx();
-        let root_doc = self.root_document_in(&ctx);
-        let root_path = self.root_path();
-        Ok(Some(WorkspaceSymbolResponse::Flat(
-            workspace::workspace_symbols(
-                &ctx,
+        self.run(move |state| {
+            let snapshot = state.snapshot();
+            let root_doc = state.root_document(&snapshot);
+            let root_path = state.root_path();
+            Some(WorkspaceSymbolResponse::Flat(workspace::workspace_symbols(
+                &snapshot.ctx,
                 &params.query,
-                root_doc.as_ref(),
+                root_doc.as_deref(),
                 root_path.as_deref(),
-            ),
-        )))
+            )))
+        })
+        .await
     }
 
     async fn semantic_tokens_full(
@@ -676,19 +864,20 @@ impl LanguageServer for Backend {
         params: SemanticTokensParams,
     ) -> RpcResult<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
-        let Some(source) = self.document_text(&uri) else {
-            return Ok(None);
-        };
-        let data = semtokens::compute(&source, self.encoding());
-        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
-            result_id: None,
-            data,
-        })))
+        self.run(move |state| {
+            let source = state.document_text(&uri)?;
+            let data = semtokens::compute(&source, state.encoding());
+            Some(SemanticTokensResult::Tokens(SemanticTokens {
+                result_id: None,
+                data,
+            }))
+        })
+        .await
     }
 
     async fn code_action(&self, params: CodeActionParams) -> RpcResult<Option<CodeActionResponse>> {
         let uri = params.text_document.uri;
-        let Some(source) = self.document_text(&uri) else {
+        let Some(source) = self.state.document_text(&uri) else {
             return Ok(None);
         };
         Ok(code_actions::compute(

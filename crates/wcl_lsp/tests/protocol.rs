@@ -277,3 +277,38 @@ async fn syntax_errors_in_files_outside_the_root_graph_are_published() {
     let diagnostics = session.diagnostics_until(&orphan, |d| !d.is_empty()).await;
     assert_eq!(diagnostics[0]["code"], "wcl::parse", "{diagnostics:#?}");
 }
+
+#[tokio::test]
+async fn a_burst_of_edits_publishes_the_latest_version_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = uri(&std::fs::canonicalize(dir.path()).unwrap().join("burst.wcl"));
+    let mut session = Session::start(None, json!({})).await;
+    session.open(&file, "@schemaless x = 1\n").await;
+    session.diagnostics_until(&file, |_| true).await;
+    let before = session.published.len();
+
+    // Versions 2..=6, each a syntax error; only the last survives.
+    for version in 2..=6 {
+        let text = format!("@schemaless x = {{ {version}\n");
+        session.replace_all(&file, version, &text).await;
+    }
+    session.diagnostics_until(&file, |d| !d.is_empty()).await;
+    // Give any overtaken pass time to (wrongly) publish.
+    let _ = tokio::time::timeout(Duration::from_millis(500), async {
+        loop {
+            session.pump().await;
+        }
+    })
+    .await;
+    let versions: Vec<i64> = session.published[before..]
+        .iter()
+        .filter(|p| p["uri"] == file.as_str())
+        .map(|p| p["version"].as_i64().unwrap_or_default())
+        .collect();
+    assert_eq!(versions.last(), Some(&6), "{versions:?}");
+    assert!(
+        versions.windows(2).all(|pair| pair[0] <= pair[1]),
+        "a stale pass published after a newer one: {versions:?}"
+    );
+    assert!(versions.len() < 5, "edits were not debounced: {versions:?}");
+}

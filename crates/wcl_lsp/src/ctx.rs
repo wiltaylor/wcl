@@ -7,7 +7,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use tower_lsp_server::ls_types::Uri;
-use wcl_lang::{Document, FileLoader, ParseError, overlay_loader};
+use wcl_lang::{Document, FileLoader, ParseError};
 
 use crate::convert::{LineIndex, PositionEncoding, path_to_uri, uri_to_path};
 
@@ -21,7 +21,7 @@ pub(crate) struct Ctx {
     /// Canonical path of every open buffer → the path it was opened as,
     /// so a file reached through an import (canonical) and the same file
     /// opened through a symlink are recognised as one.
-    opened_as: HashMap<PathBuf, PathBuf>,
+    opened_as: Arc<HashMap<PathBuf, PathBuf>>,
     /// The embedded wdoc library over an overlay of `buffers` on disk.
     loader: FileLoader,
 }
@@ -35,21 +35,36 @@ impl Ctx {
 
     /// A context whose loader serves `buffers` in place of their files
     /// on disk, and the embedded wdoc library for `import <wdoc.wcl>`
-    /// and the other `<wdoc/…>` system imports.
+    /// and the other `<wdoc/…>` system imports. The snapshot is shared,
+    /// not copied.
     pub(crate) fn with_buffers(
         encoding: PositionEncoding,
-        buffers: HashMap<PathBuf, String>,
+        buffers: impl Into<Arc<HashMap<PathBuf, String>>>,
     ) -> Self {
-        let loader = wcl_wdoc::schema_registry().loader(overlay_loader(buffers.clone()));
-        let opened_as = buffers
-            .keys()
-            .map(|path| (canonical(path), path.clone()))
-            .collect();
+        let buffers = buffers.into();
+        let opened_as: Arc<HashMap<PathBuf, PathBuf>> = Arc::new(
+            buffers
+                .keys()
+                .map(|path| (canonical(path), path.clone()))
+                .collect(),
+        );
+        let overlay = {
+            let buffers = Arc::clone(&buffers);
+            let opened_as = Arc::clone(&opened_as);
+            let loader: FileLoader =
+                Arc::new(
+                    move |path: &Path| match buffer(&buffers, &opened_as, path) {
+                        Some(text) => Ok(text.clone()),
+                        None => std::fs::read_to_string(path),
+                    },
+                );
+            loader
+        };
         Self {
             encoding,
-            buffers: Arc::new(buffers),
+            buffers,
             opened_as,
-            loader,
+            loader: wcl_wdoc::schema_registry().loader(overlay),
         }
     }
 
@@ -66,9 +81,7 @@ impl Ctx {
 
     /// The text of `path`: its open buffer, else the file on disk.
     pub(crate) fn text(&self, path: &Path) -> Option<String> {
-        self.buffers
-            .get(path)
-            .or_else(|| self.buffers.get(self.opened_as.get(&canonical(path))?))
+        buffer(&self.buffers, &self.opened_as, path)
             .cloned()
             .or_else(|| std::fs::read_to_string(path).ok())
     }
@@ -104,6 +117,18 @@ impl Ctx {
             self.loader(),
         )
     }
+}
+
+/// The open buffer for `path`, under the spelling it was opened with or
+/// any other spelling of the same file.
+fn buffer<'a>(
+    buffers: &'a HashMap<PathBuf, String>,
+    opened_as: &HashMap<PathBuf, PathBuf>,
+    path: &Path,
+) -> Option<&'a String> {
+    buffers
+        .get(path)
+        .or_else(|| buffers.get(opened_as.get(&canonical(path))?))
 }
 
 /// `path` with symlinks and `..` resolved, or unchanged when it does not

@@ -1,5 +1,6 @@
 //! Source occurrences tied to declarations and lexical bindings.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use tower_lsp_server::ls_types::Uri;
@@ -60,6 +61,7 @@ pub(crate) fn collect(source: &str, uri: &Uri, doc: &Document) -> Option<Vec<Occ
         binding_types: Vec::new(),
         initializers: Vec::new(),
         visiting: Vec::new(),
+        lexed: lex(source, 0),
         out: Vec::new(),
     };
     for item in &ast.items {
@@ -85,6 +87,24 @@ pub(crate) fn collect(source: &str, uri: &Uri, doc: &Document) -> Option<Vec<Occ
     Some(collector.out)
 }
 
+/// One lexed token with its absolute span.
+type Lexed = (TokenKind, Span);
+
+/// Lex `text`, which starts at byte `base` of its source, to the first
+/// lex error.
+fn lex(text: &str, base: usize) -> Vec<Lexed> {
+    let mut out = Vec::new();
+    let mut lexer = Lexer::new(text);
+    while let Ok(token) = lexer.next_token() {
+        if matches!(token.kind, TokenKind::Eof) {
+            break;
+        }
+        let span = Span::new(base + token.span.start, base + token.span.end);
+        out.push((token.kind, span));
+    }
+    out
+}
+
 /// State for a depth-first traversal of one source snapshot.
 struct Collector<'a> {
     /// Original text used to locate names without dedicated AST spans.
@@ -104,6 +124,9 @@ struct Collector<'a> {
     binding_types: Vec<(Identity, ContextType)>,
     initializers: Vec<(Identity, Expr)>,
     visiting: Vec<Identity>,
+    /// The whole source lexed once, so locating names inside many nodes
+    /// does not re-lex the text under each of them.
+    lexed: Vec<Lexed>,
     /// Collected authored occurrences.
     out: Vec<Occurrence>,
 }
@@ -118,6 +141,36 @@ impl Collector<'_> {
             replacement_prefix: String::new(),
             replacement_suffix: String::new(),
         });
+    }
+
+    /// Index of the first whole-source token at or after `offset`, when
+    /// `offset` is not inside a token. An offset inside one — an
+    /// expression within a string's `${…}` — has no place in the
+    /// whole-source stream.
+    fn boundary(&self, offset: usize) -> Option<usize> {
+        let first = self.lexed.partition_point(|(_, span)| span.start < offset);
+        let inside = first
+            .checked_sub(1)
+            .is_some_and(|previous| self.lexed[previous].1.end > offset);
+        (!inside).then_some(first)
+    }
+
+    /// The tokens within `span`, with absolute spans: a slice of the
+    /// whole-source stream, or — for a span inside a string's `${…}` —
+    /// the span's own text lexed on its own.
+    fn tokens_in(&self, span: Span) -> Cow<'_, [Lexed]> {
+        match self.boundary(span.start) {
+            Some(first) => {
+                let len = self.lexed[first..].partition_point(|(_, s)| s.end <= span.end);
+                Cow::Borrowed(&self.lexed[first..first + len])
+            }
+            None => Cow::Owned(
+                self.source
+                    .get(span.start..span.end)
+                    .map(|text| lex(text, span.start))
+                    .unwrap_or_default(),
+            ),
+        }
     }
 
     fn namespace_parts(&self) -> Vec<String> {
@@ -284,17 +337,10 @@ impl Collector<'_> {
             self.push(Identity::Unresolved(category.into()), span, false);
             return;
         }
-        let Some(text) = self.source.get(span.start..span.end) else {
-            return;
-        };
-        let mut lexer = Lexer::new(text);
-        while let Ok(token) = lexer.next_token() {
-            if matches!(token.kind, TokenKind::Eof) {
-                break;
-            }
+        for (kind, token_span) in self.tokens_in(span).into_owned() {
             let TokenKind::Str(
                 wcl_lang::StringLit::Utf8(value) | wcl_lang::StringLit::Ascii(value),
-            ) = token.kind
+            ) = kind
             else {
                 continue;
             };
@@ -317,8 +363,7 @@ impl Collector<'_> {
                 schema.map(|d| d.full_name())
             });
             if let Some(target) = target {
-                let start = span.start + token.span.start;
-                let end = span.start + token.span.end;
+                let (start, end) = (token_span.start, token_span.end);
                 let prefix = &value[..value.len() - name.len()];
                 let authored = &self.source[start..end];
                 if authored.ends_with(&format!("{value}\"")) {
@@ -328,55 +373,55 @@ impl Collector<'_> {
                         owner.is_some(),
                     );
                 } else {
-                    self.push(
-                        Identity::Global(format!("{category}:{target}")),
-                        Span::new(start, end),
-                        owner.is_some(),
-                    );
-                    let occurrence = self.out.last_mut().unwrap();
-                    occurrence.replacement_prefix = format!("\"{prefix}");
-                    occurrence.replacement_suffix = "\"".into();
+                    // An escaped or qualified literal: replace it whole,
+                    // keeping the qualifier.
+                    self.out.push(Occurrence {
+                        identity: Identity::Global(format!("{category}:{target}")),
+                        span: Span::new(start, end),
+                        declaration: owner.is_some(),
+                        replacement_prefix: format!("\"{prefix}"),
+                        replacement_suffix: "\"".into(),
+                    });
                 }
             }
         }
     }
 
+    /// Whether the binding at `span` is a shorthand record field — the
+    /// token before it opens the record or separates a field.
     fn shorthand(&self, span: Span) -> bool {
-        let mut lexer = Lexer::new(&self.source[..span.start]);
-        let mut previous = TokenKind::Eof;
-        while let Ok(token) = lexer.next_token() {
-            if matches!(token.kind, TokenKind::Eof) {
-                break;
-            }
-            previous = token.kind;
-        }
-        matches!(previous, TokenKind::LBrace | TokenKind::Comma)
+        let previous = match self.boundary(span.start) {
+            Some(first) => first.checked_sub(1).map(|i| self.lexed[i].0.clone()),
+            // Inside a string's `${…}`: lex the text up to the binding.
+            None => lex(&self.source[..span.start], 0)
+                .pop()
+                .map(|(kind, _)| kind),
+        };
+        matches!(previous, Some(TokenKind::LBrace | TokenKind::Comma))
     }
 
     fn argument_spans(&self, span: Span) -> Vec<Span> {
         let mut spans = Vec::new();
-        let mut lexer = Lexer::new(&self.source[span.start..span.end]);
         let mut depth = 0usize;
         let mut start = span.start;
-        while let Ok(token) = lexer.next_token() {
-            match token.kind {
-                TokenKind::Eof => break,
+        for (kind, token) in self.tokens_in(span).iter() {
+            match kind {
                 TokenKind::LParen | TokenKind::LBrace | TokenKind::LBracket => {
                     depth += 1;
                     if depth == 1 {
-                        start = span.start + token.span.end;
+                        start = token.end;
                     }
                 }
                 TokenKind::RParen | TokenKind::RBrace | TokenKind::RBracket => {
                     if depth == 1 {
-                        spans.push(Span::new(start, span.start + token.span.start));
+                        spans.push(Span::new(start, token.start));
                         break;
                     }
                     depth = depth.saturating_sub(1);
                 }
                 TokenKind::Comma if depth == 1 => {
-                    spans.push(Span::new(start, span.start + token.span.start));
-                    start = span.start + token.span.end;
+                    spans.push(Span::new(start, token.start));
+                    start = token.end;
                 }
                 _ => {}
             }
@@ -386,48 +431,39 @@ impl Collector<'_> {
 
     fn reflective_kind_string(&mut self, expr: &Expr, span: Span, category: &str) {
         let wanted = usize::from(category == "decorator");
-        let mut lexer = Lexer::new(&self.source[span.start..span.end]);
         let mut depth = 0usize;
         let mut index = 0usize;
         let mut start = None;
-        while let Ok(token) = lexer.next_token() {
-            if matches!(token.kind, TokenKind::Eof) {
-                break;
-            }
-            match token.kind {
+        // The argument's span, once the walk reaches its end.
+        let mut argument = None;
+        for (kind, token) in self.tokens_in(span).iter() {
+            match kind {
                 TokenKind::LParen | TokenKind::LBrace | TokenKind::LBracket => {
                     depth += 1;
                     if depth == 1 {
-                        start = Some(span.start + token.span.end);
+                        start = Some(token.end);
                     }
                 }
                 TokenKind::RParen | TokenKind::RBrace | TokenKind::RBracket => {
                     if depth == 1 && index == wanted {
-                        self.kind_strings(
-                            expr,
-                            Span::new(start.unwrap(), span.start + token.span.start),
-                            category,
-                            None,
-                        );
+                        argument = start.map(|start| Span::new(start, token.start));
                         break;
                     }
                     depth = depth.saturating_sub(1);
                 }
                 TokenKind::Comma if depth == 1 => {
                     if index == wanted {
-                        self.kind_strings(
-                            expr,
-                            Span::new(start.unwrap(), span.start + token.span.start),
-                            category,
-                            None,
-                        );
+                        argument = start.map(|start| Span::new(start, token.start));
                         break;
                     }
                     index += 1;
-                    start = Some(span.start + token.span.end);
+                    start = Some(token.end);
                 }
                 _ => {}
             }
+        }
+        if let Some(argument) = argument {
+            self.kind_strings(expr, argument, category, None);
         }
     }
 
@@ -460,23 +496,13 @@ impl Collector<'_> {
 
     /// Lex identifiers within an AST span, excluding comments and strings.
     fn tokens(&self, span: Span) -> Vec<(String, Span)> {
-        let mut out = Vec::new();
-        let Some(text) = self.source.get(span.start..span.end) else {
-            return out;
-        };
-        let mut lexer = Lexer::new(text);
-        while let Ok(token) = lexer.next_token() {
-            if matches!(token.kind, TokenKind::Eof) {
-                break;
-            }
-            if let TokenKind::Ident(name) = token.kind {
-                out.push((
-                    name,
-                    Span::new(span.start + token.span.start, span.start + token.span.end),
-                ));
-            }
-        }
-        out
+        self.tokens_in(span)
+            .iter()
+            .filter_map(|(kind, span)| match kind {
+                TokenKind::Ident(name) => Some((name.clone(), *span)),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Locate an authored declaration name within its node.
@@ -622,15 +648,17 @@ impl Collector<'_> {
         }
     }
 
-    /// Introduce a value binding into the current lexical scope.
-    fn bind(&mut self, name: &str, span: Span, global: bool) {
+    /// Introduce a value binding into the current lexical scope and
+    /// return its identity.
+    fn bind(&mut self, name: &str, span: Span, global: bool) -> Identity {
         let identity = if global {
             Identity::Global(self.qualified(name))
         } else {
             Identity::Local(self.uri.clone(), span)
         };
         self.push(identity.clone(), span, true);
-        self.bindings.push((name.to_string(), identity));
+        self.bindings.push((name.to_string(), identity.clone()));
+        identity
     }
 
     /// Walk an item scope with all sibling bindings visible.
@@ -639,24 +667,18 @@ impl Collector<'_> {
         // Item bindings are visible to sibling and descendant expressions.
         for item in items {
             let binding = match item {
-                Item::Field(f) => Some((&f.name, f.span, &f.decorators)),
-                Item::Let(l) => Some((&l.name, l.span, &l.decorators)),
+                Item::Field(f) => Some((&f.name, f.span, &f.decorators, &f.expr)),
+                Item::Let(l) => Some((&l.name, l.span, &l.decorators, &l.value)),
                 _ => None,
             };
-            if let Some((name, span, decorators)) = binding {
+            if let Some((name, span, decorators, expr)) = binding {
                 let start = decorators
                     .iter()
                     .map(|d| d.span.end)
                     .max()
                     .unwrap_or(span.start);
                 if let Some(s) = self.name_span(Span::new(start, span.end), name) {
-                    self.bind(name, s, global);
-                    let id = self.bindings.last().unwrap().1.clone();
-                    let expr = match item {
-                        Item::Field(f) => &f.expr,
-                        Item::Let(l) => &l.value,
-                        _ => unreachable!(),
-                    };
+                    let id = self.bind(name, s, global);
                     let ty = if matches!(item, Item::Field(_)) {
                         owner
                             .map(|o| self.field_context(o, name))
@@ -963,9 +985,8 @@ impl Collector<'_> {
         match pattern {
             Pattern::Binding { name, span } | Pattern::At { name, span, .. } => {
                 if let Some(s) = self.name_span(*span, name) {
-                    self.bind(name, s, false);
-                    self.binding_types
-                        .push((self.bindings.last().unwrap().1.clone(), expected.clone()));
+                    let id = self.bind(name, s, false);
+                    self.binding_types.push((id, expected.clone()));
                 }
                 if let Pattern::At { inner, .. } = pattern {
                     self.pattern(inner, expected);
@@ -978,23 +999,15 @@ impl Collector<'_> {
                 span,
             } => {
                 let owner = self.variant(type_path, variant, *span, expected);
-                let declaration = owner
-                    .as_ref()
-                    .and_then(|o| self.doc.union_decl(o))
-                    .and_then(|u| u.variant(variant));
+                let union = owner.as_deref().and_then(|o| self.doc.union_decl(o));
+                let declaration = union.and_then(|u| u.variant(variant));
                 match args {
                     VariantPatArgs::Positional(p) => {
                         let expected = declaration
                             .and_then(|v| match v.body() {
-                                wcl_lang::VariantBodyView::TypeRef(t) => Some(
-                                    self.doc.resolve_in(
-                                        t,
-                                        self.doc
-                                            .union_decl(owner.as_ref().unwrap())
-                                            .unwrap()
-                                            .file_ns(),
-                                    ),
-                                ),
+                                wcl_lang::VariantBodyView::TypeRef(t) => {
+                                    union.map(|u| self.doc.resolve_in(t, u.file_ns()))
+                                }
                                 _ => None,
                             })
                             .map(|t| self.resolved_type(t, 32))
@@ -1060,8 +1073,7 @@ impl Collector<'_> {
                 for l in lets {
                     self.expr(&l.value);
                     if let Some(span) = self.name_span(l.span, &l.name) {
-                        self.bind(&l.name, span, false);
-                        let id = self.bindings.last().unwrap().1.clone();
+                        let id = self.bind(&l.name, span, false);
                         self.binding_types.push((id.clone(), self.infer(&l.value)));
                         self.initializers.push((id, l.value.clone()));
                     }
@@ -1072,11 +1084,8 @@ impl Collector<'_> {
                 for p in &f.params {
                     self.type_refs(p.ty_span);
                     if let Some(span) = self.name_span(p.span, &p.name) {
-                        self.bind(&p.name, span, false);
-                        self.binding_types.push((
-                            self.bindings.last().unwrap().1.clone(),
-                            self.type_context(&p.ty),
-                        ));
+                        let id = self.bind(&p.name, span, false);
+                        self.binding_types.push((id, self.type_context(&p.ty)));
                     }
                 }
                 self.type_refs(f.return_ty_span);
@@ -1235,23 +1244,15 @@ impl Collector<'_> {
                 span,
             } => {
                 let owner = self.variant(type_path, variant, *span, expected);
-                let declaration = owner
-                    .as_ref()
-                    .and_then(|o| self.doc.union_decl(o))
-                    .and_then(|u| u.variant(variant));
+                let union = owner.as_deref().and_then(|o| self.doc.union_decl(o));
+                let declaration = union.and_then(|u| u.variant(variant));
                 match args {
                     VariantArgs::Positional(e) => {
                         let expected = declaration
                             .and_then(|v| match v.body() {
-                                wcl_lang::VariantBodyView::TypeRef(t) => Some(
-                                    self.doc.resolve_in(
-                                        t,
-                                        self.doc
-                                            .union_decl(owner.as_ref().unwrap())
-                                            .unwrap()
-                                            .file_ns(),
-                                    ),
-                                ),
+                                wcl_lang::VariantBodyView::TypeRef(t) => {
+                                    union.map(|u| self.doc.resolve_in(t, u.file_ns()))
+                                }
                                 _ => None,
                             })
                             .map(|t| self.resolved_type(t, 32))
@@ -1396,6 +1397,17 @@ mod tests {
         assert_eq!(
             matching(source, "name ="),
             vec![("name".into(), true), ("name".into(), false)]
+        );
+    }
+
+    #[test]
+    fn bindings_inside_interpolation_are_located_in_the_string() {
+        // The parameter sits inside the string token of the whole-source
+        // lex, so its name is found by lexing the slot on its own.
+        let source = "@schemaless t = $\"${(fn(v: i64) -> i64 { v })(2)}\"\n";
+        assert_eq!(
+            matching(source, "v: i64"),
+            vec![("v".into(), true), ("v".into(), false)]
         );
     }
 

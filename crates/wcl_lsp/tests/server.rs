@@ -1176,3 +1176,73 @@ async fn rename_through_a_symlinked_workspace_edits_each_file_once() {
     assert_eq!(changes.len(), 1, "{changes:?}");
     assert_eq!(changes[&main_uri].len(), 2, "{changes:?}");
 }
+
+#[tokio::test]
+async fn root_document_is_built_once_per_change() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    std::fs::write(&main, "type Local {}\n").unwrap();
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+
+    let first = backend.root_document().expect("root opens");
+    let again = backend.root_document().expect("root opens");
+    assert!(
+        std::sync::Arc::ptr_eq(&first, &again),
+        "rebuilt without a change"
+    );
+
+    let main_uri = Uri::from_file_path(&main).unwrap();
+    open(backend, &main_uri, "type Local {}\ntype Added {}\n").await;
+    let changed = backend.root_document().expect("root opens");
+    assert!(
+        !std::sync::Arc::ptr_eq(&first, &changed),
+        "stale after a change"
+    );
+    assert!(changed.find_symbol("Added").is_some());
+}
+
+#[tokio::test]
+async fn a_watched_file_change_rebuilds_the_root() {
+    // shared.wcl is not open, so only the client's file-watch event
+    // says it changed on disk.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let main = dir.path().join("main.wcl");
+    let shared = dir.path().join("shared.wcl");
+    std::fs::write(&main, "import \"./shared.wcl\"\n").unwrap();
+    std::fs::write(&shared, "namespace shared\n").unwrap();
+    let svc = service();
+    let backend = svc.inner();
+    backend
+        .initialize(init_params_for(dir.path()))
+        .await
+        .expect("initialize");
+    assert!(
+        backend
+            .root_document()
+            .expect("root opens")
+            .find_symbol("shared.Color")
+            .is_none()
+    );
+
+    std::fs::write(&shared, "namespace shared\ntype Color {}\n").unwrap();
+    backend
+        .did_change_watched_files(tower_lsp_server::ls_types::DidChangeWatchedFilesParams {
+            changes: vec![tower_lsp_server::ls_types::FileEvent {
+                uri: Uri::from_file_path(&shared).unwrap(),
+                typ: tower_lsp_server::ls_types::FileChangeType::CHANGED,
+            }],
+        })
+        .await;
+    assert!(
+        backend
+            .root_document()
+            .expect("root opens")
+            .find_symbol("shared.Color")
+            .is_some()
+    );
+}
