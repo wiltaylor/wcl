@@ -250,14 +250,6 @@ impl<'a> Block<'a> {
             .unwrap_or(0)
     }
 
-    /// Structural content supplied by the nearest renderer-driven component
-    /// expansion, if any. Returned as block nodes so a placement marker can
-    /// feed them back through the caller's normal recursion without lowering
-    /// them to a value or rendered string first.
-    pub fn structural_content(&self) -> Option<Vec<Block<'a>>> {
-        self.structural_slot_content("content")
-    }
-
     /// Structural block nodes supplied for the named slot by the nearest
     /// renderer-driven expansion. Unlike a global block-kind lookup, this is
     /// scoped to one instantiated holder, so two components may declare the
@@ -291,23 +283,6 @@ impl<'a> Block<'a> {
         binding_sets: Vec<std::sync::Arc<Vec<(String, Value)>>>,
     ) -> Vec<Vec<Block<'a>>> {
         self.expand_bodies_inner(body, binding_sets, None)
-    }
-
-    /// [`expand_bodies`](Self::expand_bodies) with structural content attached
-    /// to every expanded descendant's scope. Used by component renderers so a
-    /// placement marker can recover the instance's child block nodes even
-    /// after recursion crosses a native wrapper or container.
-    pub fn expand_bodies_with_content(
-        &self,
-        body: &Block<'a>,
-        binding_sets: Vec<std::sync::Arc<Vec<(String, Value)>>>,
-        content: std::rc::Rc<Vec<Block<'a>>>,
-    ) -> Vec<Vec<Block<'a>>> {
-        let slots = std::rc::Rc::new(std::collections::BTreeMap::from([(
-            "content".to_string(),
-            content.as_ref().clone(),
-        )]));
-        self.expand_bodies_inner(body, binding_sets, Some(slots))
     }
 
     /// [`expand_bodies`](Self::expand_bodies) with several independently

@@ -16,6 +16,10 @@ use crate::inline::InlinePatterns;
 use super::lower::record_lower_error;
 use super::{MAX_LOWER_DEPTH, field_bool, label_string};
 
+/// The structural slot a component instance's unclaimed child blocks fill,
+/// and the one a `wdoc_content` marker places.
+const CONTENT_SLOT: &str = "content";
+
 /// `true` as soon as `pred` matches `block` or any block
 /// [`block_tree_walk`] reaches from it. Drives the map detection that
 /// makes a diagram interactive (`uses_map`).
@@ -327,7 +331,7 @@ pub(crate) fn walk_structural<'a, E>(
         return Some(Ok(()));
     }
     let structural_name = if block.kind() == "wdoc_content" {
-        "content"
+        CONTENT_SLOT
     } else {
         block.kind()
     };
@@ -490,7 +494,7 @@ pub(crate) fn expand_component_children<'a>(
                 .extend(child.blocks());
         } else {
             structural_slots
-                .entry("content".to_string())
+                .entry(CONTENT_SLOT.to_string())
                 .or_default()
                 .push(child);
         }
@@ -526,7 +530,7 @@ pub(crate) fn fill_content_slot<'a, E>(
     marker: &Block<'a>,
     recurse: &mut dyn FnMut(&Block<'a>) -> Result<(), E>,
 ) -> Result<(), E> {
-    let Some(content) = marker.structural_content() else {
+    let Some(content) = marker.structural_slot_content(CONTENT_SLOT) else {
         return Ok(());
     };
     (|| {

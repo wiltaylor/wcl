@@ -5766,6 +5766,54 @@ maker panel {
     assert_eq!(schema.required_fields(), ["value"]);
 }
 
+/// A declarer holding `slot` params and `wdoc_slot` children. The names
+/// are wdoc's; the language gives neither any meaning of its own.
+const PARAM_ALIAS_SRC: &str = r#"
+@document("d") type D { @children("maker") makers: list<Maker> }
+@block("maker") @declares_kind(name = 0, params = "slots")
+type Maker {
+  @inline(0) name: identifier
+  @children("slot") slots: list<Slot>
+  @children("wdoc_slot") legacy: list<Legacy>
+}
+@block("slot") type Slot {
+  @inline(0) name: identifier
+  @schemaless default: utf8?
+}
+@block("wdoc_slot") type Legacy {
+  @inline(0) name: identifier
+  default: utf8?
+}
+
+maker panel {
+  slot title
+  wdoc_slot status { default = "ok" }
+  slot content: utf8
+}
+"#;
+
+#[test]
+fn a_param_kind_alias_is_only_a_param_when_the_host_registers_it() {
+    let plain = declares_kind_doc(PARAM_ALIAS_SRC);
+    let schema = plain.block_schema("panel").expect("derived panel schema");
+    let names: Vec<&str> = schema.fields().map(|f| f.name()).collect();
+    assert_eq!(
+        names,
+        ["title", "content"],
+        "without a registration `wdoc_slot` is an ordinary child block, and \
+         a slot named `content` is an ordinary scalar param"
+    );
+
+    let mut env = Environment::new();
+    env.add_param_kind_alias("slot", "wdoc_slot");
+    let hosted = Document::open_with(PARAM_ALIAS_SRC, "test", &env).expect("open");
+    let schema = hosted.block_schema("panel").expect("derived panel schema");
+    let names: Vec<&str> = schema.fields().map(|f| f.name()).collect();
+    assert_eq!(names, ["title", "status", "content"]);
+    assert!(schema.field("status").expect("status").optional());
+    assert_eq!(schema.required_fields(), ["title", "content"]);
+}
+
 #[test]
 fn a_derived_schema_is_reachable_through_the_typed_introspection_api() {
     // The constraint from the spec: derived schemas must be readable

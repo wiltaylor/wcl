@@ -115,6 +115,9 @@ pub fn wdoc_environment() -> Environment {
     // component instance is a hard error — which is exactly the point:
     // a wdoc document must be opened with the wdoc environment.
     env.set_expander(std::sync::Arc::new(crate::render::WdocExpander));
+    // `wdoc_slot` is the untyped spelling components used before
+    // `slot name: Type`. A component's derived schema reads both.
+    env.add_param_kind_alias("slot", "wdoc_slot");
     crate::page_metadata::register(&mut env);
     env.add_builtin(
         "__wdoc_slot",
