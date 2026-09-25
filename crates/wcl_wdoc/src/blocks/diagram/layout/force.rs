@@ -270,7 +270,7 @@ pub(crate) fn assign_force_offsets(
 }
 
 /// Most node pairs the relaxation (and, separately, the collision
-/// sweeps) may visit in total. 300 default iterations fit up to ~360
+/// sweeps) may visit in total. 300 default iterations fit up to 516
 /// nodes; a bigger graph gets proportionally fewer steps.
 const MAX_PAIR_VISITS: usize = 40_000_000;
 

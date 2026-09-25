@@ -464,6 +464,8 @@ WCL
       | "`seed`"          | "1"       | "Reproducibly re-arranges the whole graph" |
   }
 
+  p "Raising `iterations` has a ceiling. Every step compares every pair of shapes, so the build caps the total at forty million pair comparisons. Up to 516 shapes the default 300 steps fit. A bigger graph gets fewer steps and a build warning that says how many it got. Past 8,944 shapes even one step is over the cap, so the build places the shapes on a plain square grid and warns instead."
+
   p "`seed` is the knob to reach for first. A force layout has no wrong answer, only a more or less readable one, and changing the seed re-rolls the arrangement without changing anything you wrote. Reach for `link_distance` and `repulsion` when the graph is systematically too tight or too loose rather than merely badly arranged."
 
   h3 "grid"
