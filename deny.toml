@@ -1,0 +1,55 @@
+# cargo-deny policy (https://embarkstudios.github.io/cargo-deny/).
+# CI runs `cargo deny check` on every push to main and every pull request.
+
+[graph]
+# The platforms release binaries ship for. Crates that only build for other
+# targets (wasm, redox, ...) never reach a user, so they are not checked.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "x86_64-pc-windows-msvc",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+all-features = false
+
+[advisories]
+# Every vulnerability and unsound advisory fails the check; `unmaintained`
+# fails only for direct dependencies, where we could act on it.
+unmaintained = "workspace"
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Every license that appears in the dependency tree today. A crate under
+# anything else fails the check until someone decides it is acceptable.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    # notify (the `wcl wdoc serve` file watcher) is public-domain dedicated.
+    "CC0-1.0",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+# The workspace crates are MIT (see Cargo.toml) but unpublished path deps.
+ignore = true
+
+[bans]
+# Duplicate versions come from upstream crates pinning different majors
+# (the font stack, rand, thiserror 1 vs 2). Report them without failing.
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -88,8 +88,8 @@ fuzz-sweep: require-cargo-fuzz
 # ── Builds the gate depends on ────────────────────────────────────────────
 
 # wcl.dev is two documents: the landing page at `/` and the combined
-# reference book at `/reference/`. These are the SAME two invocations, in the
-# same order, that .github/workflows/deploy-site.yml runs — this recipe is a
+# reference book at `/reference/`. .github/workflows/deploy-site.yml builds
+# the site by running this recipe (through `docs-relative-urls`) — it is a
 # gate part precisely so the gate and the deploy cannot drift.
 #
 # Order matters: build the landing first. A build tree is self-contained and
@@ -118,8 +118,8 @@ docs-build *ARGS: require-cargo
 # What those tests cannot see is a human typing an absolute link into a real
 # page, so that is the one thing this part looks for — on the two real sites.
 #
-# It rides `docs-build` rather than deploy-site.yml because a docs change
-# reaches the deploy only through `main`, and `just ci::check` gates that.
+# It rides `docs-build`, and deploy-site.yml runs it too: the deploy triggers
+# on a docs push to `main` without waiting for CI, so it checks for itself.
 #
 # Two patterns, because a page carries URLs in two vocabularies. The first is
 # the `href` / `src` attribute. The second is a CSS `url(…)` — the `src:` of an
