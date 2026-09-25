@@ -42,9 +42,10 @@ jobs:
       - run: just ci::docs-relative-urls
 
   # ── Fuzz smoke ────────────────────────────────────────────────────────────
-  # Bounded sweep over every wcl_lang fuzz target (~15s each) so parser /
-  # evaluator / printer regressions on the corpus-adjacent inputs are caught
-  # on each push, not only when someone runs the fuzzers locally.
+  # Bounded sweep over every wcl_lang and wcl_wdoc fuzz target (~15s each)
+  # so parser / evaluator / printer / wdoc build regressions on the
+  # corpus-adjacent inputs are caught on each push, not only when someone
+  # runs the fuzzers locally.
   fuzz:
     name: fuzz smoke (all targets)
     runs-on: ubuntu-latest
@@ -60,7 +61,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: fuzz
-          workspaces: crates/wcl_lang/fuzz
+          workspaces: |
+            crates/wcl_lang/fuzz
+            crates/wcl_wdoc/fuzz
       - run: just ci::fuzz-sweep
 
   # ── Version ───────────────────────────────────────────────────────────────

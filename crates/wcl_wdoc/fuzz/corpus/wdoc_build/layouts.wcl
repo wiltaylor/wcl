@@ -1,0 +1,14 @@
+page index {
+  diagram { width = 360  height = 300  layout = :radial  hub = h  routing = :straight
+    node "H" { id = h }
+    node "A" { id = a }
+    node "B" { id = b }
+    h -> a
+    a -> b
+  }
+  diagram { width = 360  height = 300  layout = :force  routing = :straight
+    node "A" { id = fa }
+    node "B" { id = fb }
+    fa -> fb
+  }
+}

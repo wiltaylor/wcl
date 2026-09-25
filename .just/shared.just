@@ -55,13 +55,17 @@ workspace-lint: require-clippy
 workspace-test: require-cargo
     cargo test --workspace
 
-# Bounded fuzz sweep across every target (~15s each, ~75s total)
+# Bounded fuzz sweep across every target (~15s each, ~90s total)
 [group('test')]
 fuzz-sweep: require-cargo-fuzz
     @host="$(rustc +nightly -vV | sed -n 's/^host: //p')"; \
     for t in parse eval format_round_trip json_round_trip set_edit_path; do \
         echo "==> fuzz $t" >&2; \
         (cd crates/wcl_lang && cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
+    done; \
+    for t in wdoc_build; do \
+        echo "==> fuzz $t" >&2; \
+        (cd crates/wcl_wdoc && cargo +nightly fuzz run --target "$host" "$t" -- -runs=2000 -max_total_time=15) || exit 1; \
     done
 
 # ── Builds the gate depends on ────────────────────────────────────────────

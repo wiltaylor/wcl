@@ -1,0 +1,6 @@
+page index {
+  h1 "Title"
+  p "Some **bold** and `code` and a [link](#x) with :lucide.house: and $x^2$."
+  list { li "one" li "two" }
+  callout "Careful" { kind = :note  body = "Mind the **gap**." }
+}

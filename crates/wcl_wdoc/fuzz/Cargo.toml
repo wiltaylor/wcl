@@ -1,0 +1,25 @@
+[package]
+name = "wcl_wdoc-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Detached from the parent workspace — cargo-fuzz needs its own release
+# profile / sanitizer config and shouldn't be a workspace member.
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tempfile = "3"
+
+[dependencies.wcl_wdoc]
+path = ".."
+
+[[bin]]
+name = "wdoc_build"
+path = "fuzz_targets/wdoc_build.rs"
+test = false
+doc = false
