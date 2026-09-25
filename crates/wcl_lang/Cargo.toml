@@ -14,8 +14,9 @@ serde = { workspace = true }
 
 [dev-dependencies]
 # The snapshot tests render diagnostics through `GraphicalReportHandler`; the
-# library itself stays on plain miette.
-miette = { workspace = true, features = ["fancy-no-syscall"] }
+# library itself stays on plain miette. Not `fancy-no-syscall`, for the
+# reason given in crates/wcl_wdoc/Cargo.toml.
+miette = { workspace = true, features = ["fancy-no-backtrace"] }
 criterion = { workspace = true }
 tempfile = { workspace = true }
 serde_json = { workspace = true }

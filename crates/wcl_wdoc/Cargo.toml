@@ -11,8 +11,11 @@ description = "WCL-driven static site / document generator (library)"
 wcl_lang = { workspace = true }
 # `BuildError::render_plain` draws reports with `GraphicalReportHandler` and an
 # explicit no-colour theme, so the handler is needed but terminal detection
-# is not.
-miette = { workspace = true, features = ["fancy-no-syscall"] }
+# is not. Even so, not `fancy-no-syscall`: that feature makes miette assume
+# no unicode support, and feature unification would switch it on for every
+# binary linking wdoc, turning the CLI's diagnostics into ASCII.
+# `fancy-no-backtrace` is the smallest set that builds without that flag.
+miette = { workspace = true, features = ["fancy-no-backtrace"] }
 regex = "1"
 syntect = { version = "5", default-features = false, features = ["default-fancy", "html"] }
 two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
