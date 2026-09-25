@@ -155,8 +155,8 @@ pub fn markdown(
     });
     // A swallowed block-eval error takes priority: it means a page block
     // would have been silently dropped, so fail loudly with a snippet.
-    if let Some((e, src)) = eval_err {
-        return Err(BuildError::eval(e, src));
+    if let Some(caught) = eval_err {
+        return Err(BuildError::Eval(caught.into_report()));
     }
     // An unroutable diagram edge surfaces after the eval check, like the
     // HTML build — static diagrams render in Markdown output too.

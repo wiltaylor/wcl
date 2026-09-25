@@ -11,7 +11,9 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use miette::NamedSource;
+use std::sync::Arc;
+
+use miette::{Diagnostic, LabeledSpan, NamedSource, Report, SourceSpan};
 use wcl_lang::{Block, Document, EvalError, FnValue, Value};
 
 use crate::content::Content;
@@ -22,9 +24,122 @@ use crate::render::include::resolve_content;
 pub(crate) type BlockRenderer<'a> =
     dyn Fn(&[Value], Option<&str>, Option<&str>, &str) -> String + 'a;
 
-/// An eval error swallowed during lowering, paired with the source file
-/// it was raised against.
-pub(crate) type CaughtEvalError = (EvalError, NamedSource<std::sync::Arc<str>>);
+/// An eval error swallowed during lowering, together with the block that
+/// was being lowered when it was raised: that block's kind, its header's
+/// span, and the source file it lives in.
+pub(crate) struct CaughtEvalError {
+    /// The swallowed error. Carries its own origin when the library knows
+    /// the file it was raised in.
+    err: EvalError,
+    /// The file the lowered block lives in.
+    source: NamedSource<Arc<str>>,
+    /// The lowered block's kind, e.g. `sequence_diagram`.
+    kind: String,
+    /// The lowered block's header within [`Self::source`].
+    header: SourceSpan,
+}
+
+impl CaughtEvalError {
+    /// This error as a miette report ready to print.
+    ///
+    /// An error raised inside a wdoc library file (a stdlib `lower`
+    /// function checking its input) points at text the author cannot edit.
+    /// When the block being lowered is the author's own, the report frames
+    /// the failure at that block ("in this `sequence_diagram`") and carries
+    /// the library error, with its own file and snippet, as a related
+    /// diagnostic. Any other error renders as itself, against its own origin
+    /// or, lacking one, the lowered block's file.
+    pub(crate) fn into_report(self) -> Report {
+        let raised_in_library = self
+            .err
+            .origin()
+            .is_some_and(|origin| is_library_name(origin.name()));
+        if raised_in_library && !is_library_name(self.source.name()) {
+            return Report::new(LibraryFailure {
+                kind: self.kind,
+                source: self.source,
+                header: self.header,
+                inner: Report::new(self.err),
+            });
+        }
+        Report::new(self.err).with_source_code(self.source)
+    }
+}
+
+/// Whether a source name names a file of the embedded wdoc library. System
+/// imports resolve under [`wcl_lang::SYSTEM_IMPORT_ROOT`], a prefix no real
+/// path starts with.
+fn is_library_name(name: &str) -> bool {
+    name.starts_with(wcl_lang::SYSTEM_IMPORT_ROOT)
+}
+
+/// A library error re-framed at the author's block that triggered it. See
+/// [`CaughtEvalError::into_report`].
+#[derive(Debug)]
+struct LibraryFailure {
+    /// The author's block kind, named in the label.
+    kind: String,
+    /// The author's file.
+    source: NamedSource<Arc<str>>,
+    /// The author's block header within [`Self::source`].
+    header: SourceSpan,
+    /// The library error, rendered against the library file.
+    inner: Report,
+}
+
+impl std::fmt::Display for LibraryFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.inner, f)
+    }
+}
+
+impl std::error::Error for LibraryFailure {}
+
+impl Diagnostic for LibraryFailure {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.inner.code()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "the wdoc library rejected this block while rendering it; \
+             the report below shows the check that failed",
+        ))
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.source)
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        Some(Box::new(std::iter::once(
+            LabeledSpan::new_primary_with_span(
+                Some(format!("in this `{}`", self.kind)),
+                self.header,
+            ),
+        )))
+    }
+
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        let inner: &dyn Diagnostic = self.inner.as_ref();
+        Some(Box::new(std::iter::once(inner)))
+    }
+}
+
+/// The span of `block`'s header: everything from its start up to the
+/// opening brace or the end of its first line, whichever comes first, less
+/// trailing whitespace. A label then marks one line rather than the whole
+/// body. Falls back to the whole span when that text is not at hand.
+fn header_span(block: &Block<'_>, source: &NamedSource<Arc<str>>) -> SourceSpan {
+    let span = block.span();
+    let text = source.inner().get(span.start..span.end).unwrap_or_default();
+    let cut = text.find(['{', '\n']).unwrap_or(text.len());
+    let len = text[..cut].trim_end().len();
+    if len == 0 {
+        return (span.start, span.len()).into();
+    }
+    (span.start, len).into()
+}
 
 thread_local! {
     /// First eval error swallowed while lowering a block during the
@@ -193,7 +308,14 @@ pub(crate) fn record_lower_error(block: &Block<'_>, err: EvalError) {
     LOWER_EVAL_ERR.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.is_none() {
-            *slot = Some((err, block.named_source()));
+            let source = block.named_source();
+            let header = header_span(block, &source);
+            *slot = Some(CaughtEvalError {
+                err,
+                kind: block.kind().to_string(),
+                source,
+                header,
+            });
         }
     });
 }

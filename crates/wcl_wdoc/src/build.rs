@@ -273,15 +273,6 @@ impl BuildError {
     pub fn render_plain(&self) -> String {
         render_plain_diagnostic(self)
     }
-
-    /// Wrap a render-time evaluation failure into a `BuildError::Eval`,
-    /// attaching the source file the error was raised against so the miette
-    /// report renders the snippet against the correct text (a cross-file
-    /// span won't line up with the root document's source).
-    pub(crate) fn eval(err: wcl_lang::EvalError, src: NamedSource<std::sync::Arc<str>>) -> Self {
-        let report = Report::new(err).with_source_code(src);
-        Self::Eval(report)
-    }
 }
 
 /// The schema violations a build stopped on, before it rendered anything:
@@ -893,8 +884,8 @@ fn build_inner(
                 }
                 Ok(Some(rendered))
             });
-        if let Some((e, src)) = eval_err {
-            return Err(BuildError::eval(e, src));
+        if let Some(caught) = eval_err {
+            return Err(BuildError::Eval(caught.into_report()));
         }
         if let Some(msg) = crate::render::take_route_error() {
             return Err(BuildError::EdgeRouting(msg));
@@ -980,8 +971,8 @@ fn build_inner(
 
         Ok(count)
     });
-    if let Some((e, src)) = eval_err {
-        return Err(BuildError::eval(e, src));
+    if let Some(caught) = eval_err {
+        return Err(BuildError::Eval(caught.into_report()));
     }
     // An unroutable diagram edge surfaces after the eval check (an eval
     // failure is the more fundamental problem); the router only runs once a

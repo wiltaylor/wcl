@@ -12508,6 +12508,116 @@ page sc {
     }
 }
 
+/// Assert `report` frames a stdlib `sequence_diagram` failure at the
+/// author's block in `file`, with the stdlib snippet attached after it.
+fn assert_framed_at_sequence_block(report: &str, file: &Path) {
+    assert!(!report.contains("OutOfBounds"), "{report}");
+    assert!(
+        report.contains("unknown participant 'nope'"),
+        "names the failure:\n{report}"
+    );
+    let user_header = format!("{}:4:3]", file.display());
+    let user_at = report
+        .find(&user_header)
+        .unwrap_or_else(|| panic!("frames the author's block at {user_header}:\n{report}"));
+    assert!(
+        report.contains("in this `sequence_diagram`"),
+        "labels the author's block:\n{report}"
+    );
+    let lib_at = report
+        .find("<wcl-system>/wdoc/sequence.wcl:")
+        .unwrap_or_else(|| panic!("attaches the stdlib source:\n{report}"));
+    assert!(user_at < lib_at, "author's block comes first:\n{report}");
+    assert!(
+        report.contains("index_of(ids, m.to)"),
+        "shows the stdlib snippet:\n{report}"
+    );
+    assert!(
+        report.contains("error raised here"),
+        "marks the stdlib line:\n{report}"
+    );
+}
+
+#[test]
+fn stdlib_lowering_error_is_framed_at_the_authors_block() {
+    // Regression: an error raised inside a stdlib `lower` function rendered
+    // only against the stdlib file, which the author cannot edit; before
+    // that it rendered the stdlib span against the author's file. The
+    // report now names the author's block first and carries the stdlib
+    // snippet as a related diagnostic. The padded file runs past the
+    // stdlib offset, so a span drawn against the wrong file would render a
+    // plausible but wrong snippet rather than fail.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let body = r##"
+page index {
+  sequence_diagram {
+    participant "a"
+    participant "b"
+    message "m1" { from = "a" to = "nope" text = "hi" }
+  }
+}
+"##;
+    let padding: String = (0..200)
+        .map(|n| format!("// padding line {n} xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"))
+        .collect();
+    for (name, text) in [
+        ("seq.wcl", body.to_string()),
+        ("padded.wcl", format!("{body}{padding}")),
+    ] {
+        let src = tmp.path().join(name);
+        write_fixture(&src, &text);
+
+        let out = TempDir::new().expect("mkdir out");
+        match build(&src, out.path(), None) {
+            Err(e @ BuildError::Eval(_)) => {
+                assert_framed_at_sequence_block(&e.render_plain(), &src);
+            }
+            Ok(n) => panic!("{name}: expected eval error, built {n} pages"),
+            Err(e) => panic!("{name}: expected Eval error, got {e:?}"),
+        }
+
+        let out = TempDir::new().expect("mkdir out");
+        match wcl_wdoc::markdown(&src, out.path(), None) {
+            Err(e @ BuildError::Eval(_)) => {
+                assert_framed_at_sequence_block(&e.render_plain(), &src);
+            }
+            Ok(r) => panic!("{name}: expected eval error, built {} pages", r.count),
+            Err(e) => panic!("{name}: expected Eval error, got {e:?}"),
+        }
+
+        let out = TempDir::new().expect("mkdir out");
+        match wcl_wdoc::pdf(&src, out.path(), None, wcl_wdoc::PageSize::A4) {
+            Err(e @ wcl_wdoc::PdfError::Eval(_)) => {
+                assert_framed_at_sequence_block(&e.render_plain(), &src);
+            }
+            Ok(r) => panic!("{name}: expected eval error, built {} pdfs", r.count),
+            Err(e) => panic!("{name}: expected Eval error, got {e:?}"),
+        }
+    }
+}
+
+#[test]
+fn author_file_error_keeps_its_own_snippet() {
+    // An error whose origin is the author's file renders as itself, with no
+    // library framing.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("own.wcl");
+    write_fixture(
+        &src,
+        r##"
+page index {
+  paragraph { text = 1 / 0 }
+}
+"##,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let err = build(&src, out.path(), None).expect_err("division by zero fails the build");
+    let report = err.render_plain();
+    assert!(!report.contains("in this `"), "{report}");
+    assert!(!report.contains("<wcl-system>"), "{report}");
+    assert!(report.contains("own.wcl"), "{report}");
+}
+
 #[test]
 fn non_list_lower_result_is_a_diagnostic_not_silence() {
     // Regression: a `lower` returning a non-list (the language doesn't

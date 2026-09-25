@@ -26,7 +26,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-use miette::{NamedSource, Report};
+use miette::Report;
 use wcl_lang::{Block, Document, Value, disk_loader};
 
 use crate::blocks::diagram::tileset::TilesetRegistry;
@@ -150,15 +150,6 @@ impl PdfError {
     /// failure keeps its source snippet.
     pub fn render_plain(&self) -> String {
         crate::build::render_plain_diagnostic(self)
-    }
-
-    /// Wrap a render-time evaluation failure into a `PdfError::Eval`,
-    /// attaching the source file the error was raised against so the miette
-    /// report renders the snippet against the correct text (a cross-file
-    /// span won't line up with the root document's source).
-    pub(crate) fn eval(err: wcl_lang::EvalError, src: NamedSource<std::sync::Arc<str>>) -> Self {
-        let report = Report::new(err).with_source_code(src);
-        Self::Eval(report)
     }
 }
 
@@ -413,8 +404,8 @@ pub fn pdf(
         }
         Ok(written)
     });
-    if let Some((e, src)) = eval_err {
-        return Err(PdfError::eval(e, src));
+    if let Some(caught) = eval_err {
+        return Err(PdfError::Eval(caught.into_report()));
     }
     // An unroutable diagram edge surfaces after the eval check, mirroring
     // the HTML build.
