@@ -43,11 +43,19 @@ diagram {
 }
 ```
 
-An `f64` field takes either form: `x = 20` and `x = 20.0` both work. An `i64` field takes the
-integer only. **Keep the canvas integral — `width = 320`.** Given `width = 320.0` the renderer
-reads no width at all: it emits `<svg width="0">` and the diagram disappears. `wcl check`
-passes, and the build reports nothing. If a diagram renders blank, check for a decimal point on
-`width` or `height` first.
+An `f64` field takes either form: `x = 20` and `x = 20.0` both work. An `i64` field takes an
+integer, or a float with no fractional part: `width = 320.0` fits and renders
+`<svg width="320">`. A fraction does not fit, and `wcl check` refuses it:
+
+```console
+$ wcl check main.wcl
+wcl::eval::schema_violation
+
+  × field 'width' declared as i64 but value 320.5 is not a whole number, so it
+  │ cannot be i64
+```
+
+See `lang_types.md` for the fit rules.
 
 The same rule holds for every other `i64` field: `columns`, `seed`, `iterations`, a timeline's
 `every`, a chart point's `category`, a dopesheet's frame geometry.

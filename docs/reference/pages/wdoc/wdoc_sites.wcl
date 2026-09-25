@@ -476,10 +476,12 @@ _site/brand/extra.css
 _site/handbook/deploying.html
 _site/handbook/index.html
 _site/handbook/_wdoc/favicon.svg
+_site/handbook/_wdoc/pages.json
 _site/home.html
 _site/index.html
 _site/product.html
 _site/_wdoc/favicon.svg
+_site/_wdoc/pages.json
 CONSOLE
   }
 
@@ -491,7 +493,7 @@ CONSOLE
     li "**One `.html` per page**, named after the page's route, in its site's directory."
     li "**The root site renders flat** at `--out`. Every other site renders under `<out>/<name>/`. A single-site document, and a `--site` build, are the flat case."
     li "**`index.html` is a copy**, not a redirect, when a `start` page produced it. The page stays reachable at its own name as well."
-    li "**Each site owns a `_wdoc/` directory** holding what its own pages reference: the favicon, the book typography, the shared icon sprite, the search index, and the small player scripts an interactive block pulls in. The last three are paid for only on use. There are no player scripts in the listing above because no page used one, and no icon sprite because no page drew an icon."
+    li "**Each site owns a `_wdoc/` directory** holding what its own pages reference: the favicon, the book typography, the shared icon sprite, the search index, and the small player scripts an interactive block pulls in. The last three are paid for only on use. There are no player scripts in the listing above because no page used one, and no icon sprite because no page drew an icon. It also holds `pages.json`, the site's page list, which a later rebuild compares against to decide whether navigation changed ([Output targets](wdoc_outputs))."
   }
 
   h3 "The assets folder"

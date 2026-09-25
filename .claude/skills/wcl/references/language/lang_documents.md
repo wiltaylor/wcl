@@ -126,8 +126,9 @@ A newline ends the label list. What follows a newline is a new item, never anoth
 
 ### Nesting
 
-Blocks hold blocks. Nesting depth is unbounded; the schema constrains the shape with `@child`
-(exactly one) and `@children` (a list).
+Blocks hold blocks, up to 128 levels deep: past that, the parser stops with `nesting too deep
+(more than 128 levels)`. The schema constrains the shape with `@child` (exactly one) and
+`@children` (a list).
 
 ```wcl
 service "web" {

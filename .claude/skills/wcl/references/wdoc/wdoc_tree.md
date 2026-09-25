@@ -42,7 +42,7 @@ the solver place the shape.
 ## `tree`
 
 One row per node, indented by depth, with `├─ └─ │` guides drawn between a parent and its
-children. Nodes nest as deep as you like.
+children. The renderer draws 64 levels of nodes and silently drops anything deeper.
 
 ```wcl
 diagram {

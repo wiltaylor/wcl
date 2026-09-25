@@ -171,7 +171,7 @@ CONSOLE
 $ wcl eval app.wcl service
 "checkout"
 $ wcl eval app.wcl envs.prod.replicas
-6
+6u32
 CONSOLE
   }
 

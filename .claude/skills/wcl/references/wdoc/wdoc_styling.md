@@ -110,8 +110,9 @@ Resolution is **per role, not per palette.** A theme that extends `forge` and de
 `palette dark { bg = "#000" }` overrides `bg` and inherits the other 30 dark roles plus the
 entire light palette. The same holds for a single `metrics` field.
 
-Chains are followed to any depth, so a theme may extend a theme that extends a built-in.
-Two rules keep a chain terminating:
+A theme may extend a theme that extends a built-in. A chain is followed for at most **16
+themes**, the one the site names included; links past the 16th are ignored without a warning.
+Two rules end a chain sooner:
 
 - An `extends` naming **no** theme ends the chain. It does not fall back to `forge` — the
   theme's own roles are all it gets.

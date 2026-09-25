@@ -473,7 +473,7 @@ WCL
 $ wcl get ghost.wcl a
 wcl::eval::unresolved_reference
 
-  x unresolved reference 'ghost'
+  × unresolved reference 'ghost'
 CONSOLE
   }
 

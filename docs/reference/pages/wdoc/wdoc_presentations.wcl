@@ -453,6 +453,8 @@ WCL
   code wcl {
     filename = "branded.wcl"
     source = <<'WCL'
+import <wdoc.wcl>
+
 template branded_deck {
   slot content: content*
   slot notes: content* = fn(c: SlotOwner) -> list<Html> []
@@ -483,11 +485,15 @@ WCL
   code console {
     source = <<'CONSOLE'
 $ wcl wdoc build branded.wcl --out out
+warning: class "deck-brand": the rendered pages carry it but no CSS rule selects it — a misspelled class name, or a hook nothing styles; declare a hook with an empty `class "deck-brand" {}` block to say so on purpose
+warning: class "deck-brand-section": the rendered pages carry it but no CSS rule selects it — a misspelled class name, or a hook nothing styles; declare a hook with an empty `class "deck-brand-section" {}` block to say so on purpose
 wrote 1 page
 $ grep -o '<footer.*</footer>' out/index.html
 <footer class="deck-brand"><span class="deck-brand-section">Intro (1)</span><span class="deck-brand-section">Detail (1)</span></footer>
 CONSOLE
   }
+
+  p "The two warnings say that nothing styles the footer's classes yet. Give them `class` rules, and the warnings go away."
 
   p "`c.deck` is the resolved deck: a `list<DeckSection>`, each holding the section `title` and its `slides` as a `list<PageHandle>`. A handle carries the page's `name`, `title` and `slots`, so `slot(s, :content)` places one slide's body and `slot(s, :notes)` its notes. That is exactly what the stdlib layout does: one section element per `DeckSection`, one slide element per handle."
 

@@ -303,6 +303,7 @@ wcl::eval::schema_violation
 
   × block kind 'wibble' is not allowed inside 'page'
    ╭─[main.wcl:7:14]
+ 6 │
  7 │ page index { wibble { p "a" } }
    ·              ────────┬───────
    ·                      ╰── schema violation
@@ -528,7 +529,14 @@ WCL
   code console {
     source = <<'CONSOLE'
 $ wcl init website ./my-site
+Created ./my-site from template 'website'
+  main.wcl
+  theme.wcl
+  components.wcl
+  content.wcl
+  assets/app.js
 $ wcl wdoc build my-site/main.wcl --out my-site/_site
+wrote 1 page
 CONSOLE
   }
 

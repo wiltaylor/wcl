@@ -149,7 +149,7 @@ let half = make_scaler(0.5)
 result   = half(9.0)                  // 4.5
 ```
 
-Two rules follow:
+Three rules follow:
 
 - **A capture holds locals only.** A field, a block, a type or a `let` **item** resolves through
   the scope chain when the call runs, not when you write the literal. The document is immutable
