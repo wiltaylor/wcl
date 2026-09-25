@@ -23,6 +23,17 @@ choose. A host that edits a file and then wants a value out of it re-opens it as
 This is why `wcl fmt` and `wcl set` preserve your comments and blank-line groupings. They run
 on the editing path, over a real AST. `wcl get` and `wcl check` see only evaluated values.
 
+Two library calls cross the paths for you, and are what the CLI itself runs:
+
+| Call | Does | CLI |
+| --- | --- | --- |
+| `wcl_lang::edit::set_field(source, name, path, value)` | Opens `source` as a `Document`, finds the field at the dotted `path`, parses `value` as an expression, returns the reprinted source. Refuses a field from an import (`EditError::Imported`) | — |
+| `edit::locate_field(&doc, path)` then `edit::replace_field(source, name, span, expr)` | The same in two halves: `locate_field` follows imports and returns the declaring file and span, `replace_field` rewrites that file's source | `wcl set` |
+| `wcl_lang::diff::diff_documents(&old, &new)` | Compares evaluated documents. Returns `Diff { changes, warnings }`; `warnings` lists blocks and fields that failed to evaluate and were left out | `wcl diff` |
+
+`replace_field` re-parses its own output and returns `EditError::Unprintable` rather than
+text that does not parse. Like `wcl fmt`, it reprints the whole file, not only the edited line.
+
 ## Fields evaluate lazily, and cache
 
 A field's expression runs the first time something asks for its value, and the result is cached

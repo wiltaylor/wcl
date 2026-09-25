@@ -13,11 +13,16 @@
 //! There is no AST escape hatch on `Document`; mixing edit + evaluate inside
 //! one process state would silently invalidate the document's cell caches,
 //! so the API forces the host to pick one mode per parse.
+//!
+//! Two tools are built over those paths. [`edit::set_field`] finds a field
+//! through a `Document` and rewrites it through the edit path, and
+//! [`diff::diff_documents`] compares two documents by what they evaluate to.
 
 pub mod ast;
 /// What the language reports about a run rather than computes from one:
 /// the error types and the opt-in evaluation profiler.
 mod diagnostics;
+pub mod diff;
 /// The document model: opening, evaluating and querying a file.
 mod doc;
 pub mod edit;

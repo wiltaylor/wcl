@@ -1,304 +1,22 @@
 //! `wcl diff <old> <new>` — a WCL-aware document diff.
 //!
-//! Compares the *evaluated* document views (not the source text), so it is
-//! robust to formatting-only churn: a whole-file reformat that doesn't
-//! change any value produces an empty diff. Each top-level block is an
-//! **entity**, keyed `kind:label` (its first label / id); top-level bare
-//! fields fold into a synthetic `<document>` entity. Within an entity the
-//! reified record is deep-compared, so changes are reported at field-path
-//! granularity (`fields.due_date`), recursing into lists by index
-//! (`tags[2]`).
+//! The comparison itself is [`wcl_lang::diff`]: it diffs the *evaluated*
+//! documents entity by entity and field path by field path, so
+//! formatting-only churn produces an empty diff. This module is the
+//! command around it — opening each side (a path, or a `<rev>:<path>`
+//! git spec), printing the warnings for anything that could not be
+//! evaluated, rendering the result, and choosing the exit code.
 //!
 //! The diff renders one way: a re-parseable **WCL tree** — one `added` /
 //! `removed` / `modified` block per entity, carrying the actual old/new
 //! values. Because the output is itself a WCL document, a consumer that
 //! wants structured data can pipe it back through `wcl parse` rather than
 //! needing a second serialization format here.
-//!
-//! ## Intentionally deferred
-//! - Tensors are diffed as opaque leaves (a single `changed`); only lists
-//!   recurse element-wise.
-//! - List diffing is index-based, so reordering a list's elements reads as
-//!   per-index churn rather than a move.
 
-use std::collections::BTreeMap;
-
-use wcl_lang::{Block, Document, ParseError, Value};
+use wcl_lang::diff::{Change, ChangeOp, diff_documents};
+use wcl_lang::{Document, ParseError, Value};
 
 use crate::{EXIT_DIFFERS, EXIT_IO, EXIT_OK, gitspec, open_document, report_parse_error};
-
-/// Entity-level operation.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum ChangeOp {
-    Added,
-    Removed,
-    Modified,
-}
-
-impl ChangeOp {
-    fn as_str(self) -> &'static str {
-        match self {
-            ChangeOp::Added => "added",
-            ChangeOp::Removed => "removed",
-            ChangeOp::Modified => "modified",
-        }
-    }
-}
-
-/// Per-field operation inside a modified entity.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum FieldKind {
-    Added,
-    Removed,
-    Changed,
-}
-
-impl FieldKind {
-    fn as_str(self) -> &'static str {
-        match self {
-            FieldKind::Added => "added",
-            FieldKind::Removed => "removed",
-            FieldKind::Changed => "changed",
-        }
-    }
-}
-
-/// One reported change for an entity. `entity_value` is the whole reified
-/// record for `Added` / `Removed`; `fields` carries the per-field edits for
-/// `Modified` (and is empty otherwise).
-#[derive(Debug, PartialEq)]
-pub(crate) struct Change {
-    op: ChangeOp,
-    /// Entity key — `kind:label` for a block, or `<document>` for the
-    /// top-level field group.
-    entity: String,
-    /// Whole-entity snapshot, for `Added` / `Removed`.
-    entity_value: Option<Value>,
-    /// Per-field edits, for `Modified`.
-    fields: Vec<FieldChange>,
-}
-
-/// A single field-path edit within a modified entity, carrying the actual
-/// old/new values (the absent side is `None` for an add/remove).
-#[derive(Debug, PartialEq)]
-pub(crate) struct FieldChange {
-    /// Dotted / indexed field path within the entity (`fields.tags[2]`).
-    path: String,
-    kind: FieldKind,
-    old: Option<Value>,
-    new: Option<Value>,
-}
-
-/// The synthetic entity key under which top-level bare fields are diffed.
-const DOCUMENT_ENTITY: &str = "<document>";
-
-/// Compute the entity/field diff between two evaluated documents.
-/// Entities present on only one side become a single `Added` / `Removed`
-/// change; entities on both sides are deep-compared field by field and, if
-/// anything differs, yield one `Modified` change carrying the edits.
-pub(crate) fn diff_documents(old: &Document, new: &Document) -> Vec<Change> {
-    let old_entities = collect_entities(old);
-    let new_entities = collect_entities(new);
-
-    // Union of entity keys, in deterministic (sorted) order.
-    let mut keys: Vec<&String> = old_entities.keys().chain(new_entities.keys()).collect();
-    keys.sort_unstable();
-    keys.dedup();
-
-    let mut changes = Vec::new();
-    for key in keys {
-        match (old_entities.get(key), new_entities.get(key)) {
-            (None, Some(v)) => changes.push(Change {
-                op: ChangeOp::Added,
-                entity: key.clone(),
-                entity_value: Some(v.clone()),
-                fields: Vec::new(),
-            }),
-            (Some(v), None) => changes.push(Change {
-                op: ChangeOp::Removed,
-                entity: key.clone(),
-                entity_value: Some(v.clone()),
-                fields: Vec::new(),
-            }),
-            (Some(old_val), Some(new_val)) => {
-                let mut fields = Vec::new();
-                diff_values(old_val, new_val, String::new(), &mut fields);
-                if !fields.is_empty() {
-                    changes.push(Change {
-                        op: ChangeOp::Modified,
-                        entity: key.clone(),
-                        entity_value: None,
-                        fields,
-                    });
-                }
-            }
-            (None, None) => unreachable!("key came from one of the maps"),
-        }
-    }
-    changes
-}
-
-/// Reify a document's top-level blocks (entities) and bare fields into a
-/// `key -> Value` map. A block reifies to its schema-projected record; the
-/// bare top-level fields reify to one `<document>` record. A block or field
-/// whose value can't be evaluated is skipped with a stderr warning (so a
-/// partial document still diffs the rest rather than aborting, and the
-/// skip is never silent).
-fn collect_entities(doc: &Document) -> BTreeMap<String, Value> {
-    let mut out: BTreeMap<String, Value> = BTreeMap::new();
-
-    for block in doc.blocks() {
-        let key = entity_key(&block, &out);
-        match block.to_record_value() {
-            Ok(v) => {
-                out.insert(key, v);
-            }
-            Err(e) => {
-                eprintln!("warning: entity '{key}' could not be evaluated, skipping: {e}");
-            }
-        }
-    }
-
-    // Top-level bare fields → a single synthetic entity, so a changed
-    // document-level field isn't silently dropped.
-    let mut doc_fields: BTreeMap<String, Value> = BTreeMap::new();
-    for f in doc.fields() {
-        match f.value() {
-            Ok(v) => {
-                doc_fields.insert(f.name().to_string(), v.clone());
-            }
-            Err(e) => {
-                eprintln!(
-                    "warning: field '{}' could not be evaluated, skipping: {e}",
-                    f.name()
-                );
-            }
-        }
-    }
-    if !doc_fields.is_empty() {
-        out.insert(
-            DOCUMENT_ENTITY.to_string(),
-            Value::Record {
-                ty: Vec::new(),
-                fields: std::sync::Arc::new(doc_fields),
-            },
-        );
-    }
-    out
-}
-
-/// Stable identity for a block entity: `kind:firstlabel`, or bare `kind`
-/// when it has no label. Collisions (repeated unlabeled kinds, duplicate
-/// ids) are disambiguated with a `#n` suffix so no entity is lost.
-fn entity_key(block: &Block<'_>, taken: &BTreeMap<String, Value>) -> String {
-    let base = match block.labels().ok().and_then(|ls| ls.into_iter().next()) {
-        Some(Value::Identifier(s) | Value::Utf8(s) | Value::Ascii(s)) => {
-            format!("{}:{}", block.kind(), s)
-        }
-        _ => block.kind().to_string(),
-    };
-    if !taken.contains_key(&base) {
-        return base;
-    }
-    (2..)
-        .map(|n| format!("{base}#{n}"))
-        .find(|k| !taken.contains_key(k))
-        .expect("infinite suffix sequence yields a free key")
-}
-
-/// Deep-compare two values, appending a `FieldChange` for every differing
-/// leaf or sub-record/element. Records recurse key by key and lists recurse
-/// by index (a key/index on only one side is `Added`/`Removed`); any other
-/// unequal pair — scalars, variants, tensors, type mismatch — is a single
-/// `Changed` at `path`. Equal values contribute nothing (so formatting-only
-/// churn is invisible).
-fn diff_values(old: &Value, new: &Value, path: String, out: &mut Vec<FieldChange>) {
-    if old == new {
-        return;
-    }
-    match (old, new) {
-        (Value::Record { fields: a, .. }, Value::Record { fields: b, .. }) => {
-            let mut keys: Vec<&String> = a.keys().chain(b.keys()).collect();
-            keys.sort_unstable();
-            keys.dedup();
-            for k in keys {
-                let child = join(&path, k);
-                match (a.get(k), b.get(k)) {
-                    (Some(av), Some(bv)) => diff_values(av, bv, child, out),
-                    (None, Some(bv)) => out.push(FieldChange {
-                        path: child,
-                        kind: FieldKind::Added,
-                        old: None,
-                        new: Some(bv.clone()),
-                    }),
-                    (Some(av), None) => out.push(FieldChange {
-                        path: child,
-                        kind: FieldKind::Removed,
-                        old: Some(av.clone()),
-                        new: None,
-                    }),
-                    (None, None) => unreachable!("key came from one of the maps"),
-                }
-            }
-        }
-        (Value::List(a), Value::List(b)) => {
-            for i in 0..a.len().max(b.len()) {
-                let child = index(&path, i);
-                match (a.get(i), b.get(i)) {
-                    (Some(av), Some(bv)) => diff_values(av, bv, child, out),
-                    (None, Some(bv)) => out.push(FieldChange {
-                        path: child,
-                        kind: FieldKind::Added,
-                        old: None,
-                        new: Some(bv.clone()),
-                    }),
-                    (Some(av), None) => out.push(FieldChange {
-                        path: child,
-                        kind: FieldKind::Removed,
-                        old: Some(av.clone()),
-                        new: None,
-                    }),
-                    (None, None) => unreachable!("index below the longer length"),
-                }
-            }
-        }
-        // An optional field reifies as `none` when unset, so a none→value
-        // edit reads as the field being *added* (and value→none as
-        // removed) rather than a bland "changed".
-        (Value::None, _) => out.push(FieldChange {
-            path,
-            kind: FieldKind::Added,
-            old: None,
-            new: Some(new.clone()),
-        }),
-        (_, Value::None) => out.push(FieldChange {
-            path,
-            kind: FieldKind::Removed,
-            old: Some(old.clone()),
-            new: None,
-        }),
-        _ => out.push(FieldChange {
-            path,
-            kind: FieldKind::Changed,
-            old: Some(old.clone()),
-            new: Some(new.clone()),
-        }),
-    }
-}
-
-/// Join a dotted field path with a child key.
-fn join(path: &str, seg: &str) -> String {
-    if path.is_empty() {
-        seg.to_string()
-    } else {
-        format!("{path}.{seg}")
-    }
-}
-
-/// Append a list index to a field path (`tags` + 2 → `tags[2]`).
-fn index(path: &str, i: usize) -> String {
-    format!("{path}[{i}]")
-}
 
 // ---------------------------------------------------------------------------
 // WCL rendering (the only output)
@@ -488,9 +206,11 @@ fn open_spec(arg: &str) -> Result<(Document, Option<tempfile::TempDir>), OpenErr
 
 /// Entry point for the `diff` subcommand. Opens both sides (each a path or a
 /// `<rev>:<path>` git spec), computes the WCL-aware entity/field diff, and
-/// prints it as a WCL tree. A parse/eval/git failure on either side renders
-/// the diagnostic and yields a non-zero exit code. With `exit_code`, a
-/// non-empty diff exits [`EXIT_DIFFERS`] instead of [`EXIT_OK`].
+/// prints it as a WCL tree. Anything that could not be evaluated is named
+/// on stderr as a warning and left out. A parse/git failure on either side
+/// renders the diagnostic and yields a non-zero exit code. With
+/// `exit_code`, a non-empty diff exits [`EXIT_DIFFERS`] instead of
+/// [`EXIT_OK`].
 pub(crate) fn run(old: &str, new: &str, exit_code: bool) -> u8 {
     // `_old`/`_new` hold the temp dirs alive until the diff is computed.
     let (old_doc, _old) = match open_spec(old) {
@@ -501,9 +221,12 @@ pub(crate) fn run(old: &str, new: &str, exit_code: bool) -> u8 {
         Ok(x) => x,
         Err(e) => return e.report(),
     };
-    let changes = diff_documents(&old_doc, &new_doc);
-    print!("{}", render_wcl(&changes, old, new));
-    if exit_code && !changes.is_empty() {
+    let diff = diff_documents(&old_doc, &new_doc);
+    for warning in &diff.warnings {
+        eprintln!("warning: {warning}");
+    }
+    print!("{}", render_wcl(&diff.changes, old, new));
+    if exit_code && !diff.is_empty() {
         EXIT_DIFFERS
     } else {
         EXIT_OK
@@ -513,104 +236,7 @@ pub(crate) fn run(old: &str, new: &str, exit_code: bool) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn record(pairs: &[(&str, Value)]) -> Value {
-        Value::Record {
-            ty: Vec::new(),
-            fields: std::sync::Arc::new(
-                pairs
-                    .iter()
-                    .map(|(k, v)| ((*k).to_string(), v.clone()))
-                    .collect(),
-            ),
-        }
-    }
-
-    fn diffs(old: &Value, new: &Value) -> Vec<FieldChange> {
-        let mut out = Vec::new();
-        diff_values(old, new, String::new(), &mut out);
-        out
-    }
-
-    #[test]
-    fn equal_values_produce_no_change() {
-        let a = record(&[("x", Value::I64(1))]);
-        assert!(diffs(&a, &a).is_empty());
-    }
-
-    #[test]
-    fn changed_leaf_carries_old_and_new() {
-        let a = record(&[("x", Value::I64(1))]);
-        let b = record(&[("x", Value::I64(2))]);
-        let d = diffs(&a, &b);
-        assert_eq!(d.len(), 1);
-        assert_eq!(d[0].path, "x");
-        assert_eq!(d[0].kind, FieldKind::Changed);
-        assert_eq!(d[0].old, Some(Value::I64(1)));
-        assert_eq!(d[0].new, Some(Value::I64(2)));
-    }
-
-    #[test]
-    fn nested_added_and_removed_fields() {
-        let a = record(&[("fields", record(&[("name", Value::Utf8("t".into()))]))]);
-        let b = record(&[(
-            "fields",
-            record(&[
-                ("name", Value::Utf8("t".into())),
-                ("due_date", Value::Utf8("2026".into())),
-            ]),
-        )]);
-        let d = diffs(&a, &b);
-        assert_eq!(d.len(), 1);
-        assert_eq!(d[0].path, "fields.due_date");
-        assert_eq!(d[0].kind, FieldKind::Added);
-        assert_eq!(d[0].old, None);
-        assert_eq!(d[0].new, Some(Value::Utf8("2026".into())));
-
-        let r = diffs(&b, &a);
-        assert_eq!(r[0].kind, FieldKind::Removed);
-        assert_eq!(r[0].old, Some(Value::Utf8("2026".into())));
-        assert_eq!(r[0].new, None);
-    }
-
-    #[test]
-    fn none_to_value_reads_as_added() {
-        let a = record(&[("due_date", Value::None)]);
-        let b = record(&[("due_date", Value::Utf8("2026".into()))]);
-        let d = diffs(&a, &b);
-        assert_eq!(d[0].path, "due_date");
-        assert_eq!(d[0].kind, FieldKind::Added);
-        let r = diffs(&b, &a);
-        assert_eq!(r[0].kind, FieldKind::Removed);
-    }
-
-    #[test]
-    fn lists_recurse_by_index() {
-        // Element changed at index 1, added at index 2.
-        let a = record(&[("xs", Value::list(vec![Value::I64(1), Value::I64(2)]))]);
-        let b = record(&[(
-            "xs",
-            Value::list(vec![Value::I64(1), Value::I64(9), Value::I64(3)]),
-        )]);
-        let d = diffs(&a, &b);
-        assert_eq!(d.len(), 2);
-        assert_eq!(d[0].path, "xs[1]");
-        assert_eq!(d[0].kind, FieldKind::Changed);
-        assert_eq!(d[1].path, "xs[2]");
-        assert_eq!(d[1].kind, FieldKind::Added);
-        assert_eq!(d[1].new, Some(Value::I64(3)));
-    }
-
-    #[test]
-    fn list_shrink_reports_removed_tail() {
-        let a = record(&[("xs", Value::list(vec![Value::I64(1), Value::I64(2)]))]);
-        let b = record(&[("xs", Value::list(vec![Value::I64(1)]))]);
-        let d = diffs(&a, &b);
-        assert_eq!(d.len(), 1);
-        assert_eq!(d[0].path, "xs[1]");
-        assert_eq!(d[0].kind, FieldKind::Removed);
-        assert_eq!(d[0].old, Some(Value::I64(2)));
-    }
+    use wcl_lang::diff::{FieldChange, FieldKind};
 
     #[test]
     fn value_to_wcl_strips_record_type_prefix() {
