@@ -507,6 +507,8 @@ CONSOLE
     body  = "Demanding a `@contextual` block's generated children from a document opened with no registered expander is a hard error naming the kind. The language declines to guess. Parsing and formatting never demand them, so `deck.wcl` above checks green with no host in sight: `wcl check`, `wcl parse` and `wcl fmt` never ask what the `repeat` expands to. Anything that evaluates the expansion must open the document with the host's environment."
   }
 
+  p "Expansion nests: a generated block can itself be `@contextual`, and the language expands it in turn. Two limits stop that from running away. A block nested more than 32 expansions deep, which is what a block that expands into itself produces, is an error rather than an empty slot. So is one projection that generates more than 100,000 blocks, which six levels of ten-element repeats would reach. Both errors name the block kind and which limit it hit."
+
   h2 "@declares_kind"
 
   p "Here is new ground, and it is worth naming as such. Everything so far attached data to a declaration. `@declares_kind` attaches data to a declaration whose **instances declare block kinds of their own**."

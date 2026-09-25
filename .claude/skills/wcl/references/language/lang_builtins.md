@@ -50,7 +50,7 @@ this page for:
 | `map(xs: [T], f: fn (T) -> U) -> [U]` | Apply a function to every element of a list or tensor, returning the transformed collection. |
 | `max_by(xs: [T], key: fn (T) -> K) -> T` | The element with the largest key, or `none` for an empty list. |
 | `min_by(xs: [T], key: fn (T) -> K) -> T` | The element with the smallest key, or `none` for an empty list. |
-| `range(start: i64, end: i64) -> [i64]` | The half-open integer range `[start, end)` as a list. |
+| `range(start: i64, end: i64) -> [i64]` | The half-open integer range `[start, end)` as a list, of at most 1,048,576 elements. |
 | `reverse(xs: [T]) -> [T]` | Reverse the order of a list's elements. |
 | `slice(xs: utf8 \| [T], start: i64, end: i64) -> utf8 \| [T]` | The half-open range `[start, end)` of a string's characters or a list's elements (bounds are clamped). |
 | `sort(xs: [T]) -> [T]` | Sort a list — numerically for all-numeric lists, lexicographically for all-string lists. |
@@ -107,7 +107,7 @@ zip([1, 2, 3], ["a", "b"])   // pair up by index, stopping at the shorter → [[
 | `join(parts: [utf8], sep: utf8) -> utf8` | Join a list of strings into one, inserting a separator between each. |
 | `pad_end(s: utf8, width: i64, pad: utf8) -> utf8` | Right-pad a string with a fill pattern until it is `width` characters long. |
 | `pad_start(s: utf8, width: i64, pad: utf8) -> utf8` | Left-pad a string with a fill pattern until it is `width` characters long. |
-| `repeat(s: utf8, n: i64) -> utf8` | A string repeated `n` times (empty for `n <= 0`). |
+| `repeat(s: utf8, n: i64) -> utf8` | A string repeated `n` times (empty for `n <= 0`); output is limited to 64 MiB. |
 | `replace(s: utf8, old: utf8, new: utf8) -> utf8` | Replace every occurrence of a substring with another. |
 | `split(s: utf8, sep: utf8) -> [utf8]` | Split a string on every occurrence of a separator into a list of pieces. |
 | `starts_with(s: utf8, prefix: utf8) -> bool` | Whether a string begins with a prefix. |
@@ -295,6 +295,11 @@ panic("invariant violated")   // abort with an unrecoverable failure → (aborts
 
 ## Notes on the sharp edges
 
+- **Output is capped per call: 64 MiB of string, 1,048,576 list elements.** `range`, `flatten`,
+  `split`, `chars`, `concat`, `join`, `replace`, `format`, `pad_start`, `pad_end` and `repeat`
+  size their result first and fail past it — `range: output exceeds the 1048576-element limit`,
+  `pad_start: output exceeds the 64 MiB limit` — instead of allocating. `range(0, 1048576)` is
+  the largest range.
 - **`len` counts characters, not bytes**, for a string.
 - **`at` errors on an out-of-range or negative index.** `slice` clamps its bounds instead.
   `head` / `find` / `min_by` / `max_by` answer `none` on an empty list.
