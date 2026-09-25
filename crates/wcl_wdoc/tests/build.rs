@@ -7623,6 +7623,60 @@ fn terminal_missing_cast_is_marked_not_fatal() {
 }
 
 #[test]
+fn terminal_replay_json_cannot_close_its_script() {
+    // A recording that printed `</script><script>...` must stay inside the
+    // frames JSON: `<`, `>`, `&` and U+2028/9 are emitted as `\u` escapes.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    std::fs::write(
+        tmp.path().join("evil.cast"),
+        "{\"version\":2,\"width\":60,\"height\":2}\n[0.0,\"o\",\"</script><script>alert(1)</script> & \\u2028\"]\n",
+    )
+    .expect("write cast");
+    let src = tmp.path().join("t.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  terminal { source = \"./evil.cast\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    let start = html
+        .find("class=\"term-frames\"")
+        .expect("frames script present");
+    let body_start = start + html[start..].find('>').expect("script tag closes") + 1;
+    let body_end = body_start + html[body_start..].find("</script").expect("script ends");
+    let json = &html[body_start..body_end];
+    assert!(
+        !json.contains('<') && !json.contains('>') && !json.contains('&'),
+        "raw markup characters in frames JSON:\n{json}"
+    );
+    assert!(!json.contains('\u{2028}'), "raw U+2028 in frames JSON");
+    assert!(json.contains("\\u003c/script\\u003e"), "{json}");
+    assert!(
+        !html.contains("<script>alert(1)"),
+        "recording escaped its script:\n{html}"
+    );
+}
+
+#[test]
+fn terminal_missing_cast_error_shows_authored_path() {
+    // The error marker is published HTML: it names the source as the
+    // author wrote it, never the absolute path on the build host.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("t.wcl");
+    write_fixture(
+        &src,
+        "page index {\n  terminal { source = \"./nope.cast\" }\n}\n",
+    );
+    let out = TempDir::new().expect("mkdir out");
+    build_ok(&src, out.path());
+    let html = std::fs::read_to_string(out.path().join("index.html")).expect("read");
+    assert!(html.contains("cannot read cast: ./nope.cast"), "{html}");
+    let host = tmp.path().to_string_lossy().to_string();
+    assert!(!html.contains(&host), "host path leaked:\n{html}");
+}
+
+#[test]
 fn no_terminal_writes_no_assets() {
     // A document without a terminal must not write the font/player
     // assets (they're ~3 MB — pages that don't need them pay nothing).
