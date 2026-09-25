@@ -245,6 +245,13 @@ wcl::parse
    ·         ╰── must be first item
 ```
 
+A syntax error does not stop the parser: it skips to the next item (the next line starting one
+at the same nesting level, or the `}` closing the enclosing block) and carries on, so one
+`ParseError` carries every syntax error in the file (at most 100). The first is the error; the
+rest are `SyntaxError::others`, rendered after it as related diagnostics, and
+`ParseError::syntax_errors()` walks them all. The file still does not open.
+`parse_for_edit_recovering` returns the partial tree, its symbols and the errors instead.
+
 **`EvalError`** — everything that happens while a value is produced. Its diagnostic codes are
 what you match on. There are 27 in all; these are the ones you will actually meet:
 `wcl::eval::cycle`, `wcl::eval::depth_exceeded`, `wcl::eval::call_depth_exceeded`,
@@ -277,6 +284,10 @@ names helps you read a message and search for its cause:
   The diagnostics are on stderr and the exit code is 3; a script reading only stdout sees a
   complete tree. Values in template bodies (repeater children, a component's `wdoc_body`)
   print as `<deferred: …>` and are not errors.
+- Every syntax error is reported in one run, but only one per broken item: the parser skips
+  the rest of an item after its first mistake, so `x = [1 2, 3 4]` is one error. Fix and
+  re-run. A missing `}` is reported at the **end of the file**, not where the brace belongs —
+  everything after it parsed as the block's body.
 - `wcl check` says `OK` for `n = error("boom")`. An evaluation failure during validation is
   skipped, not reported.
 - A `let` is not in the evaluated document. If you want it in the output, make it a field.
