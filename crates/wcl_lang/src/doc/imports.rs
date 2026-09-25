@@ -216,7 +216,12 @@ pub(super) fn resolve_import_path_kind(
         Some(d) if d.starts_with(sys_root) => d.strip_prefix(sys_root).unwrap_or(Path::new("")),
         _ => Path::new(""),
     };
-    Ok(sys_root.join(lexical_normalize(&dir_rel.join(path))))
+    // Spelled with `/` on every platform: the path is virtual, and it becomes
+    // the file name diagnostics print, which should not change with the OS.
+    let rel = lexical_normalize(&dir_rel.join(path))
+        .to_string_lossy()
+        .replace('\\', "/");
+    Ok(PathBuf::from(format!("{SYSTEM_IMPORT_ROOT}/{rel}")))
 }
 
 /// The registry key `import <path>` names when written in the file whose own
@@ -390,4 +395,19 @@ pub(super) fn expand_top_level_imports(
         state.loading.remove(&path);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn system_import_paths_use_forward_slashes_on_every_platform() {
+        let top = resolve_import_path_kind(None, "wdoc/sequence.wcl", true).unwrap();
+        assert_eq!(top.to_string_lossy(), "<wcl-system>/wdoc/sequence.wcl");
+        let importer = Path::new("<wcl-system>/wdoc/core");
+        let nested = resolve_import_path_kind(Some(importer), "../shared/x.wcl", true).unwrap();
+        assert_eq!(nested.to_string_lossy(), "<wcl-system>/wdoc/shared/x.wcl");
+        assert!(nested.starts_with(SYSTEM_IMPORT_ROOT));
+    }
 }
