@@ -295,7 +295,7 @@ fn check_rename(
         }
         updated.insert(uri_to_path(&source.uri).ok_or(NOT_LOCAL)?, text);
     }
-    let loader = wcl_wdoc::schema_registry().loader(wcl_lang::overlay_loader(updated.clone()));
+    let loader = ctx.host().loader(wcl_lang::overlay_loader(updated.clone()));
     let checked = match root_path {
         Some(root) => Document::from_file_with_loader(root, doc.environment(), loader),
         None => Document::open_at_with_loader(
@@ -375,7 +375,11 @@ mod tests {
         )
         .unwrap();
         let refs = references(
-            &Ctx::with_buffers(crate::convert::PositionEncoding::Utf8, overlays.clone()),
+            &Ctx::with_buffers(
+                crate::convert::PositionEncoding::Utf8,
+                overlays.clone(),
+                crate::host::wdoc(),
+            ),
             Uri::from_file_path(&main).unwrap(),
             source,
             source.find("Color").unwrap(),
@@ -701,7 +705,11 @@ tree { @note leaf first {} selected = first }
             )
             .unwrap();
             let edit = rename(
-                &Ctx::with_buffers(crate::convert::PositionEncoding::Utf8, overlays.clone()),
+                &Ctx::with_buffers(
+                    crate::convert::PositionEncoding::Utf8,
+                    overlays.clone(),
+                    crate::host::wdoc(),
+                ),
                 Uri::from_file_path(&main).unwrap(),
                 source,
                 source.find(needle).unwrap(),

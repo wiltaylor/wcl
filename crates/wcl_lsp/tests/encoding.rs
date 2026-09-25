@@ -11,12 +11,18 @@ use tower_lsp_server::ls_types::{
     TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Uri,
     VersionedTextDocumentIdentifier, WorkDoneProgressParams,
 };
-use wcl_lsp::Backend;
+use wcl_lsp::{Backend, Host};
+
+/// The wdoc host `wcl lsp` runs with, so wdoc documents open as they
+/// would in the editor.
+fn wdoc_host() -> Host {
+    Host::new(wcl_wdoc::wdoc_environment(), wcl_wdoc::schema_registry())
+}
 
 /// A backend initialised with a client offering `offered` position
 /// encodings (`None` omits the capability, as VS Code does).
 async fn initialized(offered: Option<Vec<PositionEncodingKind>>) -> LspService<Backend> {
-    let (service, _socket) = LspService::new(Backend::new);
+    let (service, _socket) = LspService::new(|client| Backend::new(client, wdoc_host()));
     let response = service
         .inner()
         .initialize(InitializeParams {
@@ -104,7 +110,7 @@ async fn initialize_negotiates_the_position_encoding() {
         ),
     ];
     for (offered, expected) in cases {
-        let (service, _socket) = LspService::new(Backend::new);
+        let (service, _socket) = LspService::new(|client| Backend::new(client, wdoc_host()));
         let response = service
             .inner()
             .initialize(InitializeParams {

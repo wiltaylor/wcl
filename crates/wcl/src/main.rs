@@ -76,6 +76,13 @@ fn cli_environment() -> Environment {
     wcl_wdoc::wdoc_environment()
 }
 
+/// What `wcl lsp` opens every document with: the same wdoc environment and
+/// embedded schemas the other subcommands use, so the editor and
+/// `wcl check` agree.
+fn lsp_host() -> wcl_lsp::Host {
+    wcl_lsp::Host::new(cli_environment(), wcl_wdoc::schema_registry())
+}
+
 /// Whether the call-tree profiler is on, read from [`PROFILE_ENV`].
 ///
 /// `1` / `true` (case-insensitive) enable it; unset, empty, `0` and `false`
@@ -483,7 +490,7 @@ fn main() -> ExitCode {
                 Err(code) => return ExitCode::from(code),
             };
             match tcp {
-                Some(addr) => match rt.block_on(wcl_lsp::start_tcp(addr)) {
+                Some(addr) => match rt.block_on(wcl_lsp::start_tcp(addr, lsp_host())) {
                     Ok(()) => EXIT_OK,
                     Err(e) => {
                         eprintln!("tcp listener failed: {e}");
@@ -491,7 +498,7 @@ fn main() -> ExitCode {
                     }
                 },
                 None => {
-                    rt.block_on(wcl_lsp::start_stdio());
+                    rt.block_on(wcl_lsp::start_stdio(lsp_host()));
                     EXIT_OK
                 }
             }

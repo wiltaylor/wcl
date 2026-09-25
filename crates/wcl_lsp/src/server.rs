@@ -57,7 +57,7 @@ use tower_lsp_server::ls_types::{
     WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 use tower_lsp_server::{Client, LanguageServer};
-use wcl_lang::{Document, Environment, ParseError, format as wcl_format, parse_for_edit};
+use wcl_lang::{Document, ParseError, format as wcl_format, parse_for_edit};
 
 use crate::code_actions;
 use crate::completion;
@@ -65,6 +65,7 @@ use crate::convert::{PositionEncoding, path_to_uri, rope_char_index, uri_to_path
 use crate::ctx::{Ctx, canonical};
 use crate::diagnostics;
 use crate::folding;
+use crate::host::Host;
 use crate::hover as hover_impl;
 use crate::navigation;
 use crate::semtokens;
@@ -76,16 +77,6 @@ use crate::workspace;
 /// produces a change per keystroke; analysing each one would queue work
 /// the next keystroke makes stale.
 const DIAGNOSTICS_DEBOUNCE: Duration = Duration::from_millis(150);
-
-/// Environment for a root-document parse: the wdoc one, so `@contextual`
-/// block kinds (`wdoc_repeater`, component instances) expand through
-/// wdoc's expander and its builtins (`page_metadata`, `__wdoc_slot`)
-/// resolve. A bare `Environment::new()` would make every projection over a
-/// repeater a hard error and paint valid documents red. Mirrors what
-/// [`Ctx::open`] opens with.
-fn root_environment() -> Environment {
-    wcl_wdoc::wdoc_environment()
-}
 
 /// Lock `mutex`, recovering (and logging) a poisoned one: every value
 /// guarded here is a cache or a set that a panicking holder cannot leave
@@ -138,6 +129,8 @@ struct Snapshot {
 /// Everything the handlers share. Lives behind an `Arc` so work can move
 /// to the blocking pool.
 struct State {
+    /// The environment and system imports every document opens with.
+    host: Arc<Host>,
     /// Open buffers by URI.
     docs: DashMap<Uri, OpenDoc>,
     /// Path to the root document, when one was discovered or
@@ -174,11 +167,14 @@ pub struct Backend {
 
 impl Backend {
     /// Build a backend with no open documents and no root discovered
-    /// yet.
-    pub fn new(client: Client) -> Self {
+    /// yet. Every document opens under `host`: [`Host::default`] serves
+    /// plain WCL, and a host with a vocabulary of its own passes its
+    /// environment and system imports.
+    pub fn new(client: Client, host: Host) -> Self {
         Self {
             client,
             state: Arc::new(State {
+                host: Arc::new(host),
                 docs: DashMap::new(),
                 root_path: RwLock::new(None),
                 encoding: OnceLock::new(),
@@ -348,7 +344,7 @@ impl State {
         };
         Snapshot {
             generation,
-            ctx: Ctx::with_buffers(self.encoding(), buffers),
+            ctx: Ctx::with_buffers(self.encoding(), buffers, Arc::clone(&self.host)),
         }
     }
 
@@ -364,10 +360,13 @@ impl State {
         {
             return Some(cached.value.clone());
         }
-        let value =
-            Document::from_file_with_loader(&path, &root_environment(), snapshot.ctx.loader())
-                .map(Arc::new)
-                .map_err(Arc::new);
+        let value = Document::from_file_with_loader(
+            &path,
+            snapshot.ctx.environment(),
+            snapshot.ctx.loader(),
+        )
+        .map(Arc::new)
+        .map_err(Arc::new);
         if cache
             .as_ref()
             .is_none_or(|cached| cached.generation < snapshot.generation)
@@ -754,7 +753,7 @@ impl LanguageServer for Backend {
                     let doc = path.as_ref().and_then(|path| {
                         Document::from_file_with_loader(
                             path,
-                            &root_environment(),
+                            snapshot.ctx.environment(),
                             snapshot.ctx.loader(),
                         )
                         .ok()
@@ -831,8 +830,8 @@ impl LanguageServer for Backend {
                 let path = uri_to_path(&uri)?;
                 let mut overlay = (*ctx.buffers).clone();
                 overlay.insert(path, signature::repair_source(&source, offset));
-                let repaired = Ctx::with_buffers(ctx.encoding, overlay);
-                Document::from_file_with_loader(&root, &root_environment(), repaired.loader())
+                let repaired = Ctx::with_buffers(ctx.encoding, overlay, Arc::clone(ctx.host()));
+                Document::from_file_with_loader(&root, ctx.environment(), repaired.loader())
                     .ok()
                     .map(Arc::new)
             });
