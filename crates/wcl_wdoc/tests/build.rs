@@ -10740,6 +10740,82 @@ page unplaced { image "missing.png" {} }
 }
 
 #[test]
+fn collection_slot_read_from_the_wrong_owner_names_the_right_one() {
+    // Regression: `slot(c, :content)` in a collection template failed with
+    // "template references slot `content` but does not declare it", though
+    // the template declares it. A repeated slot belongs to each member and a
+    // site slot to the template context; the message now says which.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("wrong-owner.wcl");
+    let cases = [
+        (
+            "slot(c, :content)",
+            "slot `content` is repeated",
+            "`slot(m, :content)` for each `m` in `c.members`",
+        ),
+        (
+            "slot_blocks(c, :notes)",
+            "slot `notes` is repeated",
+            "`slot(m, :notes)` for each `m` in `c.members`",
+        ),
+        (
+            "flatten(map(c.members, fn(m: PageHandle) -> list<Html> slot(m, :intro)))",
+            "slot `intro` is filled by the site, not by each member page",
+            "`slot(c, :intro)`",
+        ),
+    ];
+    for (placement, what, how) in cases {
+        write_fixture(
+            &src,
+            format!(
+                r#"
+template reel {{
+  slot content: content*
+  slot notes: content* = fn(c: SlotOwner) -> list<Html> []
+  slot intro: content?
+  render = fn(c: TemplateCtx) -> list<Html> {placement}
+}}
+site {{ default_template = :reel }}
+page one {{ p "first" }}
+page two {{ p "second" }}
+"#
+            ),
+        );
+        let out = TempDir::new().expect("mkdir out");
+        let err = build(&src, out.path(), None).expect_err(placement);
+        // The message, unwrapped; the rendered report wraps long lines.
+        let report = err.to_string();
+        assert!(report.contains(what), "{placement}:\n{report}");
+        assert!(report.contains(how), "{placement}:\n{report}");
+        assert!(
+            !report.contains("does not declare it"),
+            "{placement}:\n{report}"
+        );
+    }
+
+    // An undeclared slot keeps the undeclared message.
+    write_fixture(
+        &src,
+        r#"
+template reel {
+  slot content: content*
+  render = fn(c: TemplateCtx) -> list<Html> slot(c, :sidebar)
+}
+site { default_template = :reel }
+page one { p "first" }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    let report = build(&src, out.path(), None)
+        .expect_err("undeclared slot")
+        .to_string();
+    assert!(
+        report.contains("template references slot `sidebar` but does not declare it"),
+        "{report}"
+    );
+}
+
+#[test]
 fn only_a_repeated_content_slot_declares_a_collection() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("ordinary-repeated-slot.wcl");

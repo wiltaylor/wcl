@@ -102,8 +102,8 @@ impl Diagnostic for LibraryFailure {
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         Some(Box::new(
-            "the wdoc library rejected this block while rendering it; \
-             the report below shows the check that failed",
+            "the wdoc library raised this while rendering the block; \
+             the report below shows where",
         ))
     }
 

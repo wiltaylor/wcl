@@ -425,6 +425,59 @@ pub(crate) struct Rendered {
     pub duplicate_id: Option<(String, String)>,
 }
 
+/// Which owner fills each slot of the collection template whose `render`
+/// is running: every member page fills the repeated slots, the site fills
+/// the rest. Read only to explain a `slot` lookup that missed; see
+/// [`collection_slot_miss`].
+struct CollectionSlots {
+    /// Slots each member page fills, reached through a `PageHandle`.
+    repeated: Vec<String>,
+    /// Slots the site fills, reached through the `TemplateCtx`.
+    site: Vec<String>,
+}
+
+thread_local! {
+    /// The slot owners of the collection template being evaluated, if any.
+    /// Set around the `render` call only: a template places slots during
+    /// evaluation, and member bodies render afterwards, in Rust.
+    static COLLECTION_SLOTS: RefCell<Option<CollectionSlots>> = const { RefCell::new(None) };
+}
+
+/// Run `f` with `slots` as the current collection template's slot owners,
+/// restoring whatever was current before.
+fn with_collection_slots<T>(slots: Option<CollectionSlots>, f: impl FnOnce() -> T) -> T {
+    let outer = COLLECTION_SLOTS.with(|slot| slot.replace(slots));
+    let result = f();
+    COLLECTION_SLOTS.with(|slot| slot.replace(outer));
+    result
+}
+
+/// Explain a `slot` lookup for `requested` that found nothing, when a
+/// collection template declares the slot on the other owner: a repeated
+/// slot read from the `TemplateCtx`, or a site slot read from a member's
+/// `PageHandle`. `None` when no collection template is being evaluated or
+/// it does not declare `requested` at all.
+pub(crate) fn collection_slot_miss(requested: &str) -> Option<String> {
+    COLLECTION_SLOTS.with(|slot| {
+        let slots = slot.borrow();
+        let slots = slots.as_ref()?;
+        if slots.repeated.iter().any(|name| name == requested) {
+            return Some(format!(
+                "slot `{requested}` is repeated, so each member page fills its own and the \
+                 template context has none; read it from a member: `slot(m, :{requested})` \
+                 for each `m` in `c.members`"
+            ));
+        }
+        if slots.site.iter().any(|name| name == requested) {
+            return Some(format!(
+                "slot `{requested}` is filled by the site, not by each member page; read it \
+                 from the template context: `slot(c, :{requested})`"
+            ));
+        }
+        None
+    })
+}
+
 /// Site members supplied to a collection template. The pages are reified as
 /// typed handles during template evaluation; their authored bodies stay lazy
 /// until the returned HTML tree places one of their repeated slots.
@@ -600,7 +653,15 @@ pub(crate) fn render_template<'a>(
         ty: vec!["TemplateCtx".to_string()],
         fields: std::sync::Arc::new(ctx),
     };
-    let items = match doc.call_value(&fv, &[arg]) {
+    let collection_slots = is_collection.then(|| CollectionSlots {
+        repeated: declarations
+            .iter()
+            .filter(|declaration| declaration.slot_repeated())
+            .filter_map(label_string)
+            .collect(),
+        site: site_declarations.iter().filter_map(label_string).collect(),
+    });
+    let items = match with_collection_slots(collection_slots, || doc.call_value(&fv, &[arg])) {
         Ok(Value::List(items)) => items,
         Ok(_) => return Rendered::default(),
         Err(err) => {

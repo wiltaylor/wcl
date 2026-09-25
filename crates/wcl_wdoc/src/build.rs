@@ -165,9 +165,9 @@ pub fn wdoc_environment() -> Environment {
                         .ok_or_else(|| format!("template slot has no `{field}` field"));
                 }
             }
-            Err(format!(
-                "template references slot `{requested}` but does not declare it"
-            ))
+            Err(crate::html::collection_slot_miss(&requested).unwrap_or_else(|| {
+                format!("template references slot `{requested}` but does not declare it")
+            }))
         }),
     );
     env
