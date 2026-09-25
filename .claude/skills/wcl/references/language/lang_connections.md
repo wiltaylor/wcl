@@ -157,7 +157,7 @@ is a schema error:
 ```
 
 Tag the **declaration** with `@dynamic` to relax that. An unresolved operand is then projected
-as its raw id string instead of being dropped, and `wcl check` no longer flags it:
+as its raw id string instead of failing the read, and `wcl check` no longer flags it:
 
 ```wcl
 symbol_set K { uses }
@@ -191,6 +191,14 @@ never claimed by the wrong schema.
 | `no connection schema accepts 'A -> B'` | No declaration's endpoints match. Often `@connections` pointing at a `type` rather than a `connection`. |
 | `connection 'A -> B' matches multiple schemas: X, Y` | Two declarations accept the same operand types. Narrow one. |
 | `connection kind ':nope' is not a member of 'K'` | The tag is not in the declared `symbol_set`. |
+
+**A read fails on any of these, not just `wcl check`.** Reading a `@connections` field
+(`wcl get f.wcl edges`, `Block::typed_field`, a field that uses the list) checks every statement
+beside it and returns the first violation `check` reports for them: same message, same
+`wcl::eval::schema_violation` code, exit 3 from `wcl get`. One bad arrow fails the whole list,
+and every `@connections` field of that block, even one the arrow was not meant for. Nothing is
+silently dropped, and an ambiguous arrow is not counted in both lists. An arrow spliced in by an
+in-block `import` names the imported file on both paths.
 
 ## Reference integrity with `@ref`
 

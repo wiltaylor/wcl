@@ -356,6 +356,10 @@ The messages you will meet most often:
   (exit 2) *and* any read of the field: `wcl get` exits 3 with the same message, and
   `Field::value` returns the `SchemaViolation`. See
   [`lang_types.md`](lang_types.md#a-number-must-fit-its-numeric-type).
+- A unit literal its type does not declare (`5km` for `u32`, `1e39` for `f64`) behaves the same
+  way, code `wcl::eval::unit_no_match` on both paths; so does a unit product that is fractional
+  or out of range (`1.3B` for `std.ByteSize`). Top level, nested block, list element, imported
+  file alike. See [`lang_values.md`](lang_values.md#literal-units).
 - A field whose expression *fails to evaluate* is skipped by validation rather than reported.
   `wcl check` says `OK` for `n = error("boom")`. See
   [`lang_evaluation.md`](lang_evaluation.md).
