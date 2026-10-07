@@ -10,6 +10,10 @@ updates:
     groups:
       cargo-minor:
         update-types: [minor, patch]
+    # usvg must match the version krilla-svg embeds (see crates/wcl_wdoc/Cargo.toml),
+    # so it moves only in the PR that bumps krilla-svg.
+    ignore:
+      - dependency-name: usvg
 
   # The cargo-fuzz crate is its own workspace with its own Cargo.lock.
   - package-ecosystem: cargo
