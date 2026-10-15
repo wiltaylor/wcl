@@ -291,6 +291,14 @@ jobs:
         run: .github/scripts/stamp-version.sh "${{ needs.version.outputs.version }}"
       - name: Build
         run: cargo build --locked -p wcl --bin wcl --release --target ${{ matrix.target }}
+      # The test suite runs on glibc, macOS and Windows only, so this is the
+      # one run each shipped binary gets before release. The parse happens
+      # on the process's main thread, whose stack musl reports differently
+      # from a spawned thread's. The x86_64 macOS build is cross-compiled
+      # and cannot run on the Apple-silicon runner.
+      - name: Smoke-test the binary
+        if: matrix.target != 'x86_64-apple-darwin'
+        run: target/${{ matrix.target }}/release/${{ matrix.bin }} check examples/basic.wcl
       - name: Stage asset
         run: |
           V="${{ needs.version.outputs.version }}"
