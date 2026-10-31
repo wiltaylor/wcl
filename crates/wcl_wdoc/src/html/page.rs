@@ -1465,7 +1465,7 @@ fn render_markdown_source(
     let out_dir = patterns.output_dir();
     // Stem for any SVGs the body's Markdown writes — set it to the previewed
     // page's name so `![](_wdoc/…)` refs match the real Markdown output.
-    let stem = field_utf8(block, "id").unwrap_or_else(|| "markdown_source".to_string());
+    let stem = field_id(block, "id").unwrap_or_else(|| "markdown_source".to_string());
 
     let md = crate::markdown::emit::body_to_markdown(
         doc, &children, &stem, patterns, base_dir, &out_dir,

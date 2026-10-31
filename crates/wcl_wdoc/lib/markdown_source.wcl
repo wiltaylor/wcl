@@ -14,6 +14,6 @@ namespace wdoc
 @native(backends = [:html])
 type MarkdownSource extends ContentBlock {
   @doc("Asset-filename stem for any diagram/terminal SVGs the body's Markdown writes — set it to the previewed page's name so the `![](…)` refs match the real Markdown output. Defaults to `markdown_source`.")
-  id: utf8?
+  id: identifier?
   @children(ContentBlock) children: list<ContentBlock>
 }

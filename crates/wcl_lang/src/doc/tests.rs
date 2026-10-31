@@ -4428,6 +4428,194 @@ fn duplicate_inline_slot_on_one_type_errors_at_open() {
     );
 }
 
+// ─── extends checks across imported files ─────────────────────────
+
+/// Open `user_src` with each `(key, src)` registered as an
+/// `import <key>` library, expecting the open to fail.
+fn open_err_with_libs(user_src: &str, libs: &[(&str, &str)]) -> ParseError {
+    let mut reg = Registry::new();
+    for (key, src) in libs {
+        reg.register(key.to_string(), src.to_string());
+    }
+    let loader = reg.loader(disk_loader());
+    match Document::open_at_with_loader(user_src, "t", None, &Environment::new(), loader) {
+        Ok(_) => panic!("expected the open to fail"),
+        Err(e) => e,
+    }
+}
+
+/// The one syntax error `err` carries: its message, the file it renders
+/// against, and the source text its span covers.
+fn sole_error(err: &ParseError) -> (String, String, String) {
+    let errs: Vec<_> = err.syntax_errors().collect();
+    assert_eq!(errs.len(), 1, "reported once: {err:?}");
+    let e = errs[0];
+    let text = e.src.inner();
+    let (start, len) = (e.span.offset(), e.span.len());
+    (
+        e.message.clone(),
+        e.src.name().to_string(),
+        text[start..start + len].to_string(),
+    )
+}
+
+const LIB_PART: &str = "type Part { width: u32  @inline(0) id: identifier }\n";
+
+#[test]
+fn imported_parent_conflicting_redeclaration_errors_at_open() {
+    let err = open_err_with_libs(
+        "import <parts.wcl>\n@block(\"mcu\") type Mcu extends Part { width: u16? }\n",
+        &[("parts.wcl", LIB_PART)],
+    );
+    let (msg, file, at) = sole_error(&err);
+    assert!(
+        msg.contains("conflicting type for field 'width' in 'Mcu' (across extends)"),
+        "{msg}"
+    );
+    // The parent's end is named in the message: its type and its file.
+    assert!(
+        msg.contains("'Part' in <wcl-system>/parts.wcl declares it as u32"),
+        "{msg}"
+    );
+    // The caret is on the child's field, in the child's file.
+    assert_eq!(file, "t");
+    assert_eq!(at, "width: u16?");
+}
+
+#[test]
+fn imported_parent_inline_slot_clash_errors_at_open() {
+    let err = open_err_with_libs(
+        "import <parts.wcl>\n@block(\"mcu\") type Mcu extends Part { @inline(0) name: utf8 }\n",
+        &[("parts.wcl", LIB_PART)],
+    );
+    let (msg, file, at) = sole_error(&err);
+    assert!(
+        msg.contains("fields 'id' and 'name' of 'Mcu' both claim @inline(0)"),
+        "{msg}"
+    );
+    assert!(
+        msg.contains("'Part' in <wcl-system>/parts.wcl declares 'id'"),
+        "{msg}"
+    );
+    assert_eq!(file, "t");
+    assert_eq!(at, "name: utf8");
+}
+
+#[test]
+fn imported_parent_compatible_override_is_accepted() {
+    // Same type (optionality is not compared) and the same field on the
+    // same slot: an override, not a conflict.
+    let doc = open_with_libs(
+        "import <parts.wcl>\n\
+         @block(\"mcu\") type Mcu extends Part { width: u32?  @inline(0) id: identifier }\n\
+         @document type Cfg { @children(\"mcu\") mcus: list<Mcu> }\n\
+         mcu \"m0\" {}\n",
+        &[("parts.wcl", LIB_PART)],
+    );
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn grandparent_in_a_third_file_is_checked() {
+    // root -> mid.wcl -> base.wcl, every hop a different file, under a
+    // namespace so the parents resolve the way the runtime walk does.
+    let base = "namespace shapes\ntype Named { name: utf8 }\n";
+    let mid = "namespace shapes\nimport <base.wcl>\ntype Part extends Named { width: u32 }\n";
+    let err = open_err_with_libs(
+        "import <mid.wcl>\ntype Mcu extends shapes.Part { name: i32 }\n",
+        &[("base.wcl", base), ("mid.wcl", mid)],
+    );
+    let (msg, file, at) = sole_error(&err);
+    assert!(
+        msg.contains("conflicting type for field 'name' in 'Mcu' (across extends)"),
+        "{msg}"
+    );
+    assert!(
+        msg.contains("'shapes.Named' in <wcl-system>/base.wcl declares it as utf8"),
+        "{msg}"
+    );
+    assert_eq!(file, "t");
+    assert_eq!(at, "name: i32");
+}
+
+#[test]
+fn two_imported_parents_disagreeing_point_at_the_later_one() {
+    let err = open_err_with_libs(
+        "import <a.wcl>\nimport <b.wcl>\ntype C extends A, B {}\n",
+        &[
+            ("a.wcl", "type A { x: utf8 }\n"),
+            ("b.wcl", "type B { x: i32 }\n"),
+        ],
+    );
+    let (msg, file, at) = sole_error(&err);
+    assert!(
+        msg.contains("conflicting type for field 'x' in 'C' (across extends)"),
+        "{msg}"
+    );
+    assert!(
+        msg.contains("'A' in <wcl-system>/a.wcl declares it as utf8"),
+        "{msg}"
+    );
+    assert_eq!(file, "<wcl-system>/b.wcl");
+    assert_eq!(at, "x: i32");
+}
+
+#[test]
+fn extends_cycle_across_files_errors_at_open() {
+    // The library's `B` names the root's `A`, which names `B` back.
+    let err = open_err_with_libs(
+        "import <lib.wcl>\ntype A extends B {}\n",
+        &[("lib.wcl", "type B extends A {}\n")],
+    );
+    let (msg, file, _) = sole_error(&err);
+    assert!(msg.contains("cyclic extends graph involving"), "{msg}");
+    assert_eq!(file, "t");
+}
+
+#[test]
+fn conflict_inside_an_imported_file_renders_against_that_file() {
+    let lib = "type Base { n: utf8 }\ntype Mid extends Base { n: i32 }\n";
+    let err = open_err_with_libs(
+        "import <lib.wcl>\ntype Leaf extends Mid {}\n",
+        &[("lib.wcl", lib)],
+    );
+    let (msg, file, at) = sole_error(&err);
+    // Reported on the declaration that introduces it, not on `Leaf`; both
+    // ends are in one file, so the message names no other file.
+    assert_eq!(
+        msg,
+        "conflicting type for field 'n' in 'Mid' (across extends)"
+    );
+    assert_eq!(file, "<wcl-system>/lib.wcl");
+    assert_eq!(at, "n: i32");
+}
+
+#[test]
+fn same_file_extends_errors_are_reported_once() {
+    let conflict = Document::open(
+        "type Animal { name: utf8 }\ntype Dog extends Animal { name: i32 }\ntype Pup extends Dog {}\n",
+        "t",
+    )
+    .unwrap_err();
+    let (msg, _, at) = sole_error(&conflict);
+    assert_eq!(
+        msg,
+        "conflicting type for field 'name' in 'Dog' (across extends)"
+    );
+    assert_eq!(at, "name: i32");
+
+    let slot = Document::open(
+        "type Named { @inline(0) name: utf8 }\n@block(\"item\") type Item extends Named { @inline(0) code: utf8 }\n",
+        "t",
+    )
+    .unwrap_err();
+    let (msg, _, _) = sole_error(&slot);
+    assert_eq!(
+        msg,
+        "fields 'name' and 'code' of 'Item' both claim @inline(0)"
+    );
+}
+
 fn open_interfaces_doc() -> Document {
     Document::open(
         r#"

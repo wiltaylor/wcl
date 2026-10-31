@@ -11972,7 +11972,7 @@ fn children_records_reach_custom_svg_lower() {
         r##"
 @block("itm")
 type Itm extends SvgBlock {
-  @inline(0) id: utf8
+  @inline(0) id: identifier
   note: utf8?
   lower = fn(i: Itm) -> list<Svg> []
 }
@@ -12034,7 +12034,7 @@ let names = ["a", "b"]
 
 @block("itm")
 type Itm extends SvgBlock {
-  @inline(0) id: utf8
+  @inline(0) id: identifier
   note: utf8?
   lower = fn(i: Itm) -> list<Svg> []
 }
