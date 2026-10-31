@@ -78,16 +78,11 @@ impl Document {
             &loader,
         )?;
 
-        let mut import_syms: Vec<&SymbolIndex> = Vec::new();
-        imports::collect_import_symbols(&eager_imports, &mut import_syms);
-        let mut import_nss: Vec<Vec<String>> = Vec::new();
-        imports::collect_import_namespaces(&eager_imports, &mut import_nss);
         let resolved = validate_document(
             &ast,
             &symbols,
             (&synthetic, &synthetic_symbol_sets),
-            &import_syms,
-            &import_nss,
+            &eager_imports,
             source,
             name,
         )?;

@@ -206,6 +206,7 @@ $ wcl get cpus.wcl cpus.p6.width
 | Redeclaration with a different type | Open-time error: `conflicting type for field 'f' in 'T' (across extends)`. Optionality is not compared, so `u32?` over `u32` is fine. |
 | Two parents declare one name | Types must agree; the **later** parent in the `extends` list supplies the declaration. |
 | `@inline` across the set | Slots combine (`Named { @inline(0) name }` + child `@inline(1) version`). Two *different* names on one slot: `fields 'a' and 'b' of 'T' both claim @inline(0)`. Same name on the same slot is an override. |
+| Parent in another file | Checked the same: every eager import, transitively, the wdoc stdlib included, and chains that cross files. The caret is on the child's field in its file; the message gains `; 'Part' in /abs/parts.wcl declares it as u32` (slot clash: `... declares 'id'`). Cycles may cross files: `cyclic extends graph involving 'A'`. Same exit code (1) as the same-file case. Each conflict is reported once, on the type that introduces it. |
 | `@table` type with a parent | Columns are the effective fields in order: inherited first, then own. |
 | `@block(…)` arguments | Not inherited. `required_fields`, `max_children`, `required_children` bind to the type they are written on. |
 
@@ -390,9 +391,13 @@ The messages you will meet most often:
   `Table`, `Document`, `Block`, `Default` and friends. See
   [`lang_decorators.md`](lang_decorators.md).
 - `max_children` counts **every** nested block, not the members of one slot.
-- The `extends` open-time checks (type conflict, `@inline` slot clash) only compare declarations
-  in **one file**. With the parent in an imported file neither runs: the child's conflicting
-  type silently wins, and two fields on one slot both read that label.
+- Extending a wdoc type holds you to its field types. `ContentBlock` and `SvgBlock` declare
+  `id: identifier?`, so `id: utf8?` on a child is refused at open (`'wdoc.ContentBlock' in
+  <wcl-system>/wdoc/core.wcl declares it as identifier`). Redeclare it as `identifier`.
+- A conflict *inside* an imported file fails every document that imports it, even one that never
+  names the types involved. The caret renders against the imported file's absolute path.
+- Declarations inside an in-block (lazy) `import` are not in the open-time `extends` checks; only
+  top-level imports are.
 - Redeclaring an inherited field to tweak one decorator drops the others. Copy every decorator
   you mean to keep.
 - A gather field named like a library's silently loses blocks. It is a warning, and warnings do

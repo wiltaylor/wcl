@@ -875,10 +875,68 @@ CONSOLE
 
   p "A child that redeclares `name` itself, on the same slot, is an override and not a clash. A `@table` type inherits the same way, and its columns are the effective fields in order: inherited fields first, then the type's own."
 
-  callout "The open-time checks read one file" {
-    kind = :warning
-    body  = "The type-conflict and label-slot checks above compare declarations written in the **same file**. When the parent comes from an `import`, neither runs. The child's declaration still replaces the parent's at validation time, so a conflicting type silently wins, and two fields on one slot both read that label. Keep a base type and the types that extend it in one file, or check the overlap by eye."
+  h3 "Parents in other files"
+
+  p "The open-time checks read the whole document, not one file. A parent that arrives through an `import` is checked exactly like one declared beside the child, and so is its parent, however many files the chain crosses. That covers the stdlib too: a type that extends a wdoc type such as `ContentBlock` is held to its fields. Move `Part` into a file of its own:"
+
+  code wcl {
+    filename = "parts.wcl"
+    source = <<'WCL'
+type Part {
+  @default(64u32) @min(32) width: u32
+}
+WCL
   }
+
+  code wcl {
+    filename = "mcus.wcl"
+    source = <<'WCL'
+import "./parts.wcl"
+
+@block("mcu")
+type Mcu extends Part {
+  @inline(0) id: identifier
+  width: u16?
+}
+
+@document
+type Cfg { @children("mcu") mcus: list<Mcu> }
+
+mcu avr { width = 8u16 }
+WCL
+  }
+
+  p "The conflict is refused as before. The caret is on the child's field, in the child's file, and the message adds the end you cannot see: which type declared the field first, in which file, and as what:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check mcus.wcl
+wcl::parse
+
+  × conflicting type for field 'width' in 'Mcu' (across extends); 'Part' in /
+  │ home/you/boards/parts.wcl declares it as u32
+   ╭─[mcus.wcl:6:3]
+ 5 │   @inline(0) id: identifier
+ 6 │   width: u16?
+   ·   ─────┬─────
+   ·        ╰── field type conflict
+ 7 │ }
+   ╰────
+CONSOLE
+  }
+
+  p "A label-slot clash with an imported parent reads the same way, ending in `'Part' in /home/you/boards/parts.wcl declares 'id'`. When both declarations sit in one file, imported or not, the message has no such tail, and the caret lands in that file. Each conflict is reported once, on the type that introduces it, not again on every type that extends that one. Make the redeclaration `width: u32?` and the pair checks green:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check mcus.wcl
+OK
+$ wcl get mcus.wcl mcus.avr.width
+8u32
+CONSOLE
+  }
+
+  p "A cycle may cross files as well. An imported file's types resolve their parents through the whole document, so a library's `type B extends A` finds the importer's `A`. If that `A` extends `B`, the file is refused with `cyclic extends graph involving 'A'`."
 
   h2 "@table: a kind whose instances are rows"
 

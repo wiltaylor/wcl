@@ -24,6 +24,7 @@ use crate::ast::{self, Span, TypeRef};
 use crate::diagnostics::ParseError;
 use crate::symbols::{SymbolIndex, SymbolKind};
 
+use crate::doc::cells::LoadedImport;
 use crate::doc::validate::{open_error, resolve_path};
 
 use super::extends::validate_extends;
@@ -49,6 +50,12 @@ pub(in crate::doc) struct CheckContext<'a> {
     pub(in crate::doc) source: &'a str,
     /// Source name, for rendering diagnostics.
     pub(in crate::doc) file: &'a str,
+    /// Every eagerly-imported file, nested as loaded. The `extends`
+    /// checks read their declarations so a parent in another file is
+    /// checked like one in this file.
+    pub(in crate::doc) imports: &'a [LoadedImport],
+    /// The environment's synthetic types, which may be parents too.
+    pub(in crate::doc) synthetic: &'a [ast::TypeDecl],
 }
 
 /// Check that every name a type reference mentions resolves to

@@ -119,6 +119,32 @@ fn check_renders_an_imported_decorator_error_against_the_imported_source() {
 }
 
 #[test]
+fn check_refuses_a_redeclaration_that_conflicts_with_an_imported_parent() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = tmp.path().join("mcus.wcl");
+    std::fs::write(tmp.path().join("parts.wcl"), "type Part { width: u32 }\n")
+        .expect("write parent fixture");
+    std::fs::write(
+        &main,
+        "import \"./parts.wcl\"\n@block(\"mcu\") type Mcu extends Part { width: u16? }\n",
+    )
+    .expect("write child fixture");
+
+    // Same exit code as the same-file case: the document never opens.
+    wcl()
+        .arg("check")
+        .arg(&main)
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "conflicting type for field 'width' in 'Mcu' (across extends)",
+        ))
+        .stderr(predicate::str::contains("parts.wcl"))
+        .stderr(predicate::str::contains("mcus.wcl:2"))
+        .stderr(predicate::str::contains("width: u16?"));
+}
+
+#[test]
 fn check_renders_an_imported_global_validation_against_its_source() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let main = tmp.path().join("main.wcl");

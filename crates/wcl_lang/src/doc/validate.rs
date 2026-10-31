@@ -22,6 +22,8 @@ use crate::ast::{self, Span};
 use crate::diagnostics::ParseError;
 use crate::symbols::{SymbolIndex, SymbolKind};
 
+use super::cells::LoadedImport;
+use super::imports;
 use super::span_to_miette;
 use super::types::declarations::{CheckContext, check_declarations};
 
@@ -112,12 +114,15 @@ pub(crate) fn validate_document(
     ast: &ast::Source,
     symbols: &SymbolIndex,
     synthetic: (&[ast::TypeDecl], &[ast::SymbolSetDecl]),
-    imported_symbols: &[&SymbolIndex],
-    import_namespaces: &[Vec<String>],
+    eager_imports: &[LoadedImport],
     source: &str,
     file: &str,
 ) -> Result<Resolved, ParseError> {
     let (synthetic_types, synthetic_symbol_sets) = synthetic;
+    let mut imported_symbols: Vec<&SymbolIndex> = Vec::new();
+    imports::collect_import_symbols(eager_imports, &mut imported_symbols);
+    let mut import_namespaces: Vec<Vec<String>> = Vec::new();
+    imports::collect_import_namespaces(eager_imports, &mut import_namespaces);
     // 1. Namespace must be first if present; at most one.
     let mut file_ns: Vec<String> = Vec::new();
     let mut saw_ns = false;
@@ -205,7 +210,7 @@ pub(crate) fn validate_document(
     // an imported schema file). Insert-only: imported FQNs never trigger
     // the duplicate-declaration check — a local declaration may
     // legitimately coexist with, or shadow, an imported one.
-    for idx in imported_symbols {
+    for idx in &imported_symbols {
         for rec in idx.iter() {
             if !matches!(
                 rec.kind,
@@ -340,7 +345,7 @@ pub(crate) fn validate_document(
     // references to imported declarations (e.g. a user `lower` returning
     // `list<Svg>`) resolve to `wdoc.Svg` without an
     // explicit `use wdoc`.
-    for ns in import_namespaces {
+    for ns in &import_namespaces {
         if !ns.is_empty() && !wildcards.contains(ns) {
             wildcards.push(ns.clone());
         }
@@ -358,6 +363,8 @@ pub(crate) fn validate_document(
         wildcards: &wildcards,
         source,
         file,
+        imports: eager_imports,
+        synthetic: synthetic_types,
     };
     check_declarations(ast, symbols, &cx)?;
 
