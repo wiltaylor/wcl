@@ -10,11 +10,11 @@ page lang_expressions {
   chapter_header "Expressions and operators" {
     kicker       = "The WCL language · reference"
     reading_time = "15 min read"
-    updated      = "2026-08-20"
+    updated      = "2026-11-01"
     version      = "wcl 0.33.2-alpha"
   }
 
-  p "Everything to the right of an `=` is an **expression**, and so is every call argument, every `let` initialiser, every table cell and every `${…}` slot in an interpolated string. This chapter is the grammar of that right-hand side: the four ways expressions combine, the fourteen binary operators and two prefix ones, the precedence that orders them, and what each does to the values it is handed."
+  p "Everything to the right of an `=` is an **expression**, and so is every call argument, every `let` initialiser, every table cell and every `${…}` slot in an interpolated string. This chapter is the grammar of that right-hand side: the four ways expressions combine, the nineteen binary operators and three prefix ones, the precedence that orders them, and what each does to the values it is handed."
 
   p "Every value and every error message below came from a real run. The quickest way to check one is `wcl repl`, which evaluates a bare expression against an empty document:"
 
@@ -38,8 +38,8 @@ CONSOLE
       | "Layer"    | "Written as"                     | "Examples" |
       | "Atom"     | "a value, a name, or a bracketed form" | "`8080u32`, `\"web\"`, `:prod`, `none`, `rate`, `self`, `[1, 2]`, `{ w: 3 }`, `(a + b)`" |
       | "Postfix"  | "sticks to the atom on its left"      | "`svc.port`, `len(xs)`, `Scale::Small`" |
-      | "Prefix"   | "sits in front of what it acts on"    | "`-x`, `!ready`" |
-      | "Infix"    | "joins a left and a right operand"    | "`a + b`, `a == b`, `a && b`, `a ?? b`" |
+      | "Prefix"   | "sits in front of what it acts on"    | "`-x`, `!ready`, `~mask`" |
+      | "Infix"    | "joins a left and a right operand"    | "`a + b`, `a == b`, `a && b`, `flags & mask`, `a ?? b`" |
   }
 
   p "Three atoms are covered elsewhere because they are whole subjects: `if`, `match` and `try` are expressions like any other and live in [Control flow](lang_control_flow). A `{ … }` block expression with its `let name = expr;` bindings lives there too. A `fn(…) -> T …` literal lives in [Functions](lang_functions). Every one of them may appear anywhere this chapter says \"expression\", including as an operand."
@@ -511,6 +511,160 @@ TEXT
 
   p "`&&` binds tighter than `||`, so `a && b || c` is `(a && b) || c`. Both bind looser than every comparison, so `x > 0 && y > 0` needs no parentheses at all."
 
+  h2 "Bits and shifts"
+
+  p "Six operators work on the bits of an integer: `&` (and), `|` (or), `^` (exclusive or), `<<` (shift left), `>>` (shift right) and prefix `~` (complement). They are the operators a file needs when it describes something laid out in bits: a flag mask, an opcode field, a header that packs four values into one word."
+
+  code text {
+    source = <<'TEXT'
+wcl> 0xF0u32 & 0x3Cu32
+48u32
+wcl> 0xF0u32 | 0x0Fu32
+255u32
+wcl> 0xFFu8 ^ 0x0Fu8
+240u8
+wcl> 1u32 << 3u32
+8u32
+wcl> ~0u8
+255u8
+wcl> ~0
+-1
+TEXT
+  }
+
+  p "`~` flips every bit **of the operand's own type**. That is why `~0u8` is `255u8` and `~0` is `-1`: the unsuffixed `0` is an `i64`, and an `i64` with every bit set is −1."
+
+  h3 "Integers only"
+
+  p "All six take integers of any width, `isize`, `usize` and the 128-bit types included. They take nothing else. A float has no bits worth naming, and a boolean already has `&&` and `||`, so both are type errors that name the operator:"
+
+  code text {
+    source = <<'TEXT'
+wcl> 1.0 & 1
+eval error: wcl::eval::type_mismatch
+
+  × operator '&' is not defined for f64 and i64
+
+wcl> true | false
+eval error: wcl::eval::type_mismatch
+
+  × operator '|' is not defined for bool and bool
+
+wcl> ~1.5
+eval error: wcl::eval::type_mismatch
+
+  × operator '~' is not defined for f64
+TEXT
+  }
+
+  h3 "And, or and exclusive or promote like arithmetic"
+
+  p "`&`, `|` and `^` follow the same two-line rule as `+`. Two operands of the same type keep it. A mixed pair is promoted to `i128` first, so the answer is an `i128`:"
+
+  code text {
+    source = <<'TEXT'
+wcl> 0xF0u8 & 0x3Cu16
+48i128
+TEXT
+  }
+
+  p "A `u128` above `i128::MAX` beside any other type has nowhere to go and is a type mismatch, exactly as it is for `+`. Write both operands with the same suffix when the width matters, which in bit-level work it usually does."
+
+  h3 "Shifts keep the left type"
+
+  p "Shifts are different. Nothing is promoted: the result has the type of the **left** operand, and the amount on the right may be any integer type. A shift left discards the bits that fall off the top. That is not an overflow, it is what a shift is:"
+
+  code text {
+    source = <<'TEXT'
+wcl> 1u8 << 7u64
+128u8
+wcl> 0x80000000u32 >> 31i8
+1u32
+wcl> 128u8 << 1
+0u8
+TEXT
+  }
+
+  p "A shift right on a **signed** value copies the sign bit in from the left, so a negative number stays negative. On an unsigned value it fills with zeros:"
+
+  code text {
+    source = <<'TEXT'
+wcl> -16i8 >> 2
+-4i8
+wcl> 0x80u8 >> 7
+1u8
+TEXT
+  }
+
+  p "The amount is checked. It must be at least 0 and less than the width of the left type, so 0 to 31 for a `u32`. Anything else, negative included, is an error like a division by zero, and `try` recovers from it the same way:"
+
+  code text {
+    source = <<'TEXT'
+wcl> 1u32 << 32
+eval error: wcl::eval::arithmetic
+
+  × operator '<<' cannot shift u32 by 32 (the amount must be 0 to 31)
+
+wcl> 1u32 >> -1
+eval error: wcl::eval::arithmetic
+
+  × operator '>>' cannot shift u32 by -1 (the amount must be 0 to 31)
+TEXT
+  }
+
+  p "There is no builtin that slices bits out of a value. Shift the field down and mask it: `(v >> lo) & ((1u32 << w) - 1u32)` reads the `w` bits starting at bit `lo`."
+
+  h3 "Where a `<<` can be misread"
+
+  p "`<<` also opens a heredoc, and `|` also separates table cells. WCL settles each case by how the source is spaced or bracketed, and three of them are worth knowing before they surprise you."
+
+  p "**Put spaces on both sides of `<<`.** `a << b` and `a<<b` are shifts. `a <<b`, with a space before and none after, is the shape of a heredoc label such as `p <<'TXT'` in a wdoc page, and the lexer reads it as one. An encoding name touching `<<` is always a typed heredoc too, so `ascii<<n` opens an ASCII heredoc even when `ascii` is a field:"
+
+  code text {
+    source = <<'TEXT'
+$ wcl check shift.wcl
+wcl::parse
+
+  × unterminated heredoc starting with '<<b'
+   ╭─[shift.wcl:8:7]
+ 7 │ a = 3
+ 8 │ x = a <<b
+   ·       ──┬─
+   ·         ╰── unterminated heredoc starting with '<<b'
+   ╰────
+TEXT
+  }
+
+  p "**A shift is two touching angle brackets.** `a > > b` is a comparison followed by a stray `>`, and a parse error. There is no `<<=` or `>>=`, because WCL has no assignment operators at all."
+
+  p "**Bracket a `|` inside a table cell.** A bare `|` in a row is the cell delimiter. Inside parentheses, a list or a call it is bitwise or again. `&`, `^` and the shifts need no brackets:"
+
+  code wcl {
+    filename = "perms.wcl"
+    source = <<'WCL'
+@table("perm")
+type Perm {
+  name: utf8
+  mask: u8
+}
+
+@document
+type Perms {
+  @children("perm") perms: list<Perm>
+}
+
+let READ  = 4u8
+let WRITE = 2u8
+
+perms:
+  | "ro" | (READ)         |
+  | "rw" | (READ | WRITE) |
+  | "x"  | 1u8 << 0u8     |
+WCL
+  }
+
+  p "The `(READ)` in the first row is there for a different reason: a cell cannot start with a bare name. A `|` between two patterns of a `match` arm is untouched by any of this. `1 | 2 => …` is still two alternatives, and a guard is an ordinary expression, so `1 | 2 if a | b == 3 => …` tests `(a | b) == 3`."
+
   h2 "None-coalescing"
 
   p "`a ?? b` is the left value **unless it is `none`**, in which case it is the right value. It is the operator for a default, and it is the only reason a document with optional fields rarely needs a conditional. The right side runs only when it is needed:"
@@ -593,20 +747,24 @@ TEXT
 
   h2 "Precedence and associativity"
 
-  p "Nine levels, tightest first. Every binary operator is **left-associative**, so `10 - 3 - 2` is `(10 - 3) - 2` and answers `5`."
+  p "Thirteen levels, tightest first. Every binary operator is **left-associative**, so `10 - 3 - 2` is `(10 - 3) - 2` and answers `5`."
 
   table {
     rows:
       | "Level" | "Operators"              | "Form"                                              | "Example" |
       | "1"     | "`.`  `::`  `(…)`"       | "member access, variant construction, call"         | "`svc.limits.cpu`, `len(xs)`" |
-      | "2"     | "`-`  `!`"               | "prefix negation, prefix not"                       | "`-x`, `!ready`" |
+      | "2"     | "`-`  `!`  `~`"          | "prefix negation, prefix not, prefix complement"    | "`-x`, `!ready`, `~mask`" |
       | "3"     | "`*`  `/`  `%`"          | "multiply, divide, remainder"                       | "`a * b % c`" |
       | "4"     | "`+`  `-`"               | "add, subtract"                                     | "`a + b - c`" |
-      | "5"     | "`<`  `<=`  `>`  `>=`"   | "ordering"                                          | "`cost > budget`" |
-      | "6"     | "`==`  `!=`"             | "equality"                                          | "`tier == :prod`" |
-      | "7"     | "`&&`"                   | "logical and"                                       | "`a && b`" |
-      | "8"     | "`||`"                   | "logical or"                                        | "`a || b`" |
-      | "9"     | "`??`"                   | "none-coalescing"                                   | "`w ?? 480.0`" |
+      | "5"     | "`<<`  `>>`"             | "shift left, shift right"                           | "`1u32 << n`" |
+      | "6"     | "`&`"                    | "bitwise and"                                       | "`flags & mask`" |
+      | "7"     | "`^`"                    | "bitwise exclusive or"                              | "`a ^ b`" |
+      | "8"     | "`|`"                    | "bitwise or"                                        | "`lo | hi`" |
+      | "9"     | "`<`  `<=`  `>`  `>=`"   | "ordering"                                          | "`cost > budget`" |
+      | "10"    | "`==`  `!=`"             | "equality"                                          | "`tier == :prod`" |
+      | "11"    | "`&&`"                   | "logical and"                                       | "`a && b`" |
+      | "12"    | "`||`"                   | "logical or"                                        | "`a || b`" |
+      | "13"    | "`??`"                   | "none-coalescing"                                   | "`w ?? 480.0`" |
   }
 
   p "Level 1 is why a dotted path never needs parentheses, and level 2 is why `-svc.port` negates the port rather than negating `svc`. Everything else is the usual arithmetic ordering, with two surprises worth pinning down:"
@@ -621,6 +779,19 @@ TEXT
   }
 
   p "The first is ordering binding **tighter** than equality: `1 < 2 == true` is `(1 < 2) == true`, which is `true`. The second is `??` binding loosest: `\"a\" ?? \"b\" == \"c\"` is `\"a\" ?? (\"b\" == \"c\")`, and since the left side is not `none` it answers `\"a\"`. The comparison never runs. Both parse exactly as the table says, and both read better with parentheses."
+
+  p "The bitwise levels sit between arithmetic and comparison. That is Rust's order, not C's, and it makes the common tests read the way they look:"
+
+  code text {
+    source = <<'TEXT'
+wcl> 6 & 3 == 2
+true
+wcl> 1 << 2 + 1
+8
+TEXT
+  }
+
+  p "`6 & 3 == 2` is `(6 & 3) == 2`. In C it would be `6 & (3 == 2)`, and in WCL that spelling is a type error, because `&` does not take a `bool`. Shifts bind looser than `+`, so `1 << 2 + 1` is `1 << 3`."
 
   h3 "How long a chain can be"
 
@@ -642,16 +813,16 @@ TEXT
 
   h2 "What is not an operator"
 
-  p "Other languages make these seven spellings operators. This table gives what WCL does instead."
+  p "Other languages make these seven spellings operators, or give them a meaning WCL does not. This table gives what WCL does instead."
 
   table {
     rows:
       | "Not this"     | "Write"                  | "Because" |
-      | "`2.0 ^ 10.0`" | "`pow(2.0, 10.0)`"       | "`^` is not a token at all. It is a lexer error" |
+      | "`2.0 ^ 10.0`" | "`pow(2.0, 10.0)`"       | "`^` is exclusive or, not a power. See [Bits and shifts](#bits-and-shifts)" |
       | "`xs[0]`"      | "`at(xs, 0)`"            | "`[` opens a list literal, a tensor shape or a table row" |
       | "`xs.len()`"   | "`len(xs)`"              | "There are no methods. `len` is a function, not a member" |
       | "`a + b` (strings)" | "`concat(a, b)`"    | "`+` is arithmetic. See [Joining strings](#joining-strings)" |
-      | "`&T`"         | "—"                      | "A reference **type**, in a declaration, not an operator on values" |
+      | "`&T`"         | "—"                      | "A reference **type** where a type is expected. In an expression, `&` is bitwise and" |
       | "`->`"         | "—"                      | "A function's return type, or a [connection statement](lang_connections)" |
       | "`=>`"         | "—"                      | "Separates a `match` arm or a `catch` binding from its body" |
   }
@@ -659,19 +830,18 @@ TEXT
   code text {
     source = <<'TEXT'
 wcl> 2.0 ^ 10.0
-parse error: wcl::parse
+eval error: wcl::eval::type_mismatch
 
-  × unexpected character '^'
-   ╭─[<repl>:1:5]
- 1 │ 2.0 ^ 10.0
-   ·     ┬
-   ·     ╰── unexpected character '^'
-   ╰────
+  × operator '^' is not defined for f64 and f64
 
+wcl> 2 ^ 10
+8
 wcl> pow(2.0, 10.0)
 1024.0
 TEXT
   }
+
+  p "The `^` row is the one to watch. Between floats, `2.0 ^ 10.0` fails loudly. Between integers, `2 ^ 10` is a valid exclusive or and quietly answers `8`, and `wcl check` has nothing to object to. Read every `^` in a file ported from a language where it means a power."
 
   p "`::` is the one that belongs in this chapter rather than on the list above. It really is postfix syntax. It constructs a union variant, it also qualifies a namespaced name, and it binds at level 1, beside the dot. [Types](lang_types) covers variants and [Namespaces and imports](lang_namespaces) covers qualification."
 

@@ -307,6 +307,11 @@ Second line.
 END
 ```
 
+`<<` is also the shift operator. A `<<TAG` touching a name, number, string, `)` or `]`
+(`x<<y`) is a shift, and so is one after `)` or `]` and a space. After a name, number or string
+and a space (`p <<TAG`, the heredoc label form), and after `ascii` / `utf8` / `utf16` / `utf32`
+touching it, it is a heredoc. See `lang_expressions.md`.
+
 `$<<TAG` opts the heredoc into interpolation, exactly like `$"…"`:
 
 ```wcl

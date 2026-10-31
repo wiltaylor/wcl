@@ -95,7 +95,7 @@
     },
     "plain-heredoc": {
       "name": "string.unquoted.heredoc.wcl",
-      "begin": "(utf8|ascii|utf16|utf32)?(<<)([A-Za-z_][A-Za-z0-9_]*)",
+      "begin": "(?:\\b(utf8|ascii|utf16|utf32)|(?<![A-Za-z0-9_)\\]\"]))(<<)([A-Za-z_][A-Za-z0-9_]*)",
       "end": "^\\s*\\3\\s*$",
       "beginCaptures": {
         "1": { "name": "storage.type.string.wcl" },
@@ -111,7 +111,7 @@
     },
     "raw-heredoc": {
       "name": "string.unquoted.heredoc.raw.wcl",
-      "begin": "(<<)'([A-Za-z_][A-Za-z0-9_]*)'",
+      "begin": "(?<![A-Za-z0-9_)\\]\"])(<<)'([A-Za-z_][A-Za-z0-9_]*)'",
       "end": "^\\s*\\2\\s*$",
       "beginCaptures": {
         "1": { "name": "punctuation.definition.string.heredoc.wcl" },
@@ -260,6 +260,10 @@
           "match": "::"
         },
         {
+          "name": "keyword.operator.bitwise.shift.wcl",
+          "match": "<<|>>"
+        },
+        {
           "name": "keyword.operator.comparison.wcl",
           "match": "==|!=|<=|>=|<|>"
         },
@@ -281,7 +285,7 @@
         },
         {
           "name": "keyword.operator.bitwise.wcl",
-          "match": "[&|]"
+          "match": "[&|^~]"
         }
       ]
     },

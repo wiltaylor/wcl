@@ -420,7 +420,15 @@ impl Printer {
         self.write_indent();
         for v in &r.values {
             self.push("| ");
+            // A bare `|` operator would end the cell when re-parsed.
+            let wrap = super::expr::has_bare_bitor(v);
+            if wrap {
+                self.push("(");
+            }
             self.print_expr(v, 0);
+            if wrap {
+                self.push(")");
+            }
             self.push(" ");
         }
         self.push("|");

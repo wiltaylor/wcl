@@ -1513,6 +1513,158 @@ fn eval_division_by_zero_is_catchable() {
     assert_eq!(doc.field("x").unwrap().value().unwrap(), &Value::I64(99));
 }
 
+fn eval_x(src: &str) -> Value {
+    let doc = open_with_builtins(src);
+    doc.field("x")
+        .unwrap()
+        .value()
+        .unwrap_or_else(|e| panic!("`{src}`: {e:?}"))
+        .clone()
+}
+
+#[test]
+fn eval_bitwise_operators_on_same_width_operands() {
+    for (src, want) in [
+        ("x = 0xF0u32 & 0x3Cu32", Value::U32(0x30)),
+        ("x = 0xF0u32 | 0x0Fu32", Value::U32(0xFF)),
+        ("x = 0xFFu8 ^ 0x0Fu8", Value::U8(0xF0)),
+        ("x = 1u32 << 3u32", Value::U32(8)),
+        ("x = 256 >> 4", Value::I64(16)),
+        ("x = 6 & 3", Value::I64(2)),
+        ("x = 1usize << 63", Value::Usize(1 << 63)),
+        ("x = 1u128 << 127", Value::U128(1 << 127)),
+        ("x = -1i128 >> 127", Value::I128(-1)),
+    ] {
+        assert_eq!(eval_x(src), want, "{src}");
+    }
+}
+
+#[test]
+fn eval_bitwise_mixed_widths_promote_like_arithmetic() {
+    // `& | ^` promote a mixed pair to `i128`, exactly as `+` does.
+    assert_eq!(eval_x("x = 0xF0u8 & 0x3Cu16"), Value::I128(0x30));
+    assert_eq!(eval_x("x = 1u8 | 2i64"), Value::I128(3));
+    // A `u128` above `i128::MAX` has nowhere to promote to.
+    let doc = open_with_builtins("x = 340282366920938463463374607431768211455u128 & 1u8");
+    let err = doc.field("x").unwrap().value().unwrap_err();
+    assert!(matches!(err, EvalError::TypeMismatch { .. }), "{err:?}");
+}
+
+#[test]
+fn eval_shift_keeps_the_left_type_whatever_the_amount_type() {
+    assert_eq!(eval_x("x = 1u8 << 7u64"), Value::U8(128));
+    assert_eq!(eval_x("x = 0x80000000u32 >> 31i8"), Value::U32(1));
+    // Bits shifted out are discarded, not an overflow.
+    assert_eq!(eval_x("x = 128u8 << 1"), Value::U8(0));
+    assert_eq!(eval_x("x = 0xFFu8 >> 4"), Value::U8(0x0F));
+}
+
+#[test]
+fn eval_signed_shift_right_is_arithmetic() {
+    assert_eq!(eval_x("x = -16i8 >> 2"), Value::I8(-4));
+    assert_eq!(eval_x("x = -1 >> 63"), Value::I64(-1));
+    // Unsigned fills with zeros.
+    assert_eq!(eval_x("x = 0x80u8 >> 7"), Value::U8(1));
+}
+
+#[test]
+fn eval_shift_amount_out_of_range_errors() {
+    for (src, ty, bits, amount) in [
+        ("x = 1u32 << 32", "u32", 32, "32"),
+        ("x = 1u32 >> -1", "u32", 32, "-1"),
+        ("x = 1i8 << 8u8", "i8", 8, "8"),
+        ("x = 1 >> 64", "i64", 64, "64"),
+        (
+            "x = 1 << 340282366920938463463374607431768211455u128",
+            "i64",
+            64,
+            "340282366920938463463374607431768211455",
+        ),
+    ] {
+        let doc = open_with_builtins(src);
+        let err = doc.field("x").unwrap().value().unwrap_err();
+        let EvalError::Arithmetic { fault, .. } = &err else {
+            panic!("expected Arithmetic for `{src}`, got {err:?}");
+        };
+        assert_eq!(
+            *fault,
+            ArithmeticFault::ShiftOutOfRange {
+                ty: ty.into(),
+                bits,
+                amount: amount.into(),
+            },
+            "{src}"
+        );
+    }
+}
+
+#[test]
+fn eval_bitwise_not_flips_within_the_operand_type() {
+    assert_eq!(eval_x("x = ~0u8"), Value::U8(255));
+    assert_eq!(eval_x("x = ~0x0Fu16"), Value::U16(0xFFF0));
+    assert_eq!(eval_x("x = ~0"), Value::I64(-1));
+    assert_eq!(eval_x("x = ~5i8"), Value::I8(-6));
+}
+
+#[test]
+fn eval_bitwise_on_float_or_bool_is_a_type_mismatch() {
+    for src in [
+        "x = 1.0 & 1",
+        "x = 1 | 2.0",
+        "x = true ^ false",
+        "x = 1 << 1.0",
+        "x = 1.5 >> 1",
+        "x = true << 1",
+    ] {
+        let doc = open_with_builtins(src);
+        let err = doc.field("x").unwrap().value().unwrap_err();
+        assert!(
+            matches!(err, EvalError::TypeMismatch { .. }),
+            "`{src}`: {err:?}"
+        );
+    }
+    for src in ["x = ~1.5", "x = ~true"] {
+        let doc = open_with_builtins(src);
+        let err = doc.field("x").unwrap().value().unwrap_err();
+        assert!(
+            matches!(err, EvalError::UnaryTypeMismatch { .. }),
+            "`{src}`: {err:?}"
+        );
+    }
+}
+
+#[test]
+fn eval_bitwise_precedence_against_comparison_and_arithmetic() {
+    assert_eq!(eval_x("x = 6 & 3 == 2"), Value::Bool(true));
+    assert_eq!(eval_x("x = 1 | 2 ^ 3 & 4 << 1 + 1"), Value::I64(3));
+    assert_eq!(eval_x("x = 1 << 2 + 1"), Value::I64(8));
+}
+
+#[test]
+fn eval_table_cell_bitor_inside_parens() {
+    let doc = Document::open(
+        r#"
+        @table("flag")
+        type Flag { name: utf8  mask: i64 }
+
+        @block("set")
+        type Set { @children("flag") flags: list<Flag> }
+
+        set s {
+          flags:
+            | "rw" | (1 | 2) |
+            | "x"  | 1 << 2  |
+        }
+        "#,
+        "test",
+    )
+    .expect("open");
+    let flags = doc.get("set.flags").expect("flags");
+    let labels = |i| flags.row(i).unwrap().as_block().unwrap().labels().unwrap();
+    assert_eq!(labels(0)[1], Value::I64(3));
+    assert_eq!(labels(1)[1], Value::I64(4));
+}
+
 #[test]
 fn eval_comparison_returns_bool() {
     let doc = open_with_builtins("a = 2 > 1\nb = 2 == 1\nc = 2 != 1");

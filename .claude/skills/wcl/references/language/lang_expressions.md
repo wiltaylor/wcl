@@ -1,7 +1,7 @@
 # Expressions and operators
 
-Every field value is an expression. This chapter is the operator set, the precedence table, and
-the three postfix forms — member access, calls and variant construction. Control-flow
+Every field value is an expression. This chapter is the operator set, the precedence table,
+bitwise operators and shifts, and the three postfix forms — member access, calls and variant construction. Control-flow
 expressions (`if`, `match`, `try`) are in `lang_control_flow.md`.
 
 ## The operator set
@@ -14,6 +14,9 @@ expressions (`if`, `match`, `try`) are in `lang_control_flow.md`.
 | `==` `!=` | equality | `1u32 == 1i64` |
 | `<` `<=` `>` `>=` | ordering | `age >= 18` |
 | `&&` `\|\|` | logical and, or | `a && !b` |
+| `&` `\|` `^` | bitwise and, or, exclusive or (integers only) | `flags & 0x0Fu8` |
+| `<<` `>>` | shift left, shift right (integers only) | `1u32 << 3u32` |
+| `~` (unary) | bitwise complement (integers only) | `~0u8` |
 | `??` | none-coalescing | `box.width ?? 480.0` |
 | `.` | member access | `service.metadata.region` |
 | `::` | qualified name — a namespaced type, kind or union variant | `Shape::Circle` |
@@ -29,11 +32,17 @@ Loosest first. Every binary operator is **left-associative**.
 | 3 | `&&` |
 | 4 | `==` `!=` |
 | 5 | `<` `<=` `>` `>=` |
-| 6 | `+` `-` |
-| 7 | `*` `/` `%` |
-| 8 | unary `-` `!` |
-| 9 | call `f(…)` |
-| 10 (tightest) | `.` and `::` |
+| 6 | `\|` |
+| 7 | `^` |
+| 8 | `&` |
+| 9 | `<<` `>>` |
+| 10 | `+` `-` |
+| 11 | `*` `/` `%` |
+| 12 | unary `-` `!` `~` |
+| 13 | call `f(…)` |
+| 14 (tightest) | `.` and `::` |
+
+The bitwise tiers sit between comparison and arithmetic, as in Rust and unlike C.
 
 Two consequences:
 
@@ -42,6 +51,8 @@ a = trim(raw) ?? "untitled"        // (trim(raw)) ?? "untitled" — the call bin
 b = x ?? y ?? z                    // (x ?? y) ?? z — left-associative
 c = a && b || c && d               // (a && b) || (c && d)
 d = -x.field                       // -(x.field) — member access binds tighter than unary
+e = x & 1 == 0                     // (x & 1) == 0 — bitwise binds tighter than comparison
+f = 1 << n + 1                     // 1 << (n + 1) — shifts bind looser than arithmetic
 ```
 
 **An expression is at most 256 levels deep.** Each binary operator, call, member access and
@@ -65,13 +76,13 @@ Three shapes other languages spell with an operator are builtin calls here.
 
 | Instead of | Write | Fails as |
 | --- | --- | --- |
-| `2.0 ^ 10.0` | `pow(2.0, 10.0)` | parse error — `^` is not a token |
+| `2.0 ^ 10.0` | `pow(2.0, 10.0)` | **evaluation** error — `^` is exclusive or: `operator '^' is not defined for f64 and f64` |
 | `items[0]` | `at(items, 0)` | parse error — `[` only opens a list literal, a tensor shape, or a table row |
 | `"a" + "b"` | `concat("a", "b")` | **evaluation** error — `operator '+' is not defined for utf8 and utf8` |
 
-The first two are parse errors, so you learn about them at once. **The third is not.** `wcl
-check` answers `OK` on `a = "x" + "y"`, and the mistake surfaces only when something reads the
-field.
+Only the second is a parse error. **The other two are not.** `wcl check` answers `OK` on `a =
+"x" + "y"` and on `a = 2 ^ 10`, and the mistake surfaces only when something reads the field.
+`2 ^ 10` is worse: between integers it is a valid exclusive or and answers `8`, not `1024`.
 
 **String concatenation has no operator.** Use interpolation for anything with more than two
 parts (`$"${host}:${port}"`). Use `concat(a, b)` for exactly two, `format("{}:{}", host, port)`
@@ -81,7 +92,7 @@ Three more symbols read like operators but are syntax:
 
 | Symbol | Is |
 | --- | --- |
-| `&T` | a reference type — `lang_types.md` |
+| `&T` | a reference type in a type position — `lang_types.md`. In an expression `&` is bitwise and |
 | `->` | a function's return type, or a connection statement — `lang_functions.md`, `lang_connections.md` |
 | `=>` | the separator between a `match` arm and its body — `lang_control_flow.md` |
 
@@ -133,6 +144,62 @@ Ordering on strings is lexicographic between two strings of the same type. `==` 
 values is structural equality. Any other ordered pair is an error naming the operator you wrote:
 `operator '<' is not defined for i64 and utf8`. A prefix `-` / `!` names its one operand:
 `operator '-' is not defined for utf8`.
+
+## Bitwise operators and shifts
+
+`&`, `|`, `^`, `<<`, `>>` and prefix `~` take **integers only**, of any width, `isize`, `usize`
+and the 128-bit types included. A float or `bool` operand is a type mismatch:
+`operator '&' is not defined for f64 and i64`, `operator '|' is not defined for bool and bool`,
+`operator '~' is not defined for f64`. There is no logical `&` / `|` on booleans; use `&&` / `||`.
+
+```wcl
+a = 0xF0u32 & 0x3Cu32     // 48u32
+b = 0xF0u32 | 0x0Fu32     // 255u32
+c = 0xFFu8 ^ 0x0Fu8       // 240u8
+d = ~0u8                  // 255u8 — every bit of the operand's own type flips
+e = ~0                    // -1
+f = 0xF0u8 & 0x3Cu16      // 48i128 — mixed widths promote like arithmetic
+```
+
+**`&`, `|` and `^` promote exactly like arithmetic.** Same type in, same type out. A mixed pair
+becomes `i128`, and a `u128` above `i128::MAX` beside any other type is a type mismatch. Annotate
+both operands to keep a narrow type.
+
+**Shifts never promote.** The result has the **left** operand's type, and the amount may be any
+integer type:
+
+```wcl
+a = 1u8 << 7u64              // 128u8
+b = 0x80000000u32 >> 31i8    // 1u32
+c = 128u8 << 1               // 0u8 — bits shifted out are discarded, not an overflow
+d = -16i8 >> 2               // -4i8 — `>>` sign-extends a signed left operand
+e = 0x80u8 >> 7              // 1u8 — and fills an unsigned one with zeros
+```
+
+**The amount must be `0` to `bits - 1` of the left type.** Anything else, negative included, is
+an evaluation error (`wcl::eval::arithmetic`), recoverable with `try` / `catch`:
+`operator '<<' cannot shift u32 by 32 (the amount must be 0 to 31)`,
+`operator '>>' cannot shift u32 by -1 (the amount must be 0 to 31)`. An unsuffixed left operand
+is `i64`, so `1 << 40` is fine and `1 << 64` is the error.
+
+### Gotchas
+
+- **`a <<b` (space before, none after) opens a heredoc.** A name, number or string followed by
+  a space and `<<TAG` is how a heredoc block label is written (`p <<'TXT'`), so the lexer reads
+  it that way: `unterminated heredoc starting with '<<b'`. `a << b` and `a<<b` are shifts, and
+  so is `f(a) <<b` (no heredoc follows `)` or `]`). **Write spaces on both sides.**
+- **`ascii<<n` is a heredoc**, whatever `ascii` is bound to. `ascii`, `utf8`, `utf16` and
+  `utf32` touching `<<` are always a typed heredoc prefix. Write `ascii << n`.
+- **`a > > b` is not a shift.** A shift is two `<` or two `>` touching. `>>=` and `<<=` do not
+  exist; there is no assignment operator at all.
+- **`|` ends a table cell.** In a `| … |` row, a bare `|` is the delimiter, so bitwise or in a
+  cell needs brackets: `| "rw" | (READ | WRITE) |`. Inside any bracket, call or list it is an
+  operator again. `&`, `^` and the shifts need no brackets. The formatter brackets a cell whose
+  tree holds a bare `|`, so a tree built through the edit API still prints back as one cell.
+- **Match alternatives are unchanged.** `1 | 2 => …` is two patterns. A guard is an
+  expression, so `1 | 2 if a | b == 3 => …` reads the guard as `(a | b) == 3`.
+- **There is no bit-slice builtin.** Extract a field with a shift and a mask:
+  `(v >> lo) & ((1u32 << w) - 1u32)`.
 
 ## Member access
 

@@ -97,6 +97,11 @@ pub(super) fn op_name(op: ast::BinOp) -> &'static str {
         ast::BinOp::And => "&&",
         ast::BinOp::Or => "||",
         ast::BinOp::Coalesce => "??",
+        ast::BinOp::BitAnd => "&",
+        ast::BinOp::BitOr => "|",
+        ast::BinOp::BitXor => "^",
+        ast::BinOp::Shl => "<<",
+        ast::BinOp::Shr => ">>",
     }
 }
 
@@ -134,6 +139,19 @@ pub(super) fn apply_unary(op: ast::UnaryOp, v: Value, span: Span) -> Result<Valu
             Value::Bool(b) => Ok(Value::Bool(!b)),
             other => Err(EvalError::unary_type_mismatch("!", other.type_name(), span)),
         },
+        // `~` flips every bit of the operand's own type, so `~0u8` is
+        // `255u8` and `~0` is `-1`.
+        ast::UnaryOp::BitNot => {
+            macro_rules! int_arm {
+                ($t:ty, $variant:ident) => {
+                    if let Value::$variant(n) = &v {
+                        return Ok(Value::$variant(!*n));
+                    }
+                };
+            }
+            for_each_integer_numeric_variant!(int_arm);
+            Err(EvalError::unary_type_mismatch("~", v.type_name(), span))
+        }
     }
 }
 
@@ -203,6 +221,75 @@ arith_fn!(arith_mod, %, |a, b, _overflow| if b == 0 {
     Ok(a.wrapping_rem(b))
 });
 
+/// Define one same-variant bitwise function over the integer half of the
+/// numeric ladder. There is no float half: a float operand falls through
+/// to `Ok(None)`, and so, after promotion to `f64`, to a type mismatch.
+/// Bitwise operations can't overflow, so the fault side is never used;
+/// the signature matches [`arith_fn!`]'s so both share one dispatch.
+macro_rules! bit_fn {
+    ($name:ident, $op:tt) => {
+        fn $name(l: &Value, r: &Value) -> Result<Option<Value>, ArithmeticFault> {
+            macro_rules! int_arm {
+                                ($t:ty, $variant:ident) => {
+                                    if let (Value::$variant(a), Value::$variant(b)) = (l, r) {
+                                        return Ok(Some(Value::$variant(*a $op *b)));
+                                    }
+                                };
+                            }
+            for_each_integer_numeric_variant!(int_arm);
+            Ok(None)
+        }
+    };
+}
+
+bit_fn!(bit_and, &);
+bit_fn!(bit_or, |);
+bit_fn!(bit_xor, ^);
+
+/// Apply `<<` or `>>`. Unlike the other binary operators the operands are
+/// never promoted to a common type: the result keeps the left operand's
+/// type, and the amount may be any integer type. An amount outside
+/// `0..bits` of the left type is a fault; bits shifted past either end
+/// are discarded. `>>` sign-extends a signed left operand and fills an
+/// unsigned one with zeros, as Rust's does.
+fn shift(op: ast::BinOp, l: &Value, r: &Value, span: Span) -> Result<Value, EvalError> {
+    let mismatch = || EvalError::type_mismatch(op_name(op), l.type_name(), r.type_name(), span);
+    if !r.is_numeric() || matches!(r, Value::F32(_) | Value::F64(_)) {
+        return Err(mismatch());
+    }
+    // `None` only for a `u128` amount above `i128::MAX` — out of range
+    // for every type, like any amount that doesn't fit a `u32`.
+    let amount = r.as_i128().and_then(|n| u32::try_from(n).ok());
+    let shl = matches!(op, ast::BinOp::Shl);
+    macro_rules! int_arm {
+        ($t:ty, $variant:ident) => {
+            if let Value::$variant(a) = l {
+                let shifted = amount.and_then(|n| {
+                    if shl {
+                        a.checked_shl(n)
+                    } else {
+                        a.checked_shr(n)
+                    }
+                });
+                return shifted.map(Value::$variant).ok_or_else(|| {
+                    let amount = match r {
+                        Value::U128(n) => n.to_string(),
+                        other => other.as_i128().unwrap_or_default().to_string(),
+                    };
+                    let fault = ArithmeticFault::ShiftOutOfRange {
+                        ty: l.type_name().to_string(),
+                        bits: <$t>::BITS,
+                        amount,
+                    };
+                    EvalError::arithmetic(op_name(op), fault, span)
+                });
+            }
+        };
+    }
+    for_each_integer_numeric_variant!(int_arm);
+    Err(mismatch())
+}
+
 /// Promote two numeric values to a common variant for arithmetic.
 /// Returns `None` when either operand is non-numeric. Comparison does
 /// not come through here: it reads both sides exactly through
@@ -259,6 +346,10 @@ pub(super) fn apply_binary(
         B::Mul => arith(arith_mul),
         B::Div => arith(arith_div),
         B::Mod => arith(arith_mod),
+        B::BitAnd => arith(bit_and),
+        B::BitOr => arith(bit_or),
+        B::BitXor => arith(bit_xor),
+        B::Shl | B::Shr => shift(op, &l, &r, span),
         B::Eq => Ok(Value::Bool(values_eq(&l, &r))),
         B::Ne => Ok(Value::Bool(!values_eq(&l, &r))),
         B::Lt | B::Le | B::Gt | B::Ge => compare(op, &l, &r, span),

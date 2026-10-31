@@ -23,11 +23,15 @@ const PREC = {
   and: 3,
   eq: 4,
   cmp: 5,
-  add: 6,
-  mul: 7,
-  unary: 8,
-  call: 9,
-  member: 10,
+  bitor: 6,
+  bitxor: 7,
+  bitand: 8,
+  shift: 9,
+  add: 10,
+  mul: 11,
+  unary: 12,
+  call: 13,
+  member: 14,
 };
 
 const ENCODINGS = ['ascii', 'utf8', 'utf16', 'utf32'];
@@ -451,7 +455,7 @@ module.exports = grammar({
     )),
 
     unary_expression: $ => prec(PREC.unary, seq(
-      field('operator', choice('-', '!')),
+      field('operator', choice('-', '!', '~')),
       field('operand', $._expression),
     )),
 
@@ -462,6 +466,10 @@ module.exports = grammar({
         ['&&', PREC.and],
         ['==', PREC.eq], ['!=', PREC.eq],
         ['<', PREC.cmp], ['<=', PREC.cmp], ['>', PREC.cmp], ['>=', PREC.cmp],
+        ['|', PREC.bitor],
+        ['^', PREC.bitxor],
+        ['&', PREC.bitand],
+        ['<<', PREC.shift], ['>>', PREC.shift],
         ['+', PREC.add], ['-', PREC.add],
         ['*', PREC.mul], ['/', PREC.mul], ['%', PREC.mul],
       ].map(([op, p]) => prec.left(p, seq(

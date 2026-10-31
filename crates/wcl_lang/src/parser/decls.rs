@@ -221,7 +221,12 @@ impl<'a> Parser<'a> {
             if !is_expr_start(&self.peek()?.kind) {
                 break;
             }
-            let (v, v_span) = self.parse_expr()?;
+            // The cell ends at a bare `|`, so `|` is bitwise or only
+            // inside brackets: `| (a | b) |`.
+            let outer = self.table_cell_depth.replace(self.open_delims.len());
+            let cell = self.parse_expr();
+            self.table_cell_depth = outer;
+            let (v, v_span) = cell?;
             values.push(v);
             end = v_span.end;
             if matches!(self.peek()?.kind, TokenKind::Pipe) {

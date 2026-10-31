@@ -388,12 +388,26 @@ pub enum BinOp {
     Or,
     /// `a ?? b` — the left value unless it is `none`.
     Coalesce,
+    /// `a & b`, bitwise and. Integers only.
+    BitAnd,
+    /// `a | b`, bitwise or. Integers only.
+    BitOr,
+    /// `a ^ b`, bitwise exclusive or. Integers only.
+    BitXor,
+    /// `a << b`, shift left. The result keeps the left operand's type.
+    Shl,
+    /// `a >> b`, shift right — arithmetic on a signed left operand,
+    /// logical on an unsigned one.
+    Shr,
 }
 
 impl BinOp {
     /// Pratt binding powers `(left, right)` — the single source of truth
     /// shared by the parser and the formatter, so a parse → print round
     /// trip preserves precedence and associativity by construction.
+    ///
+    /// The bitwise operators sit between comparison and arithmetic, as
+    /// in Rust, so `x & 1 == 0` reads as `(x & 1) == 0`.
     pub fn binding_power(self) -> (u8, u8) {
         match self {
             BinOp::Coalesce => (1, 2),
@@ -401,8 +415,12 @@ impl BinOp {
             BinOp::And => (5, 6),
             BinOp::Eq | BinOp::Ne => (7, 8),
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => (9, 10),
-            BinOp::Add | BinOp::Sub => (11, 12),
-            BinOp::Mul | BinOp::Div | BinOp::Mod => (13, 14),
+            BinOp::BitOr => (11, 12),
+            BinOp::BitXor => (13, 14),
+            BinOp::BitAnd => (15, 16),
+            BinOp::Shl | BinOp::Shr => (17, 18),
+            BinOp::Add | BinOp::Sub => (19, 20),
+            BinOp::Mul | BinOp::Div | BinOp::Mod => (21, 22),
         }
     }
 
@@ -423,6 +441,11 @@ impl BinOp {
             BinOp::And => "&&",
             BinOp::Or => "||",
             BinOp::Coalesce => "??",
+            BinOp::BitAnd => "&",
+            BinOp::BitOr => "|",
+            BinOp::BitXor => "^",
+            BinOp::Shl => "<<",
+            BinOp::Shr => ">>",
         }
     }
 }
@@ -430,11 +453,11 @@ impl BinOp {
 /// Binding powers of the prefix / postfix forms, all tighter than any
 /// binary operator in [`BinOp::binding_power`]. Shared by the parser
 /// (parse-time) and the formatter (parenthesisation) so they can't drift.
-pub const UNARY_BP: u8 = 15;
+pub const UNARY_BP: u8 = 23;
 /// Binding power of a call's argument list, tighter than [`UNARY_BP`].
-pub const CALL_BP: u8 = 16;
+pub const CALL_BP: u8 = 24;
 /// Binding power of member access, the tightest form in the grammar.
-pub const MEMBER_BP: u8 = 17;
+pub const MEMBER_BP: u8 = 25;
 
 /// A prefix operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -444,6 +467,8 @@ pub enum UnaryOp {
     Neg,
     /// `!x`, logical negation.
     Not,
+    /// `~x`, bitwise complement within the operand's own integer type.
+    BitNot,
 }
 
 /// A `name = value` pair, as written in a record literal, a variant
