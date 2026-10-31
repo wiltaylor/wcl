@@ -422,7 +422,7 @@ type StateDiagram extends ContentBlock {
       }),
       fn(t: Transition) -> utf8 t.id,
     );
-    let lane_base = fold(enumerate(d.states), 0.0, fn(a: f64, p: list<State>) -> f64 {
+    let lane_base = fold(enumerate(d.states), 0.0, fn(a: f64, p: list<any>) -> f64 {
       let s = at(p, 1);
       let xy = at(pos, at(p, 0));
       if dir == :left_to_right {

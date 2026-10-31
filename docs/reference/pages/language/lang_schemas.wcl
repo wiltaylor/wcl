@@ -1403,7 +1403,7 @@ CONSOLE
 
   p "A host reading the field through the library gets the same error from `Field::value`, so no caller ever holds `300` believing it is a `u8`. A field marked `@schemaless`, or one inside a `@schemaless` block, is exempt on both paths and reads back as written. [How a validation error reads](#how-a-validation-error-reads) says more about the two paths."
 
-  p "A type alias checks as the type it names, so `port: Port` with `type Port = u16` refuses `70000`. A decorator argument is held to its slot's type the same way: `@level(300)` against a `u8` slot fails with `argument for decorator '@level' slot 'n' is declared as u8 but the value 300 is out of range for u8`. A function parameter converts an argument that fits, so `(fn(x: u8) -> u8 x)(7)` is `7u8`, but it is not a schema slot. An argument that does not fit is passed as written."
+  p "A type alias checks as the type it names, so `port: Port` with `type Port = u16` refuses `70000`. A decorator argument is held to its slot's type the same way: `@level(300)` against a `u8` slot fails with `argument for decorator '@level' slot 'n' is declared as u8 but the value 300 is out of range for u8`. A function parameter and a return type follow the same rule, so `(fn(x: u8) -> u8 x)(7)` is `7u8` and `(fn(x: u8) -> u8 x)(300)` fails with `argument 1 ('x') of fn literal expects u8, got 300, which is out of range for u8`. That failure is an evaluation error raised at the call, not a schema violation. [Functions](lang_functions#what-a-call-checks) covers it."
 
   h2 "How a validation error reads"
 

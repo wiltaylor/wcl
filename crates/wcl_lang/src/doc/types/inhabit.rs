@@ -140,7 +140,7 @@ pub(crate) fn describe_type_mismatch(value: &Value, ty: &TypeRef) -> String {
 /// alias-resolved): the index path to it (empty for the value itself),
 /// the number, and why it does not fit. `None` when every number fits,
 /// or when no number in `value` meets a numeric type.
-fn numeric_misfit(value: &Value, ty: &TypeRef) -> Option<(String, String, String)> {
+pub(super) fn numeric_misfit(value: &Value, ty: &TypeRef) -> Option<(String, String, String)> {
     match (value, ty) {
         (v, TypeRef::Builtin(b)) if v.is_numeric() => {
             let why = match fit_to_builtin(v, *b)? {
@@ -221,24 +221,11 @@ pub(crate) fn symbol_set_membership_error_in(
     span: crate::ast::Span,
     context_ns: &[String],
 ) -> Option<EvalError> {
-    let TypeRef::Named { path, .. } = ty else {
-        return None;
-    };
-    let resolved = doc
-        .resolve_path_in(path, context_ns)
-        .unwrap_or_else(|| path.clone());
-    let ss = doc.symbol_set(&resolved.join("."))?;
-    let Value::Symbol(sym) = value else {
-        return None;
-    };
-    if ss.has(sym) {
-        return None;
-    }
+    let (set, sym) = super::slot::symbol_outside_set(doc, ty, value, context_ns)?;
     Some(EvalError::schema_violation(
         crate::diagnostics::SchemaViolationKind::SymbolNotInSet,
         format!(
-            "field '{field_name}' declared as symbol_set '{}' but ':{sym}' is not one of its members",
-            path.join(".")
+            "field '{field_name}' declared as symbol_set '{set}' but ':{sym}' is not one of its members"
         ),
         span,
     ))

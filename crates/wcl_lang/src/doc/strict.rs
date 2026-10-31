@@ -23,7 +23,6 @@ use std::sync::Arc;
 
 use miette::NamedSource;
 
-use crate::ast::TypeRef;
 use crate::diagnostics::EvalError;
 use crate::value::Value;
 
@@ -35,10 +34,7 @@ use super::schema_check::{has_annotation_exemption, has_schemaless};
 use super::schema_lookup::{DeclLoc, DocSchemas};
 use super::scope::Scope;
 use super::types::variant_dispatch;
-use super::types::{
-    field_type_mismatch, format_union_variants_hint, symbol_set_membership_error_in,
-    validate_union, value_matches_type_ref,
-};
+use super::types::{field_refusal_error, format_union_variants_hint, slot_refusal, validate_union};
 use super::views::{Block, BuiltinDecorator, DeclName, Field, TypeDecl, TypeField, UnionDecl};
 use super::{CollectedSchemaErrors, Document};
 
@@ -565,70 +561,25 @@ impl Document {
         if declared.optional() && matches!(v, Value::None) {
             return;
         }
-        if let TypeRef::Named { path, .. } = declared.type_ref()
-            && let Some(union_decl) = self.union_decl(&path.join("."))
-        {
-            if let Value::Variant { union, variant, .. } = v
-                && union != &union_decl.ast.name
-            {
-                EvalError::push_schema_violation(
-                    out,
-                    Kind::VariantUnionMismatch,
-                    format!(
-                        "field '{}' declared as union '{}' but value is {}::{}",
-                        f.name(),
-                        union_decl.ast.name.join("."),
-                        union.join("."),
-                        variant,
-                    ),
-                    f.span(),
-                );
-            } else if let Value::Record { .. } = v {
-                EvalError::push_schema_violation(
-                    out,
-                    Kind::VariantNoMatch,
-                    format!(
-                        "field '{}' declared as union '{}' but value is an \
-                         un-inferred record (no variant matches its shape)",
-                        f.name(),
-                        union_decl.ast.name.join("."),
-                    ),
-                    f.span(),
-                );
-            }
-        } else if !value_matches_type_ref(
+        // The field rule's verdict, shared with block fields and
+        // function signatures (`types::slot`).
+        let resolved = self.resolve_alias_in(declared.type_ref(), declared.file_ns);
+        if let Some(refusal) = slot_refusal(
+            self,
             v,
-            &self.resolve_alias_in(declared.type_ref(), declared.file_ns),
+            declared.type_ref(),
+            &resolved,
+            &declared.ast.decorators,
+            declared.file_ns,
         ) {
-            out.push(field_type_mismatch(
+            out.push(field_refusal_error(
                 f.name(),
                 declared.type_ref(),
-                &self.resolve_alias_in(declared.type_ref(), declared.file_ns),
+                &resolved,
                 v,
+                refusal,
                 f.span(),
             ));
-        } else if let Some(err) = symbol_set_membership_error_in(
-            self,
-            &self.resolve_alias_in(declared.type_ref(), declared.file_ns),
-            v,
-            f.name(),
-            f.span(),
-            declared.file_ns,
-        ) {
-            out.push(err);
-        } else if let Some(msg) = schema_check::constraint_violation(
-            self,
-            &declared.ast.decorators,
-            declared.type_ref(),
-            declared.file_ns,
-            v,
-        ) {
-            EvalError::push_schema_violation(
-                out,
-                Kind::ConstraintViolation,
-                format!("field '{}': {msg}", f.name()),
-                f.span(),
-            );
         } else if let Some(msg) = schema_check::ref_violation(self, &declared, v) {
             EvalError::push_schema_violation(
                 out,

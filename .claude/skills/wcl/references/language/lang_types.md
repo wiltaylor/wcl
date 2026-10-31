@@ -23,8 +23,9 @@ That is what lets a reference be written either way.
 
 A numeric field, list element or decorator slot accepts a number only if the number **fits** the
 declared type. The number is then converted to that type, so a host that declared `u8` reads a
-`u8`, never the `i64` the bare literal started as. A function parameter converts an argument
-that fits (`(fn(x: u8) -> u8 x)(7)` is `7u8`) but does not check one that does not.
+`u8`, never the `i64` the bare literal started as. A function parameter and a return type
+follow the same rule: `(fn(x: u8) -> u8 x)(7)` is `7u8`, and `(fn(x: u8) -> u8 x)(300)` fails
+with `argument 1 ('x') of fn literal expects u8, got 300, which is out of range for u8`.
 
 | Written | Declared | Result |
 | --- | --- | --- |
@@ -196,7 +197,7 @@ series = [
 ```
 
 A bare record must carry the **full** field set, optionals included — the shape is what picks
-the variant. Only the explicit form may omit them. The full rule, and the three places it runs,
+the variant. Only the explicit form may omit them. The full rule, and the four places it runs,
 are in `lang_collections.md`.
 
 ### `extends`
@@ -347,8 +348,8 @@ display = match maybe_name { none => "anonymous", n => n }
 
 `?` is a **field** annotation, not part of a type reference. It is legal on a record field, a
 variant field and a `type` body field. It is **not** legal in a function parameter list, where
-`fn(x: utf8?)` is a parse error. Annotate the parameter as required and let the `none` flow
-through — see `lang_functions.md`.
+`fn(x: utf8?)` is a parse error, and nowhere else in a signature either. A call checks its
+arguments, so a parameter that must take `none` is declared `any` — see `lang_functions.md`.
 
 ## Symbol sets
 

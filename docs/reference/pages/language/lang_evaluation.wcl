@@ -915,7 +915,7 @@ CONSOLE
 
   h3 "Evaluation errors"
 
-  p "`EvalError` has twenty-seven variants, each with a stable `wcl::eval::…` code. The full set is best read off the crate, and it grows: the enum is `#[non_exhaustive]`, so a Rust host that matches on it keeps a wildcard arm. These are the ones you will meet writing documents:"
+  p "`EvalError` has twenty-nine variants, each with a stable `wcl::eval::…` code. The full set is best read off the crate, and it grows: the enum is `#[non_exhaustive]`, so a Rust host that matches on it keeps a wildcard arm. These are the ones you will meet writing documents:"
 
   table {
     rows:
@@ -930,6 +930,8 @@ CONSOLE
       | "`wcl::eval::builtin_arity`"        | "A builtin got the wrong number of arguments" |
       | "`wcl::eval::builtin_type`"         | "A builtin got arguments of the wrong shape" |
       | "`wcl::eval::call_arity`"           | "A `fn` got the wrong number of arguments" |
+      | "`wcl::eval::argument_type`"        | "A `fn` got an argument its parameter's type refuses" |
+      | "`wcl::eval::return_type`"          | "A `fn` body produced a value its return type refuses" |
       | "`wcl::eval::call_depth_exceeded`"  | "A `fn` recursed past the evaluator's nesting cap" |
       | "`wcl::eval::depth_exceeded`"       | "Fields and `let`s referenced each other more than 200 levels deep" |
       | "`wcl::eval::match_no_arm`"         | "No `match` arm fitted the value" |
@@ -1068,6 +1070,8 @@ wcl::eval::user_error
    ╰────
 CONSOLE
   }
+
+  p "A call's signature errors divide between the two files by the same logic. An argument the parameter's type refuses, `positive(\"three\")`, is drawn from the caller's file, because that is where the argument was written. A result the return type refuses is drawn from the function's file, at the body. [Functions](lang_functions#what-a-call-checks) covers both."
 
   h2 "Which command forces what"
 

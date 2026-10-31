@@ -55,7 +55,11 @@ union TermFundamental {
 
 // A `Text` run constructor (the ergonomic form — the renderer-only flags
 // stay `none`). Pass `none` for fg/bg to follow the terminal's theme.
-let term_run = fn(content: utf8, row: i64, col: i64, fg: utf8, bg: utf8, bold: bool) -> TermFundamental
+// fg/bg/bold take a widget's optional fields, so they are `any`: a call
+// checks argument types and `?` cannot appear in a parameter list. The
+// `Text` variant types the value (`fg: utf8?` …). The same holds for the
+// style parameters of `term_fill_runs` and `term_box_runs` below.
+let term_run = fn(content: utf8, row: i64, col: i64, fg: any, bg: any, bold: any) -> TermFundamental
   TermFundamental::Text { content: content, row: row, col: col, fg: fg, bg: bg, bold: bold }
 
 // `ch` repeated `n` times (`n < 1` ⇒ empty, so callers needn't guard).
@@ -63,8 +67,8 @@ let term_repeat = fn(ch: utf8, n: i64) -> utf8
   if n < 1 { "" } else { join(map(range(0, n), fn(i: i64) -> utf8 ch), "") }
 
 // Box-drawing glyphs for a border style, as [tl, tr, bl, br, horiz, vert].
-// Unknown / unset ⇒ `:single`.
-let term_border = fn(style: symbol) -> list<utf8>
+// Unknown / unset ⇒ `:single` (so `style` is `any`: it may be `none`).
+let term_border = fn(style: any) -> list<utf8>
   if style == :double { ["╔", "╗", "╚", "╝", "═", "║"] }
   else { if style == :rounded { ["╭", "╮", "╰", "╯", "─", "│"] }
   else { if style == :heavy { ["┏", "┓", "┗", "┛", "━", "┃"] }
@@ -72,7 +76,7 @@ let term_border = fn(style: symbol) -> list<utf8>
   else { ["┌", "┐", "└", "┘", "─", "│"] } } } }
 
 // A w×h rectangle of a repeated char, as `h` text rows from (row, col).
-let term_fill_runs = fn(ch: utf8, row: i64, col: i64, w: i64, h: i64, fg: utf8, bg: utf8, bold: bool) -> list<TermFundamental> {
+let term_fill_runs = fn(ch: utf8, row: i64, col: i64, w: i64, h: i64, fg: any, bg: any, bold: any) -> list<TermFundamental> {
   let line = term_repeat(ch, w);
   if h < 1 { [] }
   else { map(range(0, h), fn(r: i64) -> TermFundamental term_run(line, row + r, col, fg, bg, bold)) }
@@ -81,7 +85,7 @@ let term_fill_runs = fn(ch: utf8, row: i64, col: i64, w: i64, h: i64, fg: utf8, 
 // A w×h border box (+ optional title on the top edge) as text runs from
 // (row, col): a top and bottom edge, and a vertical on each side of every
 // interior row. Sizes below 2 collapse gracefully (no negative repeats).
-let term_box_runs = fn(row: i64, col: i64, w: i64, h: i64, border: symbol, title: utf8, fg: utf8, bg: utf8, bold: bool) -> list<TermFundamental> {
+let term_box_runs = fn(row: i64, col: i64, w: i64, h: i64, border: any, title: any, fg: any, bg: any, bold: any) -> list<TermFundamental> {
   let g  = term_border(border);
   let tl = at(g, 0);  let tr = at(g, 1);  let bl = at(g, 2);  let br = at(g, 3);
   let hz = at(g, 4);  let vt = at(g, 5);

@@ -141,7 +141,7 @@ page fleet {
 
   table {
     header = ["Host", "Role", "CPU %"]
-    rows   = map(servers, fn(s: Server) -> list<utf8> [s.name, s.role, $"${s.cpu}"])
+    rows   = map(servers, fn(s: Server) -> list<utf8> [$"${s.name}", s.role, $"${s.cpu}"])
   }
 
   h2 "What a server record holds"
@@ -160,7 +160,7 @@ wrote 1 page
 CONSOLE
   }
 
-  p "One page comes out, and nothing on it was written twice. The `web1` and `db1` headings, their prose and their cards come from the repeater. The table rows come from `map`. The property table at the bottom comes from the schema. Adding a third `server` block adds a heading, a paragraph, a card and a table row, and changes nothing else in the file."
+  p "One page comes out, and nothing on it was written twice. The `web1` and `db1` headings, their prose and their cards come from the repeater. The table rows come from `map`, which interpolates the `identifier` name and the `f64` load into the `utf8` cells its signature promises. The property table at the bottom comes from the schema. Adding a third `server` block adds a heading, a paragraph, a card and a table row, and changes nothing else in the file."
 
   p "The rest of the chapter takes that file apart."
 

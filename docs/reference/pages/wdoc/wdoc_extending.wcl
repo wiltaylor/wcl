@@ -163,7 +163,15 @@ CONSOLE
     li "**A field whose expression fails becomes `none`.** The block still lowers. The build records the error, prints the diagnostic and exits non-zero."
   }
 
-  p "The declared return type is a list of fundamentals. The language does not check a function's return type at run time ([Functions](lang_functions)). The renderer catches a lowering that returns something else:"
+  p "The declared return type is a list of fundamentals, and every call holds the result to it, as it holds the record to the parameter type ([Functions](lang_functions#what-a-call-checks)). A lowering declared `-> list<Content>` that returns a string fails at the call, pointing at its body:"
+
+  code text {
+    source = <<'TEXT'
+  × fn literal declared -> list<Content> but returned utf8
+TEXT
+  }
+
+  p "A lowering declared `-> any` passes the call whatever it returns, so the renderer checks what came back:"
 
   code text {
     source = <<'TEXT'
@@ -172,7 +180,9 @@ CONSOLE
 TEXT
   }
 
-  p "Two returns are not errors. `[]` renders nothing, and so does `none`. That is how a lowering opts out conditionally."
+  p "Two returns are not errors. `[]` renders nothing, and so does `none`. That is how a lowering opts out conditionally. `none` is not a `list<Content>`, so a lowering that may return it declares `-> any`."
+
+  p "The parameter is checked the same way. The record is tagged with the block's own schema, so name that schema in the parameter: `fn(b: Badge)`. A parent `type` the schema `extends` refuses the record, and so does `&Badge`, which wants a reference into the document rather than a record. An interface it extends, such as `ContentBlock`, accepts it, because a signature checks an interface by shape."
 
   h3 "Overriding the lowering on one instance"
 
@@ -670,7 +680,7 @@ TEXT
   list {
     li "[Schemas](lang_schemas). `@block`, `@children`, `@inline` and what `wcl check` checks, since a custom block is first of all a schema."
     li "[Types](lang_types). Interfaces, unions and the `extends` relation the three lowering interfaces are built on."
-    li "[Functions](lang_functions). Function literals, parameters and the return-type checking a lowering does and does not get."
+    li "[Functions](lang_functions). Function literals, parameters, and the argument and return checks every call of a lowering gets."
     li "[Data views](wdoc_data_views). Components, repeaters and partials from the authoring side."
     li "[Visibility](wdoc_visibility). `@only` and `@except`, including the backend axis that waives an uncovered native block."
     li "[The diagram canvas](wdoc_diagrams). Layout, anchoring and connections, for a custom `SvgBlock`."

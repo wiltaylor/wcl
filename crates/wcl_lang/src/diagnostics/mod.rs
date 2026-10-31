@@ -27,8 +27,8 @@ mod kinds;
 mod parse;
 mod profile;
 
-pub use eval::EvalError;
 pub(crate) use eval::scientific_notation_help;
+pub use eval::{ArgumentMismatch, EvalError};
 pub use kinds::{ArithmeticFault, SchemaViolationKind};
 pub use parse::{MAX_SYNTAX_ERRORS, ParseError, SyntaxError};
 pub use profile::{Profile, ProfileKey, ProfileNode};

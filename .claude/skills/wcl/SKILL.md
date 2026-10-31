@@ -48,7 +48,7 @@ document through `wcl check`, `wcl get` and `wcl wdoc build`.
 - [`lang_types.md`](references/language/lang_types.md) — which numbers fit a numeric type, type aliases, unions, interfaces, optionals, symbol sets, reference types, the type constraints.
 - [`lang_expressions.md`](references/language/lang_expressions.md) — member access, indexing, calls, operator precedence, bitwise operators and shifts, numeric promotion, exact number comparison and NaN, the `??` operator.
 - [`lang_control_flow.md`](references/language/lang_control_flow.md) — `if` / `else`, `match`, `if let`, block expressions, `let` bindings, `try` / `catch`.
-- [`lang_functions.md`](references/language/lang_functions.md) — function literals, `fn` items, function types, higher-order functions, closures and capture.
+- [`lang_functions.md`](references/language/lang_functions.md) — function literals, `fn` items, what a call checks against its signature, function types, higher-order functions, closures and capture.
 - [`lang_namespaces.md`](references/language/lang_namespaces.md) — `namespace` and `use`, qualified kind names, disk and system imports, how they resolve.
 - [`lang_schemas.md`](references/language/lang_schemas.md) — the schema decorators that declare a document shape, and how document schemas compose per namespace.
 - [`lang_decorators.md`](references/language/lang_decorators.md) — what a decorator is, the authored and host-declared vocabularies, `@declares_kind`, reading decorators back.

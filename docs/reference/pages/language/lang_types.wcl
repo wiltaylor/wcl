@@ -448,7 +448,7 @@ WCL
 
   h3 "Inferring the variant from a bare record"
 
-  p "Drop the tag and write a bare record wherever the expected type is a union. Three slots qualify: a union-typed field, an element of a `list<Union>`, and a function parameter. That is the `fill = { hue: :accent }` of `canvas.wcl`, and it is why `wcl parse` printed `Fill::Solid { hue: :accent }` back."
+  p "Drop the tag and write a bare record wherever the expected type is a union. Four slots qualify: a union-typed field, an element of a `list<Union>`, a function parameter, and a function's return value. That is the `fill = { hue: :accent }` of `canvas.wcl`, and it is why `wcl parse` printed `Fill::Solid { hue: :accent }` back."
 
   p "The match is by the record's **field-name set**, then by its field _types_ when a name set alone is not decisive. It works per element inside a list, so a list of records needs no repeated tag:"
 

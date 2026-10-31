@@ -352,7 +352,7 @@ fn edge(src: &str, dst: &str) -> Value {
 /// at runtime. `@schemaless` keeps the binding out of any document
 /// type's required-field check.
 const SORT_DOC: &str = r#"
-@schemaless sort_them = fn(xs: list<i64>, es: list<i64>) -> list<i64> sort_connected(xs, es)
+@schemaless sort_them = fn(xs: list<record>, es: list<record>) -> list<record> sort_connected(xs, es)
 "#;
 
 fn sort_via_doc(items: Vec<Value>, edges: Vec<Value>) -> Vec<Value> {

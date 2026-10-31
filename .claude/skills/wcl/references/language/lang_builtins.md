@@ -26,8 +26,9 @@ this page for:
 - `integer` means any integer type, `isize`, `usize` and the 128-bit types included. `bits` does
   not widen it: the answer has the type of its first argument.
 - `any`, `number`, `integer` and `record` are notation, not types: a field declared with one fails
-  with `unknown type`. A function signature may use them (`fn(f: record) -> utf8`). `T`, `[T]` and
-  `never` work in neither.
+  with `unknown type`. A function signature may use them (`fn(f: record) -> utf8`), and a call
+  checks them without converting: your `number` parameter keeps the width it was handed. `T`,
+  `[T]` and `never` work in neither.
 - `record` is a `{ key: value }` literal or a value of record shape.
 - `&T` is a reference to a declaration — you write the declaration's name (`Image`,
   `Field.score`), not a string.

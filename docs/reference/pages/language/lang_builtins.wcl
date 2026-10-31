@@ -228,7 +228,7 @@ CONSOLE
       | "`never`" | "The call does not return" | "No" | "No" |
   }
 
-  p "Two consequences follow. Most of that notation is for reading, not for writing. A field declared `record` fails with `unknown type 'record'`. So the result of a builtin that answers a record usually stays inside an expression, which is where most of them belong. To store it in a field, copy it into a type you declared. A **callback parameter** is looser: it may be typed `any`, `number`, `integer`, `record` or `&T`. Any other name must be a type the document declares, or the file fails to open with `unknown type`. That is why the reflection examples below write `fn(f: record) -> utf8 { … }`."
+  p "Two consequences follow. Most of that notation is for reading, not for writing. A field declared `record` fails with `unknown type 'record'`. So the result of a builtin that answers a record usually stays inside an expression, which is where most of them belong. To store it in a field, copy it into a type you declared. A **callback parameter** is looser: it may be typed `any`, `number`, `integer`, `record` or `&T`. Any other name must be a type the document declares, or the file fails to open with `unknown type`. That is why the reflection examples below write `fn(f: record) -> utf8 { … }`. Those types are enforced: each time a builtin calls your callback, the arguments and the result are checked by the rule [Functions](lang_functions#what-a-call-checks) describes. The words do not convert in a signature you write. A `number` parameter accepts any numeric value and leaves it the width it arrived as."
 
   p "And `[T]` says nothing about the element type. `sort` and `sum` check theirs at run time and fail on a mixed list, because the signature cannot check it for them."
 

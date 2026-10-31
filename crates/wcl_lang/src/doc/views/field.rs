@@ -768,7 +768,10 @@ impl<'a> LetView<'a> {
                     .clone();
             }
         };
-        let result = self.doc.eval_in_scope(&self.ast.value, &self.scope);
+        let result = self
+            .doc
+            .eval_in_scope(&self.ast.value, &self.scope)
+            .map(|value| value.bound_as(&self.ast.name));
         // A let read from another file's field or function reports
         // against the file the let was written in.
         let result = result.map_err(|error| {

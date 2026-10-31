@@ -1811,6 +1811,280 @@ fn eval_user_function_arity_mismatch() {
     assert!(matches!(err, EvalError::BuiltinArity { .. }));
 }
 
+// ─── Signature enforcement ─────────────────────────────────────────
+//
+// A parameter accepts and converts an argument exactly as a field
+// declared with its type would; the return value is held to the
+// return type the same way.
+
+/// Open `src` against the default builtins, every top-level field
+/// `@schemaless`.
+fn open_std(src: &str) -> Document {
+    Document::open(&laxify_for_tests(src), "test").expect("open")
+}
+
+/// The value of field `name`, or its error.
+fn read<'d>(doc: &'d Document, name: &str) -> Result<&'d Value, &'d EvalError> {
+    doc.field(name).expect("field exists").value()
+}
+
+#[test]
+fn signature_rejects_wrong_argument_type() {
+    let doc = open_std("fn g(x: u8) -> u8 x\nb = g(\"s\")\n");
+    let err = read(&doc, "b").unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "argument 1 ('x') of 'g' expects u8, got utf8"
+    );
+    let EvalError::ArgumentType { mismatch, .. } = err else {
+        panic!("{err:?}");
+    };
+    assert_eq!(
+        **mismatch,
+        crate::diagnostics::ArgumentMismatch {
+            function: Some("g".into()),
+            index: 1,
+            param: "x".into(),
+            expected: "u8".into(),
+            got: "utf8".into(),
+        }
+    );
+}
+
+#[test]
+fn signature_names_the_position_and_parameter() {
+    let doc = open_std("fn eli(tag: utf8, id: identifier) -> utf8 tag\nb = eli(\"div\", true)\n");
+    assert_eq!(
+        read(&doc, "b").unwrap_err().to_string(),
+        "argument 2 ('id') of 'eli' expects identifier, got bool"
+    );
+}
+
+#[test]
+fn signature_converts_a_string_to_identifier_like_a_field() {
+    let doc = open_std("fn ident(id: identifier) -> identifier id\nb = ident(\"intro\")\n");
+    assert_eq!(read(&doc, "b").unwrap(), &Value::Identifier("intro".into()));
+}
+
+#[test]
+fn signature_narrows_integers_that_fit_like_a_field() {
+    // `x * 2` mixes an i32 and an i64 and comes out i128; the i32
+    // return slot narrows it back, as an `i32` field would.
+    let doc = open_std(
+        r#"
+        let w = fn(x: i32) -> i32 x * 2
+        a = w(2)
+        b = w(4i128)
+        "#,
+    );
+    assert_eq!(read(&doc, "a").unwrap(), &Value::I32(4));
+    assert_eq!(read(&doc, "b").unwrap(), &Value::I32(8));
+}
+
+#[test]
+fn signature_rejects_an_integer_that_does_not_fit_like_a_field() {
+    let doc = open_std("fn g(x: u8) -> u8 x\nb = g(300)\n");
+    assert_eq!(
+        read(&doc, "b").unwrap_err().to_string(),
+        "argument 1 ('x') of 'g' expects u8, got 300, which is out of range for u8"
+    );
+    // The field rule, for comparison: the same value, the same verdict.
+    let field = Document::open("@document\ntype C { b: u8 }\nb = 300\n", "test").expect("open");
+    assert!(read(&field, "b").is_err());
+}
+
+#[test]
+fn signature_return_type_is_enforced() {
+    let doc = open_std("fn f(x: i64) -> utf8 x + 1\nb = f(1)\n");
+    let err = read(&doc, "b").unwrap_err();
+    assert_eq!(err.to_string(), "'f' declared -> utf8 but returned i64");
+    assert!(matches!(err, EvalError::ReturnType { .. }), "{err:?}");
+}
+
+#[test]
+fn signature_return_converts_like_a_field() {
+    let doc = open_std("fn f(s: utf8) -> identifier s\nb = f(\"x\")\n");
+    assert_eq!(read(&doc, "b").unwrap(), &Value::Identifier("x".into()));
+}
+
+#[test]
+fn signature_words_any_number_integer_record() {
+    let doc = open_std(
+        r#"
+        union U {
+          R { a: i64 }
+          P i64
+        }
+        fn anyf(x: any) -> any x
+        fn num(x: number) -> number x
+        fn int(x: integer) -> integer x
+        fn rec(x: record) -> record x
+        any_none   = anyf(none)
+        any_str    = anyf("s")
+        num_float  = num(1.5)
+        num_bad    = num("x")
+        int_u8     = int(3u8)
+        int_bad    = int(1.5)
+        rec_lit    = rec({ a: 1 })
+        rec_var    = rec(U::R { a: 1 })
+        rec_bad    = rec(3)
+        rec_pos    = rec(U::P(1))
+        "#,
+    );
+    assert_eq!(read(&doc, "any_none").unwrap(), &Value::None);
+    assert_eq!(read(&doc, "any_str").unwrap(), &Value::Utf8("s".into()));
+    assert_eq!(read(&doc, "num_float").unwrap(), &Value::F64(1.5));
+    assert_eq!(read(&doc, "int_u8").unwrap(), &Value::U8(3));
+    assert!(read(&doc, "rec_lit").is_ok());
+    assert!(read(&doc, "rec_var").is_ok());
+    assert_eq!(
+        read(&doc, "num_bad").unwrap_err().to_string(),
+        "argument 1 ('x') of 'num' expects number, got utf8"
+    );
+    assert_eq!(
+        read(&doc, "int_bad").unwrap_err().to_string(),
+        "argument 1 ('x') of 'int' expects integer, got f64"
+    );
+    assert_eq!(
+        read(&doc, "rec_bad").unwrap_err().to_string(),
+        "argument 1 ('x') of 'rec' expects record, got i64"
+    );
+    assert_eq!(
+        read(&doc, "rec_pos").unwrap_err().to_string(),
+        "argument 1 ('x') of 'rec' expects record, got U::P"
+    );
+}
+
+#[test]
+fn signature_interface_parameter_is_structural() {
+    let doc = open_std(
+        r#"
+        interface Named { name: utf8 }
+        fn greet(n: Named) -> utf8 n.name
+        ok  = greet({ name: "x" })
+        bad = greet({ other: 1 })
+        "#,
+    );
+    assert_eq!(read(&doc, "ok").unwrap(), &Value::Utf8("x".into()));
+    assert_eq!(
+        read(&doc, "bad").unwrap_err().to_string(),
+        "argument 1 ('n') of 'greet' expects Named, got record without field 'name'"
+    );
+}
+
+#[test]
+fn signature_reference_parameter_follows_the_field_rule() {
+    // A `&T` slot holds a document node, not a value: a reference read
+    // from a `&T` field passes, a record value does not.
+    let src = r#"
+interface Endpoint { host: utf8 }
+@block("host") type Host {
+  @inline(0) id: identifier
+  host: utf8
+}
+@block("route") type Route {
+  @inline(0) id: identifier
+  upstream: &Endpoint
+}
+@document type Config {
+  @children("host")  hosts:  list<Host>
+  @children("route") routes: list<Route>
+}
+host cdn { host = "cdn.internal" }
+route assets { upstream = hosts.cdn }
+fn up(e: &Endpoint) -> bool true
+@schemaless via_ref    = up(routes.assets.upstream)
+@schemaless via_record = up({ host: "x" })
+"#;
+    let doc = Document::open(src, "test").expect("open");
+    assert_eq!(read(&doc, "via_ref").unwrap(), &Value::Bool(true));
+    assert_eq!(
+        read(&doc, "via_record").unwrap_err().to_string(),
+        "argument 1 ('e') of 'up' expects &Endpoint, got record"
+    );
+}
+
+#[test]
+fn signature_function_parameter_checks_arity() {
+    let doc = open_std(
+        r#"
+        fn apply(g: fn(i64) -> i64, x: i64) -> i64 g(x)
+        ok  = apply(fn(a: i64) -> i64 a + 1, 1)
+        bad = apply(fn(a: i64, b: i64) -> i64 a, 1)
+        nf  = apply(3, 1)
+        "#,
+    );
+    assert_eq!(read(&doc, "ok").unwrap(), &Value::I64(2));
+    assert_eq!(
+        read(&doc, "bad").unwrap_err().to_string(),
+        "argument 1 ('g') of 'apply' expects fn(i64) -> i64, got fn(i64, i64) -> i64"
+    );
+    assert_eq!(
+        read(&doc, "nf").unwrap_err().to_string(),
+        "argument 1 ('g') of 'apply' expects fn(i64) -> i64, got i64"
+    );
+}
+
+#[test]
+fn signature_error_is_recoverable_by_try() {
+    let doc = open_std("fn g(x: u8) -> u8 x\nb = try g(\"s\") catch e => e\n");
+    assert_eq!(
+        read(&doc, "b").unwrap(),
+        &Value::Utf8("argument 1 ('x') of 'g' expects u8, got utf8".into())
+    );
+}
+
+#[test]
+fn signature_is_checked_for_callbacks_a_builtin_calls() {
+    let doc = open_std(
+        r#"
+        fn add(acc: i64, x: i64) -> i64 acc + x
+        anon  = map([1, 2], fn(x: utf8) -> utf8 x)
+        named = fold(["a"], 0, add)
+        inner = map([[1]], fn(xs: list<i64>) -> list<utf8> map(xs, fn(x: i64) -> utf8 x))
+        fine  = fold([1, 2, 3], 0, add)
+        "#,
+    );
+    assert_eq!(
+        read(&doc, "anon").unwrap_err().to_string(),
+        "argument 1 ('x') of fn literal expects utf8, got i64"
+    );
+    // A callback passed by name keeps the name its binding gave it.
+    assert_eq!(
+        read(&doc, "named").unwrap_err().to_string(),
+        "argument 2 ('x') of 'add' expects i64, got utf8"
+    );
+    assert_eq!(
+        read(&doc, "inner").unwrap_err().to_string(),
+        "fn literal declared -> utf8 but returned i64"
+    );
+    assert_eq!(read(&doc, "fine").unwrap(), &Value::I64(6));
+}
+
+#[test]
+fn signature_argument_error_points_at_the_argument() {
+    let src = "fn f(a: i64, b: i64) -> i64 a\n@schemaless r = { let s = \"x\"; f(1, s) }\n";
+    let doc = Document::open(src, "test").expect("open");
+    let err = read(&doc, "r").unwrap_err();
+    let EvalError::ArgumentType { mismatch, span, .. } = err else {
+        panic!("{err:?}");
+    };
+    assert_eq!(mismatch.index, 2);
+    assert_eq!(span.offset(), src.find(", s)").unwrap() + 2);
+    assert_eq!(span.len(), 1);
+}
+
+#[test]
+fn signature_return_error_points_at_the_body() {
+    let src = "fn f(x: i64) -> utf8 x + 1\n@schemaless r = f(1)\n";
+    let doc = Document::open(src, "test").expect("open");
+    let err = read(&doc, "r").unwrap_err();
+    let EvalError::ReturnType { span, .. } = err else {
+        panic!("{err:?}");
+    };
+    assert_eq!(span.offset(), src.find("x + 1").unwrap());
+}
+
 // ─── Lazy data access (DataRef / Document::get) ───────────────────
 
 use std::sync::Arc;
