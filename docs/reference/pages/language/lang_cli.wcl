@@ -14,7 +14,7 @@ page lang_cli {
   chapter_header "The CLI" {
     kicker       = "The WCL language · reference"
     reading_time = "15 min read"
-    updated      = "2026-08-20"
+    updated      = "2026-11-01"
     version      = "wcl 0.33.2-alpha"
   }
 
@@ -184,7 +184,7 @@ CONSOLE
 
   code console {
     source = <<'CONSOLE'
-$ wcl check <file> [--json]
+$ wcl check <file> [--json] [--eval]
 CONSOLE
   }
 
@@ -193,6 +193,7 @@ CONSOLE
       | "Argument" | "Meaning" |
       | "`<file>`" | "Path to a WCL source file, or `-` to read from stdin. Relative imports then resolve against the current directory." |
       | "`--json`" | "Emit a JSON result object on stdout instead of human-readable diagnostics. Exit codes do not change." |
+      | "`--eval`" | "Evaluate every field and fail on evaluation errors, with exit 3. Off by default." |
   }
 
   code console {
@@ -305,9 +306,67 @@ $ echo $?
 CONSOLE
   }
 
+  h3 "Failing on evaluation errors"
+
+  p "Fields evaluate lazily, and plain `check` runs only the evaluation that validation needs. A field that fails to evaluate is skipped, not reported. `split.wcl` from [wcl parse](#wcl-parse) divides by zero, and `check` passes it:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check split.wcl
+OK
+$ echo $?
+0
+CONSOLE
+  }
+
+  p "`--eval` forces every field, every label and every decorator argument in the document, imports included, and fails on any that does not evaluate. Each failure is rendered the way `wcl parse` renders it, and a summary line counts them:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check split.wcl --eval
+wcl::eval::arithmetic
+
+  × operator '/' cannot divide by zero
+    ╭─[split.wcl:10:8]
+  9 │ parts = 0u32
+ 10 │ each = total / parts
+    ·        ──────┬──────
+    ·              ╰── no result for these operands
+    ╰────
+
+split.wcl: 1 evaluation error
+$ echo $?
+3
+CONSOLE
+  }
+
+  p "Schema violations are still reported, before the evaluation errors, and when a file has both the exit code is 2. A field that fails _because_ it violates its schema is reported once, as the violation. Some violations only a forced value can reveal, such as a record that no variant of its union matches. `--eval` reports those as schema violations too, so they also exit 2. With `--json`, evaluation errors join `errors` beside the violations, and `code` tells the two apart. A violation is always `wcl::eval::schema_violation`, and an evaluation error carries its own code:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check split.wcl --eval --json
+{
+  "errors": [
+    {
+      "code": "wcl::eval::arithmetic",
+      "file": "split.wcl",
+      "length": 13,
+      "message": "operator '/' cannot divide by zero",
+      "offset": 98
+    }
+  ],
+  "file": "split.wcl",
+  "ok": false,
+  "warnings": []
+}
+CONSOLE
+  }
+
+  p "Template bodies are not forced, for the same reason `parse` defers them: the children of a `wdoc_repeater` and the `wdoc_body` of a component bind their names only when they are expanded. Forced in place, every loop variable would fail."
+
   callout "check is the whole gate" {
     kind = :info
-    body  = "`wcl check` runs the parser **and** the schema validator, not only the parser. Run it in a pre-commit hook, in CI, and any time you want to know a file is good without printing it. It also takes `-` in place of a path, so `cat generated.wcl | wcl check -` validates a document that was never written to disk."
+    body  = "`wcl check` runs the parser **and** the schema validator, not only the parser. Add `--eval` when the document puts validation into its fields, such as an `assert` that must hold. Run it in a pre-commit hook, in CI, and any time you want to know a file is good without printing it. It also takes `-` in place of a path, so `cat generated.wcl | wcl check - --eval` validates a document that was never written to disk."
   }
 
   h2 "wcl eval and wcl get"

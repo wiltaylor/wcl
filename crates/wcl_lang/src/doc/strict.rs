@@ -707,7 +707,7 @@ impl Document {
 /// Pair a violation with the source it renders against: the file it
 /// already names, else `source`, which a schema violation also adopts
 /// so the error carries it past the pair.
-fn sourced(
+pub(super) fn sourced(
     error: EvalError,
     source: &NamedSource<Arc<str>>,
 ) -> (EvalError, Option<NamedSource<Arc<str>>>) {

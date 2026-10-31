@@ -212,7 +212,8 @@ series = [
 3. Exactly one survivor is the answer. No survivor is the `VariantNoMatch` violation, which
    reads `no variant of 'X' matches the supplied shape`. More than one survivor is an ambiguity
    error. Both surface when the field **evaluates**, so a consumer reading the field sees them.
-   `wcl check` alone may not.
+   `wcl check` alone may not; `wcl check --eval` forces the field and reports them as schema
+   violations (exit 2).
 
 Two consequences follow directly:
 

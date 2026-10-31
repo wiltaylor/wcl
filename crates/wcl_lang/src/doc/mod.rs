@@ -20,7 +20,8 @@
 //! - **Checking** — [`schema_lookup`] finds the schema governing a
 //!   thing, [`schema_check`] checks one block against it, [`decorators`]
 //!   checks a decorator, and [`strict`] runs the whole document through
-//!   in one pass for `wcl check`.
+//!   in one pass for `wcl check`. [`forced`] does the same for
+//!   evaluation failures, for `wcl check --eval`.
 //!
 //! A `Document` is immutable once opened, so every one of those caches
 //! is safe to fill lazily and never invalidate — which is why the
@@ -39,6 +40,7 @@ mod decorators;
 mod eval;
 mod eval_ops;
 mod eval_stack;
+mod forced;
 mod imports;
 mod loader;
 mod lookup;

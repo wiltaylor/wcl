@@ -110,7 +110,7 @@ Extending:
 <boundaries>
 <always>
 - Give every top-level field a schema. A value with no `@document` type in scope is an error, not a default
-- Run `wcl check` on a `.wcl` file you wrote, and `wcl wdoc build` on a page, before reporting it done
+- Run `wcl check --eval` on a `.wcl` file you wrote, and `wcl wdoc build` on a page, before reporting it done. Plain `wcl check` passes a field that fails to evaluate
 - Name the output target when a wdoc block behaves differently across html, markdown and pdf — `wdoc_outputs.md` says which do
 </always>
 

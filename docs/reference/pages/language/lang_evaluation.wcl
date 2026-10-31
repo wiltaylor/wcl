@@ -10,7 +10,7 @@ page lang_evaluation {
   chapter_header "How a document evaluates" {
     kicker       = "The WCL language · explanation"
     reading_time = "23 min read"
-    updated      = "2026-08-20"
+    updated      = "2026-11-01"
     version      = "wcl 0.33.2-alpha"
   }
 
@@ -588,7 +588,7 @@ WCL
       | "Family"           | "Rust type"           | "Raised when"                        | "Reported by"           | "Exit" |
       | "Parse error"      | "`ParseError`"        | "The file is opened, always"          | "Every command"         | "1, or 4 when the file cannot be read" |
       | "Schema violation" | "`SchemaViolationKind` inside `EvalError::SchemaViolation`" | "Validation is requested, **and** when a field is forced" | "`wcl check` as a violation, `wcl get` / `wcl parse` as an evaluation failure" | "2 from `check`, 3 from `get`" |
-      | "Evaluation error" | "`EvalError`"         | "A field is forced"                   | "`wcl get`, `wcl parse`" | "3" |
+      | "Evaluation error" | "`EvalError`"         | "A field is forced"                   | "`wcl get`, `wcl parse`, `wcl check --eval`" | "3" |
   }
 
   p "The three are ordered. A file that does not parse has no document, so nothing else can run. A file that parses can be validated. A file that validates can still fail when a value is finally demanded. That is `estate.wcl`'s `budget`, and it is the ordinary case, not a corner."
@@ -838,6 +838,31 @@ wcl::eval::arithmetic
 CONSOLE
   }
 
+  p "When the fields themselves carry the checks, such as an `assert` that two values agree, skipping is the wrong default for a gate. `--eval` makes `check` force every field and report each failure in its own family. The violations come first, then the evaluation errors, each group with its own count:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check wrong.wcl --eval
+...
+wrong.wcl: 2 schema violations
+wcl::eval::arithmetic
+
+  × operator '/' cannot divide by zero
+    ╭─[wrong.wcl:10:10]
+  9 │ label  = 42u32
+ 10 │ budget = 1u32 / 0u32
+    ·          ─────┬─────
+    ·               ╰── no result for these operands
+    ╰────
+
+wrong.wcl: 1 evaluation error
+$ echo $?
+2
+CONSOLE
+  }
+
+  p "The `...` stands for the same two violations as before. The exit code is still 2, because a schema violation outranks an evaluation error. Fix `count` and `label` and the same command exits 3. Template bodies, which bind their names only when a host expands them, are not forced. [The CLI](lang_cli#failing-on-evaluation-errors) has the details."
+
   p "A few checks are **warnings** rather than errors: conditions that are legal, that existing documents rely on, and that are still very likely a mistake. The one in the set today fires when two `@document` schemas governing one namespace both declare the same gather field, so one schema's blocks silently vanish from the merged view. A root document importing a library that already gathers `parts` is enough:"
 
   code wcl {
@@ -1053,6 +1078,7 @@ CONSOLE
       | "Command"     | "Door"                | "Forces"                                  | "Fails on" |
       | "`wcl fmt`"   | "Editing"             | "Nothing"                                 | "Parse errors only" |
       | "`wcl check`" | "Evaluating"          | "The values validation needs. Skips fields that fail" | "Parse errors, schema violations" |
+      | "`wcl check --eval`" | "Evaluating"   | "Everything except template bodies"        | "All three families" |
       | "`wcl get`"   | "Evaluating"          | "Only the cells on the path you named"    | "All three families" |
       | "`wcl parse`" | "Evaluating"          | "Everything reachable. Prints failures in place" | "Parse errors (an eval error is printed, not fatal)" |
       | "`wcl set`"   | "Both, in turn"       | "Enough to locate the field's declaration" | "Parse errors, an unresolvable path" |

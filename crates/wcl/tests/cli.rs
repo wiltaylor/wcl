@@ -1134,6 +1134,158 @@ fn check_json_reports_schema_violations_with_exit_2() {
     );
 }
 
+// ── `check --eval` ─────────────────────────────────────────────────
+
+/// Issue #298's file: no schema violation, but the `ok` field's assert
+/// fails — the encoding fields cover 31 bits of a 32-bit instruction.
+const P9: &str = r#"type F { name: utf8  hi: u8  lo: u8 }
+@block("insn") type I { @inline(0) id: identifier  width: u16  enc: list<F>  @schemaless ok: bool? }
+@document type D { @children("insn") insns: list<I> }
+insn add {
+  width = 32u16
+  enc = [ { name: "a", hi: 31u8, lo: 8u8 }, { name: "b", hi: 6u8, lo: 0u8 } ]
+  ok = assert(fold(map(self.enc, fn(f: F) -> i64 f.hi - f.lo + 1), 0, fn(a: i64, b: i64) -> i64 a + b) == self.width, "fields do not cover width") == none
+}
+"#;
+
+fn p9() -> (TempDir, PathBuf) {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("p9.wcl");
+    std::fs::write(&file, P9).expect("write fixture");
+    (tmp, file)
+}
+
+#[test]
+fn check_without_eval_passes_a_field_that_fails_to_evaluate() {
+    let (_tmp, file) = p9();
+    wcl()
+        .arg("check")
+        .arg(&file)
+        .assert()
+        .code(0)
+        .stdout(predicate::str::diff("OK\n"));
+}
+
+#[test]
+fn check_eval_fails_a_field_that_fails_to_evaluate_with_exit_3() {
+    let (_tmp, file) = p9();
+    wcl()
+        .args(["check", "--eval"])
+        .arg(&file)
+        .assert()
+        .code(3)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("fields do not cover width"))
+        .stderr(predicate::str::contains("p9.wcl: 1 evaluation error\n"));
+}
+
+#[test]
+fn check_eval_reads_stdin_with_dash() {
+    wcl()
+        .args(["check", "--eval", "-"])
+        .write_stdin(P9)
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("<stdin>: 1 evaluation error"));
+    wcl()
+        .args(["check", "--eval", "-"])
+        .write_stdin("@schemaless name = \"x\"\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("OK"));
+}
+
+#[test]
+fn check_eval_json_lists_evaluation_errors_by_code() {
+    let (_tmp, file) = p9();
+    let out = wcl()
+        .args(["check", "--eval", "--json"])
+        .arg(&file)
+        .assert()
+        .code(3);
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).to_string();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(v["ok"], serde_json::json!(false));
+    let errors = v["errors"].as_array().expect("errors array");
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(
+        errors[0]["code"],
+        serde_json::json!("wcl::eval::user_error")
+    );
+    assert_eq!(
+        errors[0]["message"],
+        serde_json::json!("error: fields do not cover width")
+    );
+    assert!(errors[0]["offset"].is_u64(), "span offset present");
+}
+
+#[test]
+fn check_eval_files_a_violation_only_forcing_reveals_as_a_schema_violation() {
+    // No variant of `Capacity` has a `size` field. Only forcing `one`
+    // dispatches the record, so plain `check` passes it.
+    let src = "union Capacity { Fixed { units: u32 } }\n\
+               @document type D { one: Capacity }\n\
+               one = { size: 3u32 }\n";
+    wcl()
+        .args(["check", "-"])
+        .write_stdin(src)
+        .assert()
+        .success();
+    let out = wcl()
+        .args(["check", "--eval", "--json", "-"])
+        .write_stdin(src)
+        .assert()
+        .code(2);
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).to_string();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(
+        v["errors"][0]["code"],
+        serde_json::json!("wcl::eval::schema_violation")
+    );
+    wcl()
+        .args(["check", "--eval", "-"])
+        .write_stdin(src)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("<stdin>: 1 schema violation\n"))
+        .stderr(predicate::str::contains("evaluation error").not());
+}
+
+#[test]
+fn check_eval_exits_2_when_schema_violations_and_evaluation_errors_both_occur() {
+    // `stray` is not in the @document schema (a violation); `b` divides
+    // by zero.
+    // The violation wins the exit code, and each is reported once.
+    let src = "@document type D { b: i64 }\nb = 1 / 0\nstray = 1\n";
+    let out = wcl()
+        .args(["check", "--eval", "-"])
+        .write_stdin(src)
+        .assert()
+        .code(2);
+    let stderr = String::from_utf8_lossy(&out.get_output().stderr).to_string();
+    assert!(stderr.contains("<stdin>: 1 schema violation\n"), "{stderr}");
+    assert!(stderr.contains("<stdin>: 1 evaluation error\n"), "{stderr}");
+    assert_eq!(stderr.matches("top-level field 'stray'").count(), 1);
+
+    let out = wcl()
+        .args(["check", "--eval", "--json", "-"])
+        .write_stdin(src)
+        .assert()
+        .code(2);
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout).to_string();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    let codes: Vec<&str> = v["errors"]
+        .as_array()
+        .expect("errors array")
+        .iter()
+        .map(|e| e["code"].as_str().expect("code"))
+        .collect();
+    assert_eq!(
+        codes,
+        ["wcl::eval::schema_violation", "wcl::eval::arithmetic"]
+    );
+}
+
 #[test]
 fn fmt_reads_stdin_and_writes_stdout() {
     wcl()
@@ -1540,6 +1692,19 @@ fn check_accepts_a_repeater_generating_children() {
     let (_tmp, file) = expander_doc();
     wcl()
         .arg("check")
+        .arg(&file)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("OK"));
+}
+
+#[test]
+fn check_eval_does_not_force_a_repeater_body() {
+    // The repeater's body reads `m`, bound only when the expander runs:
+    // forced in place it would fail, so `--eval` leaves it alone.
+    let (_tmp, file) = expander_doc();
+    wcl()
+        .args(["check", "--eval"])
         .arg(&file)
         .assert()
         .success()

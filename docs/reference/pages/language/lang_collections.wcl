@@ -291,7 +291,7 @@ wcl::eval::builtin_type
 CONSOLE
   }
 
-  p "\"When the value is forced\" is exact, and it is why the command above is `wcl get` rather than `wcl check`. Fields evaluate lazily and `wcl check` reports schema violations, not evaluation failures. It prints `OK` for that file. [How a document evaluates](lang_evaluation) covers the split. [The CLI](lang_cli) covers which command forces what."
+  p "\"When the value is forced\" is exact, and it is why the command above is `wcl get` rather than `wcl check`. Fields evaluate lazily and `wcl check` reports schema violations, not evaluation failures. It prints `OK` for that file. `wcl check --eval` forces every field, so it reports the failure and exits 3. [How a document evaluates](lang_evaluation) covers the split. [The CLI](lang_cli) covers which command forces what."
 
   callout "A declared shape is not a checked shape" {
     kind = :warning
@@ -595,7 +595,7 @@ collide.wcl: 1 schema violation
 CONSOLE
   }
 
-  p "The first two are evaluation errors, so `wcl check` prints `OK` for those files. The failure appears when something forces the field. The third is a schema violation, and that is why `check` catches it. That ordering is deliberate: ambiguity is a fault in the union itself, and the language refuses to let you declare one."
+  p "The first two are evaluation errors, so `wcl check` prints `OK` for those files. The failure appears when something forces the field. `wcl check --eval` forces it, files it with the schema violations because of its code, and exits 2. The third is a schema violation, and that is why `check` catches it. That ordering is deliberate: ambiguity is a fault in the union itself, and the language refuses to let you declare one."
 
   h2 "List, tensor or record?"
 

@@ -106,8 +106,9 @@ field that holds the literal:
 A field that merely *reads* a failing one (`label = format_unit(buffer, …)`) fails its read but
 is not reported a second time.
 
-Practical rule: `wcl check` proves the shape, not that every expression runs. Render or consume
-the document to prove that.
+Practical rule: plain `wcl check` proves the shape, not that every expression runs.
+`wcl check --eval` proves both: it forces every field (template bodies aside) and exits 3 on
+an evaluation error, 2 if there is also a violation (see [`lang_cli.md`](lang_cli.md)).
 
 ## Cycle detection
 
@@ -326,7 +327,7 @@ read names its own. Code run through `eval("…")` is its own source, named `<ev
 `EvalError::origin()` returns it (it was `schema_source()`, schema violations only), and
 `miette::Report::new(err)` renders the snippet against it with no source attached by the host;
 a source the host attaches with `with_source_code` is only a fallback. `schema_diagnostics()`
-pairs each error with the same source. `None` means the library could not place it (an error
+pairs each error with the same source, and so does `eval_diagnostics()`. `None` means the library could not place it (an error
 against a library-synthesised declaration, or an `EvalError` a host built with `user_error`), and
 only then does the host supply the text. `wcl get` / `wcl parse` print the snippet for every
 evaluation error, and `wcl check --json` exposes the file per error (see
@@ -352,7 +353,7 @@ them. The full list is in the `wcl_lang` crate docs under "API stability".
   re-run. A missing `}` is reported at the **end of the file**, not where the brace belongs —
   everything after it parsed as the block's body.
 - `wcl check` says `OK` for `n = error("boom")`. An evaluation failure during validation is
-  skipped, not reported.
+  skipped, not reported. `wcl check --eval` reports it and exits 3.
 - A `let` is not in the evaluated document. If you want it in the output, make it a field.
 - Editing and evaluating are separate parses. Re-open a file after writing to it.
 - A `get` path must end at a leaf and must address blocks by label.

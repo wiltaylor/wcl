@@ -12,7 +12,8 @@
 //! component's `wdoc_body`) only mean something once the host's expander
 //! binds their names, so evaluating them in place fails on every loop
 //! variable and slot. Those values print as `<deferred: …>` and are not
-//! errors.
+//! errors. Which blocks are template bodies is the library's rule,
+//! [`Block::is_template_child`] — the one `wcl check --eval` applies too.
 
 use std::fmt::Write as _;
 
@@ -21,10 +22,6 @@ use wcl_lang::{
     ProfileNode, SymbolSetDecl, TypeDecl, UnionDecl, UnionVariant, UseDeclView, UseFormView, Value,
     VariantBodyView,
 };
-
-/// The built-in decorator that marks a block kind whose children are
-/// expanded by the host rather than evaluated in place.
-const CONTEXTUAL: &str = "contextual";
 
 /// What `wcl parse` prints, plus the evaluation errors behind every
 /// `<error: …>` placeholder in it, in tree order.
@@ -322,13 +319,9 @@ fn dump_block(b: &Block<'_>, depth: usize, out: &mut Out) {
     for f in b.fields() {
         dump_field(&f, depth + 1, out);
     }
-    let schema = b.schema();
-    let contextual = schema
-        .as_ref()
-        .is_some_and(|s| s.decorators().any(|d| d.full_name() == CONTEXTUAL));
-    let body_kind = schema.as_ref().and_then(template_body_kind);
+    let contextual = b.is_contextual();
     for inner in b.blocks() {
-        let template = contextual || body_kind.as_deref() == Some(inner.kind());
+        let template = b.is_template_child(&inner);
         out.template_depth += usize::from(template);
         dump_block(&inner, depth + 1, out);
         out.template_depth -= usize::from(template);
@@ -339,17 +332,6 @@ fn dump_block(b: &Block<'_>, depth: usize, out: &mut Out) {
     }
     out.template_depth -= usize::from(contextual);
     line!(out, depth, "}}");
-}
-
-/// The block kind of a `@declares_kind` declarer's template body — the
-/// kind bound by the field its `body = "…"` argument names — or `None` for
-/// any other schema.
-fn template_body_kind(schema: &TypeDecl<'_>) -> Option<String> {
-    let body_field = schema.declares_kind()?.body_field?;
-    let field = schema.fields().find(|f| f.name() == body_field)?;
-    field
-        .child_block_kind()
-        .or_else(|| field.children_block_kind())
 }
 
 fn dump_table(t: &wcl_lang::TableView<'_>, depth: usize, out: &mut Out) {

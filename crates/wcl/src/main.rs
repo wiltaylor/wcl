@@ -183,7 +183,8 @@ enum Command {
     /// Parse a WCL file, then validate the result against its schemas.
     /// Prints `OK` when both pass. Exits 1 on a parse failure, 2 on a
     /// schema violation and 4 when the file cannot be read. Warnings go
-    /// to stderr and never change the exit code.
+    /// to stderr and never change the exit code. Fields evaluate lazily,
+    /// so a field that fails to evaluate passes unless `--eval` is given.
     Check {
         /// Path to a WCL source file, or `-` to read from stdin
         /// (relative imports then resolve against the current
@@ -194,6 +195,14 @@ enum Command {
         /// of human-readable diagnostics. Exit codes are unchanged.
         #[arg(long)]
         json: bool,
+        /// Evaluate every field and fail on evaluation errors. Exits 3
+        /// when a value fails to evaluate and no schema is violated; a
+        /// schema violation, including one only a forced value reveals,
+        /// still exits 2. Template bodies — the children of a
+        /// `@contextual` block, a `@declares_kind` body — are not
+        /// evaluated.
+        #[arg(long)]
+        eval: bool,
     },
     /// Resolve a dotted path inside a WCL file and print the resulting value.
     /// Aliased as `wcl get`.
@@ -481,7 +490,7 @@ fn main() -> ExitCode {
             }
             Err(err) => report_parse_error(err),
         },
-        Command::Check { file, json } => run_check(&file, json),
+        Command::Check { file, json, eval } => run_check(&file, json, eval),
         Command::Fmt {
             file,
             in_place,
@@ -976,7 +985,7 @@ fn check_report_json(
     .expect("string-keyed JSON object always serializes")
 }
 
-fn run_check(file: &Path, json: bool) -> u8 {
+fn run_check(file: &Path, json: bool, eval: bool) -> u8 {
     let name = if is_stdin(file) {
         "<stdin>".to_string()
     } else {
@@ -1003,20 +1012,39 @@ fn run_check(file: &Path, json: bool) -> u8 {
     };
     match doc {
         Ok(doc) => {
-            let diagnostics = doc.schema_diagnostics();
+            let mut diagnostics = doc.schema_diagnostics();
             let warns = doc.schema_warnings();
+            // `eval_diagnostics` leaves out what `schema_diagnostics`
+            // already reports, so the two lists never overlap. A forced
+            // value can still fail a schema rule the strict pass does not
+            // reach (a record no union variant matches); it files with the
+            // violations, so the exit code agrees with its `code`.
+            let mut failures = Vec::new();
+            if eval {
+                for (error, source) in doc.eval_diagnostics() {
+                    if matches!(error, wcl_lang::EvalError::SchemaViolation { .. }) {
+                        diagnostics.push((error, source));
+                    } else {
+                        failures.push((error, source));
+                    }
+                }
+            }
+            let code = if !diagnostics.is_empty() {
+                EXIT_SCHEMA
+            } else if !failures.is_empty() {
+                EXIT_EVAL
+            } else {
+                EXIT_OK
+            };
             if json {
                 let errors = diagnostics
                     .iter()
+                    .chain(&failures)
                     .map(|(error, _)| diagnostic_json(error))
                     .collect();
                 let warnings = warns.iter().map(|w| diagnostic_json(w)).collect();
                 outln!("{}", check_report_json(&name, errors, warnings));
-                return if diagnostics.is_empty() {
-                    EXIT_OK
-                } else {
-                    EXIT_SCHEMA
-                };
+                return code;
             }
             // Warnings are advisory: printed to stderr, never fatal —
             // the exit code (and `OK`) reflect errors only.
@@ -1030,24 +1058,13 @@ fn run_check(file: &Path, json: bool) -> u8 {
                     if count == 1 { "" } else { "s" }
                 );
             }
-            if diagnostics.is_empty() {
+            if code == EXIT_OK {
                 outln!("OK");
-                EXIT_OK
-            } else {
-                let count = diagnostics.len();
-                for (error, source) in diagnostics {
-                    let report = miette::Report::new(error);
-                    match source {
-                        Some(source) => errln!("{:?}", report.with_source_code(source)),
-                        None => errln!("{report:?}"),
-                    }
-                }
-                errln!(
-                    "{name}: {count} schema violation{}",
-                    if count == 1 { "" } else { "s" }
-                );
-                EXIT_SCHEMA
+                return EXIT_OK;
             }
+            report_check_errors(&name, diagnostics, "schema violation");
+            report_check_errors(&name, failures, "evaluation error");
+            code
         }
         Err(err) => {
             let code = parse_error_code(&err);
@@ -1067,6 +1084,34 @@ fn run_check(file: &Path, json: bool) -> u8 {
             code
         }
     }
+}
+
+/// Print `wcl check`'s errors of one kind to stderr, each against the
+/// source it names, then a `<file>: N <what>(s)` summary. Prints nothing
+/// for an empty list.
+fn report_check_errors(
+    name: &str,
+    errors: Vec<(
+        wcl_lang::EvalError,
+        Option<miette::NamedSource<std::sync::Arc<str>>>,
+    )>,
+    what: &str,
+) {
+    if errors.is_empty() {
+        return;
+    }
+    let count = errors.len();
+    for (error, source) in errors {
+        let report = miette::Report::new(error);
+        match source {
+            Some(source) => errln!("{:?}", report.with_source_code(source)),
+            None => errln!("{report:?}"),
+        }
+    }
+    errln!(
+        "{name}: {count} {what}{}",
+        if count == 1 { "" } else { "s" }
+    );
 }
 
 /// Drive `parse_for_edit → format::to_source` and either print the

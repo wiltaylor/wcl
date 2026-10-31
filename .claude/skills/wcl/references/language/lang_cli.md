@@ -30,8 +30,8 @@ Seven codes, meaning the same thing in every command.
 | --- | --- | --- |
 | 0 | OK | The command did what it was asked. `--help` and `--version` too (they print to stdout). |
 | 1 | Parse | The source did not parse. |
-| 2 | Schema | The document parsed, but it violates its own schema. |
-| 3 | Eval | Evaluation failed — an unresolved name, a type mismatch, a path resolving to nothing, a refused block. Also `wcl parse` when any value in the tree failed. |
+| 2 | Schema | The document parsed, but it violates its own schema. Outranks 3 in `wcl check --eval`. |
+| 3 | Eval | Evaluation failed — an unresolved name, a type mismatch, a path resolving to nothing, a refused block. Also `wcl parse` when any value in the tree failed, and `wcl check --eval` when a value failed and no schema is violated. |
 | 4 | I/O | A file could not be read or written: the input is missing, unreadable or not UTF-8 (every command), or writing output, copying an asset or reaching the disk failed. |
 | 5 | Differs | Only `wcl diff --exit-code`: the documents differ. |
 | 64 | Usage | The command line was wrong (`EX_USAGE`). |
@@ -103,15 +103,18 @@ expansion.
 ## `wcl check`
 
 ```console
-$ wcl check <file> [--json]
+$ wcl check <file> [--json] [--eval]
 ```
 
 | Argument | Meaning |
 | --- | --- |
 | `<file>` | Path to a WCL source file, or `-` to read stdin (relative imports then resolve against the current directory). |
 | `--json` | Emit a JSON result object on stdout instead of diagnostics. Exit codes do not change. |
+| `--eval` | Evaluate every field and fail on evaluation errors (exit 3). Off by default. |
 
-Runs the parser **and** the schema validator. On success it prints `OK`.
+Runs the parser **and** the schema validator. On success it prints `OK`. Without `--eval` it
+does **not** report a field that fails to evaluate: `n = error("boom")` or a failing `assert`
+passes with `OK`, exit 0.
 
 ```console
 $ wcl check sch.wcl
@@ -159,6 +162,47 @@ no source (a library-synthesised declaration). Warnings carry the same keys.
 `check` reads stdin when the file is
 `-`, so `cat generated.wcl | wcl check -` validates a document never written to disk. `fmt -`
 does the same, and `repl` reads its expressions from stdin when it is not a TTY.
+
+### `--eval`: fail on evaluation errors
+
+`--eval` forces every field, label, decorator argument and table row, imports included, and
+reports each failure the way `wcl parse` does, then a `<file>: N evaluation error(s)` line. Use
+it when validation lives in fields (an `assert`), and in CI.
+
+```console
+$ wcl check split.wcl
+OK
+$ wcl check split.wcl --eval
+wcl::eval::arithmetic
+
+  × operator '/' cannot divide by zero
+    ╭─[split.wcl:10:8]
+  9 │ parts = 0u32
+ 10 │ each = total / parts
+    ·        ──────┬──────
+    ·              ╰── no result for these operands
+    ╰────
+
+split.wcl: 1 evaluation error
+$ echo $?
+3
+```
+
+- Exit: 2 if any schema violation, else 3 if any evaluation error, else 0 with `OK`.
+  Violations print first, with their own `N schema violation(s)` line.
+- Each failure is reported once. A field failing *because* it violates the schema is the
+  violation, not a second evaluation error. A field that only reads a failing one (`b = a`) is
+  not reported again.
+- A violation only forcing reveals (a record no union variant matches, `wcl::eval::schema_violation`)
+  counts as a schema violation: exit 2.
+- `--json`: evaluation errors join `errors[]`. Tell them apart by `code`:
+  `wcl::eval::schema_violation` is always a violation; any other `wcl::eval::*` is an
+  evaluation error (`wcl::eval::arithmetic`, `wcl::eval::user_error` for `assert`/`error`, …).
+- Not forced: template bodies — children of a `@contextual` block (`wdoc_repeater`) and a
+  `@declares_kind` body (a component's `wdoc_body`). Same rule as `parse`'s `<deferred: …>`.
+- Works with stdin: `cat generated.wcl | wcl check - --eval`.
+- Library: `Document::eval_diagnostics()` / `eval_errors()` (see
+  [`lang_evaluation.md`](lang_evaluation.md)).
 
 A file that does not parse exits 1 with **every** syntax error, not just the first (capped at
 100). In `--json` each is its own `errors` entry, all with code `wcl::parse`:

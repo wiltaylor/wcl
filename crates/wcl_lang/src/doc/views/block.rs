@@ -1101,8 +1101,39 @@ impl<'a> Block<'a> {
     /// through the same route as any other block: the schema derived
     /// from its declarer carries `@contextual`, because what such an
     /// instance emits is whatever its declarer's body expands to.
-    pub(crate) fn is_contextual(&self) -> bool {
+    ///
+    /// Everything in such a block's body — its nested blocks and its
+    /// tables — is a template: see
+    /// [`is_template_child`](Self::is_template_child).
+    pub fn is_contextual(&self) -> bool {
         self.schema().is_some_and(|t| t.is_contextual())
+    }
+
+    /// `true` when `child`, one of this block's [`blocks`](Self::blocks),
+    /// is a template body: text that only means something once a host's
+    /// [`Expander`](crate::Expander) binds its names, so evaluating it in
+    /// place fails on every loop variable and slot.
+    ///
+    /// Two shapes qualify:
+    ///
+    /// - every child of a [`@contextual`](Self::is_contextual) block (a
+    ///   repeater's body);
+    /// - the child bound by a `@declares_kind` declarer's `body = "…"`
+    ///   field (a component's template body).
+    ///
+    /// The block's own fields and labels are never templates — a
+    /// repeater's `each` evaluates in place. A walker that forces the
+    /// whole document skips a template child and everything under it;
+    /// [`Document::eval_diagnostics`](crate::Document::eval_diagnostics)
+    /// and `wcl parse` both apply this rule. For tables, the rule is
+    /// [`is_contextual`](Self::is_contextual) alone.
+    pub fn is_template_child(&self, child: &Block<'_>) -> bool {
+        if self.is_contextual() {
+            return true;
+        }
+        self.schema()
+            .and_then(|schema| template_body_kind(&schema))
+            .is_some_and(|kind| kind == child.kind())
     }
 
     /// The blocks this `@contextual` block generates, flattened across
@@ -1296,4 +1327,15 @@ impl<'a> RowView<'a> {
     pub fn span(&self) -> Span {
         self.ast.span
     }
+}
+
+/// The block kind of a `@declares_kind` declarer's template body — the
+/// kind bound by the field its `body = "…"` argument names — or `None` for
+/// any other schema. See [`Block::is_template_child`].
+fn template_body_kind(schema: &TypeDecl<'_>) -> Option<String> {
+    let body_field = schema.declares_kind()?.body_field?;
+    let field = schema.fields().find(|f| f.name() == body_field)?;
+    field
+        .child_block_kind()
+        .or_else(|| field.children_block_kind())
 }
