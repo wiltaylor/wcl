@@ -273,7 +273,9 @@ Three families, all carrying a span, all rendered by `miette` — with a snippet
 the source is known (below).
 
 **`ParseError`** — lexing and parsing, plus the checks that run when a document opens: import
-resolution, import cycles, `use` targets, duplicate aliases.
+resolution, import cycles, `use` targets, duplicate aliases, and the declaration checks (type
+names resolve, unique variants and symbols, connection kinds, the `extends` graph) over the root
+**and every eager import**, each rendered against the file that wrote it.
 
 ```console
 wcl::parse

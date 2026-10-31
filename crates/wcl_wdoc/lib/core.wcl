@@ -107,7 +107,7 @@ interface ContentBlock {
 // them with `Html::Blocks`; they never render or mutate them.
 type BlockHandle {
   kind:     utf8
-  block:    ContentBlock
+  block:    &ContentBlock
   children: list<BlockHandle>
   handle:   u64
 }

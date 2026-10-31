@@ -179,6 +179,31 @@ unregistered key fails with `no system import registered for <key>`.
   A diamond is not a cycle. Only a genuine back-edge is.
 - **An imported file keeps its own `namespace`.** Importing does not flatten anything into your
   namespace; it only makes the names reachable.
+- **Every eager import's declarations are checked at open, transitively.** The rules are the root's:
+  field, variant and connection-endpoint types resolve, an interface in a field needs `&`, variant
+  and symbol names are unique, a connection's kind is a `symbol_set`, `extends` parents resolve, and
+  function-signature types resolve. A failure is exit 1, rendered against the imported file's
+  absolute path, once per file however many paths import it:
+
+  ```console
+  $ wcl check main.wcl          # main.wcl: import "lib.wcl"   lib.wcl: type T { x: bogus }
+  wcl::parse
+
+    × unknown type 'bogus'
+     ╭─[/…/lib.wcl:1:13]
+   1 │ type T { x: bogus }
+     ·             ──┬──
+     ·               ╰── type not declared
+     ╰────
+  ```
+
+  Names in an imported file resolve as they do at runtime: its own `namespace` first, then the
+  **root's** `use` aliases and search path (which holds every imported namespace), against
+  declarations from **any** file in the document. One namespace split across sibling files that
+  never import each other (wdoc's stdlib) therefore resolves when something loads them together,
+  and fails `unknown type` when one part is imported alone.
+- **In-block (lazy) imports are not checked at open.** `type T { x: bogus }` in a file spliced by
+  `item { import "./frag.wcl" }` passes `wcl check`, `--eval` included.
 
 ## Splicing a subtree with an in-block import
 
@@ -224,6 +249,10 @@ $ wcl get recipe.wcl recipes.cake.count
   forward declaration.
 - `use` binds names for **expressions and type references**. It does not rename block kinds;
   a kind is chosen by the bare-name rule or by `::`.
+- A `use` in an **imported** file binds nothing, and the line itself is never checked (an unknown
+  target or duplicate alias there passes). A field typed through its alias fails the open with
+  `unknown type 'Alias'` against the library, unless the root binds the same name. A `use` in
+  the root reaches into every imported file. Libraries should write full names.
 - Two `@document` schemas can co-govern a namespace — they merge, see
   [`lang_schemas.md`](lang_schemas.md). Two same-kind `@block` declarations in one namespace
   cannot.

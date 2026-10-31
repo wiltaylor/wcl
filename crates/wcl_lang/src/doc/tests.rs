@@ -4683,6 +4683,202 @@ fn same_file_extends_errors_are_reported_once() {
     );
 }
 
+// ─── declaration checks inside imported files ─────────────────────
+
+/// `path` as written segments.
+fn segs(path: &str) -> Vec<String> {
+    path.split('.').map(str::to_string).collect()
+}
+
+#[test]
+fn unknown_field_type_in_an_imported_file_errors_against_that_file() {
+    let err = open_err_with_libs(
+        "import <lib.wcl>\n",
+        &[("lib.wcl", "type T { x: bogus }\n")],
+    );
+    let (msg, file, at) = sole_error(&err);
+    assert_eq!(msg, "unknown type 'bogus'");
+    // Rendered against the imported file's text and span, not the root's.
+    assert_eq!(file, "<wcl-system>/lib.wcl");
+    assert_eq!(at, "bogus");
+}
+
+#[test]
+fn unknown_type_in_an_imported_function_signature_errors_at_open() {
+    let err = open_err_with_libs(
+        "import <lib.wcl>\n",
+        &[("lib.wcl", "let f = fn(x: Missing) -> i32 1\n")],
+    );
+    let (msg, file, at) = sole_error(&err);
+    assert_eq!(msg, "unknown type 'Missing'");
+    assert_eq!(file, "<wcl-system>/lib.wcl");
+    assert_eq!(at, "Missing");
+}
+
+#[test]
+fn the_other_declaration_rules_reach_imported_files() {
+    let cases: &[(&str, &str)] = &[
+        (
+            "interface I { n: i32 }\ntype T { i: I }\n",
+            "interface 'I' must be used through a reference (`&I`)",
+        ),
+        (
+            "union U { A none A none }\n",
+            "duplicate variant 'A' in union 'U'",
+        ),
+        (
+            "symbol_set S { a a }\n",
+            "duplicate symbol 'a' in symbol_set 'S'",
+        ),
+        (
+            "type T {}\nconnection C: T -> T : Nope\n",
+            "unknown symbol_set 'Nope' in connection 'C'",
+        ),
+        (
+            "type T extends Nowhere {}\n",
+            "unknown extends target 'Nowhere' in 'T'",
+        ),
+    ];
+    for (lib, want) in cases {
+        let err = open_err_with_libs("import <lib.wcl>\n", &[("lib.wcl", lib)]);
+        let (msg, file, _) = sole_error(&err);
+        assert_eq!(&msg, want, "for {lib:?}");
+        assert_eq!(file, "<wcl-system>/lib.wcl", "for {lib:?}");
+    }
+}
+
+#[test]
+fn a_connection_kind_may_name_a_symbol_set_from_another_file() {
+    let doc = open_with_libs(
+        "import <kinds.wcl>\nimport <graph.wcl>\n",
+        &[
+            ("kinds.wcl", "symbol_set Link { wire }\n"),
+            (
+                "graph.wcl",
+                "type Node {}\nconnection Edge: Node -> Node : Link\n",
+            ),
+        ],
+    );
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
+#[test]
+fn a_transitive_import_is_checked() {
+    // root -> a.wcl -> b.wcl; the mistake is two hops away.
+    let err = open_err_with_libs(
+        "import <a.wcl>\n",
+        &[
+            ("a.wcl", "import <b.wcl>\ntype A { b: B }\n"),
+            ("b.wcl", "type B { x: Nope }\n"),
+        ],
+    );
+    let (msg, file, at) = sole_error(&err);
+    assert_eq!(msg, "unknown type 'Nope'");
+    assert_eq!(file, "<wcl-system>/b.wcl");
+    assert_eq!(at, "Nope");
+}
+
+#[test]
+fn a_file_imported_twice_is_reported_once() {
+    // A diamond loads `shared.wcl` once, so its mistake is reported once.
+    let err = open_err_with_libs(
+        "import <a.wcl>\nimport <b.wcl>\n",
+        &[
+            ("a.wcl", "import <shared.wcl>\n"),
+            ("b.wcl", "import <shared.wcl>\n"),
+            ("shared.wcl", "type S { x: Nope }\n"),
+        ],
+    );
+    let (_, file, _) = sole_error(&err);
+    assert_eq!(file, "<wcl-system>/shared.wcl");
+}
+
+#[test]
+fn an_imported_file_resolves_bare_names_in_its_own_namespace() {
+    let doc = open_with_libs(
+        "import <lib.wcl>\n",
+        &[(
+            "lib.wcl",
+            "namespace shapes\ntype Point { x: i32 }\ntype Line { a: Point  f: fn(Point) -> Point? }\n",
+        )],
+    );
+    // The runtime resolves the same name the same way.
+    assert_eq!(
+        doc.resolve_path_in(&segs("Point"), &segs("shapes")),
+        Some(segs("shapes.Point"))
+    );
+}
+
+#[test]
+fn a_root_use_alias_reaches_into_an_imported_file() {
+    let doc = open_with_libs(
+        "import <lib.wcl>\nimport <geo.wcl>\nuse geo.Point as P\n",
+        &[
+            ("geo.wcl", "namespace geo\ntype Point { x: i32 }\n"),
+            ("lib.wcl", "namespace shapes\ntype Line { a: P }\n"),
+        ],
+    );
+    assert_eq!(
+        doc.resolve_path_in(&segs("P"), &segs("shapes")),
+        Some(segs("geo.Point"))
+    );
+}
+
+#[test]
+fn an_imported_files_own_use_binds_nothing() {
+    let geo = ("geo.wcl", "namespace geo\ntype Point { x: i32 }\n");
+    // At runtime the alias resolves nowhere, from the file that wrote it...
+    let doc = open_with_libs(
+        "import <lib.wcl>\n",
+        &[
+            geo,
+            (
+                "lib.wcl",
+                "namespace shapes\nimport <geo.wcl>\nuse geo.Point as P\n",
+            ),
+        ],
+    );
+    assert_eq!(doc.resolve_path_in(&segs("P"), &segs("shapes")), None);
+    // ...so a declaration naming it fails the open, in that file.
+    let err = open_err_with_libs(
+        "import <lib.wcl>\n",
+        &[
+            geo,
+            (
+                "lib.wcl",
+                "namespace shapes\nimport <geo.wcl>\nuse geo.Point as P\ntype Line { a: P }\n",
+            ),
+        ],
+    );
+    let (msg, file, at) = sole_error(&err);
+    assert_eq!(msg, "unknown type 'P'");
+    assert_eq!(file, "<wcl-system>/lib.wcl");
+    assert_eq!(at, "P");
+}
+
+#[test]
+fn a_namespace_split_across_files_resolves_when_loaded_together() {
+    // The wdoc stdlib's shape: `el.wcl` names `Html` from a sibling part of
+    // the same namespace without importing it; a prelude loads both.
+    let libs = [
+        ("prelude.wcl", "import <html.wcl>\nimport <el.wcl>\n"),
+        (
+            "html.wcl",
+            "namespace ui\nunion Html { Text { s: utf8 } }\n",
+        ),
+        (
+            "el.wcl",
+            "namespace ui\ntype El { body: list<Html> }\nlet el = fn(s: utf8) -> list<Html> []\n",
+        ),
+    ];
+    open_with_libs("import <prelude.wcl>\n", &libs);
+    // Loaded alone, the part names a type nothing declares.
+    let err = open_err_with_libs("import <el.wcl>\n", &libs);
+    let (msg, file, _) = sole_error(&err);
+    assert_eq!(msg, "unknown type 'Html'");
+    assert_eq!(file, "<wcl-system>/el.wcl");
+}
+
 fn open_interfaces_doc() -> Document {
     Document::open(
         r#"

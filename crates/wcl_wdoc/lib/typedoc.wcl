@@ -39,7 +39,8 @@ type FieldInfo {
   is_function: bool
   optional:    bool
   has_default: bool
-  default:     any?
+  // The builtin's records also carry `default`, the default value itself.
+  // It can be any value, which no field type names, so it is left out.
   is_block:    bool
   repeated:    bool
   accepts:     utf8

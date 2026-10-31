@@ -13,9 +13,9 @@
 //! like one in the same file, and a chain may cross files at every level.
 //! Parents resolve the way [`inherit`](super::inherit)'s `lookup_parent`
 //! resolves them at runtime: in the declaring file's namespace first, then
-//! the document's aliases and wildcards. Only the root file's unknown
-//! parents are reported; an imported file's unresolvable parent is
-//! skipped, as the runtime walk skips it.
+//! the document's aliases and wildcards. A parent that resolves nowhere
+//! is reported per file, by [`check_extends_targets`], against the file
+//! that writes it; the graph checks run once, over the whole document.
 //!
 //! This is the same relation [`inherit`](super::inherit) walks at
 //! runtime to build a declaration's effective field set — checked here so
@@ -161,13 +161,67 @@ impl<'a> Graph<'a> {
     }
 }
 
+/// Check that every parent one source's `type` and `interface`
+/// declarations name resolves, and that none names the declaration
+/// itself. Per file: [`check_declarations`](super::declarations) runs it
+/// once for the root and once for each eagerly-imported file, with that
+/// file's [`CheckContext`], so the diagnostic renders against the file
+/// that writes the path.
+pub(super) fn check_extends_targets(
+    items: &[ast::Item],
+    cx: &CheckContext<'_>,
+) -> Result<(), ParseError> {
+    let file_ns = cx.file_ns;
+    for item in items {
+        let (name, extends, decl_span) = match item {
+            ast::Item::TypeDecl(t) => (&t.name, &t.extends, t.span),
+            ast::Item::InterfaceDecl(i) => (&i.name, &i.extends, i.span),
+            _ => continue,
+        };
+        let self_fqn: Vec<String> = file_ns.iter().chain(name.iter()).cloned().collect();
+        for parent_path in extends {
+            let Some(resolved) = resolve_path(
+                parent_path,
+                file_ns,
+                cx.item_aliases,
+                cx.ns_aliases,
+                cx.wildcards,
+                cx.declared,
+            ) else {
+                return Err(open_error(
+                    cx.source,
+                    cx.file,
+                    format!(
+                        "unknown extends target '{}' in '{}'",
+                        parent_path.join("."),
+                        self_fqn.join("."),
+                    ),
+                    decl_span,
+                    "no such type or interface",
+                ));
+            };
+            if resolved == self_fqn {
+                return Err(open_error(
+                    cx.source,
+                    cx.file,
+                    format!("'{}' cannot extend itself", self_fqn.join(".")),
+                    decl_span,
+                    "self-extension",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Walks every `type` and `interface` declaration in the document — the
 /// root file's, every eager import's and the synthetic ones — and resolves
-/// its `extends` clauses to canonical FQNs. Surfaces unknown parents (in
-/// the root file), self-extension, cycles in the extends graph, field-type
-/// conflicts (across parents, or between a parent and a child
-/// redeclaration) and `@inline` slot clashes, wherever the declarations
-/// involved were written.
+/// its `extends` clauses to canonical FQNs. Surfaces cycles in the extends
+/// graph, field-type conflicts (across parents, or between a parent and a
+/// child redeclaration) and `@inline` slot clashes, wherever the
+/// declarations involved were written. Runs once per document, with the
+/// root file's [`CheckContext`]; unknown parents and self-extension are
+/// [`check_extends_targets`]'s, per file.
 pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Result<(), ParseError> {
     let file_ns = cx.file_ns;
     let (source, file) = (cx.source, cx.file);
@@ -181,42 +235,6 @@ pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Resu
             cx.declared,
         )
     };
-
-    // The root file's parents must all resolve, and none may be the
-    // declaration itself. Reported against the declaration that writes
-    // the path.
-    for item in &ast.items {
-        let (name, extends, decl_span) = match item {
-            ast::Item::TypeDecl(t) => (&t.name, &t.extends, t.span),
-            ast::Item::InterfaceDecl(i) => (&i.name, &i.extends, i.span),
-            _ => continue,
-        };
-        let self_fqn: Vec<String> = file_ns.iter().chain(name.iter()).cloned().collect();
-        for parent_path in extends {
-            let Some(resolved) = resolve(parent_path, file_ns) else {
-                return Err(open_error(
-                    source,
-                    file,
-                    format!(
-                        "unknown extends target '{}' in '{}'",
-                        parent_path.join("."),
-                        self_fqn.join("."),
-                    ),
-                    decl_span,
-                    "no such type or interface",
-                ));
-            };
-            if resolved == self_fqn {
-                return Err(open_error(
-                    source,
-                    file,
-                    format!("'{}' cannot extend itself", self_fqn.join(".")),
-                    decl_span,
-                    "self-extension",
-                ));
-            }
-        }
-    }
 
     // The document-wide graph: root, then imports, then synthetic types.
     let mut graph = Graph {
@@ -274,8 +292,8 @@ pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Resu
         if let Some(at) = visit(start, &graph.nodes, &mut color, &mut order) {
             let node = &graph.nodes[at];
             let name = node.fqn.join(".");
-            // The root file's self-extension was caught above; this is an
-            // imported file's.
+            // Every file's self-extension was caught per file by
+            // `check_extends_targets`; this is a guard, not a path taken.
             let (message, label) = if node.parents.contains(&at) {
                 (format!("'{name}' cannot extend itself"), "self-extension")
             } else {

@@ -1,7 +1,7 @@
 //! Open-time checking of the declarations a source writes.
 //!
 //! Runs once, from [`validate_document`](crate::doc::validate), after
-//! that pass has resolved the file's namespace and `use` aliases and
+//! that pass has resolved the root file's namespace and `use` aliases and
 //! before any evaluation happens. Four rules live here, and all four
 //! are about a declaration being well-formed on its own terms:
 //!
@@ -13,8 +13,20 @@
 //!   symbol once;
 //! - a `connection`'s endpoints resolve and its kind names a `symbol_set`.
 //!
+//! The rules cover every source the document opens with: the root file
+//! and each eagerly-imported file, transitively. Each file is checked in
+//! the context its names resolve in at runtime
+//! ([`Document::resolve_path_in`](crate::doc::Document::resolve_path_in)):
+//! its own namespace first, then the *root's* `use` aliases and search
+//! path, against the whole document's declarations. An imported file's
+//! own `use` lines bind nothing at runtime, so they bind nothing here.
+//! A failure renders against the file that wrote the declaration.
+//!
+//! In-block imports load lazily, during evaluation, and are not checked
+//! here.
+//!
 //! The `extends` graph is checked from here too, by
-//! [`extends`](super::extends).
+//! [`extends`](super::extends): its parents per file, the graph once.
 //!
 //! Failures are [`ParseError`]s rather than the [`EvalError`](crate::EvalError)s
 //! the rest of this module deals in: a document whose declarations don't
@@ -24,13 +36,12 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ast::{self, Span, TypeRef};
 use crate::diagnostics::ParseError;
-use crate::symbols::{SymbolIndex, SymbolKind};
 
 use crate::doc::cells::LoadedImport;
 use crate::doc::expr_nodes::{ExprNode, visit_expr_nodes};
 use crate::doc::validate::{open_error, resolve_path};
 
-use super::extends::validate_extends;
+use super::extends::{check_extends_targets, validate_extends};
 
 /// Snapshot of the bookkeeping `validate_document` builds up before it
 /// reaches its TypeRef / extends / connection passes. Threaded through
@@ -41,6 +52,9 @@ pub(in crate::doc) struct CheckContext<'a> {
     pub(in crate::doc) declared: &'a HashSet<Vec<String>>,
     /// Every interface name the document declares.
     pub(in crate::doc) interfaces: &'a HashSet<Vec<String>>,
+    /// Every `symbol_set` name the document declares, synthetic ones
+    /// included — what a connection's kind must name.
+    pub(in crate::doc) symbol_sets: &'a HashSet<Vec<String>>,
     /// Namespace of the source being checked.
     pub(in crate::doc) file_ns: &'a [String],
     /// Item aliases in scope.
@@ -162,18 +176,46 @@ fn check_signature_type(ty: &TypeRef, span: Span, cx: &CheckContext<'_>) -> Resu
     }
 }
 
-/// Check every declaration in `ast`: type references resolve, variant
-/// and symbol names are unique, connection endpoints and kind sets name
-/// the right things, and the `extends` graph is sound.
+/// Check every declaration the document opens with: the root file's
+/// `ast` under `cx`, then each eagerly-imported file under its own
+/// context, then the `extends` graph once over all of them.
 pub(in crate::doc) fn check_declarations(
     ast: &ast::Source,
-    symbols: &SymbolIndex,
     cx: &CheckContext<'_>,
 ) -> Result<(), ParseError> {
+    check_source(&ast.items, cx)?;
+    check_imports(cx.imports, cx)?;
+    validate_extends(ast, cx)
+}
+
+/// Run [`check_source`] over each import in `imports`, depth first in
+/// load order, each under `root`'s context with the import's own
+/// namespace and text. A file loads once per document, so each is
+/// checked once.
+fn check_imports(imports: &[LoadedImport], root: &CheckContext<'_>) -> Result<(), ParseError> {
+    for imp in imports {
+        let file = imp.path.display().to_string();
+        let cx = CheckContext {
+            file_ns: &imp.file_ns,
+            source: &imp.source,
+            file: &file,
+            ..*root
+        };
+        check_source(&imp.items, &cx)?;
+        check_imports(&imp.eager_imports, root)?;
+    }
+    Ok(())
+}
+
+/// Check one source's declarations: type references resolve, variant
+/// and symbol names are unique, connection endpoints and kind sets name
+/// the right things, function signatures name real types, and every
+/// `extends` parent resolves.
+fn check_source(items: &[ast::Item], cx: &CheckContext<'_>) -> Result<(), ParseError> {
     let (source, file) = (cx.source, cx.file);
     let (file_ns, declared) = (cx.file_ns, cx.declared);
     let (item_aliases, ns_aliases, wildcards) = (cx.item_aliases, cx.ns_aliases, cx.wildcards);
-    for item in &ast.items {
+    for item in items {
         match item {
             ast::Item::TypeDecl(t) => {
                 for f in &t.fields {
@@ -275,11 +317,7 @@ pub(in crate::doc) fn check_declarations(
                     }
                 };
                 let kind_set_fqn_str = kind_set_fqn.join(".");
-                let is_symbol_set = symbols
-                    .lookup(&kind_set_fqn_str)
-                    .map(|r| matches!(r.kind, SymbolKind::SymbolSetDecl))
-                    .unwrap_or(false);
-                if !is_symbol_set {
+                if !cx.symbol_sets.contains(&kind_set_fqn) {
                     return Err(open_error(
                         source,
                         file,
@@ -301,16 +339,14 @@ pub(in crate::doc) fn check_declarations(
     // appears. An annotation the evaluator never checks against a value
     // must still name a type that exists.
     let mut signatures = Ok(());
-    visit_expr_nodes(&ast.items, &mut |node| {
+    visit_expr_nodes(items, &mut |node| {
         if let (Ok(()), ExprNode::Function(function)) = (&signatures, node) {
             signatures = check_signature(function, cx);
         }
     });
     signatures?;
 
-    // 6. `extends` validation: unknown parents, cycles, and
-    // conflicting field types across the effective field set.
-    validate_extends(ast, cx)?;
-
-    Ok(())
+    // 6. Every `extends` parent resolves. Cycles and field conflicts are
+    // the whole graph's, checked once by `check_declarations`.
+    check_extends_targets(items, cx)
 }

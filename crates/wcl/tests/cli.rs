@@ -145,6 +145,25 @@ fn check_refuses_a_redeclaration_that_conflicts_with_an_imported_parent() {
 }
 
 #[test]
+fn check_refuses_an_unknown_type_in_an_imported_file() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = tmp.path().join("main.wcl");
+    std::fs::write(tmp.path().join("lib.wcl"), "type T { x: bogus }\n").expect("write lib fixture");
+    std::fs::write(&main, "import \"lib.wcl\"\n").expect("write main fixture");
+
+    // Exit 1, as for the same mistake in the root: the document never
+    // opens. The caret is in the file that wrote the name.
+    wcl()
+        .arg("check")
+        .arg(&main)
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("unknown type 'bogus'"))
+        .stderr(predicate::str::contains("lib.wcl:1:13]"))
+        .stderr(predicate::str::contains("main.wcl").not());
+}
+
+#[test]
 fn check_renders_an_imported_global_validation_against_its_source() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let main = tmp.path().join("main.wcl");

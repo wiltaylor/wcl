@@ -125,7 +125,7 @@ type TemplateCtx extends SlotOwner {
 type TemplateSlot {
   name:   symbol
   blocks: list<BlockHandle>
-  default: fn(SlotOwner) -> list<Html>?
+  default: fn(&SlotOwner) -> list<Html>?
 }
 
 // Place authored block handles as one structural run. Evaluation merely
@@ -325,9 +325,9 @@ type SiteConfig {
   @child("deck") deck: Deck?
   // A collection template's non-repeated slots are filled here. Named fills
   // are interpreted against the selected template at build time; ordinary
-  // WdocBlocks implicitly fill a non-repeated reserved `content` slot.
+  // ContentBlocks implicitly fill a non-repeated reserved `content` slot.
   @doc("Site-level content for non-repeated slots on a collection template.")
-  @children(WdocBlock) children: list<WdocBlock>
+  @children(ContentBlock) children: list<ContentBlock>
 }
 
 // A named template. `render` lays out a page body from the context.

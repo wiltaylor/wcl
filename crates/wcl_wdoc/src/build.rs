@@ -2171,7 +2171,7 @@ fn validate_collection_site_slots(
                     .extend(child.blocks());
             } else if child
                 .schema()
-                .is_some_and(|schema| schema.is_descendant_of("wdoc.WdocBlock"))
+                .is_some_and(|schema| schema.is_descendant_of("wdoc.ContentBlock"))
             {
                 loose_content.push(child);
             }
@@ -2708,7 +2708,7 @@ fn collection_site_fills<'a>(
         } else if names.contains("content")
             && child
                 .schema()
-                .is_some_and(|schema| schema.is_descendant_of("wdoc.WdocBlock"))
+                .is_some_and(|schema| schema.is_descendant_of("wdoc.ContentBlock"))
         {
             content.push(child);
         }

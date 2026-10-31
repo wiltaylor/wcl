@@ -296,6 +296,59 @@ CONSOLE
 
   p "There is one convenience on top of that. Importing a namespaced file adds its namespace to this file's bare-name search path, so `Service` resolves without a `use` line once `lib/net.wcl` is in. `use` is what you reach for when that is not enough. See [use declarations](#use-declarations)."
 
+  h3 "Imported files are checked too"
+
+  p "Opening a document checks the declarations of every file it imports at the top level, transitively, the same way it checks the file you named. A field type that names nothing, a union that repeats a variant, a connection whose kind is not a symbol set, a function signature that names a missing type: each one stops the open, whichever file it is in. Save three more files beside the project, with a typo two imports down:"
+
+  code wcl {
+    filename = "lib/geo.wcl"
+    source = <<'WCL'
+# lib/geo.wcl
+namespace acme.geo
+
+type Point { x: f64  y: f46 }
+WCL
+  }
+
+  code wcl {
+    filename = "lib/shapes.wcl"
+    source = <<'WCL'
+# lib/shapes.wcl
+namespace acme.shapes
+
+import "./geo.wcl"
+
+type Line { from: acme.geo.Point  to: acme.geo.Point }
+WCL
+  }
+
+  code wcl {
+    filename = "atlas.wcl"
+    source = <<'WCL'
+# atlas.wcl
+import "./lib/shapes.wcl"
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check atlas.wcl
+wcl::parse
+
+  × unknown type 'f46'
+   ╭─[…/geo.wcl:4:25]
+ 3 │
+ 4 │ type Point { x: f64  y: f46 }
+   ·                         ─┬─
+   ·                          ╰── type not declared
+   ╰────
+CONSOLE
+  }
+
+  p "You checked `atlas.wcl`, and the caret is in `lib/geo.wcl` at the name it wrote. The header shows the absolute path the loader resolved, shortened here to `…`. The exit code is 1, the same as for that mistake in the root. Correct it to `f64` and `atlas.wcl` checks `OK`. A file that a diamond reaches twice is loaded once, so its mistake is reported once."
+
+  p "Each file is checked with the names it would see at runtime. A bare name is tried in the imported file's own namespace first. Then come the root document's `use` lines and search path, and the name may match a declaration from any file in the document. The last part lets a library split one namespace across files that never import each other, the way wdoc's standard library does. The parts resolve when something loads them together, and fail when imported alone. [How a name resolves](#how-a-name-resolves) has the full order."
+
   h3 "Loaded once"
 
   p "The document loads each file at most once, keyed by its resolved path. A diamond, two libraries that both import a third, loads the shared file once and splices it in once. So does a repeated `import <wdoc.wcl>` in several page files. Neither is an error, and neither duplicates a declaration."
@@ -381,7 +434,7 @@ service web {
 CONSOLE
   }
 
-  p "A top-level import is eager: the document loads it when it opens. A block-scoped import is **lazy**. The document loads it the first time evaluation reaches into that block. [How a document evaluates](lang_evaluation) covers what that means for a file that turns out never to be needed."
+  p "A top-level import is eager: the document loads it when it opens. A block-scoped import is **lazy**. The document loads it the first time evaluation reaches into that block. [How a document evaluates](lang_evaluation) covers what that means for a file that turns out never to be needed. A lazy import is also outside the open-time check above. A misspelled type in `tags.wcl` would not stop `wcl check tagged.wcl`."
 
   h2 "Order does not matter"
 
@@ -520,7 +573,7 @@ CONSOLE
 
   callout "A library should not write use" {
     kind = :warning
-    body  = "A `use` line inside an imported file is inert today, and it fails quietly rather than loudly. The alias resolves to nothing, so a field declared through it is never checked at all. A library should write the names it means in full, `acme.base.Tier` rather than an alias, or rely on step 1 and its own namespace. Keep `use` for the document you open, where it is checked and where it works."
+    body  = "A `use` line inside an imported file is inert today. Nothing checks the line itself, and the alias it declares resolves to nothing. The first field declared through the alias therefore stops the open with `unknown type`, reported against the library, unless the root happens to bind the same name. A library should write the names it means in full, `acme.base.Tier` rather than an alias, or rely on step 1 and its own namespace. Keep `use` for the document you open, where it is checked and where it works."
   }
 
   h3 "What a use refuses"

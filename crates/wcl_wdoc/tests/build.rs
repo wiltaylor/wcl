@@ -10715,6 +10715,33 @@ page member { p "Body" }
 }
 
 #[test]
+fn collection_site_loose_content_needs_a_site_content_slot() {
+    // Loose content blocks in the `site` are `ContentBlock`s; a collection
+    // whose `content` slot is repeated has nowhere at site level to put them.
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let src = tmp.path().join("collection-loose.wcl");
+    write_fixture(
+        &src,
+        r#"
+template digest {
+  slot content: content*
+  render = fn(c: TemplateCtx) -> list<Html> []
+}
+site { default_template = :digest  p "stray" }
+page member { p "Body" }
+"#,
+    );
+    let out = TempDir::new().expect("mkdir out");
+    match build(&src, out.path(), None) {
+        Err(BuildError::BadPage(message)) => {
+            assert!(message.contains("site has loose content"), "{message}");
+        }
+        Err(_) => panic!("expected BadPage for loose site content"),
+        Ok(_) => panic!("expected loose site content to be refused"),
+    }
+}
+
+#[test]
 fn collection_template_forces_only_placed_members() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let src = tmp.path().join("lazy-collection.wcl");

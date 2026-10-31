@@ -93,7 +93,8 @@ give the two forms different arities.
 ## What a signature may name
 
 Every type in a signature must resolve, as a field type must. A name nothing declares fails at
-open, wherever the literal sits (an item, a `let`, a lambda inside a call):
+open, wherever the literal sits (an item, a `let`, a lambda inside a call), in the root or any
+eagerly-imported file:
 
 ```text
 fn f(x: bogus) -> i64 1      // × unknown type 'bogus'   (exit 1)

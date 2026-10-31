@@ -531,7 +531,10 @@ mod tests {
 
     #[test]
     fn a_partial_wdoc_import_gets_the_same_actionable_error() {
-        assert_missing_stdlib("import <wdoc/core.wcl>\n");
+        // A fragment that opens on its own. Most stdlib parts name types
+        // from their siblings (`core.wcl` names `InlinePattern`), so
+        // imported alone they fail at open, before this check runs.
+        assert_missing_stdlib("import <wdoc/inline.wcl>\n");
     }
 
     #[test]

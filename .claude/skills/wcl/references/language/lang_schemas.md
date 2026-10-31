@@ -395,9 +395,12 @@ The messages you will meet most often:
   `id: identifier?`, so `id: utf8?` on a child is refused at open (`'wdoc.ContentBlock' in
   <wcl-system>/wdoc/core.wcl declares it as identifier`). Redeclare it as `identifier`.
 - A conflict *inside* an imported file fails every document that imports it, even one that never
-  names the types involved. The caret renders against the imported file's absolute path.
-- Declarations inside an in-block (lazy) `import` are not in the open-time `extends` checks; only
-  top-level imports are.
+  names the types involved. The caret renders against the imported file's absolute path. The
+  same holds for every other open-time declaration rule: an unknown field or signature type, an
+  interface without `&`, a duplicate variant, an unknown `extends` parent. See
+  [`lang_namespaces.md`](lang_namespaces.md) for how an imported file's names resolve.
+- Declarations inside an in-block (lazy) `import` are not checked at open at all, neither the
+  `extends` graph nor their type names; only top-level imports are.
 - Redeclaring an inherited field to tweak one decorator drops the others. Copy every decorator
   you mean to keep.
 - A gather field named like a library's silently loses blocks. It is a warning, and warnings do

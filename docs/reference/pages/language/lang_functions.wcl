@@ -559,7 +559,7 @@ CONSOLE
 
   p "It does not check argument **types**. Pass a `utf8` where the signature says `i64` and the call evaluates cleanly, with the wrong value flowing on. Nor does it check the return type: `fn f(x: i64) -> utf8 x + 1i64` returns the number 2, and the mismatch surfaces only later, when a field declared `utf8` receives it. A signature is a contract you are keeping, not one the evaluator enforces for you."
 
-  p "What WCL does check is that the annotation names something. Every type in a signature has to resolve, exactly as a field's type does, and a name nothing declares stops the file from opening. The check reaches every function literal, including a lambda passed straight into `map`. A signature is allowed a little more than a field. It may name an interface without the `&`, and it may use the four value classes from the [builtin signature notation](lang_builtins#how-to-read-an-entry): `any`, `number`, `integer` and `record`."
+  p "What WCL does check is that the annotation names something. Every type in a signature has to resolve, exactly as a field's type does, and a name nothing declares stops the file from opening. The check reaches every function literal, including a lambda passed straight into `map`, and every file the document imports at the top level. A signature is allowed a little more than a field. It may name an interface without the `&`, and it may use the four value classes from the [builtin signature notation](lang_builtins#how-to-read-an-entry): `any`, `number`, `integer` and `record`."
 
   code wcl {
     filename = "sig.wcl"

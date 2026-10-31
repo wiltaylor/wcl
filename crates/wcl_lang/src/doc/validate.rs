@@ -12,7 +12,9 @@
 //! What the declarations themselves must satisfy — type references that
 //! resolve, unique variant and symbol names, a sound `extends` graph — is
 //! the type system's business, and is checked from here by
-//! [`types::declarations`](super::types) once the alias tables are built.
+//! [`types::declarations`](super::types) once the alias tables are built:
+//! over the root file and every eagerly-imported file, each in its own
+//! namespace under the root's tables.
 
 use std::collections::{HashMap, HashSet};
 
@@ -164,9 +166,13 @@ pub(crate) fn validate_document(
             prefixes.insert(fqn[..n].to_vec());
         }
     }
+    // `symbol_set` FQNs, so a connection's kind can be checked against
+    // a set declared in any file.
+    let mut symbol_sets: HashSet<Vec<String>> = HashSet::new();
     for set in synthetic_symbol_sets {
         let fqn = set.name.clone();
         declared.insert(fqn.clone());
+        symbol_sets.insert(fqn.clone());
         for n in 1..fqn.len() {
             prefixes.insert(fqn[..n].to_vec());
         }
@@ -199,6 +205,9 @@ pub(crate) fn validate_document(
         if matches!(rec.kind, SymbolKind::InterfaceDecl) {
             interfaces.insert(fqn.clone());
         }
+        if matches!(rec.kind, SymbolKind::SymbolSetDecl) {
+            symbol_sets.insert(fqn.clone());
+        }
         for n in 1..fqn.len() {
             prefixes.insert(fqn[..n].to_vec());
         }
@@ -226,6 +235,9 @@ pub(crate) fn validate_document(
             declared.insert(fqn.clone());
             if matches!(rec.kind, SymbolKind::InterfaceDecl) {
                 interfaces.insert(fqn.clone());
+            }
+            if matches!(rec.kind, SymbolKind::SymbolSetDecl) {
+                symbol_sets.insert(fqn.clone());
             }
             for n in 1..fqn.len() {
                 prefixes.insert(fqn[..n].to_vec());
@@ -354,9 +366,14 @@ pub(crate) fn validate_document(
     // 4. Declaration checking: type references, variant / symbol
     // uniqueness, connections and the `extends` graph — all of which
     // are the type system's rules, so they live in `types::declarations`.
+    // Each eagerly-imported file is checked too, under these same tables
+    // with its own namespace: an imported file's names resolve that way
+    // at runtime (`Document::resolve_path_in`), and its own `use` lines
+    // bind nothing.
     let cx = CheckContext {
         declared: &declared,
         interfaces: &interfaces,
+        symbol_sets: &symbol_sets,
         file_ns: &file_ns,
         item_aliases: &item_aliases,
         ns_aliases: &ns_aliases,
@@ -366,7 +383,7 @@ pub(crate) fn validate_document(
         imports: eager_imports,
         synthetic: synthetic_types,
     };
-    check_declarations(ast, symbols, &cx)?;
+    check_declarations(ast, &cx)?;
 
     Ok(Resolved {
         file_ns,
