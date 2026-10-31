@@ -650,7 +650,7 @@ CONSOLE
 
   list {
     li "**Conversion runs one way.** A string converts to an `identifier`, but an identifier does not convert to `utf8`. A block's `name: identifier` returned from a function declared `-> utf8` fails. Interpolate it, `$\"${b.name}\"`, to get a string."
-    li "**A record matches by its type's name.** A block passed as an argument is a record tagged with its schema, and a parameter naming a different type refuses it, even a type the block's schema `extends`. A record literal carries no tag, so it passes any plain named type."
+    li "**A record matches by its type's lineage.** A block passed as an argument is a record tagged with its schema. A parameter accepts it when it names that schema or a type the schema `extends`, at any depth, so `fn feats(c: CpuBase)` takes a `Cpu` block when `type Cpu extends CpuBase`. The body receives the `Cpu` unchanged and may read fields `CpuBase` lacks. The reverse fails: a parameter typed `Cpu` refuses a `CpuBase` record with `got CpuBase, which does not extend Cpu`. A record literal carries no tag, so it passes any plain named type. [Schemas](lang_schemas#a-derived-block-fills-its-parent-s-slot) works the rule through on fields."
     li "**A union checks variants, not everything else.** A parameter typed with a union refuses a variant of another union, and a record that matches none of its variants. Like a field, it lets through a value that is neither a variant nor a record."
   }
 
@@ -909,7 +909,7 @@ CONSOLE
     li "**No overloading.** One name, one function. Two `fn` items sharing a name is `duplicate declaration`."
     li "**No default or named arguments, and no omitted ones.** Every call fills every parameter, in order. A `T?` parameter accepts `none` but still needs an argument. See [above](#no-defaults-and-no-named-arguments)."
     li "**No generics.** There is no `fn name<T>(…)` form. `fn f<T>(x: i64) -> i64 x` fails with `expected '(' after fn name`. A signature names concrete types. The higher-order builtins take any type because Rust implements them, not because you could write one."
-    li "**No optional types inside a signature's types, and no subtyping.** `?` marks a whole parameter or return type, never `list<utf8?>` or a `fn(…)` type's parameters. And a parameter typed with a parent type refuses a block whose schema `extends` it. See [What a call checks](#what-a-call-checks)."
+    li "**No optional types inside a signature's types.** `?` marks a whole parameter or return type, never `list<utf8?>` or a `fn(…)` type's parameters. See [What a call checks](#what-a-call-checks)."
     li "**Builtins are not values.** Wrap one in a literal to pass it."
     li "**No serialization.** A function value is `null` in JSON, and `fn(x: i64) -> i64 { ... }` in `wcl get`."
     li "**A depth ceiling.** 200 levels of nesting, with calls, fields and `let`s counted together, then `call depth limit exceeded (max 200)`."

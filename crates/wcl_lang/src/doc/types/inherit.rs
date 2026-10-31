@@ -251,3 +251,88 @@ pub(crate) fn is_descendant_of_walk(
     }
     false
 }
+
+/// The fully-qualified names a record tagged `tag` answers to: the
+/// declarations the tag names, then every `type` they descend from
+/// through `extends`, transitively and across imported files.
+///
+/// A tag is the bare name of the schema a block was read through
+/// (`Cpu2`), so it resolves as a name written at the document root
+/// does; when that misses, every declaration whose fully-qualified name
+/// ends in the tag stands for it. Interfaces in the chain are walked
+/// through but not listed: a slot typed with an interface checks a
+/// value's shape, not its lineage.
+fn record_tag_lineage(doc: &Document, tag: &[String]) -> Vec<Vec<String>> {
+    let own: Vec<TypeDecl<'_>> = match doc
+        .resolve_path(tag)
+        .and_then(|fqn| doc.type_decl(&fqn.join(".")))
+    {
+        Some(decl) => vec![decl],
+        None => doc
+            .type_decls()
+            .filter(|decl| super::path_matches_suffix(tag, &decl.fqn_segments()))
+            .collect(),
+    };
+    let mut out: Vec<Vec<String>> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for decl in own {
+        if seen.insert(decl.full_name()) {
+            out.push(decl.fqn_segments());
+            collect_type_ancestors(doc, &decl.ast.extends, decl.file_ns, &mut out, &mut seen);
+        }
+    }
+    out
+}
+
+/// Append the fully-qualified name of every `type` reachable through
+/// `extends_paths` (written in `file_ns`) to `out`, each once.
+fn collect_type_ancestors(
+    doc: &Document,
+    extends_paths: &[Vec<String>],
+    file_ns: &[String],
+    out: &mut Vec<Vec<String>>,
+    seen: &mut HashSet<String>,
+) {
+    for parent_path in extends_paths {
+        let Some(decl) = lookup_parent(doc, parent_path, file_ns) else {
+            continue;
+        };
+        if !seen.insert(decl.full_name()) {
+            continue;
+        }
+        if let ParentDecl::Type(t) = &decl {
+            out.push(t.fqn_segments());
+        }
+        collect_type_ancestors(doc, decl.extends(), decl.file_ns(), out, seen);
+    }
+}
+
+impl Document {
+    /// Whether a record tagged `tag` fills a slot typed with the named
+    /// type written `path`: the tag names that type, or a type that
+    /// descends from it through `extends`. Names compare from the right,
+    /// as a tag always has (`Heading` fills `wdoc.Heading`).
+    ///
+    /// The lineage behind the answer is built once per tag and kept on
+    /// the document: the slot rule asks per field and per call argument.
+    pub(crate) fn record_tag_fills(&self, tag: &[String], path: &[String]) -> bool {
+        if super::path_matches_suffix(path, tag) {
+            return true;
+        }
+        if let Ok(memo) = self.record_lineage_memo.read()
+            && let Some(lineage) = memo.get(tag)
+        {
+            return lineage
+                .iter()
+                .any(|fqn| super::path_matches_suffix(path, fqn));
+        }
+        let lineage: crate::doc::RecordLineage = record_tag_lineage(self, tag).into();
+        let fills = lineage
+            .iter()
+            .any(|fqn| super::path_matches_suffix(path, fqn));
+        if let Ok(mut memo) = self.record_lineage_memo.write() {
+            memo.insert(tag.to_vec(), lineage);
+        }
+        fills
+    }
+}

@@ -103,7 +103,10 @@ On a `@block` / `@table` / `@decorator` type, inherited fields are part of what 
 write and what `wcl check` validates — no redeclaration needed. A redeclared field replaces the
 inherited one whole (type must match; decorators are not merged). Overrides, several parents
 and `@inline` slots: `lang_schemas.md`, section `extends`. `extends` also makes the type a
-descendant of its parents, which is what a `&Parent` field naming a record type checks.
+descendant of its parents, which is what a `&Parent` field naming a record type checks — and
+what a value slot (field, list element, parameter, return) typed `Parent` checks of a block's
+record: a `Pet` record fills a `Dog` slot and stays a `Pet`; a `Dog` record does not fill a
+`Pet` slot.
 
 ```wcl
 type Dog {

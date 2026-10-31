@@ -166,6 +166,7 @@ impl IfaceMisfit<'_> {
 /// payloads) carry no field map, so they pass through permissively until
 /// the language tags them at runtime.
 pub(super) fn iface_misfit<'i>(
+    doc: &Document,
     value: &Value,
     iface: &'i ast::InterfaceDecl,
 ) -> Option<IfaceMisfit<'i>> {
@@ -181,7 +182,7 @@ pub(super) fn iface_misfit<'i>(
         let Some(v) = fields.get(&f.name) else {
             return Some(IfaceMisfit::Missing(f));
         };
-        if !value_matches_declared(v, &f.ty, f.optional) {
+        if !value_matches_declared(doc, v, &f.ty, f.optional) {
             return Some(IfaceMisfit::Mistyped(f, v.type_name()));
         }
     }
@@ -1287,7 +1288,7 @@ impl Document {
         let Some(iface) = iface_decl else {
             return Err(EvalError::unknown_union(iface_path.join("."), span));
         };
-        match iface_misfit(value, iface) {
+        match iface_misfit(self, value, iface) {
             None => Ok(()),
             Some(misfit) => {
                 let (expected, got) = misfit.shape_mismatch_parts();

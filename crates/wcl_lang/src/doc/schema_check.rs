@@ -48,7 +48,7 @@ fn decorator_slot_value_error(
     }
 
     let declared_type = doc.resolve_alias_in(slot.type_ref(), slot.file_ns);
-    if !crate::doc::types::value_matches_declared(value, &declared_type, slot.optional()) {
+    if !crate::doc::types::value_matches_declared(doc, value, &declared_type, slot.optional()) {
         return Some(EvalError::schema_violation_named(
             Kind::FieldTypeMismatch,
             format!(

@@ -144,14 +144,14 @@ impl Document {
             && !matches!(value, Value::PendingUnit { .. })
             && matches!(self.named_slot(path), NamedSlot::Plain)
         {
-            return Ok(if value_matches_type_ref(&value, ty) {
+            return Ok(if value_matches_type_ref(self, &value, ty) {
                 Ok(value)
             } else {
-                Err(Refusal::Type.describe_got(&value, ty))
+                Err(Refusal::Type.describe_got(self, &value, ty))
             });
         }
         Ok(admit_to_slot(self, value, ty, &self.file_ns, span)?
-            .map_err(|(value, resolved, refusal)| refusal.describe_got(&value, &resolved)))
+            .map_err(|(value, resolved, refusal)| refusal.describe_got(self, &value, &resolved)))
     }
 
     /// Whether the field rule would accept `value` for `ty` and convert
@@ -190,7 +190,7 @@ impl Document {
                     Value::None => true,
                     Value::PendingUnit { .. } => false,
                     Value::Record { .. } if union => false,
-                    item => value_matches_type_ref(item, inner),
+                    item => value_matches_type_ref(self, item, inner),
                 })
             }
             _ => false,
@@ -224,7 +224,7 @@ impl Document {
                     return None;
                 };
                 let iface = self.interface(&fqn)?;
-                iface_misfit(value, iface.ast).map(|misfit| match misfit {
+                iface_misfit(self, value, iface.ast).map(|misfit| match misfit {
                     IfaceMisfit::Missing(f) => {
                         format!("{} without field '{}'", value_kind(value), f.name)
                     }
