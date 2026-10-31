@@ -1,7 +1,7 @@
 # Builtins
 
-The builtin set is **closed**. The language ships 100 of them and you cannot add one from WCL —
-a host adds one in Rust. All 100 are in the tables below, each with its exact signature and a
+The builtin set is **closed**. The language ships 101 of them and you cannot add one from WCL —
+a host adds one in Rust. All 101 are in the tables below, each with its exact signature and a
 worked example, so take every name and argument count from there: an unknown callee is
 `wcl::eval::unknown_builtin`, and a wrong argument count is `wcl::eval::builtin_arity`.
 
@@ -23,6 +23,9 @@ this page for:
 - `fn (T) -> U` is a function value. Write it as a literal: `fn(x: i64) -> i64 { x * 2 }`.
   There are no default arguments and no named arguments.
 - `number` means any numeric type. The math family widens its input to `f64` and answers `f64`.
+- `integer` means any integer type, `isize`, `usize` and the 128-bit types included. `bits` does
+  not widen it: the answer has the type of its first argument. `integer` is notation, not a type
+  you can declare a field with.
 - `record` is a `{ key: value }` literal or a value of record shape.
 - `&T` is a reference to a declaration — you write the declaration's name (`Image`,
   `Field.score`), not a string.
@@ -202,6 +205,35 @@ tau()   // the constant τ = 2π → 6.283185307179586
 trunc(3.9)   // drop the fractional part → 3.0
 ```
 
+### Bits
+
+Integer-only. Nothing widens to `f64`; the answer keeps the type of `v`.
+
+| Signature | What it does |
+| --- | --- |
+| `bits(v: integer, hi: integer, lo: integer) -> integer` | Bits `hi` down to `lo` of `v`, **both inclusive**, shifted down so bit `lo` becomes bit 0. Zero-extended, same type as `v`. |
+
+```wcl
+bits(0b1011_0110u8, 5, 2)        // bits 5..2 → 13u8
+bits(0x80u8, 7, 7)               // one bit: hi == lo → 1u8
+bits(0xDEAD_BEEFu32, 15, 8)      // second byte → 190u32
+bits(-1i8, 3, 0)                 // signed: reads the two's-complement pattern → 15i8
+bits(-5i8, 7, 0)                 // full width hands the value back → -5i8
+bits(0xF0, 7, 4)                 // unsuffixed is i64, so the answer is too → 15
+```
+
+- `hi` and `lo` take any integer type (`bits(w, 7u8, 4usize)` is fine).
+- Errors (`wcl::eval::builtin_type`, recoverable with `try`/`catch`), one per bad argument:
+  `'bits': v must be an integer, got f64` · `'bits': hi must not be negative, got -1` ·
+  `'bits': hi (2) must not be less than lo (5)` ·
+  `'bits': hi (8) is out of range for u8 (bits are numbered 0 to 7)`.
+- **The field is zero-extended, never sign-extended.** A signed immediate comes back positive:
+  `bits(0xFFF3_0293u32, 31, 20)` is `4095u32`, not −1. To sign-extend, hold the word in a
+  signed type, shift the field's top bit to the type's top bit and arithmetic-shift down:
+  `(0xFFF3_0293 << 32) >> 52` is `-1` (an `i64`).
+- **The width limit is `v`'s type.** Suffix the value with the register's width (`0xF0u8`), or
+  an unsuffixed `i64` lets `hi` run to 63 without complaint.
+
 ### Records
 
 | Signature | What it does |
@@ -327,7 +359,7 @@ panic("invariant violated")   // abort with an unrecoverable failure → (aborts
 ## Two more that only exist under wdoc
 
 A host may register builtins of its own. wdoc adds two. They are in the environment the `wcl`
-CLI builds, so `builtin_names()` run through the CLI answers 102 names rather than 100. They
+CLI builds, so `builtin_names()` run through the CLI answers 103 names rather than 101. They
 are useful only in a document that imports the wdoc standard library:
 
 | Name | Purpose |

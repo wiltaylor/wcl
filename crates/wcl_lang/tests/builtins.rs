@@ -939,3 +939,36 @@ fn path_and_glob_builtins() {
         Value::Bool(false)
     );
 }
+
+// ── bits ──────────────────────────────────────────────────────────
+
+#[test]
+fn bits_slices_a_field_and_keeps_the_type() {
+    assert_eq!(
+        eval("@schemaless result = bits(0b1011_0110u8, 5, 2)\n"),
+        Value::U8(0b1101)
+    );
+    assert_eq!(
+        eval("@schemaless result = bits(-1i8, 3, 0)\n"),
+        Value::I8(15)
+    );
+    assert_eq!(
+        eval("@schemaless result = bits(1u128 << 127u32, 127u8, 127usize)\n"),
+        Value::U128(1)
+    );
+}
+
+#[test]
+fn bits_reports_bad_arguments_by_name() {
+    let msg = eval_err("@schemaless result = bits(1.5, 3, 0)\n");
+    assert!(msg.contains("v must be an integer, got f64"), "{msg}");
+    let msg = eval_err("@schemaless result = bits(0xFFu8, 2, 5)\n");
+    assert!(msg.contains("hi (2) must not be less than lo (5)"), "{msg}");
+    let msg = eval_err("@schemaless result = bits(0xFFu8, 8, 0)\n");
+    assert!(msg.contains("out of range for u8"), "{msg}");
+    // A bad argument is an ordinary evaluation error, so `try` recovers it.
+    assert_eq!(
+        eval("@schemaless result = try bits(1u8, -1, 0) catch _ => 0u8\n"),
+        Value::U8(0)
+    );
+}

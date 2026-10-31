@@ -612,7 +612,16 @@ eval error: wcl::eval::arithmetic
 TEXT
   }
 
-  p "There is no builtin that slices bits out of a value. Shift the field down and mask it: `(v >> lo) & ((1u32 << w) - 1u32)` reads the `w` bits starting at bit `lo`."
+  p "To read a field back out of a word, call [`bits`](lang_builtins#bits). `bits(v, hi, lo)` answers bits `hi` down to `lo` of `v`, both ends included, shifted down to bit 0 and in `v`'s own type. It is the shift and the mask, `(v >> lo) & ((1u32 << w) - 1u32)`, with the width worked out for you and an error when `hi` names a bit the type does not have:"
+
+  code text {
+    source = <<'TEXT'
+wcl> bits(0b1011_0110u8, 5, 2)
+13u8
+wcl> (0b1011_0110u8 >> 2) & 0b1111u8
+13u8
+TEXT
+  }
 
   h3 "Where a `<<` can be misread"
 

@@ -5,7 +5,8 @@
 //! and how values cross that boundary in each direction. Everything
 //! else is a *family* of builtins registered through it, one module per
 //! family: [`list`], [`string`], [`record`], [`tensor`],
-//! [`diagnostics`], [`math`], [`paths`], [`reflect`] and [`units`].
+//! [`diagnostics`], [`math`], [`bits`], [`paths`], [`reflect`] and
+//! [`units`].
 //!
 //! Each family owns its own `register` and the implementations behind
 //! it, so adding a builtin means touching one file. [`register`] here
@@ -17,6 +18,7 @@
 //! [`DataRef`](crate::DataRef), so it depends on the document layer in
 //! a way the others do not.
 
+mod bits;
 pub mod builtin;
 mod convert;
 mod diagnostics;
@@ -51,6 +53,7 @@ pub(crate) fn register(env: &mut Environment) {
     tensor::register(env);
     diagnostics::register(env);
     math::register(env);
+    bits::register(env);
     paths::register(env);
     reflect::register(env);
     units::register(env);

@@ -12,11 +12,11 @@ page lang_builtins {
   chapter_header "Builtins" {
     kicker       = "The WCL language · reference"
     reading_time = "26 min read"
-    updated      = "2026-08-20"
+    updated      = "2026-11-01"
     version      = "wcl 0.33.2-alpha"
   }
 
-  p "A **builtin** is a function the language already knows. You do not import it, declare it or define it. You call it. There are exactly one hundred, and the `wcl` CLI adds two more of wdoc's own, for the 102 this chapter counts."
+  p "A **builtin** is a function the language already knows. You do not import it, declare it or define it. You call it. There are exactly a hundred and one, and the `wcl` CLI adds two more of wdoc's own, for the 103 this chapter counts."
 
   p "The bulk of this chapter is a catalogue. Each entry carries one builtin's signature, its parameters, its return value, and an example whose printed answer came from a real run."
 
@@ -122,7 +122,7 @@ WCL
   code console {
     source = <<'CONSOLE'
 $ wcl get catalogue.wcl count
-102usize
+103usize
 $ wcl get catalogue.wcl first
 ["__wdoc_slot", "abs", "acos"]
 $ wcl get catalogue.wcl sig
@@ -130,24 +130,25 @@ $ wcl get catalogue.wcl sig
 CONSOLE
   }
 
-  p "The count is 102 rather than 100, and the first name is one you did not write, because the environment a builtin lives in belongs to the **host**, not to the language. The `wcl` CLI is a wdoc-aware host: it registers wdoc's two builtins into every document it opens, whether or not the document imports wdoc. The bare language registers one hundred. `wcl repl` shows both counts. A REPL started with a file opens that file the way the CLI opens any document. A REPL started without a file evaluates against an empty document, in the plain language environment:"
+  p "The count is 103 rather than 101, and the first name is one you did not write, because the environment a builtin lives in belongs to the **host**, not to the language. The `wcl` CLI is a wdoc-aware host: it registers wdoc's two builtins into every document it opens, whether or not the document imports wdoc. The bare language registers a hundred and one. `wcl repl` shows both counts. A REPL started with a file opens that file the way the CLI opens any document. A REPL started without a file evaluates against an empty document, in the plain language environment:"
 
   code console {
     source = <<'CONSOLE'
 $ echo 'len(builtin_names())' | wcl repl
-100
+101
 $ echo 'len(builtin_names())' | wcl repl release.wcl
-102
+103
 CONSOLE
   }
 
-  p "Five modules of `wcl_lang` register the hundred. This chapter groups them by what they are for rather than by which module holds them."
+  p "Six modules of `wcl_lang` register the hundred and one. This chapter groups them by what they are for rather than by which module holds them."
 
   table {
     rows:
       | "Module" | "Registers" | "Covered in" |
       | "`collections`" | "54" | "[Lists](#lists), [Records](#records), [Strings](#strings), [Tensors](#tensors), [Failing on purpose](#failing-on-purpose)" |
       | "`math`" | "29" | "[Math](#math)" |
+      | "`bits`" | "1" | "[Bit fields](#bit-fields)" |
       | "`reflect`" | "12" | "[Reflection](#reflection)" |
       | "`paths`" | "3" | "[Paths and globs](#paths-and-globs)" |
       | "`units`" | "2" | "[Units](#units)" |
@@ -163,6 +164,7 @@ CONSOLE
       | "When you want" | "Reach for" | "Not" | "Because" |
       | "A substring test" | "`contains(s, needle)`" | "`list_contains`" | "`contains` is strings only and _fails_ on a list. `list_contains` accepts a list or a tensor and answers `false` for anything else, silently" |
       | "The matching element" | "`find(xs, pred)`" | "`index_of` / `list_contains`" | "`find` answers the element or `none`, `index_of` answers a position or `-1`, `list_contains` answers a `bool`. Three questions, three shapes" |
+      | "A field of bits" | "`bits(v, hi, lo)`" | "`>>` and `&`" | "`bits` names the field by its two end bits, keeps `v`'s type and refuses a bit the type does not have. The shift and mask, `(v >> lo) & ((1u32 << w) - 1u32)`, take a width rather than an end bit and need the mask's type written by hand" |
       | "A sub-list by position" | "`slice(xs, a, b)`" | "`take` + `drop`" | "`slice` clamps both bounds and also reads a string. `take`/`drop` are the one-sided forms and are lists only" |
       | "The smallest of a list" | "`min_by(xs, key)`" | "`min(a, b)`" | "`min` compares exactly two numbers. `min_by` walks a list and answers an element, or `none` when it is empty" |
       | "A sorted list" | "`sort(xs)`" | "`sort_by(xs, key)`" | "`sort` orders numbers or strings directly and _fails_ on a mixed list. `sort_by` is for everything else, and is stable" |
@@ -176,21 +178,22 @@ CONSOLE
 
   h2 "Every builtin, A to Z"
 
-  p "All 102 of them, alphabetically, each linked to its entry. The sections after this one group by what a builtin operates on, which is the right order to read the chapter in and the wrong one to look a name up in."
+  p "All 103 of them, alphabetically, each linked to its entry. The sections after this one group by what a builtin operates on, which is the right order to read the chapter in and the wrong one to look a name up in."
 
   table {
     rows:
-      | "A – D" | "E – L" | "L – S" | "S – Z" |
-      | "[`abs`](#abs)" | "[`e`](#e)" | "[`log10`](#log10)" | "[`sort`](#sort)" |
-      | "[`acos`](#acos)" | "[`ends_with`](#ends-with)" | "[`log2`](#log2)" | "[`sort_by`](#sort-by)" |
-      | "[`all`](#all)" | "[`enumerate`](#enumerate)" | "[`map`](#map)" | "[`sort_connected`](#sort-connected)" |
-      | "[`any`](#any)" | "[`error`](#error)" | "[`map_values`](#map-values)" | "[`split`](#split)" |
-      | "[`asin`](#asin)" | "[`eval`](#eval)" | "[`max`](#max)" | "[`sqrt`](#sqrt)" |
-      | "[`assert`](#assert)" | "[`exp`](#exp)" | "[`max_by`](#max-by)" | "[`starts_with`](#starts-with)" |
-      | "[`ast_string`](#ast-string)" | "[`filter`](#filter)" | "[`merge`](#merge)" | "[`sum`](#sum)" |
-      | "[`at`](#at)" | "[`find`](#find)" | "[`min`](#min)" | "[`tail`](#tail)" |
-      | "[`atan`](#atan)" | "[`flatten`](#flatten)" | "[`min_by`](#min-by)" | "[`take`](#take)" |
-      | "[`atan2`](#atan2)" | "[`floor`](#floor)" | "[`namespace_decls`](#namespace-decls)" | "[`tan`](#tan)" |
+      | "A – D" | "D – L" | "L – S" | "S – Z" |
+      | "[`abs`](#abs)" | "[`drop`](#drop)" | "[`ln`](#ln)" | "[`slice`](#slice)" |
+      | "[`acos`](#acos)" | "[`e`](#e)" | "[`log10`](#log10)" | "[`sort`](#sort)" |
+      | "[`all`](#all)" | "[`ends_with`](#ends-with)" | "[`log2`](#log2)" | "[`sort_by`](#sort-by)" |
+      | "[`any`](#any)" | "[`enumerate`](#enumerate)" | "[`map`](#map)" | "[`sort_connected`](#sort-connected)" |
+      | "[`asin`](#asin)" | "[`error`](#error)" | "[`map_values`](#map-values)" | "[`split`](#split)" |
+      | "[`assert`](#assert)" | "[`eval`](#eval)" | "[`max`](#max)" | "[`sqrt`](#sqrt)" |
+      | "[`ast_string`](#ast-string)" | "[`exp`](#exp)" | "[`max_by`](#max-by)" | "[`starts_with`](#starts-with)" |
+      | "[`at`](#at)" | "[`filter`](#filter)" | "[`merge`](#merge)" | "[`sum`](#sum)" |
+      | "[`atan`](#atan)" | "[`find`](#find)" | "[`min`](#min)" | "[`tail`](#tail)" |
+      | "[`atan2`](#atan2)" | "[`flatten`](#flatten)" | "[`min_by`](#min-by)" | "[`take`](#take)" |
+      | "[`bits`](#bits)" | "[`floor`](#floor)" | "[`namespace_decls`](#namespace-decls)" | "[`tan`](#tan)" |
       | "[`builtin_names`](#builtin-names)" | "[`fn_signature`](#fn-signature)" | "[`pad_end`](#pad-end)" | "[`tau`](#tau)" |
       | "[`cbrt`](#cbrt)" | "[`fold`](#fold)" | "[`pad_start`](#pad-start)" | "[`tensor`](#tensor)" |
       | "[`ceil`](#ceil)" | "[`format`](#format)" | "[`page_metadata`](#page-metadata)" | "[`tensor_data`](#tensor-data)" |
@@ -206,7 +209,6 @@ CONSOLE
       | "[`decorators_for_kind`](#decorators-for-kind)" | "[`keys`](#keys)" | "[`round`](#round)" | "[`__wdoc_slot`](#wdoc-slot)" |
       | "[`degrees`](#degrees)" | "[`len`](#len)" | "[`sign`](#sign)" | "[`zip`](#zip)" |
       | "[`doc_comment`](#doc-comment)" | "[`list_contains`](#list-contains)" | "[`sin`](#sin)" | "" |
-      | "[`drop`](#drop)" | "[`ln`](#ln)" | "[`slice`](#slice)" | "" |
   }
 
   h2 "How to read an entry"
@@ -219,6 +221,7 @@ CONSOLE
       | "`[T]`" | "A list of any one element type" | "No. Write `list<T>`. See [Lists, tensors and records](lang_collections#lists)" | "No. Write `list<T>`" |
       | "`T` / `U` / `K` / `A` / `B`" | "A type variable: whatever you pass, or whatever your callback returns" | "No. WCL has no generic declarations" | "No" |
       | "`number`" | "Any numeric value, widened to `f64` on the way in" | "No. Write `i64`, `u32`, `f64` or another concrete numeric type. See [Values and primitives](lang_values#numbers)" | "Yes" |
+      | "`integer`" | "Any integer type, of any width. Not widened: `bits` answers in the type it was given" | "No. Write `u8`, `i64` or another concrete integer type" | "No" |
       | "`record`" | "A record value, or a union variant with a record body" | "No. Declare a type of your own. See [Lists, tensors and records](lang_collections#records)" | "Yes" |
       | "`&T`" | "A reference to a declaration: a type, field, block or variant named in an expression" | "Yes. See [Types](lang_types#reference-types)" | "Yes" |
       | "`any`" | "Any value at all" | "No" | "No" |
@@ -2323,6 +2326,135 @@ SRC
 trunc(3.9)   # → 3.0
 SRC
   }
+
+  h2 "Bit fields"
+
+  p "One builtin, and it breaks the math rule on purpose. `bits` reads a field out of an integer the way a datasheet draws one, by its highest and lowest bit, and it **keeps the integer's type**. A field read out of a `u32` is a `u32`. Nothing widens to `f64`, because a float has no bits worth naming."
+
+  p "It is the builtin for a file that describes something laid out in bits: an instruction encoding, a packet header, a status register. The operators in [Bits and shifts](lang_expressions#bits-and-shifts) build those words. `bits` takes them apart."
+
+  h3 "bits"
+
+  code text {
+    source = <<'SRC'
+fn(v: integer, hi: integer, lo: integer) -> integer
+SRC
+  }
+
+  p "Bits `hi` down to `lo` of an integer, inclusive, shifted down so bit `lo` becomes bit 0."
+
+  table {
+    rows:
+      | "Parameter" | "Type" | "Meaning" |
+      | "`v`" | "`integer`" | "The integer to read from, of any width." |
+      | "`hi`" | "`integer`" | "The highest bit of the field, counted from 0 at the least significant bit." |
+      | "`lo`" | "`integer`" | "The lowest bit of the field. No more than `hi`." |
+      | "**Returns**" | "`integer`" | "The field, zero-extended, in the same integer type as `v`." |
+  }
+
+  code wcl {
+    source = <<'SRC'
+bits(0b1011_0110u8, 5, 2)   # → 13u8
+SRC
+  }
+
+  p "Both ends are **inclusive**, so the field is `hi - lo + 1` bits wide and `bits(v, 5, 2)` is four bits. That is the order a register diagram uses, high bit first, and it is the opposite of `slice`, whose end is exclusive. Read `0b1011_0110` from the left: bits 7 and 6 are `10`, bits 5 to 2 are `1101`, and `0b1101` is 13. Asking for one bit is `hi` equal to `lo`, and asking for every bit hands back the value unchanged."
+
+  p "The indices take any integer type, so `bits(word, 7u8, 4usize)` is fine. The value they read from sets the limit. A `u8` has bits 0 to 7 and a `u128` has bits 0 to 127, and `isize` and `usize` have as many as the machine `wcl` runs on."
+
+  p "Here it is decoding a whole instruction. The word is RV32I's `addi x5, x6, 42`, and each field of the encoding is one call:"
+
+  code wcl {
+    filename = "decode.wcl"
+    source = <<'WCL'
+@document
+type Decoded {
+  word:   u32
+  opcode: u32
+  rd:     u32
+  funct3: u32
+  rs1:    u32
+  imm:    u32
+}
+
+# addi x5, x6, 42 — an RV32I I-type instruction.
+word   = 0x02A3_0293u32
+opcode = bits(word, 6, 0)
+rd     = bits(word, 11, 7)
+funct3 = bits(word, 14, 12)
+rs1    = bits(word, 19, 15)
+imm    = bits(word, 31, 20)
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get decode.wcl opcode
+19u32
+$ wcl get decode.wcl rd
+5u32
+$ wcl get decode.wcl rs1
+6u32
+$ wcl get decode.wcl imm
+42u32
+CONSOLE
+  }
+
+  h3 "A field is unsigned"
+
+  p "A signed value is read as its **two's-complement bit pattern**, and the field comes back with zeros above it. The answer is never negative unless you ask for every bit:"
+
+  code text {
+    source = <<'TEXT'
+wcl> bits(-1i8, 3, 0)
+15i8
+wcl> bits(-5i8, 7, 0)
+-5i8
+TEXT
+  }
+
+  p "`-1i8` is eight ones, so its low four bits are `1111`, which is 15. The full-width slice of `-5i8` is the same eight bits it started as, so it is `-5i8` again."
+
+  p "That matters for an immediate that the encoding treats as signed. `addi x5, x6, -1` stores −1 in the top twelve bits, and `bits` reads those twelve bits as 4095. To sign-extend instead, hold the word in a signed type, shift the field's top bit up to the type's top bit with `<<`, then shift it down with `>>`, which copies the sign bit in from the left. For a 12-bit field ending at bit 31 of a word held in an `i64`, that is up 32 and down 52:"
+
+  code text {
+    source = <<'TEXT'
+wcl> bits(0xFFF3_0293u32, 31, 20)
+4095u32
+wcl> (0xFFF3_0293 << 32) >> 52
+-1
+TEXT
+  }
+
+  h3 "When it refuses"
+
+  p "Four things are errors, each naming `bits` and the argument at fault: an argument that is not an integer, a negative index, `hi` below `lo`, and `hi` at or past the width of `v`'s type. They are ordinary evaluation errors, so `try`/`catch` recovers them. The width check is the one to expect, because it fires when a field description is copied between registers of different sizes:"
+
+  code text {
+    source = <<'TEXT'
+wcl> bits(0xFFu8, 8, 0)
+eval error: wcl::eval::builtin_type
+
+  × 'bits': hi (8) is out of range for u8 (bits are numbered 0 to 7)
+
+wcl> bits(0xFFu8, 2, 5)
+eval error: wcl::eval::builtin_type
+
+  × 'bits': hi (2) must not be less than lo (5)
+
+wcl> bits(0xFFu8, -1, 0)
+eval error: wcl::eval::builtin_type
+
+  × 'bits': hi must not be negative, got -1
+
+wcl> bits(1.5, 3, 0)
+eval error: wcl::eval::builtin_type
+
+  × 'bits': v must be an integer, got f64
+TEXT
+  }
+
+  p "An unsuffixed literal is an `i64`, so `bits(0xF0, 7, 4)` answers `15`, an `i64`, and accepts any `hi` up to 63. Suffix the value with the width the hardware has, `0xF0u8`, and the limit is the register's own."
 
   h2 "Reflection"
 

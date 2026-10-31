@@ -198,8 +198,9 @@ is `i64`, so `1 << 40` is fine and `1 << 64` is the error.
   tree holds a bare `|`, so a tree built through the edit API still prints back as one cell.
 - **Match alternatives are unchanged.** `1 | 2 => …` is two patterns. A guard is an
   expression, so `1 | 2 if a | b == 3 => …` reads the guard as `(a | b) == 3`.
-- **There is no bit-slice builtin.** Extract a field with a shift and a mask:
-  `(v >> lo) & ((1u32 << w) - 1u32)`.
+- **Slice a field with `bits(v, hi, lo)`**, not a hand-built mask. Both ends are inclusive, the
+  answer keeps `v`'s type and is zero-extended, and `hi` past the type's width is an error. See
+  [`lang_builtins.md`](lang_builtins.md#bits).
 
 ## Member access
 
