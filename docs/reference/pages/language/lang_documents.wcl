@@ -374,7 +374,7 @@ WCL
 
   p "Nesting is how a dotted path gets long. `wcl get inventory.wcl services.web.limits.memory` walks the gather field, then the label, then the nested block, then the field."
 
-  p "A block that the enclosing schema does not admit is an error, and so is a field the block's own schema does not declare. Add `zone = \"a\"` to the `web` service of `inventory.wcl` and `wcl check` names the field, the schema and nothing else:"
+  p "A block that the enclosing schema does not admit is an error, and so is a field the block's own schema does not declare. Add `zone = \"a\"` to the `web` service of `inventory.wcl`, on the line after `region`, and `wcl check` names the field, the schema and nothing else:"
 
   code console {
     source = <<'CONSOLE'
