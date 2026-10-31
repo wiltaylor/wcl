@@ -2,11 +2,13 @@
 //!
 //! Runs once, from [`validate_document`](crate::doc::validate), after
 //! that pass has resolved the file's namespace and `use` aliases and
-//! before any evaluation happens. Three rules live here, and all three
+//! before any evaluation happens. Four rules live here, and all four
 //! are about a declaration being well-formed on its own terms:
 //!
 //! - every name a type reference mentions resolves to something declared,
 //!   and an interface is only named through a reference ([`check_type_ref`]);
+//! - every function signature's parameter and return types pass the same
+//!   check, though the evaluator never enforces them against values;
 //! - a union declares each variant name once, and a `symbol_set` each
 //!   symbol once;
 //! - a `connection`'s endpoints resolve and its kind names a `symbol_set`.
@@ -25,6 +27,7 @@ use crate::diagnostics::ParseError;
 use crate::symbols::{SymbolIndex, SymbolKind};
 
 use crate::doc::cells::LoadedImport;
+use crate::doc::expr_nodes::{ExprNode, visit_expr_nodes};
 use crate::doc::validate::{open_error, resolve_path};
 
 use super::extends::validate_extends;
@@ -111,6 +114,50 @@ fn check_type_ref(
                 check_type_ref(p, ty_span, false, cx)?;
             }
             check_type_ref(return_ty, ty_span, false, cx)
+        }
+    }
+}
+
+/// The builtin signature notation's value classes, which a function
+/// signature may name although no field can: any value, any number,
+/// any integer, any record.
+const SIGNATURE_WORDS: &[&str] = &["any", "number", "integer", "record"];
+
+/// Check that a function literal's parameter and return types resolve.
+///
+/// Two allowances separate a signature from a field slot. An interface
+/// may be named directly: a field slot holds a value, so an interface
+/// there must go through `&`, while a signature only documents what
+/// flows through it. And the [`SIGNATURE_WORDS`] stand for a whole class
+/// of values, at any depth (`list<any>`). They are not types a field may
+/// declare, only words a signature may use, and they are how the builtin
+/// signatures and existing documents already spell those classes.
+fn check_signature(function: &ast::FunctionLit, cx: &CheckContext<'_>) -> Result<(), ParseError> {
+    for param in &function.params {
+        check_signature_type(&param.ty, param.ty_span, cx)?;
+    }
+    check_signature_type(&function.return_ty, function.return_ty_span, cx)
+}
+
+/// [`check_type_ref`] for one signature annotation, with the
+/// allowances [`check_signature`] describes.
+fn check_signature_type(ty: &TypeRef, span: Span, cx: &CheckContext<'_>) -> Result<(), ParseError> {
+    match ty {
+        TypeRef::Named { path, args }
+            if args.is_empty()
+                && path.len() == 1
+                && SIGNATURE_WORDS.contains(&path[0].as_str()) =>
+        {
+            Ok(())
+        }
+        TypeRef::Named { .. } | TypeRef::Builtin(_) => check_type_ref(ty, span, true, cx),
+        TypeRef::Reference(inner) | TypeRef::List(inner) => check_signature_type(inner, span, cx),
+        TypeRef::Tensor { element, .. } => check_signature_type(element, span, cx),
+        TypeRef::Function { params, return_ty } => {
+            for p in params {
+                check_signature_type(p, span, cx)?;
+            }
+            check_signature_type(return_ty, span, cx)
         }
     }
 }
@@ -250,7 +297,18 @@ pub(in crate::doc) fn check_declarations(
         }
     }
 
-    // 5. `extends` validation: unknown parents, cycles, and
+    // 5. Function signatures, wherever a function literal or `fn` item
+    // appears. An annotation the evaluator never checks against a value
+    // must still name a type that exists.
+    let mut signatures = Ok(());
+    visit_expr_nodes(&ast.items, &mut |node| {
+        if let (Ok(()), ExprNode::Function(function)) = (&signatures, node) {
+            signatures = check_signature(function, cx);
+        }
+    });
+    signatures?;
+
+    // 6. `extends` validation: unknown parents, cycles, and
     // conflicting field types across the effective field set.
     validate_extends(ast, cx)?;
 

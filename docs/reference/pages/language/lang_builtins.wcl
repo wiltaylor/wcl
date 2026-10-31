@@ -221,14 +221,14 @@ CONSOLE
       | "`[T]`" | "A list of any one element type" | "No. Write `list<T>`. See [Lists, tensors and records](lang_collections#lists)" | "No. Write `list<T>`" |
       | "`T` / `U` / `K` / `A` / `B`" | "A type variable: whatever you pass, or whatever your callback returns" | "No. WCL has no generic declarations" | "No" |
       | "`number`" | "Any numeric value, widened to `f64` on the way in" | "No. Write `i64`, `u32`, `f64` or another concrete numeric type. See [Values and primitives](lang_values#numbers)" | "Yes" |
-      | "`integer`" | "Any integer type, of any width. Not widened: `bits` answers in the type it was given" | "No. Write `u8`, `i64` or another concrete integer type" | "No" |
+      | "`integer`" | "Any integer type, of any width. Not widened: `bits` answers in the type it was given" | "No. Write `u8`, `i64` or another concrete integer type" | "Yes" |
       | "`record`" | "A record value, or a union variant with a record body" | "No. Declare a type of your own. See [Lists, tensors and records](lang_collections#records)" | "Yes" |
       | "`&T`" | "A reference to a declaration: a type, field, block or variant named in an expression" | "Yes. See [Types](lang_types#reference-types)" | "Yes" |
-      | "`any`" | "Any value at all" | "No" | "No" |
+      | "`any`" | "Any value at all" | "No" | "Yes" |
       | "`never`" | "The call does not return" | "No" | "No" |
   }
 
-  p "Two consequences follow. Most of that notation is for reading, not for writing. A field declared `record` fails with `unknown type 'record'`. So the result of a builtin that answers a record usually stays inside an expression, which is where most of them belong. To store it in a field, copy it into a type you declared. A **callback parameter** is looser: it may be typed `record`, `number` or `&T`. That is why the reflection examples below write `fn(f: record) -> utf8 { … }`."
+  p "Two consequences follow. Most of that notation is for reading, not for writing. A field declared `record` fails with `unknown type 'record'`. So the result of a builtin that answers a record usually stays inside an expression, which is where most of them belong. To store it in a field, copy it into a type you declared. A **callback parameter** is looser: it may be typed `any`, `number`, `integer`, `record` or `&T`. Any other name must be a type the document declares, or the file fails to open with `unknown type`. That is why the reflection examples below write `fn(f: record) -> utf8 { … }`."
 
   p "And `[T]` says nothing about the element type. `sort` and `sum` check theirs at run time and fail on a mixed list, because the signature cannot check it for them."
 
@@ -2574,7 +2574,7 @@ SRC
   code console {
     source = <<'CONSOLE'
 $ wcl get schema.wcl builtins
-102usize
+103usize
 CONSOLE
   }
 

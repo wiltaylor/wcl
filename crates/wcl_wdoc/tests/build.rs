@@ -862,6 +862,7 @@ fn build_renders_computed_children_splice_value_and_render_paths() {
         &src,
         r#"
 let names = ["alice", "bob", "carol"]
+type Host { name: utf8 }
 let hosts = [ { name: "web-1" }, { name: "db-1" } ]
 page index {
   text { spans = map(names, fn(n: utf8) -> Span { { text: n } }) }

@@ -24,8 +24,10 @@ this page for:
   There are no default arguments and no named arguments.
 - `number` means any numeric type. The math family widens its input to `f64` and answers `f64`.
 - `integer` means any integer type, `isize`, `usize` and the 128-bit types included. `bits` does
-  not widen it: the answer has the type of its first argument. `integer` is notation, not a type
-  you can declare a field with.
+  not widen it: the answer has the type of its first argument.
+- `any`, `number`, `integer` and `record` are notation, not types: a field declared with one fails
+  with `unknown type`. A function signature may use them (`fn(f: record) -> utf8`). `T`, `[T]` and
+  `never` work in neither.
 - `record` is a `{ key: value }` literal or a value of record shape.
 - `&T` is a reference to a declaration — you write the declaration's name (`Image`,
   `Field.score`), not a string.

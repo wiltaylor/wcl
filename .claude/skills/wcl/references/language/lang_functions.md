@@ -90,6 +90,24 @@ give the two forms different arities.
 > `fn(x: i64) -> Point { x: x, y: 0 }` is a parse error. Return the explicit
 > `Union::Variant { … }` form, or build the record in a block and return the binding.
 
+## What a signature may name
+
+Every type in a signature must resolve, as a field type must. A name nothing declares fails at
+open, wherever the literal sits (an item, a `let`, a lambda inside a call):
+
+```text
+fn f(x: bogus) -> i64 1      // × unknown type 'bogus'   (exit 1)
+```
+
+A signature is allowed two things a field is not:
+
+- The value classes from the builtin notation: `any`, `number`, `integer`, `record`, at any depth
+  (`list<any>`, `fn(any) -> any`). Type variables (`T`) and `never` are not among them.
+- An interface by bare name (`fn(s: Shape) -> …`). A field needs `&Shape`.
+
+Resolving is all it does. The evaluator still never checks an argument or the return value
+against the annotation.
+
 ## Function types
 
 `fn(T1, T2, …) -> R` types a field, a parameter or a record member that holds a callable.

@@ -18,6 +18,7 @@ use crate::symbols::SymbolIndex;
 use crate::symbols::SymbolRecord;
 
 use super::cells::{self, ItemCellKind, ItemCells, LoadedImport};
+use super::expr_nodes::visit_expr_nodes;
 use super::{Document, SymbolHit};
 
 impl Document {
@@ -154,7 +155,7 @@ impl Document {
             let mut map = HashMap::new();
             for (ordinal, src) in sources.iter().enumerate() {
                 visit_expr_nodes(src.items, &mut |node| {
-                    map.entry(node).or_insert(ordinal);
+                    map.entry(node.address()).or_insert(ordinal);
                 });
             }
             map
@@ -443,167 +444,6 @@ fn index_node_addresses(items: &[ast::Item], ordinal: usize, map: &mut HashMap<u
     }
 }
 
-/// Report the address of every `let` item and function-literal body in
-/// `items`, nested blocks and every expression included — the nodes
-/// [`Document::source_of_expr_node`] looks up.
-fn visit_expr_nodes(items: &[ast::Item], visit: &mut impl FnMut(usize)) {
-    for item in items {
-        match item {
-            ast::Item::Field(field) => {
-                visit_decorators(&field.decorators, visit);
-                visit_expr(&field.expr, visit);
-            }
-            ast::Item::Let(binding) => {
-                visit(std::ptr::from_ref(binding) as usize);
-                visit_decorators(&binding.decorators, visit);
-                visit_expr(&binding.value, visit);
-            }
-            ast::Item::Block(block) => {
-                visit_decorators(&block.decorators, visit);
-                block
-                    .labels
-                    .iter()
-                    .for_each(|label| visit_expr(label, visit));
-                visit_expr_nodes(&block.items, visit);
-            }
-            ast::Item::Table(table) => {
-                for row in &table.rows {
-                    row.values.iter().for_each(|value| visit_expr(value, visit));
-                }
-            }
-            ast::Item::TypeDecl(declaration) => {
-                visit_decorators(&declaration.decorators, visit);
-                visit_type_fields(&declaration.fields, visit);
-            }
-            ast::Item::InterfaceDecl(declaration) => {
-                visit_decorators(&declaration.decorators, visit);
-                visit_type_fields(&declaration.fields, visit);
-            }
-            ast::Item::UnionDecl(declaration) => {
-                visit_decorators(&declaration.decorators, visit);
-                for variant in &declaration.variants {
-                    visit_decorators(&variant.decorators, visit);
-                    if let ast::VariantBody::Record { fields, .. } = &variant.body {
-                        visit_type_fields(fields, visit);
-                    }
-                }
-            }
-            ast::Item::SymbolSetDecl(declaration) => {
-                visit_decorators(&declaration.decorators, visit);
-            }
-            ast::Item::ConnectionDecl(declaration) => {
-                visit_decorators(&declaration.decorators, visit);
-            }
-            _ => {}
-        }
-    }
-}
-
-/// [`visit_expr_nodes`] over declared fields: their decorators and
-/// inline defaults.
-fn visit_type_fields(fields: &[ast::TypeField], visit: &mut impl FnMut(usize)) {
-    for field in fields {
-        visit_decorators(&field.decorators, visit);
-        if let Some(default) = &field.default_expr {
-            visit_expr(default, visit);
-        }
-    }
-}
-
-/// [`visit_expr_nodes`] over decorator arguments.
-fn visit_decorators(decorators: &[ast::Decorator], visit: &mut impl FnMut(usize)) {
-    for decorator in decorators {
-        decorator
-            .positional
-            .iter()
-            .for_each(|arg| visit_expr(arg, visit));
-        decorator
-            .named
-            .iter()
-            .for_each(|arg| visit_expr(&arg.value, visit));
-    }
-}
-
-/// [`visit_expr_nodes`] within one expression: the body of every
-/// function literal it contains, at any depth.
-fn visit_expr(expr: &ast::Expr, visit: &mut impl FnMut(usize)) {
-    use ast::Expr as E;
-    match expr {
-        E::Function(function) => {
-            visit(std::sync::Arc::as_ptr(&function.body) as usize);
-            visit_expr(&function.body, visit);
-        }
-        E::InterpolatedString { parts, .. } => {
-            for part in parts {
-                if let ast::TemplatePart::Expr(inner) = part {
-                    visit_expr(inner, visit);
-                }
-            }
-        }
-        E::Call { callee, args, .. } => {
-            visit_expr(callee, visit);
-            args.iter().for_each(|arg| visit_expr(arg, visit));
-        }
-        E::Binary { lhs, rhs, .. } => {
-            visit_expr(lhs, visit);
-            visit_expr(rhs, visit);
-        }
-        E::Unary { operand: inner, .. }
-        | E::Paren { inner, .. }
-        | E::Member { recv: inner, .. } => visit_expr(inner, visit),
-        E::Block { lets, tail, .. } => {
-            lets.iter()
-                .for_each(|binding| visit_expr(&binding.value, visit));
-            visit_expr(tail, visit);
-        }
-        E::ListLit { elements, .. } => elements.iter().for_each(|e| visit_expr(e, visit)),
-        E::If {
-            cond,
-            then_block,
-            else_block,
-            ..
-        } => {
-            visit_expr(cond, visit);
-            visit_expr(then_block, visit);
-            if let Some(else_block) = else_block {
-                visit_expr(else_block, visit);
-            }
-        }
-        E::IfLet {
-            scrut,
-            then_block,
-            else_block,
-            ..
-        } => {
-            visit_expr(scrut, visit);
-            visit_expr(then_block, visit);
-            visit_expr(else_block, visit);
-        }
-        E::Match { scrut, arms, .. } => {
-            visit_expr(scrut, visit);
-            for arm in arms {
-                if let Some(guard) = &arm.guard {
-                    visit_expr(guard, visit);
-                }
-                visit_expr(&arm.body, visit);
-            }
-        }
-        E::Variant { args, .. } => match args {
-            ast::VariantArgs::Positional(inner) => visit_expr(inner, visit),
-            ast::VariantArgs::Record { fields, .. } => {
-                fields.iter().for_each(|arg| visit_expr(&arg.value, visit));
-            }
-            ast::VariantArgs::Unit => {}
-        },
-        E::Try { body, handler, .. } => {
-            visit_expr(body, visit);
-            visit_expr(handler, visit);
-        }
-        E::Record { fields, .. } => fields.iter().for_each(|arg| visit_expr(&arg.value, visit)),
-        _ => {}
-    }
-}
-
 /// The forced in-block import (reached through `items`, at any depth,
 /// through the imports it pulls in too) whose text holds the `let` item
 /// or function body at `address`.
@@ -640,7 +480,7 @@ fn import_holding_expr(
     address: usize,
 ) -> Option<&cells::LoadedImport> {
     let mut held = false;
-    visit_expr_nodes(&import.items, &mut |node| held |= node == address);
+    visit_expr_nodes(&import.items, &mut |node| held |= node.address() == address);
     if held {
         return Some(import);
     }

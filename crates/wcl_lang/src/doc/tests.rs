@@ -756,6 +756,73 @@ fn unknown_tensor_element_type_errors() {
     }
 }
 
+/// The message of the syntax error `src` fails to open with.
+fn open_syntax_message(src: &str) -> String {
+    match Document::open(src, "test").unwrap_err() {
+        ParseError::Syntax(e) => e.message.clone(),
+        other => panic!("expected syntax error, got {other:?}"),
+    }
+}
+
+#[test]
+fn unknown_fn_item_parameter_type_errors() {
+    let msg = open_syntax_message("fn f(x: NotDecl) -> i64 1");
+    assert!(msg.contains("unknown type 'NotDecl'"), "{msg}");
+}
+
+#[test]
+fn unknown_fn_return_type_errors() {
+    let msg = open_syntax_message("let f = fn(x: i64) -> NotDecl x");
+    assert!(msg.contains("unknown type 'NotDecl'"), "{msg}");
+}
+
+#[test]
+fn unknown_type_in_nested_lambda_errors() {
+    let msg = open_syntax_message(
+        "@document type D { xs: list<i64>? }\nxs = map([1], fn(x: list<NotDecl>) -> i64 1)",
+    );
+    assert!(msg.contains("unknown type 'NotDecl'"), "{msg}");
+}
+
+#[test]
+fn unknown_type_in_block_lambda_errors() {
+    let msg = open_syntax_message(
+        "@block(\"b\") type B { @inline(0) id: identifier  n: i64? }\n\
+         @document type D { @children(\"b\") bs: list<B> }\n\
+         b one { n = { let g = fn(y: NotDecl) -> i64 2; g(1) } }",
+    );
+    assert!(msg.contains("unknown type 'NotDecl'"), "{msg}");
+}
+
+#[test]
+fn signature_accepts_notation_words_and_bare_interfaces() {
+    let doc = open(
+        "interface Shape { area: f64 }\n\
+         type Point { x: i64 }\n\
+         @document type D { n: i64? }\n\
+         fn a(x: any) -> any x\n\
+         fn b(x: number, y: integer) -> number x\n\
+         fn c(r: record, s: Shape) -> list<any> [r]\n\
+         fn d(f: fn(any) -> any, p: &Point) -> fn(record) -> integer f\n\
+         n = 1",
+    );
+    assert!(doc.field("n").is_some());
+}
+
+#[test]
+fn signature_rejects_type_variables_and_never() {
+    for ty in ["T", "never"] {
+        let msg = open_syntax_message(&format!("fn f(x: {ty}) -> i64 1"));
+        assert!(msg.contains(&format!("unknown type '{ty}'")), "{msg}");
+    }
+}
+
+#[test]
+fn notation_words_are_not_field_types() {
+    let msg = open_syntax_message("type Q { r: record }");
+    assert!(msg.contains("unknown type 'record'"), "{msg}");
+}
+
 #[test]
 fn list_of_reference_resolves() {
     let doc = open("type T { x: i32 }\ntype Q { items: list<&T> }");

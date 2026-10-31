@@ -11,7 +11,7 @@ page lang_functions {
   chapter_header "Functions" {
     kicker       = "The WCL language · reference"
     reading_time = "15 min read"
-    updated      = "2026-08-20"
+    updated      = "2026-11-01"
     version      = "wcl 0.33.2-alpha"
   }
 
@@ -559,6 +559,29 @@ CONSOLE
 
   p "It does not check argument **types**. Pass a `utf8` where the signature says `i64` and the call evaluates cleanly, with the wrong value flowing on. Nor does it check the return type: `fn f(x: i64) -> utf8 x + 1i64` returns the number 2, and the mismatch surfaces only later, when a field declared `utf8` receives it. A signature is a contract you are keeping, not one the evaluator enforces for you."
 
+  p "What WCL does check is that the annotation names something. Every type in a signature has to resolve, exactly as a field's type does, and a name nothing declares stops the file from opening. The check reaches every function literal, including a lambda passed straight into `map`. A signature is allowed a little more than a field. It may name an interface without the `&`, and it may use the four value classes from the [builtin signature notation](lang_builtins#how-to-read-an-entry): `any`, `number`, `integer` and `record`."
+
+  code wcl {
+    filename = "sig.wcl"
+    source = <<'WCL'
+fn f(x: bogus) -> i64 1
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check sig.wcl
+wcl::parse
+
+  × unknown type 'bogus'
+   ╭─[sig.wcl:1:9]
+ 1 │ fn f(x: bogus) -> i64 1
+   ·         ──┬──
+   ·           ╰── type not declared
+   ╰────
+CONSOLE
+  }
+
   h3 "What a fixed parameter list costs"
 
   p "Arity is the one positional mistake WCL catches, and a fixed parameter list is the one shape a caller can rely on. The wdoc standard library is where that trade-off is most visible. Its `el` family builds the HTML element vocabulary, and it is three constructors rather than one **because** a parameter list cannot vary:"
@@ -680,7 +703,7 @@ CONSOLE
     li "**No overloading.** One name, one function. Two `fn` items sharing a name is `duplicate declaration`."
     li "**No default or named arguments, and no optional parameters.** Every call fills every parameter, in order. See [above](#no-defaults-and-no-named-arguments)."
     li "**No generics.** There is no `fn name<T>(…)` form. `fn f<T>(x: i64) -> i64 x` fails with `expected '(' after fn name`. A signature names concrete types. The higher-order builtins take any type because Rust implements them, not because you could write one."
-    li "**No argument or return type checking.** WCL checks the argument count and nothing else. The annotations are documentation, and the [schema](lang_schemas) catches the wrong value in the end."
+    li "**No argument or return type checking.** WCL checks the argument count, and that each annotation names a real type, and nothing else. The annotations are documentation, and the [schema](lang_schemas) catches the wrong value in the end."
     li "**Builtins are not values.** Wrap one in a literal to pass it."
     li "**No serialization.** A function value is `null` in JSON, and `fn(x: i64) -> i64 { ... }` in `wcl get`."
     li "**A depth ceiling.** 200 levels of nesting, with calls, fields and `let`s counted together, then `call depth limit exceeded (max 200)`."

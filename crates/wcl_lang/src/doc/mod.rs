@@ -40,6 +40,7 @@ mod decorators;
 mod eval;
 mod eval_ops;
 mod eval_stack;
+mod expr_nodes;
 mod forced;
 mod imports;
 mod loader;
