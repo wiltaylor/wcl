@@ -10,7 +10,8 @@
 
 /// Why an arithmetic operator had no answer for operands it *did* accept.
 /// Distinct from a type mismatch: the operands were compatible, the result
-/// simply isn't representable (or, for `/` and `%`, isn't defined at all).
+/// simply isn't representable (or, for `/` and `%`, isn't defined at all,
+/// and for `<<` and `>>` the amount is out of range).
 ///
 /// Structured rather than pre-formatted so tools can act on it without
 /// parsing the message — the same reason [`SchemaViolationKind`] exists.
@@ -31,6 +32,18 @@ pub enum ArithmeticFault {
         /// The type involved, as WCL spells it.
         ty: String,
     },
+    /// `<<` or `>>` by an amount outside `0..bits` of the shifted type —
+    /// a negative amount, or one as wide as the type or wider. Bits
+    /// shifted out of range are discarded, so only the amount is
+    /// checked.
+    ShiftOutOfRange {
+        /// The shifted (left operand's) type, as WCL spells it.
+        ty: String,
+        /// Its width in bits.
+        bits: u32,
+        /// The amount that was asked for, as written in decimal.
+        amount: String,
+    },
 }
 
 impl ArithmeticFault {
@@ -45,6 +58,11 @@ impl std::fmt::Display for ArithmeticFault {
         match self {
             Self::DivideByZero => f.write_str("divide by zero"),
             Self::Overflow { ty } => write!(f, "represent the result in {ty} (overflow)"),
+            Self::ShiftOutOfRange { ty, bits, amount } => write!(
+                f,
+                "shift {ty} by {amount} (the amount must be 0 to {})",
+                bits - 1
+            ),
         }
     }
 }

@@ -229,6 +229,7 @@ impl Printer {
                     self.push(match op {
                         UnaryOp::Neg => "-",
                         UnaryOp::Not => "!",
+                        UnaryOp::BitNot => "~",
                     });
                     let mark = self.buf.len();
                     self.print_expr(operand, UNARY_BP);
@@ -734,4 +735,26 @@ pub(super) fn fold_neg(e: &Expr) -> Option<Expr> {
         } if fold_neg(operand).is_some() => (**operand).clone(),
         _ => return None,
     })
+}
+
+/// Whether `e` prints a `|` operator outside any bracket of its own. In a
+/// table cell that `|` would end the cell on the next parse, so the row
+/// printer wraps such a cell in parentheses. Follows only the forms that
+/// print a sub-expression bare: a `Paren`, list, call argument list or
+/// `{ … }` body hides any `|` within it.
+pub(super) fn has_bare_bitor(e: &Expr) -> bool {
+    match e {
+        Expr::Binary { op, lhs, rhs, .. } => {
+            *op == BinOp::BitOr || has_bare_bitor(lhs) || has_bare_bitor(rhs)
+        }
+        Expr::Unary { operand, .. } => has_bare_bitor(operand),
+        Expr::Member { recv, .. } => has_bare_bitor(recv),
+        Expr::Call { callee, .. } => has_bare_bitor(callee),
+        Expr::If { cond, .. } => has_bare_bitor(cond),
+        Expr::IfLet { scrut, .. } => has_bare_bitor(scrut),
+        Expr::Match { scrut, .. } => has_bare_bitor(scrut),
+        Expr::Try { body, handler, .. } => has_bare_bitor(body) || has_bare_bitor(handler),
+        Expr::Function(f) => has_bare_bitor(&f.body),
+        _ => false,
+    }
 }

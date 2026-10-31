@@ -212,13 +212,26 @@ impl<'a> Parser<'a> {
                 depth = depth.max(self.expr_depth) + 1;
                 continue;
             }
-            let Some((lbp, rbp, op)) = bin_op else {
+            let Some((mut lbp, mut rbp, mut op)) = bin_op else {
                 break;
             };
+            // Inside a table cell a bare `|` ends the cell.
+            if op == BinOp::BitOr && self.pipe_ends_cell() {
+                break;
+            }
+            // `<<` / `>>` arrive as two touching `<` / `>` tokens.
+            let shift = self.peek_shift(op)?;
+            if let Some(shift_op) = shift {
+                op = shift_op;
+                (lbp, rbp) = op.binding_power();
+            }
             if lbp < min_bp {
                 break;
             }
             self.bump()?; // consume operator
+            if shift.is_some() {
+                self.bump()?; // its second half
+            }
             self.expr_depth = 0;
             let (rhs, rhs_span) = self.parse_expr_bp(rbp)?;
             let new_span = Span::new(span.start, rhs_span.end);
@@ -232,6 +245,35 @@ impl<'a> Parser<'a> {
             depth = depth.max(self.expr_depth) + 1;
         }
         Ok((lhs, span, depth))
+    }
+
+    /// Whether the next token, a `|`, closes a table cell rather than
+    /// being bitwise or. It does when a cell is being parsed and no
+    /// bracket has opened since the cell began: `| a | b |` is two
+    /// cells, `| (a | b) |` one.
+    fn pipe_ends_cell(&self) -> bool {
+        self.table_cell_depth
+            .is_some_and(|depth| self.open_delims.len() <= depth)
+    }
+
+    /// The shift a comparison token `op` starts, if any. The lexer
+    /// never emits `<<` or `>>` — `list<list<u8>>` needs its two `>`
+    /// apart — so a shift is two `<` (or two `>`) with no gap between
+    /// them; `a > > b` stays a comparison followed by a stray `>`.
+    /// Looks at the second token only when the source byte after the
+    /// first already matches.
+    fn peek_shift(&mut self, op: BinOp) -> Result<Option<BinOp>, ParseError> {
+        let (byte, kind, shift) = match op {
+            BinOp::Lt => (b'<', TokenKind::Lt, BinOp::Shl),
+            BinOp::Gt => (b'>', TokenKind::Gt, BinOp::Shr),
+            _ => return Ok(None),
+        };
+        let end = self.peek()?.span.end;
+        if self.src.as_bytes().get(end) != Some(&byte) {
+            return Ok(None);
+        }
+        let next = self.peek2()?;
+        Ok((next.kind == kind && next.span.start == end).then_some(shift))
     }
 
     /// Parse `.IDENT` after `lhs`, whose span is `span`. Kept out of
@@ -338,6 +380,19 @@ impl<'a> Parser<'a> {
                 Ok((
                     Expr::Unary {
                         op: UnaryOp::Not,
+                        operand: Box::new(operand),
+                        span,
+                    },
+                    span,
+                ))
+            }
+            TokenKind::Tilde => {
+                let tok = self.bump()?;
+                let (operand, operand_span) = self.parse_expr_bp(UNARY_BP)?;
+                let span = Span::new(tok.span.start, operand_span.end);
+                Ok((
+                    Expr::Unary {
+                        op: UnaryOp::BitNot,
                         operand: Box::new(operand),
                         span,
                     },
@@ -1162,7 +1217,9 @@ fn number_to_expr(n: NumberLit) -> Expr {
 /// Token → binary-operator mapping for the Pratt parser. Returns
 /// `(left_bp, right_bp, op)` for binary operators; `None` for anything
 /// that doesn't bind as an infix operator. Binding powers come from
-/// [`BinOp::binding_power`], the shared parser/formatter table.
+/// [`BinOp::binding_power`], the shared parser/formatter table. `<` and
+/// `>` map to the comparisons; the Pratt loop upgrades a touching pair to
+/// a shift.
 fn bin_op_info(k: &TokenKind) -> Option<(u8, u8, BinOp)> {
     let op = match k {
         TokenKind::QuestionQuestion => BinOp::Coalesce,
@@ -1179,6 +1236,9 @@ fn bin_op_info(k: &TokenKind) -> Option<(u8, u8, BinOp)> {
         TokenKind::Star => BinOp::Mul,
         TokenKind::Slash => BinOp::Div,
         TokenKind::Percent => BinOp::Mod,
+        TokenKind::Amp => BinOp::BitAnd,
+        TokenKind::Pipe => BinOp::BitOr,
+        TokenKind::Caret => BinOp::BitXor,
         _ => return None,
     };
     let (lbp, rbp) = op.binding_power();

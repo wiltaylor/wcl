@@ -1340,6 +1340,189 @@ fn parse_paren_expression() {
     assert!(matches!(&**lhs, Expr::Paren { .. }));
 }
 
+/// Render an operator tree with every binary and unary node in
+/// parentheses, so a precedence test can state the grouping it expects.
+fn grouping(e: &Expr) -> String {
+    match e {
+        Expr::Binary { op, lhs, rhs, .. } => {
+            format!("({} {} {})", grouping(lhs), op.as_str(), grouping(rhs))
+        }
+        Expr::Unary { op, operand, .. } => {
+            let op = match op {
+                UnaryOp::Neg => "-",
+                UnaryOp::Not => "!",
+                UnaryOp::BitNot => "~",
+            };
+            format!("({op}{})", grouping(operand))
+        }
+        Expr::Paren { inner, .. } => grouping(inner),
+        Expr::Identifier(n, _) => n.clone(),
+        Expr::I64(v) => v.to_string(),
+        other => format!("{other:?}"),
+    }
+}
+
+fn field_grouping(src: &str) -> String {
+    let s = parse(&format!("x = {src}"));
+    grouping(&field(&s.items, "x").expr)
+}
+
+#[test]
+fn parse_each_bitwise_operator() {
+    for (src, op) in [
+        ("a & b", BinOp::BitAnd),
+        ("a | b", BinOp::BitOr),
+        ("a ^ b", BinOp::BitXor),
+        ("a << b", BinOp::Shl),
+        ("a >> b", BinOp::Shr),
+        ("a<<b", BinOp::Shl),
+        ("a>>b", BinOp::Shr),
+    ] {
+        let s = parse(&format!("x = {src}"));
+        let Expr::Binary { op: got, .. } = &field(&s.items, "x").expr else {
+            panic!("expected binary for `{src}`")
+        };
+        assert_eq!(*got, op, "{src}");
+    }
+    let s = parse("x = ~a");
+    assert!(matches!(
+        field(&s.items, "x").expr,
+        Expr::Unary {
+            op: UnaryOp::BitNot,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn bitwise_precedence_sits_between_comparison_and_arithmetic() {
+    for (src, want) in [
+        // Bitwise binds tighter than comparison, as in Rust.
+        ("a & 1 == 0", "((a & 1) == 0)"),
+        ("a | b < c", "((a | b) < c)"),
+        ("a == b | c", "(a == (b | c))"),
+        // Among themselves: `|` < `^` < `&` < shifts.
+        ("a | b ^ c & d << e", "(a | (b ^ (c & (d << e))))"),
+        ("a << e & d ^ c | b", "((((a << e) & d) ^ c) | b)"),
+        // Shifts bind looser than arithmetic.
+        ("1 << n + 1", "(1 << (n + 1))"),
+        ("a * 2 >> 1", "((a * 2) >> 1)"),
+        // Left-associative.
+        ("a << 1 << 2", "((a << 1) << 2)"),
+        ("a & b & c", "((a & b) & c)"),
+        // Prefix binds tightest.
+        ("~a & b", "((~a) & b)"),
+        ("-a << 1", "((-a) << 1)"),
+        // Looser than everything bitwise: the logic operators and `??`.
+        ("a & b && c", "((a & b) && c)"),
+        ("a ?? b | c", "(a ?? (b | c))"),
+    ] {
+        assert_eq!(field_grouping(src), want, "{src}");
+    }
+}
+
+#[test]
+fn shift_needs_touching_angle_brackets() {
+    // `a > > b` is a comparison followed by a stray `>`, not a shift.
+    assert_syntax_err(parse_err("x = a > > b"), "expected value");
+    assert_syntax_err(parse_err("x = a < < b"), "expected value");
+    // `<=` / `>=` after a `<` / `>` never fuse into a shift.
+    assert_syntax_err(parse_err("x = a >>= b"), "expected value");
+}
+
+#[test]
+fn nested_type_arguments_still_close_with_two_gt() {
+    let s = parse("type T { grid: list<list<u8>> }\nf = fn(x: list<list<u8>>) -> list<u8> x");
+    let t = type_decls(&s.items)[0];
+    assert!(matches!(t.fields[0].ty, TypeRef::List(_)));
+    assert!(matches!(field(&s.items, "f").expr, Expr::Function(_)));
+}
+
+#[test]
+fn reference_type_amp_is_unaffected_by_bitand() {
+    let s = parse("type T { owner: &User? }\nx = a & b");
+    let t = type_decls(&s.items)[0];
+    assert_eq!(t.fields[0].name, "owner");
+    assert_eq!(field_grouping("a & b"), "(a & b)");
+}
+
+#[test]
+fn match_alternatives_stay_patterns_and_guards_take_bitor() {
+    let s = parse("x = match v { 1 | 2 if a | b == 3 => 0, _ => 1 }");
+    let Expr::Match { arms, .. } = &field(&s.items, "x").expr else {
+        panic!("expected match")
+    };
+    assert_eq!(arms[0].patterns.len(), 2);
+    let guard = arms[0].guard.as_ref().expect("guard");
+    assert_eq!(grouping(guard), "((a | b) == 3)");
+}
+
+#[test]
+fn table_cells_end_at_a_bare_pipe_but_take_bitor_in_brackets() {
+    let s = parse("db x { t:\n | 1 | 2 |\n | (1 | 2) | -f(a | b) | [a | b] | 3 ^ 1 |\n}");
+    let b = blocks(&s.items)[0];
+    let rows = &table_items(&b.items)[0].rows;
+    assert_eq!(rows[0].values.len(), 2);
+    assert_eq!(rows[1].values.len(), 4);
+    assert_eq!(grouping(&rows[1].values[0]), "(1 | 2)");
+    assert_eq!(grouping(&rows[1].values[3]), "(3 ^ 1)");
+}
+
+#[test]
+fn bitwise_operators_round_trip_through_the_formatter() {
+    for src in [
+        "x = a & b | c ^ d\n",
+        "x = (a | b) & c\n",
+        "x = 1 << n + 1\n",
+        "x = (1 << n) + 1\n",
+        "x = ~a >> 2\n",
+        "x = ~(a & b)\n",
+        "x = a & 1 == 0\n",
+        "x = 0u8 - ~1u8\n",
+    ] {
+        let s = parse(src);
+        assert_eq!(crate::format::to_source(&s), src);
+    }
+    // Unspaced input comes back spaced, with the same tree.
+    let s = parse("x = a<<b>>c\n");
+    assert_eq!(crate::format::to_source(&s), "x = a << b >> c\n");
+}
+
+#[test]
+fn formatter_parenthesises_a_bare_bitor_in_a_table_cell() {
+    // A cell whose tree holds a `|` outside any bracket would end at it
+    // on the next parse, so the printer brackets the whole cell.
+    let mut s = parse("db x { t:\n | 1 | 2 |\n}");
+    let Item::Block(b) = &mut s.items[0] else {
+        panic!("expected block")
+    };
+    let Item::Table(t) = &mut b.items[0] else {
+        panic!("expected table")
+    };
+    let row = &mut t.rows[0];
+    let one = row.values.remove(0);
+    let two = row.values.remove(0);
+    let bitor = Expr::Binary {
+        op: BinOp::BitOr,
+        lhs: Box::new(one),
+        rhs: Box::new(two),
+        span: Span::new(0, 0),
+    };
+    row.values.push(Expr::Binary {
+        op: BinOp::Eq,
+        lhs: Box::new(bitor),
+        rhs: Box::new(Expr::I64(3)),
+        span: Span::new(0, 0),
+    });
+    let out = crate::format::to_source(&s);
+    assert!(out.contains("| (1 | 2 == 3) |"), "{out}");
+    let again = parse(&out);
+    let Item::Block(b) = &again.items[0] else {
+        panic!("expected block")
+    };
+    assert_eq!(table_items(&b.items)[0].rows[0].values.len(), 1);
+}
+
 #[test]
 fn parse_function_literal_with_call_in_body() {
     let s = parse("apply = fn(n: i32) -> i32 add(n, 1)");
@@ -2069,10 +2252,10 @@ fn interpolation_slot_error_points_into_outer_source() {
 
 #[test]
 fn interpolation_slot_lex_error_points_into_outer_source() {
-    let src = "a = 1\nv = $\"v ${a ^ 1}\"\n";
+    let src = "a = 1\nv = $\"v ${a ` 1}\"\n";
     let (offset, len, text, message) = syntax_err_parts(parse_err(src));
     assert!(message.starts_with("in interpolation slot:"), "{message}");
-    assert_eq!((offset, len), (src.find('^').unwrap(), 1));
+    assert_eq!((offset, len), (src.find('`').unwrap(), 1));
     assert_eq!(text, src);
 }
 

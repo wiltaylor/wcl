@@ -746,6 +746,113 @@ fn double_lt_with_non_ident_still_lt_lt() {
     assert_eq!(toks[1], TokenKind::LtEq);
 }
 
+// ---- shifts beside heredocs ------------------------------------
+
+fn ident(s: &str) -> TokenKind {
+    TokenKind::Ident(s.into())
+}
+
+#[test]
+fn shift_touching_a_value_is_two_lt_not_a_heredoc() {
+    // Every value-ending token, touching the `<<`, makes it a shift.
+    for (src, first) in [
+        ("x<<y", ident("x")),
+        ("x<<'y'", ident("x")),
+        ("1<<y", TokenKind::Number(NumberLit::I64(1))),
+        ("\"s\"<<y", TokenKind::Str(StringLit::Utf8("s".into()))),
+        (")<<y", TokenKind::RParen),
+        ("]<<y", TokenKind::RBracket),
+    ] {
+        // Only the first three: a lone `'` after them is a lex error.
+        let mut lex = Lexer::new(src);
+        let toks: Vec<_> = (0..3).map(|_| lex.next_token().unwrap().kind).collect();
+        assert_eq!(toks, [first, TokenKind::Lt, TokenKind::Lt], "{src}");
+    }
+}
+
+#[test]
+fn le_after_a_value_is_still_one_token() {
+    // Only a second `<` makes a value-adjacent `<` split off.
+    assert_eq!(tokens("x<=y")[1], TokenKind::LtEq);
+    assert_eq!(tokens("(x) <= y")[3], TokenKind::LtEq);
+    // `<<=` keeps lexing as `<` then `<=`.
+    assert_eq!(&tokens("x<<=y")[1..3], &[TokenKind::Lt, TokenKind::LtEq]);
+}
+
+#[test]
+fn shift_after_a_closer_may_be_spaced() {
+    // No heredoc ever follows `)` or `]`, so a space doesn't matter.
+    for src in [") <<y", "]\t<<y"] {
+        let toks = tokens(src);
+        assert_eq!(&toks[1..4], &[TokenKind::Lt, TokenKind::Lt, ident("y")]);
+    }
+}
+
+#[test]
+fn spaced_double_lt_after_a_name_still_opens_a_heredoc() {
+    // A block label heredoc is written `p <<TAG`, so a space between a
+    // name and `<<TAG` keeps it a heredoc.
+    let toks = tokens("p <<TXT\nhello\nTXT\n");
+    assert_eq!(toks[0], ident("p"));
+    assert_eq!(toks[1], TokenKind::Str(StringLit::Utf8("hello\n".into())));
+    let toks = tokens("math <<'TEX'\n\\frac\nTEX\n");
+    assert_eq!(toks[1], TokenKind::Str(StringLit::Utf8("\\frac\n".into())));
+}
+
+#[test]
+fn heredoc_after_an_operator_or_newline_still_opens() {
+    let toks = tokens("x = <<A\none\nA\n");
+    assert_eq!(toks[2], TokenKind::Str(StringLit::Utf8("one\n".into())));
+    let toks = tokens("f(<<A\none\nA\n)");
+    assert_eq!(toks[2], TokenKind::Str(StringLit::Utf8("one\n".into())));
+    // A heredoc on the line after a value is not touching it.
+    let toks = tokens("x\n<<A\none\nA\n");
+    assert_eq!(toks[1], TokenKind::Str(StringLit::Utf8("one\n".into())));
+}
+
+#[test]
+fn encoding_prefix_touching_double_lt_is_still_a_typed_heredoc() {
+    // `ascii<<n` reads as an ascii heredoc tagged `n`, not `ascii << n`.
+    // Spaces make it a shift.
+    let toks = tokens("ascii<<N\nhi\nN\n");
+    assert_eq!(toks[0], TokenKind::Str(StringLit::Ascii("hi\n".into())));
+    let toks = tokens("ascii << n");
+    assert_eq!(&toks[..3], &[ident("ascii"), TokenKind::Lt, TokenKind::Lt]);
+}
+
+#[test]
+fn bitwise_tokens() {
+    assert_eq!(
+        tokens("a & b | c ^ d ~e"),
+        vec![
+            ident("a"),
+            TokenKind::Amp,
+            ident("b"),
+            TokenKind::Pipe,
+            ident("c"),
+            TokenKind::Caret,
+            ident("d"),
+            TokenKind::Tilde,
+            ident("e"),
+            TokenKind::Eof,
+        ]
+    );
+    // `>>` stays two tokens, so `list<list<u8>>` still closes twice.
+    assert_eq!(&tokens("a>>b")[1..3], &[TokenKind::Gt, TokenKind::Gt]);
+}
+
+#[test]
+fn minus_after_bitwise_operator_is_a_signed_literal() {
+    assert_eq!(
+        &tokens("x^-1")[1..3],
+        &[TokenKind::Caret, TokenKind::Number(NumberLit::I64(-1))]
+    );
+    assert_eq!(
+        &tokens("~-1")[..2],
+        &[TokenKind::Tilde, TokenKind::Number(NumberLit::I64(-1))]
+    );
+}
+
 // ---- interpolation ---------------------------------------------
 
 fn interp_parts(src: &str) -> Vec<StringPart> {

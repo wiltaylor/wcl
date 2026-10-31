@@ -57,11 +57,13 @@ pub enum TokenKind {
     Question,
     /// `??` — the none-coalescing operator.
     QuestionQuestion,
-    /// `&`, forming a reference type.
+    /// `&`: a reference type in type position, bitwise and in an
+    /// expression.
     Amp,
     /// `&&`
     AmpAmp,
-    /// `|`, the table row delimiter.
+    /// `|`: the table row delimiter, a match-arm alternative, and
+    /// bitwise or in an expression.
     Pipe,
     /// `||`
     PipePipe,
@@ -107,6 +109,10 @@ pub enum TokenKind {
     Slash,
     /// `%`
     Percent,
+    /// `^`, bitwise exclusive or.
+    Caret,
+    /// `~`, bitwise complement.
+    Tilde,
     /// End of input.
     Eof,
 }

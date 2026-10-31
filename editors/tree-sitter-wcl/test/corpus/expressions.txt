@@ -58,6 +58,44 @@ port = override ?? defaults.port ?? 8080
       (number))))
 
 ================================================================================
+bitwise operators
+================================================================================
+
+x = a & 1 == 0
+y = a | b ^ c & d << 1 + 1
+z = ~m >> 2
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (field
+    (identifier)
+    (binary_expression
+      (binary_expression
+        (identifier)
+        (number))
+      (number)))
+  (field
+    (identifier)
+    (binary_expression
+      (identifier)
+      (binary_expression
+        (identifier)
+        (binary_expression
+          (identifier)
+          (binary_expression
+            (identifier)
+            (binary_expression
+              (number)
+              (number)))))))
+  (field
+    (identifier)
+    (binary_expression
+      (unary_expression
+        (identifier))
+      (number))))
+
+================================================================================
 unary operators
 ================================================================================
 

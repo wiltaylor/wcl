@@ -88,6 +88,11 @@ pub struct Parser<'a> {
     open_delims: Vec<Delim>,
     /// End offset of the last token consumed.
     last_end: usize,
+    /// While a table cell is being parsed, how many brackets were open
+    /// when it began. A `|` met at that depth ends the cell instead of
+    /// being bitwise or; one inside a bracket opened since is an
+    /// operator again. `None` outside a table cell.
+    table_cell_depth: Option<usize>,
 }
 
 /// An opening bracket, as tracked by `Parser::open_delims`.
@@ -184,6 +189,7 @@ impl<'a> Parser<'a> {
             eof_in_block_reported: false,
             open_delims: Vec::new(),
             last_end: 0,
+            table_cell_depth: None,
         }
     }
 
@@ -1154,6 +1160,7 @@ fn is_expr_start(t: &TokenKind) -> bool {
             | TokenKind::LBracket
             | TokenKind::Dash
             | TokenKind::Bang
+            | TokenKind::Tilde
     )
 }
 
@@ -1198,6 +1205,8 @@ pub(super) fn describe(t: &TokenKind) -> String {
         TokenKind::Star => "'*'".to_string(),
         TokenKind::Slash => "'/'".to_string(),
         TokenKind::Percent => "'%'".to_string(),
+        TokenKind::Caret => "'^'".to_string(),
+        TokenKind::Tilde => "'~'".to_string(),
         TokenKind::If => "'if'".to_string(),
         TokenKind::Else => "'else'".to_string(),
         TokenKind::Match => "'match'".to_string(),

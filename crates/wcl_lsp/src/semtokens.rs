@@ -235,6 +235,8 @@ fn classify(kind: &TokenKind, prev: Option<&TokenKind>) -> Option<u32> {
         | TokenKind::Star
         | TokenKind::Slash
         | TokenKind::Percent
+        | TokenKind::Caret
+        | TokenKind::Tilde
         | TokenKind::Arrow
         | TokenKind::FatArrow
         | TokenKind::Question
@@ -304,8 +306,8 @@ mod tests {
 
     #[test]
     fn lex_error_leaves_later_lines_coloured() {
-        // The bad `~` costs the rest of line 0; line 1 is still tokenised.
-        let toks = compute("a = 1 ~ 2\nb = 3\n", PositionEncoding::Utf8);
+        // The bad backtick costs the rest of line 0; line 1 is still tokenised.
+        let toks = compute("a = 1 ` 2\nb = 3\n", PositionEncoding::Utf8);
         let mut line = 0;
         let lines: Vec<u32> = toks
             .iter()

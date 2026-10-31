@@ -77,7 +77,7 @@ contexts:
       scope: constant.numeric.integer.wcl
 
   operators:
-    - match: '->|=>|==|!=|<=|>=|&&|\|\||[+\-*/%<>=!&|]'
+    - match: '->|=>|==|!=|<=|>=|<<|>>|&&|\|\||[+\-*/%<>=!&|^~]'
       scope: keyword.operator.wcl
 
   punctuation:

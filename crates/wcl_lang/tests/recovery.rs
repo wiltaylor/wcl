@@ -199,11 +199,11 @@ fn a_stray_closing_brace_is_one_error() {
 
 #[test]
 fn a_bad_character_is_one_error() {
-    let src = "a = 1 ~ 2\nb = 2\n";
+    let src = "a = 1 ` 2\nb = 2\n";
     let parsed = recover(src);
     assert_eq!(
         errors(src, &parsed),
-        vec![(1, 7, "unexpected character '~'".to_string())]
+        vec![(1, 7, "unexpected character '`'".to_string())]
     );
     assert_eq!(outline(&parsed.source.items), vec!["b"]);
 }
@@ -342,7 +342,7 @@ const BROKEN: &[&str] = &[
     "bad = [1, 2 3]",
     "bad = f(1,\n  2 3,\n  4)",
     "bad = \"unterminated",
-    "bad = 1 ~ 2",
+    "bad = 1 ` 2",
     "type Bad {\n  name utf8\n  other: i64\n}",
     "@deco(\n  a = 1\n  b = = 2\n)",
     "bad = [\n  one\n  two three\n]",

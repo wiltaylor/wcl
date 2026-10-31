@@ -94,6 +94,27 @@ fn heredoc_authored_strings_keep_heredoc_form() {
 }
 
 #[test]
+fn shifts_and_heredoc_labels_round_trip_side_by_side() {
+    // `p <<'TXT'` is a heredoc label; `x<<y` is a shift, printed spaced.
+    let out = round_trip(
+        "page t {\n  p <<'TXT'\nline one\nline two\nTXT\n}\nx = a<<b\ny = f(a) <<b\nz = 1 << n >> 2\n",
+    );
+    assert!(
+        out.contains("  p <<DOC\n"),
+        "label heredoc preserved:\n{out}"
+    );
+    assert!(out.contains("x = a << b"), "shift printed spaced:\n{out}");
+    assert!(out.contains("y = f(a) << b"), "shift after `)`:\n{out}");
+    assert!(out.contains("z = 1 << n >> 2"), "{out}");
+}
+
+#[test]
+fn bitor_in_a_table_cell_keeps_its_parentheses() {
+    let out = round_trip("t:\n  | (1 | 2) | 3 & 1 | ~0 |\n");
+    assert!(out.contains("| (1 | 2) | 3 & 1 | ~0 |"), "{out}");
+}
+
+#[test]
 fn safe_multiline_string_converts_to_heredoc() {
     // The conversion still happens where it pays off and is safe: a
     // statement-level value with >= 2 lines ending in a newline.

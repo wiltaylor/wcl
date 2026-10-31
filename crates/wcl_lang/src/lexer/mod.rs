@@ -64,6 +64,23 @@ pub struct Lexer<'a> {
     /// `union U {  # note`) belongs to the first member that follows, not
     /// to the opener — so it stays a *leading* comment, not a trailing one.
     prev_open_delim: bool,
+    /// Where the previous token ended, when that token ends a value: an
+    /// identifier, number, string, `)` or `]`. A `<<` right after one
+    /// is a shift, not a heredoc opener — see
+    /// [`shift_not_heredoc`](Self::shift_not_heredoc).
+    prev_value_end: Option<ValueEnd>,
+}
+
+/// The end of a value-shaped token, as recorded in
+/// `Lexer::prev_value_end`.
+#[derive(Clone, Copy)]
+struct ValueEnd {
+    /// Byte offset just past the token.
+    end: usize,
+    /// Whether the token was a closing `)` or `]`, which no heredoc can
+    /// follow, as opposed to a name, number or string, which a block
+    /// label heredoc can.
+    closer: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -74,6 +91,7 @@ impl<'a> Lexer<'a> {
             pos: 0,
             had_prev_token: false,
             prev_open_delim: false,
+            prev_value_end: None,
         }
     }
 
@@ -113,6 +131,20 @@ impl<'a> Lexer<'a> {
             tok.kind,
             TokenKind::LBrace | TokenKind::LBracket | TokenKind::LParen
         );
+        self.prev_value_end = match tok.kind {
+            TokenKind::Ident(_)
+            | TokenKind::Number(_)
+            | TokenKind::NumberWithUnit(_)
+            | TokenKind::Str(_) => Some(ValueEnd {
+                end: tok.span.end,
+                closer: false,
+            }),
+            TokenKind::RParen | TokenKind::RBracket => Some(ValueEnd {
+                end: tok.span.end,
+                closer: true,
+            }),
+            _ => None,
+        };
         Ok(tok)
     }
 
@@ -138,6 +170,7 @@ impl<'a> Lexer<'a> {
         self.pos = pos;
         self.had_prev_token = true;
         self.prev_open_delim = false;
+        self.prev_value_end = None;
     }
 
     /// Lex one token given the first byte `c`, once trivia has already
@@ -157,6 +190,11 @@ impl<'a> Lexer<'a> {
             },
             b'!' => Ok(self.two_or_one(start, b'=', TokenKind::BangEq, TokenKind::Bang)),
             b'<' => {
+                // A `<<` that continues a value is a shift, which the
+                // parser builds from two adjacent `<` tokens.
+                if self.peek_at(1) == Some(b'<') && self.shift_not_heredoc(start) {
+                    return Ok(self.single(start, TokenKind::Lt));
+                }
                 // Bare heredoc opener: `<<TAG`. Typed-prefix forms
                 // (`ascii<<TAG`, …) route via `lex_ident_or_typed`.
                 if self.peek_at(1) == Some(b'<')
@@ -234,6 +272,8 @@ impl<'a> Lexer<'a> {
             b'*' => Ok(self.single(start, TokenKind::Star)),
             b'/' => Ok(self.single(start, TokenKind::Slash)),
             b'%' => Ok(self.single(start, TokenKind::Percent)),
+            b'^' => Ok(self.single(start, TokenKind::Caret)),
+            b'~' => Ok(self.single(start, TokenKind::Tilde)),
             b'"' => self.lex_string(start, StringPrefix::plain(StringEncoding::Utf8)),
             b'$' => self.lex_dollar_prefix(start),
             b'-' => {
@@ -259,6 +299,20 @@ impl<'a> Lexer<'a> {
                 span: Span::new(start, start + 1),
             }),
         }
+    }
+
+    /// Whether the `<` at `start` must lex as a plain `<` even though a
+    /// heredoc opener (`<<TAG`, `<<'TAG'`) follows: it does when the
+    /// previous token ends a value, making the `<<` a shift. A name,
+    /// number or string must touch the `<<` (`x<<y`), because a block
+    /// label is written `p <<TAG` with a space. A `)` or `]` may be
+    /// followed by spaces on the same line, as no heredoc follows one.
+    fn shift_not_heredoc(&self, start: usize) -> bool {
+        let Some(prev) = self.prev_value_end else {
+            return false;
+        };
+        let gap = &self.src[prev.end..start];
+        gap.is_empty() || (prev.closer && gap.iter().all(|&b| b == b' ' || b == b'\t'))
     }
 
     /// The next byte without consuming it.
@@ -536,5 +590,7 @@ fn is_pre_value_separator(b: u8) -> bool {
             | b'!'
             | b'?'
             | b'@'
+            | b'^'
+            | b'~'
     )
 }
