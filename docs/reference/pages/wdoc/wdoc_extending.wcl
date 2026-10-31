@@ -141,7 +141,7 @@ CONSOLE
 
   p "Read the declaration one line at a time. `@block(\"endpoint\")` registers the kind, exactly as it would for a data block. See [Schemas](lang_schemas). `extends ContentBlock` says the block produces **page content**, which is what a `page` accepts. `@inline(0)` and `@inline(1)` bind the two labels, so `endpoint \"GET\" \"/users\"` reads like the thing it describes. `summary` is an ordinary field."
 
-  p "`id` and `class` deserve a note. `ContentBlock` declares only two members: `id`, the anchor target, and the optional `lower` slot. **`class` is not inherited.** Declare it yourself, as the examples here do and as every stdlib content block does. Leave it out and an instance that sets a class is refused: `field 'class' is not declared by schema 'Endpoint'`."
+  p "`id` and `class` deserve a note. `ContentBlock` declares only two members: `id`, the anchor target, and the optional `lower` slot. A type that extends it inherits both, so an `endpoint` may write `id` even where the type never mentions it. `Endpoint` redeclares `id` anyway, which is harmless: a redeclaration replaces the inherited field. **`class` is not inherited**, because `ContentBlock` has none to give. Declare it yourself, as the examples here do and as every stdlib content block does. Leave it out and an instance that sets a class is refused: `field 'class' is not declared by schema 'Endpoint'`."
 
   p "`lower` is the interesting one. It is a **field with a default value**: an ordinary function literal, checked and evaluated like any other expression in the document. The renderer looks it up and calls it. Nothing registers it. Nothing dispatches on a naming convention."
 

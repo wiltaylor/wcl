@@ -215,7 +215,7 @@ pub(crate) fn field_f64(block: &Block<'_>, name: &str) -> Option<f64> {
     // layered child render at (x=0, y=0) without forcing every
     // user to write x = 0.0 themselves. Block-only — variant
     // payloads carry already-resolved geometry.
-    value_as_f64(&block.schema()?.field(name)?.default_value()?)
+    value_as_f64(&block.schema()?.effective_field(name)?.default_value()?)
 }
 
 /// Read an integer field off a block as `i64`.

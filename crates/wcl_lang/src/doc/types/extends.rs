@@ -2,8 +2,10 @@
 //!
 //! A `type` or `interface` may extend others, and the result has to be a
 //! DAG whose fields agree: every parent resolves, nothing extends
-//! itself, there are no cycles, and no two declarations in one ancestry
-//! give the same field name incompatible types.
+//! itself, there are no cycles, no two declarations in one ancestry
+//! give the same field name incompatible types, and no two differently
+//! named fields of the effective set claim the same `@inline(N)` label
+//! slot.
 //!
 //! This is the same relation [`inherit`](super::inherit) walks at
 //! runtime to build a declaration's effective field set — checked here so
@@ -36,8 +38,8 @@ pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Resu
     // Snapshot every parent/child as (decl_fqn, [parent_fqn]) so we
     // can walk the graph without distinguishing type vs interface.
     let mut parent_map: HashMap<Vec<String>, Vec<Vec<String>>> = HashMap::new();
-    // Field map: decl_fqn -> [(field_name, TypeRef, span)].
-    type FieldRow<'a> = (&'a str, &'a TypeRef, Span);
+    // Field map: decl_fqn -> [(field_name, TypeRef, span, @inline slot)].
+    type FieldRow<'a> = (&'a str, &'a TypeRef, Span, Option<u64>);
     let mut field_map: HashMap<Vec<String>, Vec<FieldRow<'_>>> = HashMap::new();
 
     let compose_fqn = |name: &[String]| -> Vec<String> {
@@ -89,7 +91,7 @@ pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Resu
         parent_map.insert(self_fqn.clone(), resolved_parents);
         let rows: Vec<FieldRow<'_>> = fields
             .iter()
-            .map(|f| (f.name.as_str(), &f.ty, f.span))
+            .map(|f| (f.name.as_str(), &f.ty, f.span, literal_inline_slot(f)))
             .collect();
         field_map.insert(self_fqn, rows);
     }
@@ -136,8 +138,8 @@ pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Resu
     fn collect_ancestor_fields<'a>(
         node: &[String],
         parent_map: &HashMap<Vec<String>, Vec<Vec<String>>>,
-        field_map: &HashMap<Vec<String>, Vec<(&'a str, &'a TypeRef, Span)>>,
-        out: &mut Vec<(&'a str, &'a TypeRef, Span)>,
+        field_map: &HashMap<Vec<String>, Vec<FieldRow<'a>>>,
+        out: &mut Vec<FieldRow<'a>>,
         seen: &mut HashSet<Vec<String>>,
     ) {
         let key = node.to_vec();
@@ -169,7 +171,7 @@ pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Resu
         // conformance applies, so a concrete impl can narrow a
         // `fn(&I) -> R` declared on the parent to `fn(Concrete) -> R`.
         let mut by_name: HashMap<&str, (&TypeRef, Span)> = HashMap::new();
-        for (name, ty, span) in &all_fields {
+        for (name, ty, span, _) in &all_fields {
             match by_name.get(name) {
                 Some((existing_ty, _)) if !extends_field_types_compatible(existing_ty, ty) => {
                     return Err(open_error(
@@ -189,9 +191,54 @@ pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Resu
                 }
             }
         }
+
+        // `@inline(N)` slots across the effective set. A redeclaration
+        // replaces the inherited field, slot and all, so resolve by name
+        // first — rows arrive ancestors-first, so the child-most
+        // declaration (and, between parents, the later one) is the one
+        // kept, as in `inherit::build_effective_fields`. Two different
+        // names left on one slot would both read the same label.
+        let mut slot_of: Vec<(&str, Option<u64>, Span)> = Vec::new();
+        for (name, _, span, slot) in &all_fields {
+            match slot_of.iter_mut().find(|(n, ..)| n == name) {
+                Some(entry) => *entry = (name, *slot, *span),
+                None => slot_of.push((name, *slot, *span)),
+            }
+        }
+        let mut claimed: HashMap<u64, &str> = HashMap::new();
+        for (name, slot, span) in &slot_of {
+            let Some(slot) = slot else { continue };
+            if let Some(first) = claimed.insert(*slot, name) {
+                return Err(open_error(
+                    source,
+                    file,
+                    format!(
+                        "fields '{first}' and '{name}' of '{}' both claim @inline({slot})",
+                        decl_fqn.join("."),
+                    ),
+                    *span,
+                    "inline slot already taken",
+                ));
+            }
+        }
     }
 
     Ok(())
+}
+
+/// The label slot a field's `@inline(N)` names, when `N` is written as an
+/// integer literal — the only form the open-time slot check can read
+/// without evaluating anything.
+fn literal_inline_slot(field: &ast::TypeField) -> Option<u64> {
+    let decorator = field
+        .decorators
+        .iter()
+        .find(|d| d.name.len() == 1 && d.name[0] == "inline")?;
+    match decorator.positional.first()? {
+        ast::Expr::U64(n) => Some(*n),
+        ast::Expr::I64(n) => u64::try_from(*n).ok(),
+        _ => None,
+    }
 }
 
 /// `true` if two `TypeRef`s are compatible across an `extends`

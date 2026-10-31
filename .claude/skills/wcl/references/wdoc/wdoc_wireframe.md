@@ -187,11 +187,7 @@ the diagram render path like any custom shape:
 type WfBadge extends Widget {
   @inline(0) text: utf8
   fill = "#2e7d32"
-  id: identifier?  class: list<utf8>?  disabled: bool?
-  x = 0.0  y = 0.0  width = 96.0  height = 26.0
-  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
-  connect_points: list<AnchorSide>?
-  theme: symbol?  accent: symbol?  mode: symbol?
+  width = 96.0  height = 26.0    // redeclared only to give a default size
   lower = fn(b: WfBadge) -> list<Svg> {
     [ Svg::Rect {
         x: b.x, y: b.y, width: b.width, height: b.height,
@@ -216,8 +212,11 @@ diagram {
 
 Two rules differ from the built-ins:
 
-1. **Repeat the shared field block verbatim.** A WCL schema lists a type's own fields, so an
-   interface does not supply them. Copy the `id` … `mode` lines above.
+1. **The shared fields come from `Widget`.** `id`, `class`, `disabled`, `x = 0.0`, `y = 0.0`,
+   the anchors, `connect_points`, `theme`, `accent` and `mode` are inherited, defaults included,
+   so the lowering reads `b.x` and `b.class` without the type declaring them. Redeclare one only
+   to change it; the redeclaration replaces the inherited field whole. (The stdlib `wf_*` types
+   still repeat the block; that predates inheritance and is harmless.)
 2. **A custom widget reads its own `x` / `y`.** It is a standalone shape, so the lowering
    positions itself — unlike a built-in child, whose parent container places it.
 

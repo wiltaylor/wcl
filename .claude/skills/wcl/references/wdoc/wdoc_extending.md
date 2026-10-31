@@ -78,6 +78,12 @@ Four things to note:
 - The interface signature takes `&ContentBlock`; a concrete type narrows the parameter to its
   own type. Function-typed interface fields are structurally compatible, so this is legal.
 - The return is a **list**. One block may lower to several nodes.
+- Interface fields are inherited. `ContentBlock` / `SvgBlock` supply `id` (and `Widget` its
+  geometry, `TermPrimitive` its `row` / `col`), so an instance may write them and the `lower`
+  may read `p.id` without the type declaring them. `class` is **not** on any of these
+  interfaces; declare `class: list<utf8>?` yourself or instances that set one are refused.
+- A `lower` default on a parent `type` is inherited too: a `@block` type extending such a base
+  renders with it and needs no `lower` of its own.
 
 ## The semantic content IR
 

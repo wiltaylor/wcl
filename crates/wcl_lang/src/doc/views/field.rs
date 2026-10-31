@@ -606,7 +606,9 @@ impl<'a> Field<'a> {
                     // instances — every undeclared field passes, with no
                     // per-instance annotation.
                     Some(schema) if schema.is_schemaless() => None,
-                    Some(schema) if schema.field(self.name()).is_some() => None,
+                    // Inherited fields count: membership is against the
+                    // effective set, as in the strict walk.
+                    Some(schema) if schema.effective_field(self.name()).is_some() => None,
                     Some(schema) => Some(crate::doc::schema_check::unknown_field_error(
                         self.name(),
                         schema.name(),
@@ -636,8 +638,8 @@ impl<'a> Field<'a> {
 
     /// Returns the schema-declared `TypeRef` for this field, if the
     /// field lives inside a schema'd block and that schema declares
-    /// it. Top-level fields and fields inside un-schema'd blocks
-    /// return `None`.
+    /// it, directly or through `extends`. Top-level fields and fields
+    /// inside un-schema'd blocks return `None`.
     pub(in crate::doc) fn declared_type_ref(&self) -> Option<&'a TypeRef> {
         self.declared_field().map(|field| field.type_ref())
     }
@@ -655,7 +657,7 @@ impl<'a> Field<'a> {
                 kind_override: frame.kind_override,
                 scope: Scope::root(),
             };
-            return block.schema()?.field(self.name());
+            return block.schema()?.effective_field(self.name());
         }
         // Top-level field: consult the merged @document schema(s) in
         // this field's source namespace, preferring a root-authored

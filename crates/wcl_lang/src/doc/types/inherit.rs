@@ -108,9 +108,13 @@ where
 /// chain. A field's decorators are its own first, then any from a same-named
 /// ancestor field whose decorator name isn't already present (own wins
 /// per-decorator). This lets a concrete type redeclare an interface field
-/// (required for instance validation) while still inheriting the
-/// interface's `@doc` / `@hidden` — so shared field documentation lives in
-/// one place. Field names contributed only by ancestors are included too.
+/// while still inheriting the interface's `@doc` / `@hidden` — so shared
+/// field documentation lives in one place. Field names contributed only by
+/// ancestors are included too.
+///
+/// Reflection only (`type_fields` / `type_table`). Instance validation
+/// never merges: it reads [`build_effective_fields`], where a redeclared
+/// field is the child's declaration and nothing else.
 pub(crate) fn build_merged_decorators<'a, I>(
     doc: &'a Document,
     extends: &[Vec<String>],
@@ -140,7 +144,9 @@ where
 }
 
 /// Single-field lookup against the effective-field set. `own_lookup` checks
-/// the declaration itself; if it misses, walk parents.
+/// the declaration itself; if it misses, walk parents **last to first**, so
+/// the answer agrees with [`build_effective_fields`], where a later parent
+/// overrides an earlier one on a shared name.
 pub(crate) fn lookup_effective_field<'a, F>(
     doc: &'a Document,
     extends: &[Vec<String>],
@@ -154,7 +160,7 @@ where
     if let Some(f) = own_lookup(name) {
         return Some(f);
     }
-    for parent_path in extends {
+    for parent_path in extends.iter().rev() {
         if let Some(f) = effective_field_via(doc, parent_path, file_ns, name) {
             return Some(f);
         }

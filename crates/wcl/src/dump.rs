@@ -346,7 +346,7 @@ fn dump_block(b: &Block<'_>, depth: usize, out: &mut Out) {
 /// any other schema.
 fn template_body_kind(schema: &TypeDecl<'_>) -> Option<String> {
     let body_field = schema.declares_kind()?.body_field?;
-    let field = schema.fields().find(|f| f.name() == body_field)?;
+    let field = schema.effective_field(&body_field)?;
     field
         .child_block_kind()
         .or_else(|| field.children_block_kind())

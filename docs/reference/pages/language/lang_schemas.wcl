@@ -665,6 +665,221 @@ CONSOLE
 
   p "A default is read at the moment the field is asked for, like every other expression in a document. See [How a document evaluates](lang_evaluation)."
 
+  h2 "extends: a kind built on shared fields"
+
+  p "A record type may `extends` one or more others. An instance of the derived kind is checked against the **effective** field set: the fields its type declares, plus every field the type inherits, through any number of levels. An inherited field is written, type-checked, defaulted and bound to a label exactly as a declared one is. Nothing about the instance says which type a field came from."
+
+  code wcl {
+    filename = "cpus.wcl"
+    source = <<'WCL'
+# cpus.wcl — three levels of record type, one block kind.
+
+type Part {
+  vendor: utf8
+  @default(64u32) width: u32
+}
+
+type CpuBase extends Part {
+  features: list<utf8>
+}
+
+@block("cpu", required_fields = ["vendor"])
+type Cpu extends CpuBase {
+  @inline(0) id: identifier
+  cmov: bool
+}
+
+@document
+type Cfg { @children("cpu") cpus: list<Cpu> }
+
+cpu p6 {
+  vendor   = "intel"
+  features = ["x87", "mmx"]
+  cmov     = true
+}
+WCL
+  }
+
+  p "`p6` writes `features` from `CpuBase` and `vendor` from `Part`, two levels up. `width` it leaves out, and `Part`'s default fills it:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check cpus.wcl
+OK
+$ wcl get cpus.wcl cpus.p6.features
+["x87", "mmx"]
+$ wcl get cpus.wcl cpus.p6.width
+64u32
+CONSOLE
+  }
+
+  p "The checks reach the inherited fields too. `required_fields` may name one, as `Cpu` names `vendor`, and a wrong value in one is the same violation it would be in a declared field. Add this block to the file:"
+
+  code wcl {
+    source = <<'WCL'
+cpu k6 {
+  features = "mmx"
+  cmov     = true
+}
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check cpus.wcl
+wcl::eval::schema_violation
+
+  × block 'cpu' is missing required field 'vendor'
+    ╭─[cpus.wcl:27:1]
+ 26 │
+ 27 │ ╭─▶ cpu k6 {
+ 28 │ │     features = "mmx"
+ 29 │ │     cmov     = true
+ 30 │ ├─▶ }
+    · ╰──── schema violation
+    ╰────
+
+wcl::eval::schema_violation
+
+  × field 'features' declared as list<utf8> but value is utf8
+    ╭─[cpus.wcl:28:3]
+ 27 │ cpu k6 {
+ 28 │   features = "mmx"
+    ·   ────────┬───────
+    ·           ╰── schema violation
+ 29 │   cmov     = true
+    ╰────
+
+cpus.wcl: 2 schema violations
+CONSOLE
+  }
+
+  p "Fields are what is inherited. The `@block` decorator is not. `required_fields`, `max_children` and the rest bind to the type they are written on, so a `@block` type that extends another `@block` type gets its parent's fields and none of its parent's rules. A parent may be an `interface` as well as a `type`, and its fields are inherited the same way."
+
+  h3 "A redeclared field replaces the inherited one"
+
+  p "Declare a field the parent already declares and the child's declaration wins, **whole**. Its type, its `?` and its decorators are the ones that apply. Nothing is merged from the parent's declaration of the same name:"
+
+  code wcl {
+    filename = "mcus.wcl"
+    source = <<'WCL'
+type Part {
+  @default(64u32) @min(32) width: u32
+}
+
+@block("mcu")
+type Mcu extends Part {
+  @inline(0) id: identifier
+  width: u32?
+}
+
+@document
+type Cfg { @children("mcu") mcus: list<Mcu> }
+
+mcu avr  { width = 8u32 }
+mcu bare { }
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check mcus.wcl
+OK
+$ wcl get mcus.wcl mcus.avr.width
+8u32
+$ wcl get mcus.wcl mcus.bare.width
+none
+CONSOLE
+  }
+
+  p "`Mcu` dropped both of `Part`'s decorators. `@min(32)` no longer refuses `8u32`, and `@default(64u32)` no longer fills `bare`. To keep a decorator, write it again on the redeclaration."
+
+  p "What a redeclaration may not change is the type. `width: u16?` against the parent's `u32` fails when the file opens, before any instance is looked at:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check mcus.wcl
+wcl::parse
+
+  × conflicting type for field 'width' in 'Mcu' (across extends)
+   ╭─[mcus.wcl:8:3]
+ 7 │   @inline(0) id: identifier
+ 8 │   width: u16?
+   ·   ─────┬─────
+   ·        ╰── field type conflict
+ 9 │ }
+   ╰────
+CONSOLE
+  }
+
+  p "Optionality is not part of that comparison, which is why `u32?` over `u32` is legal."
+
+  h3 "Several parents, and label slots"
+
+  p "A type may list several parents. When two of them declare the same name, the types must agree, as above, and the **later** parent in the `extends` list supplies the declaration. `@inline` slots combine across the whole set, so a parent may own label 0 and the child label 1:"
+
+  code wcl {
+    filename = "pkgs.wcl"
+    source = <<'WCL'
+type Licensed { license = "proprietary" }
+type OpenCore { license = "MIT" }
+
+interface Placed { x: f64  y: f64 }
+
+type Named { @inline(0) name: utf8 }
+
+@block("pkg")
+type Pkg extends Named, Licensed, OpenCore, Placed {
+  @inline(1) version: utf8
+}
+
+@document
+type Cfg { @children("pkg") pkgs: list<Pkg> }
+
+pkg "zlib" "1.3" { x = 1.0  y = 2.0 }
+
+@schemaless ids = map(pkgs, fn(p: Pkg) -> utf8 $"${p.name}@${p.version}")
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check pkgs.wcl
+OK
+$ wcl get pkgs.wcl pkgs.zlib.license
+"MIT"
+$ wcl get pkgs.wcl pkgs.zlib.x
+1.0
+$ wcl get pkgs.wcl ids
+["zlib@1.3"]
+CONSOLE
+  }
+
+  p "Swap the order to `extends Named, OpenCore, Licensed, Placed` and `license` reads `\"proprietary\"`. Two different fields may not claim one slot, inherited or not. Give `Pkg` an `@inline(0) version` and the file is refused:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check pkgs.wcl
+wcl::parse
+
+  × fields 'name' and 'version' of 'Pkg' both claim @inline(0)
+    ╭─[pkgs.wcl:10:14]
+  9 │ type Pkg extends Named, Licensed, OpenCore, Placed {
+ 10 │   @inline(0) version: utf8
+    ·              ──────┬──────
+    ·                    ╰── inline slot already taken
+ 11 │ }
+    ╰────
+CONSOLE
+  }
+
+  p "A child that redeclares `name` itself, on the same slot, is an override and not a clash. A `@table` type inherits the same way, and its columns are the effective fields in order: inherited fields first, then the type's own."
+
+  callout "The open-time checks read one file" {
+    kind = :warning
+    body  = "The type-conflict and label-slot checks above compare declarations written in the **same file**. When the parent comes from an `import`, neither runs. The child's declaration still replaces the parent's at validation time, so a conflicting type silently wins, and two fields on one slot both read that label. Keep a base type and the types that extend it in one file, or check the overlap by eye."
+  }
+
   h2 "@table: a kind whose instances are rows"
 
   p "`@table(\"kind\")` registers a block kind exactly as `@block` does, with one difference in how instances are written: a row's values are its labels, one per declared field, and the parent writes them under a table header. [Documents, fields and blocks](lang_documents#tables) covers the row syntax. What follows is what the schema side does with it."

@@ -959,7 +959,7 @@ fn authored_block_value(block: &Block<'_>) -> Value {
 
     let labels = block.labels().unwrap_or_default();
     let mut fields = BTreeMap::new();
-    for field_schema in schema.fields() {
+    for field_schema in schema.effective_fields() {
         if field_schema.children_kind_or_union().is_some()
             || field_schema.child_kind_or_union().is_some()
         {

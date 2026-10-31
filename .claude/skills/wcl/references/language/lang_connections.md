@@ -130,8 +130,8 @@ interface Entity { name: utf8 }
 symbol_set RelKind { relates }
 connection Rel: &Entity -> &Entity : RelKind
 
-@block("service") type Service extends Entity { @inline(0) id: identifier  name: utf8 }
-@block("store")   type Store   extends Entity { @inline(0) id: identifier  name: utf8 }
+@block("service") type Service extends Entity { @inline(0) id: identifier }   // inherits `name`
+@block("store")   type Store   extends Entity { @inline(0) id: identifier }
 
 @document type Config {
   @children("service") services: list<Service>

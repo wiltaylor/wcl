@@ -95,8 +95,14 @@ An **interface** name is legal only behind `&`, so it has no row of its own in t
 ## Records — `type Name { … }`
 
 A `type` with a body declares a named record: a fixed set of named, typed fields. `extends`
-inherits another record's fields. You write a record value as a bare `{ … }` literal. See
-`lang_collections.md`.
+inherits another record's (or interface's) fields, transitively. You write a record value as a
+bare `{ … }` literal. See `lang_collections.md`.
+
+On a `@block` / `@table` / `@decorator` type, inherited fields are part of what an instance may
+write and what `wcl check` validates — no redeclaration needed. A redeclared field replaces the
+inherited one whole (type must match; decorators are not merged). Overrides, several parents
+and `@inline` slots: `lang_schemas.md`, section `extends`. `extends` also makes the type a
+descendant of its parents, which is what a `&Parent` field naming a record type checks.
 
 ```wcl
 type Dog {
