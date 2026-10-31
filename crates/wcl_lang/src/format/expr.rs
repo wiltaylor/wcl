@@ -673,6 +673,9 @@ impl Printer {
         }
         self.push(") -> ");
         self.print_type_ref(&f.return_ty);
+        if f.return_optional {
+            self.push_ch('?');
+        }
         self.push_ch(' ');
         self.print_expr(&f.body, 0);
     }
@@ -682,6 +685,9 @@ impl Printer {
         self.push(&p.name);
         self.push(": ");
         self.print_type_ref(&p.ty);
+        if p.optional {
+            self.push_ch('?');
+        }
     }
 }
 

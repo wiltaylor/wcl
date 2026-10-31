@@ -309,7 +309,7 @@ fn fn_item_signature(text: &str, name: &str, item_index: usize) -> Option<Signat
         let ast::Expr::Function(f) = &l.value else {
             return None;
         };
-        Some((l.name.clone(), f.clone()))
+        Some((l.name.clone(), f.as_ref().clone()))
     };
     let lit = ast
         .items
@@ -330,9 +330,9 @@ fn function_lit_signature(
     let params: Vec<(String, Option<String>)> = lit
         .params
         .iter()
-        .map(|p| (format!("{}: {}", p.name, p.ty), None))
+        .map(|p| (format!("{}: {}", p.name, p.ty_text()), None))
         .collect();
-    assemble(name, &params, &lit.return_ty.to_string(), doc)
+    assemble(name, &params, &lit.return_ty_text(), doc)
 }
 
 /// Build the `name(p1, p2) -> ret` label, recording each parameter's
@@ -491,6 +491,23 @@ mod tests {
         let sig = &help.signatures[0];
         assert_eq!(sig.label, "add(a: i64, b: i64) -> i64");
         assert_eq!(help.active_parameter, Some(1));
+    }
+
+    #[test]
+    fn optional_types_show_in_user_signature() {
+        let src = "fn greet(name: utf8?, n: i64) -> utf8? name\nx = greet(";
+        let help = signature_help(
+            &Ctx::new(Default::default()),
+            src,
+            "test.wcl",
+            src.len(),
+            None,
+        )
+        .expect("fn item help");
+        assert_eq!(
+            help.signatures[0].label,
+            "greet(name: utf8?, n: i64) -> utf8?"
+        );
     }
 
     #[test]

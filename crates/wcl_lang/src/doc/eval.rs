@@ -741,13 +741,18 @@ impl Document {
         let params: Vec<FnParam> = f
             .params
             .iter()
-            .map(|p| FnParam::new(p.name.clone(), p.ty.clone()))
+            .map(|p| FnParam::new(p.name.clone(), p.ty.clone(), p.optional))
             .collect();
         let captured = ctx.locals.clone();
         Value::Function(
-            FnValue::new(params, f.return_ty.clone(), f.body.clone())
-                .with_captures(captured)
-                .with_span(f.span),
+            FnValue::new(
+                params,
+                f.return_ty.clone(),
+                f.return_optional,
+                f.body.clone(),
+            )
+            .with_captures(captured)
+            .with_span(f.span),
         )
     }
 

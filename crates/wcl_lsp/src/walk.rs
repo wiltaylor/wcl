@@ -195,9 +195,10 @@ fn walk_expr<'a>(expr: &'a Expr, offset: usize, out: &mut EnclosingScopes<'a>) {
             }
             walk_expr(tail, offset, out);
         }
-        Expr::Function(FunctionLit {
-            params, body, span, ..
-        }) => {
+        Expr::Function(lit) => {
+            let FunctionLit {
+                params, body, span, ..
+            } = lit.as_ref();
             if !contains(*span, offset) {
                 return;
             }

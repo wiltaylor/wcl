@@ -56,40 +56,51 @@ the evaluated document, in `wcl get`, in JSON output, or in schema validation. S
 
 - No **default** arguments.
 - No **named** arguments — every argument is positional.
-- No optional parameters: `?` in a parameter list is a **parse error** (`fn(x: utf8?)` fails
-  with `expected ',' or ')' in parameter list`).
+- No **omitted** arguments. `T?` on a parameter makes the *value* optional, not the argument:
+  `fn greet(name: utf8?)` still needs `greet(none)`; `greet()` is
+  `'greet' expects 1 argument(s), got 0`.
 - No variadics in user code. A few builtins (`format`) are variadic; nothing you declare can be.
 
 An argument count that does not match the parameter count is an error at call time.
 
-The workaround for an optional parameter is to **declare it `any` and let `none` flow through
-the body**. `any` is the only signature type that accepts `none`; `cls: list<utf8>` handed `none`
-fails with `argument 2 ('cls') of 'el' expects list<utf8>, got none`. An optional field the
-`none` lands in reads as unset, and the field's own type still checks a real value:
+### `T?` in a signature
+
+A parameter or return type may end in `?`, with an optional field's meaning: `none` passes
+through untouched, and any other value meets `T` by the field rule (conversion included). Use it
+for a parameter that receives an optional field's value.
 
 ```wcl
 union Html {
   Element { tag: utf8  id: identifier?  class: list<utf8>?  children: list<Html> }
 }
 
-// `cls` and `id` take an optional field's value, so they are `any`.
-let el  = fn(tag: utf8, cls: any, kids: list<Html>) -> Html
+let el  = fn(tag: utf8, cls: list<utf8>?, kids: list<Html>) -> Html
   Html::Element { tag: tag, class: cls, children: kids }
 
-let eli = fn(tag: utf8, id: any, cls: any, kids: list<Html>) -> Html
+let eli = fn(tag: utf8, id: identifier?, cls: list<utf8>?, kids: list<Html>) -> Html
   Html::Element { tag: tag, id: id, class: cls, children: kids }
 
+fn first(xs: list<utf8>) -> utf8? if len(xs) == 0 { none } else { at(xs, 0) }
+
 a = el("div", none, [])                // class → none
-b = eli("section", "intro", [], [])    // the variant field turns "intro" into an identifier
+b = eli("section", "intro", [], [])    // "intro" converts to the identifier intro
+c = el("div", "wide", [])              // × argument 2 ('cls') of 'el' expects list<utf8>?, got utf8
 ```
+
+- The message prints the `?`: `expects utf8?, got i64`, `'f' declared -> i64? but returned utf8`.
+- `?` goes on the **whole** parameter or return type only. `list<utf8?>` is a parse error, as it
+  is in a field, and so is `?` inside a function type: `fn(i64?) -> i64` fails with
+  `expected ',' or ')' in fn type`. In a field, `f: fn() -> i64?` makes the **field** optional.
+- `fn(a, b) -> fn(i64) -> i64? body`: the `?` belongs to the **outer** return type.
+- `fn_signature(f).signature`, `ast_string(f)`, `wcl fmt` and LSP signature help all keep the `?`.
+- Keep `any` for a parameter that takes several unrelated types. `T?` is the narrower contract.
 
 This is exactly why libraries built on WCL grow **families** of near-identical constructors —
 one per useful combination — rather than one function with defaults. When two members of such a
 family share an arity, only a parameter **type** can catch a transposed argument, and an `any`
-parameter catches nothing. wdoc's `ela(tag, cls, attrs, kids)` handed `eli`'s arguments fails on
-`attrs: list<list<utf8>>`; `eli(tag, id, cls, kids)` handed `ela`'s passes, because `id` and
-`cls` are both `any`. Order the parameters so a mistake is obvious, or give the two forms
-different arities.
+parameter catches nothing. wdoc's `ela(tag, cls, attrs, kids)` and `eli(tag, id, cls, kids)`
+catch each other: `eli` handed `ela`'s arguments fails on `id: identifier?` (`got list`), and
+`ela` handed `eli`'s fails on `cls: list<utf8>?` (`got utf8`).
 
 > **A `{` straight after the return type is always a block expression, never a record literal.**
 > `fn(x: i64) -> Point { x: x, y: 0 }` is a parse error. Return the explicit
@@ -111,8 +122,8 @@ A signature is allowed two things a field is not:
   (`list<any>`, `fn(any) -> any`). Type variables (`T`) and `never` are not among them.
 - An interface by bare name (`fn(s: Shape) -> …`). A field needs `&Shape`.
 
-`?` is legal nowhere in a signature: not on a parameter, not on the return type
-(`fn f() -> i64? none` is a parse error), not inside a function type (`fn(i64?) -> i64`).
+`?` is legal on a parameter's type and on the return type (see `T?` above), and nowhere inside
+a type: not in `list<utf8?>`, not in a function type (`fn(i64?) -> i64`).
 
 ## What a call checks
 
@@ -137,7 +148,7 @@ The result meets the return type the same way. Concretely:
 | a symbol outside the declared `symbol_set` | refused: `got :medium, which is not a member of 'Mode'` |
 | a value an alias's constraint rejects (`@min(1) type Port = u16`) | refused: `got u16, but value 0 is below @min(1)` |
 | a unit literal (`5MiB`) | resolved against the type's `@unit`, as in a field |
-| `none` | refused by every type except `any` |
+| `none` | accepted by `T?` and `any`, refused by every other type (`expects utf8, got none`) |
 
 The signature-only types check and **never convert**:
 

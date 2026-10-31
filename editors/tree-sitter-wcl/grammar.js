@@ -231,6 +231,7 @@ module.exports = grammar({
       field('parameters', $.parameters),
       '->',
       field('return_type', $._type),
+      optional($.optional_marker),
       field('body', $._expression),
     )),
 
@@ -527,6 +528,7 @@ module.exports = grammar({
       field('parameters', $.parameters),
       '->',
       field('return_type', $._type),
+      optional($.optional_marker),
       field('body', $._expression),
     )),
     parameters: $ => seq('(', commaSep($.parameter), optional(','), ')'),
@@ -534,6 +536,7 @@ module.exports = grammar({
       field('name', $.identifier),
       ':',
       field('type', $._type),
+      optional($.optional_marker),
     ),
 
     // ── Patterns ──────────────────────────────────────────────────

@@ -998,11 +998,13 @@ impl<'a> Parser<'a> {
         };
         self.expect(TokenKind::Colon, "expected ':' after parameter name")?;
         let (ty, ty_span) = self.parse_type_ref()?;
+        let (optional, end) = self.parse_optional_mark(ty_span.end)?;
         Ok(Parameter {
             name: pname,
             ty,
             ty_span,
-            span: Span::new(param_start, ty_span.end),
+            optional,
+            span: Span::new(param_start, end),
             leading_trivia,
             trailing_comment: None,
         })
@@ -1119,6 +1121,7 @@ impl<'a> Parser<'a> {
         trailing_trivia.extend(rparen.leading_trivia.iter().cloned());
         self.expect(TokenKind::Arrow, "expected '->' before return type")?;
         let (return_ty, return_ty_span) = self.parse_type_ref()?;
+        let (return_optional, _) = self.parse_optional_mark(return_ty_span.end)?;
         let (body, body_span) = if matches!(self.peek()?.kind, TokenKind::LBrace) {
             self.parse_block_expr()?
         } else {
@@ -1126,16 +1129,28 @@ impl<'a> Parser<'a> {
         };
         let span = Span::new(start, body_span.end);
         Ok((
-            Expr::Function(FunctionLit {
+            Expr::Function(Box::new(FunctionLit {
                 params,
                 return_ty,
                 return_ty_span,
+                return_optional,
                 body: std::sync::Arc::new(body),
                 span,
                 trailing_trivia,
-            }),
+            })),
             span,
         ))
+    }
+
+    /// Consume the `?` that marks a signature type optional, if one
+    /// follows. Answers whether it did, and where the type now ends
+    /// (`end` when there was no `?`).
+    fn parse_optional_mark(&mut self, end: usize) -> Result<(bool, usize), ParseError> {
+        if matches!(self.peek()?.kind, TokenKind::Question) {
+            let q = self.bump()?;
+            return Ok((true, q.span.end));
+        }
+        Ok((false, end))
     }
 
     /// Parse a `fn(T, U) -> V` type.

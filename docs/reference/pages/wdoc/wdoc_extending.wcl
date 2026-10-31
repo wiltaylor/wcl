@@ -180,7 +180,7 @@ TEXT
 TEXT
   }
 
-  p "Two returns are not errors. `[]` renders nothing, and so does `none`. That is how a lowering opts out conditionally. `none` is not a `list<Content>`, so a lowering that may return it declares `-> any`."
+  p "Two returns are not errors. `[]` renders nothing, and so does `none`. That is how a lowering opts out conditionally. `none` is not a `list<Content>`, so a lowering that may return it declares `-> list<Content>?`, which accepts `none` and holds anything else to `list<Content>`."
 
   p "The parameter is checked the same way. The record is tagged with the block's own schema, so name that schema in the parameter: `fn(b: Badge)`. A parent `type` the schema `extends` refuses the record, and so does `&Badge`, which wants a reference into the document rather than a record. An interface it extends, such as `ContentBlock`, accepts it, because a signature checks an interface by shape."
 

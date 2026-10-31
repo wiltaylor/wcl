@@ -429,3 +429,47 @@ count = 3
         (number)))
     (identifier)
     (number)))
+
+================================================================================
+optional parameter and return types
+================================================================================
+
+fn greet(name: utf8?, n: i64) -> utf8? name
+maybe = fn(b: bool) -> utf8? none
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fn_item
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier)))
+        (optional_marker))
+      (parameter
+        (identifier)
+        (named_type
+          (dotted_name
+            (identifier)))))
+    (named_type
+      (dotted_name
+        (identifier)))
+    (optional_marker)
+    (identifier))
+  (field
+    (identifier)
+    (function_expression
+      (parameters
+        (parameter
+          (identifier)
+          (named_type
+            (dotted_name
+              (identifier)))))
+      (named_type
+        (dotted_name
+          (identifier)))
+      (optional_marker)
+      (none))))

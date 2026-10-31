@@ -98,7 +98,9 @@ pub enum Expr {
     None,
 
     /// An anonymous function literal (`fn(x: u32) -> u32 { … }`).
-    Function(FunctionLit),
+    /// Boxed: it is the largest variant by far, and every parse and
+    /// evaluation level holds an `Expr` on the stack.
+    Function(Box<FunctionLit>),
     /// A call `callee(args…)`.
     Call {
         /// The expression being called — usually an identifier.
@@ -310,8 +312,11 @@ pub struct FunctionLit {
     pub params: Vec<Parameter>,
     /// The declared return type.
     pub return_ty: TypeRef,
-    /// Source span of the return type annotation.
+    /// Source span of the return type annotation, without any `?`.
     pub return_ty_span: Span,
+    /// `true` for a `?` after the return type (`-> utf8?`): the body may
+    /// produce `none` as well as a value of the return type.
+    pub return_optional: bool,
     /// `Arc`, not `Box`: every evaluation of the literal builds an
     /// `FnValue` sharing this body, and resolving a named function
     /// clones that `FnValue` per call — a deep AST clone on either
@@ -328,16 +333,33 @@ pub struct FunctionLit {
 pub struct Parameter {
     /// The parameter name, bound in the function body.
     pub name: String,
-    /// The declared type.
+    /// The declared type, without any `?`.
     pub ty: TypeRef,
-    /// Source span of the type annotation.
+    /// Source span of the type annotation, without any `?`.
     pub ty_span: Span,
+    /// `true` for the `?` suffix (`x: utf8?`): the argument may be `none`
+    /// as well as a value of the declared type. The call still passes it.
+    pub optional: bool,
     /// Source span of the whole parameter.
     pub span: Span,
     /// Comments/blank lines printed above this parameter.
     pub leading_trivia: Vec<Trivia>,
     /// A same-line comment printed after this parameter.
     pub trailing_comment: Option<String>,
+}
+
+impl Parameter {
+    /// The parameter's type as written, `?` included (`utf8?`).
+    pub fn ty_text(&self) -> String {
+        crate::value::optional_type_text(&self.ty, self.optional)
+    }
+}
+
+impl FunctionLit {
+    /// The return type as written, `?` included (`utf8?`).
+    pub fn return_ty_text(&self) -> String {
+        crate::value::optional_type_text(&self.return_ty, self.return_optional)
+    }
 }
 
 /// A `let name = value;` binding inside an [`Expr::Block`]. Distinct from

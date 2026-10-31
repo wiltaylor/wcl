@@ -491,25 +491,7 @@ CONSOLE
 
   h2 "No defaults and no named arguments"
 
-  p "A parameter list is fixed at declaration. Three things you may reach for do not exist, and each is a **parse** error rather than a surprise at run time."
-
-  p "There are no **optional** parameters. `?` marks an optional field in a type declaration. In a parameter list it does not parse:"
-
-  code console {
-    source = <<'CONSOLE'
-$ wcl check optional.wcl
-wcl::parse
-
-  × expected ',' or ')' in parameter list, found '?'
-   ╭─[optional.wcl:3:20]
- 2 │ type Cfg { a: utf8 }
- 3 │ fn greet(name: utf8?) -> utf8 "hi"
-   ·                    ┬
-   ·                    ╰── expected ',' or ')'
- 4 │ a = greet("x")
-   ╰────
-CONSOLE
-  }
+  p "A parameter list is fixed at declaration. Two things you may reach for do not exist, and each is a **parse** error rather than a surprise at run time."
 
   p "There are no **default** arguments:"
 
@@ -546,7 +528,7 @@ wcl::parse
 CONSOLE
   }
 
-  p "So every call fills every parameter, positionally, and a call with the wrong number of arguments stops before the body runs:"
+  p "So every call fills every parameter, positionally, and a call with the wrong number of arguments stops before the body runs. A parameter typed `utf8?` is no exception. The `?` lets the argument be `none`, as [below](#a-parameter-that-takes-none) shows, but the call must still pass one:"
 
   code console {
     source = <<'CONSOLE'
@@ -732,7 +714,7 @@ CONSOLE
 
   h3 "A parameter that takes none"
 
-  p "No type in a signature accepts `none` except `any`. `?` is not legal anywhere in a signature, so there is no `utf8?` parameter and no `utf8?` return type. A parameter that must accept an absent value is declared `any`, and the body tests for `none` itself:"
+  p "A parameter declared `utf8` refuses `none`: `greet(none)` against `fn greet(name: utf8)` fails with `argument 1 ('name') of 'greet' expects utf8, got none`. Add `?` to the type and it means what it means on a field. `name: utf8?` accepts `none`, and holds every other value to `utf8`, converting it as a `utf8?` field would. A return type takes the same mark, so `-> utf8?` lets the body produce `none`."
 
   code wcl {
     filename = "greet.wcl"
@@ -741,12 +723,17 @@ CONSOLE
 type Cfg {
   plain: utf8
   named: utf8
+  wrong: utf8
+  head:  utf8?
 }
 
-fn greet(name: any) -> utf8 if name == none { "hello" } else { $"hello, ${name}" }
+fn greet(name: utf8?) -> utf8 if name == none { "hello" } else { $"hello, ${name}" }
+fn first(xs: list<utf8>) -> utf8? if len(xs) == 0 { none } else { at(xs, 0) }
 
 plain = greet(none)
 named = greet("Ada")
+wrong = greet(42)
+head  = first([])
 WCL
   }
 
@@ -756,10 +743,25 @@ $ wcl get greet.wcl plain
 "hello"
 $ wcl get greet.wcl named
 "hello, Ada"
+$ wcl get greet.wcl head
+none
+$ wcl get greet.wcl wrong
+wcl::eval::argument_type
+
+  × argument 1 ('name') of 'greet' expects utf8?, got i64
+    ╭─[greet.wcl:14:9]
+ 13 │ named = greet("Ada")
+ 14 │ wrong = greet(42)
+    ·         ────┬────
+    ·             ╰── expects utf8?
+ 15 │ head  = first([])
+    ╰────
 CONSOLE
   }
 
-  p "Declare `name: utf8` instead and `greet(none)` fails with `argument 1 ('name') of 'greet' expects utf8, got none`. The same holds for a return type, so a function that may return `none` declares `-> any`."
+  p "The `?` makes the **value** optional, not the argument. `greet` still takes exactly one argument, and `greet()` fails with `'greet' expects 1 argument(s), got 0`. The usual source of a `none` is an optional field passed straight through, `greet(user.nickname)`, and that is the case `T?` is for."
+
+  p "The mark goes on the whole type of a parameter or of the return, and nowhere inside one. `list<utf8?>` does not parse in a signature, just as it does not in a field. Nor does a `fn(…)` type take it: in `fn(utf8?) -> utf8` the `?` is a parse error. A trailing `?` after a field typed `fn(…) -> T` already belongs to the field, which it makes optional. `any` still accepts `none` too, so keep `any` for a parameter that takes values of several types, not for one that takes a `T` or nothing."
 
   h3 "Every name must resolve"
 
@@ -798,7 +800,7 @@ eli(tag, id, cls, kids)      # … with an explicit HTML id
 WCL
   }
 
-  p "Two consequences follow, and both are worth copying when you write a constructor family of your own. First, an optional value goes in as an ordinary argument, so the parameter that receives it is `any`. That is why `cls` is `any` in all three, and `id` in `eli`: a block's unset `class` arrives as `none`. Second, the type check separates two constructors only where their parameter types differ. `ela` and `eli` take the same number of arguments. Call `ela` with `eli`'s arguments and the class list lands in `attrs`, which is `list<list<utf8>>`, so the call fails. Call `eli` with `ela`'s arguments and the class list and the attrs land in `id` and `cls`, both `any`, so nothing catches it. Pick by what you are passing. [Documents, pages and sites](wdoc_sites) documents the family. [Writing your own blocks](wdoc_extending) is where you will call it."
+  p "Two consequences follow, and both are worth copying when you write a constructor family of your own. First, an optional value goes in as an ordinary argument, so the parameter that receives it is optional too. That is why `cls` is `list<utf8>?` in all three, and `id` is `identifier?` in `eli`: a block's unset `class` arrives as `none`. Second, the type check separates two constructors only where their parameter types differ. `ela` and `eli` take the same number of arguments, but their middle two slots differ in type. Call `ela` with `eli`'s arguments and the id string lands in `cls`, a `list<utf8>?`. Call `eli` with `ela`'s arguments and the class list lands in `id`, an `identifier?`. Both calls fail, and the error names the argument. Had `cls` and `id` been `any`, the second mix would have passed silently. [Documents, pages and sites](wdoc_sites) documents the family. [Writing your own blocks](wdoc_extending) is where you will call it."
 
   h2 "Four ways to write a function down"
 
@@ -905,9 +907,9 @@ CONSOLE
 
   list {
     li "**No overloading.** One name, one function. Two `fn` items sharing a name is `duplicate declaration`."
-    li "**No default or named arguments, and no optional parameters.** Every call fills every parameter, in order. See [above](#no-defaults-and-no-named-arguments)."
+    li "**No default or named arguments, and no omitted ones.** Every call fills every parameter, in order. A `T?` parameter accepts `none` but still needs an argument. See [above](#no-defaults-and-no-named-arguments)."
     li "**No generics.** There is no `fn name<T>(…)` form. `fn f<T>(x: i64) -> i64 x` fails with `expected '(' after fn name`. A signature names concrete types. The higher-order builtins take any type because Rust implements them, not because you could write one."
-    li "**No optional types and no subtyping in a signature.** `?` does not parse in a signature, so a parameter or a return that may be `none` is declared `any`. And a parameter typed with a parent type refuses a block whose schema `extends` it. See [What a call checks](#what-a-call-checks)."
+    li "**No optional types inside a signature's types, and no subtyping.** `?` marks a whole parameter or return type, never `list<utf8?>` or a `fn(…)` type's parameters. And a parameter typed with a parent type refuses a block whose schema `extends` it. See [What a call checks](#what-a-call-checks)."
     li "**Builtins are not values.** Wrap one in a literal to pass it."
     li "**No serialization.** A function value is `null` in JSON, and `fn(x: i64) -> i64 { ... }` in `wcl get`."
     li "**A depth ceiling.** 200 levels of nesting, with calls, fields and `let`s counted together, then `call depth limit exceeded (max 200)`."

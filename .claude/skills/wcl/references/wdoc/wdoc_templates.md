@@ -308,11 +308,11 @@ An empty `class` or `attrs` list emits no attribute at all. `el("li", [], kids)`
 so passing `[]` costs nothing over omitting the field. An optional field goes straight in:
 `el("p", t.class, kids)` with `t.class` unset renders as an omitted `class`.
 
-**`ela` and `eli` take the same number of arguments.** Arity cannot separate them, and the
-type check only half does: `cls` (all three) and `id` (`eli`) are `any`, because they take a
-block's optional fields and `none` must pass. `ela` handed `eli`'s arguments fails on
-`attrs: list<list<utf8>>`; `eli` handed `ela`'s puts the class list in `id` and the attrs in
-`cls`, and nothing catches it. Pick by what you are passing.
+**`ela` and `eli` take the same number of arguments**, so arity cannot separate them; the
+parameter types do. `cls` is `list<utf8>?` (all three) and `id` is `identifier?` (`eli`), so an
+unset optional field passes straight in as `none`. `eli` handed `ela`'s arguments fails with
+`argument 2 ('id') of 'eli' expects identifier?, got list`; `ela` handed `eli`'s fails with
+`argument 2 ('cls') of 'ela' expects list<utf8>?, got utf8`.
 
 The family covers the HTML **element** vocabulary only. `Svg` shapes and the semantic content
 IR keep the named-field record literal, because they are field-shaped. A call checks argument

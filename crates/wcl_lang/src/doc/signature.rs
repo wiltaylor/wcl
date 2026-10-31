@@ -4,7 +4,9 @@
 //! parameter's type would accept it, and converts it exactly as that
 //! field would: the rule lives in [`types::slot`](super::types) and is
 //! shared, not restated. The return value is held to the return type the
-//! same way.
+//! same way. A parameter or return type written `T?` is an optional
+//! field's twin: it also accepts `none`, which passes through untouched,
+//! and holds anything else to `T`.
 //!
 //! A signature may name three things a field slot cannot, and those are
 //! settled here, without conversion:
@@ -115,15 +117,6 @@ impl ValueClass {
             ),
         }
     }
-}
-
-/// A function value's own type, as a signature would write it.
-fn fn_type_of(f: &FnValue) -> String {
-    TypeRef::Function {
-        params: f.params().iter().map(|p| p.ty().clone()).collect(),
-        return_ty: Box::new(f.return_ty().clone()),
-    }
-    .to_string()
 }
 
 impl Document {
@@ -245,7 +238,7 @@ impl Document {
             }
             TypeRef::Function { params, .. } => match value {
                 Value::Function(f) if f.params().len() == params.len() => None,
-                Value::Function(f) => Some(fn_type_of(f)),
+                Value::Function(f) => Some(f.type_text()),
                 other => Some(value_kind(other)),
             },
             TypeRef::List(inner) => {
@@ -318,6 +311,10 @@ impl Document {
         let mut out = Vec::with_capacity(args.len());
         for (i, (param, value)) in f.params().iter().zip(args).enumerate() {
             let span = site.arg_span(i);
+            if param.optional() && matches!(value, Value::None) {
+                out.push(Value::None);
+                continue;
+            }
             match self.admit_signature(value.clone(), param.ty(), span)? {
                 Ok(value) => out.push(value),
                 Err(got) => {
@@ -326,7 +323,7 @@ impl Document {
                             site.name.or(f.name()),
                             i + 1,
                             param.name(),
-                            param.ty().to_string(),
+                            param.ty_text(),
                             got,
                             span,
                         )
@@ -351,12 +348,15 @@ impl Document {
         value: Value,
         site: &CallSite<'_>,
     ) -> Result<Value, EvalError> {
+        if f.return_optional() && matches!(value, Value::None) {
+            return Ok(value);
+        }
         let own = fn_span(f);
         let span = own.unwrap_or(site.span);
         let error = match self.admit_signature(value, f.return_ty(), span) {
             Ok(Ok(value)) => return Ok(value),
             Ok(Err(got)) => {
-                EvalError::return_type(site.name.or(f.name()), f.return_ty().to_string(), got, span)
+                EvalError::return_type(site.name.or(f.name()), f.return_ty_text(), got, span)
             }
             Err(error) => error,
         };

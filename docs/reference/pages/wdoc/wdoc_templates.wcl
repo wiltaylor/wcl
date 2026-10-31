@@ -288,7 +288,7 @@ let outline_row = fn(h: OnPageHeading) -> Html
   ela("a", [format("lvl-{}", h.level)], [["href", format("#{}", h.id)]],
     [raw(format("{} {}", h.number, h.title))])
 
-let neighbour = fn(e: any, arrow: utf8) -> list<Html>
+let neighbour = fn(e: TocEntry?, arrow: utf8) -> list<Html>
   if e == none { [] }
   else { [ ela("a", ["nb"], [["href", e.href]], [raw(format("{} {}", arrow, e.title))]) ] }
 
@@ -343,7 +343,7 @@ page reference {
 WCL
   }
 
-  p "`neighbour` declares its entry `any`, not `TocEntry`. `previous` and `next` are `none` at either end of the reading order, a call checks every argument against its parameter's type, and a parameter list cannot say `TocEntry?`. Declared `TocEntry`, the first page's build fails with `argument 1 ('e') of 'neighbour' expects TocEntry, got none`."
+  p "`neighbour` declares its entry `TocEntry?`, not `TocEntry`. `previous` and `next` are `none` at either end of the reading order, and a call checks every argument against its parameter's type. Declared `TocEntry`, the first page's build fails with `argument 1 ('e') of 'neighbour' expects TocEntry, got none`."
 
   code console {
     source = <<'CONSOLE'
@@ -572,11 +572,11 @@ WCL
 
   p "An empty `class` or `attrs` list emits no attribute at all, not `class=\"\"`. An unset optional passed straight through does the same: `el(\"p\", t.class, kids)` with `t.class` unset renders exactly as an omitted field does."
 
-  p "A call checks every argument against its parameter's type, and `?` in a parameter list is a parse error, so a parameter that must take `none` is declared `any`. That is why `cls` is `any` in all three constructors, and `id` in `eli`. The `Html::Element` variant still types the value: its `class` is `list<utf8>?` and its `id` is `identifier?`."
+  p "The parameters say so. `cls` is `list<utf8>?` in all three constructors and `id` is `identifier?` in `eli`, the same types as the `class` and `id` fields of the `Html::Element` variant they fill. A `?` on a parameter lets the argument be `none`. It does not let you leave the argument out."
 
-  h3 "The ela / eli trap"
+  h3 "Mixing up ela and eli"
 
-  p "`ela` and `eli` take four arguments each, so arity cannot separate them, and the type check separates them only one way round. Confusing `el` with `ela` is caught by the count:"
+  p "`ela` and `eli` take four arguments each, so arity cannot separate them. Their types can. Confusing `el` with `ela` is caught by the count:"
 
   code text {
     source = <<'TEXT'
@@ -586,23 +586,17 @@ wcl::eval::builtin_arity
 TEXT
   }
 
-  p "Calling `ela` with `eli`'s arguments is caught too, because the class list lands in `attrs`, which is `list<list<utf8>>`. Calling `eli` with `ela`'s arguments is not, because the slots it lands in, `id` and `cls`, are both `any`. Build these two lines side by side:"
+  p "Confusing `ela` with `eli` is caught by the second argument, whichever way round it goes. Hand `eli` the arguments meant for `ela` and the class list lands in `id`:"
 
-  code wcl {
-    source = <<'WCL'
-ela("a", ["link"], [["href", "x.html"]], [raw("right")]),
-eli("a", ["link"], [["href", "x.html"]], [raw("wrong")]),
-WCL
+  code text {
+    source = <<'TEXT'
+wcl::eval::argument_type
+
+  × argument 2 ('id') of 'eli' expects identifier?, got list
+TEXT
   }
 
-  code html {
-    source = <<'HTML'
-<a class="link" href="x.html">right</a>
-<a>wrong</a>
-HTML
-  }
-
-  p "The second call handed `[\"link\"]` to `id` and the attribute list to `class`. The renderer dropped both, the build reported nothing, and the link stopped being a link. Pick the constructor by what you are passing. When an element needs an id **and** attributes, write the record."
+  p "Hand `ela` the arguments meant for `eli` and the id string lands in `cls`, which fails with `argument 2 ('cls') of 'ela' expects list<utf8>?, got utf8`. Pick the constructor by what you are passing. When an element needs an id **and** attributes, write the record."
 
   h3 "The leaves"
 

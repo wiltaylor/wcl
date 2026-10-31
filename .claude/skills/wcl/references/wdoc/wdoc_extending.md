@@ -184,11 +184,10 @@ eli(tag, id, cls, kids)     // … with an explicit id
 raw(html)  inl(text)  icon(name, cls)  para(cls, spans)  css_style(name)
 ```
 
-`ela` and `eli` take the **same number of arguments**, so arity cannot separate them, and
-`cls` / `id` are `any` (they take a block's optional fields), so the type check catches only
-`ela` handed `eli`'s arguments (the class list fails `attrs: list<list<utf8>>`). `eli` handed
-`ela`'s drops the id and the attrs silently. Pick by what you are passing, and use the long form
-when an element needs both.
+`ela` and `eli` take the **same number of arguments**, so arity cannot separate them; the types
+do. `cls` is `list<utf8>?` and `id` is `identifier?` (an unset optional field passes straight
+in), so either constructor handed the other's arguments fails on argument 2. Use the long form
+when an element needs both an id and attrs.
 
 An empty `class` or `attrs` list emits no attribute at all, so `el("li", [], kids)` renders
 `<li>`.
@@ -285,7 +284,7 @@ the block needs computation — geometry, branching, or a shape the markup canno
 - **A `lower` signature is checked on every call.** Its parameter receives the block as a record
   tagged with the block's schema name, so type it as that schema (`fn(b: MyBlock)`). A parent
   `type` the schema `extends` refuses it, and so does `&MyBlock`; an interface it extends
-  (`ContentBlock`) accepts it by shape. A `lower` that may return `none` must declare `-> any`.
+  (`ContentBlock`) accepts it by shape. A `lower` that may return `none` declares `-> list<Content>?`.
 - **`@native` is wdoc's, not yours.**
 - **Pick a kind name no built-in already uses.** Your declaration would otherwise be silently
   ignored, so wdoc refuses it instead.

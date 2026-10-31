@@ -31,21 +31,18 @@
 // construction sites are OUTSIDE this stdlib (the docs landing page,
 // the scaffold templates), and all four are covered by `tests/el.rs`.
 //
-// `ela` and `eli` take the SAME number of arguments, so arity — the one
-// positional mistake WCL catches — does not separate them: calling one
-// where you meant the other drops the id or the attrs silently. Pick by
-// what you are passing, and reach for the long form when an element
-// needs both.
+// `ela` and `eli` take the SAME number of arguments, so arity does not
+// separate them; their parameter types do. Calling `eli` with `ela`'s
+// arguments hands a class list to `id: identifier?`, and the reverse
+// hands an id string to `cls: list<utf8>?`, and both calls fail. Reach
+// for the long form when an element needs an id and attrs together.
 //
 // An empty `class` / `attrs` list emits no attribute at all (not
 // `class=""`), so `el("li", [], kids)` renders `<li>` — passing `[]`
 // costs nothing over omitting the field. An optional field goes
 // straight in: `el("p", t.class, kids)` with `t.class` unset renders
-// exactly as an omitted `class` does. A call checks every argument
-// against its parameter's type, and `?` in a parameter list is a parse
-// error, so a parameter that takes `none` is declared `any` — `cls`
-// here, and `eli`'s `id`. The `Html` variant it feeds still types the
-// value (`class: list<utf8>?`); `any` only lets the absence through.
+// exactly as an omitted `class` does, because `cls` is `list<utf8>?`
+// (and `eli`'s `id` is `identifier?`), the type of the field it feeds.
 //
 // SCOPE: the HTML element vocabulary ONLY. `Svg` and the
 // semantic content IR keep the named-field literal, because they are
@@ -66,16 +63,16 @@
 namespace wdoc
 
 // `<tag class="…">children</tag>`.
-let el = fn(tag: utf8, cls: any, kids: list<Html>) -> Html
+let el = fn(tag: utf8, cls: list<utf8>?, kids: list<Html>) -> Html
   Html::Element { tag: tag, class: cls, children: kids }
 
 // … with attributes — `attrs` is a list of `[name, value]` pairs, e.g.
 // `[["href", p.href]]` (values escaped).
-let ela = fn(tag: utf8, cls: any, attrs: list<list<utf8>>, kids: list<Html>) -> Html
+let ela = fn(tag: utf8, cls: list<utf8>?, attrs: list<list<utf8>>, kids: list<Html>) -> Html
   Html::Element { tag: tag, class: cls, attrs: attrs, children: kids }
 
 // … with an explicit HTML id (the anchor target).
-let eli = fn(tag: utf8, id: any, cls: any, kids: list<Html>) -> Html
+let eli = fn(tag: utf8, id: identifier?, cls: list<utf8>?, kids: list<Html>) -> Html
   Html::Element { tag: tag, id: id, class: cls, children: kids }
 
 // Verbatim, pre-rendered HTML — NOT escaped. Embeds already-rendered
@@ -95,10 +92,10 @@ let inl = fn(text: utf8) -> Html
 
 // An icon, resolved against the declared `iconset`s and the built-in
 // packs (`pack.name`, e.g. `"lucide.info"`).
-let icon = fn(name: utf8, cls: any) -> Html
+let icon = fn(name: utf8, cls: list<utf8>?) -> Html
   Html::Icon { name: name, class: cls }
 
 // A `<p>` of `spans`, each run through the inline-pattern engine. A
 // paragraph that needs an id writes the long form.
-let para = fn(cls: any, spans: list<utf8>) -> Html
+let para = fn(cls: list<utf8>?, spans: list<utf8>) -> Html
   Html::Paragraph { class: cls, spans: spans }

@@ -1231,6 +1231,30 @@ fn parse_function_with_no_params() {
 }
 
 #[test]
+fn parse_function_optional_parameter_and_return() {
+    let src = "k = fn(x: utf8?, n: i64) -> list<utf8>? none";
+    let s = parse(src);
+    let f = field(&s.items, "k");
+    let Expr::Function(lit) = &f.expr else {
+        panic!("expected function literal")
+    };
+    assert!(lit.params[0].optional);
+    assert_eq!(lit.params[0].ty, TypeRef::Builtin(BuiltinType::Utf8));
+    // The type span stops before the `?`; the parameter's span takes it in.
+    let p = &lit.params[0];
+    assert_eq!(&src[p.ty_span.start..p.ty_span.end], "utf8");
+    assert_eq!(&src[p.span.start..p.span.end], "x: utf8?");
+    assert!(!lit.params[1].optional);
+    assert!(lit.return_optional);
+    assert!(matches!(lit.return_ty, TypeRef::List(_)));
+}
+
+#[test]
+fn parse_optional_stays_illegal_inside_a_generic() {
+    assert_syntax_err(parse_err("k = fn(x: list<utf8?>) -> i64 1"), "expected '>'");
+}
+
+#[test]
 fn parse_function_type_in_field() {
     let s = parse("type Handler { on_click: fn(i32) -> bool on_drag: fn(i32, i32) -> bool }");
     let t = type_decls(&s.items)[0];

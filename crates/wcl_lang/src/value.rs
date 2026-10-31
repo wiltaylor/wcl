@@ -253,8 +253,11 @@ pub enum VariantPayload {
 pub struct FnValue {
     /// Declared parameters, in order.
     params: Vec<FnParam>,
-    /// The declared return type.
+    /// The declared return type, without any `?`.
     return_ty: TypeRef,
+    /// `true` when the return type was written `T?`: the body may also
+    /// produce `none`.
+    return_optional: bool,
     /// The function body. Shared rather than owned so cloning an
     /// `FnValue` per call does not deep-clone the AST.
     pub(crate) body: std::sync::Arc<crate::ast::Expr>,
@@ -283,6 +286,7 @@ impl PartialEq for FnValue {
     fn eq(&self, other: &Self) -> bool {
         self.params == other.params
             && self.return_ty == other.return_ty
+            && self.return_optional == other.return_optional
             && self.body == other.body
             && self.captured == other.captured
     }
@@ -293,11 +297,13 @@ impl FnValue {
     pub(crate) fn new(
         params: Vec<FnParam>,
         return_ty: TypeRef,
+        return_optional: bool,
         body: std::sync::Arc<crate::ast::Expr>,
     ) -> Self {
         Self {
             params,
             return_ty,
+            return_optional,
             body,
             captured: Vec::new(),
             name: None,
@@ -336,9 +342,27 @@ impl FnValue {
         &self.params
     }
 
-    /// The declared return type.
+    /// The declared return type, without any `?`.
     pub fn return_ty(&self) -> &TypeRef {
         &self.return_ty
+    }
+
+    /// `true` when the return type was written `T?`, so the function may
+    /// also return `none`.
+    pub fn return_optional(&self) -> bool {
+        self.return_optional
+    }
+
+    /// The return type as written, `?` included (`utf8?`).
+    pub fn return_ty_text(&self) -> String {
+        optional_type_text(&self.return_ty, self.return_optional)
+    }
+
+    /// The signature as a `fn(…)` type would spell it, `?` marks
+    /// included: `fn(utf8?, i64) -> utf8?`.
+    pub fn type_text(&self) -> String {
+        let params: Vec<String> = self.params.iter().map(FnParam::ty_text).collect();
+        format!("fn({}) -> {}", params.join(", "), self.return_ty_text())
     }
 
     /// Pretty-print this function value back to its `fn(params) -> ret body`
@@ -355,6 +379,7 @@ impl FnValue {
                 name: p.name().to_string(),
                 ty: p.ty().clone(),
                 ty_span: zero,
+                optional: p.optional(),
                 span: zero,
                 leading_trivia: Vec::new(),
                 trailing_comment: None,
@@ -364,11 +389,12 @@ impl FnValue {
             params,
             return_ty: self.return_ty.clone(),
             return_ty_span: zero,
+            return_optional: self.return_optional,
             body: self.body.clone(),
             span: zero,
             trailing_trivia: Vec::new(),
         };
-        crate::format::to_source_expr(&ast::Expr::Function(lit))
+        crate::format::to_source_expr(&ast::Expr::Function(Box::new(lit)))
     }
 }
 
@@ -377,14 +403,27 @@ impl FnValue {
 pub struct FnParam {
     /// The parameter name, bound in the body.
     name: String,
-    /// The declared type.
+    /// The declared type, without any `?`.
     ty: TypeRef,
+    /// `true` for a parameter written `T?`, which also accepts `none`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    optional: bool,
+}
+
+/// `ty`, followed by `?` when `optional` — a signature type as written.
+pub(crate) fn optional_type_text(ty: &TypeRef, optional: bool) -> String {
+    if optional {
+        format!("{ty}?")
+    } else {
+        ty.to_string()
+    }
 }
 
 impl FnParam {
-    /// Build a parameter from its name and declared type.
-    pub(crate) fn new(name: String, ty: TypeRef) -> Self {
-        Self { name, ty }
+    /// Build a parameter from its name, declared type, and whether it
+    /// was written `T?`.
+    pub(crate) fn new(name: String, ty: TypeRef, optional: bool) -> Self {
+        Self { name, ty, optional }
     }
 
     /// The parameter name.
@@ -392,9 +431,19 @@ impl FnParam {
         &self.name
     }
 
-    /// The declared type.
+    /// The declared type, without any `?`.
     pub fn ty(&self) -> &TypeRef {
         &self.ty
+    }
+
+    /// `true` for a parameter written `T?`, which also accepts `none`.
+    pub fn optional(&self) -> bool {
+        self.optional
+    }
+
+    /// The parameter's type as written, `?` included (`utf8?`).
+    pub fn ty_text(&self) -> String {
+        optional_type_text(&self.ty, self.optional)
     }
 }
 
@@ -588,9 +637,9 @@ impl std::fmt::Display for Value {
                     if i > 0 {
                         f.write_str(", ")?;
                     }
-                    write!(f, "{}: {}", p.name(), p.ty())?;
+                    write!(f, "{}: {}", p.name(), p.ty_text())?;
                 }
-                write!(f, ") -> {} {{ ... }}", fv.return_ty())
+                write!(f, ") -> {} {{ ... }}", fv.return_ty_text())
             }
             Value::List(items) => {
                 f.write_str("[")?;

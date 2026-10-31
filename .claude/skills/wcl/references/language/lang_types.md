@@ -347,9 +347,10 @@ display = match maybe_name { none => "anonymous", n => n }
 > carries information — a reason, a fallback, several shapes — declare a union instead.
 
 `?` is a **field** annotation, not part of a type reference. It is legal on a record field, a
-variant field and a `type` body field. It is **not** legal in a function parameter list, where
-`fn(x: utf8?)` is a parse error, and nowhere else in a signature either. A call checks its
-arguments, so a parameter that must take `none` is declared `any` — see `lang_functions.md`.
+variant field and a `type` body field, and on a function parameter or return type
+(`fn(x: utf8?) -> utf8?`, same meaning; the call still passes the argument) — see
+`lang_functions.md`. It is never legal inside a type: `list<utf8?>` and `fn(i64?) -> i64` are
+parse errors.
 
 ## Symbol sets
 

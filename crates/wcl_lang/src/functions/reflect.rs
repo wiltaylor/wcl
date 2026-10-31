@@ -230,13 +230,13 @@ fn user_fn_record(fv: &FnValue) -> Value {
     let params: Vec<Value> = fv
         .params()
         .iter()
-        .map(|p| fn_param_record(p.name(), &p.ty().to_string(), ""))
+        .map(|p| fn_param_record(p.name(), &p.ty_text(), ""))
         .collect();
-    let return_type = fv.return_ty().to_string();
+    let return_type = fv.return_ty_text();
     let param_sig = fv
         .params()
         .iter()
-        .map(|p| format!("{}: {}", p.name(), p.ty()))
+        .map(|p| format!("{}: {}", p.name(), p.ty_text()))
         .collect::<Vec<_>>()
         .join(", ");
     let signature = format!("fn({param_sig}) -> {return_type}");

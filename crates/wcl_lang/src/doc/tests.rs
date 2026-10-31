@@ -1908,6 +1908,97 @@ fn signature_return_converts_like_a_field() {
 }
 
 #[test]
+fn signature_optional_parameter_takes_none_or_its_type() {
+    let doc = open_std(
+        r#"
+        fn greet(name: utf8?, n: i64) -> utf8 if name == none { "anon" } else { name }
+        fn ident(id: identifier?) -> identifier? id
+        absent  = greet(none, 1)
+        present = greet("Ada", 1)
+        wrong   = greet(3, 1)
+        caught  = try greet(3, 1) catch m => m
+        conv    = ident("intro")
+        gone    = ident(none)
+        "#,
+    );
+    assert_eq!(read(&doc, "absent").unwrap(), &Value::Utf8("anon".into()));
+    assert_eq!(read(&doc, "present").unwrap(), &Value::Utf8("Ada".into()));
+    let err = read(&doc, "wrong").unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "argument 1 ('name') of 'greet' expects utf8?, got i64"
+    );
+    assert!(matches!(err, EvalError::ArgumentType { .. }), "{err:?}");
+    assert_eq!(
+        read(&doc, "caught").unwrap(),
+        &Value::Utf8("argument 1 ('name') of 'greet' expects utf8?, got i64".into())
+    );
+    assert_eq!(
+        read(&doc, "conv").unwrap(),
+        &Value::Identifier("intro".into())
+    );
+    assert_eq!(read(&doc, "gone").unwrap(), &Value::None);
+}
+
+#[test]
+fn signature_optional_parameter_still_counts_toward_arity() {
+    let doc = open_std("fn f(x: utf8?) -> utf8 \"k\"\nb = f()\n");
+    assert!(matches!(
+        read(&doc, "b").unwrap_err(),
+        EvalError::BuiltinArity { .. }
+    ));
+}
+
+#[test]
+fn signature_optional_return_type() {
+    let doc = open_std(
+        r#"
+        let maybe = fn(b: bool) -> utf8? if b { "yes" } else { none }
+        fn bad() -> i64? "s"
+        fn conv() -> identifier? "x"
+        yes  = maybe(true)
+        no   = maybe(false)
+        oops = bad()
+        id   = conv()
+        "#,
+    );
+    assert_eq!(read(&doc, "yes").unwrap(), &Value::Utf8("yes".into()));
+    assert_eq!(read(&doc, "no").unwrap(), &Value::None);
+    assert_eq!(
+        read(&doc, "oops").unwrap_err().to_string(),
+        "'bad' declared -> i64? but returned utf8"
+    );
+    assert_eq!(read(&doc, "id").unwrap(), &Value::Identifier("x".into()));
+}
+
+#[test]
+fn signature_optional_shows_in_reflection() {
+    let doc = open_std(
+        r#"
+        fn f(a: utf8?, b: i64) -> list<utf8>? none
+        sig = { let s = fn_signature(f); s.signature }
+        src = ast_string(f)
+        "#,
+    );
+    assert_eq!(
+        read(&doc, "sig").unwrap(),
+        &Value::Utf8("fn(a: utf8?, b: i64) -> list<utf8>?".into())
+    );
+    assert_eq!(
+        read(&doc, "src").unwrap(),
+        &Value::Utf8("fn(a: utf8?, b: i64) -> list<utf8>? none".into())
+    );
+}
+
+#[test]
+fn signature_optional_parameter_inner_type_must_resolve() {
+    let Err(err) = Document::open("@document\ntype C {}\nfn f(x: Nope?) -> i64 1\n", "test") else {
+        panic!("open should fail");
+    };
+    assert!(err.to_string().contains("Nope"), "{err}");
+}
+
+#[test]
 fn signature_words_any_number_integer_record() {
     let doc = open_std(
         r#"

@@ -11,12 +11,10 @@
 // the fit region varies (a diamond's text box is narrower, a node's is
 // inset). Share the construction so the shapes differ only in geometry.
 // `text` is the shape's label, unset on a shape written without one, and
-// `cls` its optional `class` list. A call checks its arguments, and `?`
-// cannot appear in a parameter list, so a parameter that takes `none` is
-// declared `any`; `Svg::Label` types the value.
+// `cls` its optional `class` list; both may be `none`.
 namespace wdoc
 
-let centered_label = fn(text: any, cx: f64, cy: f64, fit_w: f64, fit_h: f64, cls: any) -> Svg
+let centered_label = fn(text: utf8?, cx: f64, cy: f64, fit_w: f64, fit_h: f64, cls: list<utf8>?) -> Svg
   Svg::Label {
     content: text, x: cx, y: cy,
     fit_width: fit_w, fit_height: fit_h, class: cls,
@@ -29,11 +27,10 @@ let centered_label = fn(text: any, cx: f64, cy: f64, fit_w: f64, fit_h: f64, cls
 // the inset + badge + a trailing gap of the same inset. Returns 0 when
 // there's no icon or the author placed it elsewhere, so the label
 // stays centred in those cases. (All three icon params take the
-// shape's optional fields, so they are `any` — a call checks argument
-// types and `?` cannot appear in a parameter list — and a `none` is
-// guarded below. `icon_name`, not `icon`, so the param doesn't shadow the stdlib
-// `icon(name, cls)` constructor — see `el.wcl`.)
-let icon_lead = fn(icon_name: any, icon_pos: any, icon_size: any, w: f64, h: f64) -> f64
+// shape's optional fields, and a `none` is guarded below. `icon_name`,
+// not `icon`, so the param doesn't shadow the stdlib `icon(name, cls)`
+// constructor — see `el.wcl`.)
+let icon_lead = fn(icon_name: utf8?, icon_pos: IconPos?, icon_size: f64?, w: f64, h: f64) -> f64
   if icon_name != none && (icon_pos == none || icon_pos == :left) {
     let m = min(w, h);
     let size = if icon_size == none { m * 0.4 } else { icon_size };

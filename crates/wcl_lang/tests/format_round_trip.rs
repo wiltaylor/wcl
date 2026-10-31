@@ -62,6 +62,18 @@ fn decorators_round_trip_in_every_supported_position() {
 }
 
 #[test]
+fn optional_signature_types_round_trip() {
+    let out = round_trip(
+        "fn greet(name: utf8?, n: i64) -> utf8? name\nlet f = fn(x: list<i64>?) -> i64 1\n",
+    );
+    assert!(
+        out.contains("fn greet(name: utf8?, n: i64) -> utf8? name"),
+        "{out}"
+    );
+    assert!(out.contains("fn(x: list<i64>?) -> i64 1"), "{out}");
+}
+
+#[test]
 fn newline_escape_string_stays_quoted() {
     // Variant 2 of the report: a `"\n"` separator inside a call used to
     // become a whitespace heredoc whose closer glued onto the `)` —
