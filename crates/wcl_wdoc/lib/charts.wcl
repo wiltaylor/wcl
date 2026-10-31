@@ -52,17 +52,17 @@ let chart_ncat = fn(series: list<ChartSeries>) -> i64 {
 // defaults to 0, or to the smallest data value when that is negative;
 // `y_max` defaults to the largest data value; the upper
 // bound is nudged above the lower so a flat series still spans a
-// non-zero range. (The params take the caller's *optional* fields as
-// non-optional per the WCL param-annotation rule — a `none` value flows
-// in and is guarded here.)
-let chart_ymin = fn(series: list<ChartSeries>, y_min: f64) -> f64
+// non-zero range. (`y_min` / `y_max` take the caller's *optional*
+// fields, so they are `any` — a call checks argument types and `?`
+// cannot appear in a parameter list — and a `none` is guarded here.)
+let chart_ymin = fn(series: list<ChartSeries>, y_min: any) -> f64
   if y_min == none { chart_data_min(series) } else { y_min }
-let chart_ymax = fn(series: list<ChartSeries>, ymin: f64, y_max: f64) -> f64
+let chart_ymax = fn(series: list<ChartSeries>, ymin: f64, y_max: any) -> f64
   max(if y_max == none { chart_data_max(series) } else { y_max }, ymin + 0.000001)
 
 // Optional axis/title text → "" when unset, so `chart_xy` always gets a
-// concrete string.
-let or_blank = fn(s: utf8) -> utf8 if s == none { "" } else { s }
+// concrete string. `s` is `any` because it may be `none`.
+let or_blank = fn(s: any) -> utf8 if s == none { "" } else { s }
 
 // Format a scale tick: round to two decimals so auto bounds don't emit
 // long floating-point tails.

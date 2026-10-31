@@ -288,7 +288,7 @@ let outline_row = fn(h: OnPageHeading) -> Html
   ela("a", [format("lvl-{}", h.level)], [["href", format("#{}", h.id)]],
     [raw(format("{} {}", h.number, h.title))])
 
-let neighbour = fn(e: TocEntry, arrow: utf8) -> list<Html>
+let neighbour = fn(e: any, arrow: utf8) -> list<Html>
   if e == none { [] }
   else { [ ela("a", ["nb"], [["href", e.href]], [raw(format("{} {}", arrow, e.title))]) ] }
 
@@ -342,6 +342,8 @@ page reference {
 }
 WCL
   }
+
+  p "`neighbour` declares its entry `any`, not `TocEntry`. `previous` and `next` are `none` at either end of the reading order, a call checks every argument against its parameter's type, and a parameter list cannot say `TocEntry?`. Declared `TocEntry`, the first page's build fails with `argument 1 ('e') of 'neighbour' expects TocEntry, got none`."
 
   code console {
     source = <<'CONSOLE'
@@ -570,11 +572,11 @@ WCL
 
   p "An empty `class` or `attrs` list emits no attribute at all, not `class=\"\"`. An unset optional passed straight through does the same: `el(\"p\", t.class, kids)` with `t.class` unset renders exactly as an omitted field does."
 
-  p "The parameter lists cannot **say** so, because `?` in a parameter list is a parse error. Every wdoc `fn` therefore annotates its optionals as though they were required and lets the `none` flow through."
+  p "A call checks every argument against its parameter's type, and `?` in a parameter list is a parse error, so a parameter that must take `none` is declared `any`. That is why `cls` is `any` in all three constructors, and `id` in `eli`. The `Html::Element` variant still types the value: its `class` is `list<utf8>?` and its `id` is `identifier?`."
 
   h3 "The ela / eli trap"
 
-  p "`ela` and `eli` take four arguments each. WCL checks argument **arity** and never argument **types**, so arity is the one positional mistake it catches. It cannot separate these two. Confusing `el` with `ela` is caught:"
+  p "`ela` and `eli` take four arguments each, so arity cannot separate them, and the type check separates them only one way round. Confusing `el` with `ela` is caught by the count:"
 
   code text {
     source = <<'TEXT'
@@ -584,7 +586,7 @@ wcl::eval::builtin_arity
 TEXT
   }
 
-  p "Confusing `ela` with `eli` is not. Build these two lines side by side:"
+  p "Calling `ela` with `eli`'s arguments is caught too, because the class list lands in `attrs`, which is `list<list<utf8>>`. Calling `eli` with `ela`'s arguments is not, because the slots it lands in, `id` and `cls`, are both `any`. Build these two lines side by side:"
 
   code wcl {
     source = <<'WCL'
@@ -623,7 +625,7 @@ HTML
   p "The family covers the HTML **element** vocabulary and stops there. Two things keep the named-field literal, deliberately:"
 
   list {
-    li "**The other value families.** These are the `Svg` shapes a diagram block draws and the `Content` values an ordinary block's `lower` returns. See [Writing your own blocks](wdoc_extending). Both are field-shaped, so a positional constructor over them would be the same record with its field names deleted. Recall that arity is the only positional mistake WCL catches. Transpose two of an SVG label's four interchangeable `f64`s and it renders silently wrong, where the record raises a shape mismatch. The saving is smaller there than on elements, and the risk is larger."
+    li "**The other value families.** These are the `Svg` shapes a diagram block draws and the `Content` values an ordinary block's `lower` returns. See [Writing your own blocks](wdoc_extending). Both are field-shaped, so a positional constructor over them would be the same record with its field names deleted. A call checks argument types, but two `f64`s swapped are still two `f64`s. Transpose two of an SVG label's four interchangeable `f64`s and it renders silently wrong, where the record names each one. The saving is smaller there than on elements, and the risk is larger."
     li "**Combinations the family does not name.** An element carrying an id *and* attributes, a `Paragraph` with an id, a `Head`, a `Table`."
   }
 

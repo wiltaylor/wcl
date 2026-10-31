@@ -12,6 +12,7 @@ use super::eval_ops::{apply_binary, apply_unary, as_bool, describe_expr, format_
 use super::eval_stack::{self, FrameKey, MAX_EVAL_DEPTH};
 use super::match_pat;
 use super::scope::Scope;
+use super::signature::CallSite;
 use super::types::value_matches_declared;
 use super::views::{materialise_dataref, materialise_dataref_value};
 use super::{Block, Document, expr_to_path_segments, span_of};
@@ -128,6 +129,63 @@ fn string_arg_or_err(
             span,
         )),
     }
+}
+
+/// Why a value does not satisfy an interface: the first interface field
+/// it lacks, or holds a value of the wrong type in.
+pub(super) enum IfaceMisfit<'i> {
+    /// The value has no field of this name.
+    Missing(&'i ast::TypeField),
+    /// The value's field does not match the declared type; carries the
+    /// field value's type name.
+    Mistyped(&'i ast::TypeField, &'static str),
+}
+
+impl IfaceMisfit<'_> {
+    /// The (expected, got) pair a `VariantShapeMismatch` carries.
+    fn shape_mismatch_parts(&self) -> (String, String) {
+        match self {
+            Self::Missing(f) => (
+                format!("interface field '{}'", f.name),
+                "missing on value".to_string(),
+            ),
+            Self::Mistyped(f, got) => (
+                format!("interface field '{}': {:?}", f.name, f.ty),
+                format!("value field is {got}"),
+            ),
+        }
+    }
+}
+
+/// Why `value` does not satisfy interface `iface`, or `None` when it
+/// does.
+///
+/// Values that carry a named field map — a variant with a record
+/// payload, or a bare record — are structurally introspected. Other
+/// shapes (closures, lists, tensors, scalars, and non-record variant
+/// payloads) carry no field map, so they pass through permissively until
+/// the language tags them at runtime.
+pub(super) fn iface_misfit<'i>(
+    value: &Value,
+    iface: &'i ast::InterfaceDecl,
+) -> Option<IfaceMisfit<'i>> {
+    let fields = match value {
+        Value::Variant {
+            payload: crate::value::VariantPayload::Record(map),
+            ..
+        } => map,
+        Value::Record { fields, .. } => fields,
+        _ => return None,
+    };
+    for f in &iface.fields {
+        let Some(v) = fields.get(&f.name) else {
+            return Some(IfaceMisfit::Missing(f));
+        };
+        if !value_matches_declared(v, &f.ty, f.optional) {
+            return Some(IfaceMisfit::Mistyped(f, v.type_name()));
+        }
+    }
+    None
 }
 
 /// Attach the call site name to a generic call-arity error, so error
@@ -687,7 +745,9 @@ impl Document {
             .collect();
         let captured = ctx.locals.clone();
         Value::Function(
-            FnValue::new(params, f.return_ty.clone(), f.body.clone()).with_captures(captured),
+            FnValue::new(params, f.return_ty.clone(), f.body.clone())
+                .with_captures(captured)
+                .with_span(f.span),
         )
     }
 
@@ -742,8 +802,13 @@ impl Document {
                 let evald = self.eval_args(args, ctx)?;
                 let _profile_guard = self
                     .profile_enter(crate::diagnostics::ProfileKey::UserFn { name: name.clone() });
+                let site = CallSite {
+                    name: Some(name),
+                    args: Some(args),
+                    span,
+                };
                 return self
-                    .invoke_fn_value(&fv, &evald, ctx, span)
+                    .invoke_fn_at(&fv, &evald, ctx, &site)
                     .map_err(|e| call_err_at(e, name.clone(), span));
             }
             return self.eval_call_builtin(name, args, span, ctx);
@@ -756,7 +821,16 @@ impl Document {
         let _profile_guard = self.profile_enter(crate::diagnostics::ProfileKey::UserFn {
             name: String::new(),
         });
-        self.invoke_fn_value(&fv, &evald, ctx, span)
+        // `steps.scale.apply(7)` calls the function by its member name.
+        let site = CallSite {
+            name: match callee {
+                E::Member { name, .. } => Some(name.as_str()),
+                _ => None,
+            },
+            args: Some(args),
+            span,
+        };
+        self.invoke_fn_at(&fv, &evald, ctx, &site)
     }
 
     /// Builtin-call subpath of `eval_call`. Held distinct because it
@@ -850,7 +924,9 @@ impl Document {
     ) -> Result<Value, EvalError> {
         let mut frame = ctx.push_frame();
         for binding in lets {
-            let v = self.eval_in(&binding.value, &mut frame)?;
+            let v = self
+                .eval_in(&binding.value, &mut frame)?
+                .bound_as(&binding.name);
             frame.locals.push((binding.name.clone(), v));
         }
         self.eval_in(tail, &mut frame)
@@ -933,6 +1009,24 @@ impl Document {
         ctx: &mut EvalCtx<'a>,
         span: Span,
     ) -> Result<Value, EvalError> {
+        self.invoke_fn_at(f, args, ctx, &CallSite::bare(span))
+    }
+
+    /// [`Self::invoke_fn_value`] for a call written in source: `site`
+    /// names the callee and holds the argument expressions, so a
+    /// signature error can say which function and point at the argument.
+    ///
+    /// Each argument is held to its parameter's type and the result to
+    /// the return type, under the rule a field declared with that type
+    /// follows (see [`signature`](super::signature)).
+    pub(crate) fn invoke_fn_at<'a>(
+        &'a self,
+        f: &FnValue,
+        args: &[Value],
+        ctx: &mut EvalCtx<'a>,
+        site: &CallSite<'_>,
+    ) -> Result<Value, EvalError> {
+        let span = site.span;
         if args.len() != f.params().len() {
             return Err(EvalError::call_arity(f.params().len(), args.len(), span));
         }
@@ -947,12 +1041,10 @@ impl Document {
         // literal the body evaluates would capture them as well, so a
         // closure recursing back through its enclosing `fn` would double
         // its captures, and the work of each call, at every level.
+        let admitted = self.admit_arguments(f, args, site)?;
         let mut locals = Vec::with_capacity(f.captured.len() + args.len());
         locals.extend(f.captured.iter().cloned());
-        for (param, value) in f.params().iter().zip(args.iter()) {
-            // Coerce a bare-record argument to the parameter's declared
-            // union variant by shape; all other args pass through.
-            let value = super::types::coerce_value_to_type(self, value.clone(), param.ty(), span)?;
+        for (param, value) in f.params().iter().zip(admitted) {
             locals.push((param.name().to_string(), value));
         }
         let caller_locals = std::mem::replace(&mut ctx.locals, locals);
@@ -960,14 +1052,19 @@ impl Document {
         ctx.locals = caller_locals;
         // The body may live in another file than the call: name that
         // file, unless something deeper in the body already did.
-        result.map_err(|error| self.with_body_origin(error, &f.body))
+        let value = result.map_err(|error| self.with_body_origin(error, &f.body))?;
+        self.admit_return(f, value, site)
     }
 
     /// Tag `error`, raised while evaluating the function body `body`,
     /// with the file the body was written in. Leaves an error that
     /// already names its file, or one from a body no source holds, as
     /// it is.
-    fn with_body_origin(&self, error: EvalError, body: &std::sync::Arc<ast::Expr>) -> EvalError {
+    pub(super) fn with_body_origin(
+        &self,
+        error: EvalError,
+        body: &std::sync::Arc<ast::Expr>,
+    ) -> EvalError {
         if error.origin().is_some() {
             return error;
         }
@@ -1185,37 +1282,13 @@ impl Document {
         let Some(iface) = iface_decl else {
             return Err(EvalError::unknown_union(iface_path.join("."), span));
         };
-        // Structurally introspect values that carry a named field map:
-        // a variant with a record payload, or a bare record value. Other
-        // shapes (closures, lists, tensors, scalars, and non-record
-        // variant payloads) carry no field map, so they pass through
-        // permissively until the language tags them at runtime.
-        let fields = match value {
-            Value::Variant {
-                payload: crate::value::VariantPayload::Record(map),
-                ..
-            } => map,
-            Value::Record { fields, .. } => fields,
-            _ => return Ok(()),
-        };
-        for f in &iface.fields {
-            let Some(v) = fields.get(&f.name) else {
-                return Err(EvalError::variant_shape_mismatch(
-                    format!("interface field '{}'", f.name),
-                    "missing on value",
-                    span,
-                ));
-            };
-            let expected = &f.ty;
-            if !value_matches_declared(v, expected, f.optional) {
-                return Err(EvalError::variant_shape_mismatch(
-                    format!("interface field '{}': {expected:?}", f.name),
-                    format!("value field is {}", v.type_name()),
-                    span,
-                ));
+        match iface_misfit(value, iface) {
+            None => Ok(()),
+            Some(misfit) => {
+                let (expected, got) = misfit.shape_mismatch_parts();
+                Err(EvalError::variant_shape_mismatch(expected, got, span))
             }
         }
-        Ok(())
     }
 
     /// Walk a path expression and return the navigator for its

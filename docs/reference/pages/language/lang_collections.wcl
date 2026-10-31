@@ -479,7 +479,7 @@ CONSOLE
 
   h3 "Where the coercion runs"
 
-  p "That one file exercises every place the coercion happens. There are exactly three, and they are three because a bare record needs a **declared type within reach** to match against."
+  p "That one file exercises three of the places the coercion happens. There are exactly four, and they are four because a bare record needs a **declared type within reach** to match against."
 
   table {
     rows:
@@ -487,11 +487,12 @@ CONSOLE
       | "A field's value"       | "The field's declared type, recursing through `list<T>`" | "`one`, `many`" |
       | "An explicit variant's own field" | "The declared type of that field of the named variant" | "`plan`" |
       | "A function argument"   | "The parameter's declared type"                        | "`label`" |
+      | "A function's result"    | "The declared return type"                             | "Not shown. `fn fixed(n: u32) -> Capacity { let r = { units: n }; r }` returns `Capacity::Fixed`" |
   }
 
   p "Two of those deserve a second look. `many` shows that the rule **recurses through `list<T>`**: the field is a `list<Capacity>`, so each element is dispatched on its own. The two elements land on different variants. `plan` shows that the explicit `Union::Variant { … }` form is not an escape from the rule. Naming `Plan::Tiered` fixes the outer variant, and the bare records in its `base` and `burst` fields are still dispatched against `Capacity`."
 
-  p "A bare record that reaches none of the three stays a plain record. Bind `{ units: 3u32 }` to a `let` and it is still an untyped `{ units: 3 }`. Assign that `let` to a `Capacity`-typed field and it becomes `Capacity::Fixed` at that moment. The coercion belongs to the slot, not to the literal."
+  p "A bare record that reaches none of the four stays a plain record. Bind `{ units: 3u32 }` to a `let` and it is still an untyped `{ units: 3 }`. Assign that `let` to a `Capacity`-typed field and it becomes `Capacity::Fixed` at that moment. The coercion belongs to the slot, not to the literal."
 
   h3 "The whole field set, every time"
 

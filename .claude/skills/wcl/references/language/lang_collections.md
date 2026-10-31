@@ -232,12 +232,14 @@ b = ChartSeries::Ref { source: "sales.csv" }
 
 ### Where the coercion runs
 
-Three places, which is exactly the set of positions where a value meets a declared type:
+Four places, which is exactly the set of positions where a value meets a declared type:
 
 - a **field's** value, against the field's declared type;
 - a **variant payload** being built, against the variant's declared field types (so a bare
   record nested inside another one also infers);
-- a **function argument**, against the parameter's declared type.
+- a **function argument**, against the parameter's declared type;
+- a **function's result**, against the declared return type, so a `-> ChartSeries` function whose
+  body ends in a bare record returns the variant that record matches.
 
 Nowhere else. A bare record assigned to a `let` with no type in context stays an anonymous
 record, because there is no declared type to match against.

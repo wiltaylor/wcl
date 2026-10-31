@@ -917,7 +917,7 @@ page index {
   let inv = [ { name: "web-1", cpu: 42.0 }, { name: "db-1", cpu: 88.0 } ]
   table {
     header = ["Host", "CPU %"]
-    rows = map(inv, fn(h: Host) -> list<utf8> { [h.name, h.cpu] })
+    rows = map(inv, fn(h: Host) -> list<any> { [h.name, h.cpu] })
   }
   host_table {
     data = map(inv, fn(h: Host) -> list<utf8> { [$"**${h.name}**", "ok"] })

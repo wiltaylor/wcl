@@ -213,7 +213,7 @@ let lp_footcol_el = fn(col: LpFootcol) -> Html {
 // `cls` is the wrapping class ("lp-section-head"); the wrapper is a
 // `<header>` (not a `<div>`) so Markdown descends into it as blocks and
 // the `<h2>` survives as a `##` heading. Absent fields render nothing.
-let lp_section_head = fn(eyebrow: utf8, title: utf8, lede: utf8, cls: utf8) -> list<Html> {
+let lp_section_head = fn(eyebrow: any, title: any, lede: any, cls: utf8) -> list<Html> {
   let parts = flatten([
     if eyebrow == none || eyebrow == "" { [] }
     else {

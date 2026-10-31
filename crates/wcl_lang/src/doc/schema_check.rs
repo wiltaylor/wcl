@@ -1287,71 +1287,25 @@ fn field_value_errors(block: &Block<'_>, declared: &TypeField<'_>, errs: &mut Ve
         .doc
         .resolve_alias_in(declared.type_ref(), declared.file_ns);
 
-    // Union path — preserved verbatim.
-    if let crate::ast::TypeRef::Named { path, .. } = &resolved_ty
-        && let Some(union_decl) = block.doc.union_decl(&path.join("."))
-    {
-        let expected_fqn = union_decl.ast.name.clone();
-        if let crate::value::Value::Variant { union, variant, .. } = value
-            && union != &expected_fqn
-        {
-            errs.push(EvalError::schema_violation(
-                Kind::VariantUnionMismatch,
-                format!(
-                    "field '{}' declared as union '{}' but value is {}::{}",
-                    literal_field.name(),
-                    expected_fqn.join("."),
-                    union.join("."),
-                    variant,
-                ),
-                literal_field.span(),
-            ));
-        } else if let crate::value::Value::Record { .. } = value {
-            // A bare record that `Field::value` couldn't coerce to a
-            // variant (e.g. via a `@schemaless` bypass) — flag it
-            // rather than silently accepting an un-inferred record.
-            errs.push(EvalError::schema_violation(
-                Kind::VariantNoMatch,
-                format!(
-                    "field '{}' declared as union '{}' but value is an \
-                     un-inferred record (no variant matches its shape)",
-                    literal_field.name(),
-                    expected_fqn.join("."),
-                ),
-                literal_field.span(),
-            ));
-        }
-        return;
-    }
-
-    // Generic value-vs-type check for non-union typed fields.
-    if !crate::doc::types::value_matches_type_ref(value, &resolved_ty) {
-        errs.push(crate::doc::types::field_type_mismatch(
+    // The field rule's verdict — union membership (a bare record
+    // `Field::value` couldn't coerce to a variant, e.g. via a
+    // `@schemaless` bypass, is flagged rather than silently accepted),
+    // value-vs-type, symbol set, constraints. Function signatures share
+    // it (`types::slot`).
+    if let Some(refusal) = crate::doc::types::slot_refusal(
+        block.doc,
+        value,
+        declared.type_ref(),
+        &resolved_ty,
+        &declared.ast.decorators,
+        declared.file_ns,
+    ) {
+        errs.push(crate::doc::types::field_refusal_error(
             literal_field.name(),
             declared.type_ref(),
             &resolved_ty,
             value,
-            literal_field.span(),
-        ));
-    } else if let Some(err) = crate::doc::types::symbol_set_membership_error_in(
-        block.doc,
-        &resolved_ty,
-        value,
-        literal_field.name(),
-        literal_field.span(),
-        declared.file_ns,
-    ) {
-        errs.push(err);
-    } else if let Some(msg) = constraint_violation(
-        block.doc,
-        &declared.ast.decorators,
-        declared.type_ref(),
-        declared.file_ns,
-        value,
-    ) {
-        errs.push(EvalError::schema_violation(
-            Kind::ConstraintViolation,
-            format!("field '{}': {msg}", literal_field.name()),
+            refusal,
             literal_field.span(),
         ));
     } else if let Some(msg) = ref_violation(block.doc, declared, value) {

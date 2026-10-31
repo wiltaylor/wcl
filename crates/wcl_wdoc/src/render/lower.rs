@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use miette::{Diagnostic, LabeledSpan, NamedSource, Report, SourceSpan};
-use wcl_lang::{Block, Document, EvalError, FnValue, Value};
+use wcl_lang::{Block, DeclName, Document, EvalError, FnValue, Value};
 
 use crate::content::Content;
 use crate::render::include::resolve_content;
@@ -399,9 +399,9 @@ pub(crate) fn lower_to_values(doc: &Document, block: &Block<'_>, kind: &str) -> 
     };
     match doc.call_value(&fv, &[arg]) {
         Ok(Value::List(items)) => Some(std::sync::Arc::unwrap_or_clone(items)),
-        // The declared return type is a `list<…Fundamental>`; anything
-        // else means the lowering is broken (the language doesn't
-        // enforce fn return types at runtime) — surface a diagnostic
+        // The call already held the result to the lowering's declared
+        // return type. One declared `-> any` gets here unchecked, and
+        // anything but a list means it is broken — surface a diagnostic
         // instead of silently dropping the block. `none` stays a benign
         // "nothing to render" so a conditional lowering can opt out.
         Ok(Value::None) => None,
@@ -713,8 +713,12 @@ pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str)
         };
         map.insert(name.to_string(), val);
     }
+    // Tagged with the schema the block was read through — the type a
+    // `lower` names its parameter after, and the one the call checks the
+    // argument against. A name guessed from the kind (`hbar_chart` →
+    // `HbarChart`) misses any type not named after its kind.
     Some(Value::Record {
-        ty: vec![kind_to_typename(kind)],
+        ty: vec![schema.name().to_string()],
         fields: std::sync::Arc::new(map),
     })
 }

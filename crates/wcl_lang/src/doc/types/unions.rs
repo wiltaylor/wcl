@@ -154,7 +154,7 @@ fn variant_bodies_collide(a: &ast::VariantBody, b: &ast::VariantBody) -> bool {
 
 /// Whether a pattern's (possibly unqualified) union path matches a
 /// fully-qualified union name, comparing from the right.
-pub(super) fn path_matches_suffix(pat_path: &[String], union_fqn: &[String]) -> bool {
+pub(crate) fn path_matches_suffix(pat_path: &[String], union_fqn: &[String]) -> bool {
     if pat_path.len() > union_fqn.len() {
         return false;
     }

@@ -41,18 +41,19 @@
 // `class=""`), so `el("li", [], kids)` renders `<li>` — passing `[]`
 // costs nothing over omitting the field. An optional field goes
 // straight in: `el("p", t.class, kids)` with `t.class` unset renders
-// exactly as an omitted `class` does. The parameters below cannot SAY
-// so — `?` in a parameter list is a parse error, so every wdoc `fn`
-// annotates its optionals as though they were required and lets the
-// `none` flow through (see `icon_lead` in `flowchart.wcl`).
+// exactly as an omitted `class` does. A call checks every argument
+// against its parameter's type, and `?` in a parameter list is a parse
+// error, so a parameter that takes `none` is declared `any` — `cls`
+// here, and `eli`'s `id`. The `Html` variant it feeds still types the
+// value (`class: list<utf8>?`); `any` only lets the absence through.
 //
 // SCOPE: the HTML element vocabulary ONLY. `Svg` and the
 // semantic content IR keep the named-field literal, because they are
 // field-shaped — a positional constructor over them is the same record
-// with its field names deleted, and WCL checks argument ARITY but never
-// argument TYPES. Transposing two of an SVG `Label`'s four
+// with its field names deleted, and a type check cannot tell two
+// same-typed arguments apart. Transposing two of an SVG `Label`'s four
 // interchangeable `f64`s would render silently wrong where the long
-// form raises a shape mismatch, and the saving there is an order of
+// form names each one, and the saving there is an order of
 // magnitude smaller than it is here. `callout.wcl` is the worked
 // example on the IR side: it names its fields.
 //
@@ -65,16 +66,16 @@
 namespace wdoc
 
 // `<tag class="…">children</tag>`.
-let el = fn(tag: utf8, cls: list<utf8>, kids: list<Html>) -> Html
+let el = fn(tag: utf8, cls: any, kids: list<Html>) -> Html
   Html::Element { tag: tag, class: cls, children: kids }
 
 // … with attributes — `attrs` is a list of `[name, value]` pairs, e.g.
 // `[["href", p.href]]` (values escaped).
-let ela = fn(tag: utf8, cls: list<utf8>, attrs: list<list<utf8>>, kids: list<Html>) -> Html
+let ela = fn(tag: utf8, cls: any, attrs: list<list<utf8>>, kids: list<Html>) -> Html
   Html::Element { tag: tag, class: cls, attrs: attrs, children: kids }
 
 // … with an explicit HTML id (the anchor target).
-let eli = fn(tag: utf8, id: identifier, cls: list<utf8>, kids: list<Html>) -> Html
+let eli = fn(tag: utf8, id: any, cls: any, kids: list<Html>) -> Html
   Html::Element { tag: tag, id: id, class: cls, children: kids }
 
 // Verbatim, pre-rendered HTML — NOT escaped. Embeds already-rendered
@@ -94,10 +95,10 @@ let inl = fn(text: utf8) -> Html
 
 // An icon, resolved against the declared `iconset`s and the built-in
 // packs (`pack.name`, e.g. `"lucide.info"`).
-let icon = fn(name: utf8, cls: list<utf8>) -> Html
+let icon = fn(name: utf8, cls: any) -> Html
   Html::Icon { name: name, class: cls }
 
 // A `<p>` of `spans`, each run through the inline-pattern engine. A
 // paragraph that needs an id writes the long form.
-let para = fn(cls: list<utf8>, spans: list<utf8>) -> Html
+let para = fn(cls: any, spans: list<utf8>) -> Html
   Html::Paragraph { class: cls, spans: spans }

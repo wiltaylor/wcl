@@ -308,14 +308,16 @@ An empty `class` or `attrs` list emits no attribute at all. `el("li", [], kids)`
 so passing `[]` costs nothing over omitting the field. An optional field goes straight in:
 `el("p", t.class, kids)` with `t.class` unset renders as an omitted `class`.
 
-**`ela` and `eli` take the same number of arguments.** Arity is the one positional mistake WCL
-catches, and it cannot separate these two. Calling one where you meant the other drops the id
-or the attributes silently. Pick by what you are passing.
+**`ela` and `eli` take the same number of arguments.** Arity cannot separate them, and the
+type check only half does: `cls` (all three) and `id` (`eli`) are `any`, because they take a
+block's optional fields and `none` must pass. `ela` handed `eli`'s arguments fails on
+`attrs: list<list<utf8>>`; `eli` handed `ela`'s puts the class list in `id` and the attrs in
+`cls`, and nothing catches it. Pick by what you are passing.
 
 The family covers the HTML **element** vocabulary only. `Svg` shapes and the semantic content
-IR keep the named-field record literal, because they are field-shaped. WCL checks argument
-arity but never argument types. Transposing two of a shape's interchangeable `f64`s would
-therefore render silently wrong, where a record raises a shape mismatch.
+IR keep the named-field record literal, because they are field-shaped. A call checks argument
+types, but transposing two of a shape's interchangeable `f64`s still type-checks, and would
+render silently wrong where a record names each field.
 
 Write the long form for anything the family does not name. That covers an element carrying both
 an id and attrs, a `Paragraph` with an id, a `Head`, a `Table`, a `Highlighted` and a `Math`.

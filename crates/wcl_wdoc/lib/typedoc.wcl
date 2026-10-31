@@ -23,9 +23,10 @@
 //   …
 //   page p { type_table { type = Image } }
 
-// Documentation-only shapes for the `type_fields` records. WCL erases fn
-// param types at runtime (member access is dynamic), so these just make the
-// helper/component signatures readable; they mirror the builtin's output.
+// The shape of a `type_fields` record, written out for readers. The builtin
+// tags its records `TypeField` (and each decorator entry `Decorator`), not
+// these names, and a call checks each argument against its parameter's
+// type, so the helpers below take `record` and name the shape in prose.
 namespace wdoc
 
 # Omits a schema field from generated type-reference tables.
@@ -47,36 +48,36 @@ type FieldInfo {
 }
 
 // The description text from a field's `@doc("…")` decorator ("" when absent).
-let wdoc_field_doc = fn(f: FieldInfo) -> utf8 {
-  let hits = filter(f.decorators, fn(d: FieldDecorator) -> bool d.name == "doc");
+let wdoc_field_doc = fn(f: record) -> utf8 {
+  let hits = filter(f.decorators, fn(d: record) -> bool d.name == "doc");
   // Bind before member access — `at(hits, 0).arg` (member on a call) isn't
   // allowed; a let binding is a reference the `.arg` access can walk.
   if len(hits) == 0 { "" } else { let first = at(hits, 0); first.arg }
 }
 
 // Whether a field carries a `@hidden` decorator (dropped from the table).
-let wdoc_field_hidden = fn(f: FieldInfo) -> bool
-  len(filter(f.decorators, fn(d: FieldDecorator) -> bool d.name == "hidden")) > 0
+let wdoc_field_hidden = fn(f: record) -> bool
+  len(filter(f.decorators, fn(d: record) -> bool d.name == "hidden")) > 0
 
 // "yes" unless the field is optional or carries a default.
-let wdoc_field_required = fn(f: FieldInfo) -> utf8
+let wdoc_field_required = fn(f: record) -> utf8
   if f.optional { "no" } else { if f.has_default { "no" } else { "yes" } }
 
 // Documentable fields of a type: everything except `@hidden` fields and
 // function-typed fields (the `lower` lowering hook every block carries).
-// `t` is a type reference (the `type` slot's value); the `FieldInfo`
-// annotation is nominal — WCL erases fn param types at runtime.
-let wdoc_doc_fields = fn(t: FieldInfo) -> list<FieldInfo>
+// `t` is a type reference (the `type` slot's value), which no signature
+// type names, so it is `any`.
+let wdoc_doc_fields = fn(t: any) -> list<record>
   filter(
-    filter(type_fields(t), fn(f: FieldInfo) -> bool wdoc_field_hidden(f) == false),
-    fn(f: FieldInfo) -> bool f.is_function == false,
+    filter(type_fields(t), fn(f: record) -> bool wdoc_field_hidden(f) == false),
+    fn(f: record) -> bool f.is_function == false,
   )
 
 // Scalar properties, then nested-block slots — the two table sections.
-let wdoc_props = fn(t: FieldInfo) -> list<FieldInfo>
-  filter(wdoc_doc_fields(t), fn(f: FieldInfo) -> bool f.is_block == false)
-let wdoc_children = fn(t: FieldInfo) -> list<FieldInfo>
-  filter(wdoc_doc_fields(t), fn(f: FieldInfo) -> bool f.is_block)
+let wdoc_props = fn(t: any) -> list<record>
+  filter(wdoc_doc_fields(t), fn(f: record) -> bool f.is_block == false)
+let wdoc_children = fn(t: any) -> list<record>
+  filter(wdoc_doc_fields(t), fn(f: record) -> bool f.is_block)
 
 // Component bodies can't carry their own `let` bindings through expansion,
 // so the `type` slot is threaded directly into the helpers above.
@@ -85,7 +86,7 @@ wdoc_component type_table {
   wdoc_body {
     table {
       header = ["Property", "Type", "Required", "Description"]
-      rows = map(wdoc_props(type), fn(f: FieldInfo) -> list<utf8> [
+      rows = map(wdoc_props(type), fn(f: record) -> list<utf8> [
         format("`{}`", f.name),
         format("`{}`", f.type),
         wdoc_field_required(f),
@@ -99,7 +100,7 @@ wdoc_component type_table {
       h4 "Child blocks"
       table {
         header = ["Slot", "Accepts", "Multiple", "Description"]
-        rows = map(wdoc_children(type), fn(f: FieldInfo) -> list<utf8> [
+        rows = map(wdoc_children(type), fn(f: record) -> list<utf8> [
           format("`{}`", f.name),
           format("`{}`", f.accepts),
           if f.repeated { "yes" } else { "no" },

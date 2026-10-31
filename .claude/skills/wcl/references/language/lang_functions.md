@@ -27,9 +27,11 @@ four = double(2i32)          // 4i32
 nine = sum_sq(1i32, 2i32)    // 9i32
 ```
 
-> The declared return type documents the intent; it is **not** enforced. Writing the body as
-> `x * 2` there would answer `4i128`, because the untyped `2` promotes the pair — see
-> `lang_expressions.md`. Suffix your literals when the width matters.
+> Both annotations are **enforced** at every call — see [What a call checks](#what-a-call-checks).
+> Writing the body as `x * 2` computes `4i128`, because the untyped `2` promotes the pair (see
+> `lang_expressions.md`), and the `-> i32` return converts it back to `4i32` because it fits. A
+> result that does not fit fails the call: `double(2000000000)` is `'double' declared -> i32 but
+> returned 4000000000i128, which is out of range for i32`.
 
 ## `fn` items
 
@@ -60,31 +62,34 @@ the evaluated document, in `wcl get`, in JSON output, or in schema validation. S
 
 An argument count that does not match the parameter count is an error at call time.
 
-The workaround for an optional parameter is to **annotate it as required and let `none` flow
-through the body**. A `none` argument satisfies the call, and an optional field it lands in
-reads as unset:
+The workaround for an optional parameter is to **declare it `any` and let `none` flow through
+the body**. `any` is the only signature type that accepts `none`; `cls: list<utf8>` handed `none`
+fails with `argument 2 ('cls') of 'el' expects list<utf8>, got none`. An optional field the
+`none` lands in reads as unset, and the field's own type still checks a real value:
 
 ```wcl
 union Html {
-  Element { tag: utf8  id: identifier?  class: list<utf8>  children: list<Html> }
+  Element { tag: utf8  id: identifier?  class: list<utf8>?  children: list<Html> }
 }
 
-// Two constructors, because `id` cannot be given a default.
-let el  = fn(tag: utf8, cls: list<utf8>, kids: list<Html>) -> Html
+// `cls` and `id` take an optional field's value, so they are `any`.
+let el  = fn(tag: utf8, cls: any, kids: list<Html>) -> Html
   Html::Element { tag: tag, class: cls, children: kids }
 
-let eli = fn(tag: utf8, id: identifier, cls: list<utf8>, kids: list<Html>) -> Html
+let eli = fn(tag: utf8, id: any, cls: any, kids: list<Html>) -> Html
   Html::Element { tag: tag, id: id, class: cls, children: kids }
 
-a = el("div", ["card"], [])            // id → none
-b = eli("section", "intro", [], [])    // a string coerces to the identifier
+a = el("div", none, [])                // class → none
+b = eli("section", "intro", [], [])    // the variant field turns "intro" into an identifier
 ```
 
 This is exactly why libraries built on WCL grow **families** of near-identical constructors —
 one per useful combination — rather than one function with defaults. When two members of such a
-family share an arity, WCL cannot tell a transposed argument from a correct one: it checks
-argument **count**, never argument **types**. Order the parameters so a mistake is obvious, or
-give the two forms different arities.
+family share an arity, only a parameter **type** can catch a transposed argument, and an `any`
+parameter catches nothing. wdoc's `ela(tag, cls, attrs, kids)` handed `eli`'s arguments fails on
+`attrs: list<list<utf8>>`; `eli(tag, id, cls, kids)` handed `ela`'s passes, because `id` and
+`cls` are both `any`. Order the parameters so a mistake is obvious, or give the two forms
+different arities.
 
 > **A `{` straight after the return type is always a block expression, never a record literal.**
 > `fn(x: i64) -> Point { x: x, y: 0 }` is a parse error. Return the explicit
@@ -105,8 +110,59 @@ A signature is allowed two things a field is not:
   (`list<any>`, `fn(any) -> any`). Type variables (`T`) and `never` are not among them.
 - An interface by bare name (`fn(s: Shape) -> …`). A field needs `&Shape`.
 
-Resolving is all it does. The evaluator still never checks an argument or the return value
-against the annotation.
+`?` is legal nowhere in a signature: not on a parameter, not on the return type
+(`fn f() -> i64? none` is a parse error), not inside a function type (`fn(i64?) -> i64`).
+
+## What a call checks
+
+Every call checks, in order: the argument **count**, each **argument** against its parameter's
+type, then the body's **result** against the return type. Builtins are not covered by this
+section; they check their own arguments.
+
+**The rule is the field rule.** An argument is accepted exactly when a field declared with the
+parameter's type would accept it, and it is **converted** exactly as that field would convert it.
+The result meets the return type the same way. Concretely:
+
+| Value handed to the slot | Outcome |
+| --- | --- |
+| a number that fits the declared numeric type | converted to that width (`8080` → `8080u16`; an `i128` product → `i32`) |
+| a number that does not fit (`300` for `u8`, `2.5` for an integer type) | refused: `got 300, which is out of range for u8` |
+| a string for `identifier` | converted to the identifier (the reverse is refused: an `identifier` for `utf8` fails) |
+| a bare record for a union type | converted to the variant its shape matches; no match is `wcl::eval::schema_violation`: `no variant of 'Capacity' matches the supplied shape` |
+| a variant of a different union | refused |
+| a block's record for a type with a different name | refused — even the type its schema `extends` (records match by type name) |
+| a record literal for a plain (non-union) named type | accepted unchecked, as a field accepts it |
+| a non-variant, non-record value for a union type | accepted (field-rule gap: `fn(s: Shape)` takes `"x"`) |
+| a symbol outside the declared `symbol_set` | refused: `got :medium, which is not a member of 'Mode'` |
+| a value an alias's constraint rejects (`@min(1) type Port = u16`) | refused: `got u16, but value 0 is below @min(1)` |
+| a unit literal (`5MiB`) | resolved against the type's `@unit`, as in a field |
+| `none` | refused by every type except `any` |
+
+The signature-only types check and **never convert**:
+
+| Type | Accepts |
+| --- | --- |
+| `any` | every value, `none` included |
+| `number` | any numeric value, any width (not widened to `f64`, unlike a builtin's `number`) |
+| `integer` | any integer value, any width or signedness |
+| `record` | a record, or a variant whose payload is a record (`U::P(1)` is refused) |
+| bare interface `Shape` | a record or record-payload variant with every interface field, correctly typed; other values pass unchecked |
+| `fn(A, B) -> R` | any function with **two** parameters — parameter and return types are not compared |
+| `&T` | a document reference: a declaration named bare (`f(Service)`) or a `&T` field's value. A record fails, and a block reached by path (`f(services.web)`) is a record by then. The target is not checked against `T`. |
+| `list<…>` of any of these | a list whose every non-`none` element passes |
+
+**Errors** — both are evaluation errors: `try` catches them, `wcl check` without `--eval` does not
+see them, `wcl check --eval` and `wcl get` exit 3.
+
+| Code | Message | Points at |
+| --- | --- | --- |
+| `wcl::eval::argument_type` | `argument 2 ('id') of 'eli' expects identifier, got bool` | the argument expression; the whole call when the argument is a literal or the caller is a builtin (`map`, `fold`) |
+| `wcl::eval::return_type` | `'f' declared -> utf8 but returned i64` | the function body, in the file the function was written in |
+
+The function is named by the call (`f(x)` → `'f'`, `steps.scale.apply(x)` → `'apply'`), else by the `let`
+or `fn` item that first bound it (so `fold(xs, 0, add)` reports `'add'`), else `fn literal`
+(`argument 1 ('x') of fn literal expects utf8, got i64`). A list argument names its first bad
+element: `got a list whose element [1] is utf8`.
 
 ## Function types
 
@@ -187,9 +243,10 @@ reports `call depth limit exceeded (max 200)` rather than hanging. The 200 level
 with the fields and `let`s the calls force, so recursion that reads fields runs out sooner. Each call evaluates the body in a fresh frame. See
 `lang_evaluation.md`.
 
-Arguments are ordinary expressions evaluated at the call. A bare record argument coerces to the
-parameter's declared union variant by shape — one of the three places that coercion runs; see
-`lang_collections.md`.
+Arguments are ordinary expressions evaluated at the call, then converted and checked against the
+parameter types (see [What a call checks](#what-a-call-checks)). A bare record argument coerces
+to the parameter's declared union variant by shape, and a bare record result to the return
+type's — two of the four places that coercion runs; see `lang_collections.md`.
 
 ## Worked example
 

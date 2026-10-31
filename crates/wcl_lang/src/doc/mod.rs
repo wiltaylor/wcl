@@ -51,6 +51,7 @@ mod provenance;
 mod schema_check;
 mod schema_lookup;
 mod scope;
+mod signature;
 mod strict;
 mod types;
 mod validate;
@@ -176,6 +177,10 @@ pub struct Document {
     /// without the memo every closure call re-ran name resolution (and
     /// rebuilt list arguments) just to discover a type isn't a union.
     union_path_memo: std::sync::RwLock<HashMap<Vec<String>, Option<String>>>,
+    /// Memo for `named_slot`: a type path written in a function
+    /// signature → what checking a value against it takes. Consulted per
+    /// call per parameter, for the same reason as `union_path_memo`.
+    named_slot_memo: std::sync::RwLock<HashMap<Vec<String>, signature::NamedSlot>>,
     /// Lazily-built locations of every `@document`-decorated type
     /// declaration, in `type_decls()` order (root-authored first).
     /// `doc_schemas_for_ns` consults the merged document schema on

@@ -246,7 +246,10 @@ pub enum VariantPayload {
 /// function values takes the body into account, but it is not part of the
 /// public surface (no evaluator yet — there is nothing the consumer can do
 /// with it).
-#[derive(Debug, Clone, PartialEq)]
+///
+/// Equality compares the signature, the body and the captures; the
+/// [`name`](Self::name) a binding gave the value is not part of it.
+#[derive(Debug, Clone)]
 pub struct FnValue {
     /// Declared parameters, in order.
     params: Vec<FnParam>,
@@ -265,6 +268,24 @@ pub struct FnValue {
     /// are *not* captured: the document is immutable after open, so
     /// they resolve correctly via scope walks at call time.
     pub(crate) captured: Vec<(String, Value)>,
+    /// The name of the first `let` or `fn` item that bound this value,
+    /// for error messages about a call that reaches it with no name of
+    /// its own (a callback handed to `map`). `None` for a literal no
+    /// binding has named.
+    name: Option<std::sync::Arc<str>>,
+    /// Where the literal was written, in the file its body lives in. A
+    /// signature error with no better place to point — a literal body
+    /// carries no span of its own — points here. Not part of equality.
+    pub(crate) span: crate::ast::Span,
+}
+
+impl PartialEq for FnValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params
+            && self.return_ty == other.return_ty
+            && self.body == other.body
+            && self.captured == other.captured
+    }
 }
 
 impl FnValue {
@@ -279,7 +300,29 @@ impl FnValue {
             return_ty,
             body,
             captured: Vec::new(),
+            name: None,
+            span: crate::ast::Span::new(0, 0),
         }
+    }
+
+    /// Record where the literal was written.
+    pub(crate) fn with_span(mut self, span: crate::ast::Span) -> Self {
+        self.span = span;
+        self
+    }
+
+    /// Name this value after the binding that holds it, unless an
+    /// earlier binding already did.
+    pub(crate) fn named(mut self, name: &str) -> Self {
+        if self.name.is_none() {
+            self.name = Some(std::sync::Arc::from(name));
+        }
+        self
+    }
+
+    /// The name of the `let` or `fn` item that bound this value, if any.
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
     }
 
     /// Attach the evaluator locals this literal closed over.
@@ -356,6 +399,16 @@ impl FnParam {
 }
 
 impl Value {
+    /// This value as bound to `name` by a `let` or `fn` item: a function
+    /// takes the name, for errors about calls that reach it unnamed.
+    /// Every other value is unchanged.
+    pub(crate) fn bound_as(self, name: &str) -> Self {
+        match self {
+            Value::Function(f) => Value::Function(f.named(name)),
+            other => other,
+        }
+    }
+
     /// Convert a numeric `Value` to `u64` for use as a decorator count or
     /// slot index. Returns `None` for non-numeric values, negative signed
     /// values, or magnitudes that don't fit in `u64`.

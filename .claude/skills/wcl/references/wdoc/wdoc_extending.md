@@ -118,9 +118,9 @@ meaning a backend has to parse back out.
 Prose fields such as `Paragraph.text` and `ContentListItem.text` run through the inline-pattern
 engine, so `**bold**`, links and `:icons:` work inside them.
 
-**Name the fields.** The IR keeps the long record literal on purpose: WCL checks argument arity
-but never argument types, so a positional constructor over interchangeable fields renders
-silently wrong.
+**Name the fields.** The IR keeps the long record literal on purpose: a call checks each
+argument's type, but two `f64`s swapped are still two `f64`s, so a positional constructor over
+interchangeable fields renders silently wrong.
 
 ## The `Svg` union
 
@@ -184,9 +184,11 @@ eli(tag, id, cls, kids)     // … with an explicit id
 raw(html)  inl(text)  icon(name, cls)  para(cls, spans)  css_style(name)
 ```
 
-`ela` and `eli` take the **same number of arguments**, so arity — the one positional mistake WCL
-catches — cannot separate them. Calling one where you meant the other drops the id or the attrs
-silently. Pick by what you are passing, and use the long form when an element needs both.
+`ela` and `eli` take the **same number of arguments**, so arity cannot separate them, and
+`cls` / `id` are `any` (they take a block's optional fields), so the type check catches only
+`ela` handed `eli`'s arguments (the class list fails `attrs: list<list<utf8>>`). `eli` handed
+`ela`'s drops the id and the attrs silently. Pick by what you are passing, and use the long form
+when an element needs both.
 
 An empty `class` or `attrs` list emits no attribute at all, so `el("li", [], kids)` renders
 `<li>`.
@@ -278,7 +280,12 @@ the block needs computation — geometry, branching, or a shape the markup canno
 - **`lower` is a field default, not a method.** Write `lower = fn(b: MyBlock) -> list<Content>`
   inside the type body.
 - **Return a list**, even for one node.
-- **Name the record fields** in `Content` and `Svg` literals. WCL checks arity, not types.
+- **Name the record fields** in `Content` and `Svg` literals. A call checks argument types, but
+  two swapped `f64`s still type-check.
+- **A `lower` signature is checked on every call.** Its parameter receives the block as a record
+  tagged with the block's schema name, so type it as that schema (`fn(b: MyBlock)`). A parent
+  `type` the schema `extends` refuses it, and so does `&MyBlock`; an interface it extends
+  (`ContentBlock`) accepts it by shape. A `lower` that may return `none` must declare `-> any`.
 - **`@native` is wdoc's, not yours.**
 - **Pick a kind name no built-in already uses.** Your declaration would otherwise be silently
   ignored, so wdoc refuses it instead.

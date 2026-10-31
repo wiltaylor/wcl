@@ -470,7 +470,7 @@ type Status extends ContentBlock {
   @inline(0) label: utf8
   glyph: utf8?
 
-  lower = fn(s: &Status) -> list<Html>
+  lower = fn(s: Status) -> list<Html>
     [el("span", ["status"], [
       icon(s.glyph ?? "lucide.circle-check", ["status-glyph"]),
       inl(s.label),

@@ -1245,6 +1245,32 @@ fn check_eval_json_lists_evaluation_errors_by_code() {
     assert!(errors[0]["offset"].is_u64(), "span offset present");
 }
 
+/// A call whose argument the parameter's type refuses fails at the
+/// call, under `get` and under `check --eval` alike.
+#[test]
+fn a_call_with_a_mistyped_argument_fails_at_the_call() {
+    let src = "@document type D { b: u8 }\nfn g(x: u8) -> u8 x\nb = g(\"s\")\n";
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("sig.wcl");
+    std::fs::write(&file, src).expect("write fixture");
+    let message = "argument 1 ('x') of 'g' expects u8, got utf8";
+    wcl()
+        .arg("get")
+        .arg(&file)
+        .arg("b")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("wcl::eval::argument_type"))
+        .stderr(predicate::str::contains(message));
+    wcl()
+        .args(["check", "--eval"])
+        .arg(&file)
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains(message))
+        .stderr(predicate::str::contains("sig.wcl: 1 evaluation error"));
+}
+
 #[test]
 fn check_eval_files_a_violation_only_forcing_reveals_as_a_schema_violation() {
     // No variant of `Capacity` has a `size` field. Only forcing `one`

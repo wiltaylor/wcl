@@ -546,7 +546,7 @@ wcl::parse
 CONSOLE
   }
 
-  p "So every call fills every parameter, positionally. What the language checks of that call is exactly one thing, **the count**:"
+  p "So every call fills every parameter, positionally, and a call with the wrong number of arguments stops before the body runs:"
 
   code console {
     source = <<'CONSOLE'
@@ -557,9 +557,213 @@ wcl::eval::builtin_arity
 CONSOLE
   }
 
-  p "It does not check argument **types**. Pass a `utf8` where the signature says `i64` and the call evaluates cleanly, with the wrong value flowing on. Nor does it check the return type: `fn f(x: i64) -> utf8 x + 1i64` returns the number 2, and the mismatch surfaces only later, when a field declared `utf8` receives it. A signature is a contract you are keeping, not one the evaluator enforces for you."
+  h2 "What a call checks"
 
-  p "What WCL does check is that the annotation names something. Every type in a signature has to resolve, exactly as a field's type does, and a name nothing declares stops the file from opening. The check reaches every function literal, including a lambda passed straight into `map`. A signature is allowed a little more than a field. It may name an interface without the `&`, and it may use the four value classes from the [builtin signature notation](lang_builtins#how-to-read-an-entry): `any`, `number`, `integer` and `record`."
+  p "The count is the first check. Once it passes, the call holds every argument to its parameter's type, runs the body, and holds the result to the return type. The rule is one you already know. **An argument is accepted exactly when a field declared with the parameter's type would accept it, and it arrives converted the way that field would convert it.** The return value meets the return type the same way. [Schemas](lang_schemas) is where that rule is written out for fields. Nothing about it is special to functions."
+
+  code wcl {
+    filename = "calls.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  port:  u16
+  label: identifier
+  twice: i32
+  wrong: u16
+  huge:  i32
+}
+
+fn port_of(p: u16) -> u16 p
+fn label_of(id: identifier) -> identifier id
+fn double(x: i32) -> i32 x * 2
+
+port  = port_of(8080)
+label = label_of("intro")
+twice = double(21)
+wrong = port_of("8080")
+huge  = double(2000000000)
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get calls.wcl port
+8080u16
+$ wcl get calls.wcl label
+intro
+$ wcl get calls.wcl twice
+42i32
+CONSOLE
+  }
+
+  p "Each of those three is a conversion a field would make. The literal `8080` is an `i64` until the `u16` parameter narrows it, because it fits. The string `\"intro\"` becomes the identifier `intro`, which is why it prints without quotes. And `x * 2` multiplies an `i32` by an untyped `i64` literal, which [Expressions and operators](lang_expressions) explains comes out `i128`. The `i32` return type narrows that back to `42i32`, again because it fits."
+
+  p "A value no field would take fails the call. The two other fields show both halves:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get calls.wcl wrong
+wcl::eval::argument_type
+
+  × argument 1 ('p') of 'port_of' expects u16, got utf8
+    ╭─[calls.wcl:17:9]
+ 16 │ twice = double(21)
+ 17 │ wrong = port_of("8080")
+    ·         ───────┬───────
+    ·                ╰── expects u16
+ 18 │ huge  = double(2000000000)
+    ╰────
+$ wcl get calls.wcl huge
+wcl::eval::return_type
+
+  × 'double' declared -> i32 but returned 4000000000i128, which is out of
+  │ range for i32
+    ╭─[calls.wcl:12:26]
+ 11 │ fn label_of(id: identifier) -> identifier id
+ 12 │ fn double(x: i32) -> i32 x * 2
+    ·                          ──┬──
+    ·                            ╰── returns 4000000000i128, which is out of range for i32
+ 13 │
+    ╰────
+CONSOLE
+  }
+
+  p "An argument error points at the argument when the argument is an expression with a position of its own, and at the whole call when it is a literal, as `\"8080\"` is here. A return error points at the body. An anonymous literal is named `fn literal` in both messages. A function you pass by name, such as `map(xs, slug)`, keeps the name its `let` or `fn` item gave it."
+
+  p "Both are **evaluation** errors, the kind a field raises when its expression fails. They surface when something reads the field. So `wcl check` on its own passes `calls.wcl`, and `--eval` forces every field and reports them. A `try` catches either one, with the message above as the caught value. [Control flow](lang_control_flow) covers `try`."
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check calls.wcl
+OK
+$ wcl check --eval calls.wcl
+wcl::eval::return_type
+
+  × 'double' declared -> i32 but returned 4000000000i128, which is out of
+  │ range for i32
+    ╭─[calls.wcl:12:26]
+ 11 │ fn label_of(id: identifier) -> identifier id
+ 12 │ fn double(x: i32) -> i32 x * 2
+    ·                          ──┬──
+    ·                            ╰── returns 4000000000i128, which is out of range for i32
+ 13 │
+    ╰────
+
+wcl::eval::argument_type
+
+  × argument 1 ('p') of 'port_of' expects u16, got utf8
+    ╭─[calls.wcl:17:9]
+ 16 │ twice = double(21)
+ 17 │ wrong = port_of("8080")
+    ·         ───────┬───────
+    ·                ╰── expects u16
+ 18 │ huge  = double(2000000000)
+    ╰────
+
+calls.wcl: 2 evaluation errors
+CONSOLE
+  }
+
+  p "Because the rule is the field rule, it carries the field rule's edges with it. Three are worth knowing before they surprise you:"
+
+  list {
+    li "**Conversion runs one way.** A string converts to an `identifier`, but an identifier does not convert to `utf8`. A block's `name: identifier` returned from a function declared `-> utf8` fails. Interpolate it, `$\"${b.name}\"`, to get a string."
+    li "**A record matches by its type's name.** A block passed as an argument is a record tagged with its schema, and a parameter naming a different type refuses it, even a type the block's schema `extends`. A record literal carries no tag, so it passes any plain named type."
+    li "**A union checks variants, not everything else.** A parameter typed with a union refuses a variant of another union, and a record that matches none of its variants. Like a field, it lets through a value that is neither a variant nor a record."
+  }
+
+  h3 "Words only a signature may use"
+
+  p "A signature may name four value classes that no field type can. They come from the [builtin signature notation](lang_builtins#how-to-read-an-entry), and they check without converting anything:"
+
+  table {
+    rows:
+      | "Word"      | "Accepts" |
+      | "`any`"     | "Every value, `none` included" |
+      | "`number`"  | "Any integer or float, of any width" |
+      | "`integer`" | "Any integer, of any width or signedness" |
+      | "`record`"  | "A record, or a union variant whose payload is a record" |
+  }
+
+  p "A signature may also name an **interface** bare, where a field needs `&`. The argument must then satisfy the interface structurally: a record, or a variant carrying one, needs every field the interface declares, with a matching type. Other values pass, as they do everywhere WCL checks an interface against a value."
+
+  code wcl {
+    filename = "words.wcl"
+    source = <<'WCL'
+interface Sized { width: f64 }
+
+@document
+type Cfg {
+  area:  f64
+  count: i64
+  bad:   f64
+}
+
+fn area_of(s: Sized, h: number) -> f64 s.width * h
+fn count_of(xs: list<any>) -> integer len(xs)
+
+area  = area_of({ width: 2.0 }, 3)
+count = count_of([1, "two", none])
+bad   = area_of({ height: 2.0 }, 3)
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get words.wcl area
+6.0
+$ wcl get words.wcl count
+3
+$ wcl get words.wcl bad
+wcl::eval::argument_type
+
+  × argument 1 ('s') of 'area_of' expects Sized, got record without field
+  │ 'width'
+    ╭─[words.wcl:15:17]
+ 14 │ count = count_of([1, "two", none])
+ 15 │ bad   = area_of({ height: 2.0 }, 3)
+    ·                 ───────┬───────
+    ·                        ╰── expects Sized
+    ╰────
+CONSOLE
+  }
+
+  p "Two more types check less than they appear to. A parameter typed `fn(A) -> R` checks that the argument is a function with the same number of parameters. It does not compare their types, exactly as a `fn`-typed field does not. And a `&T` parameter wants what a `&T` field holds, a reference into the document: a declaration named bare, as in `f(Service)`, or the value of another `&T` field. It does not check what the reference points at. A record value fails it, and a block reached by its path, `f(services.web)`, is a record by the time the call sees it."
+
+  h3 "A parameter that takes none"
+
+  p "No type in a signature accepts `none` except `any`. `?` is not legal anywhere in a signature, so there is no `utf8?` parameter and no `utf8?` return type. A parameter that must accept an absent value is declared `any`, and the body tests for `none` itself:"
+
+  code wcl {
+    filename = "greet.wcl"
+    source = <<'WCL'
+@document
+type Cfg {
+  plain: utf8
+  named: utf8
+}
+
+fn greet(name: any) -> utf8 if name == none { "hello" } else { $"hello, ${name}" }
+
+plain = greet(none)
+named = greet("Ada")
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get greet.wcl plain
+"hello"
+$ wcl get greet.wcl named
+"hello, Ada"
+CONSOLE
+  }
+
+  p "Declare `name: utf8` instead and `greet(none)` fails with `argument 1 ('name') of 'greet' expects utf8, got none`. The same holds for a return type, so a function that may return `none` declares `-> any`."
+
+  h3 "Every name must resolve"
+
+  p "Before any call runs, every type in a signature has to resolve, exactly as a field's type does, and a name nothing declares stops the file from opening. The check reaches every function literal, including a lambda passed straight into `map`."
 
   code wcl {
     filename = "sig.wcl"
@@ -584,7 +788,7 @@ CONSOLE
 
   h3 "What a fixed parameter list costs"
 
-  p "Arity is the one positional mistake WCL catches, and a fixed parameter list is the one shape a caller can rely on. The wdoc standard library is where that trade-off is most visible. Its `el` family builds the HTML element vocabulary, and it is three constructors rather than one **because** a parameter list cannot vary:"
+  p "A fixed parameter list is the one shape a caller can rely on. The wdoc standard library is where that trade-off is most visible. Its `el` family builds the HTML element vocabulary, and it is three constructors rather than one **because** a parameter list cannot vary:"
 
   code wcl {
     source = <<'WCL'
@@ -594,7 +798,7 @@ eli(tag, id, cls, kids)      # … with an explicit HTML id
 WCL
   }
 
-  p "Two consequences follow, and both are worth copying when you write a constructor family of your own. First, an optional value goes in as an ordinary argument. `?` cannot appear in a parameter list, so every wdoc function annotates its optionals as though they were required, and lets the `none` flow through. Second, `ela` and `eli` take the **same** number of arguments, so arity cannot separate them. Call one where you meant the other and it silently drops the id, or the attrs. Pick by what you are passing. [Documents, pages and sites](wdoc_sites) documents the family. [Writing your own blocks](wdoc_extending) is where you will call it."
+  p "Two consequences follow, and both are worth copying when you write a constructor family of your own. First, an optional value goes in as an ordinary argument, so the parameter that receives it is `any`. That is why `cls` is `any` in all three, and `id` in `eli`: a block's unset `class` arrives as `none`. Second, the type check separates two constructors only where their parameter types differ. `ela` and `eli` take the same number of arguments. Call `ela` with `eli`'s arguments and the class list lands in `attrs`, which is `list<list<utf8>>`, so the call fails. Call `eli` with `ela`'s arguments and the class list and the attrs land in `id` and `cls`, both `any`, so nothing catches it. Pick by what you are passing. [Documents, pages and sites](wdoc_sites) documents the family. [Writing your own blocks](wdoc_extending) is where you will call it."
 
   h2 "Four ways to write a function down"
 
@@ -703,7 +907,7 @@ CONSOLE
     li "**No overloading.** One name, one function. Two `fn` items sharing a name is `duplicate declaration`."
     li "**No default or named arguments, and no optional parameters.** Every call fills every parameter, in order. See [above](#no-defaults-and-no-named-arguments)."
     li "**No generics.** There is no `fn name<T>(…)` form. `fn f<T>(x: i64) -> i64 x` fails with `expected '(' after fn name`. A signature names concrete types. The higher-order builtins take any type because Rust implements them, not because you could write one."
-    li "**No argument or return type checking.** WCL checks the argument count, and that each annotation names a real type, and nothing else. The annotations are documentation, and the [schema](lang_schemas) catches the wrong value in the end."
+    li "**No optional types and no subtyping in a signature.** `?` does not parse in a signature, so a parameter or a return that may be `none` is declared `any`. And a parameter typed with a parent type refuses a block whose schema `extends` it. See [What a call checks](#what-a-call-checks)."
     li "**Builtins are not values.** Wrap one in a literal to pass it."
     li "**No serialization.** A function value is `null` in JSON, and `fn(x: i64) -> i64 { ... }` in `wcl get`."
     li "**A depth ceiling.** 200 levels of nesting, with calls, fields and `let`s counted together, then `call depth limit exceeded (max 200)`."

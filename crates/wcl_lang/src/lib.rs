@@ -73,7 +73,8 @@ mod value;
 
 pub use ast::{BuiltinType, Span, TensorDim, TypeRef};
 pub use diagnostics::{
-    ArithmeticFault, EvalError, MAX_SYNTAX_ERRORS, ParseError, SchemaViolationKind, SyntaxError,
+    ArgumentMismatch, ArithmeticFault, EvalError, MAX_SYNTAX_ERRORS, ParseError,
+    SchemaViolationKind, SyntaxError,
 };
 pub use diagnostics::{Profile, ProfileKey, ProfileNode};
 pub use doc::{

@@ -179,6 +179,51 @@ pub enum EvalError {
         span: SourceSpan,
     },
 
+    #[error("{mismatch}")]
+    #[diagnostic(code(wcl::eval::argument_type))]
+    /// A function was called with an argument its signature's parameter
+    /// type refuses — the same refusal a field declared with that type
+    /// would give.
+    ArgumentType {
+        /// Which argument of which function, what its parameter declares
+        /// and what it was handed. Boxed to keep `EvalError` small.
+        mismatch: Box<ArgumentMismatch>,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
+        #[label("expects {}", mismatch.expected)]
+        /// Source span the diagnostic points at.
+        span: SourceSpan,
+    },
+
+    #[error(
+        "{} declared -> {expected} but returned {got}",
+        fn_label(function.as_deref())
+    )]
+    #[diagnostic(code(wcl::eval::return_type))]
+    /// A function's body produced a value its declared return type
+    /// refuses — the same refusal a field declared with that type would
+    /// give.
+    ReturnType {
+        /// The function's name as the call or binding knows it; `None`
+        /// for an anonymous literal.
+        function: Option<String>,
+        /// The declared return type, as written.
+        expected: String,
+        /// What the body returned instead.
+        got: String,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
+        #[label("returns {got}")]
+        /// Source span the diagnostic points at.
+        span: SourceSpan,
+    },
+
     #[error("call depth limit exceeded (max {max})")]
     #[diagnostic(code(wcl::eval::call_depth_exceeded))]
     /// A `fn` call nested deeper than the evaluator's limit, which calls
@@ -733,6 +778,8 @@ impl EvalError {
             | Self::BuiltinTypeMismatch { origin, .. }
             | Self::NonCallable { origin, .. }
             | Self::CallArity { origin, .. }
+            | Self::ArgumentType { origin, .. }
+            | Self::ReturnType { origin, .. }
             | Self::CallDepthExceeded { origin, .. }
             | Self::EvalDepthExceeded { origin, .. }
             | Self::MatchNoArm { origin, .. }
@@ -766,6 +813,8 @@ impl EvalError {
             | Self::BuiltinTypeMismatch { origin, .. }
             | Self::NonCallable { origin, .. }
             | Self::CallArity { origin, .. }
+            | Self::ArgumentType { origin, .. }
+            | Self::ReturnType { origin, .. }
             | Self::CallDepthExceeded { origin, .. }
             | Self::EvalDepthExceeded { origin, .. }
             | Self::MatchNoArm { origin, .. }
@@ -867,6 +916,44 @@ impl EvalError {
         Self::CallArity {
             expected,
             got,
+            origin: None,
+            span: span_to_miette(span),
+        }
+    }
+
+    /// Build an [`EvalError::ArgumentType`]. `index` counts from 1.
+    pub(crate) fn argument_type(
+        function: Option<&str>,
+        index: usize,
+        param: impl Into<String>,
+        expected: impl Into<String>,
+        got: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::ArgumentType {
+            mismatch: Box::new(ArgumentMismatch {
+                function: function.map(str::to_string),
+                index,
+                param: param.into(),
+                expected: expected.into(),
+                got: got.into(),
+            }),
+            origin: None,
+            span: span_to_miette(span),
+        }
+    }
+
+    /// Build an [`EvalError::ReturnType`].
+    pub(crate) fn return_type(
+        function: Option<&str>,
+        expected: impl Into<String>,
+        got: impl Into<String>,
+        span: crate::ast::Span,
+    ) -> Self {
+        Self::ReturnType {
+            function: function.map(str::to_string),
+            expected: expected.into(),
+            got: got.into(),
             origin: None,
             span: span_to_miette(span),
         }
@@ -1093,6 +1180,46 @@ pub(crate) fn scientific_notation_help(magnitude: &crate::Value, exponent: &str)
     Some(format!(
         "scientific notation needs a decimal point: write {whole}.0{exponent}"
     ))
+}
+
+/// The detail of an [`EvalError::ArgumentType`]: which argument of which
+/// function was refused, what its parameter declares, and what it got.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArgumentMismatch {
+    /// The function's name as the call or binding knows it; `None` for an
+    /// anonymous literal.
+    pub function: Option<String>,
+    /// The argument's position, counting from 1.
+    pub index: usize,
+    /// The parameter's name.
+    pub param: String,
+    /// The parameter's declared type, as written.
+    pub expected: String,
+    /// What the argument was instead.
+    pub got: String,
+}
+
+impl std::fmt::Display for ArgumentMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "argument {} ('{}') of {} expects {}, got {}",
+            self.index,
+            self.param,
+            fn_label(self.function.as_deref()),
+            self.expected,
+            self.got
+        )
+    }
+}
+
+/// How a signature error names its function: `'name'` when the call or
+/// binding gave it one, `fn literal` for an anonymous literal.
+fn fn_label(function: Option<&str>) -> String {
+    match function {
+        Some(name) => format!("'{name}'"),
+        None => "fn literal".to_string(),
+    }
 }
 
 /// Convert a byte-range [`crate::ast::Span`] into the `miette`

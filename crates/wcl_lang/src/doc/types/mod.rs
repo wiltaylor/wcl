@@ -21,6 +21,8 @@
 //!   provide what the interface requires?
 //! - [`inhabit`] — does this *value* belong to this type, and can it be
 //!   coerced into it?
+//! - [`slot`] — the two put together as the one rule every declared slot
+//!   follows: a schema field, a function parameter, a return type.
 //! - [`variant_dispatch`] / [`unions`] — projecting a value onto a union
 //!   variant by shape, and the declaration-time checks that keep those
 //!   shapes unambiguous.
@@ -39,6 +41,7 @@ mod inhabit;
 mod inherit;
 mod interfaces;
 mod resolve;
+mod slot;
 mod unions;
 pub(super) mod variant_dispatch;
 
@@ -48,14 +51,15 @@ use super::Document;
 use super::views::{ConnectionDecl, InterfaceDecl, SymbolSetDecl, TypeDecl, UnionDecl};
 
 pub(super) use inhabit::{
-    coerce_value_to_type, describe_type_mismatch, field_type_mismatch, numeric_misfit_error,
+    coerce_value_to_type, describe_type_mismatch, numeric_misfit_error,
     symbol_set_membership_error_in, value_matches_declared, value_matches_type_ref,
 };
 pub(super) use inherit::{
     build_effective_fields, build_merged_decorators, is_descendant_of_walk, lookup_effective_field,
 };
 pub(super) use interfaces::{check_interface_conformance, dataref_concrete_type, same_type_decl};
-pub(super) use unions::{format_union_variants_hint, validate_union};
+pub(super) use slot::{Refusal, admit_to_slot, field_refusal_error, slot_refusal, value_kind};
+pub(super) use unions::{format_union_variants_hint, path_matches_suffix, validate_union};
 
 /// What one type name points at, resolved a single link at a time.
 ///
