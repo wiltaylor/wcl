@@ -192,8 +192,7 @@ type Env {
   replicas: u32
   debug: bool
 }
-... then your @document type, then the decorator, unit and symbol_set
-declarations every document gets for free, then the data ...
+...
 service = "checkout"
 env staging {
   url = "https://staging.example.com"
@@ -207,6 +206,8 @@ env prod {
 }
 CONSOLE
   }
+
+  p "The `...` stands for about a hundred and fifty lines: your `@document` type, then the decorator, unit and symbol_set declarations every document gets for free."
 
   p "Two things there are worth a second look. Your own type declarations come back **normalized**, with `@inline(0)` on its own line and `url:      utf8` stripped of its padding, because `parse` prints the tree, not your keystrokes. `wcl fmt` is the same normalization written back to the file. And the declarations you never wrote are the built-in decorators, units and symbol sets every document gets for free. That is where `@block`, `@children` and `512MiB` come from."
 

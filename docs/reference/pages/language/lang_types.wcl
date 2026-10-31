@@ -814,7 +814,16 @@ $ wcl get args.wcl a
 CONSOLE
   }
 
-  p "Now move `Nonsense` out of the argument list and into the type position. Same undeclared name, same file, and now the parser refuses it. The caret block below is the whole of `args.wcl`:"
+  p "Now move `Nonsense` out of the argument list and into the type position. Same undeclared name, and now the parser refuses it. This is the whole of `args.wcl` now:"
+
+  code wcl {
+    filename = "args.wcl"
+    source = <<'WCL'
+@document
+type Doc { a: Nonsense }
+a = "hello"
+WCL
+  }
 
   code console {
     source = <<'CONSOLE'

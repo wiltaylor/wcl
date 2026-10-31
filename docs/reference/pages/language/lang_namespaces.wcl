@@ -357,7 +357,7 @@ CONSOLE
 
   h3 "Import cycles"
 
-  p "A cycle is an import that re-enters a file already open further up the current chain. WCL reports it at open time, at the line that closed the loop, and names the file the import would have re-entered:"
+  p "A cycle is an import that re-enters a file already open further up the current chain. WCL reports it at open time, at the line that closed the loop, and names the file the import would have re-entered. Close a loop on purpose: add a blank line and then `import \"./net.wcl\"` to the end of `lib/base.wcl`, so the two libraries import each other:"
 
   code console {
     source = <<'CONSOLE'

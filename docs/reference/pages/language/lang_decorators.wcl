@@ -644,10 +644,15 @@ WCL
     li "**Both sides of the collision check look up without the fallback.** A declared `@block(\"metric_card\")` beside a `component metric_card` is incoherent. Expansion dispatches the kind to the declarer while schema lookup validates instances against the declared type, so the collision itself is the error, reported at the declarer. Because the check consults declared kinds only, a declared kind can never collide with itself."
   }
 
-  p "The second is the one you can watch. Add two fields to `components.wcl` and ask for each. `Component` is a declaration and reflects. `metric_card` is a derived schema and does not resolve as a name at all:"
+  p "The second is the one you can watch. Add two fields to `components.wcl` and ask for each. A top-level field needs a home in the `@document` schema, so declare both at the end of `Site`, then write them after a blank line at the end of the file. `Component` is a declaration and reflects. `metric_card` is a derived schema and does not resolve as a name at all:"
 
   code wcl {
     source = <<'WCL'
+# At the end of `type Site { … }`:
+  component_kind: utf8
+  card_kind:      utf8
+
+# At the end of the file:
 component_kind = decorator_arg(Component,   "block", "name")
 card_kind      = decorator_arg(metric_card, "block", "name")
 WCL
@@ -661,10 +666,16 @@ $ wcl get components.wcl card_kind
 wcl::eval::unresolved_reference
 
   × unresolved reference 'metric_card'
+    ╭─[components.wcl:46:32]
+ 45 │ component_kind = decorator_arg(Component,   "block", "name")
+ 46 │ card_kind      = decorator_arg(metric_card, "block", "name")
+    ·                                ─────┬─────
+    ·                                     ╰── does not resolve
+    ╰────
 CONSOLE
   }
 
-  p "The third is the one that bites in a build. Add a type that declares the same kind, `@block(\"metric_card\") type MetricCard { label: utf8 }`, with a `@children(\"metric_card\")` slot on `Page` so it is placed, and the one message names both halves:"
+  p "The third is the one that bites in a build. Take those two fields out again. Then add a type that declares the same kind, `@block(\"metric_card\") type MetricCard { label: utf8 }`, after `Page`, and a `@children(\"metric_card\") cards: list<MetricCard>` slot on `Page` so it is placed. The one message names both halves:"
 
   code console {
     source = <<'CONSOLE'
