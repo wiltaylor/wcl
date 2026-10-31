@@ -449,13 +449,13 @@ route api {
 ```
 
 ```console
-$ wcl check config.wcl
+$ wcl check example.wcl
 OK
-$ wcl get config.wcl routes.api.backend
+$ wcl get example.wcl routes.api.backend
 Backend::Proxy { scheme: :https, weight: 3u8 }
-$ wcl get config.wcl routes.api.upstream
+$ wcl get example.wcl routes.api.upstream
 &hosts.edge<block>
-$ wcl get config.wcl routes.api.note
+$ wcl get example.wcl routes.api.note
 none
 ```
 

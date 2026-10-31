@@ -47,12 +47,32 @@ An `f64` field takes either form: `x = 20` and `x = 20.0` both work. An `i64` fi
 integer, or a float with no fractional part: `width = 320.0` fits and renders
 `<svg width="320">`. A fraction does not fit, and `wcl check` refuses it:
 
+```wcl
+import <wdoc.wcl>
+
+page one {
+  diagram {
+    width = 320.5
+    height = 140
+  }
+}
+```
+
 ```console
 $ wcl check main.wcl
 wcl::eval::schema_violation
 
   × field 'width' declared as i64 but value 320.5 is not a whole number, so it
   │ cannot be i64
+   ╭─[main.wcl:5:5]
+ 4 │   diagram {
+ 5 │     width = 320.5
+   ·     ──────┬──────
+   ·           ╰── schema violation
+ 6 │     height = 140
+   ╰────
+
+main.wcl: 1 schema violation
 ```
 
 See `lang_types.md` for the fit rules.

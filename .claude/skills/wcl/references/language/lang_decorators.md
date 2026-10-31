@@ -105,11 +105,20 @@ Host-behaviour, covered below:
 A real type declaration backs each built-in decorator, injected into the **root** namespace.
 Declare a type of your own under one of those names and it fails before evaluation:
 
+```wcl
+type Table { rows: i64 }
+```
+
 ```console
 $ wcl check t.wcl
 wcl::parse
 
   × duplicate declaration 'Table'
+   ╭─[t.wcl:1:1]
+ 1 │ type Table { rows: i64 }
+   · ────────────┬───────────
+   ·             ╰── duplicate declaration
+   ╰────
 ```
 
 The taken names are `AppliesTo`, `Block`, `BlockSlot`, `ByRefDecorator`, `Child`, `Children`,

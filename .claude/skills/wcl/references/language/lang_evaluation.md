@@ -76,6 +76,12 @@ OK
 
 `wcl check` type-checks every value it can evaluate — a wrong type is caught:
 
+```wcl
+@document type Doc { s: utf8 }
+
+s = 1
+```
+
 ```console
 $ wcl check c.wcl
 wcl::eval::schema_violation
@@ -261,6 +267,12 @@ Values serialize **one way only**. There is a custom `Serialize` impl and delibe
 | A payload variant | `{ "<Variant>": <payload> }` |
 | A reference that stayed a handle | `{ "kind": "...", "path": [...] }` |
 | An unresolved literal unit | An error — a unit literal needs a declared type |
+
+```wcl
+@block("server") type Server { @inline(0) id: identifier  @default(8080) port: u16 }
+@document type Config { @children("server") servers: list<Server> }
+server web {}
+```
 
 ```console
 $ wcl get config.wcl servers.web.port --json

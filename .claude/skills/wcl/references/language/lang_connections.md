@@ -163,6 +163,17 @@ as its raw id string instead of failing the read, and `wcl check` no longer flag
 symbol_set K { uses }
 @dynamic
 connection Calls: Service -> Service : K
+
+@block("service") type Service { @inline(0) id: identifier }
+
+@document type Config {
+  @children("service") services: list<Service>
+  @connections(Calls)  edges:    list<Calls>
+}
+
+service web {}
+
+web -> generated_later :uses    // no block `generated_later`: kept as its id string
 ```
 
 ```console

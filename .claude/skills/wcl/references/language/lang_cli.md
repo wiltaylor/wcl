@@ -478,7 +478,7 @@ done when all three have run, not when `wcl check` passes.
 
 ```console
 $ wcl init <template> [dest] [-D key=value]... [--defaults] [--force]
-$ wcl init --list
+$ wcl init [--list]
 ```
 
 | Argument | Meaning |

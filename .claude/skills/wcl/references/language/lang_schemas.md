@@ -53,6 +53,14 @@ type Recipe {
   @inline(0) id: identifier
   @children("step") steps: list<Step>
 }
+
+@document type Doc { @children("recipe") recipes: list<Recipe> }
+
+recipe tea {
+  step "boil"
+  step "steep"
+  step "pour"
+}
 ```
 
 ```console
@@ -118,7 +126,18 @@ that kind may not share it (`DuplicateBlockId`). A label of any other type — `
 - `@children(K)` accepts `min` and `max`:
 
   ```wcl
-  @children("step", min = 2, max = 3) steps: list<Step>
+  @block("step") type Step { @inline(0) label: utf8 }
+
+  @block("plan") type Plan {
+    @inline(0) id: identifier
+    @children("step", min = 2, max = 3) steps: list<Step>
+  }
+
+  @document type Doc { @children("plan") plans: list<Plan> }
+
+  plan deploy {
+    step "build"
+  }
   ```
 
   ```console
@@ -164,9 +183,14 @@ written:
 
 ```wcl
 @block("server") type Server {
+  @inline(0) id: identifier
   @default(8080) port: u16
   @default([]) tags: list<utf8>
 }
+
+@document type Config { @children("server") servers: list<Server> }
+
+server web {}
 ```
 
 ```console
@@ -300,6 +324,11 @@ OK
 `MultipleDocumentSchemas` fires only on a **second root-authored** `@document` in a namespace.
 Imported (library) ones merge silently:
 
+```wcl
+@document type A { x: i64 }
+@document type B { y: i64 }
+```
+
 ```console
 $ wcl check o.wcl
 wcl::eval::schema_violation
@@ -312,7 +341,6 @@ wcl::eval::schema_violation
  2 │ @document type B { y: i64 }
    ·           ────────┬────────
    ·                   ╰── schema violation
- 3 │
    ╰────
 
 o.wcl: 1 schema violation
@@ -335,11 +363,19 @@ an *unresolved reference*, at build time, far from the cause.
 existing documents must keep building. Warnings go to stderr and never change the exit code, so
 read them:
 
+```wcl
+import "./lib.wcl"          // lib.LibDoc gathers `widget` blocks into `widgets`
+
+@block("gadget") type Gadget { @inline(0) id: identifier }
+
+@document type MyDoc {
+  @children("gadget") widgets: list<Gadget>   // same name: collides
+}
+```
+
 ```console
 $ wcl check n.wcl
-warning: gather field 'widgets' of @document 'MyDoc' (this document) collides with 'widgets'
-declared by @document 'lib.LibDoc' (…/liba.wcl) — the merged document schema resolves 'widgets'
-to only one declaration, so the other schema's gathered blocks silently vanish; rename one field
+warning: gather field 'widgets' of @document 'MyDoc' (this document) collides with 'widgets' declared by @document 'lib.LibDoc' (/abs/path/lib.wcl) — the merged document schema resolves 'widgets' to only one declaration, so the other schema's gathered blocks silently vanish; rename one field
 n.wcl: 1 warning
 OK
 ```
@@ -351,20 +387,33 @@ The fix is always the same: rename your field. Prefix it if the vocabulary is ge
 
 Every violation carries a span and a snippet through `miette`:
 
+```wcl
+@block("server") type Server {
+  @inline(0) id: identifier
+  host: utf8
+}
+
+@document type Config { @children("server") servers: list<Server> }
+
+server web {
+  host = 3
+}
+```
+
 ```console
-$ wcl check config.wcl
+$ wcl check host.wcl
 wcl::eval::schema_violation
 
   × field 'host' declared as utf8 but value is i64
-    ╭─[config.wcl:12:3]
- 11 │ server web {
- 12 │   host = 3
+    ╭─[host.wcl:9:3]
+  8 │ server web {
+  9 │   host = 3
     ·   ────┬───
     ·       ╰── schema violation
- 13 │ }
+ 10 │ }
     ╰────
 
-config.wcl: 1 schema violation
+host.wcl: 1 schema violation
 ```
 
 The messages you will meet most often:

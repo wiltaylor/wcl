@@ -56,11 +56,20 @@ type theme.Swatch {
 `use` binds a qualified name locally so you can write it bare. It is **top-level only**. An
 unknown target or a duplicate alias fails when the document opens, not at evaluation time:
 
+```wcl
+use company.net.Nope
+```
+
 ```console
 $ wcl check f.wcl
 wcl::parse
 
   × unknown use target 'company.net.Nope'
+   ╭─[f.wcl:1:1]
+ 1 │ use company.net.Nope
+   · ──────────┬─────────
+   ·           ╰── not declared
+   ╰────
 ```
 
 | Form | Effect |

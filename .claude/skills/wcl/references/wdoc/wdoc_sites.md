@@ -113,10 +113,20 @@ In a **single-site** document, omit `sites` everywhere.
 Once a document declares **two or more** sites, every page must name its sites. wdoc refuses an
 untagged page:
 
+```wcl
+import <wdoc.wcl>
+
+site a { default_template = :book  title = "A" }
+site b { default_template = :book  title = "B" }
+
+page orphan {
+  h1 "Orphan"
+}
+```
+
 ```console
-$ wcl wdoc build main.wcl --out _site
-page "orphan" declares no `sites` — in a document with more than one site every page
-must name the sites it belongs to (declared: :a, :b)
+$ wcl wdoc build two_sites.wcl --out _site
+page "orphan" declares no `sites` — in a document with more than one site every page must name the sites it belongs to (declared: :a, :b)
 ```
 
 The rule exists because a site chooses the page's template. An untagged page would belong to
@@ -229,6 +239,21 @@ when `wcl wdoc serve` does. It does not work when you open a page directly from 
 ### One site
 
 A single site renders **flat** at the output root:
+
+```wcl
+import <wdoc.wcl>
+
+site docs { default_template = :book  title = "Docs" }
+
+page intro {
+  start = true
+  h1 "Intro"
+}
+
+page setup {
+  h1 "Setting up"
+}
+```
 
 ```console
 $ wcl wdoc build main.wcl --out _site

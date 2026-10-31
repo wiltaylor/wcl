@@ -247,6 +247,24 @@ expression. See `lang_control_flow.md`.
 `wcl get` (aliased `wcl eval`) resolves a dotted path from the document root. A gathered block
 list is addressed by **label**, not by position.
 
+```wcl
+@block("tags")     type Tags     { environment: utf8 }
+@block("metadata") type Metadata { @child("tags") tags: Tags }
+@block("service")  type Service {
+  @inline(0) id: identifier
+  region: utf8
+  @child("metadata") metadata: Metadata
+}
+@document type Config { @children("service") services: list<Service> }
+
+service web {
+  region = "us-east-1"
+  metadata {
+    tags { environment = "prod" }
+  }
+}
+```
+
 ```console
 $ wcl get config.wcl services.web.region
 "us-east-1"
@@ -314,13 +332,13 @@ service api {
 ```
 
 ```console
-$ wcl check config.wcl
+$ wcl check example.wcl
 OK
-$ wcl get config.wcl services.api.port
+$ wcl get example.wcl services.api.port
 8001u32
-$ wcl get config.wcl services.web.region
+$ wcl get example.wcl services.web.region
 "us-east-1"
-$ wcl get config.wcl base_port
+$ wcl get example.wcl base_port
 no such path: base_port
 ```
 
