@@ -82,6 +82,10 @@ use schema_check::has_schemaless;
 use schema_lookup::{DeclLoc, DeclaredKind, block_first_label};
 use scope::Scope;
 
+/// The fully-qualified names a record's type tag answers to: the
+/// declaration it names, then every type that declaration extends.
+type RecordLineage = std::sync::Arc<[Vec<String>]>;
+
 /// An opened document: a parsed source, its imports, and the caches that
 /// make repeated reads cheap.
 ///
@@ -181,6 +185,11 @@ pub struct Document {
     /// signature → what checking a value against it takes. Consulted per
     /// call per parameter, for the same reason as `union_path_memo`.
     named_slot_memo: std::sync::RwLock<HashMap<Vec<String>, signature::NamedSlot>>,
+    /// Memo for `record_tag_fills`: a record's type tag → the
+    /// fully-qualified names it answers to (its own declaration and every
+    /// type that declaration extends). The slot rule asks per field and
+    /// per call argument whether a tagged record fills a named type.
+    record_lineage_memo: std::sync::RwLock<HashMap<Vec<String>, RecordLineage>>,
     /// Lazily-built locations of every `@document`-decorated type
     /// declaration, in `type_decls()` order (root-authored first).
     /// `doc_schemas_for_ns` consults the merged document schema on

@@ -25,7 +25,9 @@ use crate::diagnostics::EvalError;
 use crate::doc::Document;
 use crate::value::Value;
 
-use super::inhabit::{coerce_value_to_type, numeric_misfit, value_matches_type_ref};
+use super::inhabit::{
+    coerce_value_to_type, lineage_misfit, numeric_misfit, value_matches_type_ref,
+};
 
 /// Why a slot refused a value. Each caller renders it in its own words.
 #[derive(Debug, Clone)]
@@ -64,13 +66,13 @@ impl Refusal {
     /// What the slot was handed, phrased to follow "got": the value's
     /// type, or the reason it misses when its type alone does not say.
     /// `resolved` is the alias-resolved slot type.
-    pub(crate) fn describe_got(&self, value: &Value, resolved: &TypeRef) -> String {
+    pub(crate) fn describe_got(&self, doc: &Document, value: &Value, resolved: &TypeRef) -> String {
         match self {
             Self::OtherUnion { union, variant, .. } => format!("{union}::{variant}"),
             Self::UninferredRecord { expected } => {
                 format!("a record that matches no variant of '{expected}'")
             }
-            Self::Type => describe_misfit(value, resolved),
+            Self::Type => describe_misfit(doc, value, resolved),
             Self::NotInSet { set, symbol } => {
                 format!(":{symbol}, which is not a member of '{set}'")
             }
@@ -83,24 +85,23 @@ impl Refusal {
 /// "got": a number that does not fit says why (`300, which is out of
 /// range for u8`), a list names its first offending element (`a list
 /// whose element [1] is utf8`), and anything else gives its type.
-fn describe_misfit(value: &Value, resolved: &TypeRef) -> String {
+fn describe_misfit(doc: &Document, value: &Value, resolved: &TypeRef) -> String {
     if let Some((path, number, why)) = numeric_misfit(value, resolved)
         && path.is_empty()
     {
         return format!("{number}, which {why}");
     }
     if let (Value::List(items), TypeRef::List(inner)) = (value, resolved)
-        && let Some((i, item)) = items
-            .iter()
-            .enumerate()
-            .find(|(_, item)| !matches!(item, Value::None) && !value_matches_type_ref(item, inner))
+        && let Some((i, item)) = items.iter().enumerate().find(|(_, item)| {
+            !matches!(item, Value::None) && !value_matches_type_ref(doc, item, inner)
+        })
     {
         return format!(
             "a list whose element [{i}] is {}",
-            describe_misfit(item, inner)
+            describe_misfit(doc, item, inner)
         );
     }
-    value_kind(value)
+    lineage_misfit(value, resolved).unwrap_or_else(|| value_kind(value))
 }
 
 /// The value's type as a reader would name it: the declaration a record
@@ -148,7 +149,7 @@ pub(crate) fn slot_refusal(
             _ => None,
         };
     }
-    if !value_matches_type_ref(value, resolved) {
+    if !value_matches_type_ref(doc, value, resolved) {
         return Some(Refusal::Type);
     }
     if let Some((set, symbol)) = symbol_outside_set(doc, resolved, value, context_ns) {

@@ -207,6 +207,7 @@ $ wcl get cpus.wcl cpus.p6.width
 | Two parents declare one name | Types must agree; the **later** parent in the `extends` list supplies the declaration. |
 | `@inline` across the set | Slots combine (`Named { @inline(0) name }` + child `@inline(1) version`). Two *different* names on one slot: `fields 'a' and 'b' of 'T' both claim @inline(0)`. Same name on the same slot is an override. |
 | Parent in another file | Checked the same: every eager import, transitively, the wdoc stdlib included, and chains that cross files. The caret is on the child's field in its file; the message gains `; 'Part' in /abs/parts.wcl declares it as u32` (slot clash: `... declares 'id'`). Cycles may cross files: `cyclic extends graph involving 'A'`. Same exit code (1) as the same-file case. Each conflict is reported once, on the type that introduces it. |
+| A block's record in a slot typed with a parent | Fills it — field, `list<Parent>` element, union-variant field, `fn` parameter or return — at any depth, parent in any file. **Unconverted**: `wcl get` still prints `Cpu { cmov: true, … }`. Not the reverse, not a sibling, not an unrelated type of the same shape: `field 'host' declared as CpuBase but value is Gpu, which does not extend CpuBase`. A record literal is untagged and passes any plain named type. |
 | `@table` type with a parent | Columns are the effective fields in order: inherited first, then own. |
 | `@block(…)` arguments | Not inherited. `required_fields`, `max_children`, `required_children` bind to the type they are written on. |
 

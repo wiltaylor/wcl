@@ -118,6 +118,7 @@ impl Document {
             deriving: std::sync::Mutex::new(HashSet::new()),
             union_path_memo: std::sync::RwLock::new(HashMap::new()),
             named_slot_memo: std::sync::RwLock::new(HashMap::new()),
+            record_lineage_memo: std::sync::RwLock::new(HashMap::new()),
             document_schema_locs: std::sync::OnceLock::new(),
             root_let_index: std::sync::OnceLock::new(),
             node_source_index: std::sync::OnceLock::new(),

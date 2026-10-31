@@ -98,7 +98,7 @@ pub(crate) fn decorator_to_variant<'a>(
         }
         // Name match — now check field-value types.
         name_matches.push((*v, map.clone()));
-        if all_field_types_match(decl_fields, &map) {
+        if all_field_types_match(doc, decl_fields, &map) {
             full_matches.push((*v, map));
         }
     }
@@ -184,7 +184,7 @@ pub(crate) fn table_row_to_variant<'a>(
         map.insert(df.name.clone(), val.clone());
     }
     // Field-value type check — surface a focused near-miss diagnostic.
-    if let Some((field_name, got, expected)) = first_type_mismatch(decl_fields, &map) {
+    if let Some((field_name, got, expected)) = first_type_mismatch(doc, decl_fields, &map) {
         return Err(EvalError::schema_violation(
             SchemaViolationKind::VariantNoMatch,
             format!(
@@ -229,7 +229,7 @@ pub(crate) fn match_record_variant_by_shape<'a>(
             continue;
         }
         name_matches.push((*v, fields.clone()));
-        if all_field_types_match(decl_fields, fields) {
+        if all_field_types_match(doc, decl_fields, fields) {
             full_matches.push((*v, fields.clone()));
         }
     }
@@ -296,7 +296,9 @@ fn pick_unique_match<'a>(
         else {
             unreachable!("name_matches only contains record variants");
         };
-        if let Some((field_name, got, expected)) = first_type_mismatch(decl_fields, map) {
+        if let Some((field_name, got, expected)) =
+            first_type_mismatch(union_decl.doc, decl_fields, map)
+        {
             let mismatch_span = argument_spans
                 .and_then(|spans| {
                     spans.named.get(field_name).copied().or_else(|| {
@@ -339,10 +341,14 @@ fn names_equal(decl_fields: &[ast::TypeField], map: &BTreeMap<String, Value>) ->
 
 /// Whether every field of a record fits the type the variant declares
 /// for it.
-fn all_field_types_match(decl_fields: &[ast::TypeField], map: &BTreeMap<String, Value>) -> bool {
+fn all_field_types_match(
+    doc: &Document,
+    decl_fields: &[ast::TypeField],
+    map: &BTreeMap<String, Value>,
+) -> bool {
     decl_fields.iter().all(|f| {
         map.get(&f.name)
-            .map(|v| super::value_matches_declared(v, &f.ty, f.optional))
+            .map(|v| super::value_matches_declared(doc, v, &f.ty, f.optional))
             .unwrap_or(false)
     })
 }
@@ -351,12 +357,13 @@ fn all_field_types_match(decl_fields: &[ast::TypeField], map: &BTreeMap<String, 
 /// whose value doesn't match the declared type. Used to drive the
 /// near-miss diagnostic.
 fn first_type_mismatch<'a>(
+    doc: &Document,
     decl_fields: &'a [ast::TypeField],
     map: &'a BTreeMap<String, Value>,
 ) -> Option<(&'a str, &'a str, &'a crate::ast::TypeRef)> {
     for f in decl_fields {
         if let Some(v) = map.get(&f.name)
-            && !super::value_matches_declared(v, &f.ty, f.optional)
+            && !super::value_matches_declared(doc, v, &f.ty, f.optional)
         {
             return Some((f.name.as_str(), v.type_name(), &f.ty));
         }

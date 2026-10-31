@@ -600,7 +600,7 @@ CONSOLE
 
   callout "extends on a record type does two things" {
     kind = :note
-    body  = "`type Marker extends Positioned { … }` gives `Marker` every field `Positioned` declares, so a `marker` block may write `x` and `y` without `Marker` mentioning them. It also makes `Marker` a descendant of `Positioned`, which is what the nominal reference check below asks about. The first half belongs to [Schemas](lang_schemas#extends-a-kind-built-on-shared-fields), which covers overriding an inherited field, several parents, and label slots."
+    body  = "`type Marker extends Positioned { … }` gives `Marker` every field `Positioned` declares, so a `marker` block may write `x` and `y` without `Marker` mentioning them. It also makes `Marker` a descendant of `Positioned`, which is what the nominal reference check below asks about. A field or parameter typed `Positioned` asks the same of a value: a `marker` block read as a record fills it, still a `Marker`, and a `plain` one does not. The first half belongs to [Schemas](lang_schemas#extends-a-kind-built-on-shared-fields), which covers overriding an inherited field, several parents, and label slots."
   }
 
   h2 "Reference types"

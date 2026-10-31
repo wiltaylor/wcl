@@ -35,8 +35,13 @@ use super::variant_dispatch::match_record_variant_by_shape;
 /// `TypeRef`, so `value_matches_type_ref` cannot see it: on its own it
 /// answers `false` for `none` against every concrete type. Every
 /// value-vs-declared-type check goes through here so the two stay in step.
-pub(crate) fn value_matches_declared(value: &Value, ty: &TypeRef, optional: bool) -> bool {
-    (optional && matches!(value, Value::None)) || value_matches_type_ref(value, ty)
+pub(crate) fn value_matches_declared(
+    doc: &Document,
+    value: &Value,
+    ty: &TypeRef,
+    optional: bool,
+) -> bool {
+    (optional && matches!(value, Value::None)) || value_matches_type_ref(doc, value, ty)
 }
 
 /// Conservative check that `value` could inhabit `ty`.
@@ -44,7 +49,7 @@ pub(crate) fn value_matches_declared(value: &Value, ty: &TypeRef, optional: bool
 /// Deliberately one-sided: it returns `true` when it cannot decide, so
 /// the schema check never rejects a value it merely failed to
 /// understand.
-pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
+pub(crate) fn value_matches_type_ref(doc: &Document, value: &Value, ty: &TypeRef) -> bool {
     use crate::ast::BuiltinType as B;
     match (value, ty) {
         (Value::Bool(_), TypeRef::Builtin(B::Bool)) => true,
@@ -90,14 +95,18 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
         (Value::Variant { union, .. }, TypeRef::Named { path, .. }) => {
             path_matches_suffix(path, union)
         }
-        // Record value against a named (non-union) type. Builtin-produced
-        // records (e.g. `@connections` projections) carry the producing
-        // declaration's FQN in `ty` — compare it. Bare record literals
-        // (`ty` empty) stay permissive: matching them by shape would need
-        // the declaration, which `Value` doesn't carry (mirrors the
-        // tensor / function pass-through below).
+        // Record value against a named (non-union) type. A block read as
+        // a value, and a builtin-produced record (an `@connections`
+        // projection), carry the declaration they were read through in
+        // `ty`. It fills the slot when it names the slot's type or a type
+        // that descends from it through `extends` — a `Cpu2` record fills
+        // a `CpuBase` slot when `type Cpu2 extends CpuBase`, never the
+        // reverse. Bare record literals (`ty` empty) stay permissive:
+        // matching them by shape would need the declaration, which
+        // `Value` doesn't carry (mirrors the tensor / function
+        // pass-through below).
         (Value::Record { ty, .. }, TypeRef::Named { path, .. }) => {
-            ty.is_empty() || path_matches_suffix(path, ty)
+            ty.is_empty() || doc.record_tag_fills(ty, path)
         }
         // Lists check element type recursively — except that a `none`
         // *element* is always legal. An else-less `if` in a list literal
@@ -107,7 +116,7 @@ pub(crate) fn value_matches_type_ref(value: &Value, ty: &TypeRef) -> bool {
         // hold on the way to being filtered.
         (Value::List(items), TypeRef::List(inner)) => items
             .iter()
-            .all(|el| matches!(el, Value::None) || value_matches_type_ref(el, inner)),
+            .all(|el| matches!(el, Value::None) || value_matches_type_ref(doc, el, inner)),
         // Tensors / functions / references stay permissive — strict
         // checks here would need richer type information than we
         // currently carry on `Value`.
@@ -132,7 +141,27 @@ pub(crate) fn describe_type_mismatch(value: &Value, ty: &TypeRef) -> String {
     match numeric_misfit(value, ty) {
         Some((path, v, why)) if path.is_empty() => format!("value {v} {why}"),
         Some((path, v, why)) => format!("element {path} holds {v}, which {why}"),
-        None => format!("value is {}", value.type_name()),
+        None => match lineage_misfit(value, ty) {
+            Some(why) => format!("value is {why}"),
+            None => format!("value is {}", value.type_name()),
+        },
+    }
+}
+
+/// `Cpu2, which does not extend Gpu`: why a tagged record misses a
+/// named type (already alias-resolved) it was refused for. A tag misses
+/// a named type only when neither it nor anything it extends is that
+/// type, so a refusal is always this. `None` for any other value.
+pub(crate) fn lineage_misfit(value: &Value, ty: &TypeRef) -> Option<String> {
+    match (value, ty) {
+        (Value::Record { ty: tag, .. }, TypeRef::Named { path, .. }) if !tag.is_empty() => {
+            Some(format!(
+                "{}, which does not extend {}",
+                tag.join("."),
+                path.join(".")
+            ))
+        }
+        _ => None,
     }
 }
 

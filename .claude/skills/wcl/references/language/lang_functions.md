@@ -131,7 +131,8 @@ The result meets the return type the same way. Concretely:
 | a string for `identifier` | converted to the identifier (the reverse is refused: an `identifier` for `utf8` fails) |
 | a bare record for a union type | converted to the variant its shape matches; no match is `wcl::eval::schema_violation`: `no variant of 'Capacity' matches the supplied shape` |
 | a variant of a different union | refused |
-| a block's record for a type with a different name | refused — even the type its schema `extends` (records match by type name) |
+| a block's record for its own schema, or any type that schema `extends` (transitively, across files) | accepted **unconverted**: still tagged with its own schema, so the body may read fields the parameter type lacks |
+| a block's record for a type its schema does not extend (a child, a sibling, an unrelated type of the same shape) | refused: `got Part, which does not extend Cpu` |
 | a record literal for a plain (non-union) named type | accepted unchecked, as a field accepts it |
 | a non-variant, non-record value for a union type | accepted (field-rule gap: `fn(s: Shape)` takes `"x"`) |
 | a symbol outside the declared `symbol_set` | refused: `got :medium, which is not a member of 'Mode'` |

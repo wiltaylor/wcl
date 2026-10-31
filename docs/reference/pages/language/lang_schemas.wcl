@@ -938,6 +938,89 @@ CONSOLE
 
   p "A cycle may cross files as well. An imported file's types resolve their parents through the whole document, so a library's `type B extends A` finds the importer's `A`. If that `A` extends `B`, the file is refused with `cyclic extends graph involving 'A'`."
 
+  h3 "A derived block fills its parent's slot"
+
+  p "`extends` also says what a derived type _is_. A block read as a value is a record tagged with its schema, and a field or parameter typed with one of the schema's parents accepts it. One `CpuBase` field and one `CpuBase` parameter then take any CPU kind the file declares:"
+
+  code wcl {
+    filename = "targets.wcl"
+    source = <<'WCL'
+# targets.wcl — one field and one function that take any CPU.
+
+type CpuBase {
+  features: list<utf8>
+}
+
+@block("cpu")
+type Cpu extends CpuBase {
+  @inline(0) id: identifier
+  cmov: bool
+}
+
+@block("gpu")
+type Gpu {
+  @inline(0) id: identifier
+  features: list<utf8>
+}
+
+fn feats(c: CpuBase) -> list<utf8> c.features
+
+@document
+type Target {
+  @children("cpu") cpus: list<Cpu>
+  @children("gpu") gpus: list<Gpu>
+  host:  CpuBase
+  flags: list<utf8>
+}
+
+cpu p6 {
+  features = ["x87", "mmx"]
+  cmov     = true
+}
+
+gpu rdna { features = ["wave32"] }
+
+host  = cpus.p6
+flags = feats(cpus.p6)
+WCL
+  }
+
+  p "The record is not converted on the way in. `host` still holds a `Cpu`, `cmov` included, although `CpuBase` declares no `cmov`:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check --eval targets.wcl
+OK
+$ wcl get targets.wcl host
+Cpu { cmov: true, features: ["x87", "mmx"], id: p6 }
+$ wcl get targets.wcl flags
+["x87", "mmx"]
+CONSOLE
+  }
+
+  p "The test is lineage, not shape. `Gpu` has the one field `CpuBase` asks for, but it extends nothing, so a `gpu` block is refused. Change `host` to `gpus.rdna`:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check targets.wcl
+wcl::eval::schema_violation
+
+  × field 'host' declared as CpuBase but value is Gpu, which does not extend
+  │ CpuBase
+    ╭─[targets.wcl:36:1]
+ 35 │
+ 36 │ host  = gpus.rdna
+    · ────────┬────────
+    ·         ╰── schema violation
+ 37 │ flags = feats(cpus.p6)
+    ╰────
+
+targets.wcl: 1 schema violation
+CONSOLE
+  }
+
+  p "The rule runs one way. A `Cpu` fills a `CpuBase` slot through any number of `extends` levels, and through a parent declared in an imported file. A record tagged with the parent does not fill a slot typed with the child, and neither does a record tagged with a sibling that shares the parent. A `list<CpuBase>` holds `Cpu` records on the same terms. A record literal carries no tag, so it passes any plain named type, as it always has. [Functions](lang_functions#what-a-call-checks) holds arguments and return values to the same rule. A parameter typed with an interface asks for fields rather than lineage, so it takes the `gpu` too."
+
   h2 "@table: a kind whose instances are rows"
 
   p "`@table(\"kind\")` registers a block kind exactly as `@block` does, with one difference in how instances are written: a row's values are its labels, one per declared field, and the parent writes them under a table header. [Documents, fields and blocks](lang_documents#tables) covers the row syntax. What follows is what the schema side does with it."

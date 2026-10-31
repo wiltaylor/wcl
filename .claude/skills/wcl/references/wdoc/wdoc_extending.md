@@ -83,7 +83,8 @@ Four things to note:
   may read `p.id` without the type declaring them. `class` is **not** on any of these
   interfaces; declare `class: list<utf8>?` yourself or instances that set one are refused.
 - A `lower` default on a parent `type` is inherited too: a `@block` type extending such a base
-  renders with it and needs no `lower` of its own.
+  renders with it and needs no `lower` of its own. Type its parameter as the base
+  (`lower = fn(r: Route) -> list<Content>`); every derived block's record fills it.
 
 ## The semantic content IR
 
@@ -283,9 +284,9 @@ the block needs computation — geometry, branching, or a shape the markup canno
 - **Name the record fields** in `Content` and `Svg` literals. A call checks argument types, but
   two swapped `f64`s still type-check.
 - **A `lower` signature is checked on every call.** Its parameter receives the block as a record
-  tagged with the block's schema name, so type it as that schema (`fn(b: MyBlock)`). A parent
-  `type` the schema `extends` refuses it, and so does `&MyBlock`; an interface it extends
-  (`ContentBlock`) accepts it by shape. A `lower` that may return `none` must declare `-> any`.
+  tagged with the block's schema name, so type it as that schema (`fn(b: MyBlock)`) or as a
+  `type` the schema `extends` — the record arrives unconverted either way. `&MyBlock` refuses
+  it (a reference, not a record); an interface it extends (`ContentBlock`) accepts it by shape. A `lower` that may return `none` must declare `-> any`.
 - **`@native` is wdoc's, not yours.**
 - **Pick a kind name no built-in already uses.** Your declaration would otherwise be silently
   ignored, so wdoc refuses it instead.

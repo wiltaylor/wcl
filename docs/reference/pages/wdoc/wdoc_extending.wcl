@@ -182,7 +182,7 @@ TEXT
 
   p "Two returns are not errors. `[]` renders nothing, and so does `none`. That is how a lowering opts out conditionally. `none` is not a `list<Content>`, so a lowering that may return it declares `-> any`."
 
-  p "The parameter is checked the same way. The record is tagged with the block's own schema, so name that schema in the parameter: `fn(b: Badge)`. A parent `type` the schema `extends` refuses the record, and so does `&Badge`, which wants a reference into the document rather than a record. An interface it extends, such as `ContentBlock`, accepts it, because a signature checks an interface by shape."
+  p "The parameter is checked the same way. The record is tagged with the block's own schema, so name that schema in the parameter: `fn(b: Badge)`. A parent `type` the schema `extends` accepts it too, and the body still receives the block's own record. That is what lets one `lower` serve a family: write it on a shared base, `lower = fn(r: Route) -> list<Content>`, and every `@block` type that extends `Route` renders through it without a `lower` of its own. A child's schema does not accept a parent's record, and `&Badge` accepts no record at all, because it wants a reference into the document. An interface the schema extends, such as `ContentBlock`, accepts the record by shape."
 
   h3 "Overriding the lowering on one instance"
 

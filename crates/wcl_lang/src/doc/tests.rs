@@ -2085,6 +2085,288 @@ fn signature_return_error_points_at_the_body() {
     assert_eq!(span.offset(), src.find("x + 1").unwrap());
 }
 
+// ─── A derived record fills a slot typed with its ancestor ────────
+//
+// A block read as a value is a record tagged with its schema. A slot
+// typed with a named type takes it when the tag is that type or extends
+// it, transitively and across files; the record keeps its own tag.
+
+/// The CPU family the lineage tests share: `Cpu2` extends `CpuBase`
+/// directly, `Cpu3` through `Mid`, and `Gpu` is unrelated.
+const CPUS: &str = r#"
+type CpuBase { features: list<utf8> }
+type Mid extends CpuBase {}
+type Gpu { features: list<utf8> }
+@block("cpu2") type Cpu2 extends CpuBase { @inline(0) id: identifier  cmov: bool }
+@block("cpu3") type Cpu3 extends Mid { @inline(0) id: identifier }
+@block("base") type BaseBlock { @inline(0) id: identifier  features: list<utf8> }
+"#;
+
+/// [`CPUS`], a `@document` that adds `fields` to its three block slots,
+/// one block of each kind (`cpus.x86`, `old.k7`, `bases.plain`), and
+/// `rest`.
+fn open_cpus(fields: &str, rest: &str) -> Document {
+    let src = format!(
+        "{CPUS}\n@document type D {{\n  @children(\"cpu2\") cpus: list<Cpu2>\n  \
+         @children(\"cpu3\") old: list<Cpu3>\n  @children(\"base\") bases: list<BaseBlock>\n  \
+         {fields}\n}}\ncpu2 x86 {{ features = [\"sse\"]  cmov = true }}\n\
+         cpu3 k7 {{ features = [\"mmx\"] }}\nbase plain {{ features = [] }}\n{rest}\n"
+    );
+    Document::open(&src, "t").expect("open")
+}
+
+/// Every schema violation in `doc`, as its message.
+fn schema_messages(doc: &Document) -> Vec<String> {
+    doc.schema_errors().iter().map(|e| e.to_string()).collect()
+}
+
+#[test]
+fn derived_block_fills_a_root_field_typed_with_its_parent() {
+    let doc = open_cpus("base: CpuBase", "base = cpus.x86");
+    assert!(
+        schema_messages(&doc).is_empty(),
+        "{:?}",
+        schema_messages(&doc)
+    );
+    // Not converted: still a `Cpu2`, with the field `CpuBase` lacks.
+    let Value::Record { ty, fields } = read(&doc, "base").unwrap() else {
+        panic!("record");
+    };
+    assert_eq!(ty, &vec!["Cpu2".to_string()]);
+    assert_eq!(fields.get("cmov"), Some(&Value::Bool(true)));
+}
+
+#[test]
+fn derived_block_fills_a_block_field_typed_with_its_parent() {
+    let doc = open_cpus(
+        "@children(\"holder\") holders: list<Holder>",
+        "@block(\"holder\") type Holder { @inline(0) id: identifier  base: CpuBase }\n\
+         holder h { base = cpus.x86 }",
+    );
+    assert!(
+        schema_messages(&doc).is_empty(),
+        "{:?}",
+        schema_messages(&doc)
+    );
+}
+
+#[test]
+fn grandchild_block_fills_a_field_typed_with_its_grandparent() {
+    let doc = open_cpus("base: CpuBase\nmid: Mid", "base = old.k7\nmid = old.k7");
+    assert!(
+        schema_messages(&doc).is_empty(),
+        "{:?}",
+        schema_messages(&doc)
+    );
+}
+
+#[test]
+fn list_of_a_base_type_holds_derived_records() {
+    let doc = open_cpus("all: list<CpuBase>", "all = [cpus.x86, old.k7, none]");
+    assert!(
+        schema_messages(&doc).is_empty(),
+        "{:?}",
+        schema_messages(&doc)
+    );
+}
+
+#[test]
+fn union_variant_field_typed_with_a_parent_takes_a_derived_record() {
+    let doc = open_cpus(
+        "slot: Slot",
+        "union Slot { Held { cpu: CpuBase }  Other { gpu: Gpu } }\nslot = { cpu: cpus.x86 }",
+    );
+    assert!(
+        schema_messages(&doc).is_empty(),
+        "{:?}",
+        schema_messages(&doc)
+    );
+    let Value::Variant { variant, .. } = read(&doc, "slot").unwrap() else {
+        panic!("variant");
+    };
+    assert_eq!(variant, "Held");
+}
+
+#[test]
+fn record_of_an_unrelated_type_is_still_refused() {
+    let doc = open_cpus(
+        "gpu: Gpu\ngpus: list<Gpu>",
+        "gpu = cpus.x86\ngpus = [cpus.x86]",
+    );
+    let msgs = schema_messages(&doc);
+    assert!(
+        msgs.contains(
+            &"field 'gpu' declared as Gpu but value is Cpu2, which does not extend Gpu".to_string()
+        ),
+        "{msgs:?}"
+    );
+    assert!(
+        msgs.iter()
+            .any(|m| m.starts_with("field 'gpus' declared as list<Gpu>")),
+        "{msgs:?}"
+    );
+}
+
+#[test]
+fn parent_record_does_not_fill_a_slot_typed_with_a_child() {
+    // `BaseBlock` has `CpuBase`'s shape but extends nothing, and `Cpu2`
+    // extends `CpuBase` directly, so it is `Mid`'s sibling, not its child.
+    let doc = open_cpus("c2: Cpu2\nmid: Mid", "c2 = bases.plain\nmid = cpus.x86");
+    let msgs = schema_messages(&doc);
+    assert!(
+        msgs.contains(
+            &"field 'c2' declared as Cpu2 but value is BaseBlock, which does not extend Cpu2"
+                .to_string()
+        ),
+        "{msgs:?}"
+    );
+    assert!(
+        msgs.contains(
+            &"field 'mid' declared as Mid but value is Cpu2, which does not extend Mid".to_string()
+        ),
+        "{msgs:?}"
+    );
+}
+
+#[test]
+fn block_of_the_parent_kind_does_not_fill_a_child_slot() {
+    let doc = Document::open(
+        r#"
+        @block("part") type Part { @inline(0) id: identifier  features: list<utf8> }
+        @block("cpu") type Cpu extends Part { cmov: bool }
+        @document type D {
+          @children("part") parts: list<Part>
+          @children("cpu") cpus: list<Cpu>
+          only: Cpu
+          up: Part
+          r: bool
+        }
+        fn cpu_only(c: Cpu) -> bool c.cmov
+        part generic { features = [] }
+        cpu p6 { features = ["x87"]  cmov = true }
+        only = parts.generic
+        up = cpus.p6
+        r = cpu_only(parts.generic)
+        "#,
+        "t",
+    )
+    .unwrap();
+    assert_eq!(
+        schema_messages(&doc),
+        vec!["field 'only' declared as Cpu but value is Part, which does not extend Cpu"]
+    );
+    assert_eq!(
+        read(&doc, "r").unwrap_err().to_string(),
+        "argument 1 ('c') of 'cpu_only' expects Cpu, got Part, which does not extend Cpu"
+    );
+}
+
+#[test]
+fn signature_parameter_typed_with_a_parent_takes_a_derived_block() {
+    let doc = open_cpus(
+        "flags: list<utf8>\ncmov: bool\nold_flags: list<utf8>",
+        "fn feats(c: CpuBase) -> list<utf8> c.features\n\
+         fn has_cmov(c: CpuBase) -> bool c.cmov\n\
+         flags = feats(cpus.x86)\ncmov = has_cmov(cpus.x86)\nold_flags = feats(old.k7)",
+    );
+    assert_eq!(
+        read(&doc, "flags").unwrap(),
+        &Value::list(vec![Value::Utf8("sse".into())])
+    );
+    // The body reads a field only the derived type declares.
+    assert_eq!(read(&doc, "cmov").unwrap(), &Value::Bool(true));
+    assert_eq!(
+        read(&doc, "old_flags").unwrap(),
+        &Value::list(vec![Value::Utf8("mmx".into())])
+    );
+}
+
+#[test]
+fn signature_return_and_list_types_take_derived_blocks() {
+    let doc = open_cpus(
+        "back: CpuBase\nn: i64",
+        "fn first(cs: list<CpuBase>) -> CpuBase head(cs)\n\
+         fn count(cs: list<CpuBase>) -> i64 len(cs)\n\
+         back = first([cpus.x86])\nn = count([cpus.x86, old.k7])",
+    );
+    let Value::Record { ty, .. } = read(&doc, "back").unwrap() else {
+        panic!("record");
+    };
+    assert_eq!(ty, &vec!["Cpu2".to_string()]);
+    assert_eq!(read(&doc, "n").unwrap(), &Value::I64(2));
+}
+
+#[test]
+fn signature_refuses_unrelated_and_parent_records() {
+    let doc = open_cpus(
+        "g: list<utf8>\nc: bool\nr: CpuBase",
+        "fn gf(x: Gpu) -> list<utf8> x.features\n\
+         fn c2(x: Cpu2) -> bool true\n\
+         fn as_gpu(x: CpuBase) -> Gpu x\n\
+         g = gf(cpus.x86)\nc = c2(bases.plain)\nr = as_gpu(cpus.x86)",
+    );
+    assert_eq!(
+        read(&doc, "g").unwrap_err().to_string(),
+        "argument 1 ('x') of 'gf' expects Gpu, got Cpu2, which does not extend Gpu"
+    );
+    assert_eq!(
+        read(&doc, "c").unwrap_err().to_string(),
+        "argument 1 ('x') of 'c2' expects Cpu2, got BaseBlock, which does not extend Cpu2"
+    );
+    let err = read(&doc, "r").unwrap_err();
+    assert!(matches!(err, EvalError::ReturnType { .. }), "{err:?}");
+    assert!(
+        err.to_string().contains("Cpu2, which does not extend Gpu"),
+        "{err}"
+    );
+}
+
+#[test]
+fn untagged_record_literal_still_fills_any_plain_named_type() {
+    let doc = open_cpus("c2: Cpu2", "c2 = { features: [], cmov: true, id: \"x\" }");
+    assert!(
+        schema_messages(&doc).is_empty(),
+        "{:?}",
+        schema_messages(&doc)
+    );
+}
+
+#[test]
+fn derived_block_fills_a_parent_declared_in_an_imported_file() {
+    let doc = open_with_libs(
+        "import <lib.wcl>\n\
+         @block(\"cpu2\") type Cpu2 extends CpuBase { @inline(0) id: identifier  cmov: bool }\n\
+         @document type D { @children(\"cpu2\") cpus: list<Cpu2>  base: CpuBase  f: list<utf8> }\n\
+         cpu2 x86 { features = [\"sse\"]  cmov = true }\n\
+         base = cpus.x86\nf = feats(cpus.x86)\n",
+        &[(
+            "lib.wcl",
+            "type CpuBase { features: list<utf8> }\nfn feats(c: CpuBase) -> list<utf8> c.features\n",
+        )],
+    );
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    assert_eq!(
+        doc.field("f").unwrap().value().unwrap(),
+        &Value::list(vec![Value::Utf8("sse".into())])
+    );
+}
+
+#[test]
+fn derived_block_fills_a_namespaced_parent_in_an_imported_file() {
+    let doc = open_with_libs(
+        "import <isa.wcl>\nuse isa.CpuBase\n\
+         @block(\"cpu2\") type Cpu2 extends CpuBase { @inline(0) id: identifier }\n\
+         @document type D { @children(\"cpu2\") cpus: list<Cpu2>  a: CpuBase  b: isa.CpuBase }\n\
+         cpu2 x86 { features = [\"sse\"] }\n\
+         a = cpus.x86\nb = cpus.x86\n",
+        &[(
+            "isa.wcl",
+            "namespace isa\ntype CpuBase { features: list<utf8> }\n",
+        )],
+    );
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+}
+
 // ─── Lazy data access (DataRef / Document::get) ───────────────────
 
 use std::sync::Arc;
