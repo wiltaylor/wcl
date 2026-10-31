@@ -639,14 +639,18 @@ impl<'a> DocSchemas<'a> {
     }
 
     /// The field declared by name, preferring the root-authored schema
-    /// (members are ordered root-first).
+    /// (members are ordered root-first). A member's inherited fields
+    /// count as its own.
     pub(crate) fn field(&self, name: &str) -> Option<TypeField<'a>> {
-        self.schemas.iter().find_map(|s| s.field(name))
+        self.schemas.iter().find_map(|s| s.effective_field(name))
     }
 
-    /// `true` if any member schema declares a field of this name.
+    /// `true` if any member schema declares a field of this name,
+    /// directly or through `extends`.
     pub(crate) fn declares_field(&self, name: &str) -> bool {
-        self.schemas.iter().any(|s| s.field(name).is_some())
+        self.schemas
+            .iter()
+            .any(|s| s.effective_field(name).is_some())
     }
 
     /// The union of every member's allowed child block kinds.
@@ -668,7 +672,7 @@ impl<'a> DocSchemas<'a> {
     pub(crate) fn union_slots(&self) -> Vec<UnionDecl<'a>> {
         let mut out: Vec<UnionDecl<'a>> = Vec::new();
         for s in &self.schemas {
-            for f in s.fields() {
+            for f in s.effective_fields() {
                 if let Some(u) = f
                     .children_kind_or_union()
                     .and_then(|k| k.as_union().copied())

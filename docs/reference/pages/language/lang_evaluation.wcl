@@ -1080,7 +1080,7 @@ CONSOLE
       | "`wcl check`" | "Evaluating"          | "The values validation needs. Skips fields that fail" | "Parse errors, schema violations" |
       | "`wcl check --eval`" | "Evaluating"   | "Everything except template bodies"        | "All three families" |
       | "`wcl get`"   | "Evaluating"          | "Only the cells on the path you named"    | "All three families" |
-      | "`wcl parse`" | "Evaluating"          | "Everything reachable. Prints failures in place" | "Parse errors (an eval error is printed, not fatal)" |
+      | "`wcl parse`" | "Evaluating"          | "Everything reachable. Prints failures in place" | "Parse errors. Any failed value, schema violations included, exits 3 after the tree prints" |
       | "`wcl set`"   | "Both, in turn"       | "Enough to locate the field's declaration" | "Parse errors, an unresolvable path" |
       | "`wcl diff`"  | "Evaluating, twice"   | "Both documents"                          | "Parse errors on either side" |
   }

@@ -246,7 +246,12 @@ impl<'a> DataRef<'a> {
         let schema = first
             .schema()
             .ok_or_else(|| EvalError::not_a_leaf("table without schema", first.span()))?;
-        let idx = schema.fields().position(|f| f.name() == name);
+        // Columns are the effective fields, in the order the row-arity
+        // check counts them (inherited first).
+        let idx = schema
+            .effective_fields()
+            .iter()
+            .position(|f| f.name() == name);
         let Some(idx) = idx else {
             return Err(EvalError::not_a_leaf("unknown table column", first.span()));
         };

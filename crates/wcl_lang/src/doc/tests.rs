@@ -4065,6 +4065,369 @@ fn type_decl_extends_lists_parents_in_order() {
     assert_eq!(parents, vec!["A".to_string(), "B".to_string()]);
 }
 
+// ─── Instances write inherited fields (#297) ──────────────────────
+
+/// The schema-violation kinds in `errs`, in order.
+fn violation_kinds(errs: &[EvalError]) -> Vec<SchemaViolationKind> {
+    errs.iter()
+        .filter_map(|e| match e {
+            EvalError::SchemaViolation { kind, .. } => Some(*kind),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn block_instance_writes_inherited_field() {
+    // The issue's `p6.wcl`: `features` comes from `CpuBase`.
+    let doc = Document::open(
+        r#"
+        type CpuBase { features: list<utf8> }
+        @block("cpu2") type Cpu2 extends CpuBase { @inline(0) id: identifier  cmov: bool }
+        @document type D { @children("cpu2") cpu2s: list<Cpu2> }
+        cpu2 p6 { features = ["x87"]  cmov = true }
+        "#,
+        "t",
+    )
+    .unwrap();
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    let cpu = doc.block("cpu2").unwrap();
+    let x87 = Value::list(vec![Value::Utf8("x87".into())]);
+    assert_eq!(cpu.field("features").unwrap().value().unwrap(), &x87);
+    let typed = cpu
+        .typed_field("features")
+        .expect("inherited field projects");
+    assert_eq!(typed.value().unwrap(), x87);
+}
+
+#[test]
+fn inherited_required_field_missing_is_reported() {
+    let doc = Document::open(
+        r#"
+        @block("cfg") type Cfg {}
+        type Base { vendor: utf8  @child("cfg") cfg: Cfg }
+        @block("cpu", required_fields = ["vendor"]) type Cpu extends Base { @inline(0) id: identifier }
+        @document type D { @children("cpu") cpus: list<Cpu> }
+        cpu k5 {}
+        "#,
+        "t",
+    )
+    .unwrap();
+    let errs = doc.schema_errors();
+    assert_eq!(
+        violation_kinds(&errs),
+        vec![
+            SchemaViolationKind::MissingRequired,
+            SchemaViolationKind::MissingRequired
+        ],
+        "{errs:?}"
+    );
+    let text = format!("{errs:?}");
+    assert!(text.contains("missing required field 'vendor'"), "{text}");
+    assert!(text.contains("missing required child 'cfg'"), "{text}");
+}
+
+#[test]
+fn inherited_field_with_wrong_value_type_is_reported() {
+    let doc = Document::open(
+        r#"
+        symbol_set Level { low  high }
+        type Base { vendor: utf8  level: Level? }
+        @block("cpu") type Cpu extends Base { @inline(0) id: identifier }
+        @document type D { @children("cpu") cpus: list<Cpu> }
+        cpu bad { vendor = 1  level = :medium }
+        "#,
+        "t",
+    )
+    .unwrap();
+    let errs = doc.schema_errors();
+    assert_eq!(
+        violation_kinds(&errs),
+        vec![
+            SchemaViolationKind::FieldTypeMismatch,
+            SchemaViolationKind::SymbolNotInSet
+        ],
+        "{errs:?}"
+    );
+}
+
+#[test]
+fn inherited_default_applies_to_instance() {
+    let doc = Document::open(
+        r#"
+        type Sized { @default(64) width: u32 }
+        @block("box") type Box extends Sized { @inline(0) id: identifier }
+        @document type D { @children("box") boxes: list<Box> }
+        box plain {}
+        "#,
+        "t",
+    )
+    .unwrap();
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    let b = doc.block("box").unwrap();
+    assert_eq!(
+        b.typed_field("width").unwrap().value().unwrap(),
+        Value::I64(64)
+    );
+    let Value::Record { fields, .. } = b.to_record_value().unwrap() else {
+        panic!("block reifies to a record");
+    };
+    assert_eq!(fields.get("width"), Some(&Value::I64(64)));
+}
+
+#[test]
+fn redeclared_inherited_field_takes_the_childs_decorators() {
+    // The child drops the parent's `@default` and `@min`, and makes the
+    // field optional: its declaration wins whole, nothing is merged.
+    let doc = Document::open(
+        r#"
+        type Sized { @default(64) @min(8) width: u32 }
+        @block("box") type Box extends Sized { @inline(0) id: identifier  width: u32? }
+        @document type D { @children("box") boxes: list<Box> }
+        box small { width = 4 }
+        box plain {}
+        "#,
+        "t",
+    )
+    .unwrap();
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    let plain = doc
+        .blocks()
+        .find(|b| b.labels().unwrap()[0] == Value::Identifier("plain".into()))
+        .unwrap();
+    assert_eq!(
+        plain.typed_field("width").unwrap().value().unwrap(),
+        Value::None
+    );
+    let width = doc
+        .type_decl("Box")
+        .unwrap()
+        .effective_field("width")
+        .unwrap();
+    assert!(width.optional());
+    assert_eq!(width.decorators().count(), 0);
+}
+
+#[test]
+fn grandparent_fields_reach_the_instance() {
+    let doc = Document::open(
+        r#"
+        type Root { vendor: utf8  @default(64) width: u32 }
+        type Mid extends Root { features: list<utf8> }
+        @block("cpu") type Cpu extends Mid { @inline(0) id: identifier }
+        @document type D { @children("cpu") cpus: list<Cpu> }
+        cpu p6 { vendor = "intel"  features = ["x87"] }
+        cpu bad { vendor = 1  surprise = true }
+        "#,
+        "t",
+    )
+    .unwrap();
+    let errs = doc.schema_errors();
+    assert_eq!(
+        violation_kinds(&errs),
+        vec![
+            SchemaViolationKind::UnknownField,
+            SchemaViolationKind::FieldTypeMismatch
+        ],
+        "{errs:?}"
+    );
+    let p6 = doc.block("cpu").unwrap();
+    assert_eq!(
+        p6.typed_field("width").unwrap().value().unwrap(),
+        Value::I64(64)
+    );
+}
+
+#[test]
+fn strict_and_lazy_paths_agree_on_inherited_fields() {
+    let doc = Document::open(
+        r#"
+        type Base { port: u16 }
+        @block("svc") type Svc extends Base { @inline(0) id: identifier }
+        @document type D { @children("svc") svcs: list<Svc> }
+        svc ok { port = 80 }
+        svc big { port = 70000 }
+        svc odd { bogus = 1 }
+        "#,
+        "t",
+    )
+    .unwrap();
+    let strict = violation_kinds(&doc.schema_errors());
+    let mut lazy = Vec::new();
+    for b in doc.blocks() {
+        for f in b.fields() {
+            if let Err(e) = f.value() {
+                lazy.extend(violation_kinds(std::slice::from_ref(e)));
+            }
+        }
+    }
+    assert_eq!(
+        strict,
+        vec![
+            SchemaViolationKind::FieldTypeMismatch,
+            SchemaViolationKind::UnknownField
+        ]
+    );
+    assert_eq!(strict, lazy);
+    // The accepted inherited field is narrowed to its declared type on read.
+    let ok = doc.block("svc").unwrap();
+    assert_eq!(ok.field("port").unwrap().value().unwrap(), &Value::U16(80));
+}
+
+#[test]
+fn later_parent_wins_a_shared_field() {
+    let doc = Document::open(
+        r#"
+        type A { tag = "from-a" }
+        type B { tag = "from-b" }
+        @block("ab") type AB extends A, B { @inline(0) id: identifier }
+        @document type D { @children("ab") abs: list<AB> }
+        ab one {}
+        "#,
+        "t",
+    )
+    .unwrap();
+    let ab = doc.type_decl("AB").unwrap();
+    let listed = ab
+        .effective_fields()
+        .into_iter()
+        .find(|f| f.name() == "tag")
+        .unwrap();
+    let looked_up = ab.effective_field("tag").unwrap();
+    assert_eq!(listed.default_value(), Some(Value::Utf8("from-b".into())));
+    assert_eq!(looked_up.default_value(), listed.default_value());
+    let one = doc.block("ab").unwrap();
+    assert_eq!(
+        one.typed_field("tag").unwrap().value().unwrap(),
+        Value::Utf8("from-b".into())
+    );
+}
+
+#[test]
+fn inherited_and_own_inline_slots_both_map_labels() {
+    let doc = Document::open(
+        r#"
+        type Named { @inline(0) name: utf8 }
+        @block("item") type Item extends Named { @inline(1) qty: u32 }
+        @document type D { @children("item") items: list<Item> }
+        item "bolt" 12
+        "#,
+        "t",
+    )
+    .unwrap();
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    let item = doc.block("item").unwrap();
+    let Value::Record { fields, .. } = item.to_record_value().unwrap() else {
+        panic!("block reifies to a record");
+    };
+    assert_eq!(fields.get("name"), Some(&Value::Utf8("bolt".into())));
+    assert_eq!(fields.get("qty"), Some(&Value::I64(12)));
+}
+
+#[test]
+fn decorator_schema_inherits_argument_slots() {
+    let doc = Document::open(
+        r#"
+        type Bounds { @inline(0) min: i64  @inline(1) max: i64 }
+        @decorator("range") type Range extends Bounds { step: i64? }
+        @document type D { @range(1, 10, step = 2) a: i64  @range(1) b: i64 }
+        a = 1
+        b = 2
+        "#,
+        "t",
+    )
+    .unwrap();
+    let errs = doc.schema_errors();
+    assert_eq!(
+        violation_kinds(&errs),
+        vec![SchemaViolationKind::MissingRequired],
+        "{errs:?}"
+    );
+    assert!(format!("{errs:?}").contains("missing required argument 'max'"));
+    let decl = doc.doc_schema().unwrap();
+    let range = decl
+        .field("a")
+        .unwrap()
+        .decorators()
+        .find(|d| d.full_name() == "range")
+        .unwrap();
+    assert_eq!(range.resolved_arg_value("max"), Some(Ok(Value::I64(10))));
+}
+
+#[test]
+fn table_row_columns_lead_with_inherited_fields() {
+    let doc = Document::open(
+        r#"
+        type Person { name: utf8 }
+        @table("user") type User extends Person { age: u32 }
+        @block("db") type DB { @children("user") users: list<User> }
+        db main {
+          users:
+            | "alice" | 30 |
+        }
+        user "short" {}
+        "#,
+        "t",
+    )
+    .unwrap();
+    let users = doc.get("db.users").expect("db.users");
+    assert_eq!(
+        users.column("name").unwrap(),
+        vec![Value::Utf8("alice".into())]
+    );
+    assert_eq!(users.column("age").unwrap(), vec![Value::I64(30)]);
+    // The written-out row form counts the inherited column too.
+    let errs = doc.block("user").unwrap().schema_errors().to_vec();
+    assert!(
+        format!("{errs:?}").contains("table row for 'user' has 1 values, expected 2"),
+        "{errs:?}"
+    );
+}
+
+#[test]
+fn inherited_inline_slot_collision_errors_at_open() {
+    let err = Document::open(
+        r#"
+        type Named { @inline(0) name: utf8 }
+        @block("item") type Item extends Named { @inline(0) code: utf8 }
+        "#,
+        "t",
+    )
+    .unwrap_err();
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("fields 'name' and 'code' of 'Item' both claim @inline(0)"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn redeclared_inline_field_keeps_its_slot_without_collision() {
+    // Same name, same slot: an override, not a second claimant.
+    Document::open(
+        r#"
+        type Named { @inline(0) name: utf8 }
+        @block("item") type Item extends Named { @inline(0) name: utf8 }
+        "#,
+        "t",
+    )
+    .expect("an override is not a collision");
+}
+
+#[test]
+fn duplicate_inline_slot_on_one_type_errors_at_open() {
+    let err = Document::open(
+        r#"@block("thing") type Thing { @inline(0) a: utf8  @inline(0) b: utf8 }"#,
+        "t",
+    )
+    .unwrap_err();
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("fields 'a' and 'b' of 'Thing' both claim @inline(0)"),
+        "{msg}"
+    );
+}
+
 fn open_interfaces_doc() -> Document {
     Document::open(
         r#"

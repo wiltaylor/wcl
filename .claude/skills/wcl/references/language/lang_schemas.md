@@ -174,6 +174,46 @@ $ wcl get config.wcl servers.web.port
 8080
 ```
 
+## `extends` — a kind that inherits fields
+
+An instance is validated against its type's **effective** fields: its own plus every field
+inherited through `extends`, at any depth, from a `type` or an `interface`. An inherited field is
+written, type-checked, defaulted and label-bound like an own one. Do not redeclare a field just
+to make it writable.
+
+```wcl
+type Part    { vendor: utf8  @default(64u32) width: u32 }
+type CpuBase extends Part { features: list<utf8> }
+
+@block("cpu", required_fields = ["vendor"])
+type Cpu extends CpuBase { @inline(0) id: identifier  cmov: bool }
+
+@document type Cfg { @children("cpu") cpus: list<Cpu> }
+
+cpu p6 { vendor = "intel"  features = ["x87"]  cmov = true }
+```
+
+```console
+$ wcl check cpus.wcl
+OK
+$ wcl get cpus.wcl cpus.p6.width
+64u32
+```
+
+| Situation | Rule |
+| --- | --- |
+| Child redeclares an inherited field | The child's declaration wins **whole**: type, `?`, every decorator. Nothing merges, so a dropped `@default` / `@min` is gone. |
+| Redeclaration with a different type | Open-time error: `conflicting type for field 'f' in 'T' (across extends)`. Optionality is not compared, so `u32?` over `u32` is fine. |
+| Two parents declare one name | Types must agree; the **later** parent in the `extends` list supplies the declaration. |
+| `@inline` across the set | Slots combine (`Named { @inline(0) name }` + child `@inline(1) version`). Two *different* names on one slot: `fields 'a' and 'b' of 'T' both claim @inline(0)`. Same name on the same slot is an override. |
+| `@table` type with a parent | Columns are the effective fields in order: inherited first, then own. |
+| `@block(…)` arguments | Not inherited. `required_fields`, `max_children`, `required_children` bind to the type they are written on. |
+
+Every check reads the effective set: unknown-field membership, `required_fields` names,
+value-vs-type, symbol sets, unions, `@child` / `@children` slots and cardinality, `@schemaless`
+on a field, the `@inline` id rule, decorator-argument schemas (`@decorator` types), and the
+lazy check `wcl get` runs. `wcl check` and `wcl get` agree.
+
 ## `@table(kind)`
 
 `@table("kind")` marks a **row** type as the schema for pipe-table syntax. Each `| … |` row is
@@ -350,6 +390,11 @@ The messages you will meet most often:
   `Table`, `Document`, `Block`, `Default` and friends. See
   [`lang_decorators.md`](lang_decorators.md).
 - `max_children` counts **every** nested block, not the members of one slot.
+- The `extends` open-time checks (type conflict, `@inline` slot clash) only compare declarations
+  in **one file**. With the parent in an imported file neither runs: the child's conflicting
+  type silently wins, and two fields on one slot both read that label.
+- Redeclaring an inherited field to tweak one decorator drops the others. Copy every decorator
+  you mean to keep.
 - A gather field named like a library's silently loses blocks. It is a warning, and warnings do
   not fail the build.
 - A number that does not fit its declared numeric type (`300` for `u8`) fails `wcl check`

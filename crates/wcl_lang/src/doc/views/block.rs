@@ -602,7 +602,7 @@ impl<'a> Block<'a> {
     /// doesn't match any schema field or literal item.
     pub fn typed_field(&self, name: &str) -> Option<DataRef<'a>> {
         let schema = self.schema()?;
-        let f = schema.field(name)?;
+        let f = schema.effective_field(name)?;
 
         // `@connections(SchemaName)`: project sibling Item::Connection
         // statements through the named connection schema. Memoised per
@@ -718,7 +718,7 @@ impl<'a> Block<'a> {
     /// (`len`, `map`, …), arithmetic, and a repetition block's `each`.
     ///
     /// Schema-aware, mirroring the wdoc lowering reifier: each declared
-    /// field is populated from its `@inline(N)` label slot, its
+    /// field (inherited ones included) is populated from its `@inline(N)` label slot, its
     /// `@children`/`@child` projection (recursively reified), a literal
     /// block field, a leaf typed projection, or the schema default — with
     /// missing optionals becoming `Value::None`. An un-schema'd block
@@ -756,7 +756,7 @@ impl<'a> Block<'a> {
         };
         let labels = self.labels().unwrap_or_default();
         let mut map = BTreeMap::new();
-        for f in schema.fields() {
+        for f in schema.effective_fields() {
             let name = f.name();
             let is_child_slot =
                 f.children_kind_or_union().is_some() || f.child_kind_or_union().is_some();
@@ -1209,7 +1209,7 @@ impl<'a> Block<'a> {
         let Some(schema) = self.schema() else {
             return out;
         };
-        for f in schema.fields() {
+        for f in schema.effective_fields() {
             // Only concrete-kind @children / @child slots.
             let (kind, is_list) = if let Some(k) = f.children_block_kind() {
                 (k, true)
@@ -1247,14 +1247,15 @@ impl<'a> Block<'a> {
         out
     }
 
-    /// Iterate schema-projected fields in declared order. Empty for
+    /// Iterate schema-projected fields in effective-field order (inherited
+    /// fields first, see [`TypeDecl::effective_fields`]). Empty for
     /// un-schema'd blocks.
     pub fn typed_fields(&self) -> Box<dyn Iterator<Item = (&'a str, DataRef<'a>)> + 'a> {
         let Some(schema) = self.schema() else {
             return Box::new(std::iter::empty());
         };
         let this = self.clone();
-        Box::new(schema.fields().filter_map(move |f| {
+        Box::new(schema.effective_fields().into_iter().filter_map(move |f| {
             let name = f.name();
             this.typed_field(name).map(|dr| (name, dr))
         }))
@@ -1334,7 +1335,7 @@ impl<'a> RowView<'a> {
 /// any other schema. See [`Block::is_template_child`].
 fn template_body_kind(schema: &TypeDecl<'_>) -> Option<String> {
     let body_field = schema.declares_kind()?.body_field?;
-    let field = schema.fields().find(|f| f.name() == body_field)?;
+    let field = schema.effective_field(&body_field)?;
     field
         .child_block_kind()
         .or_else(|| field.children_block_kind())

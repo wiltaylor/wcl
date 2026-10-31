@@ -300,7 +300,14 @@ pub(crate) fn native_errors(doc: &Document) -> Vec<Report> {
         let lowerable = ["wdoc.ContentBlock", "wdoc.SvgBlock", "wdoc.TermPrimitive"]
             .iter()
             .any(|interface| decl.is_descendant_of(interface));
-        let own_lower = decl.fields().any(|f| f.name() == "lower");
+        // Its own `lower`, or one a parent `type` supplies as a default —
+        // an instance inherits that, so the renderer calls it. The output
+        // interfaces' bare `lower: fn(…)?` slot carries no default and so
+        // never counts.
+        let own_lower = decl.fields().any(|f| f.name() == "lower")
+            || decl
+                .effective_field("lower")
+                .is_some_and(|f| f.default_value().is_some());
         let kind = block_kind(&decl);
 
         let Some(native) = native else {

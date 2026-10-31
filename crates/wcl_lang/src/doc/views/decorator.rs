@@ -162,12 +162,13 @@ impl<'a> Decorator<'a> {
     /// without `@inline` is named-only.
     ///
     /// If neither a named nor positional argument fills the slot, its
-    /// declared default is returned. Returns `None` when the decorator has
-    /// no registered schema, the schema doesn't declare the named slot, or
-    /// the slot is absent and has no default.
+    /// declared default is returned. A slot the schema inherits through
+    /// `extends` resolves like one it declares. Returns `None` when the
+    /// decorator has no registered schema, the schema doesn't declare the
+    /// named slot, or the slot is absent and has no default.
     pub fn resolved_arg_value(&self, slot_name: &str) -> Option<Result<Value, EvalError>> {
         let schema = self.schema()?;
-        let slot = schema.field(slot_name)?;
+        let slot = schema.effective_field(slot_name)?;
         if let Some(v) = self.named_arg(slot_name) {
             return Some(v);
         }
@@ -188,7 +189,8 @@ impl<'a> Decorator<'a> {
         // can carry both ordinary metadata and a union payload.
         if let ResolvedType::Union(union) = slot.resolved_type() {
             let claimed_positions: HashSet<usize> = schema
-                .fields()
+                .effective_fields()
+                .into_iter()
                 .filter(|field| field.name() != slot_name)
                 .filter_map(|field| field.inline_slot().map(|index| index as usize))
                 .collect();
@@ -206,7 +208,7 @@ impl<'a> Decorator<'a> {
             let mut named = std::collections::BTreeMap::new();
             let mut named_spans = std::collections::BTreeMap::new();
             for argument in self.named() {
-                if schema.field(argument.name()).is_some() {
+                if schema.effective_field(argument.name()).is_some() {
                     continue;
                 }
                 let value = match argument.value() {

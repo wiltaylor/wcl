@@ -939,11 +939,11 @@ impl<'a> TypeDecl<'a> {
 
     /// Implicit set of allowed child block kinds: the union of all
     /// `@child(K)` and `@children(K)` decorators across this type's
-    /// fields. Any nested block whose kind isn't in this set is a
-    /// schema violation.
+    /// effective fields (own and inherited through `extends`). Any nested
+    /// block whose kind isn't in this set is a schema violation.
     pub fn allowed_child_kinds(&self) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
-        for f in self.fields() {
+        for f in self.effective_fields() {
             if let Some(k) = f.child_block_kind()
                 && !out.contains(&k)
             {
@@ -997,7 +997,13 @@ impl<'a> TypeDecl<'a> {
     /// `extends` chain (transitively). Ancestor fields are emitted
     /// before the type's own, in extends-list order. Duplicate
     /// names (identical-type child redeclarations) are emitted
-    /// once: the *latest* (child-most) definition wins.
+    /// once: the *latest* (child-most) definition wins, keeping the
+    /// position the name first took. Between two parents, the later
+    /// one in the `extends` list wins.
+    ///
+    /// This is the field set an instance is validated against: what
+    /// it may write, what is type-checked, where `@default` and
+    /// `@inline(N)` come from.
     pub fn effective_fields(&self) -> Vec<TypeField<'a>> {
         build_effective_fields(self.doc, &self.ast.extends, self.file_ns, self.fields())
     }

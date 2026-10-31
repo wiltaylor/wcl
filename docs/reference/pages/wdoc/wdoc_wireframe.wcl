@@ -675,12 +675,9 @@ type WfGauge extends Widget {
   @inline(0) label: utf8
   value = 0.5                    # 0.0 empty, 1.0 full
 
-  # The shared Widget fields, repeated as every wf_* type repeats them.
-  id: identifier?  class: list<utf8>?  disabled: bool?
-  x = 0.0  y = 0.0  width = 160.0  height = 24.0
-  anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?
-  connect_points: list<AnchorSide>?
-  theme: symbol?  accent: symbol?  mode: symbol?
+  # Widget hands down id, class, x, y and the rest. Only the size is
+  # redeclared, to give it a default.
+  width = 160.0  height = 24.0
 
   lower = fn(g: WfGauge) -> list<Svg> {
     [ Svg::Rect {

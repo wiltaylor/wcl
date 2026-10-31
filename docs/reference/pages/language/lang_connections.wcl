@@ -342,7 +342,7 @@ CONSOLE
 
   p "Three block types, three arrows, one declaration. Add a fourth block type with a `name: identifier` field and it joins the graph with no edit to `Rel`. Add one without that field and every arrow touching it is refused. That refusal is the point of writing the interface rather than a union of the three names you happen to have today."
 
-  p "[Types](lang_types) covers interfaces, unions and `extends` in full, including the trap that `extends` on a `@block` type does **not** let an instance write the inherited fields. A subtype endpoint dispatches. Its instances still have to redeclare what they write."
+  p "[Types](lang_types) covers interfaces and unions in full, and [Schemas](lang_schemas#extends-a-kind-built-on-shared-fields) covers `extends` on a `@block` type. A subtype endpoint dispatches, and its instances write the fields they inherit as if the type declared them."
 
   h2 "What check reports"
 

@@ -1049,8 +1049,8 @@ mod tests {
 
     #[test]
     fn redeclared_field_inherits_ancestor_doc() {
-        // A concrete type must redeclare an interface field to accept it on
-        // instances; reflection still surfaces the interface's `@doc`.
+        // A concrete type that redeclares an interface field (to change
+        // it) still surfaces the interface's `@doc` through reflection.
         let v = eval_field(
             r#"
             @schemaless

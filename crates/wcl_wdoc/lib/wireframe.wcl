@@ -64,8 +64,10 @@ interface Widget extends SvgBlock {
   mode:     symbol?
 }
 
-// Shared geometry + theming fields, repeated per type (the schema lists a
-// type's own fields). Every `wf_*` type carries this block verbatim:
+// Shared geometry + theming fields. Every `wf_*` type carries this block
+// verbatim. An instance would inherit them from `Widget` without it; the
+// copies predate that and keep each type's own field list, and so its
+// generated `type_table`, as it was:
 //   id: identifier?  class: list<utf8>?  disabled: bool?
 //   x = 0.0  y = 0.0  width: f64?  height: f64?
 //   anchor_left: f64?  anchor_right: f64?  anchor_top: f64?  anchor_bottom: f64?

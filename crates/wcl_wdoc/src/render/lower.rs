@@ -358,7 +358,7 @@ pub(crate) fn lookup_type_lower(doc: &Document, kind: &str) -> Option<FnValue> {
     let schema = doc
         .block_schema(kind)
         .or_else(|| doc.type_decl(&kind_to_typename(kind)))?;
-    match schema.field("lower")?.default_value()? {
+    match schema.effective_field("lower")?.default_value()? {
         Value::Function(fv) => Some(fv),
         _ => None,
     }
@@ -629,7 +629,9 @@ pub(crate) fn block_to_record_raw(doc: &Document, block: &Block<'_>, kind: &str)
         }
     };
     let mut map = BTreeMap::new();
-    for f in schema.fields() {
+    // Inherited fields are the block's too: a `type` the kind extends
+    // contributes its fields, defaults and `@inline` slots.
+    for f in schema.effective_fields() {
         let name = f.name();
         let is_children_slot =
             f.children_kind_or_union().is_some() || f.child_kind_or_union().is_some();

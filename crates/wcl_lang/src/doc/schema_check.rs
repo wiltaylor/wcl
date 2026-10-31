@@ -8,6 +8,13 @@
 //! Bare `@schemaless` on a block short-circuits all checks. The narrow
 //! `@schemaless(annotations = true)` form exempts only decorators. Bare
 //! `@schemaless` on a field exempts that field from membership checking.
+//!
+//! Every check reads the schema's *effective* fields — its own plus those
+//! it inherits through `extends` ([`TypeDecl::effective_fields`]) — so an
+//! instance writes an inherited field exactly as it writes an own one. A
+//! redeclared field is the child's declaration, decorators and all.
+//!
+//! [`TypeDecl::effective_fields`]: super::TypeDecl::effective_fields
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -102,16 +109,17 @@ pub(super) fn decorator_argument_errors(
         return Vec::new();
     };
     let mut errors = Vec::new();
+    let slots = schema.effective_fields();
     let named_slots: HashSet<&str> = decorator.named().map(|arg| arg.name()).collect();
     let has_structural_arguments = values.iter().enumerate().any(|(index, _)| {
-        schema
-            .fields()
+        slots
+            .iter()
             .all(|field| field.inline_slot() != Some(index as u64))
     }) || decorator
         .named()
-        .any(|argument| schema.field(argument.name()).is_none());
+        .any(|argument| schema.effective_field(argument.name()).is_none());
     let structural_union_slot = if has_structural_arguments {
-        let mut candidates = schema.fields().filter(|slot| {
+        let mut candidates = slots.iter().copied().filter(|slot| {
             let filled_by_name = named_slots.contains(slot.name());
             let filled_positionally = slot
                 .inline_slot()
@@ -143,8 +151,9 @@ pub(super) fn decorator_argument_errors(
             .get(index)
             .copied()
             .unwrap_or_else(|| decorator.span());
-        let Some(slot) = schema
-            .fields()
+        let Some(slot) = slots
+            .iter()
+            .copied()
             .find(|field| field.inline_slot() == Some(index as u64))
         else {
             if structural_union_slot.is_some() {
@@ -168,7 +177,7 @@ pub(super) fn decorator_argument_errors(
         }
     }
     for named in decorator.named() {
-        let Some(slot) = schema.field(named.name()) else {
+        let Some(slot) = schema.effective_field(named.name()) else {
             if structural_union_slot.is_some() {
                 continue;
             }
@@ -192,7 +201,7 @@ pub(super) fn decorator_argument_errors(
             errors.push(error);
         }
     }
-    for slot in schema.fields() {
+    for slot in &slots {
         if slot.optional() || slot.default_value().is_some() {
             continue;
         }
@@ -372,7 +381,7 @@ fn collect_ref_ids(value: &Value, out: &mut Vec<String>) {
 pub(super) fn identity_label(block: &Block<'_>) -> Option<String> {
     use crate::ast::{BuiltinType, TypeRef};
     let schema = block.schema()?;
-    let id_typed = schema.fields().any(|f| {
+    let id_typed = schema.effective_fields().iter().any(|f| {
         f.name() == "id"
             && f.inline_slot() == Some(0)
             && matches!(f.type_ref(), TypeRef::Builtin(BuiltinType::Identifier))
@@ -684,6 +693,8 @@ pub(super) fn root_field_membership_error(
 /// The two checks that read a block's own fields against its schema:
 /// every written field is declared (`UnknownField`), and every field the
 /// schema lists in `required_fields` is written (`MissingRequired`).
+/// "Declared" means in the effective field set, so a field the schema
+/// inherits through `extends` is as writable as one it declares.
 ///
 /// Split out because a `@contextual` block gets exactly these and no
 /// more — its body only has meaning once expanded, so the child walk
@@ -697,8 +708,11 @@ fn validate_own_fields(block: &Block<'_>, schema: &crate::doc::TypeDecl<'_>) -> 
     if schema.is_schemaless() {
         return errs;
     }
-    let declared_field_names: HashSet<String> =
-        schema.fields().map(|f| f.name().to_string()).collect();
+    let declared_field_names: HashSet<String> = schema
+        .effective_fields()
+        .iter()
+        .map(|f| f.name().to_string())
+        .collect();
     for f in block.fields() {
         if has_schemaless(&f.ast.decorators) {
             continue;
@@ -841,11 +855,15 @@ fn block_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         return errs;
     }
 
+    // Everything below reads the fields an instance may write: the
+    // schema's own and those it inherits through `extends`.
+    let declared_fields = schema.effective_fields();
+
     // Surface dispatch failures for union-typed @child / @children
     // fields. Both block-to-variant and table-row-to-variant report
     // through this channel — the typed_field accessor silently skips
     // failures and depends on schema_errors() to expose them.
-    for declared in schema.fields() {
+    for declared in &declared_fields {
         if let Some(crate::doc::ChildKind::Union(union)) = declared.children_kind_or_union() {
             for (kind, blk) in block.union_children_blocks(declared.name()) {
                 let result = match kind {
@@ -899,9 +917,9 @@ fn block_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     //   2. Everything else: run the conservative `value_matches_type_ref`
     //      shared with the dispatch matcher. Tensor / function /
     //      reference types stay permissive.
-    for declared in schema.fields() {
+    for declared in &declared_fields {
         let start = errs.len();
-        field_value_errors(block, &declared, &mut errs);
+        field_value_errors(block, declared, &mut errs);
         // A field spliced in by an in-block `import` was written in
         // that file, not the block's, so its errors carry its own.
         if errs.len() > start
@@ -921,7 +939,7 @@ fn block_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         .is_some()
     {
         let label_count = block.labels().map(|v| v.len()).unwrap_or(0);
-        let field_count = schema.fields().count();
+        let field_count = declared_fields.len();
         if label_count < field_count {
             errs.push(EvalError::schema_violation(
                 Kind::ChildrenTooFew,
@@ -964,7 +982,7 @@ fn block_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
         for sr in synth_rows {
             // Find the schema field matching the table header's
             // field_name and read its @children(kind).
-            if let Some(field) = schema.field(&sr.field_name)
+            if let Some(field) = schema.effective_field(&sr.field_name)
                 && let Some(kind) = field.children_block_kind_str()
             {
                 *counts.entry(kind.to_string()).or_insert(0) += 1;
@@ -984,8 +1002,8 @@ fn block_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     // @children(SomeUnion). A nested block that doesn't match an
     // allowed *kind* is still legal if it structurally matches a
     // variant of one of these unions.
-    let union_slots: Vec<crate::doc::UnionDecl<'_>> = schema
-        .fields()
+    let union_slots: Vec<crate::doc::UnionDecl<'_>> = declared_fields
+        .iter()
         .filter_map(|f| {
             f.children_kind_or_union()
                 .and_then(|k| k.as_union().copied())
@@ -995,8 +1013,8 @@ fn block_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     // Interface slots from `@child(SomeInterface)` / `@children(SomeInterface)`.
     // A nested block is legal here if its `@block` type's `extends`
     // chain transitively contains the interface.
-    let interface_slots: Vec<crate::doc::InterfaceDecl<'_>> = schema
-        .fields()
+    let interface_slots: Vec<crate::doc::InterfaceDecl<'_>> = declared_fields
+        .iter()
         .filter_map(|f| {
             f.children_kind_or_union()
                 .and_then(|k| k.as_interface().copied())
@@ -1108,7 +1126,7 @@ fn block_schema_errors<'a>(block: &Block<'a>) -> Vec<EvalError> {
     }
 
     // 5. Field-level cardinality (@child / @children).
-    for f in schema.fields() {
+    for f in &declared_fields {
         if let Some(kind) = f.child_block_kind() {
             // @child(K): expect exactly 1 (or 0..1 if field is optional).
             let count = *counts.get(&kind).unwrap_or(&0);
