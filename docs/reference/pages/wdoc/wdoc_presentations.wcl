@@ -293,7 +293,9 @@ WCL
   code console {
     source = <<'CONSOLE'
 $ wcl wdoc build talk.wcl --out out       # render out/index.html
+wrote 1 page
 $ wcl wdoc build talk.wcl --site talk --out out   # only this site, when the document has several
+wrote 1 page
 $ wcl wdoc serve talk.wcl                 # watch, rebuild, live-reload while you write
 CONSOLE
   }

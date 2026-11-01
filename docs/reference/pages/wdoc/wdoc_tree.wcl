@@ -445,16 +445,37 @@ WCL
     li "the **output** the build is producing, one of `:html`, `:pdf` or `:markdown`."
   }
 
-  p "The `file` block is the case that makes the difference visible. `file` ships an asset into the output folder, and a PDF has no output folder beside it. So `file` is native on `:html` and `:markdown`, never `:pdf`. Drop one into the card in `shapes.wcl`. Then build to PDF:"
+  p "The `file` block is the case that makes the difference visible. `file` ships an asset into the output folder, and a PDF has no output folder beside it. So `file` is native on `:html` and `:markdown`, never `:pdf`. Put a card holding one in `shapes.wcl`, in place of the tree. Then build to PDF. The whole file is shown, because the error below points at a line of it:"
 
   code wcl {
     filename = "shapes.wcl"
     source = <<'WCL'
-diagram { width = 300  height = 140
-  card { x = 10.0  y = 10.0  width = 260.0  height = 110.0
-    title = "Note"
-    p "Body text."
-    file "notes.txt" { as = "download" }
+import <wdoc.wcl>
+
+# Tree-node icons resolve through a declared iconset, never straight from
+# a bundled pack. `iconset lucide {}` names the pack after itself.
+iconset lucide {}
+
+site shapes {
+  title            = "Shapes"
+  default_template = :book
+
+  toc {
+    chapter "Shapes" { page = shapes_page }
+  }
+}
+
+page shapes_page {
+  title = "Shapes"
+
+  h1 "Shapes"
+
+  diagram { width = 300  height = 140
+    card { x = 10.0  y = 10.0  width = 260.0  height = 110.0
+      title = "Note"
+      p "Body text."
+      file "notes.txt" { as = "download" }
+    }
   }
 }
 WCL

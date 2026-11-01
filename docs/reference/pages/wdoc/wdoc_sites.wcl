@@ -373,6 +373,13 @@ WCL
 
   p "One more file, and it is not WCL: `brand/extra.css`, beside `main.wcl`. The `assets` field ships the folder it sits in. See [The assets folder](#the-assets-folder) below."
 
+  code css {
+    filename = "brand/extra.css"
+    source = <<'CSS'
+.site-header { letter-spacing: 0.02em; }
+CSS
+  }
+
   p "`[handbook](handbook:index)` is the cross-site form. The build checks it exactly as it checks an in-site link: an unknown site, or an unknown page within a known site, fails the build. The build works out the relative path between the two directories for you, so the page on the other side links back with a plain `[the site](marketing:home)` and gets `../home.html`."
 
   p "You can also build one site on its own with `--site`, which renders it flat at `--out` as though it were the only one:"
@@ -412,7 +419,7 @@ WCL
 
   code console {
     source = <<'CONSOLE'
-$ wcl wdoc build main.wcl --out _site
+$ wcl wdoc build main.wcl --out _acme
 toc chapter links to unknown page "home"
 CONSOLE
   }
@@ -465,23 +472,23 @@ WCL
 
   h2 "The output tree"
 
-  p "Build the two-site document above and this is what lands in `--out`:"
+  p "Build the two-site document above into a fresh directory, so nothing from the first example is left in it, and this is what lands in `--out`:"
 
   code console {
     source = <<'CONSOLE'
-$ wcl wdoc build main.wcl --out _site
+$ wcl wdoc build main.wcl --out _acme
 wrote 4 pages
-$ find _site -type f -not -name '*.woff2' | sort
-_site/brand/extra.css
-_site/handbook/deploying.html
-_site/handbook/index.html
-_site/handbook/_wdoc/favicon.svg
-_site/handbook/_wdoc/pages.json
-_site/home.html
-_site/index.html
-_site/product.html
-_site/_wdoc/favicon.svg
-_site/_wdoc/pages.json
+$ find _acme -type f -not -name '*.woff2' | sort
+_acme/brand/extra.css
+_acme/handbook/deploying.html
+_acme/handbook/index.html
+_acme/handbook/_wdoc/favicon.svg
+_acme/handbook/_wdoc/pages.json
+_acme/home.html
+_acme/index.html
+_acme/product.html
+_acme/_wdoc/favicon.svg
+_acme/_wdoc/pages.json
 CONSOLE
   }
 
@@ -514,7 +521,7 @@ site marketing {
 WCL
   }
 
-  p "Each entry is a path relative to the entry document, and it keeps its name in the output: `brand/` beside `main.wcl` becomes `_site/brand/`. Nothing rewrites what is inside, so reference a copied file by the output path it landed at. That is what `stylesheets = [\"brand/extra.css\"]` does above, adding a verbatim `<link rel=\"stylesheet\" href=\"brand/extra.css\">` to every page of the site."
+  p "Each entry is a path relative to the entry document, and it keeps its name in the output: `brand/` beside `main.wcl` becomes `_acme/brand/`. Nothing rewrites what is inside, so reference a copied file by the output path it landed at. That is what `stylesheets = [\"brand/extra.css\"]` does above, adding a verbatim `<link rel=\"stylesheet\" href=\"brand/extra.css\">` to every page of the site."
 
   callout "assets is not how you use an image" {
     kind = :note
@@ -525,7 +532,7 @@ WCL
 
   p "Every href the build emits is relative. A page links a sibling as `deploying.html`, its assets as `_wdoc/favicon.svg`, a sub-site as `handbook/index.html`, and the way back out as `../home.html`. The build never writes a path from the server root."
 
-  p "So the tree does not care where it is served from. `_site` works at the domain root, at `/docs/`, at `/preview/pr-142/`, and moved to another directory on disk: no rebuild, no base-path setting, because there is no base path to set. Two things still need a server rather than a directory opened straight from disk: full-text search and anything else that fetches a file, since a browser will not fetch from a page that was opened as a local file."
+  p "So the tree does not care where it is served from. `_acme` works at the domain root, at `/docs/`, at `/preview/pr-142/`, and moved to another directory on disk: no rebuild, no base-path setting, because there is no base path to set. Two things still need a server rather than a directory opened straight from disk: full-text search and anything else that fetches a file, since a browser will not fetch from a page that was opened as a local file."
 
   h3 "A build never wipes its output"
 

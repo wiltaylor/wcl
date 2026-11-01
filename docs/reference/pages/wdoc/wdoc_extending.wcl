@@ -270,14 +270,10 @@ WCL
 $ wcl wdoc build chip.wcl --out _site
 wrote 1 page
 
-$ cat _site/shapes.html
-...
+$ grep -oE '<(rect|polyline) [^>]*>' _site/shapes.html
 <rect x="20" y="20" width="110" height="44" rx="8" />
-...
 <rect x="170" y="20" width="110" height="44" rx="8" />
-...
 <polyline points="130,42 170,42" fill="none" stroke="currentColor" marker-end="url(#wdoc-arrow)" data-kind="default" />
-...
 CONSOLE
   }
 
@@ -399,6 +395,10 @@ TEXT
   code wcl {
     filename = "recurse.wcl"
     source = <<'WCL'
+import <wdoc.wcl>
+
+site manual { title = "Manual" }
+
 @block("badge")
 type Badge extends ContentBlock {
   @inline(0) text: utf8
@@ -431,6 +431,11 @@ WCL
 
   code console {
     source = <<'CONSOLE'
+$ wcl wdoc build recurse.wcl --out _site
+wrote 1 page
+$ wcl wdoc build recurse.wcl --out _md --type markdown
+wrote 1 page
+
 $ cat _site/badges.html
 ...
 <p><span class="bold">written directly</span></p>
