@@ -134,21 +134,21 @@ type declaration uses, and not the `=` of a document field.
 
 ### Field access
 
-A dotted path off a **local** name reads a member. The local may be a `let` item, a `let … ;`
-binding, or a function parameter. The path chains through nested records and variant payloads.
+A dotted path reads a member of a record. The record may sit in a document field, a `let` item,
+a `let … ;` binding or a function parameter, and the path chains through nested records and
+variant payloads. `wcl get` reads the same paths.
 
 ```wcl
 let origin = { x: 0.0, inner: { zone: "a" } }
 
-zone = origin.inner.zone                 // "a"
-name = { let r = at(rows, 0); r.name }   // bind, then read
+zone   = origin.inner.zone               // "a"
+called = resident.name                   // "Rex" — `resident` is the field above
+name   = { let r = at(rows, 0); r.name } // bind, then read
 ```
 
-> **A document *field* holding a record is not walkable this way.** A document path descends
-> through blocks and stops at the field. So `meta.region`, where `meta` is a field, is an
-> unresolved reference. A call result behaves the same way: `at(rows, 0).name` fails with
-> `not_a_reference`. Bind the value with a `let` first, or destructure it with `match`. See
-> `lang_expressions.md`.
+> **A call result is not walkable.** `at(rows, 0).name` fails with `not_a_reference`. Bind the
+> value with a `let` first, or destructure it with `match`. A field the record lacks fails with
+> `record of type 'Dog' has no field 'colour'`. See `lang_expressions.md`.
 
 ### `extends`
 
@@ -266,7 +266,7 @@ union Source {
 
 chart sales {
   data   = { path: "sales.csv", header: true }   // → Source::File, by shape
-  label  = { let d = self.data; d.path }         // bind, then read the payload
+  label  = self.data.path                        // reads the payload's field
   totals = map([1, 2, 3], fn(x: i64) -> i64 x * 10)
   shape  = tensor([1, 2, 3, 4], [2, 2])
 }

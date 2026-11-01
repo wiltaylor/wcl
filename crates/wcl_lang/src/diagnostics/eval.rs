@@ -530,6 +530,34 @@ pub enum EvalError {
         span: SourceSpan,
     },
 
+    #[error("unresolved reference '{path}': {record} has no field '{field}'")]
+    #[diagnostic(code(wcl::eval::unresolved_reference))]
+    /// A member access read a field a record (or a variant's record
+    /// payload) does not carry. Shares the `unresolved_reference` code
+    /// with [`EvalError::UnresolvedReference`]: the path does not
+    /// resolve, and this variant says which step failed.
+    NoSuchField {
+        /// The whole path, as written in the source.
+        path: String,
+        /// The field that was asked for.
+        field: String,
+        /// The value it was asked of, as diagnostics spell it:
+        /// `record of type 'Host'`, `variant 'Shape::Box'` or `record`.
+        record: String,
+        #[help]
+        /// The fields the value does carry; `None` when it carries
+        /// none. Boxed so this variant does not grow `EvalError`.
+        help: Option<Box<str>>,
+        #[doc(hidden)]
+        #[source_code]
+        /// The file the error was raised in, when known. Read it
+        /// through [`EvalError::origin`].
+        origin: Option<Arc<DiagnosticSource>>,
+        #[label("no such field")]
+        /// Source span the diagnostic points at.
+        span: SourceSpan,
+    },
+
     #[error("expected a reference, got {kind}")]
     #[diagnostic(code(wcl::eval::not_a_reference))]
     /// A reference-typed field was given something that is not a
@@ -796,6 +824,7 @@ impl EvalError {
             | Self::ImportFailed { origin, .. }
             | Self::SchemaViolation { origin, .. }
             | Self::UnresolvedReference { origin, .. }
+            | Self::NoSuchField { origin, .. }
             | Self::NotAReference { origin, .. }
             | Self::UnitNoMatch { origin, .. }
             | Self::UnitWithoutType { origin, .. }
@@ -831,6 +860,7 @@ impl EvalError {
             | Self::ImportFailed { origin, .. }
             | Self::SchemaViolation { origin, .. }
             | Self::UnresolvedReference { origin, .. }
+            | Self::NoSuchField { origin, .. }
             | Self::NotAReference { origin, .. }
             | Self::UnitNoMatch { origin, .. }
             | Self::UnitWithoutType { origin, .. }
@@ -1080,6 +1110,27 @@ impl EvalError {
     pub(crate) fn unresolved_reference(path: impl Into<String>, span: crate::ast::Span) -> Self {
         Self::UnresolvedReference {
             path: path.into(),
+            origin: None,
+            span: span_to_miette(span),
+        }
+    }
+
+    /// Build an [`EvalError::NoSuchField`]. `fields` are the names the
+    /// value does carry, listed in the help.
+    pub(crate) fn no_such_field(
+        path: impl Into<String>,
+        field: impl Into<String>,
+        record: impl Into<String>,
+        fields: &[&str],
+        span: crate::ast::Span,
+    ) -> Self {
+        let help = (!fields.is_empty())
+            .then(|| format!("its fields are: {}", fields.join(", ")).into_boxed_str());
+        Self::NoSuchField {
+            path: path.into(),
+            field: field.into(),
+            record: record.into(),
+            help,
             origin: None,
             span: span_to_miette(span),
         }

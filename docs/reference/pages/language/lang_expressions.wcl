@@ -161,6 +161,63 @@ eval error: wcl::eval::unresolved_reference
 CONSOLE
   }
 
+  p "A path does not stop where the document tree does. When it lands on a field whose value is a record, the next segment reads a field of that record. A top-level field is no exception:"
+
+  code wcl {
+    filename = "limits.wcl"
+    source = <<'WCL'
+# limits.wcl — a record in a top-level field, read from another.
+
+type Limits {
+  cpu:    f64
+  memory: u32
+}
+
+@document
+type Plan {
+  limits: Limits
+  memory: u32
+}
+
+limits = { cpu: 0.5, memory: 512u32 }
+memory = limits.memory
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check --eval limits.wcl
+OK
+$ wcl get limits.wcl memory
+512u32
+$ wcl get limits.wcl limits.cpu
+0.5
+CONSOLE
+  }
+
+  p "The document comes first. A segment that names a block, a field of a block or a declaration resolves to it, and the record's fields are read only when the tree has nothing further to offer. A variant with a record body reads the same way, so `shape.radius` works on a field holding `Shape::Circle { radius: 5.0 }`. A list has no fields, and a `&T` reference is not followed. Ask a record for a field it lacks and the error names the record's type and lists what it has. Change the last line to `memory = limits.mem`:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check --eval limits.wcl
+wcl::eval::unresolved_reference
+
+  × unresolved reference 'limits.mem': record of type 'Limits' has no field
+  │ 'mem'
+    ╭─[limits.wcl:15:10]
+ 14 │ limits = { cpu: 0.5, memory: 512u32 }
+ 15 │ memory = limits.mem
+    ·          ─────┬────
+    ·               ╰── no such field
+    ╰────
+  help: its fields are: cpu, memory
+
+limits.wcl: 1 evaluation error
+CONSOLE
+  }
+
+  p "`wcl get limits.wcl limits.mem` says only `no such path: limits.mem`, and exits 3 like the check."
+
   p "A dot is also how `self` and `parent` are useful. On their own they name a block, and the member is what you wanted from it. [Documents, fields and blocks](lang_documents#self-and-parent) covers both keywords."
 
   callout "A label is not readable through the dot" {

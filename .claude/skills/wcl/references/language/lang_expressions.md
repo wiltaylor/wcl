@@ -204,8 +204,8 @@ is `i64`, so `1 << 40` is fine and `1 << 64` is the error.
 
 ## Member access
 
-`.` reads a member. It behaves differently depending on what is on its left, and the difference
-is the single most common source of `unresolved reference` in WCL.
+`.` reads a member. A path walks the document tree first, then reads fields of whatever record
+value it lands on. Its one hard stop is a call on its left.
 
 ### Off a document name — a path through the tree
 
@@ -225,30 +225,32 @@ service "web" {
 An **integer** segment is legal and still means a **label match**, not a positional index:
 `steps.1` is the block labelled `1`. A float segment is an error.
 
-**The path stops at a field.** It cannot continue into that field's *value*:
-
-```wcl
-meta = { region: "us-east-1" }
-r    = meta.region              // error: unresolved reference 'meta.region'
-```
-
-The same applies to a variant payload (`data.path` where `data` is a union-typed field) and to
-`wcl get` on the command line.
-
-### Off a local or a call — a value
-
-A `let` item, a `let … ;` binding and a function parameter each bind a **value**. `.` on one of
-those chains freely through nested records and variant payloads.
+**At a field, the path continues into the field's value** when that value is a record or a
+variant with a record body. The same holds for a `let` item, a `let … ;` binding and a function
+parameter, and for `wcl get` on the command line. It chains through nested records:
 
 ```wcl
 let origin = { x: 0.0, inner: { zone: "a" } }
 
-zone   = origin.inner.zone                          // "a"
-region = { let m = meta; m.region }                 // bind the field, then read
-path   = match data { Src::File { path, .. } => path, _ => "" }
+meta = { region: "us-east-1" }               // meta: Meta
+data = Src::File { path: "/etc/app.conf" }   // data: Src
+
+r    = meta.region                           // "us-east-1"
+p    = data.path                             // "/etc/app.conf"
+zone = origin.inner.zone                     // "a"
 ```
 
-So the fix for the failing cases above is always the same: **bind it, then read it.**
+- **The tree wins.** A segment that names a block, a field of a block, or a declaration resolves
+  exactly as it would without the record. The value's fields are read only when the document
+  path goes no further.
+- **A missing field names the record.** `meta.zone` fails with `unresolved reference 'meta.zone':
+  record of type 'Meta' has no field 'zone'` and the help `its fields are: region` (exit 3). A
+  variant says `variant 'Src::File'`; an untyped literal just `record`. `wcl get m.wcl meta.zone`
+  prints `no such path: meta.zone`.
+- **Nothing else has fields.** `rows.name` on a list is `unresolved reference 'rows.name'`. There
+  is no index operator; use `at(rows, 0)` and bind it. A `&T` field is not followed:
+  `self.upstream.host` is unresolved even when `upstream` points at a block with `host`.
+- **A field that fails, fails the path.** `host.name` where `host` errors reports `host`'s error.
 
 ### Not off a call result
 

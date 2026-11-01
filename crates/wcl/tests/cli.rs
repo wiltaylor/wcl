@@ -681,6 +681,62 @@ fn get_is_an_alias_of_eval() {
 }
 
 #[test]
+fn get_reads_a_field_of_a_root_field_holding_a_record() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("hosts.wcl");
+    std::fs::write(
+        &file,
+        "type Host { name: utf8  port: u16 }\n\
+         @document type D { host: Host  label: utf8 }\n\
+         host = { name: \"web\", port: 80u16 }\n\
+         label = host.name\n",
+    )
+    .expect("write fixture");
+
+    for path in ["host.name", "label"] {
+        wcl()
+            .arg("get")
+            .arg(&file)
+            .arg(path)
+            .assert()
+            .success()
+            .stdout("\"web\"\n");
+    }
+    wcl()
+        .arg("check")
+        .arg("--eval")
+        .arg(&file)
+        .assert()
+        .success();
+}
+
+#[test]
+fn check_eval_names_the_missing_field_of_a_record() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("hosts.wcl");
+    std::fs::write(
+        &file,
+        "type Host { name: utf8 }\n\
+         @document type D { host: Host  label: utf8 }\n\
+         host = { name: \"web\" }\n\
+         label = host.nope\n",
+    )
+    .expect("write fixture");
+
+    wcl()
+        .arg("check")
+        .arg("--eval")
+        .arg(&file)
+        .assert()
+        .code(3)
+        // miette wraps the message, so match the parts either side of
+        // the break.
+        .stderr(predicate::str::contains("record of type 'Host'"))
+        .stderr(predicate::str::contains("'nope'"))
+        .stderr(predicate::str::contains("its fields are: name"));
+}
+
+#[test]
 fn set_updates_top_level_field_in_named_file() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let file = tmp.path().join("doc.wcl");

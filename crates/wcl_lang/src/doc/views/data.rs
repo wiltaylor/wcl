@@ -24,6 +24,19 @@ fn label_matches(v: &Value, name: &str) -> bool {
     v.as_path_segment().as_deref() == Some(name)
 }
 
+/// Field `name` of a record, or of a variant's record payload. `None`
+/// when `v` carries no such field, or no fields at all.
+fn record_member(v: &Value, name: &str) -> Option<Value> {
+    match v {
+        Value::Record { fields, .. } => fields.get(name).cloned(),
+        Value::Variant {
+            payload: crate::value::VariantPayload::Record(map),
+            ..
+        } => map.get(name).cloned(),
+        _ => None,
+    }
+}
+
 /// Lazy navigator into a [`Document`]. Acquire one with
 /// [`Document::get`](crate::Document::get) or by wrapping an existing
 /// view type via `DataRef::from(...)` /
@@ -283,7 +296,8 @@ impl<'a> DataRef<'a> {
     /// Walk a single named child. Returns `None` for leaves and for
     /// unknown names.
     ///
-    /// - `Field` is a leaf; always `None`.
+    /// - `Field` steps into its value: a record (or a variant with a record
+    ///   body) projects the named field; any other value has no children.
     /// - `Block` tries a child Field first, then a nested Block (matches
     ///   `Document::field` / `Document::block` precedence).
     /// - `Type` matches a `TypeField` by name.
@@ -294,26 +308,21 @@ impl<'a> DataRef<'a> {
     /// - `Symbol` has no children; `None`.
     pub fn child(&self, name: &str) -> Option<DataRef<'a>> {
         match &self.inner {
-            DataKind::Field(_)
-            | DataKind::TypeField(_)
-            | DataKind::Symbol(_)
-            | DataKind::VariantValueList(_) => None,
+            DataKind::TypeField(_) | DataKind::Symbol(_) | DataKind::VariantValueList(_) => None,
             // Navigating through a failed reference keeps the failure —
             // the host sees why the path is unavailable rather than a
             // bare "no such path".
             DataKind::Error(_) => Some(self.clone()),
-            DataKind::VariantValue(v) => match v {
-                // Member access on a record-shaped value: project the
-                // named field as a fresh leaf navigator.
-                Value::Record { fields, .. } => {
-                    fields.get(name).cloned().map(DataRef::from_variant_value)
-                }
-                Value::Variant {
-                    payload: crate::value::VariantPayload::Record(map),
-                    ..
-                } => map.get(name).cloned().map(DataRef::from_variant_value),
-                _ => None,
+            // A field is a leaf of the document tree, but its value may
+            // be a record: the path carries on into the value. A field
+            // that fails to evaluate keeps its failure, as `Error` does.
+            DataKind::Field(f) => match f.value() {
+                Ok(v) => record_member(v, name).map(DataRef::from_variant_value),
+                Err(e) => Some(DataRef::from_error(e.clone())),
             },
+            // Member access on a record-shaped value: project the named
+            // field as a fresh leaf navigator.
+            DataKind::VariantValue(v) => record_member(v, name).map(DataRef::from_variant_value),
             DataKind::BlockList(v) | DataKind::Table(v) => {
                 // Address a row/block by its first label, comparing
                 // against `Utf8`, `Ascii`, and `Identifier`. This
@@ -350,6 +359,62 @@ impl<'a> DataRef<'a> {
                 .symbols()
                 .find(|e| e.name() == name)
                 .map(|e| DataRef::new(DataKind::Symbol(e))),
+        }
+    }
+
+    /// Read field `name` out of the *value* this reference holds — the
+    /// step `a.b` takes once `a` names a field or a value rather than a
+    /// block, and the document tree has no `b` to offer. `path` is the
+    /// whole path as written, for the diagnostic.
+    ///
+    /// A record (or a variant with a record payload) missing `name`
+    /// fails with [`EvalError::NoSuchField`], naming the field and the
+    /// record's type. A value with no fields at all, or a target that is
+    /// not a value, fails with [`EvalError::UnresolvedReference`].
+    pub(crate) fn member(
+        &self,
+        name: &str,
+        path: &str,
+        span: crate::ast::Span,
+    ) -> Result<DataRef<'a>, EvalError> {
+        let v = match &self.inner {
+            DataKind::Field(f) => f.value().map_err(|e| e.clone())?,
+            DataKind::VariantValue(v) => v,
+            DataKind::Error(e) => return Err(e.clone()),
+            _ => return Err(EvalError::unresolved_reference(path, span)),
+        };
+        if let Some(hit) = record_member(v, name) {
+            return Ok(DataRef::from_variant_value(hit));
+        }
+        let (record, fields) = match v {
+            // A record literal typed by the slot it fills carries no type
+            // of its own; the field's declaration names it.
+            Value::Record { ty, fields } if ty.is_empty() => match self.declared_type_name() {
+                Some(t) => (format!("record of type '{t}'"), fields),
+                None => ("record".to_string(), fields),
+            },
+            Value::Record { ty, fields } => (format!("record of type '{}'", ty.join(".")), fields),
+            Value::Variant {
+                union,
+                variant,
+                payload: crate::value::VariantPayload::Record(map),
+            } => (format!("variant '{}::{variant}'", union.join(".")), map),
+            _ => return Err(EvalError::unresolved_reference(path, span)),
+        };
+        let names: Vec<&str> = fields.keys().map(String::as_str).collect();
+        Err(EvalError::no_such_field(path, name, record, &names, span))
+    }
+
+    /// The named type a field's schema declares it as (`Host`), for
+    /// diagnostics. `None` for anything but a field declared with a
+    /// named type.
+    fn declared_type_name(&self) -> Option<String> {
+        let DataKind::Field(f) = &self.inner else {
+            return None;
+        };
+        match f.declared_type_ref()? {
+            crate::ast::TypeRef::Named { path, .. } => Some(path.join(".")),
+            _ => None,
         }
     }
 

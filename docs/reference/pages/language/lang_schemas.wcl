@@ -993,6 +993,8 @@ $ wcl check --eval targets.wcl
 OK
 $ wcl get targets.wcl host
 Cpu { cmov: true, features: ["x87", "mmx"], id: p6 }
+$ wcl get targets.wcl host.cmov
+true
 $ wcl get targets.wcl flags
 ["x87", "mmx"]
 CONSOLE
