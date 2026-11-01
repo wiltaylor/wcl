@@ -214,13 +214,16 @@ pub(crate) fn admit_to_slot(
 }
 
 /// A schema field's [`Refusal`], as the violation the schema walk reports
-/// for field `field_name` written at `span`.
+/// for field `field_name` written at `span`. `record_type` names the type
+/// a refused record literal was declared to produce; it is asked only
+/// when the message would name one.
 pub(crate) fn field_refusal_error(
     field_name: &str,
     declared: &TypeRef,
     resolved: &TypeRef,
     value: &Value,
     refusal: Refusal,
+    record_type: impl FnOnce() -> Option<String>,
     span: ast::Span,
 ) -> EvalError {
     use crate::diagnostics::SchemaViolationKind as Kind;
@@ -244,9 +247,14 @@ pub(crate) fn field_refusal_error(
             ),
             span,
         ),
-        Refusal::Type => {
-            super::inhabit::field_type_mismatch(field_name, declared, resolved, value, span)
-        }
+        Refusal::Type => super::inhabit::field_type_mismatch(
+            field_name,
+            declared,
+            resolved,
+            value,
+            record_type,
+            span,
+        ),
         Refusal::NotInSet { set, symbol } => EvalError::schema_violation(
             Kind::SymbolNotInSet,
             format!(

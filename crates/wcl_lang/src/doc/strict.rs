@@ -584,6 +584,7 @@ impl Document {
                 &resolved,
                 v,
                 refusal,
+                || f.declared_record_name(),
                 f.span(),
             ));
         } else if let Some(msg) = schema_check::ref_violation(self, &declared, v) {

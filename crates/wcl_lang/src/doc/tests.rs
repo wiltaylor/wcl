@@ -8289,6 +8289,173 @@ fn a_record_read_out_of_a_typed_slot_keeps_its_value() {
     assert_eq!(first.to_string(), literal.to_string());
 }
 
+/// The message of the error reading root field `field` raises.
+fn read_error(doc: &Document, field: &str) -> String {
+    doc.field(field).unwrap().value().unwrap_err().to_string()
+}
+
+#[test]
+fn argument_type_error_names_the_declared_type_of_a_record() {
+    let doc = open_typed_slots(
+        "a: utf8  d: utf8  i: utf8  w: utf8  p: utf8",
+        r#"
+        interface Sized { width: i64 }
+        interface Named { name: i64 }
+        fn f(n: utf8) -> utf8 n
+        fn sz(s: Sized) -> utf8 "ok"
+        fn nm(s: Named) -> utf8 "ok"
+        fn via(r: Row) -> utf8 f(r)
+        a = f(at(rows, 0))
+        d = f(cfg.db)
+        i = sz(head(rows))
+        w = nm(head(rows))
+        p = via(at(rows, 0))
+        "#,
+    );
+    assert_eq!(
+        read_error(&doc, "a"),
+        "argument 1 ('n') of 'f' expects utf8, got record of type 'Row'"
+    );
+    assert_eq!(
+        read_error(&doc, "d"),
+        "argument 1 ('n') of 'f' expects utf8, got record of type 'Db'"
+    );
+    assert_eq!(
+        read_error(&doc, "i"),
+        "argument 1 ('s') of 'sz' expects Sized, got record of type 'Row' without field 'width'"
+    );
+    assert_eq!(
+        read_error(&doc, "w"),
+        "argument 1 ('s') of 'nm' expects Named, got record of type 'Row' whose field 'name' \
+         is utf8, not i64"
+    );
+    // A parameter's annotation names the record it passes on.
+    assert_eq!(
+        read_error(&doc, "p"),
+        "argument 1 ('n') of 'f' expects utf8, got record of type 'Row'"
+    );
+    // The error keeps its kind and its span on the argument.
+    let err = doc.field("a").unwrap().value().unwrap_err();
+    assert!(matches!(err, EvalError::ArgumentType { .. }), "{err:?}");
+}
+
+#[test]
+fn return_type_error_names_the_declared_type_of_a_record() {
+    let doc = open_typed_slots(
+        "r: utf8  c: utf8  l: utf8",
+        r#"
+        fn g(r: Row) -> utf8 r
+        fn h() -> utf8 cfg.db
+        fn k(r: Row) -> utf8 { let x = r.inner; x }
+        r = g(at(rows, 0))
+        c = h()
+        l = k(at(rows, 0))
+        "#,
+    );
+    assert_eq!(
+        read_error(&doc, "r"),
+        "'g' declared -> utf8 but returned record of type 'Row'"
+    );
+    assert_eq!(
+        read_error(&doc, "c"),
+        "'h' declared -> utf8 but returned record of type 'Db'"
+    );
+    assert_eq!(
+        read_error(&doc, "l"),
+        "'k' declared -> utf8 but returned record of type 'Db'"
+    );
+    let err = doc.field("r").unwrap().value().unwrap_err();
+    assert!(matches!(err, EvalError::ReturnType { .. }), "{err:?}");
+}
+
+#[test]
+fn field_type_error_names_the_declared_type_of_a_record() {
+    let doc = Document::open(
+        r#"
+        type Row { name: utf8 }
+        @block("svc") type Svc { @inline(0) id: identifier  label: utf8 }
+        @document type D {
+          rows: list<Row>
+          label: utf8
+          @children("svc") svcs: list<Svc>
+        }
+        rows = [{ name: "a" }]
+        label = at(rows, 0)
+        svc s { label = head(rows) }
+        "#,
+        "t",
+    )
+    .expect("open");
+    let messages: Vec<String> = doc.schema_errors().iter().map(|e| e.to_string()).collect();
+    assert_eq!(
+        messages,
+        [
+            "field 'label' declared as utf8 but value is record of type 'Row'",
+            "field 'label' declared as utf8 but value is record of type 'Row'",
+        ]
+    );
+}
+
+#[test]
+fn type_errors_on_an_undeclared_record_still_say_record() {
+    // Nothing declares the literal, or only a value class does: `record`.
+    let doc = open_std(
+        r#"
+        fn f(n: utf8) -> utf8 n
+        fn g() -> utf8 ({ a: 1 })
+        fn q(x: record) -> utf8 f(x)
+        fn mf(x: any) -> utf8 x.nope
+        a = f({ name: "a" })
+        r = g()
+        c = q({ name: "a" })
+        m = mf({ name: "a" })
+        "#,
+    );
+    assert_eq!(
+        read_error(&doc, "a"),
+        "argument 1 ('n') of 'f' expects utf8, got record"
+    );
+    assert_eq!(
+        read_error(&doc, "r"),
+        "'g' declared -> utf8 but returned record"
+    );
+    assert_eq!(
+        read_error(&doc, "c"),
+        "argument 1 ('n') of 'f' expects utf8, got record"
+    );
+    assert_eq!(missing_field_record(&doc, "m"), "record");
+}
+
+#[test]
+fn type_errors_on_a_tagged_record_name_its_own_type() {
+    let doc = Document::open(
+        r#"
+        type Row { name: utf8 }
+        @block("svc") type Svc { @inline(0) id: identifier  port: i64 }
+        @document type D {
+          @children("svc") svcs: list<Svc>
+          a: utf8
+          r: utf8
+        }
+        svc web { port = 1 }
+        fn f(n: utf8) -> utf8 n
+        fn g(s: Row) -> utf8 at(svcs, 0)
+        a = f(at(svcs, 0))
+        r = g({ name: "x" })
+        "#,
+        "t",
+    )
+    .expect("open");
+    assert_eq!(
+        read_error(&doc, "a"),
+        "argument 1 ('n') of 'f' expects utf8, got Svc"
+    );
+    assert_eq!(
+        read_error(&doc, "r"),
+        "'g' declared -> utf8 but returned Svc"
+    );
+}
+
 // ─── member access through `&T` references ───────────────────────
 
 /// A three-service chain: `web` points at `api`, `api` at `db`, and `db`

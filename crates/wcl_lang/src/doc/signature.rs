@@ -29,7 +29,8 @@ use crate::diagnostics::EvalError;
 use crate::value::{FnValue, Value};
 
 use super::Document;
-use super::eval::{IfaceMisfit, iface_misfit};
+use super::declared::{is_record_literal, name_declared_record};
+use super::eval::{EvalCtx, IfaceMisfit, iface_misfit};
 use super::types::{
     Refusal, admit_to_slot, path_matches_suffix, value_kind, value_matches_type_ref,
 };
@@ -117,6 +118,13 @@ impl ValueClass {
             ),
         }
     }
+}
+
+/// Whether a named type is one of the builtin signature notation's value
+/// classes (`any`, `number`, `integer`, `record`), which admit values
+/// rather than name a type.
+pub(super) fn is_value_class(path: &[String], args: &[TypeRef]) -> bool {
+    ValueClass::of(path, args).is_some()
 }
 
 impl Document {
@@ -301,12 +309,15 @@ impl Document {
     /// `index` (from 1), the parameter, and the function, and points at
     /// the argument when the call site wrote one. A host call
     /// (`Document::call_value`) has no call site in any file, so its error
-    /// points at the function it reached instead.
-    pub(super) fn admit_arguments(
-        &self,
+    /// points at the function it reached instead. A refused record
+    /// literal is named by the type its argument expression was declared
+    /// to produce, worked out in the caller's `ctx`.
+    pub(super) fn admit_arguments<'a>(
+        &'a self,
         f: &FnValue,
         args: &[Value],
         site: &CallSite<'_>,
+        ctx: &EvalCtx<'a>,
     ) -> Result<Vec<Value>, EvalError> {
         let mut out = Vec::with_capacity(args.len());
         for (i, (param, value)) in f.params().iter().zip(args).enumerate() {
@@ -318,6 +329,9 @@ impl Document {
             match self.admit_signature(value.clone(), param.ty(), span)? {
                 Ok(value) => out.push(value),
                 Err(got) => {
+                    let got = name_declared_record(got, is_record_literal(value), || {
+                        self.declared_record_name_of(site.args?.get(i)?, ctx)
+                    });
                     let at = |span| {
                         EvalError::argument_type(
                             site.name.or(f.name()),
@@ -341,21 +355,30 @@ impl Document {
     /// Hold a body's result to the declared return type, converting it as
     /// a field declared with that type would. The error points at the
     /// body, in the file the body was written in; a literal body carries
-    /// no span, so then at the whole function literal.
-    pub(super) fn admit_return(
-        &self,
+    /// no span, so then at the whole function literal. A refused record
+    /// literal is named by the type the body was declared to produce,
+    /// worked out in `ctx`, which still holds the body's locals.
+    pub(super) fn admit_return<'a>(
+        &'a self,
         f: &FnValue,
         value: Value,
         site: &CallSite<'_>,
+        ctx: &EvalCtx<'a>,
     ) -> Result<Value, EvalError> {
         if f.return_optional() && matches!(value, Value::None) {
             return Ok(value);
         }
         let own = fn_span(f);
         let span = own.unwrap_or(site.span);
+        // The check consumes the value; note beforehand whether it is
+        // the record literal a refusal may name.
+        let literal = is_record_literal(&value);
         let error = match self.admit_signature(value, f.return_ty(), span) {
             Ok(Ok(value)) => return Ok(value),
             Ok(Err(got)) => {
+                let got = name_declared_record(got, literal, || {
+                    self.declared_record_name_of(&f.body, ctx)
+                });
                 EvalError::return_type(site.name.or(f.name()), f.return_ty_text(), got, span)
             }
             Err(error) => error,

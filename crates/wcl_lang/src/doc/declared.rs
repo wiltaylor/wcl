@@ -20,6 +20,7 @@ use crate::ast::{self, Pattern, TypeRef, VariantPatArgs};
 use crate::value::Value;
 
 use super::eval::{EvalCtx, lookup_function};
+use super::signature::is_value_class;
 use super::{DataKind, DataRef, Document};
 
 /// A type as declared, with the namespace it was written in so a named
@@ -77,6 +78,40 @@ pub(crate) fn wants_declared(value: &Value) -> bool {
     }
 }
 
+/// Whether `value` is a record literal: a record that carries no type of
+/// its own, which only a declaration can name.
+pub(crate) fn is_record_literal(value: &Value) -> bool {
+    matches!(value, Value::Record { ty, .. } if ty.is_empty())
+}
+
+/// `got` — a refusal's description of a value, as it follows "got" or
+/// "value is" — with a record literal's leading `record` naming the type
+/// `name` works out (`record of type 'Row' without field 'width'`).
+/// `literal` says whether the value was a record literal
+/// ([`is_record_literal`]); for any other value, a tagged record among
+/// them (whose description already names its type), and when `name`
+/// finds none, `got` is left as it is. `name` runs only for a record
+/// literal, so refusing anything else costs nothing more.
+pub(crate) fn name_declared_record(
+    got: String,
+    literal: bool,
+    name: impl FnOnce() -> Option<String>,
+) -> String {
+    if !literal {
+        return got;
+    }
+    let Some(rest) = got
+        .strip_prefix("record")
+        .filter(|rest| rest.is_empty() || rest.starts_with([' ', ',']))
+    else {
+        return got;
+    };
+    match name() {
+        Some(ty) => format!("record of type '{ty}'{rest}"),
+        None => got,
+    }
+}
+
 impl Document {
     /// The namespace expressions in `ctx` are written in.
     pub(super) fn ctx_ns<'a>(&'a self, ctx: &EvalCtx<'a>) -> &'a [String] {
@@ -89,12 +124,24 @@ impl Document {
 
     /// The name a diagnostic gives a record literal declared `declared`:
     /// the named type as written (`Row`), or `None` when the declaration
-    /// is not a named type.
+    /// is not a named type, or is one of a signature's value classes
+    /// (`any`, `record`, …), which name no type of their own.
     pub(crate) fn declared_record_name(declared: &Declared) -> Option<String> {
         match &declared.ty {
-            TypeRef::Named { path, .. } => Some(path.join(".")),
+            TypeRef::Named { path, args } if !is_value_class(path, args) => Some(path.join(".")),
             _ => None,
         }
+    }
+
+    /// The name of the type `expr` was declared to produce, for a
+    /// diagnostic about the record literal it evaluated to: see
+    /// [`Self::declared_type_of`] and [`Self::declared_record_name`].
+    pub(crate) fn declared_record_name_of<'a>(
+        &'a self,
+        expr: &ast::Expr,
+        ctx: &EvalCtx<'a>,
+    ) -> Option<String> {
+        Self::declared_record_name(&self.declared_type_of(expr, ctx)?)
     }
 
     /// The type a navigator's target was declared with: a field's schema

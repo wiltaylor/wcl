@@ -254,7 +254,9 @@ zone = origin.inner.zone                     // "a"
   (`cfg.db.nope` with `db: Db` says `Db`), a parameter or return type, a variant payload bound by
   `match` / `if let`, and a `let` bound to any of these. Only the message changes: the value
   stays an untagged literal (prints without a type name, equals the same literal anywhere). A
-  literal nothing declared says just `record`.
+  literal nothing declared, or declared only as `any` / `record`, says just `record`. Call and
+  field type errors name it the same way (`got record of type 'Row'`, `value is record of type
+  'Row'`).
 - **Nothing else has fields.** `rows.name` on a list fails with `unresolved reference
   'rows.name': value of type 'list' has no field 'name'`; a scalar names its own type the same
   way (`value of type 'i64'`). There is no index operator: write `at(rows, 0).name`.

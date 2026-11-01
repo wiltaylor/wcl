@@ -22,6 +22,7 @@ use crate::diagnostics::EvalError;
 use crate::value::{Value, VariantPayload};
 
 use crate::doc::Document;
+use crate::doc::declared::{is_record_literal, name_declared_record};
 use crate::numeric::{NumericMisfit, fit_to_builtin};
 
 use super::unions::path_matches_suffix;
@@ -199,19 +200,27 @@ pub(super) fn numeric_misfit(value: &Value, ty: &TypeRef) -> Option<(String, Str
 /// is weighed against. The strict walk and a lazy read both build the
 /// error here, so they word it alike. It names the field (`detail`), which
 /// is how the strict walk recognises the error a read already cached.
+/// A record literal is named by the type `record_type` works out for it
+/// (`value is record of type 'Row'`), asked only for one.
 pub(crate) fn field_type_mismatch(
     field_name: &str,
     declared: &TypeRef,
     resolved: &TypeRef,
     value: &Value,
+    record_type: impl FnOnce() -> Option<String>,
     span: ast::Span,
 ) -> EvalError {
+    let mismatch = describe_type_mismatch(value, resolved);
+    let mismatch = match mismatch.strip_prefix("value is ") {
+        Some(got) => format!(
+            "value is {}",
+            name_declared_record(got.to_string(), is_record_literal(value), record_type)
+        ),
+        None => mismatch,
+    };
     EvalError::schema_violation_named(
         crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
-        format!(
-            "field '{field_name}' declared as {declared} but {}",
-            describe_type_mismatch(value, resolved)
-        ),
+        format!("field '{field_name}' declared as {declared} but {mismatch}"),
         field_name,
         span,
     )
@@ -231,7 +240,12 @@ pub(crate) fn numeric_misfit_error(
 ) -> Option<EvalError> {
     numeric_misfit(value, resolved)?;
     Some(field_type_mismatch(
-        field_name, declared, resolved, value, span,
+        field_name,
+        declared,
+        resolved,
+        value,
+        || None,
+        span,
     ))
 }
 

@@ -710,6 +710,46 @@ wcl::eval::argument_type
 CONSOLE
   }
 
+  p "The error says only `record` there because nothing declares the literal `{ height: 2.0 }`. A record literal carries no type of its own. When the argument expression reads it out of somewhere that does declare one, such as a typed field, an element of a typed list, a parameter or a function's return type, the error names that type. Here the records sit in a field declared `list<Item>`:"
+
+  code wcl {
+    filename = "tags.wcl"
+    source = <<'WCL'
+type Item {
+  sku:   utf8
+  count: u32
+}
+
+@document
+type Stock {
+  items: list<Item>
+  label: utf8
+}
+
+fn tag(s: utf8) -> utf8 $"item ${s}"
+
+items = [{ sku: "a-1", count: 3u32 }]
+label = tag(at(items, 0))
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get tags.wcl label
+wcl::eval::argument_type
+
+  × argument 1 ('s') of 'tag' expects utf8, got record of type 'Item'
+    ╭─[tags.wcl:15:13]
+ 14 │ items = [{ sku: "a-1", count: 3u32 }]
+ 15 │ label = tag(at(items, 0))
+    ·             ──────┬─────
+    ·                   ╰── expects utf8
+    ╰────
+CONSOLE
+  }
+
+  p "Passing `at(items, 0).sku` instead gives `\"item a-1\"`. The same naming applies to the other refusals: an interface miss reads `got record of type 'Item' without field 'width'`, and a body that hands back the record, as in `fn first(i: Item) -> utf8 i`, fails with `'first' declared -> utf8 but returned record of type 'Item'`. The record itself is unchanged; only the message looks back at the declaration. An argument a builtin passes to a callback, such as each element `map` hands its function, has no expression at a call site, so that error still says `record`."
+
   p "Two more types check less than they appear to. A parameter typed `fn(A) -> R` checks that the argument is a function with the same number of parameters. It does not compare their types, exactly as a `fn`-typed field does not. And a `&T` parameter wants what a `&T` field holds, a reference into the document: a declaration named bare, as in `f(Service)`, or the value of another `&T` field. It does not check what the reference points at. A record value fails it, and a block reached by its path, `f(services.web)`, is a record by the time the call sees it."
 
   h3 "A parameter that takes none"

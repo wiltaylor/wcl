@@ -497,6 +497,16 @@ impl<'a> Field<'a> {
         )
     }
 
+    /// The name of the type this field's expression was declared to
+    /// produce — `Row` for `label = at(rows, 0)` over a `list<Row>` —
+    /// for a type error about the record literal it evaluated to. Worked
+    /// out from the expression in the field's own scope; `None` when
+    /// nothing declares one. See [`Document::declared_type_of`].
+    pub(in crate::doc) fn declared_record_name(&self) -> Option<String> {
+        let ctx = EvalCtx::new(self.scope.clone());
+        self.doc.declared_record_name_of(&self.ast.expr, &ctx)
+    }
+
     /// Whether `error`, returned by [`value`](Self::value), is this field's
     /// own type violation rather than a failure to evaluate it: a number
     /// that does not fit its declared type, a unit its type does not

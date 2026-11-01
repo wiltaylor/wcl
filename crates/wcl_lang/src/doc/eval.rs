@@ -1112,7 +1112,7 @@ impl Document {
         // literal the body evaluates would capture them as well, so a
         // closure recursing back through its enclosing `fn` would double
         // its captures, and the work of each call, at every level.
-        let admitted = self.admit_arguments(f, args, site)?;
+        let admitted = self.admit_arguments(f, args, site, ctx)?;
         let mut locals = Vec::with_capacity(f.captured.len() + args.len());
         locals.extend(f.captured.iter().cloned());
         // Captures carry no declared type; a parameter carries its
@@ -1125,13 +1125,17 @@ impl Document {
         }
         let caller_locals = std::mem::replace(&mut ctx.locals, locals);
         let caller_types = std::mem::replace(&mut ctx.local_types, local_types);
-        let result = self.eval_in(&f.body, ctx);
+        // The body may live in another file than the call: name that
+        // file, unless something deeper in the body already did. The
+        // return check runs before the caller's locals come back, so a
+        // refusal can name the type the body's own locals declare.
+        let result = self
+            .eval_in(&f.body, ctx)
+            .map_err(|error| self.with_body_origin(error, &f.body))
+            .and_then(|value| self.admit_return(f, value, site, ctx));
         ctx.locals = caller_locals;
         ctx.local_types = caller_types;
-        // The body may live in another file than the call: name that
-        // file, unless something deeper in the body already did.
-        let value = result.map_err(|error| self.with_body_origin(error, &f.body))?;
-        self.admit_return(f, value, site)
+        result
     }
 
     /// Tag `error`, raised while evaluating the function body `body`,

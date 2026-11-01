@@ -177,6 +177,14 @@ or `fn` item that first bound it (so `fold(xs, 0, add)` reports `'add'`), else `
 (`argument 1 ('x') of fn literal expects utf8, got i64`). A list argument names its first bad
 element: `got a list whose element [1] is utf8`.
 
+A refused record literal is named by the type its expression declares: the argument as written
+at the call, or the body. With `rows: list<Row>`, `f(at(rows, 0))` against `fn f(n: utf8)` says
+`got record of type 'Row'`, an interface miss says `got record of type 'Row' without field
+'width'`, and `fn g(r: Row) -> utf8 r` says `'g' declared -> utf8 but returned record of type
+'Row'`. A literal nothing declares, one declared only `any` / `record`, and every argument a
+builtin passes to a callback (`map(rows, fn(n: utf8) …)`) say just `record`. A block's record
+names its own schema (`got Svc`).
+
 ## Function types
 
 `fn(T1, T2, …) -> R` types a field, a parameter or a record member that holds a callable.

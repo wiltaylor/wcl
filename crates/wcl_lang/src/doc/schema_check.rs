@@ -1306,6 +1306,7 @@ fn field_value_errors(block: &Block<'_>, declared: &TypeField<'_>, errs: &mut Ve
             &resolved_ty,
             value,
             refusal,
+            || literal_field.declared_record_name(),
             literal_field.span(),
         ));
     } else if let Some(msg) = ref_violation(block.doc, declared, value) {
