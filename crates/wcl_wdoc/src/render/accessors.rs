@@ -572,7 +572,7 @@ mod tests {
     /// the real block-view path rather than a hand-rolled `Value`.
     fn with_block(body: &str, f: impl FnOnce(&Block<'_>)) {
         let src = format!(
-            "@schemaless\n@document\ntype Root {{}}\n\
+            "@document\ntype Root {{}}\n\
              @block(\"marker\")\ntype Marker {{\n  \
              text: utf8?  flag: bool?  count: i64?  ratio: f64?  \
              tag: symbol?  names: list<utf8>?\n}}\n\
@@ -623,7 +623,8 @@ mod tests {
         // The schema declares `size = 7.0` as an inline default; the block
         // omits it. The block reader must surface the default; a payload
         // map with no entry must not (it carries resolved geometry).
-        let src = "@schemaless\n@document\ntype Root {}\n@block(\"marker\")\ntype Marker { size = 7.0 }\nmarker {}\n";
+        let src =
+            "@document\ntype Root {}\n@block(\"marker\")\ntype Marker { size = 7.0 }\nmarker {}\n";
         let doc = Document::open(src, "test.wcl").expect("doc parses");
         let block = doc.blocks().next().expect("one block");
         assert_eq!(field_f64(&block, "size"), Some(7.0));
@@ -651,7 +652,7 @@ mod tests {
         // Both blocks share one fixture shape, so the `taken` case is what
         // proves the `untaken` empty string is the DROP and not a field the
         // reader failed to reach.
-        let src = "@schemaless\n@document\ntype Root {}\n@block(\"marker\")\n\
+        let src = "@document\ntype Root {}\n@block(\"marker\")\n\
                    type Marker { class: list<utf8>? }\n\
                    marker untaken { class = [if false { \"extra\" }] }\n\
                    marker taken   { class = [if true  { \"extra\" }] }\n";

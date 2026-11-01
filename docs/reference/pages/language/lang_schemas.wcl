@@ -1177,7 +1177,33 @@ OK
 CONSOLE
   }
 
-  p "The first row is for `@block` types only. `@document @schemaless type Cfg { ... }` is accepted and opens nothing: an undeclared root field is still refused, and a declared one is still held to its type. Open the root one field at a time instead, on the declaration or on the assignment."
+  p "The first row is for `@block` types only. A `@document` type cannot be opened whole. Every `@document` in scope merges into one root schema, wdoc's included, so a waiver on one of them has no single root to open. The file fails to open instead:"
+
+  code wcl {
+    filename = "open_root.wcl"
+    source = <<'WCL'
+@document @schemaless type Cfg { host: utf8 }
+host = "x"
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check open_root.wcl
+wcl::parse
+
+  × @schemaless cannot open the @document type 'Cfg': put @schemaless on a
+  │ field declaration or on a root assignment instead
+   ╭─[open_root.wcl:1:11]
+ 1 │ @document @schemaless type Cfg { host: utf8 }
+   ·           ─────┬─────
+   ·                ╰── not allowed on a @document type
+ 2 │ host = "x"
+   ╰────
+CONSOLE
+  }
+
+  p "Open the root one field at a time, on the declaration or on the assignment, as `open.wcl` does. The narrow `@schemaless(annotations = true)` is still allowed on a `@document` type, because it exempts only the type's own decorators."
 
   p "The bare form takes an optional reason string, as `service web` uses above. It is documentation, not behaviour, and it is the difference between a reader trusting the escape hatch and wondering about it."
 

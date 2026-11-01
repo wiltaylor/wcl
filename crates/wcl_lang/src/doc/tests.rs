@@ -4678,27 +4678,26 @@ fn schemaless_annotations_on_a_document_field_still_checks_its_value() {
 }
 
 #[test]
-fn schemaless_document_type_does_not_open_the_root() {
-    // `@schemaless` on a `@document` type is accepted but opens nothing:
-    // an undeclared root field and a declared one of the wrong type are
-    // both still reported. Only a `@block` type's instances are opened.
-    let doc = Document::open(
-        r#"
-        @document @schemaless type D { host: utf8 }
-        host = { a: 1 }
-        extra = 1
-        "#,
-        "t",
-    )
-    .unwrap();
-    let messages: Vec<String> = doc.schema_errors().iter().map(|e| e.to_string()).collect();
-    assert_eq!(
-        messages,
-        [
-            "field 'host' declared as utf8 but value is record",
-            "top-level field 'extra' is not declared by @document schema 'D'",
-        ]
-    );
+fn schemaless_document_type_is_refused_at_open() {
+    // Every visible `@document` merges into one root schema, so a waiver
+    // on one of them has nothing to open: it fails at open, in either
+    // decorator order.
+    for src in [
+        "@document @schemaless type D { host: utf8 }",
+        "@schemaless\n@document\ntype D { host: utf8 }",
+    ] {
+        let msg = open_syntax_message(src);
+        assert!(
+            msg.contains("@schemaless cannot open the @document type 'D'"),
+            "{msg}"
+        );
+    }
+}
+
+#[test]
+fn schemaless_annotations_only_is_allowed_on_a_document_type() {
+    let doc = open("@document @schemaless(annotations = true) type D { host: utf8 }\nhost = \"x\"");
+    assert!(doc.schema_errors().is_empty());
 }
 
 #[test]

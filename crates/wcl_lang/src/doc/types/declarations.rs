@@ -300,6 +300,45 @@ fn check_imports(
     Ok(())
 }
 
+/// Refuse a bare `@schemaless` on a `@document` type.
+///
+/// Every `@document` visible in a namespace merges into one root schema,
+/// so a waiver on one of them has no single root to open, and it used to
+/// be accepted and do nothing. The root opens one field at a time, with
+/// `@schemaless` on a field declaration or on a root assignment.
+/// `@schemaless(annotations = true)` still applies: it only exempts the
+/// type's own decorators.
+fn check_document_not_schemaless(
+    t: &ast::TypeDecl,
+    cx: &CheckContext<'_>,
+) -> Result<(), ParseError> {
+    let is_document = t
+        .decorators
+        .iter()
+        .any(|d| d.name.len() == 1 && d.name[0] == crate::doc::BuiltinDecorator::Document.as_str());
+    if !is_document {
+        return Ok(());
+    }
+    let Some(waiver) = t
+        .decorators
+        .iter()
+        .find(|d| matches!(d.schemaless_mode(), Some(ast::SchemalessMode::Full)))
+    else {
+        return Ok(());
+    };
+    Err(open_error(
+        cx.source,
+        cx.file,
+        format!(
+            "@schemaless cannot open the @document type '{}': put @schemaless on a field \
+             declaration or on a root assignment instead",
+            t.name.join(".")
+        ),
+        waiver.span,
+        "not allowed on a @document type",
+    ))
+}
+
 /// Check one source's declarations: type references resolve, variant
 /// and symbol names are unique, connection endpoints and kind sets name
 /// the right things, function signatures name real types, and every
@@ -311,6 +350,7 @@ fn check_source(items: &[ast::Item], cx: &CheckContext<'_>) -> Result<(), ParseE
     for item in items {
         match item {
             ast::Item::TypeDecl(t) => {
+                check_document_not_schemaless(t, cx)?;
                 for f in &t.fields {
                     check_type_ref(&f.ty, f.ty_span, false, cx)?;
                 }

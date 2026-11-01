@@ -269,8 +269,10 @@ namespace, so `@table` and `@block` cannot both claim one kind string in one nam
 
 - On a **`@block`/`@table` type**, it short-circuits every check for instances of that block:
   unknown fields, disallowed nested kinds, child quotas, table-row arity.
-- On a **`@document` type**, it does nothing: undeclared root fields are still refused and
-  declared ones still type-checked. Open the root field by field instead.
+- On a **`@document` type**, it is an open-time error (exit 1): `@schemaless cannot open the
+  @document type 'Cfg': put @schemaless on a field declaration or on a root assignment instead`.
+  Every visible `@document` merges into one root schema, so there is no single root to open.
+  `@schemaless(annotations = true)` is still allowed there.
 - On a **field declaration** (in a `@block` or `@document` type), it exempts only that field
   from the value-versus-type check, in every instance or at the root. The rest stays validated.
 - On a **field assignment** (`@schemaless x = ...`, in a block or at the root), it exempts that
