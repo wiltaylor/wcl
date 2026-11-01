@@ -567,7 +567,7 @@ wcl::eval::user_error
 
   × error: `file` has no :pdf implementation …
 
-$ wcl wdoc build main.wcl --out handbook.pdf     # with @except(backends = [:pdf]) --type pdf
+$ wcl wdoc build main.wcl --out handbook.pdf --type pdf     # after adding @except(backends = [:pdf]) to the file
 wrote 1 pdf
 CONSOLE
   }
