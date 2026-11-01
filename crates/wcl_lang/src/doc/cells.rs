@@ -173,9 +173,12 @@ pub(crate) enum ItemCellKind {
     /// block's `table_rows` projection cache, keyed by field name.
     Table,
     /// Lazy import. Populated on first read-access of the enclosing
-    /// block. Top-level imports also get this cell but are never
-    /// triggered through it — they're expanded eagerly into
-    /// `Document::eager_imports` at `open_with` time.
+    /// block, through `imports::force_import`. Top-level imports also
+    /// get this cell; they are expanded eagerly into
+    /// `Document::eager_imports` at `open_with` time, but a walk that
+    /// follows every import edge (the decorator check, the root
+    /// connection-operand index) loads them through it again. The
+    /// load's declaration check skips a file the document opened with.
     Import {
         /// As written in the source.
         path: String,

@@ -434,7 +434,64 @@ service web {
 CONSOLE
   }
 
-  p "A top-level import is eager: the document loads it when it opens. A block-scoped import is **lazy**. The document loads it the first time evaluation reaches into that block. [How a document evaluates](lang_evaluation) covers what that means for a file that turns out never to be needed. A lazy import is also outside the open-time check above. A misspelled type in `tags.wcl` would not stop `wcl check tagged.wcl`."
+  p "A top-level import is eager: the document loads it when it opens. A block-scoped import is **lazy**. The document loads it the first time evaluation reaches into that block. [How a document evaluates](lang_evaluation) covers what that means for a file that turns out never to be needed."
+
+  p "A lazy file passes the same declaration checks as an eager one, at the moment it loads rather than at open. Its names resolve the way an eagerly-imported file's do, against every declaration the document opened with, plus the lazy file's own and those of whatever it imports at its top level. So a fragment may declare a type and use it on the next line. Here is a fragment that misspells one:"
+
+  code wcl {
+    filename = "parts/owners.wcl"
+    source = <<'WCL'
+# owners.wcl — a tag, and the record type its team keeps.
+type Owner { team: utf8  pager: utf9 }
+
+tag { key = "owner"  value = "platform" }
+WCL
+  }
+
+  code wcl {
+    filename = "owned.wcl"
+    source = <<'WCL'
+@block("tag")
+type Tag { key: utf8  value: utf8 }
+
+@block("service")
+type Service {
+  @inline(0) name: identifier
+  @children("tag") tags: list<Tag>
+}
+
+@document
+type Cfg { @children("service") services: list<Service> }
+
+service web {
+  import "./parts/owners.wcl"
+}
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check owned.wcl
+wcl::eval::import_failed
+
+  × failed to import './parts/owners.wcl': unknown type 'utf9'
+   ╭─[…/owners.wcl:2:33]
+ 1 │ # owners.wcl — a tag, and the record type its team keeps.
+ 2 │ type Owner { team: utf8  pager: utf9 }
+   ·                                 ──┬─
+   ·                                   ╰── import error
+ 3 │
+   ╰────
+
+owned.wcl: 1 import error
+$ echo $?
+1
+CONSOLE
+  }
+
+  p "The caret is in the fragment, at the name it wrote. The exit code is 1, as it would be had `parts/owners.wcl` been imported at the top level, because the file failed to open. The import fails as a whole: none of its items reach `web`, not even the well-formed `tag`. A file that two blocks import fails once and is reported once."
+
+  p "`wcl check` reports a lazy import when its walk loads one, which it does in every block not marked `@schemaless`. `wcl check --eval` also forces every block outside a template body, `@schemaless` or not, so it loads those imports too and reports each failure with the same exit code. Evaluation meets the failure too. A name that a block does not bind itself might have been in the file that failed, so looking it up through that block fails with the import's error rather than resolving further out. So does reading a member of that block from outside it. `wcl parse` shows the failure in the block, where the file's items would have been, and exits 3 like any evaluation error. `try` catches it like any other failure."
 
   h2 "Order does not matter"
 

@@ -400,8 +400,10 @@ The messages you will meet most often:
   same holds for every other open-time declaration rule: an unknown field or signature type, an
   interface without `&`, a duplicate variant, an unknown `extends` parent. See
   [`lang_namespaces.md`](lang_namespaces.md) for how an imported file's names resolve.
-- Declarations inside an in-block (lazy) `import` are not checked at open at all, neither the
-  `extends` graph nor their type names; only top-level imports are.
+- Declarations inside an in-block (lazy) `import` are checked when it loads, not at open: type
+  names, the `extends` parents, and conflicts and `@inline` clashes against ancestors in any file.
+  A failure is `wcl::eval::import_failed` (exit 1 from `wcl check`), and plain `wcl check` only
+  loads imports in blocks that are not `@schemaless`. See [`lang_namespaces.md`](lang_namespaces.md).
 - Redeclaring an inherited field to tweak one decorator drops the others. Copy every decorator
   you mean to keep.
 - A gather field named like a library's silently loses blocks. It is a warning, and warnings do

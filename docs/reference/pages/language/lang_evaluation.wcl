@@ -937,7 +937,7 @@ CONSOLE
       | "`wcl::eval::match_no_arm`"         | "No `match` arm fitted the value" |
       | "`wcl::eval::unknown_variant`"      | "A `Union::Name` construction named no variant of that union" |
       | "`wcl::eval::user_error`"           | "The `error()` builtin, or a host raising through the same channel" |
-      | "`wcl::eval::import_failed`"        | "An import did not resolve, or its file did not parse" |
+      | "`wcl::eval::import_failed`"        | "An in-block import did not resolve, its file did not parse, or a declaration in it failed the open-time checks" |
       | "`wcl::eval::unit_without_type`"    | "A unit literal reached a sink with no declared type behind it" |
       | "`wcl::eval::expansion_limit`"      | "Nested `@contextual` expansion went more than 32 deep or generated more than 100,000 blocks" |
   }

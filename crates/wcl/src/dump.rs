@@ -314,6 +314,12 @@ fn dump_block(b: &Block<'_>, depth: usize, out: &mut Out) {
         }
     }
     endln!(out, " {{");
+    // An in-block import that failed to load contributes nothing below;
+    // it stands in the tree where its items would have been.
+    for e in b.import_errors() {
+        let placeholder = out.error(e);
+        line!(out, depth + 1, "import {placeholder}");
+    }
     // The block's own fields evaluate in place — a repeater's `each` is
     // real — but its body may be a template (see the module docs).
     for f in b.fields() {

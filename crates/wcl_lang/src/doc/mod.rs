@@ -111,6 +111,10 @@ pub struct Document {
     /// Namespaces pulled in wholesale, searched when a bare name
     /// resolves against neither alias map.
     wildcards: Vec<Vec<String>>,
+    /// Every name the open-time declaration checks resolved against —
+    /// the root's, the eager imports' and the environment's. A lazily
+    /// imported file is checked against these plus its own when it loads.
+    declared_names: validate::DeclaredNames,
     /// Type declarations supplied by the environment rather than by the
     /// source — schemas a host registers.
     synthetic_types: Vec<ast::TypeDecl>,
@@ -246,7 +250,7 @@ pub struct Document {
     /// projection re-walked every block of every source, re-evaluating
     /// each block's label expression through the evaluator — the
     /// dominant cost of projection-heavy documents.
-    conn_operand_index: std::sync::OnceLock<HashMap<String, ConnOperand>>,
+    conn_operand_index: std::sync::OnceLock<connections::OperandIndex>,
 }
 
 impl std::fmt::Debug for Document {

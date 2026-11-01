@@ -8,8 +8,11 @@
 //! import of a path still in the active chain is a cycle error.
 //!
 //! `load_import_lazily` is called the first time evaluation crosses into a
-//! block-scoped `import` cell; it parses, builds cells, and runs the same
-//! eager-import expansion on the loaded file.
+//! block-scoped `import` cell; it parses, builds cells, runs the same
+//! eager-import expansion on the loaded file, and checks its declarations
+//! as the open-time pass checked the document's. `force_import` is the
+//! one way a caller reaches it: it caches the result, failure included,
+//! in the cell.
 //!
 //! `BlockSlice` plus `push_loaded_imports` / `push_eager_imports` are used by
 //! the lookup helpers to splice imported items+cells into the search list
@@ -24,9 +27,11 @@ use crate::diagnostics::{EvalError, ParseError};
 use crate::parser::Parser;
 use crate::symbols::SymbolIndex;
 
+use super::Document;
 use super::cells::{ItemCellKind, ItemCells, LoadedImport};
 use super::loader::FileLoader;
 use super::lookup::NameIndex;
+use super::types::declarations::check_lazy_import;
 use super::validate::open_error;
 
 /// One source of items to search: its items paired with their cells.
@@ -135,15 +140,25 @@ pub(super) fn collect_import_namespaces(imps: &[LoadedImport], out: &mut Vec<Vec
     }
 }
 
-/// Resolve and parse an import on first access, caching the result in
-/// its cell so later reads are free.
-pub(super) fn load_import_lazily(
+/// Resolve, parse and check an import on first access. The caller caches
+/// the result in the import's cell, so later reads are free and a
+/// failure is the same failure on every read.
+///
+/// The loaded file passes the declaration checks the document's own
+/// files passed at open ([`check_lazy_import`]) before it is handed
+/// back. Every way the load can fail is an [`EvalError::ImportFailed`]:
+/// one the file is responsible for (a syntax error, a declaration the
+/// checks reject, a broken import of its own) points into that file;
+/// one it is not (a path that does not resolve, a read that fails)
+/// points at `path_span`, in the importing file.
+fn load_import_lazily(
+    doc: &Document,
     path_str: &str,
     base_dir: Option<&Path>,
     system: bool,
     path_span: Span,
-    loader: &FileLoader,
 ) -> Result<LoadedImport, EvalError> {
+    let loader = doc.loader();
     let path = resolve_import_path_kind(base_dir, path_str, system)
         .map_err(|e| EvalError::import_failed(path_str, e, path_span))?;
     let src = loader(&path)
@@ -151,7 +166,7 @@ pub(super) fn load_import_lazily(
     let display = path.display().to_string();
     let (parsed_ast, parsed_symbols) = Parser::new(&src, &display)
         .parse_source()
-        .map_err(|e| EvalError::import_failed(path_str, format!("{e}"), path_span))?;
+        .map_err(|e| EvalError::import_rejected(path_str, e, path_span))?;
     let imported_base = path.parent().map(Path::to_path_buf);
     let file_ns = first_namespace(&parsed_ast.items);
 
@@ -166,14 +181,14 @@ pub(super) fn load_import_lazily(
         &src,
         loader,
     )
-    .map_err(|e| EvalError::import_failed(path_str, format!("{e}"), path_span))?;
+    .map_err(|e| EvalError::import_rejected(path_str, e, path_span))?;
 
     let cells = parsed_ast
         .items
         .iter()
         .map(|i| ItemCells::build(i, imported_base.as_deref()))
         .collect();
-    Ok(LoadedImport {
+    let loaded = LoadedImport {
         path,
         source: src.into(),
         file_ns,
@@ -182,7 +197,33 @@ pub(super) fn load_import_lazily(
         symbols: parsed_symbols,
         name_index: OnceLock::new(),
         eager_imports: child_eager,
-    })
+    };
+    check_lazy_import(doc, &loaded)
+        .map_err(|e| EvalError::import_rejected(path_str, e, path_span))?;
+    Ok(loaded)
+}
+
+/// The cached result of `cell`'s in-block import, loading it first if
+/// no read has yet. `None` when `cell` is not an import.
+pub(super) fn force_import<'c>(
+    doc: &Document,
+    cell: &'c ItemCells,
+) -> Option<&'c Result<LoadedImport, EvalError>> {
+    let ItemCellKind::Import {
+        path,
+        system,
+        base_dir,
+        path_span,
+        loaded,
+    } = &cell.kind
+    else {
+        return None;
+    };
+    Some(
+        loaded.get_or_init(|| {
+            load_import_lazily(doc, path, base_dir.as_deref(), *system, *path_span)
+        }),
+    )
 }
 
 /// Virtual root under which every angle-bracket `import <...>` (system)

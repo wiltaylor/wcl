@@ -19,7 +19,7 @@ use crate::value::Value;
 use super::Document;
 use super::cells::{ItemCellKind, ItemCells};
 use super::eval_stack::{self, FrameKey};
-use super::imports::load_import_lazily;
+use super::imports::force_import;
 use super::scope::Scope;
 use super::types::check_interface_conformance;
 use super::views::{ConnectionDecl, DeclName, TypeDecl, UnionDecl};
@@ -31,9 +31,11 @@ impl Document {
     /// label value plus the block kind so callers can dispatch.
     ///
     /// `Ok(None)` means no block identifies as `name`. An `Err` is a
-    /// cycle: the root fallback was reached while the root index is
-    /// being built on this thread — a block's label depends on the very
-    /// connection set this operand belongs to. `span` is the operand's.
+    /// cycle — the root fallback was reached while the root index is
+    /// being built on this thread, so a block's label depends on the very
+    /// connection set this operand belongs to — or an in-block import the
+    /// search reached before finding `name` that failed to load, since
+    /// the block might have been in it. `span` is the operand's.
     pub(crate) fn resolve_connection_operand(
         &self,
         scope: &Scope<'_>,
@@ -45,6 +47,7 @@ impl Document {
             if let ItemCellKind::Block { items: fcells, .. } = &frame.cells.kind
                 && let Some(found) =
                     match_block_label_in_items(self, &frame.ast.items, fcells, frame.file_ns, name)
+                        .map_err(|e| e.with_origin(&self.named_source_for_block(frame.ast)))?
             {
                 return Ok(Some(found));
             }
@@ -52,7 +55,12 @@ impl Document {
         // Fall back to document root, served from a once-built index
         // (label/id value → block) that preserves the DFS first-match
         // order of the per-name walk it replaces.
-        Ok(self.conn_operand_index(name, span)?.get(name).cloned())
+        let index = self.conn_operand_index(name, span)?;
+        match (index.found.get(name), &index.cut) {
+            (Some(found), _) => Ok(Some(found.clone())),
+            (None, Some(failure)) => Err(failure.clone()),
+            (None, None) => Ok(None),
+        }
     }
 
     /// The root-scope operand index — see the `conn_operand_index`
@@ -62,11 +70,7 @@ impl Document {
     /// for operand `name` instead of re-entering `OnceLock::get_or_init`
     /// (which would deadlock). A second thread asking while the first
     /// builds simply waits for the finished index.
-    fn conn_operand_index(
-        &self,
-        name: &str,
-        span: Span,
-    ) -> Result<&HashMap<String, ConnOperand>, EvalError> {
+    fn conn_operand_index(&self, name: &str, span: Span) -> Result<&OperandIndex, EvalError> {
         if let Some(index) = self.conn_operand_index.get() {
             return Ok(index);
         }
@@ -94,13 +98,16 @@ impl Document {
                     );
                 }
             }
+            // Stops at the first in-block import that fails to load: a
+            // name past it might have been inside it, so the index only
+            // answers for what it reached first.
             fn walk(
                 doc: &Document,
                 items: &[ast::Item],
                 cells: &[ItemCells],
                 file_ns: &[String],
                 map: &mut HashMap<String, ConnOperand>,
-            ) {
+            ) -> Result<(), EvalError> {
                 for (item, cell) in items.iter().zip(cells) {
                     match (item, &cell.kind) {
                         (ast::Item::Block(b), ItemCellKind::Block { items: bcells, .. }) => {
@@ -124,40 +131,26 @@ impl Document {
                                     insert_identity(map, v, b, file_ns);
                                 }
                             }
-                            walk(doc, &b.items, bcells, file_ns, map);
+                            walk(doc, &b.items, bcells, file_ns, map)
+                                .map_err(|e| e.with_origin(&doc.named_source_for_block(b)))?;
                         }
-                        (
-                            ast::Item::Import(_),
-                            ItemCellKind::Import {
-                                path,
-                                system,
-                                base_dir,
-                                path_span,
-                                loaded,
-                            },
-                        ) => {
-                            let li = loaded.get_or_init(|| {
-                                load_import_lazily(
-                                    path,
-                                    base_dir.as_deref(),
-                                    *system,
-                                    *path_span,
-                                    doc.loader(),
-                                )
-                            });
-                            if let Ok(li) = li {
-                                walk(doc, &li.items, &li.cells, &li.file_ns, map);
-                            }
-                        }
+                        (ast::Item::Import(_), _) => match force_import(doc, cell) {
+                            Some(Ok(li)) => walk(doc, &li.items, &li.cells, &li.file_ns, map)?,
+                            Some(Err(e)) => return Err(e.clone()),
+                            None => {}
+                        },
                         _ => {}
                     }
                 }
+                Ok(())
             }
-            let mut map = HashMap::new();
-            for src in self.all_sources() {
-                walk(self, src.items, src.cells, src.file_ns, &mut map);
-            }
-            map
+            let mut found = HashMap::new();
+            let cut = self
+                .all_sources()
+                .into_iter()
+                .try_for_each(|src| walk(self, src.items, src.cells, src.file_ns, &mut found))
+                .err();
+            OperandIndex { found, cut }
         }))
     }
 
@@ -325,6 +318,17 @@ pub(crate) struct ConnOperand {
     pub(crate) file_ns: Vec<String>,
 }
 
+/// The root-scope connection-operand index: identifying label / `id`
+/// value → the matched block, in the DFS order
+/// `match_block_label_in_items` searches.
+pub(crate) struct OperandIndex {
+    /// Every identity the walk reached, first match winning.
+    found: HashMap<String, ConnOperand>,
+    /// The in-block import whose failure to load ended the walk, if one
+    /// did. A name the walk did not reach fails with it.
+    cut: Option<EvalError>,
+}
+
 /// Recursively search a slice of items for an `Item::Block` that
 /// identifies as `name`. `file_ns` is the namespace of the file the
 /// items live in. Identity sources, in priority order:
@@ -334,14 +338,17 @@ pub(crate) struct ConnOperand {
 ///   3. nested blocks reachable through the block's own `items`
 ///
 /// Returns the identifying value plus the block's kind and namespace
-/// context so callers can dispatch on the block's declared type.
+/// context so callers can dispatch on the block's declared type, or the
+/// failure of an in-block import the search reached before a match. That
+/// error carries no file when the import's path is at fault; the caller
+/// knows which file `items` came from.
 fn match_block_label_in_items(
     doc: &Document,
     items: &[ast::Item],
     cells: &[ItemCells],
     file_ns: &[String],
     name: &str,
-) -> Option<ConnOperand> {
+) -> Result<Option<ConnOperand>, EvalError> {
     let operand = |value: Value, b: &ast::Block| ConnOperand {
         value,
         kind: b.kind.clone(),
@@ -352,46 +359,39 @@ fn match_block_label_in_items(
         match (item, &cell.kind) {
             (ast::Item::Block(b), ItemCellKind::Block { items: bcells, .. }) => {
                 if let Some(v) = match_block_first_label(doc, b, name) {
-                    return Some(operand(v, b));
+                    return Ok(Some(operand(v, b)));
                 }
                 if let Some(v) = match_block_id_field(doc, b, name) {
-                    return Some(operand(v, b));
+                    return Ok(Some(operand(v, b)));
                 }
                 // Nested blocks live in the same file as their parent.
                 if let Some(found) =
                     match_block_label_in_items(doc, &b.items, bcells, file_ns, name)
+                        .map_err(|e| e.with_origin(&doc.named_source_for_block(b)))?
                 {
-                    return Some(found);
+                    return Ok(Some(found));
                 }
             }
             // An in-block `import` splices its top-level blocks into this
             // scope, so a connection endpoint can name a block that lives
             // in the imported fragment. Force the lazy load and recurse
-            // with the imported file's own namespace.
-            (
-                ast::Item::Import(_),
-                ItemCellKind::Import {
-                    path,
-                    system,
-                    base_dir,
-                    path_span,
-                    loaded,
-                },
-            ) => {
-                let li = loaded.get_or_init(|| {
-                    load_import_lazily(path, base_dir.as_deref(), *system, *path_span, doc.loader())
-                });
-                if let Ok(li) = li
-                    && let Some(found) =
-                        match_block_label_in_items(doc, &li.items, &li.cells, &li.file_ns, name)
-                {
-                    return Some(found);
+            // with the imported file's own namespace. One that fails to
+            // load ends the search: the block might have been in it.
+            (ast::Item::Import(_), _) => match force_import(doc, cell) {
+                Some(Ok(li)) => {
+                    if let Some(found) =
+                        match_block_label_in_items(doc, &li.items, &li.cells, &li.file_ns, name)?
+                    {
+                        return Ok(Some(found));
+                    }
                 }
-            }
+                Some(Err(e)) => return Err(e.clone()),
+                None => {}
+            },
             _ => {}
         }
     }
-    None
+    Ok(None)
 }
 
 /// `true` when a concrete block's [`TypeDecl`] satisfies a connection

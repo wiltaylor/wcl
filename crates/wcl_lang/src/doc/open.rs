@@ -103,6 +103,7 @@ impl Document {
             item_aliases: resolved.item_aliases,
             ns_aliases: resolved.ns_aliases,
             wildcards: resolved.wildcards,
+            declared_names: resolved.names,
             synthetic_types: synthetic,
             synthetic_type_cells,
             synthetic_symbol_sets,

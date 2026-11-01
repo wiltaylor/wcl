@@ -39,7 +39,7 @@ use crate::value::Value;
 use super::cells::{DecoratorCell, FieldCell, ItemCellKind, ItemCells};
 use super::eval::EvalCtx;
 use super::expr_to_path_segments;
-use super::imports::{BlockSlice, load_import_lazily, push_loaded_imports};
+use super::imports::{BlockSlice, force_import, push_loaded_imports};
 use super::lookup::{iter_blocks, iter_fields, iter_tables};
 use super::schema_check::compute_schema_errors;
 use super::scope::{Scope, ScopeFrame};

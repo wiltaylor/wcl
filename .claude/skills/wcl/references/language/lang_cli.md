@@ -29,7 +29,7 @@ Seven codes, meaning the same thing in every command.
 | Code | Name | Means |
 | --- | --- | --- |
 | 0 | OK | The command did what it was asked. `--help` and `--version` too (they print to stdout). |
-| 1 | Parse | The source did not parse. |
+| 1 | Parse | The source did not parse. Also `wcl check` (with or without `--eval`) when an in-block import it loaded failed to open: missing, unparseable, or a declaration the open-time checks refuse (`wcl::eval::import_failed`). Outranks 2 and 3. |
 | 2 | Schema | The document parsed, but it violates its own schema. Outranks 3 in `wcl check --eval`. |
 | 3 | Eval | Evaluation failed — an unresolved name, a type mismatch, a path resolving to nothing, a refused block. Also `wcl parse` when any value in the tree failed, and `wcl check --eval` when a value failed and no schema is violated. |
 | 4 | I/O | A file could not be read or written: the input is missing, unreadable or not UTF-8 (every command), or writing output, copying an asset or reaching the disk failed. |
@@ -188,8 +188,10 @@ $ echo $?
 3
 ```
 
-- Exit: 2 if any schema violation, else 3 if any evaluation error, else 0 with `OK`.
-  Violations print first, with their own `N schema violation(s)` line.
+- Exit: 1 if any in-block import failed to load, else 2 if any schema violation, else 3 if any
+  evaluation error, else 0 with `OK`. Import errors print first (`N import error(s)`), then
+  violations (`N schema violation(s)`), then evaluation errors. Forcing loads the in-block imports
+  of `@schemaless` blocks too, which plain `check` never enters.
 - Each failure is reported once. A field failing *because* it violates the schema is the
   violation, not a second evaluation error. A field that only reads a failing one (`b = a`) is
   not reported again.

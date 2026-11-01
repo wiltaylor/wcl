@@ -275,7 +275,9 @@ the source is known (below).
 **`ParseError`** — lexing and parsing, plus the checks that run when a document opens: import
 resolution, import cycles, `use` targets, duplicate aliases, and the declaration checks (type
 names resolve, unique variants and symbols, connection kinds, the `extends` graph) over the root
-**and every eager import**, each rendered against the file that wrote it.
+**and every eager import**, each rendered against the file that wrote it. An in-block import
+runs the same checks when it loads; its failure is an `EvalError`, `wcl::eval::import_failed`,
+rendered against the fragment.
 
 ```console
 wcl::parse

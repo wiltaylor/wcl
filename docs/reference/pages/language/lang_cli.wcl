@@ -58,7 +58,7 @@ CONSOLE
     rows:
       | "Code" | "Name"    | "Means" |
       | "0"    | "OK"      | "The command did what it was asked." |
-      | "1"    | "Parse"   | "The source did not parse." |
+      | "1"    | "Parse"   | "The source did not parse, or an import's file did not open. For `wcl check`, that includes an in-block import it loads." |
       | "2"    | "Schema"  | "The document parsed, but it violates its own schema." |
       | "3"    | "Eval"    | "Evaluation failed: an unresolved name, a type mismatch, a path that resolves to nothing, a refused block." |
       | "4"    | "I/O"     | "A file could not be read or written. The input is missing, unreadable or not UTF-8, or writing the output, copying an asset or reaching the disk failed." |
@@ -339,6 +339,8 @@ $ echo $?
 3
 CONSOLE
   }
+
+  p "Forcing every block also loads every in-block import outside a template body. One that fails to load, because its file is missing, does not parse, or declares something the open-time checks refuse, is reported as `wcl::eval::import_failed` and exits 1, the code the same file would have given imported at the top level. Plain `check` reports one too when its walk loads it, which it does in every block not marked `@schemaless`. [Imports inside a block](lang_namespaces#imports-inside-a-block) has an example."
 
   p "Schema violations are still reported, before the evaluation errors, and when a file has both the exit code is 2. A field that fails _because_ it violates its schema is reported once, as the violation. Some violations only a forced value can reveal, such as a record that no variant of its union matches. `--eval` reports those as schema violations too, so they also exit 2. With `--json`, evaluation errors join `errors` beside the violations, and `code` tells the two apart. A violation is always `wcl::eval::schema_violation`, and an evaluation error carries its own code:"
 

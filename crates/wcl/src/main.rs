@@ -181,8 +181,10 @@ enum Command {
         file: PathBuf,
     },
     /// Parse a WCL file, then validate the result against its schemas.
-    /// Prints `OK` when both pass. Exits 1 on a parse failure, 2 on a
-    /// schema violation and 4 when the file cannot be read. Warnings go
+    /// Prints `OK` when both pass. Exits 1 on a parse failure (an in-block
+    /// import the check loads that fails to load or to pass the open-time
+    /// declaration checks counts as one), 2 on a schema violation and 4
+    /// when the file cannot be read. Warnings go
     /// to stderr and never change the exit code. Fields evaluate lazily,
     /// so a field that fails to evaluate passes unless `--eval` is given.
     Check {
@@ -554,7 +556,10 @@ fn main() -> ExitCode {
                         }
                     },
                     None => {
-                        report_no_such_path(&path, edit::suggest_path(&doc, &path));
+                        match import_failure_on_path(&doc, &path) {
+                            Some(e) => errln!("{:?}", miette::Report::new(e)),
+                            None => report_no_such_path(&path, edit::suggest_path(&doc, &path)),
+                        }
                         EXIT_EVAL
                     }
                 };
@@ -1029,7 +1034,21 @@ fn run_check(file: &Path, json: bool, eval: bool) -> u8 {
                     }
                 }
             }
-            let code = if !diagnostics.is_empty() {
+            // An in-block import that failed to load — its file is
+            // missing, does not parse, or declares something the open-time
+            // checks reject — is the failure an eagerly-imported file would
+            // have stopped the open with, found later. It exits as one.
+            let is_import = |(error, _): &(wcl_lang::EvalError, _)| {
+                matches!(error, wcl_lang::EvalError::ImportFailed { .. })
+            };
+            let (imports, diagnostics): (Vec<_>, Vec<_>) =
+                diagnostics.into_iter().partition(is_import);
+            let (more_imports, failures): (Vec<_>, Vec<_>) =
+                failures.into_iter().partition(is_import);
+            let imports: Vec<_> = imports.into_iter().chain(more_imports).collect();
+            let code = if !imports.is_empty() {
+                EXIT_PARSE
+            } else if !diagnostics.is_empty() {
                 EXIT_SCHEMA
             } else if !failures.is_empty() {
                 EXIT_EVAL
@@ -1037,8 +1056,9 @@ fn run_check(file: &Path, json: bool, eval: bool) -> u8 {
                 EXIT_OK
             };
             if json {
-                let errors = diagnostics
+                let errors = imports
                     .iter()
+                    .chain(&diagnostics)
                     .chain(&failures)
                     .map(|(error, _)| diagnostic_json(error))
                     .collect();
@@ -1062,6 +1082,7 @@ fn run_check(file: &Path, json: bool, eval: bool) -> u8 {
                 outln!("OK");
                 return EXIT_OK;
             }
+            report_check_errors(&name, imports, "import error");
             report_check_errors(&name, diagnostics, "schema violation");
             report_check_errors(&name, failures, "evaluation error");
             code
@@ -1267,6 +1288,20 @@ fn report_edit_error(err: EditError) -> u8 {
             EXIT_EVAL
         }
     }
+}
+
+/// Why a dotted path that names nothing might have named something: the
+/// first failed in-block import of the deepest block the path does reach,
+/// whose file the rest of the path may have been in.
+fn import_failure_on_path(doc: &Document, path: &str) -> Option<wcl_lang::EvalError> {
+    let segs: Vec<&str> = path.split('.').collect();
+    (1..segs.len()).rev().find_map(|k| {
+        let reached = doc.get(&segs[..k].join("."))?;
+        match reached.inner() {
+            wcl_lang::DataKind::Block(block) => block.import_errors().into_iter().next(),
+            _ => None,
+        }
+    })
 }
 
 /// Report a dotted path that names nothing, with the typo suggestion
