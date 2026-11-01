@@ -402,6 +402,14 @@ impl<'a> Block<'a> {
     /// `BlockSlice` for the block's own items plus one for each
     /// successfully-loaded import (transitively). The block's own
     /// slice is always element 0.
+    ///
+    /// A failed import contributes no slice. The failure is not lost: it
+    /// stays cached in the import's cell, where
+    /// [`import_failure`](Self::import_failure) reads it. The views built
+    /// on this (`field`, `fields`, `blocks`, ...) answer `Option`s and
+    /// iterators, which have no room for an error; the places that turn a
+    /// miss into a diagnostic — name resolution, member access, the check
+    /// walks — ask `import_failure` and report the import instead.
     pub(in crate::doc) fn realize_and_sources(&self) -> Vec<BlockSlice<'a>> {
         let ItemCellKind::Block {
             items: items_cells,
@@ -424,26 +432,9 @@ impl<'a> Block<'a> {
         if !has_block_imports {
             return vec![own];
         }
-        // Force any unloaded Import cells.
+        // Force any unloaded Import cells; each caches its own result.
         for cell in items_cells {
-            if let ItemCellKind::Import {
-                path,
-                system,
-                base_dir,
-                path_span,
-                loaded,
-            } = &cell.kind
-            {
-                let _ = loaded.get_or_init(|| {
-                    load_import_lazily(
-                        path,
-                        base_dir.as_deref(),
-                        *system,
-                        *path_span,
-                        self.doc.loader(),
-                    )
-                });
-            }
+            force_import(self.doc, cell);
         }
         let mut out = vec![own];
         push_loaded_imports(items_cells, &mut out);
@@ -544,21 +535,46 @@ impl<'a> Block<'a> {
             .flat_map(move |src| iter_tables(src.items, doc))
     }
 
-    /// Return the most recently surfaced lazy-import error for this
-    /// block, if any. Useful for callers that want to surface load
-    /// failures explicitly rather than only seeing `None` from
-    /// `field`/`block`.
+    /// Every in-block import of this block that failed to load, in
+    /// source order, loading any not yet read. Each error renders against
+    /// the file it names — the imported file for a syntax or declaration
+    /// error in it, this block's file for a path that does not resolve.
+    ///
+    /// `field`, `block` and the iterators answer without a failed
+    /// import's items rather than failing; this is how a caller of those
+    /// learns that something was left out. Name resolution, member
+    /// access and `Document::schema_diagnostics` /
+    /// `Document::eval_diagnostics` report the same errors themselves.
     pub fn import_errors(&self) -> Vec<EvalError> {
         let (_, items_cells) = self.block_inner();
-        let mut out = Vec::new();
-        for cell in items_cells {
-            if let ItemCellKind::Import { loaded, .. } = &cell.kind
-                && let Some(Err(e)) = loaded.get()
-            {
-                out.push(e.clone());
-            }
-        }
-        out
+        let source = self.named_source();
+        items_cells
+            .iter()
+            .filter_map(|cell| match force_import(self.doc, cell) {
+                Some(Err(e)) => Some(e.clone().with_origin(&source)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The first of [`import_errors`](Self::import_errors), if any — the
+    /// error a lookup that missed in this block reports, since the name
+    /// might have been in the file that failed to load.
+    pub(crate) fn import_failure(&self) -> Option<EvalError> {
+        let ItemCellKind::Block {
+            items: items_cells,
+            has_block_imports: true,
+            ..
+        } = &self.cells.kind
+        else {
+            return None;
+        };
+        items_cells
+            .iter()
+            .find_map(|cell| match force_import(self.doc, cell) {
+                Some(Err(e)) => Some(e.clone().with_origin(&self.named_source())),
+                _ => None,
+            })
     }
 
     /// The namespace qualifier written before this block's kind with

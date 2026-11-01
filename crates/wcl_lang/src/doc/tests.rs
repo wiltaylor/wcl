@@ -7971,3 +7971,265 @@ fn member_access_keeps_block_paths_first() {
     assert_eq!(doc.field("p").unwrap().value().unwrap(), &Value::I64(80));
     assert_eq!(get_value(&doc, "svc.port"), Value::I64(80));
 }
+
+// ─── declaration checks inside lazily imported files ──────────────
+
+/// Every import failure the two check walks report, deduplicated the way
+/// `wcl check --eval` sees them: the schema pass's, then the forced
+/// walk's (which leaves out what the schema pass reported).
+fn lazy_import_failures(doc: &Document) -> Vec<EvalError> {
+    doc.schema_diagnostics()
+        .into_iter()
+        .chain(doc.eval_diagnostics())
+        .map(|(error, _)| error)
+        .filter(|error| matches!(error, EvalError::ImportFailed { .. }))
+        .collect()
+}
+
+/// The sole import failure `doc`'s checks report, as (message, file the
+/// error renders against, the text its span covers).
+fn sole_lazy_failure(doc: &Document) -> (String, String, String) {
+    let failures = lazy_import_failures(doc);
+    assert_eq!(failures.len(), 1, "reported once: {failures:#?}");
+    let EvalError::ImportFailed { message, span, .. } = &failures[0] else {
+        unreachable!("filtered to import failures")
+    };
+    let source = failures[0]
+        .origin()
+        .expect("an import failure names its file");
+    let text = source.inner();
+    let (start, len) = (span.offset(), span.len());
+    (
+        message.clone(),
+        source.name().to_string(),
+        text[start..start + len].to_string(),
+    )
+}
+
+/// A schemaless block that splices `frag.wcl` in.
+const SPLICES_FRAG: &str = "@schemaless outer {\n  import <frag.wcl>\n}\n";
+
+#[test]
+fn unknown_field_type_in_a_lazy_import_is_reported_when_it_loads() {
+    let doc = open_with_libs(SPLICES_FRAG, &[("frag.wcl", "type T { x: bogus }\n")]);
+    let (msg, file, at) = sole_lazy_failure(&doc);
+    assert_eq!(msg, "unknown type 'bogus'");
+    // Rendered against the fragment's text and span, not the root's.
+    assert_eq!(file, "<wcl-system>/frag.wcl");
+    assert_eq!(at, "bogus");
+}
+
+#[test]
+fn unknown_signature_type_in_a_lazy_import_is_reported() {
+    let doc = open_with_libs(
+        SPLICES_FRAG,
+        &[("frag.wcl", "let f = fn(x: Missing) -> i32 1\n")],
+    );
+    let (msg, file, at) = sole_lazy_failure(&doc);
+    assert_eq!(msg, "unknown type 'Missing'");
+    assert_eq!(file, "<wcl-system>/frag.wcl");
+    assert_eq!(at, "Missing");
+}
+
+#[test]
+fn unknown_extends_parent_in_a_lazy_import_is_reported() {
+    let doc = open_with_libs(SPLICES_FRAG, &[("frag.wcl", "type T extends Nowhere {}\n")]);
+    let (msg, file, _) = sole_lazy_failure(&doc);
+    assert_eq!(msg, "unknown extends target 'Nowhere' in 'T'");
+    assert_eq!(file, "<wcl-system>/frag.wcl");
+}
+
+#[test]
+fn the_other_declaration_rules_reach_lazy_imports() {
+    let cases: &[(&str, &str)] = &[
+        (
+            "interface I { n: i32 }\ntype T { i: I }\n",
+            "interface 'I' must be used through a reference (`&I`)",
+        ),
+        (
+            "union U { A none A none }\n",
+            "duplicate variant 'A' in union 'U'",
+        ),
+        (
+            "symbol_set S { a a }\n",
+            "duplicate symbol 'a' in symbol_set 'S'",
+        ),
+        ("type T extends T {}\n", "'T' cannot extend itself"),
+    ];
+    for (frag, want) in cases {
+        let doc = open_with_libs(SPLICES_FRAG, &[("frag.wcl", frag)]);
+        let (msg, file, _) = sole_lazy_failure(&doc);
+        assert_eq!(&msg, want, "for {frag:?}");
+        assert_eq!(file, "<wcl-system>/frag.wcl", "for {frag:?}");
+    }
+}
+
+#[test]
+fn a_lazy_import_conflicting_with_a_root_ancestor_is_reported() {
+    let doc = open_with_libs(
+        &format!("type Animal {{ name: utf8 }}\n{SPLICES_FRAG}"),
+        &[("frag.wcl", "type Dog extends Animal { name: i32 }\n")],
+    );
+    let (msg, file, at) = sole_lazy_failure(&doc);
+    assert_eq!(
+        msg,
+        "conflicting type for field 'name' in 'Dog' (across extends); \
+         'Animal' in t declares it as utf8"
+    );
+    assert_eq!(file, "<wcl-system>/frag.wcl");
+    assert_eq!(at, "name: i32");
+}
+
+#[test]
+fn a_lazy_import_may_name_a_type_the_root_declares() {
+    let doc = open_with_libs(
+        &format!("type Port {{ n: u16 }}\n{SPLICES_FRAG}"),
+        &[(
+            "frag.wcl",
+            "type Service { port: Port }\ntype Web extends Port {}\nloaded = true\n",
+        )],
+    );
+    assert!(
+        lazy_import_failures(&doc).is_empty(),
+        "{:#?}",
+        lazy_import_failures(&doc)
+    );
+    assert!(doc.eval_errors().is_empty(), "{:#?}", doc.eval_errors());
+    assert!(doc.block("outer").unwrap().field("loaded").is_some());
+}
+
+#[test]
+fn a_lazy_import_may_name_its_own_and_its_imports_declarations() {
+    let doc = open_with_libs(
+        SPLICES_FRAG,
+        &[
+            (
+                "frag.wcl",
+                "import <ports.wcl>\ntype Service { port: Port  peer: Peer }\ntype Peer { host: utf8 }\nloaded = true\n",
+            ),
+            ("ports.wcl", "namespace net\ntype Port { n: u16 }\n"),
+        ],
+    );
+    assert!(
+        lazy_import_failures(&doc).is_empty(),
+        "{:#?}",
+        lazy_import_failures(&doc)
+    );
+    assert!(doc.block("outer").unwrap().field("loaded").is_some());
+}
+
+#[test]
+fn a_lazy_import_failure_is_reported_once() {
+    // Two blocks splice the same broken file, and a field in each reads a
+    // name that resolution has to look for past the failed import.
+    let doc = open_with_libs(
+        "@schemaless a {\n  import <frag.wcl>\n  x = missing\n}\n\
+         @schemaless b {\n  import <frag.wcl>\n  y = gone\n}\n",
+        &[("frag.wcl", "type T { x: bogus }\n")],
+    );
+    let (msg, ..) = sole_lazy_failure(&doc);
+    assert_eq!(msg, "unknown type 'bogus'");
+}
+
+#[test]
+fn the_schema_walk_reports_a_lazy_import_it_loads() {
+    let doc = open_with_libs(
+        "@document type Root { @child(\"svc\") svc: Svc }\n\
+         @block(\"svc\") type Svc { port: u16? }\n\
+         svc {\n  import <frag.wcl>\n}\n",
+        &[("frag.wcl", "type T { x: bogus }\n")],
+    );
+    let failures: Vec<_> = doc
+        .schema_errors()
+        .into_iter()
+        .filter(|e| matches!(e, EvalError::ImportFailed { .. }))
+        .collect();
+    assert_eq!(failures.len(), 1, "{failures:#?}");
+    // The forced walk leaves out what the schema walk already reported.
+    assert!(
+        doc.eval_errors()
+            .iter()
+            .all(|e| !matches!(e, EvalError::ImportFailed { .. })),
+        "{:#?}",
+        doc.eval_errors()
+    );
+}
+
+#[test]
+fn a_name_looked_up_past_a_failed_lazy_import_fails_with_it() {
+    let doc = open_with_libs(
+        "@schemaless outer {\n  import <frag.wcl>\n  own = 1\n  x = missing\n  y = own\n}\n\
+         @schemaless outside = outer.port\n",
+        &[("frag.wcl", "type T { x: bogus }\nport = 80\n")],
+    );
+    let outer = doc.block("outer").unwrap();
+    // A name the block binds itself does not need the import.
+    assert_eq!(outer.field("y").unwrap().value().unwrap(), &Value::I64(1));
+    // A name it does not bind might have been in the import.
+    let err = outer.field("x").unwrap().value().unwrap_err();
+    assert!(matches!(err, EvalError::ImportFailed { .. }), "{err:?}");
+    // So might a member read from outside the block.
+    let err = doc.field("outside").unwrap().value().unwrap_err();
+    assert!(matches!(err, EvalError::ImportFailed { .. }), "{err:?}");
+    // The views leave the failed file's items out and say why.
+    assert!(outer.field("port").is_none());
+    assert_eq!(outer.import_errors().len(), 1);
+}
+
+#[test]
+fn try_catches_a_failed_lazy_import() {
+    let doc = open_with_libs(
+        "@schemaless outer {\n  import <frag.wcl>\n  x = try missing catch e => e\n}\n",
+        &[("frag.wcl", "type T { x: bogus }\n")],
+    );
+    let outer = doc.block("outer").unwrap();
+    let Value::Utf8(caught) = outer.field("x").unwrap().value().unwrap() else {
+        panic!("try binds the message")
+    };
+    assert!(
+        caught.contains("failed to import 'frag.wcl': unknown type 'bogus'"),
+        "{caught}"
+    );
+}
+
+/// Connection schema shared by the operand-resolution tests below.
+const SHAPES: &str = "symbol_set Kind { default }\n\
+    connection Edge: Shape -> Shape : Kind\n\
+    @block(\"shape\") type Shape { id: identifier }\n\
+    @block(\"group\") type Group {\n  @children(\"shape\") shapes: list<Shape>\n  @connections(Edge) edges: list<Edge>\n}\n";
+
+#[test]
+fn a_root_connection_operand_past_a_failed_lazy_import_fails_with_it() {
+    let doc = open_with_libs(
+        &format!(
+            "{SHAPES}@document type Site {{\n  @children(\"group\") groups: list<Group>\n  @connections(Edge) edges: list<Edge>\n}}\n\
+             group {{\n  shape {{ id = a }}\n  import <frag.wcl>\n}}\n\
+             a -> b\n"
+        ),
+        &[("frag.wcl", "type T { x: bogus }\nshape { id = b }\n")],
+    );
+    let err = doc.get("edges").unwrap().value().unwrap_err();
+    assert!(matches!(err, EvalError::ImportFailed { .. }), "{err:?}");
+}
+
+#[test]
+fn a_block_connection_operand_past_a_failed_lazy_import_fails_with_it() {
+    let doc = open_with_libs(
+        &format!(
+            "{SHAPES}@document type Site {{ @children(\"group\") groups: list<Group> }}\n\
+             group {{\n  shape {{ id = a }}\n  import <frag.wcl>\n  a -> b\n}}\n"
+        ),
+        &[("frag.wcl", "type T { x: bogus }\nshape { id = b }\n")],
+    );
+    let group = doc.block("group").unwrap();
+    let err = group.typed_field("edges").unwrap().value().unwrap_err();
+    assert!(matches!(err, EvalError::ImportFailed { .. }), "{err:?}");
+}
+
+#[test]
+fn a_missing_lazy_import_renders_against_the_importing_file() {
+    let doc = open_with_libs("@schemaless outer {\n  import <nope.wcl>\n}\n", &[]);
+    let (_, file, at) = sole_lazy_failure(&doc);
+    assert_eq!(file, "t");
+    assert_eq!(at, "nope.wcl");
+}

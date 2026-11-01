@@ -1364,9 +1364,20 @@ impl Document {
                         return Ok(dr);
                     }
                 }
-                // Not a document path: read the field out of the
-                // receiver's value, when it is a record.
-                recv_result?.member(name, &format_member_path(expr), *span)
+                match recv_result {
+                    Err(e) => Err(e),
+                    // A block whose in-block import failed to load might
+                    // have had the member in that file.
+                    Ok(recv_dr)
+                        if let DataKind::Block(block) = recv_dr.inner()
+                            && let Some(failure) = block.import_failure() =>
+                    {
+                        Err(failure)
+                    }
+                    // Not a document path: read the field out of the
+                    // receiver's value, when it is a record.
+                    Ok(recv_dr) => recv_dr.member(name, &format_member_path(expr), *span),
+                }
             }
             E::Paren { inner, .. } => self.eval_to_dataref(inner, ctx),
             other => Err(EvalError::not_a_reference(
@@ -1437,26 +1448,34 @@ impl Document {
             // bindable-name set (built once per cell) can't match —
             // the common case for a root let / named fn resolved from
             // a deeply nested call site.
-            if !block.can_bind_name(name) {
-                continue;
-            }
-            if let Some(letv) = block.find_let(name) {
-                if letv.mid_evaluation() {
-                    skipped.get_or_insert(Skipped::Let(letv));
-                } else {
-                    return Some(letv.value().map(DataRef::from_variant_value));
+            if block.can_bind_name(name) {
+                if let Some(letv) = block.find_let(name) {
+                    if letv.mid_evaluation() {
+                        skipped.get_or_insert(Skipped::Let(letv));
+                    } else {
+                        return Some(letv.value().map(DataRef::from_variant_value));
+                    }
+                }
+                if let Some(child) = DataRef::from_block(block).child(name) {
+                    let mid = matches!(
+                        child.inner(),
+                        DataKind::Field(f) if f.mid_evaluation()
+                    );
+                    if mid {
+                        skipped.get_or_insert(Skipped::Field(child));
+                    } else {
+                        return Some(Ok(child));
+                    }
                 }
             }
-            if let Some(child) = DataRef::from_block(block).child(name) {
-                let mid = matches!(
-                    child.inner(),
-                    DataKind::Field(f) if f.mid_evaluation()
-                );
-                if mid {
-                    skipped.get_or_insert(Skipped::Field(child));
-                } else {
-                    return Some(Ok(child));
-                }
+            // The name is not bound here, but an in-block import of this
+            // frame that failed to load might have bound it. Resolving
+            // outward past it could pick a binding the import shadows,
+            // so the lookup fails with the import's error instead.
+            if scope.frames()[i].cells.has_block_imports()
+                && let Some(failure) = self.frame_as_block(scope, i).import_failure()
+            {
+                return Some(Err(failure));
             }
         }
         if let Some(letv) = self.root_let(name) {

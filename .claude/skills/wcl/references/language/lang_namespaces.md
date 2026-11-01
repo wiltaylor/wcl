@@ -211,8 +211,40 @@ unregistered key fails with `no system import registered for <key>`.
   declarations from **any** file in the document. One namespace split across sibling files that
   never import each other (wdoc's stdlib) therefore resolves when something loads them together,
   and fails `unknown type` when one part is imported alone.
-- **In-block (lazy) imports are not checked at open.** `type T { x: bogus }` in a file spliced by
-  `item { import "./frag.wcl" }` passes `wcl check`, `--eval` included.
+- **An in-block (lazy) import is checked when it loads**, by the same rules. Names resolve against
+  every declaration the document opened with **plus** the lazy file's own and its top-level
+  imports' (so a fragment may use a type it declares), in its own namespace under the root's
+  `use` lines. A nested in-block import inside it sees the document's names and its own, not its
+  host file's. Any failure (missing file, syntax error, rejected declaration, broken import of its
+  own) is `wcl::eval::import_failed`, rendered against the fragment, and the whole file is dropped:
+  none of its items reach the block. A file several blocks import is reported once.
+
+  ```console
+  $ wcl check --eval main.wcl   # main.wcl: @schemaless svc "a" { import "frag.wcl" }   frag.wcl: type T { x: bogus }
+  wcl::eval::import_failed
+
+    × failed to import 'frag.wcl': unknown type 'bogus'
+     ╭─[/…/frag.wcl:1:13]
+   1 │ type T { x: bogus }
+     ·             ──┬──
+     ·               ╰── import error
+     ╰────
+
+  main.wcl: 1 import error
+  ```
+
+  Where it surfaces:
+
+  | Reader | Loads it? | Result |
+  | --- | --- | --- |
+  | `wcl check` | Every block **not** `@schemaless` | exit 1, `N import error(s)` line |
+  | `wcl check --eval` | Also forces `@schemaless` blocks (not template bodies) | exit 1; outranks 2 and 3 |
+  | `wcl parse` | Yes | `import <error: …>` line in the block, exit 3 |
+  | `wcl get` | On a path into the block that names nothing | the import error, exit 3 (not `no such path`) |
+  | A name looked up through the block, or a member read of it | Yes | fails with the import error; `try` catches it |
+  | `Block::field` / `fields` / `blocks` (Rust) | Yes | answer without the file's items; `Block::import_errors()` says why |
+
+  So an in-block import in a `@schemaless` block passes plain `wcl check`. Use `--eval` in CI.
 
 ## Splicing a subtree with an in-block import
 

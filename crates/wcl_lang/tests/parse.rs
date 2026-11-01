@@ -1381,7 +1381,7 @@ service "web" {
 
     // Reading items triggers the failed load.
     let res = svc.fields().count();
-    let _ = res; // iteration completes; the import error is silently dropped here
+    let _ = res; // iteration completes without the failed file; `import_errors` says why
     let errs = svc.import_errors();
     assert!(!errs.is_empty(), "expected at least one import error");
     assert!(matches!(errs[0], EvalError::ImportFailed { .. }));

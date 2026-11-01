@@ -222,7 +222,17 @@ pub(super) fn check_extends_targets(
 /// declarations involved were written. Runs once per document, with the
 /// root file's [`CheckContext`]; unknown parents and self-extension are
 /// [`check_extends_targets`]'s, per file.
-pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Result<(), ParseError> {
+///
+/// With `lazy`, a file an in-block import has just loaded joins the graph
+/// after everything the document opened with, and only its declarations
+/// are judged: a cycle is looked for from them, and the field and slot
+/// checks run on them, against whatever ancestors they reach. The rest of
+/// the graph passed these checks at open.
+pub(super) fn validate_extends(
+    ast: &ast::Source,
+    cx: &CheckContext<'_>,
+    lazy: Option<&LoadedImport>,
+) -> Result<(), ParseError> {
     let file_ns = cx.file_ns;
     let (source, file) = (cx.source, cx.file);
     let resolve = |path: &[String], ns: &[String]| {
@@ -250,6 +260,11 @@ pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Resu
     graph.add_imports(cx.imports);
     for t in cx.synthetic {
         graph.add(t.name.clone(), t.span, None, (&t.extends, &t.fields), &[]);
+    }
+    // The nodes from here on are the ones this run judges.
+    let judged = if lazy.is_some() { graph.nodes.len() } else { 0 };
+    if let Some(imp) = lazy {
+        graph.add_imports(std::slice::from_ref(imp));
     }
     let pending = std::mem::take(&mut graph.pending);
     for (idx, (paths, ns)) in pending.into_iter().enumerate() {
@@ -288,7 +303,7 @@ pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Resu
     }
     let mut color = vec![0u8; graph.nodes.len()];
     let mut order: Vec<usize> = Vec::with_capacity(graph.nodes.len());
-    for start in 0..graph.nodes.len() {
+    for start in judged..graph.nodes.len() {
         if let Some(at) = visit(start, &graph.nodes, &mut color, &mut order) {
             let node = &graph.nodes[at];
             let name = node.fqn.join(".");
@@ -324,7 +339,7 @@ pub(super) fn validate_extends(ast: &ast::Source, cx: &CheckContext<'_>) -> Resu
         out.extend(nodes[node].fields.iter().copied());
     }
 
-    for decl in order {
+    for decl in order.into_iter().filter(|&decl| decl >= judged) {
         let decl_name = graph.nodes[decl].fqn.join(".");
         let mut all_fields: Vec<FieldRow<'_>> = Vec::new();
         let mut seen: HashSet<usize> = HashSet::new();

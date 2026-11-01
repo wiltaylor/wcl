@@ -40,6 +40,67 @@ pub(crate) struct Resolved {
     pub(crate) ns_aliases: HashMap<String, Vec<String>>,
     /// Namespaces pulled in wholesale.
     pub(crate) wildcards: Vec<Vec<String>>,
+    /// Every name the document declares, as the open-time checks saw
+    /// them. Kept so a lazily-imported file can be checked against the
+    /// same tables when it loads.
+    pub(crate) names: DeclaredNames,
+}
+
+/// The declared-name tables the open-time checks resolve against: every
+/// declaration's fully-qualified name, the subsets that are interfaces
+/// and `symbol_set`s, and every proper prefix of a name (what a `use`
+/// may bind as a namespace).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DeclaredNames {
+    /// Every declared FQN.
+    pub(crate) declared: HashSet<Vec<String>>,
+    /// The FQNs that name an interface.
+    pub(crate) interfaces: HashSet<Vec<String>>,
+    /// The FQNs that name a `symbol_set`, synthetic ones included.
+    pub(crate) symbol_sets: HashSet<Vec<String>>,
+    /// Every proper prefix of a declared FQN.
+    pub(crate) prefixes: HashSet<Vec<String>>,
+}
+
+impl DeclaredNames {
+    /// Record one declaration of `kind`. `false` when the name was
+    /// already declared; the tables are updated either way.
+    pub(crate) fn insert(&mut self, fqn: Vec<String>, kind: &SymbolKind) -> bool {
+        for n in 1..fqn.len() {
+            self.prefixes.insert(fqn[..n].to_vec());
+        }
+        if matches!(kind, SymbolKind::InterfaceDecl) {
+            self.interfaces.insert(fqn.clone());
+        }
+        if matches!(kind, SymbolKind::SymbolSetDecl) {
+            self.symbol_sets.insert(fqn.clone());
+        }
+        self.declared.insert(fqn)
+    }
+
+    /// Record every declaration an imported file's symbol index holds.
+    /// A repeat is not an error: an imported declaration may coexist
+    /// with, or be shadowed by, a same-named one elsewhere.
+    pub(crate) fn add_imported(&mut self, symbols: &SymbolIndex) {
+        for rec in symbols.iter() {
+            if is_declaration(&rec.kind) {
+                let fqn = rec.fqn.split('.').map(str::to_string).collect();
+                self.insert(fqn, &rec.kind);
+            }
+        }
+    }
+}
+
+/// Whether a symbol is a declaration a type reference can name.
+fn is_declaration(kind: &SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::TypeDecl
+            | SymbolKind::InterfaceDecl
+            | SymbolKind::UnionDecl
+            | SymbolKind::SymbolSetDecl
+            | SymbolKind::ConnectionDecl
+    )
 }
 
 /// Whether a declared name equals a target path, segment by segment.
@@ -156,43 +217,23 @@ pub(crate) fn validate_document(
     // 2. Build the declared-FQN set and prefix set used for name resolution.
     // Top-level decls were already added to `symbols` by the parser (and the
     // duplicate check already fired there); we just project them into the
-    // shapes that the rest of this function expects.
-    let mut declared: HashSet<Vec<String>> = HashSet::new();
-    let mut prefixes: HashSet<Vec<String>> = HashSet::new();
-    for t in synthetic_types {
-        let fqn = t.name.clone();
-        declared.insert(fqn.clone());
-        for n in 1..fqn.len() {
-            prefixes.insert(fqn[..n].to_vec());
-        }
-    }
-    // `symbol_set` FQNs, so a connection's kind can be checked against
+    // shapes that the rest of this function expects. Interfaces are tracked
+    // separately so `check_type_ref` can enforce the "must be behind `&`"
+    // rule, and `symbol_set`s so a connection's kind can be checked against
     // a set declared in any file.
-    let mut symbol_sets: HashSet<Vec<String>> = HashSet::new();
-    for set in synthetic_symbol_sets {
-        let fqn = set.name.clone();
-        declared.insert(fqn.clone());
-        symbol_sets.insert(fqn.clone());
-        for n in 1..fqn.len() {
-            prefixes.insert(fqn[..n].to_vec());
-        }
+    let mut names = DeclaredNames::default();
+    for t in synthetic_types {
+        names.insert(t.name.clone(), &SymbolKind::TypeDecl);
     }
-    // Track interface FQNs separately so `check_type_ref` can enforce
-    // the "must be behind `&`" rule when a path resolves to one.
-    let mut interfaces: HashSet<Vec<String>> = HashSet::new();
+    for set in synthetic_symbol_sets {
+        names.insert(set.name.clone(), &SymbolKind::SymbolSetDecl);
+    }
     for rec in symbols.iter() {
-        if !matches!(
-            rec.kind,
-            SymbolKind::TypeDecl
-                | SymbolKind::InterfaceDecl
-                | SymbolKind::UnionDecl
-                | SymbolKind::SymbolSetDecl
-                | SymbolKind::ConnectionDecl
-        ) {
+        if !is_declaration(&rec.kind) {
             continue;
         }
         let fqn: Vec<String> = rec.fqn.split('.').map(str::to_string).collect();
-        if !declared.insert(fqn.clone()) {
+        if !names.insert(fqn, &rec.kind) {
             // A registry-injected (synthetic) declaration already owns this FQN.
             return Err(open_error(
                 source,
@@ -201,15 +242,6 @@ pub(crate) fn validate_document(
                 rec.span,
                 "duplicate declaration",
             ));
-        }
-        if matches!(rec.kind, SymbolKind::InterfaceDecl) {
-            interfaces.insert(fqn.clone());
-        }
-        if matches!(rec.kind, SymbolKind::SymbolSetDecl) {
-            symbol_sets.insert(fqn.clone());
-        }
-        for n in 1..fqn.len() {
-            prefixes.insert(fqn[..n].to_vec());
         }
     }
 
@@ -220,29 +252,7 @@ pub(crate) fn validate_document(
     // the duplicate-declaration check — a local declaration may
     // legitimately coexist with, or shadow, an imported one.
     for idx in &imported_symbols {
-        for rec in idx.iter() {
-            if !matches!(
-                rec.kind,
-                SymbolKind::TypeDecl
-                    | SymbolKind::InterfaceDecl
-                    | SymbolKind::UnionDecl
-                    | SymbolKind::SymbolSetDecl
-                    | SymbolKind::ConnectionDecl
-            ) {
-                continue;
-            }
-            let fqn: Vec<String> = rec.fqn.split('.').map(str::to_string).collect();
-            declared.insert(fqn.clone());
-            if matches!(rec.kind, SymbolKind::InterfaceDecl) {
-                interfaces.insert(fqn.clone());
-            }
-            if matches!(rec.kind, SymbolKind::SymbolSetDecl) {
-                symbol_sets.insert(fqn.clone());
-            }
-            for n in 1..fqn.len() {
-                prefixes.insert(fqn[..n].to_vec());
-            }
-        }
+        names.add_imported(idx);
     }
 
     // 3. Use declarations.
@@ -271,8 +281,8 @@ pub(crate) fn validate_document(
         };
         match &u.form {
             ast::UseForm::Bare(alias) => {
-                let path_is_leaf = declared.contains(&u.path);
-                let path_is_prefix = prefixes.contains(&u.path);
+                let path_is_leaf = names.declared.contains(&u.path);
+                let path_is_prefix = names.prefixes.contains(&u.path);
                 match alias {
                     None => {
                         if path_is_leaf {
@@ -311,7 +321,7 @@ pub(crate) fn validate_document(
                 }
             }
             ast::UseForm::List(items) => {
-                if declared.contains(&u.path) {
+                if names.declared.contains(&u.path) {
                     return Err(open_error(
                         source,
                         file,
@@ -323,7 +333,7 @@ pub(crate) fn validate_document(
                         "not a namespace",
                     ));
                 }
-                if !u.path.is_empty() && !prefixes.contains(&u.path) {
+                if !u.path.is_empty() && !names.prefixes.contains(&u.path) {
                     return Err(open_error(
                         source,
                         file,
@@ -335,7 +345,7 @@ pub(crate) fn validate_document(
                 for it in items {
                     let mut full = u.path.clone();
                     full.push(it.name.clone());
-                    if !declared.contains(&full) {
+                    if !names.declared.contains(&full) {
                         return Err(open_error(
                             source,
                             file,
@@ -371,9 +381,9 @@ pub(crate) fn validate_document(
     // at runtime (`Document::resolve_path_in`), and its own `use` lines
     // bind nothing.
     let cx = CheckContext {
-        declared: &declared,
-        interfaces: &interfaces,
-        symbol_sets: &symbol_sets,
+        declared: &names.declared,
+        interfaces: &names.interfaces,
+        symbol_sets: &names.symbol_sets,
         file_ns: &file_ns,
         item_aliases: &item_aliases,
         ns_aliases: &ns_aliases,
@@ -390,5 +400,6 @@ pub(crate) fn validate_document(
         item_aliases,
         ns_aliases,
         wildcards,
+        names,
     })
 }

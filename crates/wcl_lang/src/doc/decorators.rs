@@ -19,8 +19,9 @@ use crate::diagnostics::EvalError;
 use crate::value::Value;
 
 use super::cells::{DecoratorCell, ItemCellKind, ItemCells, LoadedImport};
-use super::imports::load_import_lazily;
+use super::imports::force_import;
 use super::schema_check::{has_annotation_exemption, has_schemaless};
+use super::strict::sourced;
 use super::views::{DeclName, Decorator};
 use super::{CollectedSchemaErrors, Document, schema_check};
 
@@ -218,30 +219,24 @@ impl Document {
                     source,
                     out,
                 ),
-                ast::Item::Import(_)
-                    if let ItemCellKind::Import {
-                        path,
-                        system,
-                        base_dir,
-                        path_span,
-                        loaded,
-                    } = &cell.kind =>
-                {
-                    let loaded = loaded.get_or_init(|| {
-                        load_import_lazily(
-                            path,
-                            base_dir.as_deref(),
-                            *system,
-                            *path_span,
-                            self.loader(),
-                        )
-                    });
-                    if let Ok(loaded) = loaded
-                        && seen_imports.insert(loaded.path.clone())
-                    {
-                        self.validate_decorators_in_loaded_import(loaded, seen_imports, out);
+                ast::Item::Import(_) => match force_import(self, cell) {
+                    Some(Ok(loaded)) => {
+                        if seen_imports.insert(loaded.path.clone()) {
+                            self.validate_decorators_in_loaded_import(loaded, seen_imports, out);
+                        }
                     }
-                }
+                    // An import that fails to load is this walk's to report:
+                    // it is how `schema_diagnostics` covers in-block imports.
+                    // A file that two imports name fails the same way twice,
+                    // and is one problem.
+                    Some(Err(error)) => {
+                        let failure = sourced(error.clone(), source);
+                        if !out.iter().any(|(seen, _)| *seen == failure.0) {
+                            out.push(failure);
+                        }
+                    }
+                    None => {}
+                },
                 _ => {}
             }
         }

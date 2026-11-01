@@ -164,6 +164,97 @@ fn check_refuses_an_unknown_type_in_an_imported_file() {
 }
 
 #[test]
+fn check_eval_refuses_an_unknown_type_in_an_in_block_import() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = tmp.path().join("main.wcl");
+    std::fs::write(tmp.path().join("frag.wcl"), "type T { x: bogus }\n")
+        .expect("write frag fixture");
+    std::fs::write(
+        &main,
+        "@schemaless\nsvc \"a\" {\n  import \"frag.wcl\"\n}\n@schemaless\nsvc \"b\" {\n  import \"frag.wcl\"\n}\n",
+    )
+    .expect("write main fixture");
+
+    // The plain walk skips `@schemaless` bodies, so it never loads the
+    // import and has nothing to report.
+    wcl().arg("check").arg(&main).assert().success();
+    // Forcing the blocks loads it. Exit 1, as for the same file imported
+    // at the top level: the import did not open. Two blocks splice the
+    // file in, and it is one problem.
+    wcl()
+        .arg("check")
+        .arg("--eval")
+        .arg(&main)
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "failed to import 'frag.wcl': unknown type 'bogus'",
+        ))
+        .stderr(predicate::str::contains("frag.wcl:1:13]"))
+        .stderr(predicate::str::contains("main.wcl: 1 import error"));
+}
+
+#[test]
+fn parse_and_get_report_a_failed_in_block_import() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = tmp.path().join("main.wcl");
+    std::fs::write(
+        tmp.path().join("frag.wcl"),
+        "type T { x: bogus }\nport = 80\n",
+    )
+    .expect("write frag fixture");
+    std::fs::write(&main, "@schemaless\nsvc {\n  import \"frag.wcl\"\n}\n")
+        .expect("write main fixture");
+
+    // The tree shows where the import's items would have been.
+    wcl()
+        .arg("parse")
+        .arg(&main)
+        .assert()
+        .code(3)
+        .stdout(predicate::str::contains(
+            "import <error: failed to import 'frag.wcl': unknown type 'bogus'>",
+        ))
+        .stderr(predicate::str::contains("main.wcl: 1 evaluation error"));
+    // A path into the file that failed says why it names nothing.
+    wcl()
+        .arg("get")
+        .arg(&main)
+        .arg("svc.port")
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("unknown type 'bogus'"))
+        .stderr(predicate::str::contains("no such path").not());
+}
+
+#[test]
+fn check_reports_a_bad_in_block_import_the_schema_walk_loads() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let main = tmp.path().join("main.wcl");
+    std::fs::write(tmp.path().join("frag.wcl"), "type T extends Nowhere {}\n")
+        .expect("write frag fixture");
+    std::fs::write(
+        &main,
+        "@document type Root { @child(\"svc\") svc: Svc }\n\
+         @block(\"svc\") type Svc { port: u16? }\n\
+         svc {\n  import \"frag.wcl\"\n}\n",
+    )
+    .expect("write main fixture");
+
+    for args in [&["check"][..], &["check", "--eval"][..]] {
+        wcl()
+            .args(args)
+            .arg(&main)
+            .assert()
+            .code(1)
+            .stderr(predicate::str::contains(
+                "unknown extends target 'Nowhere' in 'T'",
+            ))
+            .stderr(predicate::str::contains("main.wcl: 1 import error"));
+    }
+}
+
+#[test]
 fn check_renders_an_imported_global_validation_against_its_source() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let main = tmp.path().join("main.wcl");

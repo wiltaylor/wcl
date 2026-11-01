@@ -212,6 +212,11 @@ impl Forced {
 
     fn block(&mut self, b: &Block<'_>) {
         let source = b.named_source();
+        // An in-block import that fails to load leaves its items out of
+        // everything below, so it is reported here, once per block.
+        for e in b.import_errors() {
+            self.push(e, Some(&source));
+        }
         self.decorators(b.decorators(), Some(&source));
         if let Err(e) = b.labels() {
             self.push(e, Some(&source));

@@ -731,6 +731,27 @@ impl EvalError {
         }
     }
 
+    /// Build an [`EvalError::ImportFailed`] for an imported file that was
+    /// read but did not open: a syntax error, or a declaration the
+    /// open-time checks reject. The error points into the imported file,
+    /// at the text responsible, rather than at the `import` that named it.
+    /// Any other failure falls back to [`Self::import_failed`] at `span`.
+    pub(crate) fn import_rejected(
+        path: impl Into<String>,
+        error: super::ParseError,
+        span: crate::ast::Span,
+    ) -> Self {
+        match error {
+            super::ParseError::Syntax(syntax) => Self::ImportFailed {
+                path: path.into(),
+                message: syntax.message,
+                origin: Some(Arc::new(DiagnosticSource(syntax.src))),
+                span: syntax.span,
+            },
+            other => Self::import_failed(path, other.to_string(), span),
+        }
+    }
+
     /// Build an [`EvalError::SchemaViolation`] of the given kind.
     pub(crate) fn schema_violation(
         kind: SchemaViolationKind,
