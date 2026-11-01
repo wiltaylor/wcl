@@ -438,6 +438,7 @@ The messages you will meet most often:
 | `block 'b' contains N children (max allowed: M)` | `@block(max_children = M)`. |
 | `field 'f' declared as T but value is U` | Value-versus-type mismatch. |
 | `field 'f' declared as utf8 but value is record of type 'Row'` | A record literal whose expression declares a type (`f = at(rows, 0)` with `rows: list<Row>`); a literal nothing declares says `value is record`. |
+| `field 'f' declared as list<utf8> but value is a list whose element [0] is i64` | The first element that misses; a record literal element is named as above (`element [0] is record of type 'Row'`), a block by its schema (`is Svc`), and a nested list nests the phrase (`element [0] is a list whose element [0] is …`). |
 | `field 'f' declared as u8 but value 300 is out of range for u8` | A number that does not fit its numeric type. |
 | `field 'f' declared as u8 but value 2.5 is not a whole number, so it cannot be u8` | A fraction for an integer type. |
 | `block kind 'k' has no @block or @table declaration` | Unregistered kind — usually a missing import. |

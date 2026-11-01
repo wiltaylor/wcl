@@ -8644,6 +8644,103 @@ fn refused_list_of_tagged_records_names_its_own_type() {
     );
 }
 
+/// A document whose root fields and one block field each hold a list
+/// against a list type: some refused for an element, some accepted.
+fn open_list_fields() -> Document {
+    Document::open(
+        r#"
+        type Row { name: utf8 }
+        @block("svc") type Svc { @inline(0) id: identifier  port: i64 }
+        @block("holder") type Holder { @inline(0) id: identifier  items: list<utf8> }
+        @document type D {
+          rows: list<Row>
+          out: list<utf8>
+          nums: list<utf8>
+          tagged: list<utf8>
+          nested: list<list<utf8>>
+          lit: list<utf8>
+          small: list<u8>
+          empty: list<utf8>
+          ok: list<utf8>
+          @children("svc") svcs: list<Svc>
+          @children("holder") holders: list<Holder>
+        }
+        rows = [{ name: "a" }]
+        svc web { port = 1 }
+        out = rows
+        nums = ["a", 1]
+        tagged = svcs
+        nested = [rows]
+        lit = [{ name: "b" }]
+        small = [1, 300]
+        empty = []
+        ok = ["a", none]
+        holder h { items = rows }
+        "#,
+        "t",
+    )
+    .expect("open")
+}
+
+#[test]
+fn field_type_error_names_the_bad_element_of_a_list() {
+    let doc = open_list_fields();
+    let messages: Vec<String> = doc.schema_errors().iter().map(|e| e.to_string()).collect();
+    assert_eq!(
+        messages,
+        [
+            "field 'out' declared as list<utf8> but value is a list whose element [0] is \
+             record of type 'Row'",
+            "field 'nums' declared as list<utf8> but value is a list whose element [1] is i64",
+            // A block names its own schema.
+            "field 'tagged' declared as list<utf8> but value is a list whose element [0] is Svc",
+            "field 'nested' declared as list<list<utf8>> but value is a list whose element [0] \
+             is a list whose element [0] is record of type 'Row'",
+            // Nothing declares the literal: `record`.
+            "field 'lit' declared as list<utf8> but value is a list whose element [0] is record",
+            // A number that does not fit keeps its own wording.
+            "field 'small' declared as list<u8> but element [1] holds 300, which is out of \
+             range for u8",
+            "field 'items' declared as list<utf8> but value is a list whose element [0] is \
+             record of type 'Row'",
+        ]
+    );
+    for error in doc.schema_errors() {
+        assert!(
+            matches!(
+                error,
+                EvalError::SchemaViolation {
+                    kind: crate::diagnostics::SchemaViolationKind::FieldTypeMismatch,
+                    ..
+                }
+            ),
+            "{error:?}"
+        );
+    }
+}
+
+#[test]
+fn list_field_element_errors_agree_between_strict_and_lazy_paths() {
+    let doc = open_list_fields();
+    let strict: Vec<String> = doc.schema_errors().iter().map(|e| e.to_string()).collect();
+    // A block's own lazy schema check words its field as the strict walk does.
+    let holder = doc.block("holder").unwrap();
+    let lazy: Vec<String> = holder
+        .schema_errors()
+        .iter()
+        .map(|e| e.to_string())
+        .collect();
+    assert_eq!(lazy.len(), 1, "{lazy:?}");
+    assert!(strict.contains(&lazy[0]), "{lazy:?} not in {strict:?}");
+    // A root field read lazily fails only for a number that does not fit,
+    // with the strict walk's message.
+    let read = doc.field("small").unwrap().value().unwrap_err().to_string();
+    assert!(strict.contains(&read), "{read} not in {strict:?}");
+    for name in ["out", "nums", "tagged", "nested", "lit", "empty", "ok"] {
+        assert!(doc.field(name).unwrap().value().is_ok(), "{name}");
+    }
+}
+
 // ─── member access through `&T` references ───────────────────────
 
 /// A three-service chain: `web` points at `api`, `api` at `db`, and `db`

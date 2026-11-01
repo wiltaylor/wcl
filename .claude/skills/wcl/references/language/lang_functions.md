@@ -194,8 +194,11 @@ whose accumulator from the initial value on the first call, then from the callba
 return type. A `map_values` callback (handed a record's values) says just `record`.
 
 A literal nothing declares and one declared only `any` / `record` say just `record`. A block's
-record names its own schema (`got Svc`). Field type errors (`field 'f' declared as list<utf8>
-but value is list`) do not describe a list's elements, so name none.
+record names its own schema (`got Svc`). Field type errors use the same describer after
+`value is`: `field 'out' declared as list<utf8> but value is a list whose element [0] is record of
+type 'Row'` for `out = rows`, `... element [1] is i64`, `... element [0] is Svc`, and nested lists
+nest the phrase. A number out of range in a list keeps `element [1] holds 300, which is out of
+range for u8`.
 
 ## Function types
 
