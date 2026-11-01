@@ -292,8 +292,12 @@ $ wcl get config.wcl routes.assets.upstream
 &hosts.cdn<block>
 ```
 
-A reference reads back as the path it names, not as the target's contents — following it is the
-consumer's job.
+A reference reads back as the path it names, not as the target's contents. Member access
+follows a reference to a **block**: `self.upstream.host`, `routes.assets.upstream.host` and
+`wcl get config.wcl routes.assets.upstream.host` all read the `host` of `hosts.cdn`, and
+references chain (`a.next.next.host`). A dangling target fails with `unresolved reference` naming
+its path; a reference whose path runs through itself fails as a `cycle`. A `&T` naming a
+declaration (`&T = Row`) is a handle for reflection builtins and is not followed.
 
 > **A `&T` field wants a document node, not a value.** A record literal fails with
 > `not_a_reference`; a path to a `let` holding a record fails with `declared as &T but value is

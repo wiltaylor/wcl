@@ -7948,7 +7948,8 @@ fn member_access_chains_through_nested_records() {
 
 #[test]
 fn member_access_on_a_list_field_still_fails() {
-    // A list has no fields; the path stays unresolved.
+    // A list has no fields; the path stays unresolved, and the error
+    // names the list's type.
     let doc = open(
         r#"
         xs = [{ n: 1 }, { n: 2 }]
@@ -7957,7 +7958,8 @@ fn member_access_on_a_list_field_still_fails() {
     );
     let err = doc.field("y").unwrap().value().unwrap_err();
     assert!(
-        matches!(&err, EvalError::UnresolvedReference { path, .. } if path == "xs.n"),
+        matches!(&err, EvalError::NoSuchField { path, record, .. }
+            if path == "xs.n" && record == "value of type 'list'"),
         "{err:?}"
     );
     assert!(doc.get("xs.n").is_none());
@@ -8077,6 +8079,282 @@ fn member_access_keeps_block_paths_first() {
     );
     assert_eq!(doc.field("p").unwrap().value().unwrap(), &Value::I64(80));
     assert_eq!(get_value(&doc, "svc.port"), Value::I64(80));
+}
+
+// ─── member access through `&T` references ───────────────────────
+
+/// A three-service chain: `web` points at `api`, `api` at `db`, and `db`
+/// carries a nested `tls` block. Each test adds its own `@document`
+/// fields and root items.
+fn open_service_chain(doc_fields: &str, root: &str) -> Document {
+    open_strict(&format!(
+        r#"
+        @block("tls") type Tls {{ cert: utf8 }}
+        @block("service") type Service {{
+          @inline(0) id: identifier
+          host: utf8
+          upstream: &Service?
+          @child("tls") tls: Tls?
+        }}
+        @document type D {{
+          @children("service") services: list<Service>
+          {doc_fields}
+        }}
+        service db  {{ host = "db.local"  tls {{ cert = "db.pem" }} }}
+        service api {{ host = "api.local"  upstream = services.db }}
+        service web {{ host = "web.local"  upstream = services.api }}
+        {root}
+        "#
+    ))
+}
+
+#[test]
+fn member_access_follows_a_reference_to_a_block() {
+    let doc = open_service_chain(
+        "h: utf8  own: utf8",
+        r#"
+        h = services.web.upstream.host
+        own = services.web.host
+        "#,
+    );
+    assert_eq!(get_value(&doc, "h"), Value::Utf8("api.local".into()));
+    // The block's own fields still win over anything behind it.
+    assert_eq!(get_value(&doc, "own"), Value::Utf8("web.local".into()));
+}
+
+#[test]
+fn member_access_follows_a_reference_through_self() {
+    let doc = open_strict(
+        r#"
+        @block("service") type Service {
+          @inline(0) id: identifier
+          host: utf8
+          upstream: &Service?
+          upstream_host: utf8?
+        }
+        @document type D { @children("service") services: list<Service> }
+        service db  { host = "db.local" }
+        service api {
+          host = "api.local"
+          upstream = services.db
+          upstream_host = self.upstream.host
+        }
+        "#,
+    );
+    assert_eq!(
+        get_value(&doc, "services.api.upstream_host"),
+        Value::Utf8("db.local".into())
+    );
+}
+
+#[test]
+fn member_access_chains_references() {
+    let doc = open_service_chain("hh: utf8", "hh = services.web.upstream.upstream.host");
+    assert_eq!(get_value(&doc, "hh"), Value::Utf8("db.local".into()));
+}
+
+#[test]
+fn member_access_follows_a_reference_into_a_nested_block() {
+    let doc = open_service_chain("cert: utf8", "cert = services.api.upstream.tls.cert");
+    assert_eq!(get_value(&doc, "cert"), Value::Utf8("db.pem".into()));
+}
+
+#[test]
+fn get_follows_references() {
+    let doc = open_service_chain("", "");
+    assert_eq!(
+        get_value(&doc, "services.web.upstream.host"),
+        Value::Utf8("api.local".into())
+    );
+    assert_eq!(
+        get_value(&doc, "services.web.upstream.upstream.tls.cert"),
+        Value::Utf8("db.pem".into())
+    );
+    // The reference itself still reads back as the path it names.
+    assert!(matches!(
+        get_value(&doc, "services.web.upstream"),
+        Value::DataPath { ref kind, .. } if kind == "block"
+    ));
+    assert!(doc.get("services.web.upstream.nope").is_none());
+}
+
+#[test]
+fn member_access_follows_a_reference_held_as_a_value() {
+    // Through a local, and out of the record a block reifies to.
+    let doc = open_service_chain(
+        "l: utf8  r: utf8",
+        r#"
+        l = { let u = services.web.upstream; u.upstream.host }
+        r = at([services.web], 0).upstream.host
+        "#,
+    );
+    assert_eq!(get_value(&doc, "l"), Value::Utf8("db.local".into()));
+    assert_eq!(get_value(&doc, "r"), Value::Utf8("api.local".into()));
+}
+
+#[test]
+fn member_access_through_a_dangling_reference_names_it() {
+    let doc = open_strict(
+        r#"
+        @block("service") type Service {
+          @inline(0) id: identifier
+          host: utf8
+          upstream: &Service?
+        }
+        @document type D { @children("service") services: list<Service>  h: utf8 }
+        service web { host = "web.local"  upstream = services.ghost }
+        h = services.web.upstream.host
+        "#,
+    );
+    let err = doc.field("h").unwrap().value().unwrap_err();
+    assert!(
+        matches!(&err, EvalError::UnresolvedReference { path, .. } if path == "services.ghost"),
+        "{err:?}"
+    );
+    assert!(
+        doc.get("services.web.upstream.host")
+            .unwrap()
+            .value()
+            .is_err()
+    );
+}
+
+#[test]
+fn member_access_through_a_looping_reference_terminates() {
+    let doc = open_strict(
+        r#"
+        @block("service") type Service {
+          @inline(0) id: identifier
+          host: utf8
+          upstream: &Service?
+        }
+        @document type D { @children("service") services: list<Service>  h: utf8 }
+        service a { host = "a"  upstream = self.upstream.upstream }
+        h = services.a.upstream.host
+        "#,
+    );
+    let err = doc.field("h").unwrap().value().unwrap_err();
+    assert!(matches!(err, EvalError::Cycle { .. }), "{err:?}");
+    assert!(
+        doc.get("services.a.upstream.host")
+            .unwrap()
+            .value()
+            .is_err()
+    );
+}
+
+#[test]
+fn member_access_on_a_declaration_reference_is_unchanged() {
+    // A `&T` naming a type is a handle to the declaration, not a block:
+    // it is not followed.
+    let doc = open_strict(
+        r#"
+        type Row { score: i64 }
+        @block("probe") type Probe { @inline(0) id: identifier  target: &Row }
+        @document type D { @children("probe") probes: list<Probe>  s: utf8 }
+        probe p { target = Row }
+        s = probes.p.target.score
+        "#,
+    );
+    let err = doc.field("s").unwrap().value().unwrap_err();
+    assert!(
+        matches!(&err, EvalError::UnresolvedReference { path, .. } if path == "probes.p.target.score"),
+        "{err:?}"
+    );
+    assert!(doc.get("probes.p.target.score").is_none());
+}
+
+// ─── member access on any expression's value ─────────────────────
+
+#[test]
+fn member_access_reads_a_call_result() {
+    let doc = open_std(
+        r#"
+        let rows = [{ name: "a" }, { name: "b" }]
+        x = at(rows, 1).name
+        "#,
+    );
+    assert_eq!(get_value(&doc, "x"), Value::Utf8("b".into()));
+}
+
+#[test]
+fn member_access_reads_paren_if_block_match_and_literal_receivers() {
+    let doc = open_std(
+        r#"
+        let rows = [{ name: "a" }, { name: "b" }]
+        p = (at(rows, 0)).name
+        i = (if len(rows) > 1 { at(rows, 1) } else { at(rows, 0) }).name
+        b = { let r = at(rows, 0); r }.name
+        m = (match 2 { 2 => { name: "two" }, _ => { name: "other" } }).name
+        r = { name: "lit", inner: { zone: "z" } }.inner.zone
+        "#,
+    );
+    assert_eq!(get_value(&doc, "p"), Value::Utf8("a".into()));
+    assert_eq!(get_value(&doc, "i"), Value::Utf8("b".into()));
+    assert_eq!(get_value(&doc, "b"), Value::Utf8("a".into()));
+    assert_eq!(get_value(&doc, "m"), Value::Utf8("two".into()));
+    assert_eq!(get_value(&doc, "r"), Value::Utf8("z".into()));
+}
+
+#[test]
+fn member_access_reads_a_block_reified_by_an_expression() {
+    let doc = open_service_chain(
+        "p: utf8",
+        "p = (if true { services.db } else { services.web }).host",
+    );
+    assert_eq!(get_value(&doc, "p"), Value::Utf8("db.local".into()));
+}
+
+#[test]
+fn member_then_call_calls_a_function_valued_field() {
+    // `f(x).g(y)` is `(f(x).g)(y)`.
+    let doc = open(
+        r#"
+        type Ops { scale: fn(i64) -> i64 }
+        fn ops(k: i64) -> Ops { { scale: fn(x: i64) -> i64 x * k } }
+        x = ops(3).scale(7)
+        "#,
+    );
+    assert_eq!(get_value(&doc, "x"), Value::I64(21));
+}
+
+#[test]
+fn member_access_on_a_call_result_missing_a_field_names_the_record() {
+    let doc = open_std(
+        r#"
+        let rows = [{ name: "a" }]
+        h = at(rows, 0).nope
+        "#,
+    );
+    let err = doc.field("h").unwrap().value().unwrap_err();
+    assert!(
+        matches!(&err, EvalError::NoSuchField { path, field, .. }
+            if path == "at(rows, 0).nope" && field == "nope"),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.to_string(),
+        "unresolved reference 'at(rows, 0).nope': record has no field 'nope'"
+    );
+}
+
+#[test]
+fn member_access_on_a_non_record_value_names_its_type() {
+    let doc = open(
+        r#"
+        n = (1 + 2).name
+        l = [1, 2].name
+        s = "abc".len
+        "#,
+    );
+    for (field, ty) in [("n", "i64"), ("l", "list"), ("s", "utf8")] {
+        let err = doc.field(field).unwrap().value().unwrap_err();
+        let want = format!("value of type '{ty}'");
+        assert!(
+            matches!(&err, EvalError::NoSuchField { record, .. } if *record == want),
+            "{field}: {err:?}"
+        );
+    }
 }
 
 // ─── declaration checks inside lazily imported files ──────────────

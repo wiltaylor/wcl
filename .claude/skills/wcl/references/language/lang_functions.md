@@ -293,8 +293,8 @@ rows = [
   { name: "east",  hits: 0  },
 ]
 
-// `max_by(…).name` is not legal — a call result takes no member access.
-busiest = { let top = max_by(rows, fn(r: Row) -> i64 r.hits); top.name }
+// A call result reads like any record.
+busiest = max_by(rows, fn(r: Row) -> i64 r.hits).name
 
 shares = {
   let total = fold(rows, 0, fn(a: i64, r: Row) -> i64 a + r.hits);

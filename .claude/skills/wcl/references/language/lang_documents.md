@@ -297,8 +297,11 @@ $ wcl get m.wcl meta.zone
 no such path: meta.zone
 ```
 
-Any other value — a list, a scalar, a `&T` reference — has no fields, and a path past it is
-unresolved. See `lang_expressions.md`.
+A `&T` field that points at a block is followed, so the path reads the target block as if it
+had been named there: `wcl get s.wcl services.web.upstream.host` prints the `host` of the block
+`upstream` names, and `services.web.upstream` alone still prints the reference
+(`&services.api<block>`). A `&T` naming a declaration is not followed. Any other value — a list,
+a scalar — has no fields, and a path past it is unresolved. See `lang_expressions.md`.
 
 ## A worked example
 

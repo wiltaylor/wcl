@@ -23,6 +23,7 @@ use super::{DataKind, DataRef};
 /// a context restarts at every field a lookup forces, so the depth that
 /// guards the Rust stack lives on the thread's evaluation stack
 /// ([`eval_stack`]) instead.
+#[derive(Clone)]
 pub(crate) struct EvalCtx<'a> {
     /// Stack of name → value bindings introduced by `Block` let-bindings.
     /// Searched right-to-left so the most recent binding shadows older ones.
@@ -1312,19 +1313,7 @@ impl Document {
                 // downstream member access can project record/variant
                 // fields without re-evaluating the receiver.
                 if let Some(v) = ctx.lookup(name) {
-                    if let Value::DataPath { segments, .. } = v {
-                        let segments: Vec<&str> = segments.iter().map(String::as_str).collect();
-                        let ctx_ns = ctx
-                            .scope
-                            .frames()
-                            .last()
-                            .map(|f| f.file_ns)
-                            .unwrap_or(&self.file_ns);
-                        return self.resolve_segments_in(&segments, ctx_ns).ok_or_else(|| {
-                            EvalError::unresolved_reference(segments.join("."), span_of(expr))
-                        });
-                    }
-                    return Ok(DataRef::from_variant_value(v.clone()));
+                    return self.value_to_dataref(v.clone(), ctx, span_of(expr));
                 }
                 // Outer `?` turns a missing name into "unresolved
                 // reference"; the inner `Result` (a let's eval/cycle
@@ -1337,7 +1326,7 @@ impl Document {
                 .parent_dataref(&ctx.scope)
                 .ok_or_else(|| EvalError::unresolved_reference("parent at document root", *span)),
             E::Member { recv, name, span } => {
-                let recv_result = self.eval_to_dataref(recv, ctx);
+                let recv_result = self.member_receiver(recv, ctx);
                 // A field's children are its value's fields. Those are
                 // read last, below, so a dotted path that names a
                 // declaration keeps resolving to it.
@@ -1364,20 +1353,33 @@ impl Document {
                         return Ok(dr);
                     }
                 }
-                match recv_result {
-                    Err(e) => Err(e),
-                    // A block whose in-block import failed to load might
-                    // have had the member in that file.
-                    Ok(recv_dr)
-                        if let DataKind::Block(block) = recv_dr.inner()
-                            && let Some(failure) = block.import_failure() =>
-                    {
-                        Err(failure)
+                let mut recv_dr = recv_result?;
+                // A `&T` field pointing at a block reads the member as if
+                // the block had been named directly. So does a reference
+                // carried as a value (read out of a record, or returned by
+                // a call), re-resolved the way a local holding one is.
+                let followed = match recv_dr.inner() {
+                    DataKind::VariantValue(v @ Value::DataPath { .. }) => {
+                        Some(self.value_to_dataref(v.clone(), ctx, *span))
                     }
-                    // Not a document path: read the field out of the
-                    // receiver's value, when it is a record.
-                    Ok(recv_dr) => recv_dr.member(name, &format_member_path(expr), *span),
+                    _ => recv_dr.followed_reference(),
+                };
+                if let Some(target) = followed {
+                    recv_dr = target?;
+                    if let Some(child) = recv_dr.child(name) {
+                        return Ok(child);
+                    }
                 }
+                // A block whose in-block import failed to load might
+                // have had the member in that file.
+                if let DataKind::Block(block) = recv_dr.inner()
+                    && let Some(failure) = block.import_failure()
+                {
+                    return Err(failure);
+                }
+                // Not a document path: read the field out of the
+                // receiver's value, when it is a record.
+                recv_dr.member(name, &format_member_path(expr), *span)
             }
             E::Paren { inner, .. } => self.eval_to_dataref(inner, ctx),
             other => Err(EvalError::not_a_reference(
@@ -1385,6 +1387,58 @@ impl Document {
                 span_of(other),
             )),
         }
+    }
+
+    /// The receiver of a member access, as a navigator. A path
+    /// (`a.b`, `self`, `(a)`) walks the document as
+    /// [`eval_to_dataref`](Self::eval_to_dataref) does; any other
+    /// expression — a call, an `if`, a block, a literal — is evaluated and
+    /// its value read, so `at(rows, 0).name` reads the row's `name`.
+    fn member_receiver<'a>(
+        &'a self,
+        recv: &ast::Expr,
+        ctx: &EvalCtx<'a>,
+    ) -> Result<DataRef<'a>, EvalError> {
+        use ast::Expr as E;
+        fn is_path(e: &ast::Expr) -> bool {
+            match e {
+                E::Identifier(..) | E::SelfKw(_) | E::ParentKw(_) | E::Member { .. } => true,
+                E::Paren { inner, .. } => is_path(inner),
+                _ => false,
+            }
+        }
+        if is_path(recv) {
+            return self.eval_to_dataref(recv, ctx);
+        }
+        // Evaluation pushes and pops its own locals; a copy keeps the
+        // caller's context untouched without needing it mutable.
+        let mut local = ctx.clone();
+        let v = self.eval_in(recv, &mut local)?;
+        self.value_to_dataref(v, ctx, span_of(recv))
+    }
+
+    /// Wrap an evaluated value as a navigator. A reference handle
+    /// (`Value::DataPath`) re-resolves to the node it names, so member
+    /// access walks on from there; any other value is a leaf whose
+    /// record fields member access can read.
+    fn value_to_dataref<'a>(
+        &'a self,
+        v: Value,
+        ctx: &EvalCtx<'a>,
+        span: Span,
+    ) -> Result<DataRef<'a>, EvalError> {
+        let Value::DataPath { segments, .. } = &v else {
+            return Ok(DataRef::from_variant_value(v));
+        };
+        let segments: Vec<&str> = segments.iter().map(String::as_str).collect();
+        let ctx_ns = ctx
+            .scope
+            .frames()
+            .last()
+            .map(|f| f.file_ns)
+            .unwrap_or(&self.file_ns);
+        self.resolve_segments_in(&segments, ctx_ns)
+            .ok_or_else(|| EvalError::unresolved_reference(segments.join("."), span))
     }
 
     /// Rebuild a [`Block`] view for the frame at index `i` of `scope`'s

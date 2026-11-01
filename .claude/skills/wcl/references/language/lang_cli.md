@@ -260,8 +260,11 @@ $ wcl get inventory.wcl services.web.port
 ```
 
 The output is the **WCL display form**, not JSON: a string keeps its quotes and a number keeps
-its type suffix. Only what the document model exposes is addressable. A `let` item is not, since
-it is not document data, and a table row is not, since it has no name and no label.
+its type suffix. A path goes on past a field holding a record (`meta.region`) and through a
+`&T` field naming a block (`services.web.upstream.host` reads the target block's `host`; the
+reference alone prints `&services.api<block>`). Only what the document model exposes is
+addressable. A `let` item is not, since it is not document data, and a table row is not, since
+it has no name and no label.
 
 A path that resolves to nothing exits 3 and suggests a near name:
 

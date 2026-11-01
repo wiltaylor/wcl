@@ -616,6 +616,19 @@ CONSOLE
 
   p "The right-hand side of a `&T` field must therefore be a **path**: a name, a dotted member chain, `self`, or `parent`. Anything else is not a reference and is refused as one: writing the target inline reads back as `<error: expected a reference, got record literal>`. [Documents, fields and blocks](lang_documents) covers `self` and `parent`, which resolve through the same machinery."
 
+  p "Reading the field gives back the path. Reading _through_ it gives the node. A dot after a reference to a block follows the reference, so the next segment reads the block as if its own path had been written there:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get canvas.wcl canvases.main.focus.radius
+5.0
+$ wcl get canvas.wcl canvases.main.focus.title
+"the dot"
+CONSOLE
+  }
+
+  p "The same holds inside the document, so a field of `main` could read `self.focus.radius`, and references chain: a reference to a block that holds a reference reads on through both. A reference to a **declaration** is different. A `&T` field that names a type, such as `target = Circle`, is a handle for the reflection builtins, and a dot after it does not read the type's fields. [Expressions and operators](lang_expressions#through-a-reference) has the whole rule, including what a dangling reference reports."
+
   h3 "Two readings of &T"
 
   p "What `T` names decides which check runs, and the two checks are opposites."
@@ -692,7 +705,7 @@ CONSOLE
 
   callout "Reference errors surface when the reference is read" {
     kind = :warning
-    body  = "`wcl check` prints `OK` for `scene.wcl` above. Both readings run when the navigator is built, not during the schema pass. `wcl parse` builds it, and so does a host that walks the document. Related: `&T` is a property of a **field's own** declared type. `members: list<&Drawable>` parses, and the elements resolve, but the ordinary value-versus-type check refuses the list (`field 'members' declared as list<&Drawable> but value is list`). Declare one reference per field."
+    body  = "`wcl check` prints `OK` for `scene.wcl` above. Both readings run when the navigator is built, not during the schema pass. `wcl parse` builds it, and so does a host that walks the document, and so does a dot that reads through the field: `wcl get scene.wcl scenes.bad.anchor.x` fails with the same `target type 'Plain' is not 'Positioned'` message and exits 3. Related: `&T` is a property of a **field's own** declared type. `members: list<&Drawable>` parses, and the elements resolve, but the ordinary value-versus-type check refuses the list (`field 'members' declared as list<&Drawable> but value is list`). Declare one reference per field."
   }
 
   h2 "The compound forms"
