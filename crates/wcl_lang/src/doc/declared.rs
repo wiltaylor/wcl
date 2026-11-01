@@ -17,10 +17,10 @@
 //! later error can.
 
 use crate::ast::{self, Pattern, TypeRef, VariantPatArgs};
-use crate::value::Value;
+use crate::value::{FnValue, Value};
 
 use super::eval::{EvalCtx, lookup_function};
-use super::signature::is_value_class;
+use super::signature::{BuiltinCallback, is_value_class};
 use super::{DataKind, DataRef, Document};
 
 /// A type as declared, with the namespace it was written in so a named
@@ -112,7 +112,126 @@ pub(crate) fn name_declared_record(
     }
 }
 
+/// Builtins that hand their callback each element of their first
+/// argument as the callback's only argument.
+const CALLBACK_GETS_ELEMENT: &[&str] = &[
+    "all", "any", "filter", "find", "group_by", "map", "max_by", "min_by", "sort_by",
+];
+
+/// How a refusal introduces the element of a list it describes next
+/// (`a list whose element [0] is record`): the text before the index,
+/// and the text between the index and the element's description.
+const LIST_ELEMENT: (&str, &str) = ("a list whose element [", "] is ");
+
 impl Document {
+    /// `got` — a refusal's description of `value`, as it follows "got" —
+    /// with the record literal it describes named by its declared type:
+    /// the value itself, or the element a refused list names
+    /// (`a list whose element [0] is record of type 'Row'`), however
+    /// deeply lists nest. `declared` gives the declared type of the
+    /// value at a path of list indices into `value` (empty for `value`
+    /// itself), and runs only when the described value is a record
+    /// literal; otherwise, and when it finds no name, `got` is left as
+    /// it is.
+    pub(crate) fn name_declared_in(
+        &self,
+        got: String,
+        value: &Value,
+        declared: impl FnOnce(&[usize]) -> Option<Declared>,
+    ) -> String {
+        let mut path = Vec::new();
+        let mut at = value;
+        let mut rest = got.as_str();
+        while let Some(after) = rest.strip_prefix(LIST_ELEMENT.0) {
+            let Some((index, tail)) = after.split_once(LIST_ELEMENT.1) else {
+                return got;
+            };
+            let (Ok(i), Value::List(items)) = (index.parse::<usize>(), at) else {
+                return got;
+            };
+            let Some(item) = items.get(i) else {
+                return got;
+            };
+            path.push(i);
+            at = item;
+            rest = tail;
+        }
+        if !is_record_literal(at) {
+            return got;
+        }
+        let prefix = &got[..got.len() - rest.len()];
+        let named = name_declared_record(rest.to_string(), true, || {
+            Self::declared_record_name(&declared(&path)?)
+        });
+        format!("{prefix}{named}")
+    }
+
+    /// The declared type of the value at `path` — list indices, empty
+    /// for the value itself — inside the value `expr` produces: an
+    /// element of a list literal is its own expression's, anything else
+    /// the element type of what `expr` was declared to produce. See
+    /// [`Self::declared_type_of`].
+    pub(crate) fn declared_at<'a>(
+        &'a self,
+        expr: &ast::Expr,
+        path: &[usize],
+        ctx: &EvalCtx<'a>,
+    ) -> Option<Declared> {
+        let Some((&i, rest)) = path.split_first() else {
+            return self.declared_type_of(expr, ctx);
+        };
+        match expr {
+            ast::Expr::Paren { inner, .. } => self.declared_at(inner, path, ctx),
+            ast::Expr::ListLit { elements, .. } => self.declared_at(elements.get(i)?, rest, ctx),
+            _ => self.declared_elements(self.declared_type_of(expr, ctx)?, path.len()),
+        }
+    }
+
+    /// The type `depth` levels of list element inside `declared`.
+    fn declared_elements(&self, declared: Declared, depth: usize) -> Option<Declared> {
+        (0..depth).try_fold(declared, |d, _| self.declared_element(&d))
+    }
+
+    /// The declared type of the value at `path` (as for
+    /// [`Self::declared_at`]) inside argument `index` (from 0) that a
+    /// builtin hands its callback `f`. For the builtins that pass each
+    /// element of their first argument, that element's declared type:
+    /// the element type the argument declares, or for a list literal the
+    /// element's own expression's. For `fold`, its element likewise as
+    /// the second argument; the accumulator is the initial value on the
+    /// first call and what `f` declared it returns after that. `None`
+    /// for anything else.
+    pub(crate) fn callback_arg_declared<'a>(
+        &'a self,
+        callback: &BuiltinCallback<'_>,
+        f: &FnValue,
+        index: usize,
+        path: &[usize],
+        ctx: &EvalCtx<'a>,
+    ) -> Option<Declared> {
+        // Each of these builtins calls its callback once per element, in
+        // order, so the call's number is the element's index: a list
+        // literal's element is read from its own expression.
+        let element = |list: &ast::Expr| {
+            let mut at = Vec::with_capacity(path.len() + 1);
+            at.push(callback.call);
+            at.extend_from_slice(path);
+            self.declared_at(list, &at, ctx)
+        };
+        match (callback.builtin, index) {
+            ("fold", 0) if callback.call == 0 => self.declared_at(callback.args.get(1)?, path, ctx),
+            ("fold", 0) => {
+                let returned = Declared::new(f.return_ty().clone(), self.ctx_ns(ctx));
+                self.declared_elements(returned, path.len())
+            }
+            ("fold", 1) => element(callback.args.first()?),
+            (builtin, 0) if CALLBACK_GETS_ELEMENT.contains(&builtin) => {
+                element(callback.args.first()?)
+            }
+            _ => None,
+        }
+    }
+
     /// The namespace expressions in `ctx` are written in.
     pub(super) fn ctx_ns<'a>(&'a self, ctx: &EvalCtx<'a>) -> &'a [String] {
         ctx.scope

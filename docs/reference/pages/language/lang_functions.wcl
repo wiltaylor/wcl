@@ -748,7 +748,45 @@ wcl::eval::argument_type
 CONSOLE
   }
 
-  p "Passing `at(items, 0).sku` instead gives `\"item a-1\"`. The same naming applies to the other refusals: an interface miss reads `got record of type 'Item' without field 'width'`, and a body that hands back the record, as in `fn first(i: Item) -> utf8 i`, fails with `'first' declared -> utf8 but returned record of type 'Item'`. The record itself is unchanged; only the message looks back at the declaration. An argument a builtin passes to a callback, such as each element `map` hands its function, has no expression at a call site, so that error still says `record`."
+  p "Passing `at(items, 0).sku` instead gives `\"item a-1\"`. The same naming applies to the other refusals: an interface miss reads `got record of type 'Item' without field 'width'`, and a body that hands back the record, as in `fn first(i: Item) -> utf8 i`, fails with `'first' declared -> utf8 but returned record of type 'Item'`. The record itself is unchanged; only the message looks back at the declaration. A list is named element by element: hand `items` to a function declared `fn tags(ss: list<utf8>)` and the error reads `got a list whose element [0] is record of type 'Item'`."
+
+  p "A builtin that calls your function names the record the same way. `map` hands its callback each element of `items`, so the error names the element type the list declares, even though no call in the file passes the record by hand:"
+
+  code wcl {
+    filename = "labels.wcl"
+    source = <<'WCL'
+type Item {
+  sku:   utf8
+  count: u32
+}
+
+@document
+type Stock {
+  items:  list<Item>
+  labels: list<utf8>
+}
+
+items  = [{ sku: "a-1", count: 3u32 }]
+labels = map(items, fn(s: utf8) -> utf8 $"item ${s}")
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl get labels.wcl labels
+wcl::eval::argument_type
+
+  × argument 1 ('s') of fn literal expects utf8, got record of type 'Item'
+    ╭─[labels.wcl:13:10]
+ 12 │ items  = [{ sku: "a-1", count: 3u32 }]
+ 13 │ labels = map(items, fn(s: utf8) -> utf8 $"item ${s}")
+    ·          ──────────────────────┬─────────────────────
+    ·                                ╰── expects utf8
+    ╰────
+CONSOLE
+  }
+
+  p "`filter`, `any`, `all`, `find`, `sort_by`, `min_by`, `max_by` and `group_by` name their element the same way. `fold` takes its element from the list too, and its accumulator from the initial value on the first call and from the type the callback declares it returns after that. `map_values`, which hands its callback each value of a record, still says `record`."
 
   p "Two more types check less than they appear to. A parameter typed `fn(A) -> R` checks that the argument is a function with the same number of parameters. It does not compare their types, exactly as a `fn`-typed field does not. And a `&T` parameter wants what a `&T` field holds, a reference into the document: a declaration named bare, as in `f(Service)`, or the value of another `&T` field. It does not check what the reference points at. A record value fails it, and a block reached by its path, `f(services.web)`, is a record by the time the call sees it."
 

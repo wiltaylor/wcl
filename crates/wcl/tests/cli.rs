@@ -877,6 +877,34 @@ fn check_eval_names_the_declared_type_of_a_refused_argument() {
 }
 
 #[test]
+fn check_eval_names_the_declared_type_of_a_callback_argument_and_a_list_element() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("rows.wcl");
+    std::fs::write(
+        &file,
+        "type Row { name: utf8 }\n\
+         @document type D { rows: list<Row>  names: list<utf8>  label: utf8 }\n\
+         rows = [{ name: \"a\" }]\n\
+         fn f(ns: list<utf8>) -> utf8 \"x\"\n\
+         names = map(rows, fn(n: utf8) -> utf8 n)\n\
+         label = f(rows)\n",
+    )
+    .expect("write fixture");
+
+    wcl()
+        .arg("check")
+        .arg("--eval")
+        .arg(&file)
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("wcl::eval::argument_type"))
+        .stderr(predicate::str::contains(
+            "of fn literal expects utf8, got record of type 'Row'",
+        ))
+        .stderr(predicate::str::contains("record of type 'Row'").count(2));
+}
+
+#[test]
 fn get_follows_a_reference_to_a_block() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let file = tmp.path().join("services.wcl");

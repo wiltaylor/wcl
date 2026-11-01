@@ -29,7 +29,6 @@ use crate::diagnostics::EvalError;
 use crate::value::{FnValue, Value};
 
 use super::Document;
-use super::declared::{is_record_literal, name_declared_record};
 use super::eval::{EvalCtx, IfaceMisfit, iface_misfit};
 use super::types::{
     Refusal, admit_to_slot, path_matches_suffix, value_kind, value_matches_type_ref,
@@ -129,20 +128,21 @@ pub(super) fn is_value_class(path: &[String], args: &[TypeRef]) -> bool {
 
 impl Document {
     /// What a signature slot declared `ty` makes of `value`:
-    /// `Ok(Ok(converted))` when it accepts the value, `Ok(Err(got))` with
-    /// a description of what it was handed when it refuses, and `Err`
-    /// when converting the value fails outright (a unit the type does not
-    /// declare). `span` is where a conversion error points.
+    /// `Ok(Ok(converted))` when it accepts the value, `Ok(Err((got,
+    /// value)))` with a description of what it was handed, and the value
+    /// that description is of, when it refuses, and `Err` when converting
+    /// the value fails outright (a unit the type does not declare).
+    /// `span` is where a conversion error points.
     pub(super) fn admit_signature(
         &self,
         value: Value,
         ty: &TypeRef,
         span: Span,
-    ) -> Result<Result<Value, String>, EvalError> {
+    ) -> Result<Result<Value, (String, Value)>, EvalError> {
         if self.is_signature_only(ty) {
             return Ok(match self.signature_misfit(&value, ty) {
                 None => Ok(value),
-                Some(got) => Err(got),
+                Some(got) => Err((got, value)),
             });
         }
         if self.accepts_unconverted(&value, ty) {
@@ -155,11 +155,14 @@ impl Document {
             return Ok(if value_matches_type_ref(self, &value, ty) {
                 Ok(value)
             } else {
-                Err(Refusal::Type.describe_got(self, &value, ty))
+                Err((Refusal::Type.describe_got(self, &value, ty), value))
             });
         }
-        Ok(admit_to_slot(self, value, ty, &self.file_ns, span)?
-            .map_err(|(value, resolved, refusal)| refusal.describe_got(self, &value, &resolved)))
+        Ok(
+            admit_to_slot(self, value, ty, &self.file_ns, span)?.map_err(
+                |(value, resolved, refusal)| (refusal.describe_got(self, &value, &resolved), value),
+            ),
+        )
     }
 
     /// Whether the field rule would accept `value` for `ty` and convert
@@ -310,8 +313,10 @@ impl Document {
     /// the argument when the call site wrote one. A host call
     /// (`Document::call_value`) has no call site in any file, so its error
     /// points at the function it reached instead. A refused record
-    /// literal is named by the type its argument expression was declared
-    /// to produce, worked out in the caller's `ctx`.
+    /// literal, or one a refused list holds, is named by the type its
+    /// argument expression was declared to produce — for a builtin's
+    /// callback, the builtin argument it came from — worked out in the
+    /// caller's `ctx`.
     pub(super) fn admit_arguments<'a>(
         &'a self,
         f: &FnValue,
@@ -328,9 +333,10 @@ impl Document {
             }
             match self.admit_signature(value.clone(), param.ty(), span)? {
                 Ok(value) => out.push(value),
-                Err(got) => {
-                    let got = name_declared_record(got, is_record_literal(value), || {
-                        self.declared_record_name_of(site.args?.get(i)?, ctx)
+                Err((got, refused)) => {
+                    let got = self.name_declared_in(got, &refused, |path| match site.callback {
+                        Some(callback) => self.callback_arg_declared(&callback, f, i, path, ctx),
+                        None => self.declared_at(site.args?.get(i)?, path, ctx),
                     });
                     let at = |span| {
                         EvalError::argument_type(
@@ -356,8 +362,9 @@ impl Document {
     /// a field declared with that type would. The error points at the
     /// body, in the file the body was written in; a literal body carries
     /// no span, so then at the whole function literal. A refused record
-    /// literal is named by the type the body was declared to produce,
-    /// worked out in `ctx`, which still holds the body's locals.
+    /// literal, or one a refused list holds, is named by the type the
+    /// body was declared to produce, worked out in `ctx`, which still
+    /// holds the body's locals.
     pub(super) fn admit_return<'a>(
         &'a self,
         f: &FnValue,
@@ -370,15 +377,11 @@ impl Document {
         }
         let own = fn_span(f);
         let span = own.unwrap_or(site.span);
-        // The check consumes the value; note beforehand whether it is
-        // the record literal a refusal may name.
-        let literal = is_record_literal(&value);
         let error = match self.admit_signature(value, f.return_ty(), span) {
             Ok(Ok(value)) => return Ok(value),
-            Ok(Err(got)) => {
-                let got = name_declared_record(got, literal, || {
-                    self.declared_record_name_of(&f.body, ctx)
-                });
+            Ok(Err((got, refused))) => {
+                let got = self
+                    .name_declared_in(got, &refused, |path| self.declared_at(&f.body, path, ctx));
                 EvalError::return_type(site.name.or(f.name()), f.return_ty_text(), got, span)
             }
             Err(error) => error,
@@ -410,6 +413,23 @@ pub(crate) struct CallSite<'s> {
     pub(crate) args: Option<&'s [ast::Expr]>,
     /// The call's span.
     pub(crate) span: Span,
+    /// The builtin that made the call, when it is a callback a builtin
+    /// invokes: it says where each argument came from.
+    pub(crate) callback: Option<BuiltinCallback<'s>>,
+}
+
+/// A callback's call from inside a builtin (`map(rows, f)` calling `f`):
+/// the builtin's name, its argument expressions as written, and how many
+/// calls it made to a callback before this one. Read only to name the
+/// declared type of a refused argument, so making one costs nothing.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BuiltinCallback<'s> {
+    /// The builtin's name (`map`, `fold`, …).
+    pub(crate) builtin: &'s str,
+    /// The builtin's argument expressions, as written at its call.
+    pub(crate) args: &'s [ast::Expr],
+    /// The calls the builtin made before this one, from 0.
+    pub(crate) call: usize,
 }
 
 impl CallSite<'_> {
@@ -419,6 +439,7 @@ impl CallSite<'_> {
             name: None,
             args: None,
             span,
+            callback: None,
         }
     }
 

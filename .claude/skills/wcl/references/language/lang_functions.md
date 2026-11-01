@@ -181,9 +181,21 @@ A refused record literal is named by the type its expression declares: the argum
 at the call, or the body. With `rows: list<Row>`, `f(at(rows, 0))` against `fn f(n: utf8)` says
 `got record of type 'Row'`, an interface miss says `got record of type 'Row' without field
 'width'`, and `fn g(r: Row) -> utf8 r` says `'g' declared -> utf8 but returned record of type
-'Row'`. A literal nothing declares, one declared only `any` / `record`, and every argument a
-builtin passes to a callback (`map(rows, fn(n: utf8) …)`) say just `record`. A block's record
-names its own schema (`got Svc`).
+'Row'`. The bad element of a refused list is named the same way: `f(rows)` against
+`fn f(ns: list<utf8>)` says `got a list whose element [0] is record of type 'Row'`, and an
+element of a list literal by its own expression (`f(["x", at(rows, 0)])` → `element [1] is
+record of type 'Row'`).
+
+An argument a builtin hands a callback is named from the builtin's own arguments:
+`map(rows, fn(n: utf8) -> utf8 n)` says `argument 1 ('n') of fn literal expects utf8, got record
+of type 'Row'`. That covers the element-callback builtins `map`, `filter`, `any`, `all`, `find`,
+`sort_by`, `min_by`, `max_by`, `group_by`, and `fold`, whose element comes from the list and
+whose accumulator from the initial value on the first call, then from the callback's declared
+return type. A `map_values` callback (handed a record's values) says just `record`.
+
+A literal nothing declares and one declared only `any` / `record` say just `record`. A block's
+record names its own schema (`got Svc`). Field type errors (`field 'f' declared as list<utf8>
+but value is list`) do not describe a list's elements, so name none.
 
 ## Function types
 

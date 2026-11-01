@@ -8456,6 +8456,194 @@ fn type_errors_on_a_tagged_record_name_its_own_type() {
     );
 }
 
+#[test]
+fn callback_argument_error_names_the_declared_element_type() {
+    // Every builtin that hands its callback an element of its first
+    // argument names the element type that argument declares.
+    let builtins = [
+        "map", "filter", "any", "all", "find", "sort_by", "max_by", "min_by", "group_by",
+    ];
+    let fields: String = builtins
+        .iter()
+        .map(|b| format!("{b}_r: list<utf8>  "))
+        .collect();
+    let root: String = builtins
+        .iter()
+        .map(|b| format!("{b}_r = {b}(rows, fn(n: utf8) -> utf8 n)\n"))
+        .collect();
+    let doc = open_typed_slots(&fields, &root);
+    for b in builtins {
+        assert_eq!(
+            read_error(&doc, &format!("{b}_r")),
+            "argument 1 ('n') of fn literal expects utf8, got record of type 'Row'",
+            "{b}"
+        );
+        let err = doc.field(&format!("{b}_r")).unwrap().value().unwrap_err();
+        assert!(
+            matches!(err, EvalError::ArgumentType { .. }),
+            "{b}: {err:?}"
+        );
+    }
+}
+
+#[test]
+fn callback_argument_error_names_a_list_literal_element_by_its_own_expression() {
+    let doc = open_typed_slots(
+        "l: list<utf8>  u: list<utf8>",
+        r#"
+        l = map([1, at(rows, 0)], fn(n: i64) -> utf8 "x")
+        u = map([{ name: "z" }], fn(n: utf8) -> utf8 n)
+        "#,
+    );
+    assert_eq!(
+        read_error(&doc, "l"),
+        "argument 1 ('n') of fn literal expects i64, got record of type 'Row'"
+    );
+    // Nothing declares the literal element.
+    assert_eq!(
+        read_error(&doc, "u"),
+        "argument 1 ('n') of fn literal expects utf8, got record"
+    );
+}
+
+#[test]
+fn fold_callback_names_the_accumulator_and_the_element_apart() {
+    let doc = open_typed_slots(
+        "e: i64  a: utf8  later: utf8  rows2: list<Row>",
+        r#"
+        rows2 = [{ name: "a", inner: { host: "h" } }, { name: "b", inner: { host: "h" } }]
+        e = fold(rows, 0, fn(acc: i64, n: utf8) -> i64 acc)
+        a = fold([1], cfg.db, fn(acc: utf8, n: i64) -> utf8 acc)
+        later = fold(rows2, "s", fn(acc: utf8, n: Row) -> Row n)
+        "#,
+    );
+    // The element comes from the list argument.
+    assert_eq!(
+        read_error(&doc, "e"),
+        "argument 2 ('n') of fn literal expects utf8, got record of type 'Row'"
+    );
+    // The first accumulator is the initial value.
+    assert_eq!(
+        read_error(&doc, "a"),
+        "argument 1 ('acc') of fn literal expects utf8, got record of type 'Db'"
+    );
+    // Later accumulators are what the callback declared it returns.
+    assert_eq!(
+        read_error(&doc, "later"),
+        "argument 1 ('acc') of fn literal expects utf8, got record of type 'Row'"
+    );
+}
+
+#[test]
+fn callback_argument_error_on_an_undeclared_or_tagged_record_is_unchanged() {
+    let doc = Document::open(
+        r#"
+        @block("svc") type Svc { @inline(0) id: identifier  port: i64 }
+        @document type D {
+          @children("svc") svcs: list<Svc>
+          t: list<utf8>
+          u: list<utf8>
+          v: list<utf8>
+        }
+        svc web { port = 1 }
+        fn pass(xs: list<any>) -> list<any> xs
+        t = map(svcs, fn(n: utf8) -> utf8 n)
+        u = map(pass([{ a: 1 }]), fn(n: utf8) -> utf8 n)
+        v = map([{ a: 1 }], fn(n: any) -> utf8 n)
+        "#,
+        "t",
+    )
+    .expect("open");
+    assert_eq!(
+        read_error(&doc, "t"),
+        "argument 1 ('n') of fn literal expects utf8, got Svc"
+    );
+    // A value class names no type.
+    assert_eq!(
+        read_error(&doc, "u"),
+        "argument 1 ('n') of fn literal expects utf8, got record"
+    );
+    assert_eq!(
+        read_error(&doc, "v"),
+        "fn literal declared -> utf8 but returned record"
+    );
+}
+
+#[test]
+fn refused_list_names_the_declared_type_of_its_record_element() {
+    let doc = open_typed_slots(
+        "a: utf8  l: utf8  n: utf8  r: list<utf8>  b: utf8  t: utf8",
+        r#"
+        fn f(n: list<utf8>) -> utf8 "x"
+        fn h(n: list<list<utf8>>) -> utf8 "x"
+        fn g(r: list<Row>) -> list<utf8> r
+        a = f(rows)
+        l = f(["x", at(rows, 0)])
+        n = h([rows])
+        r = g(rows)
+        b = f([{ name: "z" }])
+        t = f(cfg.dbs)
+        "#,
+    );
+    assert_eq!(
+        read_error(&doc, "a"),
+        "argument 1 ('n') of 'f' expects list<utf8>, got a list whose element [0] is \
+         record of type 'Row'"
+    );
+    // A list literal's element is named by its own expression.
+    assert_eq!(
+        read_error(&doc, "l"),
+        "argument 1 ('n') of 'f' expects list<utf8>, got a list whose element [1] is \
+         record of type 'Row'"
+    );
+    assert_eq!(
+        read_error(&doc, "n"),
+        "argument 1 ('n') of 'h' expects list<list<utf8>>, got a list whose element [0] \
+         is a list whose element [0] is record of type 'Row'"
+    );
+    assert_eq!(
+        read_error(&doc, "r"),
+        "'g' declared -> list<utf8> but returned a list whose element [0] is record of \
+         type 'Row'"
+    );
+    // Nothing declares the literal: `record`.
+    assert_eq!(
+        read_error(&doc, "b"),
+        "argument 1 ('n') of 'f' expects list<utf8>, got a list whose element [0] is record"
+    );
+    assert_eq!(
+        read_error(&doc, "t"),
+        "argument 1 ('n') of 'f' expects list<utf8>, got a list whose element [0] is \
+         record of type 'Db'"
+    );
+    let err = doc.field("a").unwrap().value().unwrap_err();
+    assert!(matches!(err, EvalError::ArgumentType { .. }), "{err:?}");
+    let err = doc.field("r").unwrap().value().unwrap_err();
+    assert!(matches!(err, EvalError::ReturnType { .. }), "{err:?}");
+}
+
+#[test]
+fn refused_list_of_tagged_records_names_its_own_type() {
+    let doc = Document::open(
+        r#"
+        @block("svc") type Svc { @inline(0) id: identifier  port: i64 }
+        @document type D {
+          @children("svc") svcs: list<Svc>
+          a: utf8
+        }
+        svc web { port = 1 }
+        fn f(n: list<utf8>) -> utf8 "x"
+        a = f(svcs)
+        "#,
+        "t",
+    )
+    .expect("open");
+    assert_eq!(
+        read_error(&doc, "a"),
+        "argument 1 ('n') of 'f' expects list<utf8>, got a list whose element [0] is Svc"
+    );
+}
+
 // ─── member access through `&T` references ───────────────────────
 
 /// A three-service chain: `web` points at `api`, `api` at `db`, and `db`

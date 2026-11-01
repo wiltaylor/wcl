@@ -13,7 +13,7 @@ use super::eval_ops::{apply_binary, apply_unary, as_bool, describe_expr, format_
 use super::eval_stack::{self, FrameKey, MAX_EVAL_DEPTH};
 use super::match_pat;
 use super::scope::Scope;
-use super::signature::CallSite;
+use super::signature::{BuiltinCallback, CallSite};
 use super::types::value_matches_declared;
 use super::views::{materialise_dataref, materialise_dataref_value};
 use super::{Block, Document, expr_to_path_segments, span_of};
@@ -241,6 +241,14 @@ struct EvalCaller<'a, 'c> {
     ctx: &'c mut EvalCtx<'a>,
     /// Span the call reports errors against.
     span: Span,
+    /// The builtin making the calls, as written: its name and argument
+    /// expressions, so a refused callback argument can name the type the
+    /// builtin argument it came from declares.
+    builtin: &'c str,
+    /// The builtin's argument expressions.
+    args: &'c [ast::Expr],
+    /// Callback calls made so far.
+    calls: usize,
     /// If a user-function invocation surfaces an `EvalError`, we stash
     /// it here and return a string from `call_fn` so the builtin can
     /// short-circuit. The dispatch site re-raises the structured error.
@@ -254,7 +262,16 @@ impl<'a> crate::functions::Caller for EvalCaller<'a, '_> {
             .profile_enter(crate::diagnostics::ProfileKey::UserFn {
                 name: String::new(),
             });
-        match self.doc.invoke_fn_value(f, args, self.ctx, self.span) {
+        let site = CallSite {
+            callback: Some(BuiltinCallback {
+                builtin: self.builtin,
+                args: self.args,
+                call: self.calls,
+            }),
+            ..CallSite::bare(self.span)
+        };
+        self.calls += 1;
+        match self.doc.invoke_fn_at(f, args, self.ctx, &site) {
             Ok(v) => Ok(v),
             Err(e) => {
                 let msg = e.to_string();
@@ -841,6 +858,7 @@ impl Document {
                     name: Some(name),
                     args: Some(args),
                     span,
+                    callback: None,
                 };
                 return self
                     .invoke_fn_at(&fv, &evald, ctx, &site)
@@ -864,6 +882,7 @@ impl Document {
             },
             args: Some(args),
             span,
+            callback: None,
         };
         self.invoke_fn_at(&fv, &evald, ctx, &site)
     }
@@ -938,6 +957,9 @@ impl Document {
                     doc: self,
                     ctx,
                     span,
+                    builtin: name,
+                    args,
+                    calls: 0,
                     err: None,
                 };
                 let res = (body)(&mut caller, &evald);
