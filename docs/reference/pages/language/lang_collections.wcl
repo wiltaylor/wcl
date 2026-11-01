@@ -122,7 +122,8 @@ OK
 $ wcl check lists.wcl
 wcl::eval::schema_violation
 
-  × field 'ports' declared as list<u32> but value is list
+  × field 'ports' declared as list<u32> but value is a list whose element [1]
+  │ is utf8
     ╭─[lists.wcl:9:1]
   8 │
   9 │ ports = [8080u32, "8443"]
@@ -135,7 +136,9 @@ lists.wcl: 1 schema violation
 CONSOLE
   }
 
-  p "The message names the field, not the offending element. A long list tells you _that_ an element is wrong, not _which_. Numeric elements are the exception, in both directions. A number takes the element type when it fits, so `[1, 2]` satisfies `list<u32>` although the literals are default-typed integers, and it reads back as `[1u32, 2u32]`. A number that does not fit is named with its index: `small = [1, 300]` against `list<u8>` fails with `field 'small' declared as list<u8> but element [1] holds 300, which is out of range for u8`. [Schemas](lang_schemas#a-number-must-fit-its-type) covers the rule."
+  p "The message names the field and the first element that misses, with its index and what it is. Only the first is reported, so fix it and check again. A record element is named by its type when it has one: a block by its schema (`element [0] is Svc`), and a record literal by the type its expression declared, so `out = rows` with `rows: list<Row>` gives `element [0] is record of type 'Row'`. A list of lists nests the phrase: `value is a list whose element [0] is a list whose element [0] is …`."
+
+  p "Numeric elements are worded differently, in both directions. A number takes the element type when it fits, so `[1, 2]` satisfies `list<u32>` although the literals are default-typed integers, and it reads back as `[1u32, 2u32]`. A number that does not fit is named with its index: `small = [1, 300]` against `list<u8>` fails with `field 'small' declared as list<u8> but element [1] holds 300, which is out of range for u8`. [Schemas](lang_schemas#a-number-must-fit-its-type) covers the rule."
 
   p "`spare = []` shows the second rule: **the empty list is legal for any element type.** There is nothing in `[]` to check. A gather field with no children evaluates to exactly this."
 

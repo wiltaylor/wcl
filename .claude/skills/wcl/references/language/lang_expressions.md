@@ -256,7 +256,8 @@ zone = origin.inner.zone                     // "a"
   stays an untagged literal (prints without a type name, equals the same literal anywhere). A
   literal nothing declared, or declared only as `any` / `record`, says just `record`. Call and
   field type errors name it the same way (`got record of type 'Row'`, `value is record of type
-  'Row'`).
+  'Row'`), and so does the element a refused list names (`value is a list whose element [0] is
+  record of type 'Row'`).
 - **Nothing else has fields.** `rows.name` on a list fails with `unresolved reference
   'rows.name': value of type 'list' has no field 'name'`; a scalar names its own type the same
   way (`value of type 'i64'`). There is no index operator: write `at(rows, 0).name`.

@@ -23,6 +23,7 @@
 use crate::ast::{self, TypeRef};
 use crate::diagnostics::EvalError;
 use crate::doc::Document;
+use crate::doc::declared::Declared;
 use crate::value::Value;
 
 use super::inhabit::{
@@ -214,16 +215,19 @@ pub(crate) fn admit_to_slot(
 }
 
 /// A schema field's [`Refusal`], as the violation the schema walk reports
-/// for field `field_name` written at `span`. `record_type` names the type
-/// a refused record literal was declared to produce; it is asked only
-/// when the message would name one.
+/// for field `field_name` written at `span`. `declared_at` gives the
+/// declared type of the value at a path of list indices into `value`
+/// (empty for `value` itself), which names a refused record literal; it
+/// is asked only when the message would name one.
+#[allow(clippy::too_many_arguments)] // the refusal, the field it is about, and the document that words it
 pub(crate) fn field_refusal_error(
+    doc: &Document,
     field_name: &str,
     declared: &TypeRef,
     resolved: &TypeRef,
     value: &Value,
     refusal: Refusal,
-    record_type: impl FnOnce() -> Option<String>,
+    declared_at: impl FnOnce(&[usize]) -> Option<Declared>,
     span: ast::Span,
 ) -> EvalError {
     use crate::diagnostics::SchemaViolationKind as Kind;
@@ -248,11 +252,12 @@ pub(crate) fn field_refusal_error(
             span,
         ),
         Refusal::Type => super::inhabit::field_type_mismatch(
+            doc,
             field_name,
             declared,
             resolved,
             value,
-            record_type,
+            declared_at,
             span,
         ),
         Refusal::NotInSet { set, symbol } => EvalError::schema_violation(

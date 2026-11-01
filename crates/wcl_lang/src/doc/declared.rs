@@ -252,17 +252,6 @@ impl Document {
         }
     }
 
-    /// The name of the type `expr` was declared to produce, for a
-    /// diagnostic about the record literal it evaluated to: see
-    /// [`Self::declared_type_of`] and [`Self::declared_record_name`].
-    pub(crate) fn declared_record_name_of<'a>(
-        &'a self,
-        expr: &ast::Expr,
-        ctx: &EvalCtx<'a>,
-    ) -> Option<String> {
-        Self::declared_record_name(&self.declared_type_of(expr, ctx)?)
-    }
-
     /// The type a navigator's target was declared with: a field's schema
     /// declaration. `None` for anything else.
     fn dataref_declared(dr: &DataRef<'_>) -> Option<Declared> {

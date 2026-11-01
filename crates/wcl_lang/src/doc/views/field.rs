@@ -489,6 +489,7 @@ impl<'a> Field<'a> {
             .doc
             .resolve_alias_in(declared.type_ref(), declared.file_ns);
         crate::doc::types::numeric_misfit_error(
+            self.doc,
             self.name(),
             declared.type_ref(),
             &resolved,
@@ -497,14 +498,19 @@ impl<'a> Field<'a> {
         )
     }
 
-    /// The name of the type this field's expression was declared to
-    /// produce — `Row` for `label = at(rows, 0)` over a `list<Row>` —
-    /// for a type error about the record literal it evaluated to. Worked
-    /// out from the expression in the field's own scope; `None` when
-    /// nothing declares one. See [`Document::declared_type_of`].
-    pub(in crate::doc) fn declared_record_name(&self) -> Option<String> {
+    /// The declared type of the value at `path` — list indices, empty
+    /// for the field's value itself — inside what this field's expression
+    /// produces: `Row` for `label = at(rows, 0)` over a `list<Row>`, or
+    /// for element `[0]` of `out = rows`. For a type error about the
+    /// record literal found there. Worked out from the expression in the
+    /// field's own scope; `None` when nothing declares one. See
+    /// [`Document::declared_at`].
+    pub(in crate::doc) fn declared_at(
+        &self,
+        path: &[usize],
+    ) -> Option<crate::doc::declared::Declared> {
         let ctx = EvalCtx::new(self.scope.clone());
-        self.doc.declared_record_name_of(&self.ast.expr, &ctx)
+        self.doc.declared_at(&self.ast.expr, path, &ctx)
     }
 
     /// Whether `error`, returned by [`value`](Self::value), is this field's
@@ -580,6 +586,7 @@ impl<'a> Field<'a> {
             .and_then(|value| {
                 let resolved = self.doc.resolve_alias(&ty);
                 match crate::doc::types::numeric_misfit_error(
+                    self.doc,
                     self.name(),
                     &ty,
                     &resolved,

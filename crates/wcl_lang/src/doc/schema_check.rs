@@ -1301,12 +1301,13 @@ fn field_value_errors(block: &Block<'_>, declared: &TypeField<'_>, errs: &mut Ve
         declared.file_ns,
     ) {
         errs.push(crate::doc::types::field_refusal_error(
+            block.doc,
             literal_field.name(),
             declared.type_ref(),
             &resolved_ty,
             value,
             refusal,
-            || literal_field.declared_record_name(),
+            |path| literal_field.declared_at(path),
             literal_field.span(),
         ));
     } else if let Some(msg) = ref_violation(block.doc, declared, value) {

@@ -579,12 +579,13 @@ impl Document {
             declared.file_ns,
         ) {
             out.push(field_refusal_error(
+                self,
                 f.name(),
                 declared.type_ref(),
                 &resolved,
                 v,
                 refusal,
-                || f.declared_record_name(),
+                |path| f.declared_at(path),
                 f.span(),
             ));
         } else if let Some(msg) = schema_check::ref_violation(self, &declared, v) {

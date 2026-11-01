@@ -22,7 +22,7 @@ use crate::diagnostics::EvalError;
 use crate::value::{Value, VariantPayload};
 
 use crate::doc::Document;
-use crate::doc::declared::{is_record_literal, name_declared_record};
+use crate::doc::declared::Declared;
 use crate::numeric::{NumericMisfit, fit_to_builtin};
 
 use super::unions::path_matches_suffix;
@@ -200,21 +200,36 @@ pub(super) fn numeric_misfit(value: &Value, ty: &TypeRef) -> Option<(String, Str
 /// is weighed against. The strict walk and a lazy read both build the
 /// error here, so they word it alike. It names the field (`detail`), which
 /// is how the strict walk recognises the error a read already cached.
-/// A record literal is named by the type `record_type` works out for it
-/// (`value is record of type 'Row'`), asked only for one.
+///
+/// A list refused for a list type names its first offending element as
+/// a call error does (`value is a list whose element [0] is i64`), with
+/// the same describer. A record literal — the value, or the element a
+/// refused list names — is named by the type `declared_at` works out for
+/// it (`value is record of type 'Row'`); `declared_at` takes the path of
+/// list indices to the record (empty for the value itself) and is asked
+/// only for a record literal.
 pub(crate) fn field_type_mismatch(
+    doc: &Document,
     field_name: &str,
     declared: &TypeRef,
     resolved: &TypeRef,
     value: &Value,
-    record_type: impl FnOnce() -> Option<String>,
+    declared_at: impl FnOnce(&[usize]) -> Option<Declared>,
     span: ast::Span,
 ) -> EvalError {
-    let mismatch = describe_type_mismatch(value, resolved);
+    let mismatch = match (value, resolved) {
+        (Value::List(_), TypeRef::List(_)) if numeric_misfit(value, resolved).is_none() => {
+            format!(
+                "value is {}",
+                super::slot::Refusal::Type.describe_got(doc, value, resolved)
+            )
+        }
+        _ => describe_type_mismatch(value, resolved),
+    };
     let mismatch = match mismatch.strip_prefix("value is ") {
         Some(got) => format!(
             "value is {}",
-            name_declared_record(got.to_string(), is_record_literal(value), record_type)
+            doc.name_declared_in(got.to_string(), value, declared_at)
         ),
         None => mismatch,
     };
@@ -232,6 +247,7 @@ pub(crate) fn field_type_mismatch(
 /// fits is converted to the declared type on read, so one that does not
 /// cannot be handed back as though it had been.
 pub(crate) fn numeric_misfit_error(
+    doc: &Document,
     field_name: &str,
     declared: &TypeRef,
     resolved: &TypeRef,
@@ -240,11 +256,12 @@ pub(crate) fn numeric_misfit_error(
 ) -> Option<EvalError> {
     numeric_misfit(value, resolved)?;
     Some(field_type_mismatch(
+        doc,
         field_name,
         declared,
         resolved,
         value,
-        || None,
+        |_| None,
         span,
     ))
 }
