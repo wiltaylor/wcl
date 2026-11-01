@@ -590,6 +590,32 @@ fn numeric_misfits_are_flagged_by_both_paths() {
 }
 
 #[test]
+fn schemaless_document_field_declarations_are_exempt_on_both_paths() {
+    // `@schemaless` on a `@document` type's field declaration exempts the
+    // root field from the value-vs-type check on both paths, as it does
+    // for a `@block` type's field. The narrow form exempts only
+    // decorators, so `ratio` is still a misfit on both.
+    let src = r#"
+        @document type Cfg { @schemaless port: u8  @schemaless(annotations = true) ratio: u8  @children("svc") svcs: list<Svc> }
+        @block("svc") type Svc { @schemaless weight: u8 }
+        port = 300
+        ratio = 300
+        svc web { weight = 300 }
+    "#;
+    let flagged = assert_agreement(src);
+    assert_eq!(flagged.len(), 1, "only `ratio`: {flagged:?}");
+    let doc = open(src);
+    assert_eq!(
+        doc.get("port").unwrap().value().unwrap(),
+        wcl_lang::Value::I64(300)
+    );
+    assert_eq!(
+        doc.get("ratio").unwrap().value().unwrap_err().to_string(),
+        "field 'ratio' declared as u8 but value 300 is out of range for u8"
+    );
+}
+
+#[test]
 fn numeric_misfits_in_an_imported_file_name_that_file_on_both_paths() {
     let dir = tempfile::tempdir().expect("tempdir");
     std::fs::write(

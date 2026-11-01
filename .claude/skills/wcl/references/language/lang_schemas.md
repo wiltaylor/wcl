@@ -267,10 +267,14 @@ namespace, so `@table` and `@block` cannot both claim one kind string in one nam
 
 `@schemaless` switches validation off, and it is an escape hatch rather than a convenience.
 
-- On a **type**, it short-circuits every check for instances of that block: unknown fields,
-  disallowed nested kinds, child quotas, table-row arity.
-- On a **field**, it exempts only that field from the value-versus-type check. The rest of the
-  block stays validated.
+- On a **`@block`/`@table` type**, it short-circuits every check for instances of that block:
+  unknown fields, disallowed nested kinds, child quotas, table-row arity.
+- On a **`@document` type**, it does nothing: undeclared root fields are still refused and
+  declared ones still type-checked. Open the root field by field instead.
+- On a **field declaration** (in a `@block` or `@document` type), it exempts only that field
+  from the value-versus-type check, in every instance or at the root. The rest stays validated.
+- On a **field assignment** (`@schemaless x = ...`, in a block or at the root), it exempts that
+  one field from both the membership check and the value-versus-type check.
 - `@schemaless(annotations = true)` exempts only the *decorators* on that node, leaving the
   values checked.
 
@@ -286,6 +290,10 @@ type Project {
   header: list<utf8>?
   @schemaless rows: list<list<utf8>>?
 }
+
+// Root field: `build` may hold anything; other root fields are still checked.
+@document type Cfg { @schemaless build: utf8 }
+build = { by: "ci", run: 42 }
 ```
 
 It applies to the **next declaration only**. Writing one `@schemaless` above several top-level

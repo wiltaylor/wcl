@@ -470,8 +470,8 @@ impl<'a> Field<'a> {
     ///
     /// Exempt wherever the strict walk skips the value-vs-type check, so
     /// the two paths flag the same fields: a `@schemaless` field, a field
-    /// of a `@schemaless` block, and a block field whose declaration is
-    /// `@schemaless`.
+    /// of a `@schemaless` block, and a field whose declaration (on a
+    /// `@block` type or the `@document` type) is `@schemaless`.
     fn numeric_misfit_error(&self, value: &Value) -> Option<EvalError> {
         if has_schemaless(&self.ast.decorators) {
             return None;
@@ -482,7 +482,7 @@ impl<'a> Field<'a> {
             return None;
         }
         let declared = self.declared_field()?;
-        if self.scope.frames().last().is_some() && has_schemaless(&declared.ast.decorators) {
+        if has_schemaless(&declared.ast.decorators) {
             return None;
         }
         let resolved = self

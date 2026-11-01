@@ -4612,6 +4612,113 @@ fn schemaless_type_declaration_opens_all_instances() {
     );
 }
 
+#[test]
+fn schemaless_document_field_declaration_exempts_the_root_field() {
+    // `@schemaless` on a `@document` type's field opts the root field out
+    // of the value-vs-type check, as on a `@block` type's field: the
+    // strict walk passes and the lazy read hands the value back as
+    // written. Regression: the root path used to check it anyway.
+    let doc = Document::open(
+        r#"
+        @document type D { @schemaless host: utf8 }
+        host = { a: 1 }
+        "#,
+        "t",
+    )
+    .unwrap();
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    assert!(matches!(
+        doc.field("host").unwrap().value().unwrap(),
+        Value::Record { .. }
+    ));
+}
+
+#[test]
+fn schemaless_block_field_declaration_still_exempts_the_block_field() {
+    let doc = Document::open(
+        r#"
+        @document type D { @children("b") bs: list<B> }
+        @block("b") type B { @inline(0) id: identifier  @schemaless host: utf8  port: utf8 }
+        b x { host = { a: 1 }  port = "80" }
+        "#,
+        "t",
+    )
+    .unwrap();
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    let b = doc.block("b").unwrap();
+    assert!(matches!(
+        b.field("host").unwrap().value().unwrap(),
+        Value::Record { .. }
+    ));
+}
+
+#[test]
+fn schemaless_annotations_on_a_document_field_still_checks_its_value() {
+    // The narrow form exempts decorators only; the value is still held to
+    // its declared type, on the root as in a block.
+    for src in [
+        r#"
+        @document type D { @schemaless(annotations = true) host: utf8 }
+        host = { a: 1 }
+        "#,
+        r#"
+        @document type D { @children("b") bs: list<B> }
+        @block("b") type B { @inline(0) id: identifier  @schemaless(annotations = true) host: utf8 }
+        b x { host = { a: 1 } }
+        "#,
+    ] {
+        let doc = Document::open(src, "t").unwrap();
+        let messages: Vec<String> = doc.schema_errors().iter().map(|e| e.to_string()).collect();
+        assert_eq!(
+            messages,
+            ["field 'host' declared as utf8 but value is record"],
+            "{src}"
+        );
+    }
+}
+
+#[test]
+fn schemaless_document_type_does_not_open_the_root() {
+    // `@schemaless` on a `@document` type is accepted but opens nothing:
+    // an undeclared root field and a declared one of the wrong type are
+    // both still reported. Only a `@block` type's instances are opened.
+    let doc = Document::open(
+        r#"
+        @document @schemaless type D { host: utf8 }
+        host = { a: 1 }
+        extra = 1
+        "#,
+        "t",
+    )
+    .unwrap();
+    let messages: Vec<String> = doc.schema_errors().iter().map(|e| e.to_string()).collect();
+    assert_eq!(
+        messages,
+        [
+            "field 'host' declared as utf8 but value is record",
+            "top-level field 'extra' is not declared by @document schema 'D'",
+        ]
+    );
+}
+
+#[test]
+fn schemaless_on_a_root_field_assignment_waives_the_document_schema() {
+    // Written on the assignment rather than the declaration, `@schemaless`
+    // means the root field needs no `@document` declaration at all, and
+    // its value goes unchecked even where one declares it.
+    let doc = Document::open(
+        r#"
+        @document type D { host: utf8 }
+        @schemaless host = { a: 1 }
+        @schemaless ids = [1, 2]
+        "#,
+        "t",
+    )
+    .unwrap();
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    assert!(doc.field("ids").unwrap().value().is_ok());
+}
+
 // ─── Interfaces and `extends` ─────────────────────────────────────
 
 #[test]

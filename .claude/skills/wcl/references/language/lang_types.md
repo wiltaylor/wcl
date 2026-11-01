@@ -68,8 +68,8 @@ wcl::eval::schema_violation
 
 ```
 
-`@schemaless` on the field, or on its block, exempts it on both paths; it then reads back
-unconverted (`300`).
+`@schemaless` on the field, on its block, or on its declaration (in a `@block` or `@document`
+type) exempts it on both paths; it then reads back unconverted (`300`).
 
 ## Type references
 

@@ -203,18 +203,21 @@ fn reading_a_misfit_fails_as_the_schema_check_does() {
 
 #[test]
 fn a_misfit_read_is_exempt_where_the_schema_check_is() {
-    // `@schemaless` on the field, on its block, or on the block field's
-    // declaration opts out of the value-vs-type check on both paths, so
-    // the number reads back as written.
+    // `@schemaless` on the field, on its block, or on the field's
+    // declaration (in a `@block` type or the `@document` type) opts out
+    // of the value-vs-type check on both paths, so the number reads back
+    // as written.
     let src = r#"
-        @document type D { @children("svc") svcs: list<Svc>  a: u8 }
+        @document type D { @children("svc") svcs: list<Svc>  a: u8  @schemaless b: u8 }
         @block("svc") type Svc { @schemaless weight: u8  size: u8 }
         @schemaless a = 300
+        b = 300
         svc web { weight = 256  @schemaless size = 256 }
         @schemaless svc db { size = 256 }
     "#;
     let doc = Document::open(src, "test").unwrap();
     assert_eq!(doc.get("a").unwrap().value().unwrap(), Value::I64(300));
+    assert_eq!(doc.get("b").unwrap().value().unwrap(), Value::I64(300));
     for block in doc.blocks() {
         for field in block.fields() {
             assert_eq!(field.value().unwrap(), &Value::I64(256), "{}", field.name());

@@ -545,6 +545,12 @@ impl Document {
         let Some(declared) = schemas.field(f.name()) else {
             return;
         };
+        // `@schemaless` on the `@document` type's field declaration opts
+        // the field out of the value-vs-type check, as it does for a
+        // `@block` type's field (`schema_check::field_value_errors`).
+        if has_schemaless(&declared.ast.decorators) {
+            return;
+        }
         let v = match f.value() {
             Ok(v) => v,
             // A number that does not fit fails the read itself; report

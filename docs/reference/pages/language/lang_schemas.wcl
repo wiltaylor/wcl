@@ -1117,8 +1117,8 @@ CONSOLE
       | "Written on" | "Turns off" |
       | "A `@block` type declaration" | "Every check inside every instance of that kind" |
       | "A block instance"            | "Every check inside that one block" |
-      | "A field instance"            | "The membership check for that one field" |
-      | "A field of a `type`"         | "The value-vs-type check for that field, in every instance" |
+      | "A field instance"            | "The membership and value-vs-type checks for that one field" |
+      | "A field of a `type`"         | "The value-vs-type check for that field, in every instance, or at the root for a `@document` type" |
       | "Anything, as `@schemaless(annotations = true)`" | "Only the decorator-declaration check on that node" |
   }
 
@@ -1140,9 +1140,12 @@ type Service {
 
 @document
 type Cfg {
+  @schemaless build: utf8        # the root may put anything in `build`
   @children("scratch") scratches: list<Scratch>
   @children("service") services:  list<Service>
 }
+
+build = { by: "ci", run: 42 }
 
 # The type is open: anything goes, to any depth.
 scratch notes {
@@ -1173,6 +1176,8 @@ $ wcl check open.wcl
 OK
 CONSOLE
   }
+
+  p "The first row is for `@block` types only. `@document @schemaless type Cfg { ... }` is accepted and opens nothing: an undeclared root field is still refused, and a declared one is still held to its type. Open the root one field at a time instead, on the declaration or on the assignment."
 
   p "The bare form takes an optional reason string, as `service web` uses above. It is documentation, not behaviour, and it is the difference between a reader trusting the escape hatch and wondering about it."
 
@@ -1486,7 +1491,7 @@ $ echo $?
 CONSOLE
   }
 
-  p "A host reading the field through the library gets the same error from `Field::value`, so no caller ever holds `300` believing it is a `u8`. A field marked `@schemaless`, or one inside a `@schemaless` block, is exempt on both paths and reads back as written. [How a validation error reads](#how-a-validation-error-reads) says more about the two paths."
+  p "A host reading the field through the library gets the same error from `Field::value`, so no caller ever holds `300` believing it is a `u8`. A field marked `@schemaless`, one inside a `@schemaless` block, or one whose declaration in a `@block` or `@document` type is `@schemaless`, is exempt on both paths and reads back as written. [How a validation error reads](#how-a-validation-error-reads) says more about the two paths."
 
   p "A type alias checks as the type it names, so `port: Port` with `type Port = u16` refuses `70000`. A decorator argument is held to its slot's type the same way: `@level(300)` against a `u8` slot fails with `argument for decorator '@level' slot 'n' is declared as u8 but the value 300 is out of range for u8`. A function parameter and a return type follow the same rule, so `(fn(x: u8) -> u8 x)(7)` is `7u8` and `(fn(x: u8) -> u8 x)(300)` fails with `argument 1 ('x') of fn literal expects u8, got 300, which is out of range for u8`. That failure is an evaluation error raised at the call, not a schema violation. [Functions](lang_functions#what-a-call-checks) covers it."
 
