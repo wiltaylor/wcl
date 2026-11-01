@@ -326,11 +326,24 @@ WCL
 
   p "The bare-URL form drops the scheme from the link text: `https://example.com/docs` renders as `example.com/docs`. It also stops before sentence-final punctuation, so a URL at the end of a sentence keeps its full stop as prose."
 
-  p "An unresolved target fails the build:"
+  p "An unresolved target fails the build. This page links to a page named `nowhere`, and the site has none:"
+
+  code wcl {
+    filename = "dead_link.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+site notes { title = "Release notes" }
+
+page release_04 {
+  p "Details are [on the next page](nowhere)."
+}
+WCL
+  }
 
   code console {
     source = <<'CONSOLE'
-$ wcl wdoc build notes.wcl --out _site
+$ wcl wdoc build dead_link.wcl --out _site
 link to unknown page 'nowhere'
 $ echo $?
 2

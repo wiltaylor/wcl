@@ -316,13 +316,26 @@ CONSOLE
 
   p "You can hear which checker refused you. Invent a name that no template and no component declares anywhere, and the language answers first, with a span:"
 
+  code wcl {
+    filename = "stray.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+site acme {
+  title = "Acme"
+}
+
+page index { wibble { p "a" } }
+WCL
+  }
+
   code console {
     source = <<'CONSOLE'
-$ wcl wdoc build main.wcl --out _site
+$ wcl wdoc build stray.wcl --out _site
 wcl::eval::schema_violation
 
   × block kind 'wibble' is not allowed inside 'page'
-   ╭─[main.wcl:7:14]
+   ╭─[stray.wcl:7:14]
  6 │
  7 │ page index { wibble { p "a" } }
    ·              ────────┬───────
@@ -426,7 +439,7 @@ WCL
 
   p "Verbatim is the feature. Because wdoc rewrites nothing, `assets` takes a folder some other tool built: a Vite or webpack `dist/`, a Tailwind output, a downloaded theme. You then reference the hashed filenames it emitted by their output path. Because source and destination are the same string, keep entries inside the document's own folder: an entry that climbs out with `..` writes outside the output folder too."
 
-  p "The folder has to exist. A missing one stops the build:"
+  p "The folder has to exist. Point `assets` in `main.wcl` at `[\"nope\"]`, a folder that is not there, and the build stops:"
 
   code console {
     source = <<'CONSOLE'

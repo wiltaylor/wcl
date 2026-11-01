@@ -185,17 +185,45 @@ WCL
 
   p "`file` is the clear example. It ships a file into the output tree and optionally links to it. A PDF is one self-contained document: there is no output folder beside it to copy into, so a rendered link would point at something that was never shipped. `file` therefore declares `:html` and `:markdown` and stops there."
 
-  p "Put one on a page and build to PDF, and the build **refuses**:"
+  p "Put one on a page. This document ships `notes.txt`, a text file beside it, and links to the copy:"
+
+  code wcl {
+    filename = "downloads.wcl"
+    source = <<'WCL'
+import <wdoc.wcl>
+
+site docs {
+  default_template = :book
+  title            = "Docs"
+  toc { chapter "Downloads" { page = dl } }
+}
+
+page dl {
+  start = true
+  h1 "Downloads"
+  file "notes.txt" { as = "the notes" }
+}
+WCL
+  }
+
+  code text {
+    filename = "notes.txt"
+    source = <<'TEXT'
+Release notes, in plain text.
+TEXT
+  }
+
+  p "Build it to PDF, and the build **refuses**:"
 
   code console {
     source = <<'CONSOLE'
-$ wcl wdoc build main.wcl --out _pdf --type pdf
+$ wcl wdoc build downloads.wcl --out _pdf --type pdf
 wcl::eval::user_error
 
   × error: `file` has no :pdf implementation (it is native
   │ on :html, :markdown); remove the block or waive it here with
   │ `@except(backends = [:pdf])`
-    ╭─[main.wcl:12:3]
+    ╭─[downloads.wcl:12:3]
  11 │   h1 "Downloads"
  12 │   file "notes.txt" { as = "the notes" }
     ·   ──────────────────┬──────────────────
@@ -210,8 +238,18 @@ CONSOLE
   p "The message names the fix. Add the waiver to that instance:"
 
   code wcl {
+    filename = "downloads.wcl"
     source = <<'WCL'
+import <wdoc.wcl>
+
+site docs {
+  default_template = :book
+  title            = "Docs"
+  toc { chapter "Downloads" { page = dl } }
+}
+
 page dl {
+  start = true
   h1 "Downloads"
 
   @except(backends = [:pdf])
@@ -222,9 +260,9 @@ WCL
 
   code console {
     source = <<'CONSOLE'
-$ wcl wdoc build main.wcl --out _pdf --type pdf
+$ wcl wdoc build downloads.wcl --out _pdf --type pdf
 wrote 1 pdf
-$ wcl wdoc build main.wcl --out _md --type markdown
+$ wcl wdoc build downloads.wcl --out _md --type markdown
 wrote 1 page
 $ cat _md/dl.md
 # Downloads
@@ -257,7 +295,7 @@ WCL
 
   p "They apply to **one instance**, and they take its whole subtree with it. Hide a `callout` and its body goes. Hide a `diagram` and every shape inside it goes. There is no way to hide a field, and no way to hide a page. A page belongs to sites through its `sites` field, and a page you do not want built is a page you do not declare."
 
-  p "One decorator of each kind per block, and that is a rule rather than a convention. A second `@except` on one instance is a schema violation:"
+  p "One decorator of each kind per block, and that is a rule rather than a convention. A second `@except` on one instance is a schema violation. Split the third paragraph's decorator in `main.wcl` into `@except(backends = [:markdown])` and `@except(backends = [:pdf])` on two lines, and the build stops:"
 
   code console {
     source = <<'CONSOLE'

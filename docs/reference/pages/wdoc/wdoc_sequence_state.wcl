@@ -175,7 +175,14 @@ WCL
   code wcl {
     filename = "sizing.wcl"
     source = <<'WCL'
-# sizing.wcl — one exchange, two widths. Site and page as in signup.wcl.
+# sizing.wcl — one exchange, two widths.
+import <wdoc.wcl>
+
+site sizing {
+  title = "Sizing"
+  toc { chapter "Sizing" { page = sizes } }
+}
+
 page sizes {
   title = "Sizing"
 
