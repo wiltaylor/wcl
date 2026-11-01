@@ -338,6 +338,75 @@ eval error: wcl::eval::unresolved_reference
 CONSOLE
   }
 
+  p "A block carries its type with it, so `Service` above comes from the record itself. A record literal carries none. `{ sku: \"a-1\" }` is the same value wherever it is written, so the error takes the type from where the record was read. Here the records sit in a field declared `list<Item>`:"
+
+  code wcl {
+    filename = "stock.wcl"
+    source = <<'WCL'
+# stock.wcl — record literals in a typed list.
+
+type Item {
+  sku:   utf8
+  count: u32
+}
+
+@document
+type Stock {
+  items: list<Item>
+  first: utf8
+}
+
+items = [
+  { sku: "a-1", count: 3u32 },
+  { sku: "b-2", count: 0u32 },
+]
+
+first = at(items, 0).sku
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check --eval stock.wcl
+OK
+$ wcl get stock.wcl first
+"a-1"
+CONSOLE
+  }
+
+  p "Ask the element for a field `Item` does not declare. Change the last line to `first = at(items, 0).name`:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check --eval stock.wcl
+wcl::eval::unresolved_reference
+
+  × unresolved reference 'at(items, 0).name': record of type 'Item' has no
+  │ field 'name'
+    ╭─[stock.wcl:19:9]
+ 18 │
+ 19 │ first = at(items, 0).name
+    ·         ────────┬────────
+    ·                 ╰── no such field
+    ╰────
+  help: its fields are: count, sku
+
+stock.wcl: 1 evaluation error
+CONSOLE
+  }
+
+  p "The element itself is not changed. `at(items, 0)` is still the literal `{ sku: \"a-1\", count: 3u32 }`, with no type name, and it equals that literal written anywhere else. Only the error looks back at where the record came from. Any of these routes names the declared type:"
+
+  list {
+    li "A field declared with a record type, or a field of such a record: `cfg.db.host` when `cfg: Cfg` and `Cfg` declares `db: Db`."
+    li "An element of a declared list, through `at`, `head`, `find`, `max_by` or `min_by`, including after `filter`, `sort_by`, `reverse`, `take`, `drop`, `tail`, `slice` or `unique`."
+    li "A function parameter or return type: `fn(r: Item) -> utf8 r.name`, or `mk().name` when `fn mk() -> Item`."
+    li "The payload of a union variant, bound by a `match` or `if let` arm."
+    li "A `let` bound to any of these."
+  }
+
+  p "A literal nothing declared, such as an element of `let xs = [{ sku: \"a-1\" }]`, says only `record has no field 'name'`."
+
   p "A dot binds tighter than a call, so `f(x).g(y)` reads the field `g` of `f(x)`'s result and then calls it. That is how a record of functions is used: `ops(3).scale(7)` calls the `scale` field of the record `ops(3)` returns."
 
   p "A dot is also how `self` and `parent` are useful. On their own they name a block, and the member is what you wanted from it. [Documents, fields and blocks](lang_documents#self-and-parent) covers both keywords."

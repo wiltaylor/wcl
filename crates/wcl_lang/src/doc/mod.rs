@@ -36,6 +36,7 @@ use std::collections::{HashMap, HashSet};
 
 mod cells;
 mod connections;
+mod declared;
 mod decorators;
 mod eval;
 mod eval_ops;

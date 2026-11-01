@@ -8,6 +8,7 @@ use crate::ast::{self, Span};
 use crate::diagnostics::EvalError;
 use crate::value::{FnParam, FnValue, Value};
 
+use super::declared::{Declared, wants_declared};
 use super::eval_ops::{apply_binary, apply_unary, as_bool, describe_expr, format_member_path};
 use super::eval_stack::{self, FrameKey, MAX_EVAL_DEPTH};
 use super::match_pat;
@@ -28,9 +29,14 @@ pub(crate) struct EvalCtx<'a> {
     /// Stack of name → value bindings introduced by `Block` let-bindings.
     /// Searched right-to-left so the most recent binding shadows older ones.
     locals: Vec<(String, Value)>,
+    /// The declared type of each local, index-aligned with `locals`:
+    /// a parameter's annotation, or what a `let` or a pattern binding
+    /// read its record out of. Diagnostics only — see
+    /// [`declared`](super::declared).
+    local_types: Vec<Option<Declared>>,
     /// Lexical scope of the expression's evaluation site. Used to
     /// resolve bare identifiers and `self`/`parent`.
-    scope: Scope<'a>,
+    pub(super) scope: Scope<'a>,
 }
 
 impl<'a> EvalCtx<'a> {
@@ -38,6 +44,7 @@ impl<'a> EvalCtx<'a> {
     pub(super) fn new(scope: Scope<'a>) -> Self {
         Self {
             locals: Vec::new(),
+            local_types: Vec::new(),
             scope,
         }
     }
@@ -48,6 +55,26 @@ impl<'a> EvalCtx<'a> {
             .iter()
             .rev()
             .find_map(|(n, v)| if n == name { Some(v) } else { None })
+    }
+
+    /// Whether `name` is bound as a local.
+    pub(super) fn is_local(&self, name: &str) -> bool {
+        self.locals.iter().any(|(n, _)| n == name)
+    }
+
+    /// The declared type the innermost local named `name` carries.
+    pub(super) fn lookup_declared(&self, name: &str) -> Option<&Declared> {
+        let i = self.locals.iter().rposition(|(n, _)| n == name)?;
+        self.local_types.get(i)?.as_ref()
+    }
+
+    /// Bind a local, with the type it was declared as when known.
+    fn bind(&mut self, name: String, value: Value, declared: Option<Declared>) {
+        // Captured locals enter `locals` without types; pad to keep the
+        // two index-aligned.
+        self.local_types.resize(self.locals.len(), None);
+        self.locals.push((name, value));
+        self.local_types.push(declared);
     }
 
     /// Push a fresh locals frame and return a guard whose `Drop` impl
@@ -89,6 +116,7 @@ impl<'a> std::ops::DerefMut for LocalsFrame<'_, 'a> {
 impl Drop for LocalsFrame<'_, '_> {
     fn drop(&mut self) {
         self.ctx.locals.truncate(self.base);
+        self.ctx.local_types.truncate(self.base);
     }
 }
 
@@ -96,7 +124,7 @@ impl Drop for LocalsFrame<'_, '_> {
 /// caller's locals or document scope. Returns `None` for anything else
 /// (non-function values, missing names) so the caller can decide what
 /// fallback to take (e.g. dispatch to a builtin by the same name).
-fn lookup_function(doc: &Document, ctx: &EvalCtx<'_>, name: &str) -> Option<FnValue> {
+pub(super) fn lookup_function(doc: &Document, ctx: &EvalCtx<'_>, name: &str) -> Option<FnValue> {
     if let Some(Value::Function(fv)) = ctx.lookup(name) {
         return Some(fv.clone());
     }
@@ -730,7 +758,7 @@ impl Document {
             Err(e) => {
                 let msg = Value::Utf8(e.to_string());
                 let mut frame = ctx.push_frame();
-                frame.locals.push((binder.to_string(), msg));
+                frame.bind(binder.to_string(), msg, None);
                 self.eval_in(handler, &mut frame)
             }
         }
@@ -934,9 +962,49 @@ impl Document {
             let v = self
                 .eval_in(&binding.value, &mut frame)?
                 .bound_as(&binding.name);
-            frame.locals.push((binding.name.clone(), v));
+            // Diagnostics name a record literal's declared type; work it
+            // out only when the value holds one.
+            let declared = if wants_declared(&v) {
+                self.declared_type_of(&binding.value, &frame)
+            } else {
+                None
+            };
+            frame.bind(binding.name.clone(), v, declared);
         }
         self.eval_in(tail, &mut frame)
+    }
+
+    /// Bind the names a pattern matched, each with the type it was
+    /// declared as when its value holds a record literal: a variant's
+    /// payload type, or the scrutinee's own for a name bound to the
+    /// whole value.
+    fn bind_pattern<'a>(
+        &'a self,
+        frame: &mut EvalCtx<'a>,
+        pattern: &ast::Pattern,
+        scrut: &ast::Expr,
+        value: &Value,
+        bindings: Vec<(String, Value)>,
+    ) {
+        // Every type is worked out before anything is bound, so the
+        // scrutinee is read in the scope it was evaluated in.
+        let mut scrutinee: Option<Option<Declared>> = None;
+        let declared: Vec<Option<Declared>> = bindings
+            .iter()
+            .map(|(name, val)| {
+                if !wants_declared(val) {
+                    return None;
+                }
+                self.pattern_binding_declared(pattern, value, name, &mut || {
+                    scrutinee
+                        .get_or_insert_with(|| self.declared_type_of(scrut, frame))
+                        .clone()
+                })
+            })
+            .collect();
+        for ((name, val), declared) in bindings.into_iter().zip(declared) {
+            frame.bind(name, val, declared);
+        }
     }
 
     /// `E::IfLet` arm. On pattern match, push the bindings as a locals
@@ -953,9 +1021,7 @@ impl Document {
         let v = self.eval_in(scrut, ctx)?;
         if let Some(bindings) = match_pat::match_pattern(pattern, &v) {
             let mut frame = ctx.push_frame();
-            for (name, val) in bindings {
-                frame.locals.push((name, val));
-            }
+            self.bind_pattern(&mut frame, pattern, scrut, &v, bindings);
             return self.eval_in(then_block, &mut frame);
         }
         self.eval_in(else_block, ctx)
@@ -981,9 +1047,7 @@ impl Document {
                     continue;
                 };
                 let mut frame = ctx.push_frame();
-                for (name, val) in bindings {
-                    frame.locals.push((name, val));
-                }
+                self.bind_pattern(&mut frame, pat, scrut, &v, bindings);
                 if let Some(guard) = &arm.guard {
                     match self.eval_in(guard, &mut frame)? {
                         Value::Bool(true) => {}
@@ -1051,12 +1115,19 @@ impl Document {
         let admitted = self.admit_arguments(f, args, site)?;
         let mut locals = Vec::with_capacity(f.captured.len() + args.len());
         locals.extend(f.captured.iter().cloned());
+        // Captures carry no declared type; a parameter carries its
+        // annotation, for diagnostics that name a record's type.
+        let ns = self.ctx_ns(ctx);
+        let mut local_types = vec![None; locals.len()];
         for (param, value) in f.params().iter().zip(admitted) {
             locals.push((param.name().to_string(), value));
+            local_types.push(Some(Declared::new(param.ty().clone(), ns)));
         }
         let caller_locals = std::mem::replace(&mut ctx.locals, locals);
+        let caller_types = std::mem::replace(&mut ctx.local_types, local_types);
         let result = self.eval_in(&f.body, ctx);
         ctx.locals = caller_locals;
+        ctx.local_types = caller_types;
         // The body may live in another file than the call: name that
         // file, unless something deeper in the body already did.
         let value = result.map_err(|error| self.with_body_origin(error, &f.body))?;
@@ -1378,8 +1449,14 @@ impl Document {
                     return Err(failure);
                 }
                 // Not a document path: read the field out of the
-                // receiver's value, when it is a record.
-                recv_dr.member(name, &format_member_path(expr), *span)
+                // receiver's value, when it is a record. A record literal
+                // missing the field is named by the type the receiver was
+                // declared to produce.
+                recv_dr.member(name, &format_member_path(expr), *span, || {
+                    self.declared_type_of(recv, ctx)
+                        .as_ref()
+                        .and_then(Document::declared_record_name)
+                })
             }
             E::Paren { inner, .. } => self.eval_to_dataref(inner, ctx),
             other => Err(EvalError::not_a_reference(

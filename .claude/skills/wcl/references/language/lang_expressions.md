@@ -246,8 +246,15 @@ zone = origin.inner.zone                     // "a"
   path goes no further.
 - **A missing field names the record.** `meta.zone` fails with `unresolved reference 'meta.zone':
   record of type 'Meta' has no field 'zone'` and the help `its fields are: region` (exit 3). A
-  variant says `variant 'Src::File'`; an untyped literal just `record`. `wcl get m.wcl meta.zone`
-  prints `no such path: meta.zone`.
+  variant says `variant 'Src::File'`. `wcl get m.wcl meta.zone` prints `no such path: meta.zone`.
+- **A record literal is named by the slot it came out of.** It carries no type of its own, so
+  the error uses the declared one: `at(rows, 0).nope` with `rows: list<Row>` says `record of type
+  'Row'`. The same holds through `head`, `find`, `max_by`, `min_by` (and `filter`, `sort_by`,
+  `reverse`, `take`, `drop`, `tail`, `slice`, `unique` in between), a field of a typed record
+  (`cfg.db.nope` with `db: Db` says `Db`), a parameter or return type, a variant payload bound by
+  `match` / `if let`, and a `let` bound to any of these. Only the message changes: the value
+  stays an untagged literal (prints without a type name, equals the same literal anywhere). A
+  literal nothing declared says just `record`.
 - **Nothing else has fields.** `rows.name` on a list fails with `unresolved reference
   'rows.name': value of type 'list' has no field 'name'`; a scalar names its own type the same
   way (`value of type 'i64'`). There is no index operator: write `at(rows, 0).name`.

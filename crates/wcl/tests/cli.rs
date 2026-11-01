@@ -828,6 +828,29 @@ fn check_eval_names_the_missing_field_of_a_record() {
 }
 
 #[test]
+fn check_eval_names_the_declared_type_of_a_list_element() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("rows.wcl");
+    std::fs::write(
+        &file,
+        "type Row { name: utf8 }\n\
+         @document type D { rows: list<Row>  label: utf8 }\n\
+         rows = [{ name: \"a\" }]\n\
+         label = at(rows, 0).nope\n",
+    )
+    .expect("write fixture");
+
+    wcl()
+        .arg("check")
+        .arg("--eval")
+        .arg(&file)
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("record of type 'Row'"))
+        .stderr(predicate::str::contains("its fields are: name"));
+}
+
+#[test]
 fn get_follows_a_reference_to_a_block() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let file = tmp.path().join("services.wcl");

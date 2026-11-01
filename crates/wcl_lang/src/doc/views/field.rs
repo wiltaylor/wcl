@@ -647,7 +647,7 @@ impl<'a> Field<'a> {
     /// The schema field declaring this field — see
     /// [`declared_type_ref`](Self::declared_type_ref) for which schema
     /// that is.
-    fn declared_field(&self) -> Option<TypeField<'a>> {
+    pub(in crate::doc) fn declared_field(&self) -> Option<TypeField<'a>> {
         if let Some(frame) = self.scope.frames().last().cloned() {
             let block = Block {
                 ast: frame.ast,

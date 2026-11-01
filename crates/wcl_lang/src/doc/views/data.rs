@@ -404,7 +404,9 @@ impl<'a> DataRef<'a> {
     ///
     /// A record (or a variant with a record payload) missing `name`
     /// fails with [`EvalError::NoSuchField`], naming the field and the
-    /// record's type. A value with no fields at all (a list, a scalar)
+    /// record's type. A record literal has no type of its own, so
+    /// `declared` names the one it was declared as — asked only when the
+    /// field is missing. A value with no fields at all (a list, a scalar)
     /// fails the same way, naming the value's type. A reference handle,
     /// or a target that is not a value, fails with
     /// [`EvalError::UnresolvedReference`].
@@ -413,6 +415,7 @@ impl<'a> DataRef<'a> {
         name: &str,
         path: &str,
         span: crate::ast::Span,
+        declared: impl FnOnce() -> Option<String>,
     ) -> Result<DataRef<'a>, EvalError> {
         let v = match &self.inner {
             DataKind::Field(f) => f.value().map_err(|e| e.clone())?,
@@ -424,9 +427,9 @@ impl<'a> DataRef<'a> {
             return Ok(DataRef::from_variant_value(hit));
         }
         let (record, fields) = match v {
-            // A record literal typed by the slot it fills carries no type
-            // of its own; the field's declaration names it.
-            Value::Record { ty, fields } if ty.is_empty() => match self.declared_type_name() {
+            // A record literal carries no type of its own; the slot it
+            // was read out of names it.
+            Value::Record { ty, fields } if ty.is_empty() => match declared() {
                 Some(t) => (format!("record of type '{t}'"), fields),
                 None => ("record".to_string(), fields),
             },
@@ -463,19 +466,6 @@ impl<'a> DataRef<'a> {
         };
         let names: Vec<&str> = fields.keys().map(String::as_str).collect();
         Err(EvalError::no_such_field(path, name, record, &names, span))
-    }
-
-    /// The named type a field's schema declares it as (`Host`), for
-    /// diagnostics. `None` for anything but a field declared with a
-    /// named type.
-    fn declared_type_name(&self) -> Option<String> {
-        let DataKind::Field(f) = &self.inner else {
-            return None;
-        };
-        match f.declared_type_ref()? {
-            crate::ast::TypeRef::Named { path, .. } => Some(path.join(".")),
-            _ => None,
-        }
     }
 
     /// Walk a dotted path. Empty path returns a clone of `self`. Each

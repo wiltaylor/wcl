@@ -8080,6 +8080,215 @@ fn member_access_keeps_block_paths_first() {
     assert_eq!(get_value(&doc, "svc.port"), Value::I64(80));
 }
 
+// ─── the declared type of a record read out of a typed slot ──────
+
+/// The record a missing-field error names for root field `field`.
+fn missing_field_record(doc: &Document, field: &str) -> String {
+    match doc.field(field).unwrap().value().unwrap_err() {
+        EvalError::NoSuchField { record, .. } => record.clone(),
+        other => panic!("{field}: {other:?}"),
+    }
+}
+
+/// A `Row` list and a `Cfg` record, both written as literals, for the
+/// escape-route tests below to read out of.
+fn open_typed_slots(doc_fields: &str, root: &str) -> Document {
+    Document::open(
+        &format!(
+            r#"
+            type Row {{ name: utf8  inner: Db }}
+            type Db {{ host: utf8 }}
+            type Cfg {{ db: Db  dbs: list<Db> }}
+            union Shape {{ Sq Db  Wide {{ db: Db }} }}
+            @document type D {{
+              rows: list<Row>
+              cfg: Cfg
+              shape: Shape
+              wide: Shape
+              {doc_fields}
+            }}
+            rows = [{{ name: "a", inner: {{ host: "h" }} }}]
+            cfg = {{ db: {{ host: "h" }}, dbs: [{{ host: "h" }}] }}
+            shape = Shape::Sq({{ host: "h" }})
+            wide = Shape::Wide {{ db: {{ host: "h" }} }}
+            {root}
+            "#
+        ),
+        "t",
+    )
+    .expect("open")
+}
+
+#[test]
+fn missing_field_names_the_declared_element_type() {
+    let doc = open_typed_slots(
+        "a: utf8  h: utf8  f: utf8  s: utf8  m: utf8  t: utf8",
+        r#"
+        a = at(rows, 0).nope
+        h = head(rows).nope
+        f = find(rows, fn(r: Row) -> bool r.name == "a").nope
+        s = at(sort_by(rows, fn(r: Row) -> utf8 r.name), 0).nope
+        m = max_by(filter(rows, fn(r: Row) -> bool true), fn(r: Row) -> utf8 r.name).nope
+        t = at(take(reverse(rows), 1), 0).nope
+        "#,
+    );
+    for field in ["a", "h", "f", "s", "m", "t"] {
+        assert_eq!(
+            missing_field_record(&doc, field),
+            "record of type 'Row'",
+            "{field}"
+        );
+    }
+    let err = doc.field("a").unwrap().value().unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "unresolved reference 'at(rows, 0).nope': record of type 'Row' has no field 'nope'"
+    );
+}
+
+#[test]
+fn missing_field_names_the_declared_parameter_type() {
+    // The list itself is untyped: the parameter's annotation names it.
+    let doc = open_typed_slots(
+        "m: list<utf8>  f: utf8  e: list<utf8>",
+        r#"
+        m = { let xs = [{ name: "a" }]; map(xs, fn(r: Row) -> utf8 r.nope) }
+        f = fold(rows, "", fn(acc: utf8, r: Row) -> utf8 r.nope)
+        e = map(rows, fn(r: Row) -> utf8 r.inner.nope)
+        "#,
+    );
+    assert_eq!(missing_field_record(&doc, "m"), "record of type 'Row'");
+    assert_eq!(missing_field_record(&doc, "f"), "record of type 'Row'");
+    assert_eq!(missing_field_record(&doc, "e"), "record of type 'Db'");
+}
+
+#[test]
+fn missing_field_names_the_declared_return_type() {
+    let doc = open_typed_slots(
+        "c: utf8  l: utf8  b: utf8",
+        r#"
+        fn mk() -> Row ({ name: "a", inner: { host: "h" } })
+        c = mk().nope
+        l = (fn() -> Db ({ host: "h" }))().nope
+        b = { let r = mk(); r }.nope
+        "#,
+    );
+    assert_eq!(missing_field_record(&doc, "c"), "record of type 'Row'");
+    assert_eq!(missing_field_record(&doc, "l"), "record of type 'Db'");
+    assert_eq!(missing_field_record(&doc, "b"), "record of type 'Row'");
+}
+
+#[test]
+fn missing_field_names_the_type_a_let_was_bound_from() {
+    let doc = open_typed_slots(
+        "l: utf8  n: utf8  x: utf8  k: utf8  a: utf8",
+        r#"
+        l = { let r = at(rows, 0); r.nope }
+        n = { let xs = rows; at(xs, 0).nope }
+        x = { let d = cfg.db; d.nope }
+        k = match at(rows, 0) { r => r.nope }
+        a = match cfg.db { d @ _ if true => d.nope, _ => "" }
+        "#,
+    );
+    assert_eq!(missing_field_record(&doc, "l"), "record of type 'Row'");
+    assert_eq!(missing_field_record(&doc, "n"), "record of type 'Row'");
+    assert_eq!(missing_field_record(&doc, "x"), "record of type 'Db'");
+    // A name bound to the whole scrutinee takes the scrutinee's type.
+    assert_eq!(missing_field_record(&doc, "k"), "record of type 'Row'");
+    assert_eq!(missing_field_record(&doc, "a"), "record of type 'Db'");
+}
+
+#[test]
+fn missing_field_names_the_declared_type_of_a_nested_record() {
+    let doc = open_typed_slots(
+        "d: utf8  l: utf8  i: utf8  c: utf8",
+        r#"
+        d = cfg.db.nope
+        l = at(cfg.dbs, 0).nope
+        i = at(rows, 0).inner.nope
+        c = (if true { cfg } else { cfg }).db.nope
+        "#,
+    );
+    for field in ["d", "l", "i", "c"] {
+        assert_eq!(
+            missing_field_record(&doc, field),
+            "record of type 'Db'",
+            "{field}"
+        );
+    }
+}
+
+#[test]
+fn missing_field_names_a_variant_payload_type() {
+    let doc = open_typed_slots(
+        "p: utf8  r: utf8  i: utf8",
+        r#"
+        p = match shape { Shape::Sq(d) => d.nope, _ => "" }
+        r = match wide { Shape::Wide { db } => db.nope, _ => "" }
+        i = if let Shape::Sq(d) = shape { d.nope } else { "" }
+        "#,
+    );
+    for field in ["p", "r", "i"] {
+        assert_eq!(
+            missing_field_record(&doc, field),
+            "record of type 'Db'",
+            "{field}"
+        );
+    }
+}
+
+#[test]
+fn missing_field_with_no_declared_type_stays_a_record() {
+    // Nothing declared the literal: the error says only `record`.
+    let doc = Document::open(
+        r#"
+        @document type D { u: utf8  m: utf8 }
+        u = { let xs = [{ name: "a" }]; at(xs, 0).nope }
+        m = (if true { { a: 1 } } else { { b: 2 } }).nope
+        "#,
+        "t",
+    )
+    .expect("open");
+    assert_eq!(missing_field_record(&doc, "u"), "record");
+    assert_eq!(missing_field_record(&doc, "m"), "record");
+}
+
+#[test]
+fn a_record_read_out_of_a_typed_slot_keeps_its_value() {
+    // The declared type only words the error: the element is the same
+    // untagged literal, equal to one written anywhere, printed the same,
+    // and filling a slot of an unrelated named type as before.
+    let doc = open_strict(
+        r#"
+        type Row { name: utf8 }
+        type Other { name: utf8 }
+        @document type D {
+          rows: list<Row>
+          first: Other
+          same: bool
+          others: list<Other>
+        }
+        rows = [{ name: "a" }]
+        first = at(rows, 0)
+        same = at(rows, 0) == { name: "a" }
+        others = rows
+        "#,
+    );
+    let first = get_value(&doc, "first");
+    assert!(
+        matches!(&first, Value::Record { ty, .. } if ty.is_empty()),
+        "{first:?}"
+    );
+    assert_eq!(get_value(&doc, "same"), Value::Bool(true));
+    // Printed as the literal it was written as, with no type name.
+    let literal = Value::record(
+        Vec::new(),
+        std::collections::BTreeMap::from([("name".to_string(), Value::Utf8("a".into()))]),
+    );
+    assert_eq!(first, literal);
+    assert_eq!(first.to_string(), literal.to_string());
+}
+
 // ─── member access through `&T` references ───────────────────────
 
 /// A three-service chain: `web` points at `api`, `api` at `db`, and `db`
