@@ -228,3 +228,30 @@ fn match_inside_interpolated_heredoc_slot_stays_single_line() {
         "heredoc slot match stays one-line:\n{out}"
     );
 }
+
+#[test]
+fn member_access_on_any_expression_round_trips() {
+    let out = round_trip(
+        r#"a = at(rows, 0).name
+b = (if c { x } else { y }).name
+c = { name: "lit" }.name
+d = ops(3).scale(7)
+e = (1 + 2).name
+f = f(x).y.z
+g = { let r = at(rows, 0); r }.name
+h = (match k { 1 => { name: "one" }, _ => { name: "other" } }).name
+"#,
+    );
+    for expected in [
+        "a = at(rows, 0).name",
+        "b = (if c { x } else { y }).name",
+        "c = { name: \"lit\" }.name",
+        "d = ops(3).scale(7)",
+        "e = (1 + 2).name",
+        "f = f(x).y.z",
+        "}.name",
+        "}).name",
+    ] {
+        assert!(out.contains(expected), "missing {expected:?}:\n{out}");
+    }
+}

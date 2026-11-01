@@ -533,7 +533,8 @@ pub enum EvalError {
     #[error("unresolved reference '{path}': {record} has no field '{field}'")]
     #[diagnostic(code(wcl::eval::unresolved_reference))]
     /// A member access read a field a record (or a variant's record
-    /// payload) does not carry. Shares the `unresolved_reference` code
+    /// payload) does not carry, or read any field of a value that has
+    /// none (a list, a scalar). Shares the `unresolved_reference` code
     /// with [`EvalError::UnresolvedReference`]: the path does not
     /// resolve, and this variant says which step failed.
     NoSuchField {
@@ -542,7 +543,8 @@ pub enum EvalError {
         /// The field that was asked for.
         field: String,
         /// The value it was asked of, as diagnostics spell it:
-        /// `record of type 'Host'`, `variant 'Shape::Box'` or `record`.
+        /// `record of type 'Host'`, `variant 'Shape::Box'`, `record`, or
+        /// `value of type 'list'` for a value with no fields at all.
         record: String,
         #[help]
         /// The fields the value does carry; `None` when it carries

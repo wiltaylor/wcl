@@ -1293,6 +1293,23 @@ fn parse_call_expression() {
 }
 
 #[test]
+fn parse_member_of_a_call_then_call() {
+    // `f(x).g(y)` is `(f(x).g)(y)`: member access binds tighter than the
+    // call that follows it.
+    let s = parse("y = f(x).g(y)");
+    let f = field(&s.items, "y");
+    let Expr::Call { callee, args, .. } = &f.expr else {
+        panic!("expected call")
+    };
+    assert_eq!(args.len(), 1);
+    let Expr::Member { recv, name, .. } = &**callee else {
+        panic!("expected member callee: {callee:?}")
+    };
+    assert_eq!(name, "g");
+    assert!(matches!(&**recv, Expr::Call { .. }));
+}
+
+#[test]
 fn parse_arithmetic_precedence() {
     // 1 + 2 * 3 should bind as 1 + (2 * 3).
     let s = parse("a = 1 + 2 * 3");

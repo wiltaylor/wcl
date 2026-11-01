@@ -204,8 +204,9 @@ is `i64`, so `1 << 40` is fine and `1 << 64` is the error.
 
 ## Member access
 
-`.` reads a member. A path walks the document tree first, then reads fields of whatever record
-value it lands on. Its one hard stop is a call on its left.
+`.` reads a member. A path walks the document tree first, follows a `&T` reference to the block
+it names, then reads fields of whatever record value it lands on. The receiver may be any
+expression: a call, a bracketed expression, a block, an `if`, a `match`, a literal.
 
 ### Off a document name — a path through the tree
 
@@ -247,18 +248,71 @@ zone = origin.inner.zone                     // "a"
   record of type 'Meta' has no field 'zone'` and the help `its fields are: region` (exit 3). A
   variant says `variant 'Src::File'`; an untyped literal just `record`. `wcl get m.wcl meta.zone`
   prints `no such path: meta.zone`.
-- **Nothing else has fields.** `rows.name` on a list is `unresolved reference 'rows.name'`. There
-  is no index operator; use `at(rows, 0)` and bind it. A `&T` field is not followed:
-  `self.upstream.host` is unresolved even when `upstream` points at a block with `host`.
+- **Nothing else has fields.** `rows.name` on a list fails with `unresolved reference
+  'rows.name': value of type 'list' has no field 'name'`; a scalar names its own type the same
+  way (`value of type 'i64'`). There is no index operator: write `at(rows, 0).name`.
 - **A field that fails, fails the path.** `host.name` where `host` errors reports `host`'s error.
 
-### Not off a call result
+### Through a `&T` reference
 
-`f(x).field` is an error — `expected a reference, got call`. Bind it, then read it:
+A `&T` field that points at a **block** is followed: the next segment reads the block as if it
+had been named directly. Fields, nested blocks and labels all resolve, references chain, and
+`wcl get` follows the same way.
 
 ```wcl
-top = { let t = max_by(rows, fn(r: Row) -> i64 r.hits); t.name }
+@block("service") type Service {
+  @inline(0) id: identifier
+  host: utf8
+  upstream: &Service?
+}
+@document type D { @children("service") services: list<Service>  h: utf8 }
+
+service db  { host = "db.local" }
+service api { host = "api.local"  upstream = services.db }
+service web { host = "web.local"  upstream = services.api }
+
+h = services.web.upstream.upstream.host     // "db.local"
 ```
+
+```console
+$ wcl get s.wcl services.web.upstream.host
+"api.local"
+$ wcl get s.wcl services.web.upstream
+&services.api<block>
+```
+
+- **Only a block is followed.** A `&T` naming a declaration (`target = Row`) stays a handle to
+  that declaration: `probes.p.target.score` is `unresolved reference`, as it always was. Pass
+  the handle to a reflection builtin instead.
+- **A dangling reference reports itself.** `upstream = services.ghost` makes
+  `services.web.upstream.host` fail with `unresolved reference 'services.ghost'`, pointing at the
+  `upstream = …` line.
+- **A reference that loops fails as a cycle.** `upstream = self.upstream.upstream` gives
+  `cycle while evaluating 'upstream'`; it does not hang.
+- **A reference carried as a value is followed too**: through a local
+  (`{ let u = services.web.upstream; u.host }`) or out of a reified block
+  (`at([services.web], 0).upstream.host`).
+
+### Off any other expression — a value
+
+Anything that is not a path is evaluated, and `.` reads a field of the value it produces. The
+same rules apply: a record or a variant with a record body has fields, nothing else does.
+
+```wcl
+first = at(rows, 0).name
+top   = max_by(rows, fn(r: Row) -> i64 r.hits).name
+pick  = (if prod { primary } else { backup }).host
+local = { let r = at(rows, 1); r }.name
+lit   = { name: "x", inner: { zone: "z" } }.inner.zone
+```
+
+- **Member binds tighter than call.** `f(x).g(y)` is `(f(x).g)(y)`: it calls the
+  function-valued field `g` of `f(x)`'s result.
+- **A missing field** gives the record error above: `unresolved reference 'at(rows, 0).nope':
+  record has no field 'nope'`. The path in the message is the receiver as the formatter writes
+  it (`<expr>` when that spans lines).
+- **A non-record value** names its type: `(1 + 2).name` is `value of type 'i64' has no field
+  'name'`.
 
 `self` and `parent` are the two navigators into the enclosing scope — see `lang_documents.md`.
 

@@ -828,6 +828,46 @@ fn check_eval_names_the_missing_field_of_a_record() {
 }
 
 #[test]
+fn get_follows_a_reference_to_a_block() {
+    let tmp = TempDir::new().expect("mkdir tempdir");
+    let file = tmp.path().join("services.wcl");
+    std::fs::write(
+        &file,
+        "@block(\"service\") type Service {\n\
+         \x20 @inline(0) id: identifier\n\
+         \x20 host: utf8\n\
+         \x20 upstream: &Service?\n\
+         }\n\
+         @document type D { @children(\"service\") services: list<Service>  h: utf8 }\n\
+         service db  { host = \"db.local\" }\n\
+         service api { host = \"api.local\"  upstream = services.db }\n\
+         service web { host = \"web.local\"  upstream = services.api }\n\
+         h = at([services.web], 0).upstream.host\n",
+    )
+    .expect("write fixture");
+
+    for (path, out) in [
+        ("services.web.upstream.host", "\"api.local\"\n"),
+        ("services.web.upstream.upstream.host", "\"db.local\"\n"),
+        ("services.web.upstream", "&services.api<block>\n"),
+    ] {
+        wcl()
+            .arg("get")
+            .arg(&file)
+            .arg(path)
+            .assert()
+            .success()
+            .stdout(out);
+    }
+    wcl()
+        .arg("check")
+        .arg("--eval")
+        .arg(&file)
+        .assert()
+        .success();
+}
+
+#[test]
 fn set_updates_top_level_field_in_named_file() {
     let tmp = TempDir::new().expect("mkdir tempdir");
     let file = tmp.path().join("doc.wcl");

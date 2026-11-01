@@ -27,7 +27,21 @@ pub(super) fn format_member_path(expr: &ast::Expr) -> String {
                 out.push('.');
                 out.push_str(name);
             }
-            _ => out.push_str("<expr>"),
+            E::Paren { inner, .. } => {
+                out.push('(');
+                walk(inner, out);
+                out.push(')');
+            }
+            // Any other receiver — a call, an `if`, a literal — as the
+            // formatter writes it, when it fits on one line.
+            other => {
+                let src = crate::format::to_source_expr(other);
+                if src.contains('\n') {
+                    out.push_str("<expr>");
+                } else {
+                    out.push_str(&src);
+                }
+            }
         }
     }
     let mut s = String::new();

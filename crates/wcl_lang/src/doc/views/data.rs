@@ -316,9 +316,15 @@ impl<'a> DataRef<'a> {
             // A field is a leaf of the document tree, but its value may
             // be a record: the path carries on into the value. A field
             // that fails to evaluate keeps its failure, as `Error` does.
-            DataKind::Field(f) => match f.value() {
-                Ok(v) => record_member(v, name).map(DataRef::from_variant_value),
-                Err(e) => Some(DataRef::from_error(e.clone())),
+            // A `&T` field naming a block is followed to the block, so
+            // `routes.assets.upstream.host` reads the target's `host`.
+            DataKind::Field(f) => match self.followed_reference() {
+                Some(Ok(target)) => target.child(name),
+                Some(Err(e)) => Some(DataRef::from_error(e)),
+                None => match f.value() {
+                    Ok(v) => record_member(v, name).map(DataRef::from_variant_value),
+                    Err(e) => Some(DataRef::from_error(e.clone())),
+                },
             },
             // Member access on a record-shaped value: project the named
             // field as a fresh leaf navigator.
@@ -362,6 +368,35 @@ impl<'a> DataRef<'a> {
         }
     }
 
+    /// The block a `&T` field points at, for member access to step
+    /// into. `None` when this is not a `&T` field, or when its target is
+    /// anything but a block: a reference to a declaration (`&T = Field`)
+    /// keeps behaving as the declaration's handle.
+    ///
+    /// The field's value is read first. It is cached and guarded by the
+    /// evaluation stack, so a reference whose path runs back through
+    /// itself fails as a cycle instead of recursing, and a dangling
+    /// reference fails with the error that names its path.
+    pub(crate) fn followed_reference(&self) -> Option<Result<DataRef<'a>, EvalError>> {
+        let DataKind::Field(f) = &self.inner else {
+            return None;
+        };
+        if !matches!(
+            f.declared_type_ref(),
+            Some(crate::ast::TypeRef::Reference(_))
+        ) {
+            return None;
+        }
+        if let Err(e) = f.value() {
+            return Some(Err(e.clone()));
+        }
+        match f.reference()? {
+            Ok(target) if matches!(target.inner, DataKind::Block(_)) => Some(Ok(target)),
+            Ok(_) => None,
+            Err(e) => Some(Err(e)),
+        }
+    }
+
     /// Read field `name` out of the *value* this reference holds — the
     /// step `a.b` takes once `a` names a field or a value rather than a
     /// block, and the document tree has no `b` to offer. `path` is the
@@ -369,8 +404,10 @@ impl<'a> DataRef<'a> {
     ///
     /// A record (or a variant with a record payload) missing `name`
     /// fails with [`EvalError::NoSuchField`], naming the field and the
-    /// record's type. A value with no fields at all, or a target that is
-    /// not a value, fails with [`EvalError::UnresolvedReference`].
+    /// record's type. A value with no fields at all (a list, a scalar)
+    /// fails the same way, naming the value's type. A reference handle,
+    /// or a target that is not a value, fails with
+    /// [`EvalError::UnresolvedReference`].
     pub(crate) fn member(
         &self,
         name: &str,
@@ -399,7 +436,30 @@ impl<'a> DataRef<'a> {
                 variant,
                 payload: crate::value::VariantPayload::Record(map),
             } => (format!("variant '{}::{variant}'", union.join(".")), map),
-            _ => return Err(EvalError::unresolved_reference(path, span)),
+            // A handle to a declaration or a block keeps the plain
+            // diagnostic: the path names something with no such member.
+            Value::DataPath { .. } => return Err(EvalError::unresolved_reference(path, span)),
+            // A variant with a positional or empty body has no fields.
+            Value::Variant { union, variant, .. } => {
+                return Err(EvalError::no_such_field(
+                    path,
+                    name,
+                    format!("variant '{}::{variant}'", union.join(".")),
+                    &[],
+                    span,
+                ));
+            }
+            // A list, a scalar, a function: nothing with fields. Name the
+            // type, so `at(rows, 0).name` on a list of strings says so.
+            other => {
+                return Err(EvalError::no_such_field(
+                    path,
+                    name,
+                    format!("value of type '{}'", other.type_name()),
+                    &[],
+                    span,
+                ));
+            }
         };
         let names: Vec<&str> = fields.keys().map(String::as_str).collect();
         Err(EvalError::no_such_field(path, name, record, &names, span))

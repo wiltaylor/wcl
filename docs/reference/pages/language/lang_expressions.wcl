@@ -142,6 +142,8 @@ CONSOLE
       | "A gather field"        | "one instance, by its first label"     | "`services.web`" |
       | "A record"              | "one of its fields"                    | "`box.width`" |
       | "A union variant value" | "one field of its record payload"      | "`scale.shards`" |
+      | "A `&T` field naming a block" | "a member of the block it names" | "`self.upstream.host`" |
+      | "Any other expression"  | "one field of the record it evaluates to" | "`at(rows, 0).name`" |
       | "The document"          | "any top-level name"                   | "`parent.region`, from inside a block" |
   }
 
@@ -195,7 +197,7 @@ $ wcl get limits.wcl limits.cpu
 CONSOLE
   }
 
-  p "The document comes first. A segment that names a block, a field of a block or a declaration resolves to it, and the record's fields are read only when the tree has nothing further to offer. A variant with a record body reads the same way, so `shape.radius` works on a field holding `Shape::Circle { radius: 5.0 }`. A list has no fields, and a `&T` reference is not followed. Ask a record for a field it lacks and the error names the record's type and lists what it has. Change the last line to `memory = limits.mem`:"
+  p "The document comes first. A segment that names a block, a field of a block or a declaration resolves to it, and the record's fields are read only when the tree has nothing further to offer. A variant with a record body reads the same way, so `shape.radius` works on a field holding `Shape::Circle { radius: 5.0 }`. A list or a number has no fields, and the error says which it is: `ports.name` reports `value of type 'list' has no field 'name'`. Ask a record for a field it lacks and the error names the record's type and lists what it has. Change the last line to `memory = limits.mem`:"
 
   code console {
     source = <<'CONSOLE'
@@ -217,6 +219,126 @@ CONSOLE
   }
 
   p "`wcl get limits.wcl limits.mem` says only `no such path: limits.mem`, and exits 3 like the check."
+
+  h3 "Through a reference"
+
+  p "A field declared `&T` holds a reference: the path of a block somewhere else in the document, not a copy of it. A dot after such a field follows the reference and reads the block it names, exactly as if you had written that block's own path. Here each service points at the one behind it:"
+
+  code wcl {
+    filename = "routes.wcl"
+    source = <<'WCL'
+# routes.wcl — services that point at the service behind them.
+
+@block("service")
+type Service {
+  @inline(0) id: identifier
+  host:     utf8
+  upstream: &Service?
+  backend:  utf8?
+}
+
+@document
+type Mesh {
+  @children("service") services: list<Service>
+  origin: utf8
+}
+
+service db {
+  host = "db.internal"
+}
+
+service api {
+  host     = "api.internal"
+  upstream = services.db
+  backend  = self.upstream.host
+}
+
+service web {
+  host     = "web.internal"
+  upstream = services.api
+}
+
+origin = services.web.upstream.upstream.host
+WCL
+  }
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check --eval routes.wcl
+OK
+$ wcl get routes.wcl services.api.backend
+"db.internal"
+$ wcl get routes.wcl origin
+"db.internal"
+$ wcl get routes.wcl services.web.upstream
+&services.api<block>
+$ wcl get routes.wcl services.web.upstream.host
+"api.internal"
+CONSOLE
+  }
+
+  p "`self.upstream.host` reads the `host` of `db`, because `api`'s `upstream` names `db`. `origin` follows two references in a row, `web` to `api` to `db`. `wcl get` follows them the same way, and a path that stops at the reference prints the reference itself."
+
+  p "Only a reference to a block is followed. A `&T` field that names a declaration, such as `target = Row`, is a handle for the reflection builtins, and a dot after it does not read the type's fields. When the block a reference names does not exist, every read through it reports the reference. Point `api` at `services.cache`, which nothing declares:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl check --eval routes.wcl
+wcl::eval::unresolved_reference
+
+  × unresolved reference 'services.cache'
+    ╭─[routes.wcl:23:14]
+ 22 │   host     = "api.internal"
+ 23 │   upstream = services.cache
+    ·              ───────┬──────
+    ·                     ╰── does not resolve
+ 24 │   backend  = self.upstream.host
+    ╰────
+
+routes.wcl: 1 evaluation error
+CONSOLE
+  }
+
+  p "A reference whose own path runs back through itself, such as `upstream = self.upstream.upstream`, cannot name anything. It fails with `cycle while evaluating 'upstream'` rather than looping."
+
+  h3 "After any expression"
+
+  p "The left of a dot need not be a name. A call, a bracketed `if` or `match`, a block or a record literal is evaluated first, and the dot reads a field of the record it produces. With `report.wcl` from above:"
+
+  code text {
+    source = <<'TEXT'
+wcl> (if services.web.over { services.web } else { services.db }).line
+"db   2 x 1.5 = 37.5"
+wcl> max_by([services.web, services.db], fn(s: Service) -> f64 s.cost).line
+"db   2 x 1.5 = 37.5"
+wcl> at([services.web, services.db], 1).cost
+37.5
+wcl> { let s = services.web; s }.replicas
+3u32
+TEXT
+  }
+
+  p "The same rules apply as for a field holding a record. A missing field names the record's type and lists what it has, and a value that is not a record says what it is instead:"
+
+  code console {
+    source = <<'CONSOLE'
+$ wcl repl report.wcl
+wcl> at([services.web], 0).zone
+eval error: wcl::eval::unresolved_reference
+
+  × unresolved reference 'at([services.web], 0).zone': record of type
+  │ 'Service' has no field 'zone'
+  help: its fields are: budget, cost, cpu, id, line, over, replicas
+
+wcl> total.cents
+eval error: wcl::eval::unresolved_reference
+
+  × unresolved reference 'total.cents': value of type 'f64' has no field
+  │ 'cents'
+CONSOLE
+  }
+
+  p "A dot binds tighter than a call, so `f(x).g(y)` reads the field `g` of `f(x)`'s result and then calls it. That is how a record of functions is used: `ops(3).scale(7)` calls the `scale` field of the record `ops(3)` returns."
 
   p "A dot is also how `self` and `parent` are useful. On their own they name a block, and the member is what you wanted from it. [Documents, fields and blocks](lang_documents#self-and-parent) covers both keywords."
 
@@ -305,7 +427,7 @@ wcl> at(ports, 0)
 wcl> ports.0
 eval error: wcl::eval::unresolved_reference
 
-  × unresolved reference 'ports.0'
+  × unresolved reference 'ports.0': value of type 'list' has no field '0'
 CONSOLE
   }
 

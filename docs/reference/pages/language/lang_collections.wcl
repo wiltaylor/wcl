@@ -363,7 +363,7 @@ CONSOLE
 
   h3 "Reading a field"
 
-  p "`settings.host` reads a field off a record. The receiver is any **name that holds the record**, and a document field is a name like any other. Write the record straight into `endpoint` and read through it:"
+  p "`settings.host` reads a field off a record. The receiver can be any **name that holds the record**, and a document field is a name like any other. Write the record straight into `endpoint` and read through it:"
 
   code console {
     source = <<'CONSOLE'
@@ -385,26 +385,37 @@ $ wcl get records-field.wcl endpoint.port
 CONSOLE
   }
 
-  p "One form looks like it should work and does not: a call result. `at(dogs, 0).name` parses, and then does not resolve as a field read: it reports `expected a reference, got call`. A member chain starts from a name, and a call is not one."
+  p "The receiver need not be a name at all. Anything that evaluates to a record can stand left of the dot: a call result, a bracketed `if`, a block expression. So the first element of a list of records is one call and one dot away:"
 
-  p "The fix is one line: put the record in a name first. Three kinds of name serve, besides a field: a `let` item, a `let` binding inside a block expression, and a function parameter:"
+  code console {
+    source = <<'CONSOLE'
+$ cat kennel.wcl
+type Dog { name: utf8  age: u32 }
 
-  code wcl {
-    source = <<'WCL'
-let settings = { host: "localhost", port: 80u32 }
+@document
+type Kennel { dogs: list<Dog>  first: utf8  oldest: utf8  names: list<utf8> }
 
-# 1. a let item
-host  = settings.host
+dogs = [
+  { name: "Rex", age: 4u32 },
+  { name: "Bo",  age: 9u32 },
+]
 
-# 2. a let binding inside a block expression
-first = { let d = at(dogs, 0); d.name }
+first  = at(dogs, 0).name
+oldest = max_by(dogs, fn(d: Dog) -> u32 d.age).name
+names  = map(dogs, fn(d: Dog) -> utf8 d.name)
 
-# 3. a function parameter
-names = map(dogs, fn(d: Dog) -> utf8 d.name)
-WCL
+$ wcl check kennel.wcl
+OK
+$ wcl get kennel.wcl first
+"Rex"
+$ wcl get kennel.wcl oldest
+"Bo"
+$ wcl get kennel.wcl names
+["Rex", "Bo"]
+CONSOLE
   }
 
-  p "The third is the one you will write most. A record that reaches you through `map`, `filter` or `find` is already bound to the closure's parameter, so `d.name` reads normally."
+  p "`names` reads the field through a function parameter, and it is the form you will write most. A record that reaches you through `map`, `filter` or `find` is already bound to the closure's parameter, so `d.name` reads normally. A list itself has no fields: `dogs.name` reports `value of type 'list' has no field 'name'`. Ask for one element with `at`, or for all of them with `map`."
 
   callout "A record literal is not checked against a plain type" {
     kind = :warning

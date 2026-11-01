@@ -407,6 +407,8 @@ CONSOLE
 
   p "The output is the **WCL display form**, not JSON: a string keeps its quotes, and a number keeps its type suffix. That is deliberate. `8080u32` tells you the declared type as well as the value. A bare `8080` would not."
 
+  p "A path keeps going past a field when the field leads somewhere. A field holding a record takes the record's field names as further segments, and a `&T` field pointing at a block takes that block's, so `services.web.upstream.host` reads the `host` of the block `upstream` names. [Expressions and operators](lang_expressions#through-a-reference) shows both."
+
   p "Only what the document model exposes is addressable. A `let` item is not, because it is not document data, and a table row is not, because it has no name and no label. [Documents, fields and blocks](lang_documents) covers why."
 
   h3 "When the path is wrong"
