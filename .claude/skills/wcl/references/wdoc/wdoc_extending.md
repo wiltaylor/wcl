@@ -204,6 +204,11 @@ A lowering may return **another custom kind's variant**. The renderer recurses u
 fundamentals are left. This runs on every backend, not only in HTML, so a block built out of
 your other blocks reaches every target.
 
+Declare what the lowering really returns. The return type is enforced, so `-> list<Content>`
+refuses another kind's variant such as `Parts::Badge`: `fn literal declared -> list<Content>
+but returned a list whose element [0] is Parts::Badge`. Use `-> list<Parts>` for the union, or
+`-> list<any>` when one list mixes `Content` nodes and other kinds' variants.
+
 The recursion is depth-limited to 32 levels. A lowering that returns its own kind never
 terminates and hits that limit.
 

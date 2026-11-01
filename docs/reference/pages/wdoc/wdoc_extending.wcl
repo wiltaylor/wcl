@@ -402,6 +402,8 @@ TEXT
 
   p "The rule for the mapping is mechanical. A variant named `Badge` names the kind `badge`. `NodeRow` names `node_row`. Capitals become word boundaries."
 
+  p "Declare the return type as what the lowering really returns. A call holds its result to the declared type, so `-> list<Content>` refuses a list holding a `Parts::Badge`. The `stamp` below says `-> list<Parts>`. A lowering that mixes `Content` nodes with another kind's variants in one list declares `-> list<any>`."
+
   code wcl {
     filename = "recurse.wcl"
     source = <<'WCL'
@@ -425,7 +427,7 @@ union Parts { Badge { text: utf8  id: identifier? } }
 type Stamp extends ContentBlock {
   @inline(0) text: utf8
   id: identifier?
-  lower = fn(s: Stamp) -> list<Content> [
+  lower = fn(s: Stamp) -> list<Parts> [
     Parts::Badge { text: s.text, id: s.id }
   ]
 }

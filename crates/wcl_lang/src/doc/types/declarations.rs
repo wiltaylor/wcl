@@ -123,11 +123,14 @@ fn check_type_ref(
         // materialises as a stored value, only routes child blocks.
         TypeRef::List(inner) => check_type_ref(inner, ty_span, true, cx),
         TypeRef::Tensor { element, .. } => check_type_ref(element, ty_span, false, cx),
+        // A function type is a signature wherever it is written, so its
+        // parameter and return types get the signature allowances: a
+        // `lower = fn(…) -> list<any>` field is typed by its literal.
         TypeRef::Function { params, return_ty } => {
             for p in params {
-                check_type_ref(p, ty_span, false, cx)?;
+                check_signature_type(p, ty_span, cx)?;
             }
-            check_type_ref(return_ty, ty_span, false, cx)
+            check_signature_type(return_ty, ty_span, cx)
         }
     }
 }

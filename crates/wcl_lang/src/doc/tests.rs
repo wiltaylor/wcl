@@ -818,6 +818,23 @@ fn signature_rejects_type_variables_and_never() {
 }
 
 #[test]
+fn function_typed_field_accepts_signature_words() {
+    let doc = open(
+        "type T { f: fn(any, number) -> list<record> }\n\
+         type L { lower = fn(x: integer) -> list<any> [x] }\n\
+         @document type D { n: i64? }\n\
+         n = 1",
+    );
+    assert!(doc.field("n").is_some());
+}
+
+#[test]
+fn function_typed_field_still_rejects_unknown_names() {
+    let msg = open_syntax_message("type T { f: fn(any) -> NotDecl }");
+    assert!(msg.contains("unknown type 'NotDecl'"), "{msg}");
+}
+
+#[test]
 fn notation_words_are_not_field_types() {
     let msg = open_syntax_message("type Q { r: record }");
     assert!(msg.contains("unknown type 'record'"), "{msg}");
