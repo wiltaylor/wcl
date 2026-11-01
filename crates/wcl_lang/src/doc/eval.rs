@@ -1338,7 +1338,11 @@ impl Document {
                 .ok_or_else(|| EvalError::unresolved_reference("parent at document root", *span)),
             E::Member { recv, name, span } => {
                 let recv_result = self.eval_to_dataref(recv, ctx);
+                // A field's children are its value's fields. Those are
+                // read last, below, so a dotted path that names a
+                // declaration keeps resolving to it.
                 if let Ok(recv_dr) = &recv_result
+                    && recv_dr.as_field().is_none()
                     && let Some(child) = recv_dr.child(name)
                 {
                     return Ok(child);
@@ -1360,13 +1364,9 @@ impl Document {
                         return Ok(dr);
                     }
                 }
-                match recv_result {
-                    Err(e) => Err(e),
-                    Ok(_) => Err(EvalError::unresolved_reference(
-                        format_member_path(expr),
-                        *span,
-                    )),
-                }
+                // Not a document path: read the field out of the
+                // receiver's value, when it is a record.
+                recv_result?.member(name, &format_member_path(expr), *span)
             }
             E::Paren { inner, .. } => self.eval_to_dataref(inner, ctx),
             other => Err(EvalError::not_a_reference(

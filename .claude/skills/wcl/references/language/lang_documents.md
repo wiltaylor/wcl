@@ -261,11 +261,26 @@ A numeric path segment is still a label match. `steps.1` means "the block labell
 A path must end at a leaf value. `wcl get config.wcl services` fails with `not_a_leaf`, because
 a gathered block list is not a scalar. Add `--json` for machine-readable output.
 
-> **A path walks the document tree, and stops at a field.** It descends through blocks, nested
-> blocks and gathered lists (by label). It then reads the field it lands on. It does **not**
-> continue into that field's *value*. If `meta` holds a record, `meta.region` is an unresolved
-> reference — from `wcl get` and from another field alike. Bind the value to a local first, or
-> destructure it. See `lang_expressions.md`.
+A path walks the document tree first: blocks, nested blocks and gathered lists (by label). When
+it lands on a field whose value is a record, or a variant with a record body, the remaining
+segments read fields of that value — from `wcl get` and from another field alike:
+
+```wcl
+type Meta { region: utf8 }
+@document type Cfg { meta: Meta  r: utf8 }
+meta = { region: "us-east-1" }
+r    = meta.region
+```
+
+```console
+$ wcl get m.wcl meta.region
+"us-east-1"
+$ wcl get m.wcl meta.zone
+no such path: meta.zone
+```
+
+Any other value — a list, a scalar, a `&T` reference — has no fields, and a path past it is
+unresolved. See `lang_expressions.md`.
 
 ## A worked example
 

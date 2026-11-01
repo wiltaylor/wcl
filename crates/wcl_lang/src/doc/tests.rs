@@ -7728,3 +7728,229 @@ fn wide_document_schema_validates_every_top_level_field() {
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(errors[0].to_string().contains("stray"), "{}", errors[0]);
 }
+
+// ---- member access through a field holding a record ----
+
+/// Open `src` under its own `@document` schema, asserting it validates.
+fn open_strict(src: &str) -> Document {
+    let doc = Document::open(src, "t").expect("open");
+    assert!(doc.schema_errors().is_empty(), "{:?}", doc.schema_errors());
+    doc
+}
+
+/// The value at dotted `path`, read through `Document::get`.
+fn get_value(doc: &Document, path: &str) -> Value {
+    doc.get(path)
+        .unwrap_or_else(|| panic!("no such path: {path}"))
+        .value()
+        .unwrap_or_else(|e| panic!("{path}: {e}"))
+}
+
+#[test]
+fn member_access_reads_typed_root_field_record() {
+    let doc = open_strict(
+        r#"
+        type Host { name: utf8  port: u16 }
+        @document type D { host: Host  label: utf8 }
+        host = { name: "web", port: 80u16 }
+        label = host.name
+        "#,
+    );
+    assert_eq!(get_value(&doc, "label"), Value::Utf8("web".into()));
+    assert_eq!(get_value(&doc, "host.name"), Value::Utf8("web".into()));
+    assert_eq!(get_value(&doc, "host.port"), Value::U16(80));
+}
+
+#[test]
+fn member_access_reads_untyped_root_field_record() {
+    let doc = open(
+        r#"
+        host = { name: "web", port: 80 }
+        label = host.name
+        "#,
+    );
+    assert_eq!(
+        doc.field("label").unwrap().value().unwrap(),
+        &Value::Utf8("web".into())
+    );
+    assert_eq!(get_value(&doc, "host.port"), Value::I64(80));
+}
+
+#[test]
+fn member_access_reads_let_record_unchanged() {
+    let doc = open_strict(
+        r#"
+        @document type D { label: utf8 }
+        let h = { name: "web" }
+        label = h.name
+        "#,
+    );
+    assert_eq!(get_value(&doc, "label"), Value::Utf8("web".into()));
+}
+
+#[test]
+fn member_access_reads_root_field_holding_block_record() {
+    let doc = open_strict(
+        r#"
+        @block("cpu") type CpuBase { @inline(0) id: identifier  cores: u32 }
+        @document type D {
+          @children("cpu") cpu2s: list<CpuBase>
+          base: CpuBase
+          n: u32
+        }
+        cpu p6 { cores = 6u32 }
+        base = cpu2s.p6
+        n = base.cores
+        "#,
+    );
+    assert_eq!(get_value(&doc, "n"), Value::U32(6));
+    assert_eq!(get_value(&doc, "base.cores"), Value::U32(6));
+}
+
+#[test]
+fn member_access_chains_through_nested_records() {
+    let doc = open_strict(
+        r#"
+        type C { c: i64 }
+        type B { b: C }
+        @document type D { a: B  x: i64 }
+        a = { b: { c: 7 } }
+        x = a.b.c
+        "#,
+    );
+    assert_eq!(get_value(&doc, "x"), Value::I64(7));
+    assert_eq!(get_value(&doc, "a.b.c"), Value::I64(7));
+}
+
+#[test]
+fn member_access_on_a_list_field_still_fails() {
+    // A list has no fields; the path stays unresolved.
+    let doc = open(
+        r#"
+        xs = [{ n: 1 }, { n: 2 }]
+        y = xs.n
+        "#,
+    );
+    let err = doc.field("y").unwrap().value().unwrap_err();
+    assert!(
+        matches!(&err, EvalError::UnresolvedReference { path, .. } if path == "xs.n"),
+        "{err:?}"
+    );
+    assert!(doc.get("xs.n").is_none());
+}
+
+#[test]
+fn member_access_reads_record_field_inside_namespace() {
+    let doc = open_strict(
+        r#"
+        namespace net
+        type Host { name: utf8 }
+        @document type D { host: Host  label: utf8 }
+        host = { name: "web" }
+        label = host.name
+        "#,
+    );
+    assert_eq!(get_value(&doc, "label"), Value::Utf8("web".into()));
+    assert_eq!(get_value(&doc, "host.name"), Value::Utf8("web".into()));
+}
+
+#[test]
+fn member_access_reads_record_through_self_in_block() {
+    let doc = open_strict(
+        r#"
+        type XY { y: i64 }
+        @block("box") type Box { @inline(0) id: identifier  x: XY  z: i64 }
+        @document type D { @children("box") boxes: list<Box> }
+        box b1 {
+          x = { y: 3 }
+          z = self.x.y
+        }
+        "#,
+    );
+    assert_eq!(get_value(&doc, "boxes.b1.z"), Value::I64(3));
+    assert_eq!(get_value(&doc, "boxes.b1.x.y"), Value::I64(3));
+}
+
+#[test]
+fn member_access_reads_variant_record_payload_on_root_field() {
+    let doc = open_strict(
+        r#"
+        union Shape { Circle { radius: f64 } Polygon i32 }
+        @document type D { shape: Shape  r: f64 }
+        shape = Shape::Circle { radius: 5.0 }
+        r = shape.radius
+        "#,
+    );
+    assert_eq!(get_value(&doc, "r"), Value::F64(5.0));
+    assert_eq!(get_value(&doc, "shape.radius"), Value::F64(5.0));
+}
+
+#[test]
+fn member_access_missing_record_field_names_field_and_type() {
+    let doc = Document::open(
+        r#"
+        type Host { name: utf8  port: u16 }
+        @document type D { host: Host  label: utf8 }
+        host = { name: "web", port: 80u16 }
+        label = host.nope
+        "#,
+        "t",
+    )
+    .expect("open");
+    let err = doc.field("label").unwrap().value().unwrap_err();
+    assert!(
+        matches!(err, EvalError::NoSuchField { field, record, .. }
+            if field == "nope" && record == "record of type 'Host'"),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.to_string(),
+        "unresolved reference 'host.nope': record of type 'Host' has no field 'nope'"
+    );
+    // `get` reports a missing step as no path at all.
+    assert!(doc.get("host.nope").is_none());
+}
+
+#[test]
+fn member_access_missing_variant_field_names_the_variant() {
+    let doc = open(
+        r#"
+        union Shape { Circle { radius: f64 } }
+        shape = Shape::Circle { radius: 5.0 }
+        bad = shape.diameter
+        "#,
+    );
+    let err = doc.field("bad").unwrap().value().unwrap_err();
+    assert!(
+        matches!(err, EvalError::NoSuchField { record, .. } if record == "variant 'Shape::Circle'"),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn member_access_through_failing_field_reports_its_error() {
+    // Navigating through a field that fails surfaces that failure, not
+    // "unresolved reference".
+    let doc = open(
+        r#"
+        host = 1 + "a"
+        label = host.name
+        "#,
+    );
+    let err = doc.field("label").unwrap().value().unwrap_err();
+    assert!(matches!(err, EvalError::TypeMismatch { .. }), "{err:?}");
+    assert!(doc.get("host.name").unwrap().value().is_err());
+}
+
+#[test]
+fn member_access_keeps_block_paths_first() {
+    // A path naming a block, or a field of a block, resolves as before.
+    let doc = open(
+        r#"
+        svc web { port = 80 }
+        p = svc.port
+        "#,
+    );
+    assert_eq!(doc.field("p").unwrap().value().unwrap(), &Value::I64(80));
+    assert_eq!(get_value(&doc, "svc.port"), Value::I64(80));
+}

@@ -363,9 +363,7 @@ CONSOLE
 
   h3 "Reading a field"
 
-  p "`settings.host` reads a field off a record. The receiver has to be a **name that is bound to the record**. Two forms look like they should work and do not."
-
-  p "The first is a document field. Write the record straight into `endpoint` and then try to read through it:"
+  p "`settings.host` reads a field off a record. The receiver is any **name that holds the record**, and a document field is a name like any other. Write the record straight into `endpoint` and read through it:"
 
   code console {
     source = <<'CONSOLE'
@@ -381,15 +379,15 @@ host     = endpoint.host
 $ wcl check records-field.wcl
 OK
 $ wcl get records-field.wcl host
-wcl::eval::unresolved_reference
-
-  × unresolved reference 'endpoint.host'
+"localhost"
+$ wcl get records-field.wcl endpoint.port
+80u32
 CONSOLE
   }
 
-  p "The second is a call result. `at(dogs, 0).name` parses, and then does not resolve as a field read: it reports `expected a reference, got call`. A member chain resolves through the document tree, and a call sits outside it."
+  p "One form looks like it should work and does not: a call result. `at(dogs, 0).name` parses, and then does not resolve as a field read: it reports `expected a reference, got call`. A member chain starts from a name, and a call is not one."
 
-  p "Both have the same one-line fix: put the record in a name first. The three kinds of name that work are a `let` item, a `let` binding inside a block expression, and a function parameter:"
+  p "The fix is one line: put the record in a name first. Three kinds of name serve, besides a field: a `let` item, a `let` binding inside a block expression, and a function parameter:"
 
   code wcl {
     source = <<'WCL'
