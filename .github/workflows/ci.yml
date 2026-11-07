@@ -1,19 +1,19 @@
 name: CI
 
-# Pushes run only for main: every other branch reaches CI through its pull
-# request, so a pushed PR branch is not tested twice.
+# Runs on pushes to main and release/*, and on version tags. Card branches and
+# next start no run: a card is validated on its target with `just ci::check`
+# before review (AGENTS.md). Pull requests start no run either.
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    branches: [main, 'release/**']
+    tags: ['v*']
 
 # Read-only by default; the one job that writes (release) asks for it.
 permissions:
   contents: read
 
-# A newer push to a PR branch supersedes the run in flight. main never
-# cancels, and every main commit gets its own group, so a queued run carrying
+# A newer push to a release branch or tag supersedes the run in flight. main
+# never cancels, and every main commit gets its own group, so a queued run carrying
 # a `pre-release: true` trailer is never dropped in favour of a later commit.
 concurrency:
   group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
