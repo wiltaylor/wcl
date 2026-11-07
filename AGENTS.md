@@ -16,13 +16,31 @@ terrarium exec wcl-helios-build -- sh -c 'cd <your checkout> && just ci::check'
 `just ci::check` is the merge bar: `fmt-check`, `workspace-lint` (clippy, warnings
 are errors), `workspace-doc` (rustdoc, warnings are errors), `workspace-test`, and
 the docs site build with its relative URL check. GitHub CI runs the same recipes
-(`.github/workflows/ci.yml`). There is no affected-tests selector yet: run the
-full recipe. A cold build takes several minutes, so start it with
+(`.github/workflows/ci.yml`). A cold build takes several minutes, so start it with
 `terrarium run wcl-helios-build --name validate -- sh -c '...'` and end your turn.
 
+The affected-tests selector is `just ci::affected`. It reads
+`TERRARIUM_CHANGED_FILES` (repo-relative paths, separated by newlines, spaces or
+commas) and runs fmt, clippy, rustdoc and `cargo test -p` for the crates under
+the changed paths plus their reverse dependants from `cargo metadata` (a change in
+`crates/wcl_lang` also tests `wcl`, `wcl_lsp` and `wcl_wdoc`). A change to
+`examples/` tests every crate. The docs build runs when `docs/` changed or the
+change reaches the `wcl` binary. An empty list, a workspace file (`Cargo.toml`,
+`Cargo.lock`, `rust-toolchain.toml`, `justfile`, `.just/`) or a path with no rule
+runs the full `just ci::check`. Card validation may use it in place of the full
+recipe:
+
+```sh
+terrarium exec wcl-helios-build \
+  -e TERRARIUM_CHANGED_FILES="$(git diff --name-only origin/next...HEAD)" \
+  -- sh -c 'cd <your checkout> && just ci::affected'
+```
+
+The merge queue still runs the full `just ci::check` on each batch.
+
 While you work, narrower recipes are fine: `just ci::workspace-test`,
-`cargo test -p <crate>`, `just wdoc-test`. They do not replace the full recipe
-before `review`.
+`cargo test -p <crate>`, `just wdoc-test`. They do not replace `just ci::check`
+or `just ci::affected` before `review`.
 
 Not in the merge bar (run them only when the card asks): `just ci::fuzz-sweep`
 (nightly and cargo-fuzz), `just skill-test` (billed model calls), `just fuzz-soak`.
