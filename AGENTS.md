@@ -6,12 +6,27 @@ This file adds the Terrarium delivery flow for agents.
 
 ## Validation
 
-One command validates a change. Run it on the target `wcl-helios-build`, in your
-checkout, against your pushed commit:
+One command validates a change. Run it on the target `wcl-helios-build` against
+your pushed commit.
+
+Your sandbox workspace may not be visible on the target, and the target cannot
+reach GitHub over SSH. Clone the pushed branch on the target over HTTPS into
+`/tmp/<card>` (HOME on the target is `/tmp`; nothing there survives a target
+recreate), check the commit, and validate there:
 
 ```sh
-terrarium exec wcl-helios-build -- sh -c 'cd <your checkout> && just ci::check'
+terrarium exec wcl-helios-build -- sh -c 'rm -rf /tmp/wcl-12 && \
+  git clone -q --branch wcl-12 https://github.com/wiltaylor/wcl.git /tmp/wcl-12/wcl && \
+  git -C /tmp/wcl-12/wcl rev-parse HEAD'
+terrarium run wcl-helios-build --name validate -- sh -c 'cd /tmp/wcl-12/wcl && just ci::check'
 ```
+
+The image preinstalls the pinned toolchain (`rust-toolchain.toml`). Never run
+`rustup component add/remove` or `rustup toolchain` on the target: the install is
+shared by every job and card. A missing component is a target problem: move the
+card to `blocked` and tell the lead. The target has no Node or uv: install them
+under `/tmp/<card>` only when the card needs them (`just vscode-build`,
+`just vscode-package`).
 
 `just ci::check` is the merge bar: `fmt-check`, `workspace-lint` (clippy, warnings
 are errors), `workspace-doc` (rustdoc, warnings are errors), `workspace-test`, and
@@ -33,7 +48,7 @@ recipe:
 ```sh
 terrarium exec wcl-helios-build \
   -e TERRARIUM_CHANGED_FILES="$(git diff --name-only origin/next...HEAD)" \
-  -- sh -c 'cd <your checkout> && just ci::affected'
+  -- sh -c 'cd /tmp/wcl-12/wcl && just ci::affected'
 ```
 
 The merge queue still runs the full `just ci::check` on each batch.
