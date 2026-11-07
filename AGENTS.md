@@ -77,4 +77,6 @@ The board follows the Terrarium delivery process (skill `delivery-process`).
   result. Green cards go to `accepted`.
 - Releases: the lead cuts `release/<X.Y.Z>` from `next` and merges it into
   `main` with a `pre-release: true` trailer. The CI publishes `X.Y.Z-alpha`.
-  Stable releases (`release: true`) are disabled in the CI.
+  A full release (`release: true`, operator approval first) promotes the last
+  `X.Y.Z-alpha` tag to `X.Y.Z` with no bump, as a stable GitHub release. A
+  commit with both trailers, or a release with no alpha tag to promote, fails.
