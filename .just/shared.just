@@ -47,11 +47,13 @@ fmt-check: require-rustfmt
 # these two only; a plain `cargo clippy` still shows them.
 #
 # Delete both flags once the backlog is cleared — that is the whole switch.
-#
+# `ci::affected` reads the same variable, so both lint the same way.
+lint_flags := '-D warnings -A missing_docs -A clippy::missing_docs_in_private_items'
+
 # Lint with clippy (warnings are errors)
 [group('quality')]
 workspace-lint: require-clippy
-    cargo clippy --locked --workspace --all-targets -- -D warnings -A missing_docs -A clippy::missing_docs_in_private_items
+    cargo clippy --locked --workspace --all-targets -- {{ lint_flags }}
 
 # Build the API docs with rustdoc warnings as errors (broken intra-doc links)
 [group('quality')]
